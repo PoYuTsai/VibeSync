@@ -37,3 +37,14 @@ coverage/
 *.jks
 google-services.json
 GoogleService-Info.plist
+
+# API Keys & Credentials
+*.key
+*.pem
+*.p12
+**/credentials/
+service-account*.json
+
+# Supabase local config (contains keys)
+supabase/.env
+supabase/.env.local
