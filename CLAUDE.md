@@ -192,6 +192,14 @@ npx supabase stop
 2. 簡單情境不需要大模型
 3. 複雜情境保持品質
 
+#### [2026-02-26] 點數制訂閱模型
+**決定**: 改用點數制，取消 Unlimited 方案
+**原因**:
+1. 變動成本 (API) 轉嫁給用戶
+2. 永遠確保毛利 > 90%
+3. 每日上限防止濫用
+4. 熔斷器保護成本爆炸
+
 ## Notes
 
 - This file is auto-read by Claude Code at conversation start
