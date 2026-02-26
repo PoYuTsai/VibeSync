@@ -302,14 +302,33 @@ class AppConstants {
   // Golden Rule
   static const goldenRuleMultiplier = 1.8;
 
-  // Subscription Tiers
-  static const freeAnalysesLimit = 5;
-  static const proAnalysesLimit = 200;
-  // unlimited: no limit
+  // Subscription Tiers (訊息制)
+  static const freeMonthlyLimit = 30;
+  static const starterMonthlyLimit = 300;
+  static const essentialMonthlyLimit = 1000;
+
+  // Daily Limits (每日上限)
+  static const freeDailyLimit = 15;
+  static const starterDailyLimit = 50;
+  static const essentialDailyLimit = 150;
+
+  // Conversation Limits (對話數量)
+  static const freeConversationLimit = 3;
+  static const starterConversationLimit = 15;
+  static const essentialConversationLimit = 50;
+
+  // Memory Limits (對話記憶輪數)
+  static const freeMemoryRounds = 5;
+  static const paidMemoryRounds = 15;
+
+  // Message Calculation (訊息計算)
+  static const maxCharsPerMessage = 200;  // 單則上限 200 字
+  static const maxTotalChars = 5000;       // 單次分析上限 5000 字
 
   // Local Storage
   static const conversationsBox = 'conversations';
   static const settingsBox = 'settings';
+  static const usageBox = 'usage';
 }
 ```
 
@@ -932,7 +951,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 
-enum ReplyType { extend, resonate, tease }
+enum ReplyType { extend, resonate, tease, humor, coldRead }
 
 class ReplyCard extends StatelessWidget {
   final ReplyType type;
@@ -951,11 +970,15 @@ class ReplyCard extends StatelessWidget {
   String get _label {
     switch (type) {
       case ReplyType.extend:
-        return '延展';
+        return '🔄 延展';
       case ReplyType.resonate:
-        return '共鳴';
+        return '💬 共鳴';
       case ReplyType.tease:
-        return '調情';
+        return '😏 調情';
+      case ReplyType.humor:
+        return '🎭 幽默';
+      case ReplyType.coldRead:
+        return '🔮 冷讀';
     }
   }
 
@@ -967,6 +990,10 @@ class ReplyCard extends StatelessWidget {
         return AppColors.warm;
       case ReplyType.tease:
         return AppColors.veryHot;
+      case ReplyType.humor:
+        return AppColors.hot;
+      case ReplyType.coldRead:
+        return AppColors.primaryLight;
     }
   }
 
@@ -1587,6 +1614,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   int? _enthusiasmScore;
   String? _strategy;
   Map<String, String>? _replies;
+  TopicDepth? _topicDepth;
+  HealthCheck? _healthCheck;
+  bool _isFreeUser = true;  // TODO: Get from subscription provider
+
+  void _showPaywall(BuildContext context) {
+    // TODO: Navigate to paywall screen
+    context.push('/paywall');
+  }
 
   @override
   void initState() {
@@ -1604,10 +1639,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _isAnalyzing = false;
       _enthusiasmScore = 72;
       _strategy = '她有興趣且主動分享，保持沉穩，80%鏡像即可';
+      _topicDepth = TopicDepth(
+        current: 'personal',
+        suggestion: '可以往曖昧導向推進',
+      );
+      _healthCheck = HealthCheck(
+        issues: [],
+        suggestions: [],
+      );
       _replies = {
         'extend': '抹茶山不錯欸，下次可以挑戰更難的',
         'resonate': '抹茶山超讚！照片一定很美吧',
         'tease': '聽起來妳很會挑地方嘛，改天帶路？',
+        'humor': '爬完山是不是腿軟到需要人扶？',
+        'coldRead': '感覺你是那種週末閒不下來的人',
       };
     });
 
@@ -1734,6 +1779,86 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ],
 
             // Reply suggestions
+            // Topic Depth (話題深度)
+            if (_topicDepth != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Text('📊', style: TextStyle(fontSize: 20)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('話題深度: ${_topicDepth!.current}',
+                              style: AppTypography.bodyMedium),
+                          if (_topicDepth!.suggestion.isNotEmpty)
+                            Text(_topicDepth!.suggestion,
+                                style: AppTypography.caption),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // Health Check (對話健檢 - Essential 專屬)
+            if (_healthCheck != null && _healthCheck!.issues.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('🩺', style: TextStyle(fontSize: 18)),
+                        const SizedBox(width: 8),
+                        Text('對話健檢', style: AppTypography.titleLarge),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ..._healthCheck!.issues.map((issue) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber, size: 16, color: AppColors.warning),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(issue, style: AppTypography.bodyMedium)),
+                        ],
+                      ),
+                    )),
+                    if (_healthCheck!.suggestions.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      ..._healthCheck!.suggestions.map((suggestion) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.lightbulb_outline, size: 16, color: AppColors.success),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(suggestion, style: AppTypography.caption)),
+                          ],
+                        ),
+                      )),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
+            // Reply suggestions (5 種回覆)
             if (_replies != null) ...[
               const SizedBox(height: 24),
               Row(
@@ -1747,19 +1872,35 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ],
               ),
               const SizedBox(height: 12),
+              // 延展回覆 (所有方案都有)
               ReplyCard(
                 type: ReplyType.extend,
                 content: _replies!['extend']!,
               ),
+              // 以下回覆 Starter/Essential 才有
               ReplyCard(
                 type: ReplyType.resonate,
                 content: _replies!['resonate']!,
-                isLocked: false, // TODO: Check subscription
+                isLocked: _isFreeUser, // Free 用戶鎖定
+                onTap: _isFreeUser ? () => _showPaywall(context) : null,
               ),
               ReplyCard(
                 type: ReplyType.tease,
                 content: _replies!['tease']!,
-                isLocked: false, // TODO: Check subscription
+                isLocked: _isFreeUser,
+                onTap: _isFreeUser ? () => _showPaywall(context) : null,
+              ),
+              ReplyCard(
+                type: ReplyType.humor,
+                content: _replies!['humor']!,
+                isLocked: _isFreeUser,
+                onTap: _isFreeUser ? () => _showPaywall(context) : null,
+              ),
+              ReplyCard(
+                type: ReplyType.coldRead,
+                content: _replies!['coldRead']!,
+                isLocked: _isFreeUser,
+                onTap: _isFreeUser ? () => _showPaywall(context) : null,
               ),
             ],
           ],
@@ -1861,16 +2002,19 @@ CREATE TABLE public.users (
   total_conversations INTEGER DEFAULT 0
 );
 
--- Subscriptions table
+-- Subscriptions table (訊息制)
 CREATE TABLE public.subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE UNIQUE,
-  tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'pro', 'unlimited')),
+  tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'starter', 'essential')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'cancelled')),
   rc_customer_id TEXT,
   rc_entitlement_id TEXT,
-  monthly_analyses_used INTEGER DEFAULT 0,
+  -- 訊息用量追蹤
+  monthly_messages_used INTEGER DEFAULT 0,
+  daily_messages_used INTEGER DEFAULT 0,
   monthly_reset_at TIMESTAMPTZ DEFAULT NOW(),
+  daily_reset_at TIMESTAMPTZ DEFAULT NOW(),
   started_at TIMESTAMPTZ DEFAULT NOW(),
   expires_at TIMESTAMPTZ
 );
@@ -1945,17 +2089,53 @@ const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const TIER_LIMITS: Record<string, number> = {
-  free: 5,
-  pro: 200,
-  unlimited: Infinity,
+// 訊息制額度
+const TIER_MONTHLY_LIMITS: Record<string, number> = {
+  free: 30,
+  starter: 300,
+  essential: 1000,
+};
+
+const TIER_DAILY_LIMITS: Record<string, number> = {
+  free: 15,
+  starter: 50,
+  essential: 150,
+};
+
+// 功能權限
+const TIER_FEATURES: Record<string, string[]> = {
+  free: ['extend'],  // 只有延展回覆
+  starter: ['extend', 'resonate', 'tease', 'humor', 'coldRead', 'needy_warning', 'topic_depth'],
+  essential: ['extend', 'resonate', 'tease', 'humor', 'coldRead', 'needy_warning', 'topic_depth', 'health_check'],
 };
 
 const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提升對話技巧。
 
-## 最高指導原則：1.8x 黃金法則
+## 最高指導原則
+
+### 1. 1.8x 黃金法則
 所有建議回覆的字數必須 ≤ 對方最後訊息字數 × 1.8
 這條規則不可違反。
+
+### 2. 82/18 原則
+好的對話是 82% 聆聽 + 18% 說話
+- 用戶不該一直問問題 (索取)
+- 要適時分享故事 (提供)
+
+### 3. 假設代替問句
+- ❌ 「你是做什麼工作的？」(面試感)
+- ✅ 「感覺你是做創意相關的工作？」(冷讀)
+
+### 4. 話題深度階梯
+- Level 1: 事件導向 (Facts) - 剛認識
+- Level 2: 個人導向 (Personal) - 有基本認識
+- Level 3: 曖昧導向 (Intimate) - 熱度 > 60
+- 原則：不可越級，循序漸進
+
+### 5. 細緻化優先
+- 不要一直換話題
+- 針對對方回答深入挖掘
+- 例：喜歡麻辣鍋 → 喜歡哪種辣？為什麼？
 
 ## 熱度分析標準
 根據以下指標評估對話熱度 (0-100):
@@ -1966,19 +2146,39 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
 - 主動發起對話比例
 
 ## 回覆生成規則
-1. 每次提供 3 種回覆：延展、共鳴、調情
-2. 根據熱度等級調整策略
-3. 避免 Needy 行為
+1. 每次提供 5 種回覆：延展、共鳴、調情、幽默、冷讀
+2. 根據熱度等級和話題深度調整策略
+3. 幽默技巧：曲解、誇大、推拉 (先開玩笑再正經)
+4. 避免 Needy 行為：
+   - 連續發送多則訊息
+   - 過度解釋或道歉
+   - 尋求認可的語氣
+   - 秒回或過度積極
+   - 連續問 3+ 個問題
+
+## 對話健檢項目
+- 面試式提問：連續問 3+ 個問題
+- 話題跳 tone：沒過渡就換話題
+- 索取 > 提供：問太多、分享太少
+- 深度越級：關係不熟就聊曖昧
+- 回覆過長：違反 1.8x 法則
 
 ## 輸出格式 (JSON)
 {
   "enthusiasm": { "score": 75, "level": "hot" },
+  "topicDepth": { "current": "personal", "suggestion": "可以往曖昧導向推進" },
   "replies": {
     "extend": "...",
     "resonate": "...",
-    "tease": "..."
+    "tease": "...",
+    "humor": "...",
+    "coldRead": "..."
   },
   "warnings": [],
+  "healthCheck": {
+    "issues": ["面試式提問過多"],
+    "suggestions": ["用假設代替問句"]
+  },
   "strategy": "簡短策略說明"
 }`;
 
@@ -2015,7 +2215,7 @@ serve(async (req) => {
     // Check subscription
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("tier, monthly_analyses_used")
+      .select("tier, monthly_messages_used, daily_messages_used, daily_reset_at")
       .eq("user_id", user.id)
       .single();
 
@@ -2025,10 +2225,31 @@ serve(async (req) => {
       });
     }
 
-    const limit = TIER_LIMITS[sub.tier];
-    if (sub.monthly_analyses_used >= limit) {
+    // Check if daily reset needed
+    const now = new Date();
+    const dailyResetAt = new Date(sub.daily_reset_at);
+    if (now.toDateString() !== dailyResetAt.toDateString()) {
+      await supabase
+        .from("subscriptions")
+        .update({ daily_messages_used: 0, daily_reset_at: now.toISOString() })
+        .eq("user_id", user.id);
+      sub.daily_messages_used = 0;
+    }
+
+    // Check monthly limit
+    const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier];
+    if (sub.monthly_messages_used >= monthlyLimit) {
       return new Response(
-        JSON.stringify({ error: "Monthly limit exceeded", limit }),
+        JSON.stringify({ error: "Monthly limit exceeded", monthlyLimit }),
+        { status: 429 }
+      );
+    }
+
+    // Check daily limit
+    const dailyLimit = TIER_DAILY_LIMITS[sub.tier];
+    if (sub.daily_messages_used >= dailyLimit) {
+      return new Response(
+        JSON.stringify({ error: "Daily limit exceeded", dailyLimit, resetAt: "tomorrow" }),
         { status: 429 }
       );
     }
@@ -2093,10 +2314,16 @@ serve(async (req) => {
       };
     }
 
+    // Calculate message count (訊息計算邏輯)
+    const messageCount = countMessages(messages);
+
     // Update usage count
     await supabase
       .from("subscriptions")
-      .update({ monthly_analyses_used: sub.monthly_analyses_used + 1 })
+      .update({
+        monthly_messages_used: sub.monthly_messages_used + messageCount,
+        daily_messages_used: sub.daily_messages_used + messageCount,
+      })
       .eq("user_id", user.id);
 
     // Update user stats
@@ -2104,6 +2331,16 @@ serve(async (req) => {
       .from("users")
       .update({ total_analyses: supabase.rpc("increment_analyses") })
       .eq("id", user.id);
+
+// 訊息計算函數
+function countMessages(messages: Array<{ content: string }>): number {
+  let total = 0;
+  for (const msg of messages) {
+    const charCount = msg.content.trim().length;
+    total += Math.max(1, Math.ceil(charCount / 200));
+  }
+  return Math.max(1, total);
+}
 
     return new Response(JSON.stringify(result), {
       headers: {
@@ -2231,18 +2468,51 @@ git commit -m "feat: 整合 Supabase 客戶端服務"
 import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/domain/entities/message.dart';
 
+class TopicDepth {
+  final String current;  // 'facts' | 'personal' | 'intimate'
+  final String suggestion;
+
+  TopicDepth({required this.current, required this.suggestion});
+
+  factory TopicDepth.fromJson(Map<String, dynamic> json) {
+    return TopicDepth(
+      current: json['current'] as String? ?? 'facts',
+      suggestion: json['suggestion'] as String? ?? '',
+    );
+  }
+}
+
+class HealthCheck {
+  final List<String> issues;
+  final List<String> suggestions;
+
+  HealthCheck({required this.issues, required this.suggestions});
+
+  factory HealthCheck.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return HealthCheck(issues: [], suggestions: []);
+    return HealthCheck(
+      issues: (json['issues'] as List?)?.cast<String>() ?? [],
+      suggestions: (json['suggestions'] as List?)?.cast<String>() ?? [],
+    );
+  }
+}
+
 class AnalysisResult {
   final int enthusiasmScore;
   final String level;
-  final Map<String, String> replies;
+  final TopicDepth topicDepth;
+  final Map<String, String> replies;  // extend, resonate, tease, humor, coldRead
   final List<String> warnings;
+  final HealthCheck healthCheck;
   final String strategy;
 
   AnalysisResult({
     required this.enthusiasmScore,
     required this.level,
+    required this.topicDepth,
     required this.replies,
     required this.warnings,
+    required this.healthCheck,
     required this.strategy,
   });
 
@@ -2253,8 +2523,10 @@ class AnalysisResult {
     return AnalysisResult(
       enthusiasmScore: enthusiasm['score'] as int,
       level: enthusiasm['level'] as String,
+      topicDepth: TopicDepth.fromJson(json['topicDepth'] as Map<String, dynamic>? ?? {}),
       replies: replies.map((k, v) => MapEntry(k, v.toString())),
       warnings: (json['warnings'] as List?)?.cast<String>() ?? [],
+      healthCheck: HealthCheck.fromJson(json['healthCheck'] as Map<String, dynamic>?),
       strategy: json['strategy'] as String? ?? '',
     );
   }
@@ -2538,9 +2810,720 @@ git commit -m "feat: 建立設定畫面 (含清除資料功能)"
 
 ---
 
+---
+
+## Phase 7: Message Calculation & Usage Tracking
+
+### Task 7.1: Create Message Calculation Service
+
+**Files:**
+- Create: `lib/core/services/message_calculator.dart`
+- Create: `lib/core/services/usage_service.dart`
+
+**Step 1: Create message_calculator.dart**
+
+```dart
+// lib/core/services/message_calculator.dart
+import '../constants/app_constants.dart';
+
+class MessageCalculator {
+  /// 計算訊息數量
+  /// 規則：換行分割 + 每 200 字 = 1 則
+  static int countMessages(String text) {
+    if (text.trim().isEmpty) return 0;
+
+    // 用換行分割，過濾空行
+    final lines = text.split(RegExp(r'\n+'))
+        .where((line) => line.trim().isNotEmpty)
+        .toList();
+
+    int total = 0;
+    for (final line in lines) {
+      final charCount = line.trim().length;
+      total += (charCount / AppConstants.maxCharsPerMessage).ceil().clamp(1, 100);
+    }
+
+    return total.clamp(1, 1000);
+  }
+
+  /// 檢查是否超過單次分析上限
+  static bool exceedsMaxLength(String text) {
+    return text.length > AppConstants.maxTotalChars;
+  }
+
+  /// 預覽訊息計算結果
+  static MessagePreview preview(String text) {
+    final count = countMessages(text);
+    final exceeds = exceedsMaxLength(text);
+
+    return MessagePreview(
+      messageCount: count,
+      charCount: text.length,
+      exceedsLimit: exceeds,
+    );
+  }
+}
+
+class MessagePreview {
+  final int messageCount;
+  final int charCount;
+  final bool exceedsLimit;
+
+  MessagePreview({
+    required this.messageCount,
+    required this.charCount,
+    required this.exceedsLimit,
+  });
+}
+```
+
+**Step 2: Create usage_service.dart**
+
+```dart
+// lib/core/services/usage_service.dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'storage_service.dart';
+
+class UsageData {
+  final int monthlyUsed;
+  final int monthlyLimit;
+  final int dailyUsed;
+  final int dailyLimit;
+  final DateTime dailyResetAt;
+
+  UsageData({
+    required this.monthlyUsed,
+    required this.monthlyLimit,
+    required this.dailyUsed,
+    required this.dailyLimit,
+    required this.dailyResetAt,
+  });
+
+  bool get canAnalyze => monthlyUsed < monthlyLimit && dailyUsed < dailyLimit;
+  int get monthlyRemaining => monthlyLimit - monthlyUsed;
+  int get dailyRemaining => dailyLimit - dailyUsed;
+  double get monthlyPercentage => monthlyUsed / monthlyLimit;
+}
+
+class UsageService {
+  Future<UsageData> getUsage() async {
+    // TODO: Fetch from Supabase
+    return UsageData(
+      monthlyUsed: 0,
+      monthlyLimit: 30,
+      dailyUsed: 0,
+      dailyLimit: 15,
+      dailyResetAt: DateTime.now().add(const Duration(hours: 6)),
+    );
+  }
+
+  Future<bool> checkAndDeduct(int messageCount) async {
+    final usage = await getUsage();
+    if (usage.monthlyRemaining < messageCount) return false;
+    if (usage.dailyRemaining < messageCount) return false;
+
+    // TODO: Update usage in Supabase
+    return true;
+  }
+}
+
+final usageServiceProvider = Provider<UsageService>((ref) => UsageService());
+```
+
+**Step 3: Write unit tests**
+
+Create `test/message_calculator_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/services/message_calculator.dart';
+
+void main() {
+  group('MessageCalculator', () {
+    test('counts single short message as 1', () {
+      expect(MessageCalculator.countMessages('你好'), 1);
+    });
+
+    test('counts multiple lines correctly', () {
+      expect(MessageCalculator.countMessages('你好\n在嗎\n吃飯了嗎'), 3);
+    });
+
+    test('counts long message by 200 char chunks', () {
+      final longText = 'a' * 450; // 450 chars = ceil(450/200) = 3
+      expect(MessageCalculator.countMessages(longText), 3);
+    });
+
+    test('handles empty lines', () {
+      expect(MessageCalculator.countMessages('你好\n\n\n在嗎'), 2);
+    });
+
+    test('returns 0 for empty input', () {
+      expect(MessageCalculator.countMessages(''), 0);
+      expect(MessageCalculator.countMessages('   '), 0);
+    });
+  });
+}
+```
+
+**Step 4: Commit**
+
+```bash
+git add lib/core/services/ test/
+git commit -m "feat: 建立訊息計算服務與用量追蹤"
+```
+
+---
+
+### Task 7.2: Create Analysis Preview Dialog
+
+**Files:**
+- Create: `lib/shared/widgets/analysis_preview_dialog.dart`
+- Modify: `lib/features/conversation/presentation/screens/new_conversation_screen.dart`
+
+**Step 1: Create analysis_preview_dialog.dart**
+
+```dart
+// lib/shared/widgets/analysis_preview_dialog.dart
+import 'package:flutter/material.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/services/message_calculator.dart';
+import '../../core/services/usage_service.dart';
+
+class AnalysisPreviewDialog extends StatelessWidget {
+  final MessagePreview preview;
+  final UsageData usage;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  const AnalysisPreviewDialog({
+    super.key,
+    required this.preview,
+    required this.usage,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canProceed = !preview.exceedsLimit &&
+        usage.monthlyRemaining >= preview.messageCount &&
+        usage.dailyRemaining >= preview.messageCount;
+
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('確認分析', style: AppTypography.titleLarge),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Message count
+          _buildRow('本次分析', '${preview.messageCount} 則訊息'),
+          const SizedBox(height: 12),
+
+          // Monthly usage
+          _buildRow('月額度', '${usage.monthlyRemaining} / ${usage.monthlyLimit} 則'),
+          LinearProgressIndicator(
+            value: usage.monthlyPercentage,
+            backgroundColor: AppColors.surfaceVariant,
+            valueColor: AlwaysStoppedAnimation(
+              usage.monthlyPercentage > 0.8 ? AppColors.warning : AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Daily usage
+          _buildRow('今日額度', '${usage.dailyRemaining} / ${usage.dailyLimit} 則'),
+          const SizedBox(height: 16),
+
+          // Warnings
+          if (preview.exceedsLimit)
+            _buildWarning('內容過長，請分批分析 (上限 5000 字)')
+          else if (usage.monthlyRemaining < preview.messageCount)
+            _buildWarning('月額度不足，請升級方案或加購')
+          else if (usage.dailyRemaining < preview.messageCount)
+            _buildWarning('今日額度已用完，明天再試'),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: onCancel,
+          child: const Text('取消'),
+        ),
+        ElevatedButton(
+          onPressed: canProceed ? onConfirm : null,
+          child: const Text('確認分析'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: AppTypography.bodyMedium),
+        Text(value, style: AppTypography.bodyLarge),
+      ],
+    );
+  }
+
+  Widget _buildWarning(String text) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning, color: AppColors.error, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: AppTypography.caption.copyWith(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+**Step 2: Commit**
+
+```bash
+git add lib/shared/widgets/
+git commit -m "feat: 建立分析前預覽確認對話框"
+```
+
+---
+
+## Phase 8: Conversation Memory
+
+### Task 8.1: Add Memory Fields to Entities
+
+**Files:**
+- Modify: `lib/features/conversation/domain/entities/conversation.dart`
+- Create: `lib/features/conversation/domain/entities/conversation_summary.dart`
+
+**Step 1: Create conversation_summary.dart**
+
+```dart
+// lib/features/conversation/domain/entities/conversation_summary.dart
+import 'package:hive/hive.dart';
+
+part 'conversation_summary.g.dart';
+
+@HiveType(typeId: 2)
+class ConversationSummary extends HiveObject {
+  @HiveField(0)
+  final String id;
+
+  @HiveField(1)
+  final int roundsCovered;  // 摘要涵蓋的輪數範圍
+
+  @HiveField(2)
+  final String content;  // AI 生成的摘要
+
+  @HiveField(3)
+  final List<String> keyTopics;  // 關鍵話題
+
+  @HiveField(4)
+  final List<String> sharedInterests;  // 共同興趣
+
+  @HiveField(5)
+  final String relationshipStage;  // 關係階段
+
+  @HiveField(6)
+  final DateTime createdAt;
+
+  ConversationSummary({
+    required this.id,
+    required this.roundsCovered,
+    required this.content,
+    required this.keyTopics,
+    required this.sharedInterests,
+    required this.relationshipStage,
+    required this.createdAt,
+  });
+}
+```
+
+**Step 2: Update conversation.dart**
+
+```dart
+// 在 Conversation class 中添加以下欄位
+
+  @HiveField(7)
+  int currentRound;  // 當前輪數
+
+  @HiveField(8)
+  List<ConversationSummary>? summaries;  // 歷史摘要
+
+  @HiveField(9)
+  String? lastUserChoice;  // 用戶上次選擇的回覆類型 (用於選擇追蹤)
+
+  /// 取得最近 N 輪訊息 (用於 AI context)
+  List<Message> getRecentMessages(int rounds) {
+    // 計算每輪約 2 則訊息 (用戶 + 對方)
+    final messageCount = rounds * 2;
+    if (messages.length <= messageCount) return messages;
+    return messages.sublist(messages.length - messageCount);
+  }
+
+  /// 需要摘要嗎？(超過 15 輪且沒有摘要時)
+  bool get needsSummary => currentRound > 15 && (summaries?.isEmpty ?? true);
+```
+
+**Step 3: Generate Hive adapters**
+
+```bash
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
+**Step 4: Commit**
+
+```bash
+git add lib/features/conversation/domain/entities/
+git commit -m "feat: 添加對話記憶實體與摘要結構"
+```
+
+---
+
+### Task 8.2: Create Memory Service
+
+**Files:**
+- Create: `lib/features/conversation/data/services/memory_service.dart`
+
+**Step 1: Create memory_service.dart**
+
+```dart
+// lib/features/conversation/data/services/memory_service.dart
+import '../../domain/entities/conversation.dart';
+import '../../domain/entities/conversation_summary.dart';
+import '../../domain/entities/message.dart';
+import '../../../analysis/data/services/analysis_service.dart';
+
+class MemoryService {
+  final AnalysisService _analysisService;
+
+  MemoryService(this._analysisService);
+
+  /// 準備 AI 分析的 context
+  /// 最近 15 輪完整 + 更早的摘要
+  Future<String> prepareContext(Conversation conversation) async {
+    final buffer = StringBuffer();
+
+    // 添加歷史摘要 (如果有)
+    if (conversation.summaries?.isNotEmpty ?? false) {
+      buffer.writeln('【歷史摘要】');
+      for (final summary in conversation.summaries!) {
+        buffer.writeln(summary.content);
+      }
+      buffer.writeln('---');
+    }
+
+    // 添加最近 15 輪訊息
+    final recentMessages = conversation.getRecentMessages(15);
+    buffer.writeln('【最近對話】');
+    for (final msg in recentMessages) {
+      buffer.writeln('${msg.isFromMe ? "我" : "她"}: ${msg.content}');
+    }
+
+    return buffer.toString();
+  }
+
+  /// 智能推測用戶選擇
+  /// 從對方回覆反推用戶說了什麼
+  String? inferUserChoice(
+    Message theirReply,
+    Map<String, String> previousSuggestions,
+  ) {
+    final content = theirReply.content.toLowerCase();
+
+    // 簡單的關鍵字匹配 (實際可用 AI)
+    for (final entry in previousSuggestions.entries) {
+      final keywords = _extractKeywords(entry.value);
+      for (final keyword in keywords) {
+        if (content.contains(keyword)) {
+          return entry.key;
+        }
+      }
+    }
+
+    return null;  // 無法推測，可能需要詢問用戶
+  }
+
+  List<String> _extractKeywords(String text) {
+    // 提取關鍵詞 (簡化版本)
+    return text
+        .replaceAll(RegExp(r'[^\w\u4e00-\u9fff]'), ' ')
+        .split(' ')
+        .where((w) => w.length > 1)
+        .toList();
+  }
+
+  /// 生成對話摘要 (背景執行)
+  Future<ConversationSummary> generateSummary(
+    Conversation conversation,
+    int fromRound,
+    int toRound,
+  ) async {
+    // TODO: 呼叫 AI 生成摘要
+    return ConversationSummary(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      roundsCovered: toRound - fromRound,
+      content: '待實作：AI 生成的對話摘要',
+      keyTopics: [],
+      sharedInterests: [],
+      relationshipStage: 'personal',
+      createdAt: DateTime.now(),
+    );
+  }
+}
+```
+
+**Step 2: Commit**
+
+```bash
+git add lib/features/conversation/data/services/
+git commit -m "feat: 建立對話記憶服務 (context 準備 + 選擇追蹤)"
+```
+
+---
+
+## Phase 9: Paywall & Subscription UI
+
+### Task 9.1: Create Paywall Screen
+
+**Files:**
+- Create: `lib/features/subscription/presentation/screens/paywall_screen.dart`
+- Modify: `lib/app/routes.dart`
+
+**Step 1: Create paywall_screen.dart**
+
+```dart
+// lib/features/subscription/presentation/screens/paywall_screen.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+
+class PaywallScreen extends ConsumerStatefulWidget {
+  const PaywallScreen({super.key});
+
+  @override
+  ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
+}
+
+class _PaywallScreenState extends ConsumerState<PaywallScreen> {
+  String _selectedTier = 'essential';  // 預設選 Essential
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('升級方案', style: AppTypography.titleLarge),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Text(
+              '解鎖完整功能',
+              style: AppTypography.headlineLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '提升你的社交溝通能力',
+              style: AppTypography.bodyLarge.copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+
+            // Plan cards
+            _buildPlanCard(
+              tier: 'starter',
+              name: 'Starter',
+              price: 'NT\$149/月',
+              features: [
+                '300 則訊息/月',
+                '每日 50 則上限',
+                '5 種回覆建議',
+                'Needy 警示',
+                '話題深度分析',
+              ],
+              isSelected: _selectedTier == 'starter',
+              onTap: () => setState(() => _selectedTier = 'starter'),
+            ),
+            const SizedBox(height: 16),
+            _buildPlanCard(
+              tier: 'essential',
+              name: 'Essential',
+              price: 'NT\$349/月',
+              features: [
+                '1,000 則訊息/月',
+                '每日 150 則上限',
+                '5 種回覆建議',
+                'Needy 警示',
+                '話題深度分析',
+                '🩺 對話健檢 (獨家)',
+                'Sonnet 優先模型',
+              ],
+              isSelected: _selectedTier == 'essential',
+              isRecommended: true,
+              onTap: () => setState(() => _selectedTier = 'essential'),
+            ),
+            const SizedBox(height: 32),
+
+            // CTA button
+            ElevatedButton(
+              onPressed: _subscribe,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                '開始 7 天免費試用',
+                style: AppTypography.titleLarge.copyWith(color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '試用結束後自動扣款，可隨時取消',
+              style: AppTypography.caption,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+
+            // Terms
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: () {},
+                  child: Text('使用條款', style: AppTypography.caption),
+                ),
+                Text(' | ', style: AppTypography.caption),
+                TextButton(
+                  onPressed: () {},
+                  child: Text('隱私權政策', style: AppTypography.caption),
+                ),
+                Text(' | ', style: AppTypography.caption),
+                TextButton(
+                  onPressed: () {},
+                  child: Text('恢復購買', style: AppTypography.caption),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlanCard({
+    required String tier,
+    required String name,
+    required String price,
+    required List<String> features,
+    required bool isSelected,
+    bool isRecommended = false,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.divider,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(name, style: AppTypography.titleLarge),
+                if (isRecommended) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text('推薦', style: AppTypography.caption.copyWith(color: Colors.white)),
+                  ),
+                ],
+                const Spacer(),
+                Radio<String>(
+                  value: tier,
+                  groupValue: _selectedTier,
+                  onChanged: (v) => setState(() => _selectedTier = v!),
+                ),
+              ],
+            ),
+            Text(price, style: AppTypography.headlineMedium),
+            const SizedBox(height: 12),
+            ...features.map((f) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.check, size: 16, color: AppColors.success),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(f, style: AppTypography.bodyMedium)),
+                ],
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _subscribe() async {
+    // TODO: Integrate with RevenueCat
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('RevenueCat 整合待實作')),
+    );
+  }
+}
+```
+
+**Step 2: Add paywall route**
+
+```dart
+// In lib/app/routes.dart, add:
+GoRoute(
+  path: '/paywall',
+  builder: (context, state) => const PaywallScreen(),
+),
+```
+
+**Step 3: Commit**
+
+```bash
+git add lib/
+git commit -m "feat: 建立 Paywall 訂閱方案選擇畫面"
+```
+
+---
+
 ## Summary
 
-**Total Tasks:** 15 tasks across 6 phases
+**Total Tasks:** 19 tasks across 9 phases
 
 **Phase Breakdown:**
 1. Project Foundation (3 tasks) - Flutter setup, dependencies, structure
@@ -2549,6 +3532,9 @@ git commit -m "feat: 建立設定畫面 (含清除資料功能)"
 4. Supabase Backend (2 tasks) - Schema, Edge Function
 5. Flutter-Supabase Integration (2 tasks) - Client, service
 6. Settings (1 task) - Settings screen
+7. Message Calculation & Usage (2 tasks) - 訊息計算、用量追蹤、預覽確認
+8. Conversation Memory (2 tasks) - 對話記憶、摘要、選擇追蹤
+9. Paywall & Subscription (1 task) - 訂閱方案選擇畫面
 
 **Next Steps After MVP:**
 - Authentication screens (Google/Apple Sign-in)
@@ -2606,3 +3592,41 @@ flutter build ios --release
 # Deploy Supabase functions
 supabase functions deploy analyze-chat
 ```
+
+---
+
+## 變更記錄
+
+| 日期 | 版本 | 變更內容 |
+|------|------|----------|
+| 2026-02-26 | 1.0 | 初始實作計畫 |
+| 2026-02-26 | 2.0 | **重大更新** - 與設計規格書同步 |
+
+### v2.0 變更明細
+
+**訂閱/計費系統**
+- ❌ 舊: free/pro/unlimited，分析次數 (5/200/∞)
+- ✅ 新: Free/Starter/Essential，訊息制 (30/300/1000)
+- ✅ 新增: 每日上限 (15/50/150)
+- ✅ 新增: 訊息計算邏輯 (換行分割 + 200字上限)
+
+**回覆類型**
+- ❌ 舊: 3 種 (extend/resonate/tease)
+- ✅ 新: 5 種 (+ humor/coldRead)
+
+**功能分層 (付費牆)**
+- ✅ 新增: Free 只有延展回覆
+- ✅ 新增: Starter 有全部回覆 + Needy 警示 + 話題深度
+- ✅ 新增: Essential 額外有對話健檢
+
+**AI Prompt**
+- ✅ 新增: topicDepth (話題深度階梯)
+- ✅ 新增: healthCheck (對話健檢)
+- ✅ 新增: 82/18 原則、假設代替問句
+
+**新增 Phase**
+- Phase 7: 訊息計算與用量追蹤 (2 tasks)
+- Phase 8: 對話記憶 (2 tasks)
+- Phase 9: Paywall 訂閱畫面 (1 task)
+
+**總任務數**: 15 → 19 tasks
