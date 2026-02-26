@@ -37,6 +37,7 @@
 | Usage (7.1-7.2) | `general-purpose` | 訊息計算、用量追蹤 |
 | Memory (8.1-8.2) | `general-purpose` | 對話記憶 |
 | Paywall (9.1) | `general-purpose` | 訂閱 UI |
+| **GAME (10.1-10.2)** | `general-purpose` | **GAME 階段分析、心理解讀** |
 
 ### 並行執行策略
 
@@ -70,22 +71,22 @@ Phase 6-9 (Sequential within phase, parallel across phases)
 └─ 9.1
 ```
 
-### 任務總覽 (19 Tasks)
+### 任務總覽 (21 Tasks) - v2.1 與設計規格 v1.1 同步
 
 | # | Task | Agent | 測試 | 依賴 |
 |---|------|-------|------|------|
 | 1.1 | Create Flutter Project | Bash | - | - |
 | 1.2 | Configure Dependencies | Bash | - | 1.1 |
 | 1.3 | Setup Project Structure | general | ✓ | 1.2 |
-| 2.1 | Create Domain Entities | general | ✓ | 1.3 |
+| 2.1 | Create Domain Entities (含 SessionContext) | general | ✓ | 1.3 |
 | 2.2 | Setup Hive Initialization | general | ✓ | 2.1 |
 | 2.3 | Create Conversation Repository | general | ✓ | 2.1 |
-| 3.1 | Create Shared Widgets | general | ✓ | 2.1 |
+| 3.1 | Create Shared Widgets (含 GAME 階段指示器) | general | ✓ | 2.1 |
 | 3.2 | Create Home Screen | general | ✓ | 3.1, 2.3 |
-| 3.3 | Create New Conversation Screen | general | ✓ | 3.1, 2.3 |
-| 3.4 | Create Analysis Screen | general | ✓ | 3.1, 2.3 |
+| 3.3 | Create New Conversation Screen (含情境收集) | general | ✓ | 3.1, 2.3 |
+| 3.4 | Create Analysis Screen (含 GAME + 心理分析) | general | ✓ | 3.1, 2.3 |
 | 4.1 | Setup Supabase Project | Bash | - | 1.3 |
-| 4.2 | Create Edge Function | general | ✓ | 4.1 |
+| 4.2 | Create Edge Function (含 GAME 分析 + 最終建議) | general | ✓ | 4.1 |
 | 5.1 | Setup Supabase Client | general | ✓ | 4.1 |
 | 5.2 | Create Analysis Service | general | ✓ | 4.2, 5.1 |
 | 6.1 | Create Settings Screen | general | ✓ | 3.1 |
@@ -94,6 +95,8 @@ Phase 6-9 (Sequential within phase, parallel across phases)
 | 8.1 | Add Memory Fields to Entities | general | ✓ | 2.1 |
 | 8.2 | Create Memory Service | general | ✓ | 8.1 |
 | 9.1 | Create Paywall Screen | general | ✓ | 3.1 |
+| **10.1** | **Create GAME Stage Service** | general | ✓ | 2.1 |
+| **10.2** | **Create Psychology Analysis Widget** | general | ✓ | 3.1, 10.1 |
 
 ### TDD 檢查點
 
@@ -517,12 +520,15 @@ git commit -m "feat: 建立 Clean Architecture 專案結構與主題系統"
 
 ## Phase 2: Local Data Layer (Hive)
 
-### Task 2.1: Create Domain Entities
+### Task 2.1: Create Domain Entities (含 SessionContext + GAME Stage)
 
 **Files:**
 - Create: `lib/features/conversation/domain/entities/message.dart`
 - Create: `lib/features/conversation/domain/entities/conversation.dart`
+- Create: `lib/features/conversation/domain/entities/session_context.dart` ← **新增**
 - Create: `lib/features/analysis/domain/entities/enthusiasm_level.dart`
+- Create: `lib/features/analysis/domain/entities/game_stage.dart` ← **新增**
+- Create: `lib/features/analysis/domain/entities/analysis_result.dart` ← **新增**
 
 **Step 1: Create enthusiasm_level.dart**
 
@@ -586,6 +592,348 @@ enum EnthusiasmLevel {
 }
 ```
 
+**Step 1.5: Create game_stage.dart (新增)**
+
+```dart
+// lib/features/analysis/domain/entities/game_stage.dart
+
+/// GAME 五階段流程
+enum GameStage {
+  opening,        // 打開 - 破冰
+  premise,        // 前提 - 進入男女框架
+  qualification,  // 評估 - 她證明自己配得上你
+  narrative,      // 敘事 - 個性樣本、說故事
+  close;          // 收尾 - 模糊邀約 → 確立邀約
+
+  String get label {
+    switch (this) {
+      case opening:
+        return '打開';
+      case premise:
+        return '前提';
+      case qualification:
+        return '評估';
+      case narrative:
+        return '敘事';
+      case close:
+        return '收尾';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case opening:
+        return '破冰階段';
+      case premise:
+        return '進入男女框架';
+      case qualification:
+        return '她在證明自己';
+      case narrative:
+        return '說故事、個性樣本';
+      case close:
+        return '準備邀約';
+    }
+  }
+
+  String get emoji {
+    switch (this) {
+      case opening:
+        return '👋';
+      case premise:
+        return '💫';
+      case qualification:
+        return '✨';
+      case narrative:
+        return '📖';
+      case close:
+        return '🎯';
+    }
+  }
+}
+
+/// GAME 階段狀態
+enum GameStageStatus {
+  normal,      // 正常進行
+  stuckFriend, // 卡在朋友框
+  canAdvance,  // 可以推進
+  shouldRetreat; // 應該退回
+
+  String get label {
+    switch (this) {
+      case normal:
+        return '正常進行';
+      case stuckFriend:
+        return '卡在朋友框';
+      case canAdvance:
+        return '可以推進';
+      case shouldRetreat:
+        return '建議退回';
+    }
+  }
+}
+```
+
+**Step 1.6: Create session_context.dart (新增)**
+
+```dart
+// lib/features/conversation/domain/entities/session_context.dart
+import 'package:hive/hive.dart';
+
+part 'session_context.g.dart';
+
+/// 認識場景
+@HiveType(typeId: 3)
+enum MeetingContext {
+  @HiveField(0)
+  datingApp,      // 交友軟體
+  @HiveField(1)
+  inPerson,       // 現場搭訕
+  @HiveField(2)
+  friendIntro,    // 朋友介紹
+  @HiveField(3)
+  other;          // 其他
+
+  String get label {
+    switch (this) {
+      case datingApp:
+        return '交友軟體';
+      case inPerson:
+        return '現場搭訕';
+      case friendIntro:
+        return '朋友介紹';
+      case other:
+        return '其他';
+    }
+  }
+}
+
+/// 認識時長
+@HiveType(typeId: 4)
+enum AcquaintanceDuration {
+  @HiveField(0)
+  justMet,        // 剛認識
+  @HiveField(1)
+  fewDays,        // 幾天
+  @HiveField(2)
+  fewWeeks,       // 幾週
+  @HiveField(3)
+  monthPlus;      // 一個月+
+
+  String get label {
+    switch (this) {
+      case justMet:
+        return '剛認識';
+      case fewDays:
+        return '幾天';
+      case fewWeeks:
+        return '幾週';
+      case monthPlus:
+        return '一個月+';
+    }
+  }
+}
+
+/// 用戶目標
+@HiveType(typeId: 5)
+enum UserGoal {
+  @HiveField(0)
+  dateInvite,     // 約出來 (預設)
+  @HiveField(1)
+  maintainHeat,   // 維持熱度
+  @HiveField(2)
+  justChat;       // 純聊天
+
+  String get label {
+    switch (this) {
+      case dateInvite:
+        return '約出來';
+      case maintainHeat:
+        return '維持熱度';
+      case justChat:
+        return '純聊天';
+    }
+  }
+}
+
+/// Session 情境
+@HiveType(typeId: 6)
+class SessionContext extends HiveObject {
+  @HiveField(0)
+  final MeetingContext meetingContext;
+
+  @HiveField(1)
+  final AcquaintanceDuration duration;
+
+  @HiveField(2)
+  final UserGoal goal;
+
+  SessionContext({
+    required this.meetingContext,
+    required this.duration,
+    this.goal = UserGoal.dateInvite,  // 預設：約出來
+  });
+
+  Map<String, dynamic> toJson() => {
+    'meetingContext': meetingContext.name,
+    'duration': duration.name,
+    'goal': goal.name,
+  };
+}
+```
+
+**Step 1.7: Create analysis_result.dart (新增)**
+
+```dart
+// lib/features/analysis/domain/entities/analysis_result.dart
+import 'game_stage.dart';
+import 'enthusiasm_level.dart';
+
+/// 心理分析結果
+class PsychologyAnalysis {
+  final String subtext;           // 淺溝通解讀
+  final bool shitTestDetected;    // 是否偵測到廢測
+  final String? shitTestType;     // 廢測類型
+  final String? shitTestSuggestion;
+  final bool qualificationSignal; // 她有在證明自己
+
+  PsychologyAnalysis({
+    required this.subtext,
+    this.shitTestDetected = false,
+    this.shitTestType,
+    this.shitTestSuggestion,
+    this.qualificationSignal = false,
+  });
+
+  factory PsychologyAnalysis.fromJson(Map<String, dynamic> json) {
+    final shitTest = json['shitTest'] as Map<String, dynamic>?;
+    return PsychologyAnalysis(
+      subtext: json['subtext'] ?? '',
+      shitTestDetected: shitTest?['detected'] ?? false,
+      shitTestType: shitTest?['type'],
+      shitTestSuggestion: shitTest?['suggestion'],
+      qualificationSignal: json['qualificationSignal'] ?? false,
+    );
+  }
+}
+
+/// AI 最終建議
+class FinalRecommendation {
+  final String pick;        // 選哪個回覆類型
+  final String content;     // 推薦的回覆內容
+  final String reason;      // 為什麼推薦這個
+  final String psychology;  // 心理學依據
+
+  FinalRecommendation({
+    required this.pick,
+    required this.content,
+    required this.reason,
+    required this.psychology,
+  });
+
+  factory FinalRecommendation.fromJson(Map<String, dynamic> json) {
+    return FinalRecommendation(
+      pick: json['pick'] ?? '',
+      content: json['content'] ?? '',
+      reason: json['reason'] ?? '',
+      psychology: json['psychology'] ?? '',
+    );
+  }
+}
+
+/// 完整分析結果
+class AnalysisResult {
+  // GAME 階段
+  final GameStage gameStage;
+  final GameStageStatus gameStatus;
+  final String gameNextStep;
+
+  // 熱度
+  final int enthusiasmScore;
+  final EnthusiasmLevel enthusiasmLevel;
+
+  // 話題深度
+  final String topicDepthCurrent;
+  final String topicDepthSuggestion;
+
+  // 心理分析
+  final PsychologyAnalysis psychology;
+
+  // 5 種回覆
+  final Map<String, String> replies;
+
+  // 最終建議
+  final FinalRecommendation finalRecommendation;
+
+  // 警告
+  final List<String> warnings;
+
+  // 健檢 (Essential)
+  final List<String>? healthCheckIssues;
+  final List<String>? healthCheckSuggestions;
+
+  // 策略提示
+  final String strategy;
+
+  // 提醒
+  final String reminder;
+
+  AnalysisResult({
+    required this.gameStage,
+    required this.gameStatus,
+    required this.gameNextStep,
+    required this.enthusiasmScore,
+    required this.enthusiasmLevel,
+    required this.topicDepthCurrent,
+    required this.topicDepthSuggestion,
+    required this.psychology,
+    required this.replies,
+    required this.finalRecommendation,
+    required this.warnings,
+    this.healthCheckIssues,
+    this.healthCheckSuggestions,
+    required this.strategy,
+    this.reminder = '記得用你的方式說，見面才自然',
+  });
+
+  factory AnalysisResult.fromJson(Map<String, dynamic> json) {
+    final gameStageJson = json['gameStage'] as Map<String, dynamic>;
+    final enthusiasmJson = json['enthusiasm'] as Map<String, dynamic>;
+    final topicDepthJson = json['topicDepth'] as Map<String, dynamic>;
+    final healthCheck = json['healthCheck'] as Map<String, dynamic>?;
+
+    return AnalysisResult(
+      gameStage: GameStage.values.firstWhere(
+        (e) => e.name == gameStageJson['current'],
+        orElse: () => GameStage.opening,
+      ),
+      gameStatus: GameStageStatus.values.firstWhere(
+        (e) => e.label == gameStageJson['status'],
+        orElse: () => GameStageStatus.normal,
+      ),
+      gameNextStep: gameStageJson['nextStep'] ?? '',
+      enthusiasmScore: enthusiasmJson['score'] ?? 50,
+      enthusiasmLevel: EnthusiasmLevel.fromScore(enthusiasmJson['score'] ?? 50),
+      topicDepthCurrent: topicDepthJson['current'] ?? 'facts',
+      topicDepthSuggestion: topicDepthJson['suggestion'] ?? '',
+      psychology: PsychologyAnalysis.fromJson(json['psychology'] ?? {}),
+      replies: Map<String, String>.from(json['replies'] ?? {}),
+      finalRecommendation: FinalRecommendation.fromJson(
+        json['finalRecommendation'] ?? {},
+      ),
+      warnings: List<String>.from(json['warnings'] ?? []),
+      healthCheckIssues: healthCheck != null
+          ? List<String>.from(healthCheck['issues'] ?? [])
+          : null,
+      healthCheckSuggestions: healthCheck != null
+          ? List<String>.from(healthCheck['suggestions'] ?? [])
+          : null,
+      strategy: json['strategy'] ?? '',
+      reminder: json['reminder'] ?? '記得用你的方式說，見面才自然',
+    );
+  }
+}
+```
+
 **Step 2: Create message.dart**
 
 ```dart
@@ -629,6 +977,7 @@ class Message extends HiveObject {
 // lib/features/conversation/domain/entities/conversation.dart
 import 'package:hive/hive.dart';
 import 'message.dart';
+import 'session_context.dart';
 
 part 'conversation.g.dart';
 
@@ -655,6 +1004,14 @@ class Conversation extends HiveObject {
   @HiveField(6)
   int? lastEnthusiasmScore;
 
+  // v1.1 新增：Session 情境
+  @HiveField(7)
+  SessionContext? sessionContext;
+
+  // v1.1 新增：當前 GAME 階段
+  @HiveField(8)
+  String? currentGameStage;
+
   Conversation({
     required this.id,
     required this.name,
@@ -663,6 +1020,8 @@ class Conversation extends HiveObject {
     required this.createdAt,
     required this.updatedAt,
     this.lastEnthusiasmScore,
+    this.sessionContext,
+    this.currentGameStage,
   });
 
   Message? get lastMessage => messages.isNotEmpty ? messages.last : null;
@@ -1751,6 +2110,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final _contentController = TextEditingController();
   bool _isLoading = false;
 
+  // Session Context (情境收集)
+  MeetingContext _meetingContext = MeetingContext.datingApp;
+  AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
+  UserGoal _goal = UserGoal.dateInvite;
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -1792,6 +2156,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       final conversation = await repository.createConversation(
         name: name,
         messages: messages,
+        sessionContext: SessionContext(
+          meetingContext: _meetingContext,
+          duration: _duration,
+          goal: _goal,
+        ),
       );
 
       if (mounted) {
@@ -1827,6 +2196,48 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 hintText: '例如：小美',
               ),
             ),
+
+            // === 情境收集區塊 ===
+            const SizedBox(height: 24),
+            Text('認識場景', style: AppTypography.bodyLarge),
+            const SizedBox(height: 8),
+            SegmentedButton<MeetingContext>(
+              segments: const [
+                ButtonSegment(value: MeetingContext.datingApp, label: Text('交友軟體')),
+                ButtonSegment(value: MeetingContext.inPerson, label: Text('現實搭訕')),
+                ButtonSegment(value: MeetingContext.friendIntro, label: Text('朋友介紹')),
+              ],
+              selected: {_meetingContext},
+              onSelectionChanged: (v) => setState(() => _meetingContext = v.first),
+            ),
+
+            const SizedBox(height: 16),
+            Text('認識多久', style: AppTypography.bodyLarge),
+            const SizedBox(height: 8),
+            SegmentedButton<AcquaintanceDuration>(
+              segments: const [
+                ButtonSegment(value: AcquaintanceDuration.justMet, label: Text('剛認識')),
+                ButtonSegment(value: AcquaintanceDuration.fewDays, label: Text('幾天')),
+                ButtonSegment(value: AcquaintanceDuration.fewWeeks, label: Text('幾週')),
+                ButtonSegment(value: AcquaintanceDuration.monthPlus, label: Text('一個月+')),
+              ],
+              selected: {_duration},
+              onSelectionChanged: (v) => setState(() => _duration = v.first),
+            ),
+
+            const SizedBox(height: 16),
+            Text('你的目標', style: AppTypography.bodyLarge),
+            const SizedBox(height: 8),
+            SegmentedButton<UserGoal>(
+              segments: const [
+                ButtonSegment(value: UserGoal.dateInvite, label: Text('約出來')),
+                ButtonSegment(value: UserGoal.maintainHeat, label: Text('維持熱度')),
+                ButtonSegment(value: UserGoal.justChat, label: Text('隨意聊')),
+              ],
+              selected: {_goal},
+              onSelectionChanged: (v) => setState(() => _goal = v.first),
+            ),
+
             const SizedBox(height: 24),
             Text('貼上對話內容', style: AppTypography.bodyLarge),
             const SizedBox(height: 8),
@@ -2105,6 +2516,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   HealthCheck? _healthCheck;
   bool _isFreeUser = true;  // TODO: Get from subscription provider
 
+  // GAME 階段分析
+  GameStageInfo? _gameStage;
+
+  // 心理分析
+  PsychologyAnalysis? _psychology;
+
+  // 最終建議
+  FinalRecommendation? _finalRecommendation;
+
+  // 一致性提醒
+  String? _reminder;
+
   void _showPaywall(BuildContext context) {
     // TODO: Navigate to paywall screen
     context.push('/paywall');
@@ -2134,6 +2557,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         issues: [],
         suggestions: [],
       );
+
+      // GAME 階段分析
+      _gameStage = GameStageInfo(
+        current: GameStage.premise,
+        status: '正常進行',
+        nextStep: '可以開始評估階段',
+      );
+
+      // 心理分析
+      _psychology = PsychologyAnalysis(
+        subtext: '她分享週末活動代表對你有一定信任，想讓你更了解她',
+        shitTest: null,
+        qualificationSignal: true,
+      );
+
       _replies = {
         'extend': '抹茶山不錯欸，下次可以挑戰更難的',
         'resonate': '抹茶山超讚！照片一定很美吧',
@@ -2141,6 +2579,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         'humor': '爬完山是不是腿軟到需要人扶？',
         'coldRead': '感覺你是那種週末閒不下來的人',
       };
+
+      // 最終建議
+      _finalRecommendation = FinalRecommendation(
+        pick: 'tease',
+        content: '聽起來妳很會挑地方嘛，改天帶路？',
+        reason: '目前處於 Premise 階段，她有興趣且主動分享，用調情回覆推進曖昧',
+        psychology: '「改天帶路」是模糊邀約，讓她有想像空間且不會有壓力',
+      );
+
+      // 一致性提醒
+      _reminder = '記得用你的方式說，見面才自然';
     });
 
     // Update conversation with score
@@ -2241,6 +2690,94 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ],
 
+            // GAME 階段指示器
+            if (_gameStage != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('🎯', style: TextStyle(fontSize: 18)),
+                        const SizedBox(width: 8),
+                        Text('GAME 階段', style: AppTypography.titleMedium),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    GameStageIndicator(currentStage: _gameStage!.current),
+                    const SizedBox(height: 8),
+                    Text('狀態: ${_gameStage!.status}', style: AppTypography.bodyMedium),
+                    Text('下一步: ${_gameStage!.nextStep}', style: AppTypography.caption),
+                  ],
+                ),
+              ),
+            ],
+
+            // 心理分析 (淺溝通解讀)
+            if (_psychology != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('🧠', style: TextStyle(fontSize: 18)),
+                        const SizedBox(width: 8),
+                        Text('心理解讀', style: AppTypography.titleMedium),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(_psychology!.subtext, style: AppTypography.bodyMedium),
+                    if (_psychology!.shitTest != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          children: [
+                            const Text('⚠️', style: TextStyle(fontSize: 14)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '偵測到廢測: ${_psychology!.shitTest}',
+                                style: AppTypography.caption,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (_psychology!.qualificationSignal) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.check_circle, size: 16, color: AppColors.success),
+                          const SizedBox(width: 4),
+                          Text('她在向你證明自己', style: AppTypography.caption),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
             // Strategy
             if (_strategy != null) ...[
               const SizedBox(height: 16),
@@ -2265,7 +2802,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ],
 
-            // Reply suggestions
             // Topic Depth (話題深度)
             if (_topicDepth != null) ...[
               const SizedBox(height: 16),
@@ -2390,6 +2926,103 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 onTap: _isFreeUser ? () => _showPaywall(context) : null,
               ),
             ],
+
+            // 最終建議 (AI 推薦)
+            if (_finalRecommendation != null) ...[
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary.withOpacity(0.1),
+                      AppColors.primary.withOpacity(0.05),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('⭐', style: TextStyle(fontSize: 20)),
+                        const SizedBox(width: 8),
+                        Text('AI 推薦回覆', style: AppTypography.titleLarge),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _finalRecommendation!.content,
+                        style: AppTypography.bodyLarge,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '📝 ${_finalRecommendation!.reason}',
+                      style: AppTypography.bodyMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '🧠 ${_finalRecommendation!.psychology}',
+                      style: AppTypography.caption,
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          // Copy to clipboard
+                          Clipboard.setData(
+                            ClipboardData(text: _finalRecommendation!.content),
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已複製到剪貼簿')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy),
+                        label: const Text('複製推薦回覆'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // 一致性提醒
+            if (_reminder != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Text('💬', style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _reminder!,
+                        style: AppTypography.bodyMedium.copyWith(
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -2669,7 +3302,16 @@ const TIER_FEATURES: Record<string, string[]> = {
   essential: ['extend', 'resonate', 'tease', 'humor', 'coldRead', 'needy_warning', 'topic_depth', 'health_check'],
 };
 
-const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提升對話技巧。
+const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提升對話技巧，最終目標是幫助用戶成功邀約。
+
+## GAME 五階段框架
+
+你必須分析對話處於哪個階段：
+1. Opening (打開) - 破冰階段
+2. Premise (前提) - 進入男女框架，建立張力
+3. Qualification (評估) - 她證明自己配得上用戶
+4. Narrative (敘事) - 個性樣本、說故事
+5. Close (收尾) - 模糊邀約 → 確立邀約
 
 ## 最高指導原則
 
@@ -2686,47 +3328,63 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
 - ❌ 「你是做什麼工作的？」(面試感)
 - ✅ 「感覺你是做創意相關的工作？」(冷讀)
 
-### 4. 話題深度階梯
+### 4. 陳述優於問句
+朋友間直接問句比較少，陳述句讓對話更自然
+
+### 5. 話題深度階梯
 - Level 1: 事件導向 (Facts) - 剛認識
 - Level 2: 個人導向 (Personal) - 有基本認識
 - Level 3: 曖昧導向 (Intimate) - 熱度 > 60
 - 原則：不可越級，循序漸進
 
-### 5. 細緻化優先
+### 6. 細緻化優先
 - 不要一直換話題
 - 針對對方回答深入挖掘
-- 例：喜歡麻辣鍋 → 喜歡哪種辣？為什麼？
 
-## 熱度分析標準
-根據以下指標評估對話熱度 (0-100):
-- 訊息長度變化
-- 是否主動提問
-- Emoji 使用頻率
-- 話題參與深度
-- 主動發起對話比例
+## 核心技巧
 
-## 回覆生成規則
-1. 每次提供 5 種回覆：延展、共鳴、調情、幽默、冷讀
-2. 根據熱度等級和話題深度調整策略
-3. 幽默技巧：曲解、誇大、推拉 (先開玩笑再正經)
-4. 避免 Needy 行為：
-   - 連續發送多則訊息
-   - 過度解釋或道歉
-   - 尋求認可的語氣
-   - 秒回或過度積極
-   - 連續問 3+ 個問題
+### 隱性價值展示 (DHV)
+- 一句話帶過，不解釋
+- 例：「剛從北京出差回來」而非「我很常出國」
 
-## 對話健檢項目
-- 面試式提問：連續問 3+ 個問題
-- 話題跳 tone：沒過渡就換話題
-- 索取 > 提供：問太多、分享太少
-- 深度越級：關係不熟就聊曖昧
-- 回覆過長：違反 1.8x 法則
+### 框架控制
+- 不因對方攻擊/挑釁/廢測而改變
+- 不用點對點回答問題
+- 可以跳出問題框架思考
+
+### 廢物測試 (Shit Test)
+- 廢測是好事，代表她在評估用戶
+- 橡膠球理論：讓它彈開
+- 回應方式：幽默曲解 / 直球但維持框架 / 忽略
+
+### 淺溝通解讀
+- 女生文字背後的意思 > 字面意思
+- 一致性測試藏在文字裡
+
+## 冰點特殊處理
+當熱度 0-30 且判斷機會渺茫時：
+- 不硬回
+- 可建議「已讀不回」
+- 鼓勵開新對話
 
 ## 輸出格式 (JSON)
 {
+  "gameStage": {
+    "current": "premise",
+    "status": "正常進行",
+    "nextStep": "可以開始評估階段"
+  },
   "enthusiasm": { "score": 75, "level": "hot" },
   "topicDepth": { "current": "personal", "suggestion": "可以往曖昧導向推進" },
+  "psychology": {
+    "subtext": "她這句話背後的意思是：對你有興趣",
+    "shitTest": {
+      "detected": false,
+      "type": null,
+      "suggestion": null
+    },
+    "qualificationSignal": true
+  },
   "replies": {
     "extend": "...",
     "resonate": "...",
@@ -2734,12 +3392,19 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
     "humor": "...",
     "coldRead": "..."
   },
+  "finalRecommendation": {
+    "pick": "tease",
+    "content": "推薦的完整回覆內容",
+    "reason": "為什麼推薦這個回覆",
+    "psychology": "心理學依據"
+  },
   "warnings": [],
   "healthCheck": {
     "issues": ["面試式提問過多"],
     "suggestions": ["用假設代替問句"]
   },
-  "strategy": "簡短策略說明"
+  "strategy": "簡短策略說明",
+  "reminder": "記得用你的方式說，見面才自然"
 }`;
 
 serve(async (req) => {
@@ -2815,11 +3480,22 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { messages } = await req.json();
+    const { messages, sessionContext } = await req.json();
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Invalid messages" }), {
         status: 400,
       });
+    }
+
+    // Format session context for Claude
+    let contextInfo = "";
+    if (sessionContext) {
+      contextInfo = `
+## 情境資訊
+- 認識場景：${sessionContext.meetingContext || '未知'}
+- 認識時長：${sessionContext.duration || '未知'}
+- 用戶目標：${sessionContext.goal || '約出來'}
+`;
     }
 
     // Format messages for Claude
@@ -2847,7 +3523,7 @@ serve(async (req) => {
         messages: [
           {
             role: "user",
-            content: `分析以下對話並提供建議：\n\n${conversationText}`,
+            content: `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`,
           },
         ],
       }),
@@ -4786,7 +5462,587 @@ git commit -m "feat: 建立 Paywall 訂閱方案選擇畫面"
 
 ---
 
-## Phase 9 TDD Checkpoint (Final)
+## Phase 9 TDD Checkpoint
+
+```bash
+# Run all tests
+flutter test
+
+# Check coverage (目標 > 70%)
+flutter test --coverage
+
+# Generate HTML report
+genhtml coverage/lcov.info -o coverage/html
+open coverage/html/index.html
+```
+
+---
+
+## Phase 10: GAME Framework Integration
+
+### Task 10.1: Create GAME Stage Service
+
+**Files:**
+- Create: `lib/features/analysis/domain/services/game_stage_service.dart`
+- Create: `test/unit/services/game_stage_service_test.dart`
+
+**Step 1: Create game_stage_service.dart**
+
+```dart
+// lib/features/analysis/domain/services/game_stage_service.dart
+import '../entities/game_stage.dart';
+import '../entities/analysis_result.dart';
+
+/// GAME 階段分析服務
+/// 根據 AI 回傳的分析結果，提供階段相關的 UI 資訊
+class GameStageService {
+  /// 取得階段顯示名稱
+  String getStageName(GameStage stage) {
+    switch (stage) {
+      case GameStage.opening:
+        return 'Opening 打開';
+      case GameStage.premise:
+        return 'Premise 前提';
+      case GameStage.qualification:
+        return 'Qualification 評估';
+      case GameStage.narrative:
+        return 'Narrative 敘事';
+      case GameStage.close:
+        return 'Close 收尾';
+    }
+  }
+
+  /// 取得階段描述
+  String getStageDescription(GameStage stage) {
+    switch (stage) {
+      case GameStage.opening:
+        return '破冰階段 - 建立初步連結';
+      case GameStage.premise:
+        return '前提階段 - 進入男女框架，建立張力';
+      case GameStage.qualification:
+        return '評估階段 - 讓她證明自己配得上你';
+      case GameStage.narrative:
+        return '敘事階段 - 分享個性樣本、說故事';
+      case GameStage.close:
+        return '收尾階段 - 從模糊邀約到確立邀約';
+    }
+  }
+
+  /// 取得階段進度 (0.0 - 1.0)
+  double getStageProgress(GameStage stage) {
+    switch (stage) {
+      case GameStage.opening:
+        return 0.2;
+      case GameStage.premise:
+        return 0.4;
+      case GameStage.qualification:
+        return 0.6;
+      case GameStage.narrative:
+        return 0.8;
+      case GameStage.close:
+        return 1.0;
+    }
+  }
+
+  /// 取得階段顏色
+  String getStageColor(GameStage stage) {
+    switch (stage) {
+      case GameStage.opening:
+        return '#4CAF50';  // 綠色
+      case GameStage.premise:
+        return '#2196F3';  // 藍色
+      case GameStage.qualification:
+        return '#FF9800';  // 橘色
+      case GameStage.narrative:
+        return '#9C27B0';  // 紫色
+      case GameStage.close:
+        return '#E91E63';  // 粉色
+    }
+  }
+
+  /// 根據狀態取得建議行動
+  String getStatusAdvice(GameStageStatus status) {
+    switch (status) {
+      case GameStageStatus.normal:
+        return '繼續目前節奏';
+      case GameStageStatus.stuckFriend:
+        return '需要建立曖昧張力，跳出朋友框架';
+      case GameStageStatus.canAdvance:
+        return '時機成熟，可以推進到下一階段';
+      case GameStageStatus.shouldRetreat:
+        return '放慢腳步，回到前一階段重新建立連結';
+    }
+  }
+
+  /// 判斷是否應該建議「已讀不回」
+  bool shouldSuggestNoReply(int enthusiasmScore, GameStage stage) {
+    // 熱度 < 30 且還在 Opening 階段，機會渺茫
+    return enthusiasmScore < 30 && stage == GameStage.opening;
+  }
+}
+```
+
+**Step 2: Write unit tests**
+
+```dart
+// test/unit/services/game_stage_service_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
+import 'package:vibesync/features/analysis/domain/services/game_stage_service.dart';
+
+void main() {
+  late GameStageService service;
+
+  setUp(() {
+    service = GameStageService();
+  });
+
+  group('GameStageService', () {
+    test('getStageName returns correct name for each stage', () {
+      expect(service.getStageName(GameStage.opening), contains('Opening'));
+      expect(service.getStageName(GameStage.premise), contains('Premise'));
+      expect(service.getStageName(GameStage.qualification), contains('Qualification'));
+      expect(service.getStageName(GameStage.narrative), contains('Narrative'));
+      expect(service.getStageName(GameStage.close), contains('Close'));
+    });
+
+    test('getStageProgress returns increasing values', () {
+      final stages = GameStage.values;
+      double prevProgress = 0;
+      for (final stage in stages) {
+        final progress = service.getStageProgress(stage);
+        expect(progress, greaterThan(prevProgress));
+        prevProgress = progress;
+      }
+    });
+
+    test('shouldSuggestNoReply returns true for cold opening', () {
+      expect(service.shouldSuggestNoReply(25, GameStage.opening), isTrue);
+    });
+
+    test('shouldSuggestNoReply returns false for warm opening', () {
+      expect(service.shouldSuggestNoReply(50, GameStage.opening), isFalse);
+    });
+
+    test('shouldSuggestNoReply returns false for cold but advanced stage', () {
+      expect(service.shouldSuggestNoReply(25, GameStage.premise), isFalse);
+    });
+
+    test('getStatusAdvice returns meaningful advice', () {
+      expect(service.getStatusAdvice(GameStageStatus.stuckFriend), contains('朋友框架'));
+      expect(service.getStatusAdvice(GameStageStatus.canAdvance), contains('推進'));
+    });
+  });
+}
+```
+
+**Step 3: Run tests**
+
+```bash
+flutter test test/unit/services/game_stage_service_test.dart
+```
+
+Expected: All tests pass
+
+**Step 4: Commit**
+
+```bash
+git add lib/features/analysis/domain/services/ test/unit/services/game_stage_service_test.dart
+git commit -m "feat: 建立 GAME 階段分析服務"
+```
+
+---
+
+### Task 10.2: Create Psychology Analysis Widget
+
+**Files:**
+- Create: `lib/features/analysis/presentation/widgets/game_stage_indicator.dart`
+- Create: `lib/features/analysis/presentation/widgets/psychology_card.dart`
+- Create: `lib/features/analysis/presentation/widgets/final_recommendation_card.dart`
+- Create: `test/widget/widgets/game_stage_indicator_test.dart`
+
+**Step 1: Create game_stage_indicator.dart**
+
+```dart
+// lib/features/analysis/presentation/widgets/game_stage_indicator.dart
+import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../domain/entities/game_stage.dart';
+import '../../domain/services/game_stage_service.dart';
+
+class GameStageIndicator extends StatelessWidget {
+  final GameStage currentStage;
+
+  const GameStageIndicator({super.key, required this.currentStage});
+
+  static final _service = GameStageService();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // 五個階段圓點
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: GameStage.values.map((stage) {
+            final isActive = stage.index <= currentStage.index;
+            final isCurrent = stage == currentStage;
+            return Column(
+              children: [
+                Container(
+                  width: isCurrent ? 24 : 16,
+                  height: isCurrent ? 24 : 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isActive ? AppColors.primary : AppColors.surfaceVariant,
+                    border: isCurrent
+                        ? Border.all(color: AppColors.primary, width: 2)
+                        : null,
+                  ),
+                  child: isCurrent
+                      ? const Icon(Icons.check, size: 14, color: Colors.white)
+                      : null,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _getShortName(stage),
+                  style: AppTypography.caption.copyWith(
+                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                    color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 8),
+        // 進度條
+        LinearProgressIndicator(
+          value: _service.getStageProgress(currentStage),
+          backgroundColor: AppColors.surfaceVariant,
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+        ),
+      ],
+    );
+  }
+
+  String _getShortName(GameStage stage) {
+    switch (stage) {
+      case GameStage.opening:
+        return 'O';
+      case GameStage.premise:
+        return 'P';
+      case GameStage.qualification:
+        return 'Q';
+      case GameStage.narrative:
+        return 'N';
+      case GameStage.close:
+        return 'C';
+    }
+  }
+}
+```
+
+**Step 2: Create psychology_card.dart**
+
+```dart
+// lib/features/analysis/presentation/widgets/psychology_card.dart
+import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../domain/entities/analysis_result.dart';
+
+class PsychologyCard extends StatelessWidget {
+  final PsychologyAnalysis psychology;
+
+  const PsychologyCard({super.key, required this.psychology});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🧠', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Text('淺溝通解讀', style: AppTypography.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            psychology.subtext,
+            style: AppTypography.bodyMedium,
+          ),
+          if (psychology.shitTest != null) ...[
+            const SizedBox(height: 12),
+            _ShitTestAlert(shitTest: psychology.shitTest!),
+          ],
+          if (psychology.qualificationSignal) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.favorite, size: 16, color: AppColors.success),
+                const SizedBox(width: 4),
+                Text(
+                  '她在向你證明自己 (Qualification Signal)',
+                  style: AppTypography.caption.copyWith(color: AppColors.success),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ShitTestAlert extends StatelessWidget {
+  final ShitTestInfo shitTest;
+
+  const _ShitTestAlert({required this.shitTest});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('⚠️', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Text('偵測到廢測', style: AppTypography.bodyMedium),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('類型: ${shitTest.type}', style: AppTypography.caption),
+          if (shitTest.suggestion != null)
+            Text('建議: ${shitTest.suggestion}', style: AppTypography.caption),
+        ],
+      ),
+    );
+  }
+}
+```
+
+**Step 3: Create final_recommendation_card.dart**
+
+```dart
+// lib/features/analysis/presentation/widgets/final_recommendation_card.dart
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../domain/entities/analysis_result.dart';
+
+class FinalRecommendationCard extends StatelessWidget {
+  final FinalRecommendation recommendation;
+
+  const FinalRecommendationCard({super.key, required this.recommendation});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary.withOpacity(0.1),
+            AppColors.primary.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('⭐', style: TextStyle(fontSize: 22)),
+              const SizedBox(width: 8),
+              Text('AI 推薦回覆', style: AppTypography.titleLarge),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  recommendation.pick,
+                  style: AppTypography.caption.copyWith(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // 推薦內容
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              recommendation.content,
+              style: AppTypography.bodyLarge.copyWith(
+                height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // 推薦原因
+          _InfoRow(
+            icon: '📝',
+            title: '為什麼推薦',
+            content: recommendation.reason,
+          ),
+          const SizedBox(height: 8),
+          // 心理學依據
+          _InfoRow(
+            icon: '🧠',
+            title: '心理學依據',
+            content: recommendation.psychology,
+          ),
+          const SizedBox(height: 16),
+          // 複製按鈕
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: recommendation.content));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('已複製到剪貼簿'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.copy),
+              label: const Text('複製推薦回覆'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String icon;
+  final String title;
+  final String content;
+
+  const _InfoRow({
+    required this.icon,
+    required this.title,
+    required this.content,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(icon, style: const TextStyle(fontSize: 14)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppTypography.caption),
+              Text(content, style: AppTypography.bodyMedium),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+```
+
+**Step 4: Write widget tests**
+
+```dart
+// test/widget/widgets/game_stage_indicator_test.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/game_stage_indicator.dart';
+
+void main() {
+  group('GameStageIndicator', () {
+    testWidgets('displays all 5 stage indicators', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GameStageIndicator(currentStage: GameStage.premise),
+          ),
+        ),
+      );
+
+      // Should show O, P, Q, N, C labels
+      expect(find.text('O'), findsOneWidget);
+      expect(find.text('P'), findsOneWidget);
+      expect(find.text('Q'), findsOneWidget);
+      expect(find.text('N'), findsOneWidget);
+      expect(find.text('C'), findsOneWidget);
+    });
+
+    testWidgets('shows progress indicator', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GameStageIndicator(currentStage: GameStage.qualification),
+          ),
+        ),
+      );
+
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    });
+  });
+}
+```
+
+**Step 5: Run tests**
+
+```bash
+flutter test test/widget/widgets/game_stage_indicator_test.dart
+```
+
+Expected: All tests pass
+
+**Step 6: Commit**
+
+```bash
+git add lib/features/analysis/presentation/widgets/ test/widget/widgets/
+git commit -m "feat: 建立 GAME 階段指示器與心理分析元件"
+```
+
+---
+
+## Phase 10 TDD Checkpoint (Final)
 
 ```bash
 # Run all tests
@@ -4804,7 +6060,7 @@ open coverage/html/index.html
 
 ## Summary
 
-**Total Tasks:** 19 tasks across 9 phases
+**Total Tasks:** 21 tasks across 10 phases
 
 **Phase Breakdown:**
 1. Project Foundation (3 tasks) - Flutter setup, dependencies, structure
@@ -4816,6 +6072,7 @@ open coverage/html/index.html
 7. Message Calculation & Usage (2 tasks) - 訊息計算、用量追蹤、預覽確認
 8. Conversation Memory (2 tasks) - 對話記憶、摘要、選擇追蹤
 9. Paywall & Subscription (1 task) - 訂閱方案選擇畫面
+10. GAME Framework (2 tasks) - GAME 階段分析、心理解讀元件
 
 **Next Steps After MVP:**
 - Authentication screens (Google/Apple Sign-in)
@@ -4882,6 +6139,37 @@ supabase functions deploy analyze-chat
 |------|------|----------|
 | 2026-02-26 | 1.0 | 初始實作計畫 |
 | 2026-02-26 | 2.0 | **重大更新** - 與設計規格書同步 |
+| 2026-02-27 | 2.1 | **GAME 框架整合** - 與設計規格 v1.1 同步 |
+
+### v2.1 變更明細 (與設計規格 v1.1 同步)
+
+**GAME 框架整合**
+- ✅ 新增: Task 10.1 GAME Stage Service
+- ✅ 新增: Task 10.2 Psychology Analysis Widget
+- ✅ 新增: Phase 10 (GAME Framework)
+
+**情境收集 (Session Context)**
+- ✅ 更新: Task 2.1 新增 SessionContext, GameStage, AnalysisResult entities
+- ✅ 更新: Task 3.3 新增情境收集 UI (認識場景、時長、目標)
+- ✅ 更新: Task 4.2 Edge Function 支援 sessionContext
+
+**AI 輸出強化**
+- ✅ 更新: SYSTEM_PROMPT 加入 GAME 五階段框架
+- ✅ 更新: 輸出格式加入 gameStage, psychology, finalRecommendation
+- ✅ 新增: 淺溝通解讀 (subtext reading)
+- ✅ 新增: 廢測偵測 (shit test detection)
+- ✅ 新增: 最終建議 (AI 推薦 + 心理學依據)
+- ✅ 新增: 一致性提醒 ("記得用你的方式說，見面才自然")
+
+**UI 強化**
+- ✅ 更新: Task 3.4 Analysis Screen 加入 GAME 階段指示器
+- ✅ 更新: Task 3.4 加入心理分析卡片
+- ✅ 更新: Task 3.4 加入最終建議卡片 (含複製按鈕)
+- ✅ 更新: Task 3.4 加入一致性提醒
+
+**總任務數**: 19 → 21 tasks
+
+---
 
 ### v2.0 變更明細
 
