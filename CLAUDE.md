@@ -39,6 +39,61 @@ Target Audience: 願意投資自我提升的男性用戶
 - **Subscription**: RevenueCat
 - **Local DB**: Hive (加密儲存)
 
+## Superpowers 開發工作流
+
+> **重要**: 此專案遵循 superpowers skills 工作流程
+
+### 開發流程圖
+```
+需求/想法
+    │
+    ▼
+┌─────────────────────┐
+│  brainstorming      │  ← 任何新功能/變更前必須
+│  (探索設計)          │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  writing-plans      │  ← 產出實作計畫
+│  (寫計畫)            │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  executing-plans    │  ← 按計畫逐步實作
+│  (執行計畫)          │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  verification       │  ← 完成前驗證
+│  (驗證完成)          │
+└─────────────────────┘
+```
+
+### 必用 Skills
+| 情境 | 使用的 Skill |
+|------|-------------|
+| 開始新功能/變更 | `superpowers:brainstorming` |
+| 規劃實作步驟 | `superpowers:writing-plans` |
+| 執行實作計畫 | `superpowers:executing-plans` |
+| 寫新功能/修 bug | `superpowers:test-driven-development` |
+| 遇到 bug/錯誤 | `superpowers:systematic-debugging` |
+| 宣稱完成前 | `superpowers:verification-before-completion` |
+| 需要 code review | `superpowers:requesting-code-review` |
+
+### 已完成的計畫文件
+- 設計規格: `docs/plans/2026-02-26-vibesync-design.md`
+- 實作計畫: `docs/plans/2026-02-26-vibesync-implementation.md` (15 任務)
+
+### 開始實作時
+```
+使用 superpowers:executing-plans 執行實作計畫
+```
+
+---
+
 ## Development Conventions
 
 ### Code Style
