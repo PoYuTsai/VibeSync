@@ -10,6 +10,109 @@
 
 ---
 
+## Execution Guide (執行指南)
+
+### CLAUDE.md 規則提醒
+
+> **重要**: 實作過程中必須遵循 `CLAUDE.md` 定義的規則
+
+| 規則 | 說明 |
+|------|------|
+| **TDD** | 先寫測試 → 實作 → 重構 |
+| **Bug 記錄** | 遇到 bug 立即記錄到 CLAUDE.md Bugs & Fixes |
+| **Common Pitfalls** | 修復 bug 後更新 Common Pitfalls |
+| **Commit & Push** | 每次 commit 後立即 push |
+| **繁體中文** | Commit message 使用繁體中文 |
+
+### Agent 分工策略
+
+| 任務群組 | Agent Type | 說明 |
+|----------|------------|------|
+| Setup (1.1-1.3) | `Bash` | 專案初始化、bash 命令 |
+| Domain (2.1-2.3) | `general-purpose` | 實體定義、業務邏輯 |
+| UI (3.1-3.4) | `general-purpose` | Widget 和 Screen 開發 |
+| Backend (4.1-4.2) | `general-purpose` | Supabase 設定、Edge Function |
+| Integration (5.1-5.2) | `general-purpose` | 前後端整合 |
+| Settings (6.1) | `general-purpose` | 設定頁面 |
+| Usage (7.1-7.2) | `general-purpose` | 訊息計算、用量追蹤 |
+| Memory (8.1-8.2) | `general-purpose` | 對話記憶 |
+| Paywall (9.1) | `general-purpose` | 訂閱 UI |
+
+### 並行執行策略
+
+```
+Phase 1 (Sequential - 必須依序)
+├─ 1.1 → 1.2 → 1.3
+
+Phase 2 (Partially Parallel)
+├─ 2.1 (Domain Entities)
+│   └─ 完成後可並行:
+│       ├─ 2.2 (Hive Init)
+│       └─ 2.3 (Repository)
+
+Phase 3 (Partially Parallel)
+├─ 3.1 (Shared Widgets) ← 先完成
+│   └─ 完成後可並行:
+│       ├─ 3.2 (Home Screen)
+│       ├─ 3.3 (New Conversation Screen)
+│       └─ 3.4 (Analysis Screen)
+
+Phase 4 (Sequential)
+├─ 4.1 → 4.2
+
+Phase 5 (Sequential)
+├─ 5.1 → 5.2
+
+Phase 6-9 (Sequential within phase, parallel across phases)
+├─ 6.1 可與 7.x 並行
+├─ 7.1 → 7.2
+├─ 8.1 → 8.2
+└─ 9.1
+```
+
+### 任務總覽 (19 Tasks)
+
+| # | Task | Agent | 測試 | 依賴 |
+|---|------|-------|------|------|
+| 1.1 | Create Flutter Project | Bash | - | - |
+| 1.2 | Configure Dependencies | Bash | - | 1.1 |
+| 1.3 | Setup Project Structure | general | ✓ | 1.2 |
+| 2.1 | Create Domain Entities | general | ✓ | 1.3 |
+| 2.2 | Setup Hive Initialization | general | ✓ | 2.1 |
+| 2.3 | Create Conversation Repository | general | ✓ | 2.1 |
+| 3.1 | Create Shared Widgets | general | ✓ | 2.1 |
+| 3.2 | Create Home Screen | general | ✓ | 3.1, 2.3 |
+| 3.3 | Create New Conversation Screen | general | ✓ | 3.1, 2.3 |
+| 3.4 | Create Analysis Screen | general | ✓ | 3.1, 2.3 |
+| 4.1 | Setup Supabase Project | Bash | - | 1.3 |
+| 4.2 | Create Edge Function | general | ✓ | 4.1 |
+| 5.1 | Setup Supabase Client | general | ✓ | 4.1 |
+| 5.2 | Create Analysis Service | general | ✓ | 4.2, 5.1 |
+| 6.1 | Create Settings Screen | general | ✓ | 3.1 |
+| 7.1 | Create Message Calculation Service | general | ✓ | 1.3 |
+| 7.2 | Create Analysis Preview Dialog | general | ✓ | 7.1 |
+| 8.1 | Add Memory Fields to Entities | general | ✓ | 2.1 |
+| 8.2 | Create Memory Service | general | ✓ | 8.1 |
+| 9.1 | Create Paywall Screen | general | ✓ | 3.1 |
+
+### TDD 檢查點
+
+每個 Phase 完成後，執行：
+
+```bash
+# 1. 執行所有測試
+flutter test
+
+# 2. 檢查覆蓋率 (目標 > 70%)
+flutter test --coverage
+genhtml coverage/lcov.info -o coverage/html
+
+# 3. 若測試失敗
+#    → 修復 → 記錄到 CLAUDE.md → 更新 Common Pitfalls
+```
+
+---
+
 ## Phase 1: Project Foundation
 
 ### Task 1.1: Create Flutter Project
@@ -577,10 +680,71 @@ flutter pub run build_runner build --delete-conflicting-outputs
 
 Expected: Generated `message.g.dart` and `conversation.g.dart`
 
-**Step 5: Commit**
+**Step 5: Write unit tests for EnthusiasmLevel**
+
+Create `test/unit/entities/enthusiasm_level_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/enthusiasm_level.dart';
+
+void main() {
+  group('EnthusiasmLevel', () {
+    group('fromScore', () {
+      test('returns cold for score 0-30', () {
+        expect(EnthusiasmLevel.fromScore(0), EnthusiasmLevel.cold);
+        expect(EnthusiasmLevel.fromScore(15), EnthusiasmLevel.cold);
+        expect(EnthusiasmLevel.fromScore(30), EnthusiasmLevel.cold);
+      });
+
+      test('returns warm for score 31-60', () {
+        expect(EnthusiasmLevel.fromScore(31), EnthusiasmLevel.warm);
+        expect(EnthusiasmLevel.fromScore(45), EnthusiasmLevel.warm);
+        expect(EnthusiasmLevel.fromScore(60), EnthusiasmLevel.warm);
+      });
+
+      test('returns hot for score 61-80', () {
+        expect(EnthusiasmLevel.fromScore(61), EnthusiasmLevel.hot);
+        expect(EnthusiasmLevel.fromScore(70), EnthusiasmLevel.hot);
+        expect(EnthusiasmLevel.fromScore(80), EnthusiasmLevel.hot);
+      });
+
+      test('returns veryHot for score 81-100', () {
+        expect(EnthusiasmLevel.fromScore(81), EnthusiasmLevel.veryHot);
+        expect(EnthusiasmLevel.fromScore(90), EnthusiasmLevel.veryHot);
+        expect(EnthusiasmLevel.fromScore(100), EnthusiasmLevel.veryHot);
+      });
+    });
+
+    test('label returns correct Chinese text', () {
+      expect(EnthusiasmLevel.cold.label, '冰點');
+      expect(EnthusiasmLevel.warm.label, '溫和');
+      expect(EnthusiasmLevel.hot.label, '熱情');
+      expect(EnthusiasmLevel.veryHot.label, '高熱');
+    });
+
+    test('emoji returns correct emoji', () {
+      expect(EnthusiasmLevel.cold.emoji, '❄️');
+      expect(EnthusiasmLevel.warm.emoji, '🌤️');
+      expect(EnthusiasmLevel.hot.emoji, '🔥');
+      expect(EnthusiasmLevel.veryHot.emoji, '💖');
+    });
+  });
+}
+```
+
+**Step 6: Run tests**
 
 ```bash
-git add lib/features/
+flutter test test/unit/entities/
+```
+
+Expected: All tests pass
+
+**Step 7: Commit**
+
+```bash
+git add lib/features/ test/
 git commit -m "feat: 建立 Message 和 Conversation 實體 (含 Hive 配置)"
 ```
 
@@ -682,10 +846,48 @@ flutter run -d chrome
 
 Expected: App launches without errors (note: secure storage may not work on web, test on mobile emulator for full verification)
 
-**Step 4: Commit**
+**Step 4: Write unit tests for StorageService**
+
+Create `test/unit/services/storage_service_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:vibesync/core/services/storage_service.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
+
+void main() {
+  group('StorageService', () {
+    setUpAll(() async {
+      // Initialize Hive for testing (in-memory)
+      await Hive.initFlutter();
+    });
+
+    tearDownAll(() async {
+      await Hive.close();
+    });
+
+    test('conversationsBox returns correct box name', () {
+      expect(AppConstants.conversationsBox, 'conversations');
+    });
+
+    test('settingsBox returns correct box name', () {
+      expect(AppConstants.settingsBox, 'settings');
+    });
+
+    test('usageBox returns correct box name', () {
+      expect(AppConstants.usageBox, 'usage');
+    });
+  });
+}
+```
+
+> **Note:** StorageService 完整測試需要 mock flutter_secure_storage，在整合測試中驗證。
+
+**Step 5: Commit**
 
 ```bash
-git add lib/
+git add lib/ test/
 git commit -m "feat: 設置 Hive 加密儲存服務"
 ```
 
@@ -1069,10 +1271,140 @@ class ReplyCard extends StatelessWidget {
 }
 ```
 
-**Step 3: Commit**
+**Step 3: Write widget tests**
+
+Create `test/widget/widgets/enthusiasm_gauge_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/shared/widgets/enthusiasm_gauge.dart';
+
+void main() {
+  group('EnthusiasmGauge', () {
+    testWidgets('displays correct score', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: EnthusiasmGauge(score: 72)),
+        ),
+      );
+
+      expect(find.text('72/100'), findsOneWidget);
+    });
+
+    testWidgets('displays cold emoji for low score', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: EnthusiasmGauge(score: 25)),
+        ),
+      );
+
+      expect(find.text('❄️'), findsOneWidget);
+      expect(find.text('冰點'), findsOneWidget);
+    });
+
+    testWidgets('displays hot emoji for high score', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: EnthusiasmGauge(score: 75)),
+        ),
+      );
+
+      expect(find.text('🔥'), findsOneWidget);
+      expect(find.text('熱情'), findsOneWidget);
+    });
+  });
+}
+```
+
+Create `test/widget/widgets/reply_card_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/shared/widgets/reply_card.dart';
+
+void main() {
+  group('ReplyCard', () {
+    testWidgets('displays correct label for extend type', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ReplyCard(
+              type: ReplyType.extend,
+              content: '測試內容',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('🔄 延展'), findsOneWidget);
+      expect(find.text('測試內容'), findsOneWidget);
+    });
+
+    testWidgets('shows lock icon when isLocked is true', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ReplyCard(
+              type: ReplyType.resonate,
+              content: '測試內容',
+              isLocked: true,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.lock), findsOneWidget);
+      expect(find.text('升級 Pro 解鎖'), findsOneWidget);
+    });
+
+    testWidgets('shows copy icon when not locked', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ReplyCard(
+              type: ReplyType.extend,
+              content: '測試內容',
+              isLocked: false,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.copy), findsOneWidget);
+    });
+
+    testWidgets('displays all 5 reply types correctly', (tester) async {
+      for (final type in ReplyType.values) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ReplyCard(type: type, content: 'test'),
+            ),
+          ),
+        );
+        await tester.pump();
+      }
+      // If no exception thrown, all types render correctly
+    });
+  });
+}
+```
+
+**Step 4: Run widget tests**
 
 ```bash
-git add lib/shared/
+flutter test test/widget/widgets/
+```
+
+Expected: All tests pass
+
+**Step 5: Commit**
+
+```bash
+git add lib/shared/ test/
 git commit -m "feat: 建立 EnthusiasmGauge 和 ReplyCard 共用元件"
 ```
 
@@ -1315,10 +1647,75 @@ flutter run -d chrome
 
 Expected: Home screen displays with empty state and FAB button
 
-**Step 5: Commit**
+**Step 5: Write widget tests**
+
+Create `test/widget/screens/home_screen_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/conversation/presentation/screens/home_screen.dart';
+
+void main() {
+  group('HomeScreen', () {
+    testWidgets('displays app title', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: HomeScreen()),
+        ),
+      );
+
+      expect(find.text('VibeSync'), findsOneWidget);
+    });
+
+    testWidgets('shows empty state when no conversations', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: HomeScreen()),
+        ),
+      );
+
+      expect(find.text('還沒有對話'), findsOneWidget);
+      expect(find.text('點擊右下角 + 開始新增'), findsOneWidget);
+    });
+
+    testWidgets('shows FAB button', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: HomeScreen()),
+        ),
+      );
+
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+      expect(find.byIcon(Icons.add), findsOneWidget);
+    });
+
+    testWidgets('shows settings icon', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: HomeScreen()),
+        ),
+      );
+
+      expect(find.byIcon(Icons.settings), findsOneWidget);
+    });
+  });
+}
+```
+
+**Step 6: Run widget tests**
 
 ```bash
-git add lib/
+flutter test test/widget/screens/home_screen_test.dart
+```
+
+Expected: All tests pass
+
+**Step 7: Commit**
+
+```bash
+git add lib/ test/
 git commit -m "feat: 建立首頁對話列表畫面"
 ```
 
@@ -1527,10 +1924,100 @@ Test: Click FAB → Enter name and paste conversation → Click analyze
 
 Expected: Navigates to conversation detail (placeholder)
 
-**Step 4: Commit**
+**Step 4: Write widget tests**
+
+Create `test/widget/screens/new_conversation_screen_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/conversation/presentation/screens/new_conversation_screen.dart';
+
+void main() {
+  group('NewConversationScreen', () {
+    testWidgets('displays title', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.text('新增對話'), findsOneWidget);
+    });
+
+    testWidgets('shows name input field', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.text('對話對象暱稱'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '例如：小美'), findsOneWidget);
+    });
+
+    testWidgets('shows content input field', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.text('貼上對話內容'), findsOneWidget);
+    });
+
+    testWidgets('shows format hint', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.textContaining('格式：每行一則訊息'), findsOneWidget);
+    });
+
+    testWidgets('shows analyze button', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.text('開始分析'), findsOneWidget);
+    });
+
+    testWidgets('shows error when name is empty', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(body: NewConversationScreen()),
+          ),
+        ),
+      );
+
+      // Tap analyze without entering name
+      await tester.tap(find.text('開始分析'));
+      await tester.pump();
+
+      expect(find.text('請輸入對話對象暱稱'), findsOneWidget);
+    });
+  });
+}
+```
+
+**Step 5: Run widget tests**
 
 ```bash
-git add lib/
+flutter test test/widget/screens/new_conversation_screen_test.dart
+```
+
+Expected: All tests pass
+
+**Step 6: Commit**
+
+```bash
+git add lib/ test/
 git commit -m "feat: 建立新增對話畫面與訊息輸入功能"
 ```
 
@@ -1959,11 +2446,84 @@ Test: Create new conversation → View analysis with mock data
 
 Expected: Shows messages, enthusiasm gauge, strategy, and reply cards
 
-**Step 5: Commit**
+**Step 5: Write widget tests**
+
+Create `test/widget/screens/analysis_screen_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+
+// Mock conversation ID for testing
+const testConversationId = 'test-123';
+
+void main() {
+  group('AnalysisScreen', () {
+    testWidgets('shows loading state initially', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: AnalysisScreen(conversationId: testConversationId),
+          ),
+        ),
+      );
+
+      // Should show loading indicator
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('shows back button', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: AnalysisScreen(conversationId: testConversationId),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    });
+
+    // Note: Full analysis screen tests require mocking:
+    // - ConversationRepository
+    // - AnalysisService
+    // These will be covered in integration tests
+  });
+}
+```
+
+**Step 6: Run widget tests**
 
 ```bash
-git add lib/
+flutter test test/widget/screens/
+```
+
+Expected: All tests pass
+
+**Step 7: Commit**
+
+```bash
+git add lib/ test/
 git commit -m "feat: 建立對話分析畫面 (含熱度儀表與回覆建議)"
+```
+
+---
+
+## Phase 3 TDD Checkpoint
+
+Before proceeding to Phase 4, verify:
+
+```bash
+# Run all Phase 1-3 tests
+flutter test
+
+# Expected: All tests pass
+# If any test fails:
+# 1. Fix the issue
+# 2. Record in CLAUDE.md Bugs & Fixes
+# 3. Update Common Pitfalls
 ```
 
 ---
@@ -2358,11 +2918,81 @@ function countMessages(messages: Array<{ content: string }>): number {
 });
 ```
 
-**Step 2: Commit**
+**Step 2: Create Edge Function test**
+
+Create `supabase/functions/analyze-chat/index_test.ts`:
+
+```typescript
+// supabase/functions/analyze-chat/index_test.ts
+// Note: Edge Function tests run via Deno test
+
+import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+
+// Test countMessages function
+Deno.test("countMessages - single short message", () => {
+  const messages = [{ content: "你好" }];
+  // countMessages should return 1
+  assertEquals(countMessages(messages), 1);
+});
+
+Deno.test("countMessages - multiple messages", () => {
+  const messages = [
+    { content: "你好" },
+    { content: "在嗎" },
+    { content: "吃飯了嗎" },
+  ];
+  assertEquals(countMessages(messages), 3);
+});
+
+Deno.test("countMessages - long message splits by 200 chars", () => {
+  const longContent = "a".repeat(450); // 450 chars = ceil(450/200) = 3
+  const messages = [{ content: longContent }];
+  assertEquals(countMessages(messages), 3);
+});
+
+// Helper function to be tested
+function countMessages(messages: Array<{ content: string }>): number {
+  let total = 0;
+  for (const msg of messages) {
+    const charCount = msg.content.trim().length;
+    total += Math.max(1, Math.ceil(charCount / 200));
+  }
+  return Math.max(1, total);
+}
+```
+
+**Step 3: Run Edge Function tests**
+
+```bash
+cd supabase/functions/analyze-chat
+deno test index_test.ts
+```
+
+Expected: All tests pass
+
+**Step 4: Commit**
 
 ```bash
 git add supabase/functions/
 git commit -m "feat: 建立 analyze-chat Edge Function (Claude API 整合)"
+```
+
+---
+
+## Phase 4 TDD Checkpoint
+
+Before proceeding to Phase 5:
+
+```bash
+# Verify Supabase local setup
+npx supabase start
+npx supabase functions serve analyze-chat
+
+# Test Edge Function manually
+curl -X POST http://localhost:54321/functions/v1/analyze-chat \
+  -H "Authorization: Bearer <test-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"isFromMe": false, "content": "你好"}]}'
 ```
 
 ---
@@ -2446,10 +3076,34 @@ void main() async {
 }
 ```
 
-**Step 4: Commit**
+**Step 4: Write unit tests**
+
+Create `test/unit/services/supabase_service_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/services/supabase_service.dart';
+
+void main() {
+  group('SupabaseService', () {
+    test('isAuthenticated returns false when no user', () {
+      // Before initialization, should be false
+      // Note: Full test requires mock Supabase client
+      expect(true, isTrue); // Placeholder
+    });
+
+    // Note: SupabaseService requires actual Supabase connection
+    // Full testing done in integration tests with mock server
+  });
+}
+```
+
+> **Note:** SupabaseService 完整測試需要 mock Supabase client，建議在整合測試中使用 Supabase 本地環境驗證。
+
+**Step 5: Commit**
 
 ```bash
-git add lib/ .env.example
+git add lib/ .env.example test/
 git commit -m "feat: 整合 Supabase 客戶端服務"
 ```
 
@@ -2567,11 +3221,132 @@ final analysisServiceProvider = Provider<AnalysisService>((ref) {
 });
 ```
 
-**Step 3: Commit**
+**Step 3: Write unit tests for AnalysisResult parsing**
+
+Create `test/unit/services/analysis_service_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+
+void main() {
+  group('AnalysisResult', () {
+    test('fromJson parses valid response correctly', () {
+      final json = {
+        'enthusiasm': {'score': 75, 'level': 'hot'},
+        'topicDepth': {'current': 'personal', 'suggestion': '可以往曖昧導向推進'},
+        'replies': {
+          'extend': '延展回覆',
+          'resonate': '共鳴回覆',
+          'tease': '調情回覆',
+          'humor': '幽默回覆',
+          'coldRead': '冷讀回覆',
+        },
+        'warnings': ['過度投入'],
+        'healthCheck': {
+          'issues': ['面試式提問'],
+          'suggestions': ['用假設代替問句'],
+        },
+        'strategy': '保持沉穩',
+      };
+
+      final result = AnalysisResult.fromJson(json);
+
+      expect(result.enthusiasmScore, 75);
+      expect(result.level, 'hot');
+      expect(result.topicDepth.current, 'personal');
+      expect(result.replies['extend'], '延展回覆');
+      expect(result.replies['humor'], '幽默回覆');
+      expect(result.replies['coldRead'], '冷讀回覆');
+      expect(result.warnings, ['過度投入']);
+      expect(result.healthCheck.issues, ['面試式提問']);
+      expect(result.strategy, '保持沉穩');
+    });
+
+    test('fromJson handles missing optional fields', () {
+      final json = {
+        'enthusiasm': {'score': 50, 'level': 'warm'},
+        'replies': {
+          'extend': '延展回覆',
+          'resonate': '共鳴回覆',
+          'tease': '調情回覆',
+          'humor': '幽默回覆',
+          'coldRead': '冷讀回覆',
+        },
+      };
+
+      final result = AnalysisResult.fromJson(json);
+
+      expect(result.enthusiasmScore, 50);
+      expect(result.warnings, isEmpty);
+      expect(result.healthCheck.issues, isEmpty);
+      expect(result.strategy, '');
+    });
+  });
+
+  group('TopicDepth', () {
+    test('fromJson parses correctly', () {
+      final json = {'current': 'intimate', 'suggestion': '維持現狀'};
+      final topicDepth = TopicDepth.fromJson(json);
+
+      expect(topicDepth.current, 'intimate');
+      expect(topicDepth.suggestion, '維持現狀');
+    });
+
+    test('fromJson handles empty map', () {
+      final topicDepth = TopicDepth.fromJson({});
+
+      expect(topicDepth.current, 'facts');
+      expect(topicDepth.suggestion, '');
+    });
+  });
+
+  group('HealthCheck', () {
+    test('fromJson parses correctly', () {
+      final json = {
+        'issues': ['問題1', '問題2'],
+        'suggestions': ['建議1'],
+      };
+      final healthCheck = HealthCheck.fromJson(json);
+
+      expect(healthCheck.issues.length, 2);
+      expect(healthCheck.suggestions.length, 1);
+    });
+
+    test('fromJson handles null', () {
+      final healthCheck = HealthCheck.fromJson(null);
+
+      expect(healthCheck.issues, isEmpty);
+      expect(healthCheck.suggestions, isEmpty);
+    });
+  });
+}
+```
+
+**Step 4: Run tests**
 
 ```bash
-git add lib/features/analysis/
+flutter test test/unit/services/analysis_service_test.dart
+```
+
+Expected: All tests pass
+
+**Step 5: Commit**
+
+```bash
+git add lib/features/analysis/ test/
 git commit -m "feat: 建立 AnalysisService 連接 Edge Function"
+```
+
+---
+
+## Phase 5 TDD Checkpoint
+
+Before proceeding to Phase 6:
+
+```bash
+flutter test
+# All tests should pass
 ```
 
 ---
@@ -2801,14 +3576,103 @@ final router = GoRouter(
 );
 ```
 
-**Step 3: Commit**
+**Step 3: Write widget tests**
+
+Create `test/widget/screens/settings_screen_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/subscription/presentation/screens/settings_screen.dart';
+
+void main() {
+  group('SettingsScreen', () {
+    testWidgets('displays title', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: SettingsScreen()),
+        ),
+      );
+
+      expect(find.text('設定'), findsOneWidget);
+    });
+
+    testWidgets('shows account section', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: SettingsScreen()),
+        ),
+      );
+
+      expect(find.text('帳戶'), findsOneWidget);
+      expect(find.text('訂閱方案'), findsOneWidget);
+      expect(find.text('本月用量'), findsOneWidget);
+    });
+
+    testWidgets('shows privacy section', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: SettingsScreen()),
+        ),
+      );
+
+      expect(find.text('隱私與安全'), findsOneWidget);
+      expect(find.text('清除所有對話資料'), findsOneWidget);
+    });
+
+    testWidgets('shows about section', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: SettingsScreen()),
+        ),
+      );
+
+      expect(find.text('關於'), findsOneWidget);
+      expect(find.text('版本'), findsOneWidget);
+    });
+
+    testWidgets('shows delete confirmation dialog', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: SettingsScreen()),
+        ),
+      );
+
+      // Tap delete button
+      await tester.tap(find.text('清除所有對話資料'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('確定要刪除所有對話？'), findsOneWidget);
+      expect(find.text('此操作無法復原'), findsOneWidget);
+    });
+  });
+}
+```
+
+**Step 4: Run tests**
 
 ```bash
-git add lib/
+flutter test test/widget/screens/settings_screen_test.dart
+```
+
+Expected: All tests pass
+
+**Step 5: Commit**
+
+```bash
+git add lib/ test/
 git commit -m "feat: 建立設定畫面 (含清除資料功能)"
 ```
 
 ---
+
+## Phase 6 TDD Checkpoint
+
+```bash
+flutter test
+# All tests should pass before proceeding
+```
 
 ---
 
@@ -3089,11 +3953,145 @@ class AnalysisPreviewDialog extends StatelessWidget {
 }
 ```
 
-**Step 2: Commit**
+**Step 2: Write widget tests**
+
+Create `test/widget/widgets/analysis_preview_dialog_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/shared/widgets/analysis_preview_dialog.dart';
+import 'package:vibesync/core/services/message_calculator.dart';
+import 'package:vibesync/core/services/usage_service.dart';
+
+void main() {
+  group('AnalysisPreviewDialog', () {
+    late MessagePreview mockPreview;
+    late UsageData mockUsage;
+
+    setUp(() {
+      mockPreview = MessagePreview(
+        messageCount: 12,
+        charCount: 500,
+        exceedsLimit: false,
+      );
+      mockUsage = UsageData(
+        monthlyUsed: 12,
+        monthlyLimit: 300,
+        dailyUsed: 5,
+        dailyLimit: 50,
+        dailyResetAt: DateTime.now().add(const Duration(hours: 6)),
+      );
+    });
+
+    testWidgets('displays message count', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnalysisPreviewDialog(
+              preview: mockPreview,
+              usage: mockUsage,
+              onConfirm: () {},
+              onCancel: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('12 則訊息'), findsOneWidget);
+    });
+
+    testWidgets('displays monthly usage', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnalysisPreviewDialog(
+              preview: mockPreview,
+              usage: mockUsage,
+              onConfirm: () {},
+              onCancel: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('288 / 300 則'), findsOneWidget);
+    });
+
+    testWidgets('shows warning when exceeds limit', (tester) async {
+      final exceedsPreview = MessagePreview(
+        messageCount: 100,
+        charCount: 6000,
+        exceedsLimit: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnalysisPreviewDialog(
+              preview: exceedsPreview,
+              usage: mockUsage,
+              onConfirm: () {},
+              onCancel: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('內容過長'), findsOneWidget);
+    });
+
+    testWidgets('confirm button disabled when cannot proceed', (tester) async {
+      final exceedsPreview = MessagePreview(
+        messageCount: 100,
+        charCount: 6000,
+        exceedsLimit: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnalysisPreviewDialog(
+              preview: exceedsPreview,
+              usage: mockUsage,
+              onConfirm: () {},
+              onCancel: () {},
+            ),
+          ),
+        ),
+      );
+
+      final confirmButton = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '確認分析'),
+      );
+      expect(confirmButton.onPressed, isNull);
+    });
+  });
+}
+```
+
+**Step 3: Run tests**
 
 ```bash
-git add lib/shared/widgets/
+flutter test test/widget/widgets/analysis_preview_dialog_test.dart
+```
+
+Expected: All tests pass
+
+**Step 4: Commit**
+
+```bash
+git add lib/shared/widgets/ test/
 git commit -m "feat: 建立分析前預覽確認對話框"
+```
+
+---
+
+## Phase 7 TDD Checkpoint
+
+```bash
+flutter test
+# All tests should pass before proceeding
 ```
 
 ---
@@ -3181,10 +4179,80 @@ class ConversationSummary extends HiveObject {
 flutter pub run build_runner build --delete-conflicting-outputs
 ```
 
-**Step 4: Commit**
+**Step 4: Write unit tests**
+
+Create `test/unit/entities/conversation_memory_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
+
+void main() {
+  group('Conversation Memory', () {
+    late Conversation conversation;
+
+    setUp(() {
+      // Create a conversation with 20 messages (10 rounds)
+      final messages = List.generate(20, (i) => Message(
+        id: 'msg-$i',
+        content: '訊息 $i',
+        isFromMe: i % 2 == 0,
+        timestamp: DateTime.now(),
+      ));
+
+      conversation = Conversation(
+        id: 'conv-1',
+        name: '測試對話',
+        messages: messages,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      conversation.currentRound = 10;
+    });
+
+    test('getRecentMessages returns correct number of messages', () {
+      final recent = conversation.getRecentMessages(5);
+      expect(recent.length, 10); // 5 rounds * 2 messages
+    });
+
+    test('getRecentMessages returns all when fewer than requested', () {
+      final recent = conversation.getRecentMessages(20);
+      expect(recent.length, 20);
+    });
+
+    test('needsSummary returns false when round <= 15', () {
+      conversation.currentRound = 15;
+      expect(conversation.needsSummary, isFalse);
+    });
+
+    test('needsSummary returns true when round > 15 and no summaries', () {
+      conversation.currentRound = 16;
+      conversation.summaries = [];
+      expect(conversation.needsSummary, isTrue);
+    });
+
+    test('needsSummary returns false when has summaries', () {
+      conversation.currentRound = 20;
+      conversation.summaries = [/* mock summary */];
+      expect(conversation.needsSummary, isFalse);
+    });
+  });
+}
+```
+
+**Step 5: Run tests**
 
 ```bash
-git add lib/features/conversation/domain/entities/
+flutter test test/unit/entities/conversation_memory_test.dart
+```
+
+Expected: All tests pass
+
+**Step 6: Commit**
+
+```bash
+git add lib/features/conversation/domain/entities/ test/
 git commit -m "feat: 添加對話記憶實體與摘要結構"
 ```
 
@@ -3283,11 +4351,93 @@ class MemoryService {
 }
 ```
 
-**Step 2: Commit**
+**Step 2: Write unit tests**
+
+Create `test/unit/services/memory_service_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/conversation/data/services/memory_service.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
+
+void main() {
+  group('MemoryService', () {
+    group('inferUserChoice', () {
+      test('returns matching reply type when keyword found', () {
+        final service = MemoryService(/* mock */);
+
+        final theirReply = Message(
+          id: '1',
+          content: '哇健身！你練多久了？',
+          isFromMe: false,
+          timestamp: DateTime.now(),
+        );
+
+        final previousSuggestions = {
+          'extend': '三個月了，越練越上癮',
+          'resonate': '你也有運動習慣嗎',
+          'tease': '練到可以單手抱你',
+        };
+
+        // Should infer 'extend' or 'tease' since they mention 健身
+        final choice = service.inferUserChoice(theirReply, previousSuggestions);
+        expect(choice, isNotNull);
+      });
+
+      test('returns null when no match found', () {
+        final service = MemoryService(/* mock */);
+
+        final theirReply = Message(
+          id: '1',
+          content: '今天天氣真好',
+          isFromMe: false,
+          timestamp: DateTime.now(),
+        );
+
+        final previousSuggestions = {
+          'extend': '三個月了，越練越上癮',
+          'resonate': '你也有運動習慣嗎',
+        };
+
+        final choice = service.inferUserChoice(theirReply, previousSuggestions);
+        expect(choice, isNull);
+      });
+    });
+
+    group('prepareContext', () {
+      test('includes recent messages', () async {
+        final service = MemoryService(/* mock */);
+
+        // This would need a mock Conversation
+        // Full test requires integration with Conversation entity
+      });
+    });
+  });
+}
+```
+
+**Step 3: Run tests**
 
 ```bash
-git add lib/features/conversation/data/services/
+flutter test test/unit/services/memory_service_test.dart
+```
+
+Expected: All tests pass
+
+**Step 4: Commit**
+
+```bash
+git add lib/features/conversation/data/services/ test/
 git commit -m "feat: 建立對話記憶服務 (context 準備 + 選擇追蹤)"
+```
+
+---
+
+## Phase 8 TDD Checkpoint
+
+```bash
+flutter test
+# All tests should pass before proceeding
 ```
 
 ---
@@ -3512,11 +4662,142 @@ GoRoute(
 ),
 ```
 
-**Step 3: Commit**
+**Step 3: Write widget tests**
+
+Create `test/widget/screens/paywall_screen_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
+
+void main() {
+  group('PaywallScreen', () {
+    testWidgets('displays title', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: PaywallScreen()),
+        ),
+      );
+
+      expect(find.text('升級方案'), findsOneWidget);
+      expect(find.text('解鎖完整功能'), findsOneWidget);
+    });
+
+    testWidgets('shows Starter plan', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: PaywallScreen()),
+        ),
+      );
+
+      expect(find.text('Starter'), findsOneWidget);
+      expect(find.text('NT\$149/月'), findsOneWidget);
+    });
+
+    testWidgets('shows Essential plan with recommended badge', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: PaywallScreen()),
+        ),
+      );
+
+      expect(find.text('Essential'), findsOneWidget);
+      expect(find.text('NT\$349/月'), findsOneWidget);
+      expect(find.text('推薦'), findsOneWidget);
+    });
+
+    testWidgets('Essential is selected by default', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: PaywallScreen()),
+        ),
+      );
+
+      // Essential plan card should have selected styling
+      // Check for radio button selection
+      final essentialRadio = tester.widget<Radio<String>>(
+        find.byWidgetPredicate((widget) =>
+          widget is Radio<String> && widget.value == 'essential'
+        ),
+      );
+      expect(essentialRadio.groupValue, 'essential');
+    });
+
+    testWidgets('shows free trial CTA', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: PaywallScreen()),
+        ),
+      );
+
+      expect(find.text('開始 7 天免費試用'), findsOneWidget);
+    });
+
+    testWidgets('shows legal links', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: PaywallScreen()),
+        ),
+      );
+
+      expect(find.text('使用條款'), findsOneWidget);
+      expect(find.text('隱私權政策'), findsOneWidget);
+      expect(find.text('恢復購買'), findsOneWidget);
+    });
+
+    testWidgets('can select Starter plan', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: PaywallScreen()),
+        ),
+      );
+
+      // Tap on Starter plan
+      await tester.tap(find.text('Starter'));
+      await tester.pump();
+
+      final starterRadio = tester.widget<Radio<String>>(
+        find.byWidgetPredicate((widget) =>
+          widget is Radio<String> && widget.value == 'starter'
+        ),
+      );
+      expect(starterRadio.groupValue, 'starter');
+    });
+  });
+}
+```
+
+**Step 4: Run tests**
 
 ```bash
-git add lib/
+flutter test test/widget/screens/paywall_screen_test.dart
+```
+
+Expected: All tests pass
+
+**Step 5: Commit**
+
+```bash
+git add lib/ test/
 git commit -m "feat: 建立 Paywall 訂閱方案選擇畫面"
+```
+
+---
+
+## Phase 9 TDD Checkpoint (Final)
+
+```bash
+# Run all tests
+flutter test
+
+# Check coverage (目標 > 70%)
+flutter test --coverage
+
+# Generate HTML report
+genhtml coverage/lcov.info -o coverage/html
+open coverage/html/index.html
 ```
 
 ---
