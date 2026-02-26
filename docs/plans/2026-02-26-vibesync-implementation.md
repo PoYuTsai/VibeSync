@@ -2558,6 +2558,38 @@ git commit -m "feat: 建立設定畫面 (含清除資料功能)"
 
 ---
 
+## Risk Mitigation Checklist
+
+### Before Launch
+- [ ] Sentry 錯誤監控設定
+- [ ] Firebase Analytics 埋點
+- [ ] App Icon + Splash Screen
+- [ ] 隱私權政策頁面 (實際 URL)
+- [ ] 使用條款頁面
+- [ ] TestFlight / Internal Testing 測試
+- [ ] API 成本監控 Dashboard
+
+### API Resilience
+- [ ] 請求重試機制 (3 次 + exponential backoff)
+- [ ] 離線模式提示 (無網路時)
+- [ ] Rate limit 錯誤處理 (顯示友善訊息)
+- [ ] Timeout 處理 (30 秒上限)
+
+### Message Parsing Robustness
+- [ ] 支援「我：」和「我:」(全形/半形)
+- [ ] 支援「對方:」「她:」「他:」
+- [ ] 支援時間戳記格式 (自動移除)
+- [ ] 支援 LINE/IG 匯出格式 (V2)
+
+### App Store Preparation
+- [ ] 截圖 (6.5" + 5.5")
+- [ ] App 描述 (強調「溝通教練」)
+- [ ] 隱私權聲明 (強調不儲存對話)
+- [ ] 年齡分級 (17+ 建議)
+- [ ] 審核備註 (說明 app 用途)
+
+---
+
 ## Appendix: Test Commands
 
 ```bash

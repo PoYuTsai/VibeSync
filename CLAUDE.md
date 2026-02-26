@@ -70,6 +70,9 @@ Target Audience: 願意投資自我提升的男性用戶
 - [ ] Hive 未初始化就存取 → 確保 `StorageService.initialize()` 完成
 - [ ] Riverpod provider 未 dispose → 使用 `autoDispose`
 - [ ] 未處理 API error → 永遠 try-catch 外部呼叫
+- [ ] Web 平台 secure storage 限制 → MVP 專注 mobile
+- [ ] Edge Function 冷啟動 → 加 loading state + timeout 處理
+- [ ] 訊息格式解析失敗 → 提供清楚錯誤訊息和格式範例
 
 ---
 
