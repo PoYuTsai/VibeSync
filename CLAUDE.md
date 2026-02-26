@@ -51,6 +51,8 @@ Target Audience: 願意投資自我提升的男性用戶
 - 使用繁體中文 commit message
 - 格式：`[類型] 簡短描述`
 - 類型：feat, fix, refactor, docs, test, chore
+- **每次 commit 後立即 push** (不要等，直接推)
+- 一個 commit 做一件事，保持原子性
 
 ### Privacy First
 - 對話內容永不上傳伺服器儲存
@@ -68,13 +70,21 @@ Target Audience: 願意投資自我提升的男性用戶
 - 61-80 (熱情)：80% 鏡像、保持沉穩
 - 81-100 (高熱)：推拉、適度挑戰
 
-## Debugging Protocol
+## Debugging Protocol (自動學習)
+
+> **重要**: Claude 遇到 bug 時必須自動更新此文件，不需要用戶提醒
+
+### 自動記錄流程
+```
+Bug 發生 → 分析 → 修復 → 寫測試 → 更新 CLAUDE.md → commit & push
+```
 
 ### When Bug Occurs
 1. **記錄** - 立即在下方 Bugs & Fixes 區塊記錄
 2. **分析** - 找出 root cause，不只是表面修復
 3. **修復** - 寫測試驗證修復
-4. **預防** - 更新此文件避免再犯
+4. **預防** - 更新 Common Pitfalls 避免再犯
+5. **推送** - commit 此文件變更並 push
 
 ### Bug Report Format
 ```markdown
@@ -87,7 +97,8 @@ Target Audience: 願意投資自我提升的男性用戶
 **相關檔案**: `path/to/file.dart:123`
 ```
 
-### Common Pitfalls (累積中)
+### Common Pitfalls (自動累積)
+<!-- Claude 修復 bug 後自動新增條目 -->
 - [ ] Hive 未初始化就存取 → 確保 `StorageService.initialize()` 完成
 - [ ] Riverpod provider 未 dispose → 使用 `autoDispose`
 - [ ] 未處理 API error → 永遠 try-catch 外部呼叫
@@ -233,4 +244,25 @@ npx supabase stop
 - **新 Session**: 讀此文件 (`CLAUDE.md`) 即可了解專案全貌
 - **開始實作**: 讀 `docs/plans/2026-02-26-vibesync-implementation.md`
 - **設計細節**: 讀 `docs/plans/2026-02-26-vibesync-design.md`
-- 遇到 bug 時更新此文件的 Bugs & Fixes 區塊
+
+---
+
+## Claude 自動行為規則
+
+### 必須自動執行
+| 觸發條件 | 自動行為 |
+|----------|----------|
+| **commit 完成** | 立即 `git push` |
+| **遇到 bug** | 記錄到 Bugs & Fixes 區塊 |
+| **修復 bug** | 更新 Common Pitfalls |
+| **學到新 pattern** | 更新 Design Decisions |
+| **更新此文件** | commit + push |
+
+### 不需要用戶提醒
+- Git push
+- Bug 記錄
+- 測試撰寫
+- 文件更新
+
+### Bugs & Fixes 區塊位置
+在下方 Lessons Learned 區塊內
