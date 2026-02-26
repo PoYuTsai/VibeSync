@@ -1,5 +1,182 @@
 # 支付與訂閱系統設計
 
+## Part 0: iOS vs Android 跨平台支付
+
+### 核心差異
+
+| 項目 | iOS (App Store) | Android (Google Play) |
+|------|-----------------|----------------------|
+| 支付處理 | Apple IAP | Google Play Billing |
+| 抽成比例 | 15-30% | 15-30% |
+| 定價方式 | 固定 Tier (87個等級) | 自由定價 |
+| 退款處理 | Apple 處理 | Google 處理 |
+| 家庭共享 | 支援 | 支援 |
+| 訂閱管理 | 設定 App 內 | Play Store 內 |
+
+### 定價對照
+
+| 方案 | iOS Tier | iOS 價格 | Android 價格 | 備註 |
+|------|----------|----------|--------------|------|
+| Starter | Tier 3 | NT$100 | NT$99 | Android 可自訂 |
+| Pro | Tier 8 | NT$250 | NT$249 | Android 可自訂 |
+| Business | Tier 15 | NT$490 | NT$490 | Android 可自訂 |
+
+> iOS 必須用 Apple 的固定 Tier，Android 可以設任意價格
+
+### RevenueCat 如何統一處理
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     RevenueCat 統一層                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   Flutter App                                                   │
+│       │                                                         │
+│       │  purchases_flutter SDK                                  │
+│       │  (同一套 API，不分平台)                                 │
+│       │                                                         │
+│       ▼                                                         │
+│   ┌─────────────────────────────────────────┐                   │
+│   │           RevenueCat SDK                │                   │
+│   │                                         │                   │
+│   │   • 自動偵測平台 (iOS/Android)          │                   │
+│   │   • 呼叫對應的原生支付 API              │                   │
+│   │   • 統一的訂閱狀態格式                  │                   │
+│   │   • 跨平台用戶識別                      │                   │
+│   │                                         │                   │
+│   └──────────────────┬──────────────────────┘                   │
+│                      │                                          │
+│          ┌───────────┴───────────┐                              │
+│          │                       │                              │
+│          ▼                       ▼                              │
+│   ┌─────────────┐         ┌─────────────┐                       │
+│   │  StoreKit   │         │ Play Billing│                       │
+│   │  (iOS)      │         │  (Android)  │                       │
+│   └─────────────┘         └─────────────┘                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Flutter 程式碼 (跨平台統一)
+
+```dart
+// 同一套程式碼，自動處理 iOS/Android 差異
+
+class SubscriptionService {
+  Future<void> initialize() async {
+    await Purchases.setLogLevel(LogLevel.debug);
+
+    // 根據平台自動選擇 API Key
+    final apiKey = Platform.isIOS
+        ? 'appl_xxxxxxxxxx'  // iOS App Store Key
+        : 'goog_xxxxxxxxxx'; // Android Play Store Key
+
+    await Purchases.configure(
+      PurchasesConfiguration(apiKey)
+        ..appUserID = userId,  // 跨平台用戶識別
+    );
+  }
+
+  // 取得方案 - 同一套 API
+  Future<List<Package>> getPackages() async {
+    final offerings = await Purchases.getOfferings();
+    return offerings.current?.availablePackages ?? [];
+  }
+
+  // 購買 - 同一套 API
+  Future<void> purchase(Package package) async {
+    // RevenueCat 自動處理：
+    // - iOS: 呼叫 StoreKit，顯示 Apple 支付畫面
+    // - Android: 呼叫 Play Billing，顯示 Google 支付畫面
+    final result = await Purchases.purchasePackage(package);
+
+    // 結果格式統一
+    print('購買成功: ${result.customerInfo.activeSubscriptions}');
+  }
+
+  // 檢查訂閱狀態 - 同一套 API
+  Future<bool> isPro() async {
+    final customerInfo = await Purchases.getCustomerInfo();
+    // entitlements 在 RevenueCat Dashboard 設定，跨平台共用
+    return customerInfo.entitlements.active.containsKey('pro');
+  }
+}
+```
+
+### 跨平台訂閱恢復
+
+**情境：用戶在 iPhone 訂閱，換到 Android 手機**
+
+```
+方案 A: 不支援跨平台轉移 (大多數 App 的做法)
+- iPhone 訂閱只在 iOS 有效
+- Android 需要重新訂閱
+- 簡單但用戶體驗差
+
+方案 B: 帳號綁定 (我們的做法)
+- 用 Supabase Auth 帳號識別用戶
+- RevenueCat 用 app_user_id 追蹤
+- 訂閱狀態存在我們的資料庫
+- 任何平台登入都能看到訂閱狀態
+```
+
+```dart
+// 用戶登入後，關聯 RevenueCat
+Future<void> linkUserToRevenueCat(String supabaseUserId) async {
+  // 用 Supabase user ID 作為 RevenueCat 的 app_user_id
+  await Purchases.logIn(supabaseUserId);
+
+  // 這樣不管在 iOS 還是 Android 登入
+  // 都會關聯到同一個訂閱狀態
+}
+```
+
+### 抽成計算
+
+| 年營收 | Apple 抽成 | Google 抽成 | 備註 |
+|--------|-----------|-------------|------|
+| < $1M | 15% | 15% | 小型開發者計畫 |
+| ≥ $1M | 30% | 30% | 標準抽成 |
+
+**實際收入計算（以 Pro NT$250 為例）：**
+
+```
+用戶支付: NT$250 ($7.99)
+平台抽成: -$1.20 (15%)
+實際收入: $6.79 (NT$216)
+我們成本: ~$0.50 (API)
+淨利潤: $6.29 (NT$200)
+```
+
+### 各平台設定清單
+
+#### iOS (App Store Connect)
+- [ ] 建立 App
+- [ ] 設定 In-App Purchases (Subscription)
+- [ ] 建立 Subscription Group
+- [ ] 設定各 Tier 價格
+- [ ] 設定免費試用期
+- [ ] 提交審核
+
+#### Android (Google Play Console)
+- [ ] 建立 App
+- [ ] 設定 Subscriptions
+- [ ] 設定各方案價格
+- [ ] 設定免費試用期
+- [ ] 設定 Grace Period
+- [ ] 發布
+
+#### RevenueCat Dashboard
+- [ ] 建立 Project
+- [ ] 連接 App Store Connect
+- [ ] 連接 Google Play Console
+- [ ] 設定 Products (對應兩邊的 Product ID)
+- [ ] 設定 Entitlements
+- [ ] 設定 Webhook URL (Supabase Edge Function)
+- [ ] 測試 Sandbox 購買
+
+---
+
 ## Part 1: 幣別策略
 
 ### 決策：顯示 TWD，後端用 USD
