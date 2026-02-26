@@ -1,0 +1,39 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Supabase
+supabase/.branches
+supabase/.temp
+
+# Generated
+*.g.dart
+*.freezed.dart
+
+# Test
+coverage/
+
+# Secrets (never commit)
+**/secrets/
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
