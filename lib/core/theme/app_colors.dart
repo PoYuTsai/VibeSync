@@ -27,4 +27,5 @@ class AppColors {
   static const success = Color(0xFF4CAF50);
   static const error = Color(0xFFE57373);
   static const warning = Color(0xFFFFB74D);
+  static const info = Color(0xFF64B5F6);
 }

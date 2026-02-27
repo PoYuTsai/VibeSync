@@ -11,3 +11,10 @@ final conversationsProvider = Provider<List<Conversation>>((ref) {
   final repository = ref.watch(conversationRepositoryProvider);
   return repository.getAllConversations();
 });
+
+/// Provider to get a single conversation by ID (for easier testing)
+final conversationProvider =
+    Provider.family<Conversation?, String>((ref, id) {
+  final repository = ref.watch(conversationRepositoryProvider);
+  return repository.getConversation(id);
+});

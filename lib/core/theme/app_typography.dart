@@ -23,6 +23,12 @@ class AppTypography {
     color: AppColors.textPrimary,
   );
 
+  static const titleMedium = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+
   static const bodyLarge = TextStyle(
     fontSize: 16,
     height: 1.5,
