@@ -3,12 +3,17 @@ import 'package:go_router/go_router.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/conversation/presentation/screens/home_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
+import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/',
   routes: [
+    GoRoute(
+      path: '/onboarding',
+      builder: (context, state) => const OnboardingScreen(),
+    ),
     GoRoute(
       path: '/',
       builder: (context, state) => const HomeScreen(),
