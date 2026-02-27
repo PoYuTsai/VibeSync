@@ -36,7 +36,7 @@
 | Settings (6.1) | `general-purpose` | 設定頁面 |
 | Usage (7.1-7.2) | `general-purpose` | 訊息計算、用量追蹤 |
 | Memory (8.1-8.2) | `general-purpose` | 對話記憶 |
-| Paywall (9.1) | `general-purpose` | 訂閱 UI |
+| Paywall (9.1-9.2) | `general-purpose` | 訂閱 UI + 加購訊息包 |
 | **GAME (10.1-10.2)** | `general-purpose` | **GAME 階段分析、心理解讀** |
 
 ### 並行執行策略
@@ -68,10 +68,10 @@ Phase 6-9 (Sequential within phase, parallel across phases)
 ├─ 6.1 可與 7.x 並行
 ├─ 7.1 → 7.2
 ├─ 8.1 → 8.2
-└─ 9.1
+└─ 9.1 → 9.2
 ```
 
-### 任務總覽 (21 Tasks) - v2.1 與設計規格 v1.1 同步
+### 任務總覽 (22 Tasks) - v2.2 與設計規格 v1.1 完全同步
 
 | # | Task | Agent | 測試 | 依賴 |
 |---|------|-------|------|------|
@@ -86,7 +86,7 @@ Phase 6-9 (Sequential within phase, parallel across phases)
 | 3.3 | Create New Conversation Screen (含情境收集) | general | ✓ | 3.1, 2.3 |
 | 3.4 | Create Analysis Screen (含 GAME + 心理分析) | general | ✓ | 3.1, 2.3 |
 | 4.1 | Setup Supabase Project | Bash | - | 1.3 |
-| 4.2 | Create Edge Function (含 GAME 分析 + 最終建議) | general | ✓ | 4.1 |
+| 4.2 | Create Edge Function (含 GAME 分析 + 最終建議 + 混合模型) | general | ✓ | 4.1 |
 | 5.1 | Setup Supabase Client | general | ✓ | 4.1 |
 | 5.2 | Create Analysis Service | general | ✓ | 4.2, 5.1 |
 | 6.1 | Create Settings Screen | general | ✓ | 3.1 |
@@ -95,6 +95,7 @@ Phase 6-9 (Sequential within phase, parallel across phases)
 | 8.1 | Add Memory Fields to Entities | general | ✓ | 2.1 |
 | 8.2 | Create Memory Service | general | ✓ | 8.1 |
 | 9.1 | Create Paywall Screen | general | ✓ | 3.1 |
+| **9.2** | **Create Message Booster Purchase (加購訊息包)** | general | ✓ | 9.1 |
 | **10.1** | **Create GAME Stage Service** | general | ✓ | 2.1 |
 | **10.2** | **Create Psychology Analysis Widget** | general | ✓ | 3.1, 10.1 |
 
@@ -3505,8 +3506,41 @@ serve(async (req) => {
       )
       .join("\n");
 
-    // Select model based on complexity
-    const model = messages.length > 20 ? "claude-3-5-sonnet-20241022" : "claude-3-5-haiku-20241022";
+    // Select model based on complexity (與設計規格一致)
+    const model = selectModel({
+      conversationLength: messages.length,
+      enthusiasmLevel: null,  // 首次分析前不知道
+      hasComplexEmotions: false,
+      isFirstAnalysis: messages.length <= 5,
+      tier: sub.tier,
+    });
+
+// 模型選擇函數 (設計規格 4.9)
+function selectModel(context: {
+  conversationLength: number;
+  enthusiasmLevel: string | null;
+  hasComplexEmotions: boolean;
+  isFirstAnalysis: boolean;
+  tier: string;
+}): string {
+  // Essential 用戶優先使用 Sonnet
+  if (context.tier === 'essential') {
+    return "claude-sonnet-4-20250514";
+  }
+
+  // 使用 Sonnet 的情況 (30%)
+  if (
+    context.conversationLength > 20 ||      // 長對話
+    context.enthusiasmLevel === 'cold' ||   // 冷淡需要策略
+    context.hasComplexEmotions ||           // 複雜情緒
+    context.isFirstAnalysis                 // 首次分析建立基準
+  ) {
+    return "claude-sonnet-4-20250514";
+  }
+
+  // 預設使用 Haiku (70%)
+  return "claude-3-5-haiku-20241022";
+}
 
     // Call Claude API
     const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
@@ -5462,6 +5496,417 @@ git commit -m "feat: 建立 Paywall 訂閱方案選擇畫面"
 
 ---
 
+### Task 9.2: Create Message Booster Purchase (加購訊息包)
+
+**Files:**
+- Create: `lib/features/subscription/domain/entities/message_booster.dart`
+- Create: `lib/features/subscription/presentation/widgets/booster_purchase_sheet.dart`
+- Modify: `lib/features/subscription/presentation/screens/paywall_screen.dart`
+
+**Step 1: Create message_booster.dart entity**
+
+```dart
+// lib/features/subscription/domain/entities/message_booster.dart
+
+enum BoosterPackage {
+  small,   // 50 則
+  medium,  // 150 則
+  large,   // 300 則
+}
+
+extension BoosterPackageExtension on BoosterPackage {
+  int get messageCount {
+    switch (this) {
+      case BoosterPackage.small:
+        return 50;
+      case BoosterPackage.medium:
+        return 150;
+      case BoosterPackage.large:
+        return 300;
+    }
+  }
+
+  int get priceNTD {
+    switch (this) {
+      case BoosterPackage.small:
+        return 39;
+      case BoosterPackage.medium:
+        return 99;
+      case BoosterPackage.large:
+        return 179;
+    }
+  }
+
+  double get costPerMessage {
+    return priceNTD / messageCount;
+  }
+
+  String get label {
+    return '$messageCount 則';
+  }
+
+  String get priceLabel {
+    return 'NT\$$priceNTD';
+  }
+
+  String get savingsLabel {
+    switch (this) {
+      case BoosterPackage.small:
+        return '';
+      case BoosterPackage.medium:
+        return '省 15%';
+      case BoosterPackage.large:
+        return '省 23%';
+    }
+  }
+}
+```
+
+**Step 2: Create booster_purchase_sheet.dart**
+
+```dart
+// lib/features/subscription/presentation/widgets/booster_purchase_sheet.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../domain/entities/message_booster.dart';
+
+class BoosterPurchaseSheet extends ConsumerStatefulWidget {
+  const BoosterPurchaseSheet({super.key});
+
+  @override
+  ConsumerState<BoosterPurchaseSheet> createState() => _BoosterPurchaseSheetState();
+}
+
+class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
+  BoosterPackage _selectedPackage = BoosterPackage.medium;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Title
+          Text(
+            '加購訊息包',
+            style: AppTypography.headlineMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '額度不夠用？立即加購',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+
+          // Package options
+          ...BoosterPackage.values.map((pkg) => _buildPackageOption(pkg)),
+
+          const SizedBox(height: 24),
+
+          // Purchase button
+          ElevatedButton(
+            onPressed: _purchase,
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              backgroundColor: AppColors.primary,
+            ),
+            child: Text(
+              '購買 ${_selectedPackage.label} - ${_selectedPackage.priceLabel}',
+              style: AppTypography.titleMedium.copyWith(color: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPackageOption(BoosterPackage pkg) {
+    final isSelected = _selectedPackage == pkg;
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPackage = pkg),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withOpacity(0.1) : AppColors.background,
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.textSecondary.withOpacity(0.2),
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Radio<BoosterPackage>(
+              value: pkg,
+              groupValue: _selectedPackage,
+              onChanged: (v) => setState(() => _selectedPackage = v!),
+              activeColor: AppColors.primary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(pkg.label, style: AppTypography.titleMedium),
+                  Text(
+                    '每則 NT\$${pkg.costPerMessage.toStringAsFixed(2)}',
+                    style: AppTypography.caption,
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(pkg.priceLabel, style: AppTypography.titleMedium),
+                if (pkg.savingsLabel.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.hot.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      pkg.savingsLabel,
+                      style: AppTypography.caption.copyWith(color: AppColors.hot),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _purchase() {
+    // TODO: Integrate with RevenueCat for IAP
+    Navigator.of(context).pop(_selectedPackage);
+  }
+}
+
+/// Show booster purchase sheet
+Future<BoosterPackage?> showBoosterPurchaseSheet(BuildContext context) {
+  return showModalBottomSheet<BoosterPackage>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => const BoosterPurchaseSheet(),
+  );
+}
+```
+
+**Step 3: Add booster link to PaywallScreen**
+
+Update `paywall_screen.dart` to include a "加購訊息包" link:
+
+```dart
+// Add after the legal links section in PaywallScreen
+
+const SizedBox(height: 16),
+Center(
+  child: TextButton(
+    onPressed: () async {
+      final result = await showBoosterPurchaseSheet(context);
+      if (result != null) {
+        // TODO: Process purchase
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已購買 ${result.label}')),
+        );
+      }
+    },
+    child: Text(
+      '只需要加購訊息包？',
+      style: AppTypography.bodyMedium.copyWith(
+        color: AppColors.primary,
+        decoration: TextDecoration.underline,
+      ),
+    ),
+  ),
+),
+```
+
+**Step 4: Write unit tests**
+
+Create `test/unit/entities/message_booster_test.dart`:
+
+```dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/subscription/domain/entities/message_booster.dart';
+
+void main() {
+  group('BoosterPackage', () {
+    test('small package has correct values', () {
+      expect(BoosterPackage.small.messageCount, 50);
+      expect(BoosterPackage.small.priceNTD, 39);
+      expect(BoosterPackage.small.label, '50 則');
+      expect(BoosterPackage.small.priceLabel, 'NT\$39');
+    });
+
+    test('medium package has correct values', () {
+      expect(BoosterPackage.medium.messageCount, 150);
+      expect(BoosterPackage.medium.priceNTD, 99);
+      expect(BoosterPackage.medium.savingsLabel, '省 15%');
+    });
+
+    test('large package has correct values', () {
+      expect(BoosterPackage.large.messageCount, 300);
+      expect(BoosterPackage.large.priceNTD, 179);
+      expect(BoosterPackage.large.savingsLabel, '省 23%');
+    });
+
+    test('cost per message decreases with larger packages', () {
+      expect(BoosterPackage.small.costPerMessage, greaterThan(BoosterPackage.medium.costPerMessage));
+      expect(BoosterPackage.medium.costPerMessage, greaterThan(BoosterPackage.large.costPerMessage));
+    });
+  });
+}
+```
+
+**Step 5: Write widget tests**
+
+Create `test/widget/widgets/booster_purchase_sheet_test.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/subscription/presentation/widgets/booster_purchase_sheet.dart';
+
+void main() {
+  group('BoosterPurchaseSheet', () {
+    testWidgets('displays title', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(body: BoosterPurchaseSheet()),
+          ),
+        ),
+      );
+
+      expect(find.text('加購訊息包'), findsOneWidget);
+      expect(find.text('額度不夠用？立即加購'), findsOneWidget);
+    });
+
+    testWidgets('shows all three packages', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(body: BoosterPurchaseSheet()),
+          ),
+        ),
+      );
+
+      expect(find.text('50 則'), findsOneWidget);
+      expect(find.text('150 則'), findsOneWidget);
+      expect(find.text('300 則'), findsOneWidget);
+    });
+
+    testWidgets('shows prices correctly', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(body: BoosterPurchaseSheet()),
+          ),
+        ),
+      );
+
+      expect(find.text('NT\$39'), findsOneWidget);
+      expect(find.text('NT\$99'), findsOneWidget);
+      expect(find.text('NT\$179'), findsOneWidget);
+    });
+
+    testWidgets('medium package is selected by default', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(body: BoosterPurchaseSheet()),
+          ),
+        ),
+      );
+
+      // Check button shows medium package
+      expect(find.text('購買 150 則 - NT\$99'), findsOneWidget);
+    });
+
+    testWidgets('can select different package', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(body: BoosterPurchaseSheet()),
+          ),
+        ),
+      );
+
+      // Tap on large package
+      await tester.tap(find.text('300 則'));
+      await tester.pump();
+
+      expect(find.text('購買 300 則 - NT\$179'), findsOneWidget);
+    });
+
+    testWidgets('shows savings badges', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(body: BoosterPurchaseSheet()),
+          ),
+        ),
+      );
+
+      expect(find.text('省 15%'), findsOneWidget);
+      expect(find.text('省 23%'), findsOneWidget);
+    });
+  });
+}
+```
+
+**Step 6: Run tests**
+
+```bash
+flutter test test/unit/entities/message_booster_test.dart
+flutter test test/widget/widgets/booster_purchase_sheet_test.dart
+```
+
+Expected: All tests pass
+
+**Step 7: Commit**
+
+```bash
+git add lib/features/subscription/ test/
+git commit -m "feat: 建立加購訊息包功能 (50/150/300 則)"
+```
+
+---
+
 ## Phase 9 TDD Checkpoint
 
 ```bash
@@ -6071,7 +6516,7 @@ open coverage/html/index.html
 6. Settings (1 task) - Settings screen
 7. Message Calculation & Usage (2 tasks) - 訊息計算、用量追蹤、預覽確認
 8. Conversation Memory (2 tasks) - 對話記憶、摘要、選擇追蹤
-9. Paywall & Subscription (1 task) - 訂閱方案選擇畫面
+9. Paywall & Subscription (2 tasks) - 訂閱方案選擇畫面 + 加購訊息包
 10. GAME Framework (2 tasks) - GAME 階段分析、心理解讀元件
 
 **Next Steps After MVP:**
@@ -6140,6 +6585,24 @@ supabase functions deploy analyze-chat
 | 2026-02-26 | 1.0 | 初始實作計畫 |
 | 2026-02-26 | 2.0 | **重大更新** - 與設計規格書同步 |
 | 2026-02-27 | 2.1 | **GAME 框架整合** - 與設計規格 v1.1 同步 |
+| 2026-02-27 | 2.2 | **完全同步** - 補齊混合模型策略 + 加購訊息包 |
+
+### v2.2 變更明細 (與設計規格 v1.1 完全同步)
+
+**混合模型策略 (設計規格 4.9)**
+- ✅ 更新: Task 4.2 Edge Function 加入 `selectModel()` 函數
+- ✅ 邏輯: Essential 優先 Sonnet / 長對話 / 冷淡 / 複雜情緒 / 首次分析 → Sonnet
+- ✅ 預設: 70% Haiku / 30% Sonnet
+
+**加購訊息包 (設計規格 7.4)**
+- ✅ 新增: Task 9.2 Create Message Booster Purchase
+- ✅ 新增: `BoosterPackage` entity (50/150/300 則)
+- ✅ 新增: `BoosterPurchaseSheet` widget
+- ✅ 定價: NT$39/99/179 (與設計規格一致)
+
+**總任務數**: 21 → 22 tasks
+
+---
 
 ### v2.1 變更明細 (與設計規格 v1.1 同步)
 
@@ -6196,6 +6659,6 @@ supabase functions deploy analyze-chat
 **新增 Phase**
 - Phase 7: 訊息計算與用量追蹤 (2 tasks)
 - Phase 8: 對話記憶 (2 tasks)
-- Phase 9: Paywall 訂閱畫面 (1 task)
+- Phase 9: Paywall 訂閱畫面 (1 task → v2.2 更新為 2 tasks)
 
 **總任務數**: 15 → 19 tasks
