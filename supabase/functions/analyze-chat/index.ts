@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { SAFETY_RULES, checkAiOutput, checkInput } from "./guardrails.ts";
+import { callClaudeWithFallback, AiServiceError } from "./fallback.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -349,17 +350,11 @@ serve(async (req) => {
     // Get available features for this tier
     const allowedFeatures = TIER_FEATURES[sub.tier] || TIER_FEATURES.free;
 
-    // Call Claude API
-    const claudeResponse = await fetch(
-      "https://api.anthropic.com/v1/messages",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": CLAUDE_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
+    // Call Claude API with fallback
+    let claudeResult;
+    try {
+      claudeResult = await callClaudeWithFallback(
+        {
           model,
           max_tokens: 1024,
           system: SYSTEM_PROMPT,
@@ -369,20 +364,28 @@ serve(async (req) => {
               content: `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`,
             },
           ],
-        }),
+        },
+        CLAUDE_API_KEY
+      );
+    } catch (error) {
+      if (error instanceof AiServiceError) {
+        return new Response(
+          JSON.stringify({
+            error: error.message,
+            code: error.code,
+            retryable: error.retryable,
+          }),
+          {
+            status: 502,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
-    );
-
-    if (!claudeResponse.ok) {
-      console.error("Claude API error:", await claudeResponse.text());
-      return new Response(JSON.stringify({ error: "AI service error" }), {
-        status: 502,
-        headers: { "Content-Type": "application/json" },
-      });
+      throw error;
     }
 
-    const claudeData = await claudeResponse.json();
-    const content = claudeData.content[0]?.text;
+    const content = claudeResult.data.content[0]?.text;
+    const actualModel = claudeResult.model;
 
     // Parse Claude's response
     let result;
@@ -442,7 +445,9 @@ serve(async (req) => {
       messagesUsed: messageCount,
       monthlyRemaining: monthlyLimit - sub.monthly_messages_used - messageCount,
       dailyRemaining: dailyLimit - sub.daily_messages_used - messageCount,
-      model,
+      model: actualModel,
+      fallbackUsed: claudeResult.fallbackUsed,
+      retries: claudeResult.retries,
     };
 
     return new Response(JSON.stringify(result), {
