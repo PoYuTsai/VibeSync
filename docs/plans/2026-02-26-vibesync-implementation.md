@@ -69,9 +69,20 @@ Phase 6-9 (Sequential within phase, parallel across phases)
 ├─ 7.1 → 7.2
 ├─ 8.1 → 8.2
 └─ 9.1 → 9.2
+
+Phase 10 (Partially Parallel)
+├─ 10.1 (GAME Stage Service)
+└─ 10.2 (Psychology Widget) ← 依賴 10.1
+
+Phase 11 (商業級補充 - Partially Parallel)
+├─ 11.1 (AI Guardrails) → 11.2 (Fallback)
+├─ 11.3 (AI Audit Log)
+├─ 11.4 (Onboarding) ← 依賴 UI 完成
+├─ 11.5 (Rate Limiting)
+└─ 11.6 (Token Tracking) ← 依賴 11.3
 ```
 
-### 任務總覽 (22 Tasks) - v2.2 與設計規格 v1.1 完全同步
+### 任務總覽 (28 Tasks) - v2.3 與設計規格 v1.2 完全同步
 
 | # | Task | Agent | 測試 | 依賴 |
 |---|------|-------|------|------|
@@ -95,9 +106,15 @@ Phase 6-9 (Sequential within phase, parallel across phases)
 | 8.1 | Add Memory Fields to Entities | general | ✓ | 2.1 |
 | 8.2 | Create Memory Service | general | ✓ | 8.1 |
 | 9.1 | Create Paywall Screen | general | ✓ | 3.1 |
-| **9.2** | **Create Message Booster Purchase (加購訊息包)** | general | ✓ | 9.1 |
-| **10.1** | **Create GAME Stage Service** | general | ✓ | 2.1 |
-| **10.2** | **Create Psychology Analysis Widget** | general | ✓ | 3.1, 10.1 |
+| 9.2 | Create Message Booster Purchase (加購訊息包) | general | ✓ | 9.1 |
+| 10.1 | Create GAME Stage Service | general | ✓ | 2.1 |
+| 10.2 | Create Psychology Analysis Widget | general | ✓ | 3.1, 10.1 |
+| **11.1** | **Create AI Guardrails (AI 護欄)** | general | ✓ | 4.2 |
+| **11.2** | **Create AI Fallback Service** | general | ✓ | 4.2, 11.1 |
+| **11.3** | **Create AI Audit Log (日誌)** | general | ✓ | 4.1 |
+| **11.4** | **Create Onboarding Flow** | general | ✓ | 3.1, 3.2 |
+| **11.5** | **Create Rate Limiting Service** | general | ✓ | 4.1, 7.1 |
+| **11.6** | **Create Token Tracking Service** | general | ✓ | 4.2, 11.3 |
 
 ### TDD 檢查點
 
@@ -6487,7 +6504,7 @@ git commit -m "feat: 建立 GAME 階段指示器與心理分析元件"
 
 ---
 
-## Phase 10 TDD Checkpoint (Final)
+## Phase 10 TDD Checkpoint
 
 ```bash
 # Run all tests
@@ -6503,9 +6520,1644 @@ open coverage/html/index.html
 
 ---
 
+## Phase 11: 商業級 SaaS 補充 (設計規格 v1.2)
+
+> **重要**：此 Phase 對應設計規格 v1.2 附錄 B 的商業級補充設計
+
+### Task 11.1: Create AI Guardrails (AI 護欄)
+
+**Files:**
+- Create: `supabase/functions/analyze-chat/guardrails.ts`
+- Modify: `supabase/functions/analyze-chat/index.ts`
+- Create: `test/unit/guardrails_test.dart`
+
+**Step 1: Create guardrails.ts**
+
+```typescript
+// supabase/functions/analyze-chat/guardrails.ts
+
+// 安全規則 - 加入 System Prompt
+export const SAFETY_RULES = `
+## 安全規則 (不可違反)
+
+### 絕對禁止建議：
+- 任何形式的騷擾、跟蹤、強迫行為
+- 未經同意的身體接觸暗示
+- 操控、威脅、情緒勒索的言語
+- 持續聯繫已明確拒絕的對象
+- 任何違法行為
+
+### 冰點情境處理：
+當熱度 < 30 且對方明顯不感興趣時：
+- 建議用戶「尊重對方意願」
+- 可建議「開新對話，認識其他人」
+- 絕不建議「再試一次」或「換個方式追」
+
+### 輸出原則：
+- 所有建議必須基於「雙方舒適」
+- 鼓勵真誠表達，而非操控技巧
+`;
+
+// 禁止詞彙模式
+const BLOCKED_PATTERNS = [
+  /跟蹤|stalking/i,
+  /不要放棄.*一直/i,
+  /她說不要.*但其實/i,
+  /強迫|逼.*答應/i,
+  /騷擾|harassment/i,
+  /威脅|勒索/i,
+  /死纏爛打/i,
+];
+
+// 安全回覆 (當觸發護欄時)
+const SAFE_REPLIES: Record<string, Record<string, string>> = {
+  cold: {
+    extend: '可以聊聊最近有什麼有趣的事嗎？',
+    resonate: '我理解，每個人都有自己的步調',
+    tease: '好吧，那我先忙我的囉',
+    humor: '看來今天運氣不太好呢',
+    coldRead: '感覺你現在比較忙？',
+  },
+  warm: {
+    extend: '這個話題蠻有趣的，可以多說一點嗎？',
+    resonate: '我懂你的意思',
+    tease: '你這樣說讓我很好奇欸',
+    humor: '哈哈，你很有趣耶',
+    coldRead: '感覺你是個很有想法的人',
+  },
+  hot: {
+    extend: '繼續聊這個，我覺得很有意思',
+    resonate: '對啊，我也這麼覺得',
+    tease: '你這樣說，讓我更想認識你了',
+    humor: '跟你聊天很開心耶',
+    coldRead: '我覺得我們蠻合的',
+  },
+  very_hot: {
+    extend: '我們可以找時間見面聊',
+    resonate: '真的很開心認識你',
+    tease: '那我們來約個時間吧',
+    humor: '再聊下去我要愛上你了',
+    coldRead: '我有預感我們會很合',
+  },
+};
+
+export interface AnalysisResult {
+  enthusiasm: { score: number; level: string };
+  replies: Record<string, string>;
+  warnings: Array<{ type: string; message: string }>;
+  [key: string]: any;
+}
+
+export function validateOutput(response: AnalysisResult): AnalysisResult {
+  const allReplies = Object.values(response.replies).join(' ');
+
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(allReplies)) {
+      const level = response.enthusiasm.level || 'warm';
+      return {
+        ...response,
+        replies: SAFE_REPLIES[level] || SAFE_REPLIES.warm,
+        warnings: [
+          ...response.warnings,
+          {
+            type: 'safety_filter',
+            message: '部分建議因安全考量已調整',
+          },
+        ],
+      };
+    }
+  }
+
+  return response;
+}
+
+export function getSafeReplies(level: string): Record<string, string> {
+  return SAFE_REPLIES[level] || SAFE_REPLIES.warm;
+}
+```
+
+**Step 2: Update index.ts to use guardrails**
+
+在 `supabase/functions/analyze-chat/index.ts` 中：
+
+```typescript
+import { SAFETY_RULES, validateOutput } from './guardrails.ts';
+
+// 在 SYSTEM_PROMPT 中加入 SAFETY_RULES
+const SYSTEM_PROMPT = `你是一位專業的社交溝通教練...
+
+${SAFETY_RULES}
+
+...其餘 prompt 內容`;
+
+// 在回傳結果前驗證
+const validatedResult = validateOutput(result);
+return new Response(JSON.stringify(validatedResult), { ... });
+```
+
+**Step 3: Create Flutter side disclaimer widget**
+
+```dart
+// lib/shared/widgets/disclaimer_banner.dart
+import 'package:flutter/material.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
+
+class DisclaimerBanner extends StatelessWidget {
+  const DisclaimerBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: AppColors.surface,
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 16, color: AppColors.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '建議僅供參考，請以真誠、尊重為原則',
+              style: AppTypography.caption,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+**Step 4: Write tests**
+
+```dart
+// test/unit/guardrails_test.dart
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('Guardrails', () {
+    test('should detect blocked patterns', () {
+      // Test patterns
+      final blockedTexts = [
+        '不要放棄，一直試試看',
+        '她說不要但其實是在測試你',
+        '你應該跟蹤她的社群',
+      ];
+
+      for (final text in blockedTexts) {
+        expect(containsBlockedPattern(text), isTrue, reason: 'Should block: $text');
+      }
+    });
+
+    test('should allow safe content', () {
+      final safeTexts = [
+        '可以聊聊最近有什麼有趣的事嗎？',
+        '你這樣說讓我很好奇欸',
+        '跟你聊天很開心',
+      ];
+
+      for (final text in safeTexts) {
+        expect(containsBlockedPattern(text), isFalse, reason: 'Should allow: $text');
+      }
+    });
+  });
+}
+
+bool containsBlockedPattern(String text) {
+  final patterns = [
+    RegExp(r'跟蹤|stalking', caseSensitive: false),
+    RegExp(r'不要放棄.*一直', caseSensitive: false),
+    RegExp(r'她說不要.*但其實', caseSensitive: false),
+  ];
+  return patterns.any((p) => p.hasMatch(text));
+}
+```
+
+**Step 5: Commit**
+
+```bash
+git add supabase/functions/analyze-chat/ lib/shared/widgets/disclaimer_banner.dart test/
+git commit -m "feat: 建立 AI 護欄機制 (安全約束 + 輸出驗證)"
+```
+
+---
+
+### Task 11.2: Create AI Fallback Service
+
+**Files:**
+- Create: `supabase/functions/analyze-chat/fallback.ts`
+- Modify: `supabase/functions/analyze-chat/index.ts`
+- Create: `lib/features/analysis/presentation/widgets/analysis_error_widget.dart`
+
+**Step 1: Create fallback.ts**
+
+```typescript
+// supabase/functions/analyze-chat/fallback.ts
+
+interface CallOptions {
+  timeout: number;
+  maxRetries: number;
+}
+
+interface ClaudeRequest {
+  model: string;
+  max_tokens: number;
+  system: string;
+  messages: Array<{ role: string; content: string }>;
+}
+
+const DEFAULT_OPTIONS: CallOptions = {
+  timeout: 30000,  // 30 秒
+  maxRetries: 2,
+};
+
+const MODEL_FALLBACK_CHAIN = {
+  'claude-sonnet-4-20250514': 'claude-3-5-haiku-20241022',
+  'claude-3-5-haiku-20241022': null,  // Haiku 是最後一層
+};
+
+export async function callClaudeWithFallback(
+  request: ClaudeRequest,
+  apiKey: string,
+  options: Partial<CallOptions> = {}
+): Promise<{ data: any; model: string; retries: number }> {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  let currentModel = request.model;
+  let totalRetries = 0;
+
+  while (currentModel) {
+    for (let attempt = 1; attempt <= opts.maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({ ...request, model: currentModel }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`API Error: ${response.status} - ${error.message}`);
+        }
+
+        const data = await response.json();
+        return { data, model: currentModel, retries: totalRetries };
+
+      } catch (error) {
+        totalRetries++;
+        console.log(`${currentModel} attempt ${attempt} failed:`, error.message);
+
+        if (attempt === opts.maxRetries) {
+          // 嘗試降級到下一個模型
+          const nextModel = MODEL_FALLBACK_CHAIN[currentModel];
+          if (nextModel) {
+            console.log(`Falling back from ${currentModel} to ${nextModel}`);
+            currentModel = nextModel;
+            break;
+          } else {
+            // 所有模型都失敗
+            throw new AIServiceError('AI_UNAVAILABLE', totalRetries);
+          }
+        }
+
+        // 等待後重試
+        await sleep(1000 * attempt);  // exponential backoff
+      }
+    }
+  }
+
+  throw new AIServiceError('AI_UNAVAILABLE', totalRetries);
+}
+
+export class AIServiceError extends Error {
+  code: string;
+  retries: number;
+
+  constructor(code: string, retries: number) {
+    super(`AI service unavailable after ${retries} retries`);
+    this.code = code;
+    this.retries = retries;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+```
+
+**Step 2: Create Flutter error widget**
+
+```dart
+// lib/features/analysis/presentation/widgets/analysis_error_widget.dart
+import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+
+class AnalysisErrorWidget extends StatelessWidget {
+  final VoidCallback onRetry;
+  final String? errorMessage;
+
+  const AnalysisErrorWidget({
+    super.key,
+    required this.onRetry,
+    this.errorMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('😔', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 16),
+            Text(
+              '分析暫時無法完成',
+              style: AppTypography.headlineMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              errorMessage ?? 'AI 服務目前忙碌中，請稍後再試',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle, size: 16, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    '此次不會扣除訊息額度',
+                    style: AppTypography.caption.copyWith(color: AppColors.primary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: onRetry,
+              child: const Text('重新分析'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+**Step 3: Write tests**
+
+```dart
+// test/widget/widgets/analysis_error_widget_test.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/analysis_error_widget.dart';
+
+void main() {
+  group('AnalysisErrorWidget', () {
+    testWidgets('displays error message', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnalysisErrorWidget(onRetry: () {}),
+          ),
+        ),
+      );
+
+      expect(find.text('分析暫時無法完成'), findsOneWidget);
+      expect(find.text('此次不會扣除訊息額度'), findsOneWidget);
+    });
+
+    testWidgets('calls onRetry when button pressed', (tester) async {
+      var retryCalled = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AnalysisErrorWidget(onRetry: () => retryCalled = true),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('重新分析'));
+      expect(retryCalled, isTrue);
+    });
+  });
+}
+```
+
+**Step 4: Commit**
+
+```bash
+git add supabase/functions/analyze-chat/fallback.ts lib/features/analysis/presentation/widgets/ test/
+git commit -m "feat: 建立 AI Fallback 機制 (重試 + 降級 + 錯誤 UI)"
+```
+
+---
+
+### Task 11.3: Create AI Audit Log (日誌)
+
+**Files:**
+- Create: `supabase/migrations/003_ai_logs.sql`
+- Create: `supabase/functions/analyze-chat/logger.ts`
+- Modify: `supabase/functions/analyze-chat/index.ts`
+
+**Step 1: Create migration**
+
+```sql
+-- supabase/migrations/003_ai_logs.sql
+
+CREATE TABLE ai_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+
+  -- 請求資訊
+  model TEXT NOT NULL,
+  request_type TEXT NOT NULL DEFAULT 'analyze',
+
+  -- Token 使用
+  input_tokens INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  cost_usd DECIMAL(10, 6),
+
+  -- 效能
+  latency_ms INTEGER NOT NULL,
+
+  -- 狀態
+  status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'filtered')),
+  error_code TEXT,
+
+  -- 失敗時才記錄的完整內容
+  request_body JSONB,
+  response_body JSONB,
+  error_message TEXT,
+
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX idx_ai_logs_user_id ON ai_logs(user_id);
+CREATE INDEX idx_ai_logs_created_at ON ai_logs(created_at);
+CREATE INDEX idx_ai_logs_status ON ai_logs(status);
+
+-- RLS
+ALTER TABLE ai_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own logs" ON ai_logs
+  FOR SELECT USING (auth.uid() = user_id);
+
+-- 清理函數 (30 天)
+CREATE OR REPLACE FUNCTION cleanup_old_ai_logs()
+RETURNS void AS $$
+BEGIN
+  DELETE FROM ai_logs WHERE created_at < NOW() - INTERVAL '30 days';
+END;
+$$ LANGUAGE plpgsql;
+
+-- 排程清理 (需要 pg_cron extension)
+-- SELECT cron.schedule('cleanup-ai-logs', '0 3 * * *', 'SELECT cleanup_old_ai_logs()');
+```
+
+**Step 2: Create logger.ts**
+
+```typescript
+// supabase/functions/analyze-chat/logger.ts
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+interface LogParams {
+  userId: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  status: 'success' | 'failed' | 'filtered';
+  requestBody?: object;
+  responseBody?: object;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'claude-sonnet-4-20250514': {
+    input: 3.00 / 1_000_000,
+    output: 15.00 / 1_000_000,
+  },
+  'claude-3-5-haiku-20241022': {
+    input: 0.25 / 1_000_000,
+    output: 1.25 / 1_000_000,
+  },
+};
+
+export function calculateCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): number {
+  const pricing = MODEL_PRICING[model] || MODEL_PRICING['claude-3-5-haiku-20241022'];
+  return (inputTokens * pricing.input) + (outputTokens * pricing.output);
+}
+
+export async function logAICall(
+  supabase: ReturnType<typeof createClient>,
+  params: LogParams
+): Promise<void> {
+  const costUsd = calculateCost(params.model, params.inputTokens, params.outputTokens);
+
+  await supabase.from('ai_logs').insert({
+    user_id: params.userId,
+    model: params.model,
+    request_type: 'analyze',
+    input_tokens: params.inputTokens,
+    output_tokens: params.outputTokens,
+    cost_usd: costUsd,
+    latency_ms: params.latencyMs,
+    status: params.status,
+    // 失敗時才記錄完整內容
+    request_body: params.status === 'failed' ? params.requestBody : null,
+    response_body: params.status === 'failed' ? params.responseBody : null,
+    error_code: params.errorCode || null,
+    error_message: params.errorMessage || null,
+  });
+}
+```
+
+**Step 3: Update index.ts**
+
+```typescript
+// 在 index.ts 中使用 logger
+import { logAICall, calculateCost } from './logger.ts';
+
+// 在 API 呼叫前後記錄
+const startTime = Date.now();
+try {
+  const { data, model, retries } = await callClaudeWithFallback(request, apiKey);
+  const latencyMs = Date.now() - startTime;
+
+  await logAICall(supabase, {
+    userId: user.id,
+    model,
+    inputTokens: data.usage.input_tokens,
+    outputTokens: data.usage.output_tokens,
+    latencyMs,
+    status: 'success',
+  });
+
+  // ... 處理結果
+} catch (error) {
+  const latencyMs = Date.now() - startTime;
+
+  await logAICall(supabase, {
+    userId: user.id,
+    model: request.model,
+    inputTokens: 0,
+    outputTokens: 0,
+    latencyMs,
+    status: 'failed',
+    requestBody: request,
+    errorCode: error.code,
+    errorMessage: error.message,
+  });
+
+  throw error;
+}
+```
+
+**Step 4: Commit**
+
+```bash
+git add supabase/migrations/003_ai_logs.sql supabase/functions/analyze-chat/logger.ts
+git commit -m "feat: 建立 AI 日誌系統 (成本追蹤 + 失敗記錄)"
+```
+
+---
+
+### Task 11.4: Create Onboarding Flow
+
+**Files:**
+- Create: `lib/features/onboarding/presentation/screens/onboarding_screen.dart`
+- Create: `lib/features/onboarding/presentation/widgets/onboarding_page.dart`
+- Create: `lib/features/onboarding/data/demo_conversation.dart`
+- Create: `lib/features/onboarding/data/onboarding_service.dart`
+- Modify: `lib/app/routes.dart`
+
+**Step 1: Create onboarding_service.dart**
+
+```dart
+// lib/features/onboarding/data/onboarding_service.dart
+import 'package:shared_preferences/shared_preferences.dart';
+
+class OnboardingService {
+  static const _key = 'onboarding_completed';
+
+  static Future<bool> isCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_key) ?? false;
+  }
+
+  static Future<void> markCompleted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_key, true);
+  }
+
+  static Future<void> reset() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+  }
+}
+```
+
+**Step 2: Create demo_conversation.dart**
+
+```dart
+// lib/features/onboarding/data/demo_conversation.dart
+import '../../conversation/domain/entities/message.dart';
+import '../../analysis/domain/entities/analysis_result.dart';
+
+class DemoConversation {
+  static const name = '範例對話';
+
+  static final messages = [
+    Message(
+      id: 'demo_1',
+      content: '欸你週末都在幹嘛',
+      isFromMe: false,
+      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
+    ),
+    Message(
+      id: 'demo_2',
+      content: '看情況欸 有時候爬山有時候耍廢',
+      isFromMe: true,
+      timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 50)),
+    ),
+    Message(
+      id: 'demo_3',
+      content: '哇塞你也爬山！我最近去了抹茶山超美',
+      isFromMe: false,
+      timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 45)),
+    ),
+  ];
+
+  // 預設結果 (不呼叫 API)
+  static final demoResult = AnalysisResult(
+    gameStage: GameStageResult(
+      current: GameStage.premise,
+      status: '正常進行',
+      nextStep: '可以推進到評估階段',
+    ),
+    enthusiasm: EnthusiasmResult(score: 72, level: EnthusiasmLevel.hot),
+    topicDepth: TopicDepthResult(
+      current: TopicDepth.personal,
+      suggestion: '可以往曖昧導向推進',
+    ),
+    replies: {
+      'extend': '抹茶山不錯欸，你喜歡哪種路線？',
+      'resonate': '抹茶山超讚！雲海那段是不是很美',
+      'tease': '聽起來你很會挑地方嘛，改天帶路？',
+      'humor': '抹茶山...所以你是抹茶控？',
+      'coldRead': '感覺你是那種週末不會待在家的人',
+    },
+    finalRecommendation: FinalRecommendation(
+      pick: 'tease',
+      content: '聽起來你很會挑地方嘛，改天帶路？',
+      reason: '熱度足夠，用調情建立張力並埋下邀約伏筆',
+      psychology: '她主動分享代表對你有興趣',
+    ),
+    warnings: [],
+    strategy: '保持輕鬆，適時推進',
+    reminder: '記得用你的方式說，見面才自然',
+  );
+}
+```
+
+**Step 3: Create onboarding_screen.dart**
+
+```dart
+// lib/features/onboarding/presentation/screens/onboarding_screen.dart
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../data/onboarding_service.dart';
+import '../widgets/onboarding_page.dart';
+
+class OnboardingScreen extends StatefulWidget {
+  const OnboardingScreen({super.key});
+
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final _pageController = PageController();
+  int _currentPage = 0;
+
+  final _pages = [
+    const OnboardingPage(
+      emoji: '👋',
+      title: '歡迎使用 VibeSync',
+      subtitle: '讓每次對話都更有默契',
+      description: '社交溝通教練，幫你讀懂對方',
+    ),
+    const OnboardingPage(
+      emoji: '📊',
+      title: '熱度分析',
+      subtitle: '即時了解對方的興趣程度',
+      description: '知道該進攻還是該收',
+    ),
+    const OnboardingPage(
+      emoji: '💬',
+      title: '5 種回覆風格',
+      subtitle: '延展 · 共鳴 · 調情 · 幽默 · 冷讀',
+      description: '針對情境給你最適合的回覆',
+    ),
+    const OnboardingPage(
+      emoji: '🎮',
+      title: '來試試看！',
+      subtitle: '我們準備了一段範例對話',
+      description: '讓你體驗 VibeSync 的威力',
+      isDemo: true,
+    ),
+  ];
+
+  void _nextPage() {
+    if (_currentPage < _pages.length - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      _completeOnboarding();
+    }
+  }
+
+  void _completeOnboarding({bool skipDemo = false}) async {
+    await OnboardingService.markCompleted();
+    if (mounted) {
+      if (skipDemo) {
+        context.go('/home');
+      } else {
+        context.go('/demo-analysis');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: (page) => setState(() => _currentPage = page),
+                itemCount: _pages.length,
+                itemBuilder: (context, index) => _pages[index],
+              ),
+            ),
+            // Page indicators
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                _pages.length,
+                (index) => Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: _currentPage == index ? 24 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _currentPage == index
+                        ? AppColors.primary
+                        : AppColors.textSecondary.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            // Buttons
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _nextPage,
+                      child: Text(
+                        _currentPage == _pages.length - 1 ? '體驗分析' : '下一步',
+                      ),
+                    ),
+                  ),
+                  if (_currentPage == _pages.length - 1) ...[
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => _completeOnboarding(skipDemo: true),
+                      child: Text(
+                        '跳過',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+}
+```
+
+**Step 4: Create onboarding_page.dart**
+
+```dart
+// lib/features/onboarding/presentation/widgets/onboarding_page.dart
+import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+
+class OnboardingPage extends StatelessWidget {
+  final String emoji;
+  final String title;
+  final String subtitle;
+  final String description;
+  final bool isDemo;
+
+  const OnboardingPage({
+    super.key,
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+    required this.description,
+    this.isDemo = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 64)),
+          const SizedBox(height: 32),
+          Text(
+            title,
+            style: AppTypography.headlineLarge,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            subtitle,
+            style: AppTypography.titleLarge.copyWith(color: AppColors.primary),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+**Step 5: Create empty state widget**
+
+```dart
+// lib/features/conversation/presentation/widgets/empty_state_widget.dart
+import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+
+class EmptyStateWidget extends StatelessWidget {
+  final VoidCallback onStartAnalysis;
+
+  const EmptyStateWidget({
+    super.key,
+    required this.onStartAnalysis,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('💬', style: TextStyle(fontSize: 64)),
+            const SizedBox(height: 24),
+            Text(
+              '還沒有對話紀錄',
+              style: AppTypography.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '把聊天內容貼上來，\n讓 VibeSync 幫你分析！',
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: onStartAnalysis,
+              icon: const Icon(Icons.add),
+              label: const Text('開始第一次分析'),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lightbulb_outline, color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Free 方案每月 30 則訊息\n足夠體驗核心功能',
+                      style: AppTypography.caption,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+**Step 6: Write tests**
+
+```dart
+// test/widget/screens/onboarding_screen_test.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/onboarding/presentation/screens/onboarding_screen.dart';
+
+void main() {
+  group('OnboardingScreen', () {
+    testWidgets('displays welcome page initially', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: OnboardingScreen()),
+      );
+
+      expect(find.text('歡迎使用 VibeSync'), findsOneWidget);
+      expect(find.text('下一步'), findsOneWidget);
+    });
+
+    testWidgets('can navigate through pages', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: OnboardingScreen()),
+      );
+
+      // Page 1
+      expect(find.text('歡迎使用 VibeSync'), findsOneWidget);
+
+      // Go to page 2
+      await tester.tap(find.text('下一步'));
+      await tester.pumpAndSettle();
+      expect(find.text('熱度分析'), findsOneWidget);
+
+      // Go to page 3
+      await tester.tap(find.text('下一步'));
+      await tester.pumpAndSettle();
+      expect(find.text('5 種回覆風格'), findsOneWidget);
+
+      // Go to page 4
+      await tester.tap(find.text('下一步'));
+      await tester.pumpAndSettle();
+      expect(find.text('來試試看！'), findsOneWidget);
+      expect(find.text('體驗分析'), findsOneWidget);
+      expect(find.text('跳過'), findsOneWidget);
+    });
+  });
+}
+```
+
+**Step 7: Commit**
+
+```bash
+git add lib/features/onboarding/ lib/features/conversation/presentation/widgets/empty_state_widget.dart test/
+git commit -m "feat: 建立 Onboarding 流程 (3 步驟引導 + Demo + 空狀態)"
+```
+
+---
+
+### Task 11.5: Create Rate Limiting Service
+
+**Files:**
+- Create: `supabase/migrations/004_rate_limits.sql`
+- Create: `supabase/functions/analyze-chat/rate_limiter.ts`
+- Create: `lib/features/analysis/presentation/widgets/rate_limit_dialog.dart`
+
+**Step 1: Create migration**
+
+```sql
+-- supabase/migrations/004_rate_limits.sql
+
+-- 擴充 subscriptions 表
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS
+  daily_messages_used INTEGER DEFAULT 0,
+  daily_reset_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Rate limit 表 (每分鐘計數)
+CREATE TABLE rate_limits (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  minute_count INTEGER DEFAULT 0,
+  minute_window_start TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 自動更新 updated_at
+CREATE OR REPLACE FUNCTION update_rate_limits_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER rate_limits_updated_at
+  BEFORE UPDATE ON rate_limits
+  FOR EACH ROW
+  EXECUTE FUNCTION update_rate_limits_updated_at();
+```
+
+**Step 2: Create rate_limiter.ts**
+
+```typescript
+// supabase/functions/analyze-chat/rate_limiter.ts
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+interface TierLimits {
+  monthly: number;
+  daily: number;
+}
+
+const TIER_LIMITS: Record<string, TierLimits> = {
+  free: { monthly: 30, daily: 15 },
+  starter: { monthly: 300, daily: 50 },
+  essential: { monthly: 1000, daily: 150 },
+};
+
+const MINUTE_LIMIT = 5;
+
+export interface RateLimitResult {
+  allowed: boolean;
+  reason?: 'minute_limit' | 'daily_limit' | 'monthly_limit';
+  retryAfter?: number;
+  remaining: {
+    minute: number;
+    daily: number;
+    monthly: number;
+  };
+}
+
+export async function checkRateLimit(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<RateLimitResult> {
+  const now = new Date();
+
+  // 1. 取得訂閱資訊
+  const { data: sub } = await supabase
+    .from('subscriptions')
+    .select('tier, monthly_messages_used, daily_messages_used, daily_reset_at')
+    .eq('user_id', userId)
+    .single();
+
+  if (!sub) {
+    throw new Error('Subscription not found');
+  }
+
+  const limits = TIER_LIMITS[sub.tier] || TIER_LIMITS.free;
+
+  // 2. 檢查每日重置
+  const dailyResetAt = new Date(sub.daily_reset_at);
+  const isNewDay = now.toDateString() !== dailyResetAt.toDateString();
+
+  if (isNewDay) {
+    await supabase
+      .from('subscriptions')
+      .update({ daily_messages_used: 0, daily_reset_at: now.toISOString() })
+      .eq('user_id', userId);
+    sub.daily_messages_used = 0;
+  }
+
+  // 3. 取得每分鐘計數
+  let { data: rateLimit } = await supabase
+    .from('rate_limits')
+    .select('minute_count, minute_window_start')
+    .eq('user_id', userId)
+    .single();
+
+  // 初始化 rate limit 記錄
+  if (!rateLimit) {
+    await supabase.from('rate_limits').insert({
+      user_id: userId,
+      minute_count: 0,
+      minute_window_start: now.toISOString(),
+    });
+    rateLimit = { minute_count: 0, minute_window_start: now.toISOString() };
+  }
+
+  // 重置每分鐘窗口
+  const windowStart = new Date(rateLimit.minute_window_start);
+  const secondsSinceWindow = (now.getTime() - windowStart.getTime()) / 1000;
+  let minuteCount = rateLimit.minute_count;
+
+  if (secondsSinceWindow >= 60) {
+    await supabase
+      .from('rate_limits')
+      .update({ minute_count: 0, minute_window_start: now.toISOString() })
+      .eq('user_id', userId);
+    minuteCount = 0;
+  }
+
+  // 4. 檢查限制
+  if (minuteCount >= MINUTE_LIMIT) {
+    return {
+      allowed: false,
+      reason: 'minute_limit',
+      retryAfter: 60 - Math.floor(secondsSinceWindow),
+      remaining: {
+        minute: 0,
+        daily: limits.daily - sub.daily_messages_used,
+        monthly: limits.monthly - sub.monthly_messages_used,
+      },
+    };
+  }
+
+  if (sub.daily_messages_used >= limits.daily) {
+    return {
+      allowed: false,
+      reason: 'daily_limit',
+      retryAfter: getSecondsUntilMidnight(),
+      remaining: {
+        minute: MINUTE_LIMIT - minuteCount,
+        daily: 0,
+        monthly: limits.monthly - sub.monthly_messages_used,
+      },
+    };
+  }
+
+  if (sub.monthly_messages_used >= limits.monthly) {
+    return {
+      allowed: false,
+      reason: 'monthly_limit',
+      remaining: {
+        minute: MINUTE_LIMIT - minuteCount,
+        daily: 0,
+        monthly: 0,
+      },
+    };
+  }
+
+  return {
+    allowed: true,
+    remaining: {
+      minute: MINUTE_LIMIT - minuteCount - 1,
+      daily: limits.daily - sub.daily_messages_used - 1,
+      monthly: limits.monthly - sub.monthly_messages_used - 1,
+    },
+  };
+}
+
+export async function incrementRateLimitCount(
+  supabase: ReturnType<typeof createClient>,
+  userId: string
+): Promise<void> {
+  await supabase.rpc('increment_minute_count', { p_user_id: userId });
+}
+
+function getSecondsUntilMidnight(): number {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  return Math.floor((midnight.getTime() - now.getTime()) / 1000);
+}
+```
+
+**Step 3: Create Flutter dialog**
+
+```dart
+// lib/features/analysis/presentation/widgets/rate_limit_dialog.dart
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+
+enum RateLimitType { minute, daily, monthly }
+
+class RateLimitDialog extends StatelessWidget {
+  final RateLimitType type;
+  final int? retryAfter;
+
+  const RateLimitDialog({
+    super.key,
+    required this.type,
+    this.retryAfter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_getEmoji(), style: const TextStyle(fontSize: 48)),
+          const SizedBox(height: 16),
+          Text(_getTitle(), style: AppTypography.headlineMedium),
+          const SizedBox(height: 8),
+          Text(
+            _getMessage(),
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+      actions: [
+        if (type == RateLimitType.minute)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(retryAfter != null ? '$retryAfter 秒' : '知道了'),
+          )
+        else ...[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              context.push('/paywall');
+            },
+            child: Text(type == RateLimitType.monthly ? '升級方案' : '升級方案'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _getEmoji() {
+    switch (type) {
+      case RateLimitType.minute:
+        return '⏱️';
+      case RateLimitType.daily:
+        return '📅';
+      case RateLimitType.monthly:
+        return '📊';
+    }
+  }
+
+  String _getTitle() {
+    switch (type) {
+      case RateLimitType.minute:
+        return '請稍後再試';
+      case RateLimitType.daily:
+        return '今日額度已用完';
+      case RateLimitType.monthly:
+        return '本月額度已用完';
+    }
+  }
+
+  String _getMessage() {
+    switch (type) {
+      case RateLimitType.minute:
+        return '為確保服務品質，請等待 ${retryAfter ?? 60} 秒後再分析';
+      case RateLimitType.daily:
+        return '明天 00:00 重置\n或升級方案獲得更多額度';
+      case RateLimitType.monthly:
+        return '下個月 1 日重置\n或升級方案獲得更多額度';
+    }
+  }
+}
+
+void showRateLimitDialog(
+  BuildContext context,
+  RateLimitType type, {
+  int? retryAfter,
+}) {
+  showDialog(
+    context: context,
+    builder: (context) => RateLimitDialog(type: type, retryAfter: retryAfter),
+  );
+}
+```
+
+**Step 4: Commit**
+
+```bash
+git add supabase/migrations/004_rate_limits.sql supabase/functions/analyze-chat/rate_limiter.ts lib/features/analysis/presentation/widgets/rate_limit_dialog.dart
+git commit -m "feat: 建立 Rate Limiting 服務 (每分鐘 + 每日 + 每月限制)"
+```
+
+---
+
+### Task 11.6: Create Token Tracking Service
+
+**Files:**
+- Create: `supabase/migrations/005_token_usage.sql`
+- Modify: `supabase/functions/analyze-chat/logger.ts`
+- Create: `lib/features/subscription/domain/entities/token_usage.dart`
+
+**Step 1: Create migration**
+
+```sql
+-- supabase/migrations/005_token_usage.sql
+
+CREATE TABLE token_usage (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+
+  model TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  total_tokens INTEGER GENERATED ALWAYS AS (input_tokens + output_tokens) STORED,
+  cost_usd DECIMAL(10, 6) NOT NULL,
+
+  conversation_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX idx_token_usage_user_id ON token_usage(user_id);
+CREATE INDEX idx_token_usage_created_at ON token_usage(created_at);
+
+-- RLS
+ALTER TABLE token_usage ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own token usage" ON token_usage
+  FOR SELECT USING (auth.uid() = user_id);
+
+-- 月度彙總 View
+CREATE VIEW user_monthly_token_summary AS
+SELECT
+  user_id,
+  DATE_TRUNC('month', created_at) AS month,
+  SUM(input_tokens) AS total_input_tokens,
+  SUM(output_tokens) AS total_output_tokens,
+  SUM(input_tokens + output_tokens) AS total_tokens,
+  SUM(cost_usd) AS total_cost_usd,
+  COUNT(*) AS request_count
+FROM token_usage
+GROUP BY user_id, DATE_TRUNC('month', created_at);
+
+-- 每日成本報告 View (管理用)
+CREATE VIEW daily_cost_report AS
+SELECT
+  DATE(created_at) AS date,
+  SUM(cost_usd) AS daily_cost,
+  COUNT(*) AS request_count,
+  AVG(input_tokens + output_tokens) AS avg_tokens_per_request
+FROM token_usage
+WHERE created_at >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(created_at)
+ORDER BY date DESC;
+```
+
+**Step 2: Update logger.ts to track tokens**
+
+```typescript
+// 在 logger.ts 中新增 token 追蹤函數
+
+export async function trackTokenUsage(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    userId: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    conversationId?: string;
+  }
+): Promise<void> {
+  const costUsd = calculateCost(params.model, params.inputTokens, params.outputTokens);
+
+  await supabase.from('token_usage').insert({
+    user_id: params.userId,
+    model: params.model,
+    input_tokens: params.inputTokens,
+    output_tokens: params.outputTokens,
+    cost_usd: costUsd,
+    conversation_id: params.conversationId || null,
+  });
+}
+```
+
+**Step 3: Create Flutter entity**
+
+```dart
+// lib/features/subscription/domain/entities/token_usage.dart
+
+class TokenUsage {
+  final String id;
+  final String userId;
+  final String model;
+  final int inputTokens;
+  final int outputTokens;
+  final int totalTokens;
+  final double costUsd;
+  final String? conversationId;
+  final DateTime createdAt;
+
+  TokenUsage({
+    required this.id,
+    required this.userId,
+    required this.model,
+    required this.inputTokens,
+    required this.outputTokens,
+    required this.totalTokens,
+    required this.costUsd,
+    this.conversationId,
+    required this.createdAt,
+  });
+
+  factory TokenUsage.fromJson(Map<String, dynamic> json) {
+    return TokenUsage(
+      id: json['id'],
+      userId: json['user_id'],
+      model: json['model'],
+      inputTokens: json['input_tokens'],
+      outputTokens: json['output_tokens'],
+      totalTokens: json['total_tokens'],
+      costUsd: (json['cost_usd'] as num).toDouble(),
+      conversationId: json['conversation_id'],
+      createdAt: DateTime.parse(json['created_at']),
+    );
+  }
+}
+
+class MonthlyTokenSummary {
+  final String userId;
+  final DateTime month;
+  final int totalInputTokens;
+  final int totalOutputTokens;
+  final int totalTokens;
+  final double totalCostUsd;
+  final int requestCount;
+
+  MonthlyTokenSummary({
+    required this.userId,
+    required this.month,
+    required this.totalInputTokens,
+    required this.totalOutputTokens,
+    required this.totalTokens,
+    required this.totalCostUsd,
+    required this.requestCount,
+  });
+
+  factory MonthlyTokenSummary.fromJson(Map<String, dynamic> json) {
+    return MonthlyTokenSummary(
+      userId: json['user_id'],
+      month: DateTime.parse(json['month']),
+      totalInputTokens: json['total_input_tokens'] ?? 0,
+      totalOutputTokens: json['total_output_tokens'] ?? 0,
+      totalTokens: json['total_tokens'] ?? 0,
+      totalCostUsd: (json['total_cost_usd'] as num?)?.toDouble() ?? 0,
+      requestCount: json['request_count'] ?? 0,
+    );
+  }
+}
+```
+
+**Step 4: Write tests**
+
+```dart
+// test/unit/entities/token_usage_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/subscription/domain/entities/token_usage.dart';
+
+void main() {
+  group('TokenUsage', () {
+    test('fromJson creates correct instance', () {
+      final json = {
+        'id': 'test-id',
+        'user_id': 'user-123',
+        'model': 'claude-3-5-haiku-20241022',
+        'input_tokens': 500,
+        'output_tokens': 200,
+        'total_tokens': 700,
+        'cost_usd': 0.000375,
+        'conversation_id': 'conv-123',
+        'created_at': '2026-02-27T10:00:00Z',
+      };
+
+      final usage = TokenUsage.fromJson(json);
+
+      expect(usage.model, 'claude-3-5-haiku-20241022');
+      expect(usage.inputTokens, 500);
+      expect(usage.outputTokens, 200);
+      expect(usage.totalTokens, 700);
+      expect(usage.costUsd, closeTo(0.000375, 0.0001));
+    });
+  });
+
+  group('MonthlyTokenSummary', () {
+    test('calculates totals correctly', () {
+      final json = {
+        'user_id': 'user-123',
+        'month': '2026-02-01T00:00:00Z',
+        'total_input_tokens': 10000,
+        'total_output_tokens': 5000,
+        'total_tokens': 15000,
+        'total_cost_usd': 0.05,
+        'request_count': 50,
+      };
+
+      final summary = MonthlyTokenSummary.fromJson(json);
+
+      expect(summary.totalTokens, 15000);
+      expect(summary.requestCount, 50);
+      expect(summary.totalCostUsd, closeTo(0.05, 0.001));
+    });
+  });
+}
+```
+
+**Step 5: Commit**
+
+```bash
+git add supabase/migrations/005_token_usage.sql supabase/functions/analyze-chat/logger.ts lib/features/subscription/domain/entities/token_usage.dart test/
+git commit -m "feat: 建立 Token 追蹤服務 (精確計量 + 成本計算)"
+```
+
+---
+
+## Phase 11 TDD Checkpoint (Final)
+
+```bash
+# Run all tests
+flutter test
+
+# Check coverage (目標 > 70%)
+flutter test --coverage
+
+# Generate HTML report
+genhtml coverage/lcov.info -o coverage/html
+open coverage/html/index.html
+
+# Deploy Supabase migrations
+supabase db push
+
+# Deploy updated Edge Functions
+supabase functions deploy analyze-chat
+```
+
+---
+
 ## Summary
 
-**Total Tasks:** 21 tasks across 10 phases
+**Total Tasks:** 28 tasks across 11 phases
 
 **Phase Breakdown:**
 1. Project Foundation (3 tasks) - Flutter setup, dependencies, structure
@@ -6518,6 +8170,7 @@ open coverage/html/index.html
 8. Conversation Memory (2 tasks) - 對話記憶、摘要、選擇追蹤
 9. Paywall & Subscription (2 tasks) - 訂閱方案選擇畫面 + 加購訊息包
 10. GAME Framework (2 tasks) - GAME 階段分析、心理解讀元件
+11. **商業級 SaaS 補充 (6 tasks)** - AI 護欄、Fallback、日誌、Onboarding、Rate Limiting、Token 追蹤
 
 **Next Steps After MVP:**
 - Authentication screens (Google/Apple Sign-in)
@@ -6586,6 +8239,35 @@ supabase functions deploy analyze-chat
 | 2026-02-26 | 2.0 | **重大更新** - 與設計規格書同步 |
 | 2026-02-27 | 2.1 | **GAME 框架整合** - 與設計規格 v1.1 同步 |
 | 2026-02-27 | 2.2 | **完全同步** - 補齊混合模型策略 + 加購訊息包 |
+| 2026-02-27 | 2.3 | **商業級補充** - 與設計規格 v1.2 同步 (AI 護欄、Fallback、日誌、Onboarding、Rate Limiting、Token 追蹤) |
+
+### v2.3 變更明細 (與設計規格 v1.2 同步)
+
+**新增 Phase 11: 商業級 SaaS 補充**
+- ✅ 新增: Task 11.1 AI Guardrails (護欄)
+- ✅ 新增: Task 11.2 AI Fallback Service
+- ✅ 新增: Task 11.3 AI Audit Log (日誌)
+- ✅ 新增: Task 11.4 Onboarding Flow
+- ✅ 新增: Task 11.5 Rate Limiting Service
+- ✅ 新增: Task 11.6 Token Tracking Service
+
+**資料庫擴充**
+- ✅ 新增: `ai_logs` 表 (AI 呼叫日誌)
+- ✅ 新增: `rate_limits` 表 (每分鐘限制)
+- ✅ 新增: `token_usage` 表 (Token 追蹤)
+- ✅ 新增: `user_monthly_token_summary` View
+- ✅ 新增: `daily_cost_report` View
+
+**UI 元件**
+- ✅ 新增: `DisclaimerBanner` (免責聲明)
+- ✅ 新增: `AnalysisErrorWidget` (失敗 UI)
+- ✅ 新增: `OnboardingScreen` (3 步驟引導)
+- ✅ 新增: `EmptyStateWidget` (空狀態)
+- ✅ 新增: `RateLimitDialog` (限制提示)
+
+**總任務數**: 22 → 28 tasks
+
+---
 
 ### v2.2 變更明細 (與設計規格 v1.1 完全同步)
 
