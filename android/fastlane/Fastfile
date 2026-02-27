@@ -1,0 +1,69 @@
+# android/fastlane/Fastfile
+# Fastlane configuration for Android deployment
+
+default_platform(:android)
+
+platform :android do
+  desc "Deploy to Internal Testing track"
+  lane :internal do
+    # Validate Play Store credentials
+    validate_play_store_json_key(
+      json_key_data: ENV["PLAY_STORE_CONFIG_JSON"]
+    )
+
+    # Upload to Play Console Internal Testing
+    upload_to_play_store(
+      track: "internal",
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      json_key_data: ENV["PLAY_STORE_CONFIG_JSON"],
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+
+    # Notify via Slack if webhook URL is set
+    if ENV["SLACK_WEBHOOK_URL"]
+      slack(
+        message: "VibeSync Android build uploaded to Internal Testing! 🚀",
+        slack_url: ENV["SLACK_WEBHOOK_URL"],
+        default_payloads: [:git_branch, :last_git_commit_message]
+      )
+    end
+  end
+
+  desc "Deploy to Production track"
+  lane :production do
+    # Validate Play Store credentials
+    validate_play_store_json_key(
+      json_key_data: ENV["PLAY_STORE_CONFIG_JSON"]
+    )
+
+    # Upload to Play Console Production
+    upload_to_play_store(
+      track: "production",
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      json_key_data: ENV["PLAY_STORE_CONFIG_JSON"],
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: "completed"
+    )
+
+    # Notify via Slack
+    if ENV["SLACK_WEBHOOK_URL"]
+      slack(
+        message: "VibeSync Android released to Production! 🎉",
+        slack_url: ENV["SLACK_WEBHOOK_URL"]
+      )
+    end
+  end
+
+  desc "Build for local testing"
+  lane :build do
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: "./"
+    )
+  end
+end
