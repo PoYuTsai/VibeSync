@@ -1,6 +1,6 @@
 // lib/core/services/storage_service.dart
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';

@@ -1,5 +1,5 @@
 // lib/features/conversation/domain/entities/conversation.dart
-import 'package:hive/hive.dart';
+import 'package:hive_ce/hive_ce.dart';
 import 'conversation_summary.dart';
 import 'message.dart';
 import 'session_context.dart';
