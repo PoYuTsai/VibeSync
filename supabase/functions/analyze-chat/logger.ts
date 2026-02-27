@@ -81,3 +81,38 @@ export function extractTokenUsage(claudeResponse: unknown): {
     outputTokens: response?.usage?.output_tokens || 0,
   };
 }
+
+// Token 精確追蹤 (用於計費和用量分析)
+export interface TokenUsageEntry {
+  userId: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  conversationId?: string;
+}
+
+export async function trackTokenUsage(
+  supabaseUrl: string,
+  serviceKey: string,
+  entry: TokenUsageEntry
+): Promise<void> {
+  try {
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const costUsd = calculateCost(entry.model, entry.inputTokens, entry.outputTokens);
+
+    await supabase.from("token_usage").insert({
+      user_id: entry.userId,
+      model: entry.model,
+      input_tokens: entry.inputTokens,
+      output_tokens: entry.outputTokens,
+      cost_usd: costUsd,
+      conversation_id: entry.conversationId,
+    });
+  } catch (error) {
+    // Token 追蹤失敗不應影響主要請求
+    console.error("Failed to track token usage:", error);
+  }
+}
+
+// 導出 calculateCost 供外部使用
+export { calculateCost };
