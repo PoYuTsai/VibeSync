@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { SAFETY_RULES, checkAiOutput, checkInput } from "./guardrails.ts";
 import { callClaudeWithFallback, AiServiceError } from "./fallback.ts";
+import { logAiCall, extractTokenUsage } from "./logger.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -351,6 +352,7 @@ serve(async (req) => {
     const allowedFeatures = TIER_FEATURES[sub.tier] || TIER_FEATURES.free;
 
     // Call Claude API with fallback
+    const startTime = Date.now();
     let claudeResult;
     try {
       claudeResult = await callClaudeWithFallback(
@@ -368,7 +370,21 @@ serve(async (req) => {
         CLAUDE_API_KEY
       );
     } catch (error) {
+      const latencyMs = Date.now() - startTime;
+
       if (error instanceof AiServiceError) {
+        // Log failed request
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs,
+          status: "failed",
+          errorCode: error.code,
+          errorMessage: error.message,
+        });
+
         return new Response(
           JSON.stringify({
             error: error.message,
@@ -386,6 +402,8 @@ serve(async (req) => {
 
     const content = claudeResult.data.content[0]?.text;
     const actualModel = claudeResult.model;
+    const latencyMs = Date.now() - startTime;
+    const tokenUsage = extractTokenUsage(claudeResult.data);
 
     // Parse Claude's response
     let result;
@@ -404,7 +422,21 @@ serve(async (req) => {
     }
 
     // Check AI output for safety (AI 護欄)
+    const originalResult = { ...result };
     result = checkAiOutput(result);
+    const wasFiltered = result.warnings?.some((w: { type: string }) => w.type === "safety_filter");
+
+    // Log successful request
+    await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      userId: user.id,
+      model: actualModel,
+      inputTokens: tokenUsage.inputTokens,
+      outputTokens: tokenUsage.outputTokens,
+      latencyMs,
+      status: wasFiltered ? "filtered" : "success",
+      fallbackUsed: claudeResult.fallbackUsed,
+      retryCount: claudeResult.retries,
+    });
 
     // Filter replies based on tier
     if (result?.replies) {
