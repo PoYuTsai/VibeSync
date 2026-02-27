@@ -43,8 +43,14 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Debug Flutter info
+        run: |
+          flutter --version
+          dart --version
+          cat pubspec.yaml
+
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get -v
 
       - name: Run tests
         run: flutter test
