@@ -2,6 +2,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
+import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';
 import '../../features/conversation/domain/entities/session_context.dart';
 import '../constants/app_constants.dart';
@@ -20,6 +21,7 @@ class StorageService {
     Hive.registerAdapter(MeetingContextAdapter());
     Hive.registerAdapter(AcquaintanceDurationAdapter());
     Hive.registerAdapter(UserGoalAdapter());
+    Hive.registerAdapter(ConversationSummaryAdapter()); // v2.0: Memory feature
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
