@@ -48,3 +48,4 @@ service-account*.json
 # Supabase local config (contains keys)
 supabase/.env
 supabase/.env.local
+.worktrees/
