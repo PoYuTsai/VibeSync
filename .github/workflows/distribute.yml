@@ -95,12 +95,20 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
       - name: Upload to Firebase App Distribution
+        continue-on-error: true
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           file: build/app/outputs/flutter-apk/app-release.apk
           releaseNotesFile: release-notes.txt
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
 
   build-ios:
     runs-on: macos-latest
