@@ -29,7 +29,7 @@ class HomeScreen extends ConsumerWidget {
           : ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: conversations.length,
-              separatorBuilder: (_, _) => const Divider(
+              separatorBuilder: (_, __) => const Divider(
                 color: AppColors.divider,
                 height: 1,
                 indent: 72,

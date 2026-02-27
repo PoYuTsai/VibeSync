@@ -8,7 +8,7 @@ part of 'conversation_summary.dart';
 
 class ConversationSummaryAdapter extends TypeAdapter<ConversationSummary> {
   @override
-  final int typeId = 2;
+  final typeId = 2;
 
   @override
   ConversationSummary read(BinaryReader reader) {
@@ -18,7 +18,7 @@ class ConversationSummaryAdapter extends TypeAdapter<ConversationSummary> {
     };
     return ConversationSummary(
       id: fields[0] as String,
-      roundsCovered: fields[1] as int,
+      roundsCovered: (fields[1] as num).toInt(),
       content: fields[2] as String,
       keyTopics: (fields[3] as List).cast<String>(),
       sharedInterests: (fields[4] as List).cast<String>(),

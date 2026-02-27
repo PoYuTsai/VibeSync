@@ -8,7 +8,7 @@ part of 'conversation.dart';
 
 class ConversationAdapter extends TypeAdapter<Conversation> {
   @override
-  final int typeId = 0;
+  final typeId = 0;
 
   @override
   Conversation read(BinaryReader reader) {
@@ -23,10 +23,10 @@ class ConversationAdapter extends TypeAdapter<Conversation> {
       messages: (fields[3] as List).cast<Message>(),
       createdAt: fields[4] as DateTime,
       updatedAt: fields[5] as DateTime,
-      lastEnthusiasmScore: fields[6] as int?,
+      lastEnthusiasmScore: (fields[6] as num?)?.toInt(),
       sessionContext: fields[7] as SessionContext?,
       currentGameStage: fields[8] as String?,
-      currentRound: fields[9] as int? ?? 0,
+      currentRound: fields[9] == null ? 0 : (fields[9] as num).toInt(),
       summaries: (fields[10] as List?)?.cast<ConversationSummary>(),
       lastUserChoice: fields[11] as String?,
     );
