@@ -1,7 +1,7 @@
 # VibeSync 設計規格書
 
 **專案名稱**: VibeSync 頻率調校師
-**版本**: 1.1
+**版本**: 1.2
 **日期**: 2026-02-27
 **狀態**: 設計完成，待實作
 
@@ -1209,7 +1209,392 @@ vibesync/
 
 ---
 
-## 附錄 B: 待補項目
+## 附錄 B: 商業級 SaaS 補充設計
+
+> **v1.2 新增**：補齊 AI 護欄、日誌審計、Fallback、Onboarding、Rate Limiting、Token 追蹤
+
+### B.1 AI 護欄 (Guardrails)
+
+#### B.1.1 System Prompt 安全約束
+
+```typescript
+const SAFETY_RULES = `
+## 安全規則 (不可違反)
+
+### 絕對禁止建議：
+- 任何形式的騷擾、跟蹤、強迫行為
+- 未經同意的身體接觸暗示
+- 操控、威脅、情緒勒索的言語
+- 持續聯繫已明確拒絕的對象
+- 任何違法行為
+
+### 冰點情境處理：
+當熱度 < 30 且對方明顯不感興趣時：
+- 建議用戶「尊重對方意願」
+- 可建議「開新對話，認識其他人」
+- 絕不建議「再試一次」或「換個方式追」
+
+### 輸出原則：
+- 所有建議必須基於「雙方舒適」
+- 鼓勵真誠表達，而非操控技巧
+`;
+```
+
+#### B.1.2 輸出驗證層
+
+```typescript
+const BLOCKED_PATTERNS = [
+  /跟蹤|stalking/i,
+  /不要放棄.*一直/i,
+  /她說不要.*但其實/i,
+  /強迫|逼.*答應/i,
+  /騷擾|harassment/i,
+  /威脅|勒索/i,
+];
+
+function validateOutput(response: AnalysisResult): AnalysisResult {
+  const allReplies = Object.values(response.replies).join(' ');
+
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(allReplies)) {
+      return {
+        ...response,
+        replies: getSafeReplies(response.enthusiasm.level),
+        warnings: [...response.warnings, {
+          type: 'safety_filter',
+          message: '部分建議因安全考量已調整'
+        }]
+      };
+    }
+  }
+
+  return response;
+}
+```
+
+#### B.1.3 免責聲明
+
+- **位置**：Analysis Screen 底部固定顯示
+- **內容**：「建議僅供參考，請以真誠、尊重為原則」
+
+---
+
+### B.2 AI Fallback 機制
+
+#### B.2.1 重試與降級流程
+
+```
+請求 → Sonnet (首選)
+         ↓ 失敗
+      重試 Sonnet (1次)
+         ↓ 仍失敗
+      降級 Haiku
+         ↓ 仍失敗
+      重試 Haiku (1次)
+         ↓ 仍失敗
+      顯示錯誤 UI + 不扣額度
+```
+
+**超時設定**：每次請求 30 秒上限
+
+#### B.2.2 錯誤類型與處理
+
+| 錯誤類型 | 行為 | 扣額度？ |
+|----------|------|----------|
+| `TIMEOUT` | 重試 → 降級 → 顯示錯誤 | ❌ 不扣 |
+| `API_ERROR` (500) | 重試 → 降級 → 顯示錯誤 | ❌ 不扣 |
+| `RATE_LIMITED` (429) | 等待後重試 | ❌ 不扣 |
+| `INVALID_RESPONSE` | 重試 → 降級 → 顯示錯誤 | ❌ 不扣 |
+| `CONTENT_BLOCKED` | 回傳安全版本 | ✅ 扣 |
+| `SUCCESS` | 正常回傳 | ✅ 扣 |
+
+#### B.2.3 失敗 UI
+
+```
+┌─────────────────────────────┐
+│                             │
+│     😔 分析暫時無法完成      │
+│                             │
+│  AI 服務目前忙碌中，          │
+│  請稍後再試                  │
+│                             │
+│  ✓ 此次不會扣除訊息額度      │
+│                             │
+│      [ 重新分析 ]           │
+│                             │
+└─────────────────────────────┘
+```
+
+---
+
+### B.3 AI 日誌 (Audit Log)
+
+#### B.3.1 資料表結構
+
+```sql
+CREATE TABLE ai_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+
+  -- 請求資訊
+  model TEXT NOT NULL,
+  request_type TEXT NOT NULL,  -- 'analyze' | 'generate'
+
+  -- Token 使用
+  input_tokens INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  cost_usd DECIMAL(10, 6),
+
+  -- 效能
+  latency_ms INTEGER NOT NULL,
+
+  -- 狀態
+  status TEXT NOT NULL,  -- 'success' | 'failed' | 'filtered'
+  error_code TEXT,
+
+  -- 失敗時才記錄的完整內容
+  request_body JSONB,
+  response_body JSONB,
+  error_message TEXT,
+
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX idx_ai_logs_user_id ON ai_logs(user_id);
+CREATE INDEX idx_ai_logs_created_at ON ai_logs(created_at);
+CREATE INDEX idx_ai_logs_status ON ai_logs(status);
+
+-- 自動清理 30 天前的記錄
+CREATE OR REPLACE FUNCTION cleanup_old_ai_logs()
+RETURNS void AS $$
+BEGIN
+  DELETE FROM ai_logs WHERE created_at < NOW() - INTERVAL '30 days';
+END;
+$$ LANGUAGE plpgsql;
+```
+
+#### B.3.2 記錄策略
+
+| 記錄項目 | 成功時 | 失敗時 |
+|----------|--------|--------|
+| timestamp, user_id, model | ✓ | ✓ |
+| input_tokens, output_tokens | ✓ | ✓ |
+| latency_ms, cost_usd | ✓ | ✓ |
+| request_body, response_body | ✗ | ✓ |
+| error_message | ✗ | ✓ |
+
+**保留期限**：30 天
+
+---
+
+### B.4 Onboarding 流程
+
+#### B.4.1 流程總覽
+
+```
+首次啟動 App
+     │
+     ▼
+┌─────────────┐
+│  歡迎頁     │  ← 品牌介紹
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  功能介紹   │  ← 3 個核心功能 (可滑動)
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  Demo 體驗  │  ← 內建範例對話分析
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  首頁(空)   │  ← 引導開始第一次分析
+└─────────────┘
+```
+
+#### B.4.2 Demo 對話
+
+```typescript
+const DEMO_CONVERSATION = {
+  name: '範例對話',
+  context: {
+    meetingContext: 'dating_app',
+    duration: 'few_days',
+    goal: 'date',
+  },
+  messages: [
+    { content: '欸你週末都在幹嘛', isFromMe: false },
+    { content: '看情況欸 有時候爬山有時候耍廢', isFromMe: true },
+    { content: '哇塞你也爬山！我最近去了抹茶山超美', isFromMe: false },
+  ],
+};
+
+// Demo 分析結果 (預設，不呼叫 API，不扣額度)
+const DEMO_RESULT = {
+  enthusiasm: { score: 72, level: 'hot' },
+  gameStage: { current: 'premise', status: '正常進行' },
+  replies: {
+    extend: '抹茶山不錯欸，你喜歡哪種路線？',
+    resonate: '抹茶山超讚！雲海那段是不是很美',
+    tease: '聽起來你很會挑地方嘛，改天帶路？',
+    humor: '抹茶山...所以你是抹茶控？',
+    coldRead: '感覺你是那種週末不會待在家的人',
+  },
+  finalRecommendation: {
+    pick: 'tease',
+    content: '聽起來你很會挑地方嘛，改天帶路？',
+    reason: '熱度足夠，用調情建立張力並埋下邀約伏筆',
+  },
+};
+```
+
+#### B.4.3 空狀態設計
+
+```
+┌─────────────────────────────┐
+│  VibeSync          [設定]   │
+├─────────────────────────────┤
+│                             │
+│      💬                     │
+│                             │
+│   還沒有對話紀錄             │
+│                             │
+│   把聊天內容貼上來，         │
+│   讓 VibeSync 幫你分析！     │
+│                             │
+│   [ ＋ 開始第一次分析 ]      │
+│                             │
+│  ─────────────────────────  │
+│  💡 Free 方案每月 30 則訊息  │
+│     足夠體驗核心功能         │
+│                             │
+└─────────────────────────────┘
+```
+
+---
+
+### B.5 Rate Limiting
+
+#### B.5.1 限制層級
+
+| 層級 | 限制 | 重置時間 | 用途 |
+|------|------|----------|------|
+| **每分鐘** | 5 次請求 | 60 秒滾動 | 防止激進使用/腳本 |
+| **每日** | 依方案 (15/50/150) | 每日 00:00 UTC+8 | 防止單日耗盡月額度 |
+| **每月** | 依方案 (30/300/1000) | 每月 1 日 | 訂閱核心限制 |
+
+#### B.5.2 資料表擴充
+
+```sql
+-- 在 subscriptions 表新增
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS
+  daily_messages_used INTEGER DEFAULT 0,
+  daily_reset_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Rate Limit 表
+CREATE TABLE rate_limits (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  minute_count INTEGER DEFAULT 0,
+  minute_window_start TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+#### B.5.3 錯誤 UI
+
+| 觸發條件 | UI 訊息 | CTA |
+|----------|---------|-----|
+| 每分鐘超限 | 「請稍後再試」+ 倒數計時 | 等待 |
+| 每日超限 | 「今日額度已用完，明天重置」 | 升級方案 |
+| 每月超限 | 「本月額度已用完」 | 升級 / 加購 |
+
+#### B.5.4 Response Headers
+
+```typescript
+res.setHeader('X-RateLimit-Remaining-Minute', remaining.minute);
+res.setHeader('X-RateLimit-Remaining-Daily', remaining.daily);
+res.setHeader('X-RateLimit-Remaining-Monthly', remaining.monthly);
+res.setHeader('X-RateLimit-Reset', retryAfter);
+```
+
+---
+
+### B.6 Token 精確追蹤
+
+#### B.6.1 資料表結構
+
+```sql
+CREATE TABLE token_usage (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+
+  model TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  total_tokens INTEGER GENERATED ALWAYS AS (input_tokens + output_tokens) STORED,
+  cost_usd DECIMAL(10, 6) NOT NULL,
+
+  conversation_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 月度彙總 View
+CREATE VIEW user_monthly_token_summary AS
+SELECT
+  user_id,
+  DATE_TRUNC('month', created_at) AS month,
+  SUM(input_tokens) AS total_input_tokens,
+  SUM(output_tokens) AS total_output_tokens,
+  SUM(total_tokens) AS total_tokens,
+  SUM(cost_usd) AS total_cost_usd,
+  COUNT(*) AS request_count
+FROM token_usage
+GROUP BY user_id, DATE_TRUNC('month', created_at);
+```
+
+#### B.6.2 成本計算
+
+```typescript
+const MODEL_PRICING = {
+  'claude-sonnet-4-20250514': {
+    input: 3.00 / 1_000_000,
+    output: 15.00 / 1_000_000,
+  },
+  'claude-3-5-haiku-20241022': {
+    input: 0.25 / 1_000_000,
+    output: 1.25 / 1_000_000,
+  },
+};
+
+function calculateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing = MODEL_PRICING[model];
+  return (inputTokens * pricing.input) + (outputTokens * pricing.output);
+}
+```
+
+#### B.6.3 從 API Response 擷取
+
+```typescript
+// Claude API Response
+const { input_tokens, output_tokens } = response.usage;
+
+await supabase.from('token_usage').insert({
+  user_id: userId,
+  model,
+  input_tokens,
+  output_tokens,
+  cost_usd: calculateCost(model, input_tokens, output_tokens),
+  conversation_id: request.conversationId,
+});
+```
+
+---
+
+## 附錄 C: 待補項目
 
 | 項目 | 狀態 | 說明 |
 |------|------|------|
@@ -1222,7 +1607,8 @@ vibesync/
 | 日期 | 版本 | 變更內容 |
 |------|------|----------|
 | 2026-02-26 | 1.0 | 初始設計完成 |
-| 2026-02-27 | 1.1 | 新增 GAME 框架、更新 AI 輸出格式、Session 設計、UI 風格、一致性修正 |
+| 2026-02-27 | 1.1 | 新增 GAME 框架、更新 AI 輸出格式、Session 設計、UI 風格 |
+| 2026-02-27 | 1.2 | **商業級補充** - AI 護欄、日誌審計、Fallback、Onboarding、Rate Limiting、Token 追蹤 |
 
 ---
 
