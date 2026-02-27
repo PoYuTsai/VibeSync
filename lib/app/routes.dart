@@ -1,9 +1,9 @@
 // lib/app/routes.dart
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/conversation/presentation/screens/home_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
+import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 
 final router = GoRouter(
@@ -29,9 +29,7 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/paywall',
-      builder: (context, state) => const Scaffold(
-        body: Center(child: Text('升級方案')),
-      ),
+      builder: (context, state) => const PaywallScreen(),
     ),
   ],
 );
