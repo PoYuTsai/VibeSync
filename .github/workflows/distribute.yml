@@ -1,0 +1,138 @@
+# .github/workflows/distribute.yml
+# Build & Distribute to Firebase App Distribution (快速迭代測試)
+
+name: Build & Distribute
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - dev
+
+env:
+  FLUTTER_VERSION: '3.19.0'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      # Safe environment variable assignments
+      GIT_REF: ${{ github.ref_name }}
+      GIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build APK (Staging)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_STAGING_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          REVENUECAT_KEY: ${{ secrets.REVENUECAT_SANDBOX_KEY }}
+        run: |
+          flutter build apk --release \
+            --dart-define=ENV=staging \
+            --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY"
+
+      - name: Prepare release notes
+        run: |
+          echo "Branch: $GIT_REF" > release-notes.txt
+          echo "Commit: $GIT_SHA" >> release-notes.txt
+          echo "Environment: staging" >> release-notes.txt
+
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: build/app/outputs/flutter-apk/app-release.apk
+          releaseNotesFile: release-notes.txt
+
+  build-ios:
+    runs-on: macos-latest
+    env:
+      GIT_REF: ${{ github.ref_name }}
+      GIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Setup iOS certificates
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.IOS_P12_CERTIFICATE }}
+          p12-password: ${{ secrets.IOS_P12_PASSWORD }}
+
+      - name: Setup provisioning profile
+        uses: apple-actions/download-provisioning-profiles@v2
+        with:
+          bundle-id: 'com.vibesync.app'
+          profile-type: 'IOS_APP_ADHOC'
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Build iOS (Staging)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_STAGING_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          REVENUECAT_KEY: ${{ secrets.REVENUECAT_SANDBOX_KEY }}
+        run: |
+          flutter build ipa --release \
+            --dart-define=ENV=staging \
+            --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY" \
+            --export-options-plist=ios/ExportOptions.plist
+
+      - name: Prepare release notes
+        run: |
+          echo "Branch: $GIT_REF" > release-notes.txt
+          echo "Commit: $GIT_SHA" >> release-notes.txt
+          echo "Environment: staging" >> release-notes.txt
+
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: build/ios/ipa/*.ipa
+          releaseNotesFile: release-notes.txt

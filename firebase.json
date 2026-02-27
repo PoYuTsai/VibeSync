@@ -1,0 +1,10 @@
+{
+  "appdistribution": {
+    "appId": {
+      "android": "YOUR_ANDROID_APP_ID",
+      "ios": "YOUR_IOS_APP_ID"
+    },
+    "groups": ["testers"],
+    "releaseNotesFile": "release-notes.txt"
+  }
+}
