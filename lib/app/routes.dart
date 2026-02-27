@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/conversation/presentation/screens/home_screen.dart';
+import '../features/conversation/presentation/screens/new_conversation_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/',
@@ -12,9 +13,7 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/new',
-      builder: (context, state) => const Scaffold(
-        body: Center(child: Text('新增對話')),
-      ),
+      builder: (context, state) => const NewConversationScreen(),
     ),
     GoRoute(
       path: '/conversation/:id',
