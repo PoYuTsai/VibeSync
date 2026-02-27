@@ -35,8 +35,8 @@ coverage/
 **/secrets/
 *.keystore
 *.jks
-google-services.json
-GoogleService-Info.plist
+# Note: google-services.json and GoogleService-Info.plist are safe to commit
+# They only contain public API keys; security is enforced by Firebase Rules
 
 # API Keys & Credentials
 *.key

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "72365969168",
+    "project_id": "vibesync-ed432",
+    "storage_bucket": "vibesync-ed432.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:72365969168:android:609218cfdc24783a9b5f95",
+        "android_client_info": {
+          "package_name": "com.vibesync.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBvfqy7R3v-K2Hr_sTacGbW_X3KBryxbe8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
