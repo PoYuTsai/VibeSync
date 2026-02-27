@@ -77,12 +77,28 @@ jobs:
           echo "Commit: $GIT_SHA" >> release-notes.txt
           echo "Environment: staging" >> release-notes.txt
 
+      - name: Debug Firebase config
+        run: |
+          echo "Checking Firebase secrets..."
+          if [ -z "${{ secrets.FIREBASE_ANDROID_APP_ID }}" ]; then
+            echo "❌ FIREBASE_ANDROID_APP_ID is not set"
+          else
+            echo "✅ FIREBASE_ANDROID_APP_ID is set (starts with: ${FIREBASE_ANDROID_APP_ID:0:20}...)"
+          fi
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "❌ FIREBASE_SERVICE_ACCOUNT is not set"
+          else
+            echo "✅ FIREBASE_SERVICE_ACCOUNT is set (length: ${#FIREBASE_SERVICE_ACCOUNT} chars)"
+          fi
+        env:
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
       - name: Upload to Firebase App Distribution
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: testers
           file: build/app/outputs/flutter-apk/app-release.apk
           releaseNotesFile: release-notes.txt
 
@@ -143,6 +159,5 @@ jobs:
         with:
           appId: ${{ secrets.FIREBASE_IOS_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: testers
           file: build/ios/ipa/*.ipa
           releaseNotesFile: release-notes.txt
