@@ -65,11 +65,11 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
           REVENUECAT_KEY: ${{ secrets.REVENUECAT_SANDBOX_KEY }}
         run: |
-          flutter build apk --release \
+          flutter build apk --release --verbose \
             --dart-define=ENV=staging \
             --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY"
+            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY" 2>&1 | tee build.log || (cat build.log | tail -100 && exit 1)
 
       - name: Prepare release notes
         run: |
