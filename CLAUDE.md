@@ -7,14 +7,14 @@
 ```
 📌 專案狀態：設計完成，待實作
 📌 定價模式：訊息制 (2 付費方案)
-📌 下一步：執行 19 任務實作計畫 (已與設計規格同步)
+📌 下一步：執行 35 任務實作計畫 (v2.4，與設計規格 v1.3 同步)
 ```
 
 ### 關鍵文件指引
 | 要了解什麼 | 讀哪個文件 |
 |------------|-----------|
-| **完整設計規格** | `docs/plans/2026-02-26-vibesync-design.md` |
-| **實作計畫 (19 任務)** | `docs/plans/2026-02-26-vibesync-implementation.md` |
+| **完整設計規格 (v1.3)** | `docs/plans/2026-02-26-vibesync-design.md` |
+| **實作計畫 (35 任務)** | `docs/plans/2026-02-26-vibesync-implementation.md` |
 | **實作前檢查清單** | `docs/PRE-IMPLEMENTATION-CHECKLIST.md` |
 | **定價方案** | `docs/pricing-final.md` |
 | **法規文件** | `docs/legal/*.md` |
@@ -363,6 +363,22 @@ npx supabase stop
 **原因**:
 - 設計規格書已定義完整功能，實作計畫需同步
 - 避免實作與設計不一致造成返工
+
+#### [2026-02-27] 設計規格 v1.3 - 運營補充
+**決定**: 新增 Admin Dashboard 和沙盒測試環境設計
+**Admin Dashboard**:
+- 技術棧：Next.js 14 + Tailwind + Recharts + Vercel
+- 8 項報表：用戶總覽、訂閱分佈、Token 成本、營收、利潤分析、AI 成功率、錯誤追蹤、用戶活躍度
+- 權限控制：單一 Admin 角色 (Email Allowlist)
+- 認證：Supabase Auth
+
+**沙盒測試環境**:
+- 雙軌策略：Firebase App Distribution (快速迭代) + TestFlight/Internal Testing (上架前)
+- 環境配置：dev / staging / prod
+- 測試帳號管理：排除測試帳號的報表 View
+- CI/CD：GitHub Actions 自動 build + 分發
+
+**總任務數更新**: 28 → 35 tasks
 
 ## Notes
 

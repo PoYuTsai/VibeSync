@@ -8133,31 +8133,1081 @@ git commit -m "feat: 建立 Token 追蹤服務 (精確計量 + 成本計算)"
 
 ---
 
-## Phase 11 TDD Checkpoint (Final)
+## Phase 11 TDD Checkpoint
 
 ```bash
-# Run all tests
 flutter test
+# All tests should pass before proceeding
+```
 
-# Check coverage (目標 > 70%)
-flutter test --coverage
+---
 
-# Generate HTML report
-genhtml coverage/lcov.info -o coverage/html
-open coverage/html/index.html
+## Phase 12: Admin Dashboard
 
-# Deploy Supabase migrations
+### Task 12.1: Setup Admin Dashboard Project
+
+**Files:**
+- Create: `admin-dashboard/` (獨立 Next.js 專案)
+
+**Step 1: Initialize Next.js project**
+
+```bash
+cd /path/to/vibesync
+npx create-next-app@latest admin-dashboard --typescript --tailwind --eslint --app --use-npm
+cd admin-dashboard
+```
+
+**Step 2: Install dependencies**
+
+```bash
+npm install @supabase/supabase-js recharts @radix-ui/react-slot class-variance-authority clsx tailwind-merge lucide-react
+npx shadcn@latest init
+npx shadcn@latest add button card table tabs
+```
+
+**Step 3: Create environment config**
+
+```typescript
+// admin-dashboard/.env.local
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+```
+
+**Step 4: Create Supabase client**
+
+```typescript
+// admin-dashboard/lib/supabase.ts
+import { createClient } from '@supabase/supabase-js';
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+```
+
+**Step 5: Commit**
+
+```bash
+git add admin-dashboard/
+git commit -m "feat: 初始化 Admin Dashboard Next.js 專案"
+```
+
+---
+
+### Task 12.2: Create Admin Auth & Database Schema
+
+**Files:**
+- Create: `supabase/migrations/006_admin_dashboard.sql`
+- Create: `admin-dashboard/middleware.ts`
+
+**Step 1: Create database migration**
+
+```sql
+-- supabase/migrations/006_admin_dashboard.sql
+
+-- Admin 用戶白名單
+CREATE TABLE admin_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 插入初始 Admin
+INSERT INTO admin_users (email, name) VALUES
+  ('your_email@example.com', 'Admin 1'),
+  ('partner_email@example.com', 'Admin 2');
+
+-- 營收事件 (RevenueCat Webhook)
+CREATE TABLE revenue_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  event_type TEXT NOT NULL CHECK (event_type IN (
+    'INITIAL_PURCHASE', 'RENEWAL', 'CANCELLATION',
+    'BILLING_ISSUE', 'PRODUCT_CHANGE'
+  )),
+  product_id TEXT NOT NULL,
+  price_usd DECIMAL(10, 2) NOT NULL,
+  currency TEXT DEFAULT 'TWD',
+  transaction_id TEXT,
+  event_timestamp TIMESTAMPTZ NOT NULL,
+  raw_payload JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX idx_revenue_events_user_id ON revenue_events(user_id);
+CREATE INDEX idx_revenue_events_timestamp ON revenue_events(event_timestamp);
+CREATE INDEX idx_revenue_events_type ON revenue_events(event_type);
+
+-- RLS (Admin 專用)
+ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE revenue_events ENABLE ROW LEVEL SECURITY;
+
+-- Admin 可以讀取所有資料
+CREATE POLICY "Admin can read admin_users" ON admin_users
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM admin_users WHERE email = auth.jwt()->>'email')
+  );
+
+CREATE POLICY "Admin can read revenue_events" ON revenue_events
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM admin_users WHERE email = auth.jwt()->>'email')
+  );
+
+-- 月度營收彙總 View
+CREATE OR REPLACE VIEW monthly_revenue AS
+SELECT
+  DATE_TRUNC('month', event_timestamp) AS month,
+  SUM(CASE WHEN event_type IN ('INITIAL_PURCHASE', 'RENEWAL') THEN price_usd ELSE 0 END) AS revenue,
+  SUM(CASE WHEN event_type = 'INITIAL_PURCHASE' THEN 1 ELSE 0 END) AS new_subscriptions,
+  SUM(CASE WHEN event_type = 'RENEWAL' THEN 1 ELSE 0 END) AS renewals,
+  SUM(CASE WHEN event_type = 'CANCELLATION' THEN 1 ELSE 0 END) AS cancellations,
+  COUNT(DISTINCT user_id) AS paying_users
+FROM revenue_events
+GROUP BY DATE_TRUNC('month', event_timestamp)
+ORDER BY month DESC;
+
+-- 月度利潤 View
+CREATE OR REPLACE VIEW monthly_profit AS
+SELECT
+  r.month,
+  r.revenue,
+  COALESCE(t.total_cost_usd, 0) AS cost,
+  r.revenue - COALESCE(t.total_cost_usd, 0) AS profit,
+  CASE WHEN r.revenue > 0
+    THEN ROUND(((r.revenue - COALESCE(t.total_cost_usd, 0)) / r.revenue * 100)::DECIMAL, 2)
+    ELSE 0
+  END AS margin_percent,
+  r.paying_users,
+  CASE WHEN r.paying_users > 0
+    THEN ROUND((COALESCE(t.total_cost_usd, 0) / r.paying_users)::DECIMAL, 4)
+    ELSE 0
+  END AS cost_per_user
+FROM monthly_revenue r
+LEFT JOIN (
+  SELECT DATE_TRUNC('month', created_at) AS month, SUM(cost_usd) AS total_cost_usd
+  FROM token_usage
+  GROUP BY DATE_TRUNC('month', created_at)
+) t ON r.month = t.month;
+
+-- AI 成功率 View
+CREATE OR REPLACE VIEW ai_success_rate AS
+SELECT
+  DATE_TRUNC('day', created_at) AS date,
+  COUNT(*) AS total_requests,
+  SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
+  SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+  SUM(CASE WHEN status = 'filtered' THEN 1 ELSE 0 END) AS filtered_count,
+  ROUND((SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::DECIMAL / COUNT(*) * 100), 2) AS success_rate
+FROM ai_logs
+GROUP BY DATE_TRUNC('day', created_at)
+ORDER BY date DESC;
+
+-- 用戶活躍度 View (DAU/MAU)
+CREATE OR REPLACE VIEW user_activity AS
+SELECT
+  DATE_TRUNC('day', created_at) AS date,
+  COUNT(DISTINCT user_id) AS dau
+FROM ai_logs
+GROUP BY DATE_TRUNC('day', created_at)
+ORDER BY date DESC;
+```
+
+**Step 2: Create middleware for auth**
+
+```typescript
+// admin-dashboard/middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+export async function middleware(request: NextRequest) {
+  // 跳過登入頁面
+  if (request.nextUrl.pathname === '/login') {
+    return NextResponse.next();
+  }
+
+  // 從 cookie 取得 session
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // 檢查是否在 admin 白名單
+  const { data: adminUser } = await supabase
+    .from('admin_users')
+    .select('id')
+    .eq('email', session.user.email)
+    .single();
+
+  if (!adminUser) {
+    return NextResponse.redirect(new URL('/403', request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|login|403).*)'],
+};
+```
+
+**Step 3: Apply migration**
+
+```bash
 supabase db push
+```
 
-# Deploy updated Edge Functions
-supabase functions deploy analyze-chat
+**Step 4: Commit**
+
+```bash
+git add supabase/migrations/006_admin_dashboard.sql admin-dashboard/middleware.ts
+git commit -m "feat: Admin Dashboard 資料庫 schema + 認證中介層"
+```
+
+---
+
+### Task 12.3: Build Dashboard Pages (8 Modules)
+
+**Files:**
+- Create: `admin-dashboard/app/page.tsx` (總覽)
+- Create: `admin-dashboard/app/users/page.tsx`
+- Create: `admin-dashboard/app/subscriptions/page.tsx`
+- Create: `admin-dashboard/app/revenue/page.tsx`
+- Create: `admin-dashboard/app/costs/page.tsx`
+- Create: `admin-dashboard/app/ai-health/page.tsx`
+- Create: `admin-dashboard/app/errors/page.tsx`
+- Create: `admin-dashboard/app/activity/page.tsx`
+
+**Step 1: Create dashboard overview page**
+
+```typescript
+// admin-dashboard/app/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { supabase } from '@/lib/supabase';
+import { Users, CreditCard, Zap, TrendingUp } from 'lucide-react';
+
+interface DashboardStats {
+  totalUsers: number;
+  activeSubscriptions: number;
+  monthlyRevenue: number;
+  monthlyProfit: number;
+  aiSuccessRate: number;
+}
+
+export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchStats() {
+      // Fetch total users
+      const { count: totalUsers } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch active subscriptions
+      const { count: activeSubscriptions } = await supabase
+        .from('subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .neq('tier', 'free');
+
+      // Fetch current month revenue
+      const { data: revenue } = await supabase
+        .from('monthly_profit')
+        .select('*')
+        .order('month', { ascending: false })
+        .limit(1)
+        .single();
+
+      // Fetch AI success rate (last 7 days)
+      const { data: aiStats } = await supabase
+        .from('ai_success_rate')
+        .select('*')
+        .gte('date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('date', { ascending: false });
+
+      const avgSuccessRate = aiStats?.length
+        ? aiStats.reduce((sum, d) => sum + d.success_rate, 0) / aiStats.length
+        : 0;
+
+      setStats({
+        totalUsers: totalUsers || 0,
+        activeSubscriptions: activeSubscriptions || 0,
+        monthlyRevenue: revenue?.revenue || 0,
+        monthlyProfit: revenue?.profit || 0,
+        aiSuccessRate: avgSuccessRate,
+      });
+      setLoading(false);
+    }
+
+    fetchStats();
+  }, []);
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">總用戶數</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.totalUsers}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">付費訂閱</CardTitle>
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.activeSubscriptions}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">本月營收</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${stats?.monthlyRevenue.toFixed(2)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              利潤: ${stats?.monthlyProfit.toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">AI 成功率</CardTitle>
+            <Zap className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.aiSuccessRate.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground">過去 7 天</p>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+```
+
+**Step 2: Create revenue chart page**
+
+```typescript
+// admin-dashboard/app/revenue/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { supabase } from '@/lib/supabase';
+
+interface MonthlyData {
+  month: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  margin_percent: number;
+}
+
+export default function RevenuePage() {
+  const [data, setData] = useState<MonthlyData[]>([]);
+
+  useEffect(() => {
+    async function fetchData() {
+      const { data: monthlyData } = await supabase
+        .from('monthly_profit')
+        .select('*')
+        .order('month', { ascending: true })
+        .limit(12);
+
+      if (monthlyData) {
+        setData(monthlyData.map(d => ({
+          ...d,
+          month: new Date(d.month).toLocaleDateString('zh-TW', { month: 'short' }),
+        })));
+      }
+    }
+
+    fetchData();
+  }, []);
+
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold mb-6">營收分析</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>營收 vs 成本 vs 利潤</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="revenue" stroke="#22c55e" name="營收" />
+              <Line type="monotone" dataKey="cost" stroke="#ef4444" name="成本" />
+              <Line type="monotone" dataKey="profit" stroke="#3b82f6" name="利潤" />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+```
+
+**Step 3: Create costs/token tracking page**
+
+```typescript
+// admin-dashboard/app/costs/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { supabase } from '@/lib/supabase';
+
+interface DailyToken {
+  date: string;
+  haiku_tokens: number;
+  sonnet_tokens: number;
+  total_cost: number;
+}
+
+interface ModelDistribution {
+  model: string;
+  count: number;
+  cost: number;
+}
+
+export default function CostsPage() {
+  const [dailyData, setDailyData] = useState<DailyToken[]>([]);
+  const [modelDist, setModelDist] = useState<ModelDistribution[]>([]);
+
+  useEffect(() => {
+    async function fetchData() {
+      // Daily token usage
+      const { data: tokenData } = await supabase
+        .from('token_usage')
+        .select('model, total_tokens, cost_usd, created_at')
+        .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: true });
+
+      // Aggregate by day and model
+      const byDay = new Map<string, { haiku: number; sonnet: number; cost: number }>();
+      const byModel = new Map<string, { count: number; cost: number }>();
+
+      tokenData?.forEach(row => {
+        const date = new Date(row.created_at).toISOString().split('T')[0];
+        const modelName = row.model.includes('haiku') ? 'haiku' : 'sonnet';
+
+        // Daily aggregation
+        const existing = byDay.get(date) || { haiku: 0, sonnet: 0, cost: 0 };
+        if (modelName === 'haiku') {
+          existing.haiku += row.total_tokens;
+        } else {
+          existing.sonnet += row.total_tokens;
+        }
+        existing.cost += row.cost_usd;
+        byDay.set(date, existing);
+
+        // Model distribution
+        const modelStats = byModel.get(modelName) || { count: 0, cost: 0 };
+        modelStats.count += 1;
+        modelStats.cost += row.cost_usd;
+        byModel.set(modelName, modelStats);
+      });
+
+      setDailyData(
+        Array.from(byDay.entries()).map(([date, val]) => ({
+          date,
+          haiku_tokens: val.haiku,
+          sonnet_tokens: val.sonnet,
+          total_cost: val.cost,
+        }))
+      );
+
+      setModelDist(
+        Array.from(byModel.entries()).map(([model, val]) => ({
+          model: model === 'haiku' ? 'Haiku' : 'Sonnet',
+          count: val.count,
+          cost: val.cost,
+        }))
+      );
+    }
+
+    fetchData();
+  }, []);
+
+  const COLORS = ['#8b5cf6', '#ec4899'];
+
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold mb-6">Token 成本分析</h1>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>每日 Token 使用</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={dailyData.slice(-14)}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="haiku_tokens" stackId="a" fill="#8b5cf6" name="Haiku" />
+                <Bar dataKey="sonnet_tokens" stackId="a" fill="#ec4899" name="Sonnet" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>模型分佈</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={modelDist}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ model, percent }) => `${model} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="count"
+                >
+                  {modelDist.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+```
+
+**Step 4: Commit**
+
+```bash
+git add admin-dashboard/app/
+git commit -m "feat: Admin Dashboard 8 項報表頁面"
+```
+
+---
+
+### Task 12.4: Deploy Admin Dashboard
+
+**Step 1: Setup Vercel**
+
+```bash
+cd admin-dashboard
+vercel
+```
+
+**Step 2: Add environment variables in Vercel**
+
+```
+NEXT_PUBLIC_SUPABASE_URL=xxx
+NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
+```
+
+**Step 3: Deploy**
+
+```bash
+vercel --prod
+```
+
+**Step 4: Commit deployment config**
+
+```bash
+git add admin-dashboard/vercel.json
+git commit -m "chore: Admin Dashboard Vercel 部署配置"
+```
+
+---
+
+## Phase 12 Checkpoint
+
+```bash
+# Verify admin dashboard is accessible
+curl https://your-admin-dashboard.vercel.app
+
+# Verify auth works (should redirect to login)
+```
+
+---
+
+## Phase 13: Sandbox Testing Environment
+
+### Task 13.1: Setup Environment Configuration
+
+**Files:**
+- Create: `lib/core/config/environment.dart`
+- Modify: `lib/main.dart`
+
+**Step 1: Create environment configuration**
+
+```dart
+// lib/core/config/environment.dart
+enum Environment { dev, staging, prod }
+
+class AppConfig {
+  static const _envKey = 'ENV';
+
+  static Environment get environment {
+    const env = String.fromEnvironment(_envKey, defaultValue: 'dev');
+    return Environment.values.firstWhere(
+      (e) => e.name == env,
+      orElse: () => Environment.dev,
+    );
+  }
+
+  static bool get isProduction => environment == Environment.prod;
+  static bool get isDevelopment => environment == Environment.dev;
+  static bool get isStaging => environment == Environment.staging;
+
+  static String get supabaseUrl {
+    switch (environment) {
+      case Environment.dev:
+        return 'http://localhost:54321';
+      case Environment.staging:
+        return const String.fromEnvironment(
+          'SUPABASE_STAGING_URL',
+          defaultValue: 'https://your-staging-project.supabase.co',
+        );
+      case Environment.prod:
+        return const String.fromEnvironment(
+          'SUPABASE_PROD_URL',
+          defaultValue: 'https://your-prod-project.supabase.co',
+        );
+    }
+  }
+
+  static String get supabaseAnonKey {
+    switch (environment) {
+      case Environment.dev:
+        return 'your-local-anon-key';
+      case Environment.staging:
+        return const String.fromEnvironment('SUPABASE_STAGING_ANON_KEY');
+      case Environment.prod:
+        return const String.fromEnvironment('SUPABASE_PROD_ANON_KEY');
+    }
+  }
+
+  static String get revenueCatApiKey {
+    // Sandbox vs Production
+    return isProduction
+        ? const String.fromEnvironment('REVENUECAT_PROD_KEY')
+        : const String.fromEnvironment('REVENUECAT_SANDBOX_KEY');
+  }
+}
+```
+
+**Step 2: Update main.dart**
+
+```dart
+// lib/main.dart
+import 'core/config/environment.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize based on environment
+  print('Running in ${AppConfig.environment.name} mode');
+
+  await Supabase.initialize(
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
+  );
+
+  runApp(const ProviderScope(child: VibeSyncApp()));
+}
+```
+
+**Step 3: Write tests**
+
+```dart
+// test/unit/config/environment_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/config/environment.dart';
+
+void main() {
+  group('AppConfig', () {
+    test('defaults to dev environment', () {
+      // Without ENV defined, should default to dev
+      expect(AppConfig.isDevelopment, isTrue);
+    });
+
+    test('isProduction returns correct value', () {
+      expect(AppConfig.isProduction, isFalse); // In test, should be dev
+    });
+  });
+}
+```
+
+**Step 4: Commit**
+
+```bash
+git add lib/core/config/ lib/main.dart test/
+git commit -m "feat: 環境配置切換 (dev/staging/prod)"
+```
+
+---
+
+### Task 13.2: Setup Firebase App Distribution
+
+**Files:**
+- Create: `.github/workflows/distribute.yml`
+- Create: `firebase.json`
+
+**Step 1: Install Firebase CLI**
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase init hosting  # Select app distribution
+```
+
+**Step 2: Create GitHub Actions workflow**
+
+```yaml
+# .github/workflows/distribute.yml
+name: Build & Distribute
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.19.0'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build APK (Staging)
+        run: |
+          flutter build apk --release \
+            --dart-define=ENV=staging \
+            --dart-define=SUPABASE_STAGING_URL=${{ secrets.SUPABASE_STAGING_URL }} \
+            --dart-define=SUPABASE_STAGING_ANON_KEY=${{ secrets.SUPABASE_STAGING_ANON_KEY }} \
+            --dart-define=REVENUECAT_SANDBOX_KEY=${{ secrets.REVENUECAT_SANDBOX_KEY }}
+
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: build/app/outputs/flutter-apk/app-release.apk
+          releaseNotes: |
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (Staging)
+        run: |
+          flutter build ipa --release \
+            --dart-define=ENV=staging \
+            --dart-define=SUPABASE_STAGING_URL=${{ secrets.SUPABASE_STAGING_URL }} \
+            --dart-define=SUPABASE_STAGING_ANON_KEY=${{ secrets.SUPABASE_STAGING_ANON_KEY }} \
+            --dart-define=REVENUECAT_SANDBOX_KEY=${{ secrets.REVENUECAT_SANDBOX_KEY }} \
+            --export-options-plist=ios/ExportOptions.plist
+
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: build/ios/ipa/*.ipa
+          releaseNotes: |
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+```
+
+**Step 3: Create test users table**
+
+```sql
+-- supabase/migrations/007_test_users.sql
+
+-- 測試帳號標記
+CREATE TABLE test_users (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  tester_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 真實用戶 View (排除測試帳號)
+CREATE OR REPLACE VIEW real_users AS
+SELECT * FROM users
+WHERE id NOT IN (SELECT user_id FROM test_users);
+
+-- 真實訂閱 View (排除測試帳號)
+CREATE OR REPLACE VIEW real_subscriptions AS
+SELECT s.* FROM subscriptions s
+JOIN users u ON s.user_id = u.id
+WHERE u.id NOT IN (SELECT user_id FROM test_users);
+
+-- 插入測試帳號 (根據需要調整)
+-- INSERT INTO test_users (user_id, tester_name) VALUES
+--   ('uuid-1', 'Tester 1'),
+--   ('uuid-2', 'Tester 2');
+```
+
+**Step 4: Commit**
+
+```bash
+git add .github/workflows/distribute.yml firebase.json supabase/migrations/007_test_users.sql
+git commit -m "feat: Firebase App Distribution CI/CD + 測試帳號管理"
+```
+
+---
+
+### Task 13.3: Setup TestFlight & Internal Testing
+
+**Files:**
+- Create: `ios/fastlane/Fastfile`
+- Create: `android/fastlane/Fastfile`
+
+**Step 1: Install Fastlane**
+
+```bash
+gem install fastlane
+cd ios && fastlane init
+cd ../android && fastlane init
+```
+
+**Step 2: Create iOS Fastfile**
+
+```ruby
+# ios/fastlane/Fastfile
+default_platform(:ios)
+
+platform :ios do
+  desc "Push a new build to TestFlight"
+  lane :beta do
+    # Ensure clean state
+    ensure_git_status_clean
+
+    # Build
+    build_app(
+      scheme: "Runner",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "com.yourcompany.vibesync" => "VibeSync AppStore"
+        }
+      }
+    )
+
+    # Upload to TestFlight
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true
+    )
+
+    # Notify testers
+    slack(
+      message: "New TestFlight build uploaded! 🚀",
+      slack_url: ENV["SLACK_WEBHOOK_URL"]
+    )
+  end
+end
+```
+
+**Step 3: Create Android Fastfile**
+
+```ruby
+# android/fastlane/Fastfile
+default_platform(:android)
+
+platform :android do
+  desc "Deploy to Internal Testing track"
+  lane :internal do
+    # Build
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: "./"
+    )
+
+    # Upload to Play Console
+    upload_to_play_store(
+      track: "internal",
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+
+    # Notify
+    slack(
+      message: "New Internal Testing build uploaded! 🚀",
+      slack_url: ENV["SLACK_WEBHOOK_URL"]
+    )
+  end
+end
+```
+
+**Step 4: Create manual workflow**
+
+```yaml
+# .github/workflows/release.yml
+name: Release to App Stores
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to release'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - ios
+          - android
+          - both
+
+jobs:
+  release-ios:
+    if: inputs.platform == 'ios' || inputs.platform == 'both'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+      - name: Build iOS
+        run: |
+          flutter build ipa --release \
+            --dart-define=ENV=prod
+      - name: Upload to TestFlight
+        run: cd ios && fastlane beta
+        env:
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+
+  release-android:
+    if: inputs.platform == 'android' || inputs.platform == 'both'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+      - name: Build Android
+        run: |
+          flutter build appbundle --release \
+            --dart-define=ENV=prod
+      - name: Upload to Play Store
+        run: cd android && fastlane internal
+        env:
+          PLAY_STORE_CONFIG_JSON: ${{ secrets.PLAY_STORE_CONFIG_JSON }}
+```
+
+**Step 5: Commit**
+
+```bash
+git add ios/fastlane/ android/fastlane/ .github/workflows/release.yml
+git commit -m "feat: TestFlight + Internal Testing 發布流程"
+```
+
+---
+
+## Phase 13 Checkpoint
+
+```bash
+# Test Firebase distribution (push to main)
+git push origin main
+
+# Check GitHub Actions for build status
+# Check Firebase App Distribution for new build
+# Test install on device via QR code
 ```
 
 ---
 
 ## Summary
 
-**Total Tasks:** 28 tasks across 11 phases
+**Total Tasks:** 35 tasks across 13 phases
+
+**Phase Breakdown:**
+1. Project Foundation (3 tasks) - Flutter setup, dependencies, structure
+2. Local Data Layer (3 tasks) - Hive entities, storage, repository
+3. UI Screens (4 tasks) - Widgets, home, new conversation, analysis
+4. Supabase Backend (2 tasks) - Schema, Edge Function
+5. Flutter-Supabase Integration (2 tasks) - Client, service
+6. Settings (1 task) - Settings screen
+7. Message Calculation & Usage (2 tasks) - 訊息計算、用量追蹤、預覽確認
+8. Conversation Memory (2 tasks) - 對話記憶、摘要、選擇追蹤
+9. Paywall & Subscription (2 tasks) - 訂閱方案選擇畫面 + 加購訊息包
+10. GAME Framework (2 tasks) - GAME 階段分析、心理解讀元件
+11. 商業級 SaaS 補充 (6 tasks) - AI 護欄、Fallback、日誌、Onboarding、Rate Limiting、Token 追蹤
+12. **Admin Dashboard (4 tasks)** - Next.js 設定、資料庫、報表頁面、部署
+13. **Sandbox Testing (3 tasks)** - 環境配置、Firebase 分發、TestFlight/Internal Testing
 
 **Phase Breakdown:**
 1. Project Foundation (3 tasks) - Flutter setup, dependencies, structure
@@ -8175,7 +9225,6 @@ supabase functions deploy analyze-chat
 **Next Steps After MVP:**
 - Authentication screens (Google/Apple Sign-in)
 - RevenueCat integration for subscriptions
-- Real device testing
 - App Store / Play Store submission
 
 ---
@@ -8240,6 +9289,40 @@ supabase functions deploy analyze-chat
 | 2026-02-27 | 2.1 | **GAME 框架整合** - 與設計規格 v1.1 同步 |
 | 2026-02-27 | 2.2 | **完全同步** - 補齊混合模型策略 + 加購訊息包 |
 | 2026-02-27 | 2.3 | **商業級補充** - 與設計規格 v1.2 同步 (AI 護欄、Fallback、日誌、Onboarding、Rate Limiting、Token 追蹤) |
+| 2026-02-27 | 2.4 | **運營補充** - 與設計規格 v1.3 同步 (Admin Dashboard、沙盒測試環境) |
+
+### v2.4 變更明細 (與設計規格 v1.3 同步)
+
+**新增 Phase 12: Admin Dashboard (4 tasks)**
+- ✅ 新增: Task 12.1 Setup Admin Dashboard Project (Next.js)
+- ✅ 新增: Task 12.2 Create Admin Auth & Database Schema
+- ✅ 新增: Task 12.3 Build Dashboard Pages (8 報表模組)
+- ✅ 新增: Task 12.4 Deploy Admin Dashboard (Vercel)
+
+**新增 Phase 13: Sandbox Testing Environment (3 tasks)**
+- ✅ 新增: Task 13.1 Setup Environment Configuration (dev/staging/prod)
+- ✅ 新增: Task 13.2 Setup Firebase App Distribution (快速迭代)
+- ✅ 新增: Task 13.3 Setup TestFlight & Internal Testing (上架前測試)
+
+**資料庫擴充**
+- ✅ 新增: `admin_users` 表 (Admin 白名單)
+- ✅ 新增: `revenue_events` 表 (RevenueCat Webhook)
+- ✅ 新增: `test_users` 表 (測試帳號標記)
+- ✅ 新增: `monthly_revenue` View
+- ✅ 新增: `monthly_profit` View
+- ✅ 新增: `ai_success_rate` View
+- ✅ 新增: `user_activity` View
+- ✅ 新增: `real_users` View (排除測試帳號)
+- ✅ 新增: `real_subscriptions` View
+
+**CI/CD 配置**
+- ✅ 新增: `.github/workflows/distribute.yml` (Firebase App Distribution)
+- ✅ 新增: `.github/workflows/release.yml` (TestFlight/Internal Testing)
+- ✅ 新增: iOS/Android Fastlane 配置
+
+**總任務數**: 28 → 35 tasks
+
+---
 
 ### v2.3 變更明細 (與設計規格 v1.2 同步)
 

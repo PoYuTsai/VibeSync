@@ -1,7 +1,7 @@
 # VibeSync 設計規格書
 
 **專案名稱**: VibeSync 頻率調校師
-**版本**: 1.2
+**版本**: 1.3
 **日期**: 2026-02-27
 **狀態**: 設計完成，待實作
 
@@ -1594,7 +1594,267 @@ await supabase.from('token_usage').insert({
 
 ---
 
-## 附錄 C: 待補項目
+## 附錄 C: Admin Dashboard
+
+> **v1.3 新增**：自建管理後台，供營運團隊監控與分析
+
+### C.1 技術架構
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Admin Dashboard (Vercel)                   │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │  Next.js 14 (App Router) + Tailwind CSS + shadcn/ui    ││
+│  │  Recharts (圖表) + Supabase Auth (認證)                 ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+       ┌──────────┐    ┌──────────┐    ┌──────────────┐
+       │ Supabase │    │ RevenueCat│   │  ai_logs     │
+       │   DB     │    │  Webhook  │   │ token_usage  │
+       └──────────┘    └──────────┘    └──────────────┘
+```
+
+### C.2 報表模組 (8 項)
+
+| # | 模組 | 主要指標 | 資料來源 |
+|---|------|----------|----------|
+| 1 | **用戶總覽** | 總用戶數、日/週新增、活躍率 | `users` |
+| 2 | **訂閱分佈** | Free/Starter/Essential 佔比、轉換率 | `subscriptions` |
+| 3 | **Token 成本** | 日/月消耗、Haiku vs Sonnet 分佈 | `token_usage` |
+| 4 | **營收總額** | MRR、新訂閱、續訂、取消 | RevenueCat Webhook |
+| 5 | **利潤分析** | 毛利 = 營收 - Token 成本、每用戶平均成本 | 計算欄位 |
+| 6 | **AI 成功率** | 成功/失敗/過濾比例、趨勢 | `ai_logs` |
+| 7 | **錯誤追蹤** | 錯誤類型分佈 (TIMEOUT/API_ERROR/...) | `ai_logs` |
+| 8 | **用戶活躍度** | DAU/MAU、7日留存、30日留存 | Event tracking |
+
+### C.3 資料庫擴充
+
+```sql
+-- Admin 用戶白名單
+CREATE TABLE admin_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 營收事件 (RevenueCat Webhook 寫入)
+CREATE TABLE revenue_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  event_type TEXT NOT NULL,  -- 'INITIAL_PURCHASE' | 'RENEWAL' | 'CANCELLATION'
+  product_id TEXT NOT NULL,
+  price_usd DECIMAL(10, 2) NOT NULL,
+  currency TEXT DEFAULT 'TWD',
+  transaction_id TEXT,
+  event_timestamp TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 月度營收彙總 View
+CREATE VIEW monthly_revenue AS
+SELECT
+  DATE_TRUNC('month', event_timestamp) AS month,
+  SUM(CASE WHEN event_type IN ('INITIAL_PURCHASE', 'RENEWAL') THEN price_usd ELSE 0 END) AS revenue,
+  COUNT(DISTINCT user_id) AS paying_users
+FROM revenue_events
+GROUP BY DATE_TRUNC('month', event_timestamp);
+
+-- 月度利潤 View
+CREATE VIEW monthly_profit AS
+SELECT
+  r.month,
+  r.revenue,
+  COALESCE(t.total_cost_usd, 0) AS cost,
+  r.revenue - COALESCE(t.total_cost_usd, 0) AS profit,
+  CASE WHEN r.revenue > 0
+    THEN ((r.revenue - COALESCE(t.total_cost_usd, 0)) / r.revenue * 100)::DECIMAL(5,2)
+    ELSE 0
+  END AS margin_percent
+FROM monthly_revenue r
+LEFT JOIN (
+  SELECT DATE_TRUNC('month', created_at) AS month, SUM(cost_usd) AS total_cost_usd
+  FROM token_usage
+  GROUP BY DATE_TRUNC('month', created_at)
+) t ON r.month = t.month;
+```
+
+### C.4 Dashboard 頁面結構
+
+```
+/admin
+├── /dashboard          # 總覽儀表板 (關鍵指標卡片 + 趨勢圖)
+├── /users              # 用戶列表 + 搜尋 + 詳細
+├── /subscriptions      # 訂閱分佈 + 轉換漏斗
+├── /revenue            # 營收報表 + MRR 趨勢
+├── /costs              # Token 成本 + 利潤分析
+├── /ai-health          # AI 成功率 + 錯誤追蹤
+└── /settings           # Admin 白名單管理
+```
+
+### C.5 認證流程
+
+```typescript
+// middleware.ts
+export async function middleware(req: NextRequest) {
+  const session = await getSession(req);
+
+  if (!session) {
+    return NextResponse.redirect('/login');
+  }
+
+  // 檢查是否在 admin_users 白名單
+  const { data } = await supabase
+    .from('admin_users')
+    .select('id')
+    .eq('email', session.user.email)
+    .single();
+
+  if (!data) {
+    return NextResponse.redirect('/403');
+  }
+
+  return NextResponse.next();
+}
+```
+
+---
+
+## 附錄 D: 沙盒測試環境
+
+> **v1.3 新增**：內測與上架前測試的雙軌策略
+
+### D.1 環境配置
+
+| 環境 | 用途 | 配置 |
+|------|------|------|
+| **DEV** | 本地開發 | 本地 Supabase + Claude API (測試 key) |
+| **STAGING** | 內部測試 | 雲端 Supabase (獨立 Project) + Claude API |
+| **PROD** | 正式上線 | 雲端 Supabase (正式) + Claude API |
+
+```dart
+// lib/core/config/environment.dart
+enum Environment { dev, staging, prod }
+
+class AppConfig {
+  static Environment get environment {
+    const env = String.fromEnvironment('ENV', defaultValue: 'dev');
+    return Environment.values.firstWhere(
+      (e) => e.name == env,
+      orElse: () => Environment.dev,
+    );
+  }
+
+  static String get supabaseUrl {
+    switch (environment) {
+      case Environment.dev:
+        return 'http://localhost:54321';
+      case Environment.staging:
+        return 'https://xxxx-staging.supabase.co';
+      case Environment.prod:
+        return 'https://xxxx-prod.supabase.co';
+    }
+  }
+}
+```
+
+### D.2 雙軌測試策略
+
+| 階段 | 工具 | 適用情境 |
+|------|------|----------|
+| **快速迭代** | Firebase App Distribution | 每日 build、功能驗證 |
+| **正式測試** | TestFlight (iOS) + Internal Testing (Android) | 上架前、訂閱測試 |
+
+### D.3 Firebase App Distribution 設定
+
+```yaml
+# .github/workflows/distribute.yml
+name: Distribute to Testers
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-distribute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+
+      - name: Build APK
+        run: flutter build apk --dart-define=ENV=staging
+
+      - name: Upload to Firebase
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          token: ${{ secrets.FIREBASE_TOKEN }}
+          groups: testers
+          file: build/app/outputs/flutter-apk/app-release.apk
+```
+
+### D.4 測試帳號管理
+
+```sql
+-- 測試帳號表
+CREATE TABLE test_users (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  tester_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 報表時排除測試帳號
+CREATE VIEW real_users AS
+SELECT * FROM users
+WHERE id NOT IN (SELECT user_id FROM test_users);
+```
+
+### D.5 RevenueCat Sandbox 測試
+
+| 平台 | Sandbox 設定 | 測試方式 |
+|------|--------------|----------|
+| iOS | Xcode → StoreKit Configuration | Sandbox Apple ID |
+| Android | Play Console → License Testing | 測試帳號 email |
+
+```typescript
+// RevenueCat 初始化時判斷環境
+final configuration = PurchasesConfiguration(
+  environment == Environment.prod
+    ? REVENUECAT_API_KEY
+    : REVENUECAT_API_KEY_SANDBOX
+);
+```
+
+### D.6 分發流程
+
+```
+開發者 Push → GitHub Actions
+                  │
+                  ▼
+        ┌─────────────────┐
+        │  Build APK/IPA  │
+        └─────────────────┘
+                  │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+   Firebase App        TestFlight /
+   Distribution       Internal Testing
+        │                   │
+        ▼                   ▼
+   掃 QR Code 安裝      商店內測安裝
+   (快速迭代)          (上架前驗證)
+```
+
+---
+
+## 附錄 E: 待補項目
 
 | 項目 | 狀態 | 說明 |
 |------|------|------|
@@ -1609,6 +1869,7 @@ await supabase.from('token_usage').insert({
 | 2026-02-26 | 1.0 | 初始設計完成 |
 | 2026-02-27 | 1.1 | 新增 GAME 框架、更新 AI 輸出格式、Session 設計、UI 風格 |
 | 2026-02-27 | 1.2 | **商業級補充** - AI 護欄、日誌審計、Fallback、Onboarding、Rate Limiting、Token 追蹤 |
+| 2026-02-27 | 1.3 | **運營補充** - Admin Dashboard (8 項報表)、沙盒測試環境 (雙軌策略) |
 
 ---
 
