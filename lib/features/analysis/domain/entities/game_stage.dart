@@ -8,6 +8,13 @@ enum GameStage {
   narrative, // 敘事 - 個性樣本、說故事
   close; // 收尾 - 模糊邀約 → 確立邀約
 
+  static GameStage fromString(String value) {
+    return GameStage.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => GameStage.opening,
+    );
+  }
+
   String get label {
     switch (this) {
       case opening:
@@ -60,6 +67,13 @@ enum GameStageStatus {
   stuckFriend, // 卡在朋友框
   canAdvance, // 可以推進
   shouldRetreat; // 應該退回
+
+  static GameStageStatus fromString(String value) {
+    return GameStageStatus.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => GameStageStatus.normal,
+    );
+  }
 
   String get label {
     switch (this) {
