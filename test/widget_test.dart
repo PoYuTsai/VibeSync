@@ -2,13 +2,17 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vibesync/app/app.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 
 void main() {
   testWidgets('App should render VibeSync text', (WidgetTester tester) async {
-    // Build our app wrapped in ProviderScope and trigger a frame.
+    // Build our app wrapped in ProviderScope with mocked providers
     await tester.pumpWidget(
-      const ProviderScope(
-        child: App(),
+      ProviderScope(
+        overrides: [
+          conversationsProvider.overrideWithValue([]),
+        ],
+        child: const App(),
       ),
     );
 
