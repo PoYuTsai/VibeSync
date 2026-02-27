@@ -40,7 +40,7 @@ dependencies:
 
   # Data Classes
   json_annotation: ^4.9.0
-  freezed_annotation: ^2.4.1
+  freezed_annotation: ^2.4.4
   equatable: ^2.0.5
 
 dev_dependencies:
