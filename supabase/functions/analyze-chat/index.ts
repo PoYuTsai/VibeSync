@@ -1,6 +1,7 @@
 // supabase/functions/analyze-chat/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { SAFETY_RULES, checkAiOutput, checkInput } from "./guardrails.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -146,7 +147,9 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
   },
   "strategy": "簡短策略說明",
   "reminder": "記得用你的方式說，見面才自然"
-}`;
+}
+
+${SAFETY_RULES}`;
 
 // 訊息計算函數
 function countMessages(messages: Array<{ content: string }>): number {
@@ -300,6 +303,21 @@ serve(async (req) => {
       });
     }
 
+    // Check input for safety (AI 護欄)
+    const inputCheck = checkInput(messages);
+    if (!inputCheck.safe) {
+      return new Response(
+        JSON.stringify({
+          error: inputCheck.reason,
+          code: "UNSAFE_INPUT",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // Format session context for Claude
     let contextInfo = "";
     if (sessionContext) {
@@ -381,6 +399,9 @@ serve(async (req) => {
         strategy: "分析失敗，請重試",
       };
     }
+
+    // Check AI output for safety (AI 護欄)
+    result = checkAiOutput(result);
 
     // Filter replies based on tier
     if (result?.replies) {
