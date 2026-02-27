@@ -75,4 +75,14 @@ class ConversationRepository {
 
     return messages;
   }
+
+  /// Create messages from a list of maps (for chat-style input)
+  List<Message> createMessagesFromList(List<Map<String, dynamic>> messageList) {
+    return messageList.map((m) => Message(
+      id: _uuid.v4(),
+      content: m['content'] as String,
+      isFromMe: m['isFromMe'] as bool,
+      timestamp: DateTime.now(),
+    )).toList();
+  }
 }

@@ -11,6 +11,7 @@ import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/reply_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
@@ -64,50 +65,85 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _runAnalysis() async {
     setState(() => _isAnalyzing = true);
 
-    // TODO: Replace with actual API call
-    await Future.delayed(const Duration(seconds: 2));
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) {
+      setState(() => _isAnalyzing = false);
+      return;
+    }
+
+    // TODO: Replace with actual API call to Supabase Edge Function
+    await Future.delayed(const Duration(seconds: 1));
+
+    // 根據實際對話內容產生合理的分析結果
+    final messages = conversation.messages;
+    final theirMessages = messages.where((m) => !m.isFromMe).toList();
+    final myMessages = messages.where((m) => m.isFromMe).toList();
+    final lastTheirMessage = theirMessages.isNotEmpty ? theirMessages.last.content : '';
+    final totalRounds = (messages.length / 2).ceil();
+
+    // 計算熱度分數 (根據對話長度和內容)
+    int score = _calculateEnthusiasmScore(theirMessages, myMessages, totalRounds);
+
+    // 判斷 GAME 階段
+    GameStage stage = _determineGameStage(totalRounds, theirMessages);
+
+    // 判斷話題深度
+    TopicDepthLevel depth = _determineTopicDepth(theirMessages);
 
     setState(() {
       _isAnalyzing = false;
-      _enthusiasmScore = 72;
-      _strategy = '她有興趣且主動分享，保持沉穩，80%鏡像即可';
-      _topicDepth = const TopicDepth(
-        current: TopicDepthLevel.personal,
-        suggestion: '可以往曖昧導向推進',
+      _enthusiasmScore = score;
+
+      // 根據熱度給策略建議
+      if (score < 30) {
+        _strategy = '熱度較低，建議用輕鬆話題破冰，不要太積極';
+        _shouldGiveUp = score < 15;
+      } else if (score < 60) {
+        _strategy = '熱度溫和，可以引導式提問，拋出有趣話題';
+      } else if (score < 80) {
+        _strategy = '她有興趣且主動分享，保持沉穩，80%鏡像即可';
+      } else {
+        _strategy = '熱度很高，可以適度推拉，保持神秘感';
+      }
+
+      _topicDepth = TopicDepth(
+        current: depth,
+        suggestion: depth == TopicDepthLevel.event
+            ? '可以往個人層面深入'
+            : depth == TopicDepthLevel.personal
+                ? '可以往曖昧導向推進'
+                : '已經很曖昧，可以考慮邀約',
       );
-      _healthCheck = const HealthCheck(
-        issues: [],
+
+      _healthCheck = HealthCheck(
+        issues: _checkHealthIssues(myMessages, theirMessages),
         suggestions: [],
       );
 
       // GAME 階段分析
-      _gameStage = const GameStageInfo(
-        current: GameStage.premise,
+      _gameStage = GameStageInfo(
+        current: stage,
         status: GameStageStatus.normal,
-        nextStep: '可以開始評估階段',
+        nextStep: _getNextStepForStage(stage),
       );
 
-      // 心理分析
-      _psychology = const PsychologyAnalysis(
-        subtext: '她分享週末活動代表對你有一定信任，想讓你更了解她',
+      // 心理分析 (根據實際內容)
+      _psychology = PsychologyAnalysis(
+        subtext: _generateSubtext(lastTheirMessage, stage),
         shitTest: null,
-        qualificationSignal: true,
+        qualificationSignal: theirMessages.length > 2,
       );
 
-      _replies = {
-        'extend': '抹茶山不錯欸，下次可以挑戰更難的',
-        'resonate': '抹茶山超讚！照片一定很美吧',
-        'tease': '聽起來妳很會挑地方嘛，改天帶路？',
-        'humor': '爬完山是不是腿軟到需要人扶？',
-        'coldRead': '感覺你是那種週末閒不下來的人',
-      };
+      // 生成回覆建議 (根據最後一則訊息)
+      _replies = _generateReplies(lastTheirMessage);
 
       // 最終建議
-      _finalRecommendation = const FinalRecommendation(
-        pick: 'tease',
-        content: '聽起來妳很會挑地方嘛，改天帶路？',
-        reason: '目前處於 Premise 階段，她有興趣且主動分享，用調情回覆推進曖昧',
-        psychology: '「改天帶路」是模糊邀約，讓她有想像空間且不會有壓力',
+      final recommendedType = score > 60 ? 'tease' : 'extend';
+      _finalRecommendation = FinalRecommendation(
+        pick: recommendedType,
+        content: _replies![recommendedType]!,
+        reason: '根據目前 ${stage.label} 階段和 $score 分熱度，建議使用${recommendedType == 'tease' ? '調情' : '延展'}回覆',
+        psychology: '保持對話流動，讓她有回應的空間',
       );
 
       // 一致性提醒
@@ -125,6 +161,115 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     } catch (_) {
       // Ignore errors in test environment
     }
+  }
+
+  // ===== 分析輔助方法 (Mock 邏輯，之後會被真正的 AI 取代) =====
+
+  int _calculateEnthusiasmScore(List<Message> theirMessages, List<Message> myMessages, int totalRounds) {
+    if (theirMessages.isEmpty) return 20;
+
+    // 基礎分數根據對話輪數
+    int baseScore = 30;
+    if (totalRounds == 1) baseScore = 25;
+    if (totalRounds > 3) baseScore = 40;
+    if (totalRounds > 5) baseScore = 50;
+
+    // 根據她的訊息長度加分
+    final avgLength = theirMessages.map((m) => m.content.length).reduce((a, b) => a + b) / theirMessages.length;
+    if (avgLength > 20) baseScore += 15;
+    if (avgLength > 50) baseScore += 10;
+
+    // 檢查是否有問號（表示她有興趣問你）
+    final hasQuestions = theirMessages.any((m) => m.content.contains('?') || m.content.contains('？'));
+    if (hasQuestions) baseScore += 15;
+
+    // 確保分數在合理範圍
+    return baseScore.clamp(15, 95);
+  }
+
+  GameStage _determineGameStage(int totalRounds, List<Message> theirMessages) {
+    if (totalRounds <= 1) return GameStage.opening;
+    if (totalRounds <= 3) return GameStage.premise;
+    if (totalRounds <= 6) return GameStage.qualification;
+    if (totalRounds <= 10) return GameStage.narrative;
+    return GameStage.close;
+  }
+
+  TopicDepthLevel _determineTopicDepth(List<Message> theirMessages) {
+    if (theirMessages.isEmpty) return TopicDepthLevel.event;
+
+    final allContent = theirMessages.map((m) => m.content).join(' ');
+
+    // 檢查是否有個人情感關鍵字
+    final personalKeywords = ['喜歡', '討厭', '覺得', '想', '希望', '感覺', '心情'];
+    final hasPersonal = personalKeywords.any((k) => allContent.contains(k));
+
+    // 檢查是否有曖昧關鍵字
+    final intimateKeywords = ['約', '見面', '一起', '下次', '週末', '有空'];
+    final hasIntimate = intimateKeywords.any((k) => allContent.contains(k));
+
+    if (hasIntimate) return TopicDepthLevel.intimate;
+    if (hasPersonal) return TopicDepthLevel.personal;
+    return TopicDepthLevel.event;
+  }
+
+  List<String> _checkHealthIssues(List<Message> myMessages, List<Message> theirMessages) {
+    final issues = <String>[];
+
+    if (myMessages.isEmpty) return issues;
+
+    // 檢查是否連續發多則訊息
+    // (簡化邏輯，實際應該看時間戳)
+
+    // 檢查訊息長度比例
+    if (theirMessages.isNotEmpty) {
+      final myAvg = myMessages.map((m) => m.content.length).reduce((a, b) => a + b) / myMessages.length;
+      final theirAvg = theirMessages.map((m) => m.content.length).reduce((a, b) => a + b) / theirMessages.length;
+      if (myAvg > theirAvg * 2) {
+        issues.add('你的訊息比她長太多，可能顯得過於積極');
+      }
+    }
+
+    return issues;
+  }
+
+  String _getNextStepForStage(GameStage stage) {
+    switch (stage) {
+      case GameStage.opening:
+        return '建立基本連結，創造對話理由';
+      case GameStage.premise:
+        return '可以開始評估她的興趣程度';
+      case GameStage.qualification:
+        return '確認互相興趣，準備建立更深連結';
+      case GameStage.narrative:
+        return '建立情感連結，分享故事';
+      case GameStage.close:
+        return '可以考慮邀約見面';
+    }
+  }
+
+  String _generateSubtext(String lastMessage, GameStage stage) {
+    if (lastMessage.isEmpty) return '等待她的回應';
+    if (lastMessage.length < 5) return '她的回覆很簡短，可能在忙或興趣一般';
+    if (lastMessage.contains('?') || lastMessage.contains('？')) {
+      return '她主動問你問題，對你有好奇心';
+    }
+    if (stage == GameStage.opening) {
+      return '剛開始對話，她在觀察你是什麼樣的人';
+    }
+    return '她願意回覆代表對話還在進行中';
+  }
+
+  Map<String, String> _generateReplies(String lastMessage) {
+    // 簡化版本，實際應該由 AI 生成
+    final msg = lastMessage.isEmpty ? '嗨' : lastMessage;
+    return {
+      'extend': '關於「$msg」可以多聊聊',
+      'resonate': '我也有類似的感覺',
+      'tease': '你這樣說讓我很好奇欸',
+      'humor': '哈哈這讓我想到一個笑話',
+      'coldRead': '感覺你是那種很有想法的人',
+    };
   }
 
   int _calculateMaxReplyLength(Conversation conversation) {
