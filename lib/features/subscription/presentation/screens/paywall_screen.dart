@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../widgets/booster_purchase_sheet.dart';
 
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
@@ -120,10 +121,35 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+
+            // Booster purchase link
+            Center(
+              child: TextButton(
+                onPressed: _showBoosterPurchase,
+                child: Text(
+                  '只需要加購訊息？',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.primary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _showBoosterPurchase() async {
+    final result = await showBoosterPurchaseSheet(context);
+    if (result != null && mounted) {
+      // TODO: Process purchase with RevenueCat
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已購買 ${result.label}')),
+      );
+    }
   }
 
   Widget _buildPlanCard({
