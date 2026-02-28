@@ -9,7 +9,7 @@ on:
   workflow_dispatch:  # 允許手動觸發
 
 env:
-  FLUTTER_VERSION: '3.24.5'
+  FLUTTER_VERSION: '3.27.0'
 
 jobs:
   deploy:
@@ -22,17 +22,22 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: 'stable'
+          channel: stable
           cache: true
 
+      - name: Debug Flutter info
+        run: |
+          flutter --version
+          dart --version
+
       - name: Get dependencies
-        run: flutter pub get --verbose
+        run: flutter pub get -v
 
       - name: Run code generation
         run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Build web
-        run: flutter build web --release
+        run: flutter build web --release --web-renderer html
 
       - name: Install Vercel CLI
         run: npm install -g vercel
