@@ -24,24 +24,30 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: conversations.isEmpty
-          ? _buildEmptyState(context)
-          : ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: conversations.length,
-              separatorBuilder: (_, __) => const Divider(
-                color: AppColors.divider,
-                height: 1,
-                indent: 72,
-              ),
-              itemBuilder: (context, index) {
-                final conversation = conversations[index];
-                return ConversationTile(
-                  conversation: conversation,
-                  onTap: () => context.push('/conversation/${conversation.id}'),
-                );
-              },
-            ),
+      // RWD: 限制最大寬度，大螢幕置中顯示
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: conversations.isEmpty
+              ? _buildEmptyState(context)
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: conversations.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    color: AppColors.divider,
+                    height: 1,
+                    indent: 72,
+                  ),
+                  itemBuilder: (context, index) {
+                    final conversation = conversations[index];
+                    return ConversationTile(
+                      conversation: conversation,
+                      onTap: () => context.push('/conversation/${conversation.id}'),
+                    );
+                  },
+                ),
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => context.push('/new'),
         backgroundColor: AppColors.primary,

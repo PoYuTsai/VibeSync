@@ -1,65 +1,157 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="VibeSync - 聊天對話分析助手">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="VibeSync - 聊天對話分析助手，提升你的社交對話技巧">
 
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="vibesync">
+  <!-- 關鍵 viewport 設定：RWD + 禁止縮放 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+  <!-- 主題色 (Android Chrome 地址欄顏色) -->
+  <meta name="theme-color" content="#6B4EE6">
+
+  <!-- iOS PWA 設定 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VibeSync">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Android PWA -->
+  <meta name="mobile-web-app-capable" content="yes">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>vibesync</title>
+  <title>VibeSync</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- 防止 iOS Safari pull-to-refresh -->
+  <!-- 跨平台 UX 優化 CSS -->
   <style>
+    /* 基礎重置 */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent; /* 移除點擊高亮 */
+    }
+
     html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
       width: 100%;
+      height: 100%;
       overflow: hidden;
+      /* 防止 iOS/Android 過度滾動 */
+      overscroll-behavior: none;
+      /* iOS safe area 支援 */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    body {
+      /* 優化文字渲染 */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      /* 防止文字選取 (更像 App) */
+      -webkit-user-select: none;
+      user-select: none;
+      /* 防止長按選單 */
+      -webkit-touch-callout: none;
+    }
+
+    /* 允許輸入框內選取文字 */
+    input, textarea {
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    /* 載入畫面 */
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      z-index: 9999;
+      transition: opacity 0.3s ease;
+    }
+
+    #loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: #6B4EE6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .loading-text {
+      margin-top: 16px;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
   </style>
-  <script>
-    // 防止 iOS Safari pull-to-refresh (只阻止頂部下拉)
-    let startY = 0;
-    document.addEventListener('touchstart', function(e) {
-      startY = e.touches[0].pageY;
-    }, { passive: true });
 
-    document.addEventListener('touchmove', function(e) {
-      const y = e.touches[0].pageY;
-      // 如果在頂部向下滑，阻止默認行為 (pull-to-refresh)
-      if (window.scrollY === 0 && y > startY) {
-        e.preventDefault();
+  <script>
+    // 跨平台防止 pull-to-refresh (iOS Safari + Android Chrome)
+    (function() {
+      let startY = 0;
+      let startX = 0;
+
+      document.addEventListener('touchstart', function(e) {
+        startY = e.touches[0].pageY;
+        startX = e.touches[0].pageX;
+      }, { passive: true });
+
+      document.addEventListener('touchmove', function(e) {
+        const y = e.touches[0].pageY;
+        const x = e.touches[0].pageX;
+        const deltaY = y - startY;
+        const deltaX = x - startX;
+
+        // 只在垂直滑動且在頂部下拉時阻止
+        if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY > 0) {
+          // 檢查是否在可滾動元素內
+          let el = e.target;
+          while (el && el !== document.body) {
+            if (el.scrollTop > 0) return; // 內部有滾動位置，允許
+            el = el.parentElement;
+          }
+          // 在頂部下拉，阻止 pull-to-refresh
+          e.preventDefault();
+        }
+      }, { passive: false });
+    })();
+
+    // 隱藏載入畫面
+    window.addEventListener('flutter-first-frame', function() {
+      const loader = document.getElementById('loading');
+      if (loader) {
+        loader.classList.add('hidden');
+        setTimeout(() => loader.remove(), 300);
       }
-    }, { passive: false });
+    });
   </script>
 </head>
 <body>
+  <!-- 載入畫面 -->
+  <div id="loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">VibeSync 載入中...</div>
+  </div>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

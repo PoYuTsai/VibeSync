@@ -445,23 +445,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            // 防止 iOS Safari pull-to-refresh 關閉頁面
-            child: ScrollConfiguration(
-              behavior: kIsWeb
-                  ? ScrollConfiguration.of(context).copyWith(
-                      overscroll: false,
+      body: SafeArea(
+        // RWD: 限制最大寬度，大螢幕置中顯示
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Column(
+              children: [
+                Expanded(
+                  // 防止 iOS Safari pull-to-refresh 關閉頁面
+                  child: ScrollConfiguration(
+                    behavior: kIsWeb
+                        ? ScrollConfiguration.of(context).copyWith(
+                            overscroll: false,
+                            physics: const ClampingScrollPhysics(),
+                          )
+                        : ScrollConfiguration.of(context),
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      // 優化滑動效能：使用 Clamping 防止 overscroll
                       physics: const ClampingScrollPhysics(),
-                    )
-                  : ScrollConfiguration.of(context),
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                // 優化滑動效能：使用 Clamping 防止 overscroll
-                physics: const ClampingScrollPhysics(),
-                child: Column(
+                      child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Messages preview
@@ -1011,10 +1016,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ),
           ),
+              ),
+                // 對話延續輸入區
+                _buildMessageInput(),
+              ],
+            ),
+          ),
         ),
-          // 對話延續輸入區
-          _buildMessageInput(),
-        ],
       ),
     );
   }
