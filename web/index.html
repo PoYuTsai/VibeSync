@@ -33,24 +33,31 @@
   <title>vibesync</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- 防止 iOS Safari pull-to-refresh 關閉頁面 -->
+  <!-- 防止 iOS Safari pull-to-refresh -->
   <style>
     html, body {
-      /* 防止 overscroll 彈性效果和 pull-to-refresh */
-      overscroll-behavior: none;
-      overscroll-behavior-y: none;
-      -webkit-overflow-scrolling: auto;
-      overflow: hidden;
-      position: fixed;
-      width: 100%;
+      margin: 0;
+      padding: 0;
       height: 100%;
-    }
-    /* Flutter canvas 需要填滿 */
-    flt-glass-pane {
-      position: absolute !important;
-      inset: 0 !important;
+      width: 100%;
+      overflow: hidden;
     }
   </style>
+  <script>
+    // 防止 iOS Safari pull-to-refresh (只阻止頂部下拉)
+    let startY = 0;
+    document.addEventListener('touchstart', function(e) {
+      startY = e.touches[0].pageY;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function(e) {
+      const y = e.touches[0].pageY;
+      // 如果在頂部向下滑，阻止默認行為 (pull-to-refresh)
+      if (window.scrollY === 0 && y > startY) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+  </script>
 </head>
 <body>
   <!--
