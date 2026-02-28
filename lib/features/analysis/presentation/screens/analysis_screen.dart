@@ -301,6 +301,100 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         .round();
   }
 
+  /// 匯出對話紀錄 (含 AI 分析結果)
+  void _exportConversation(Conversation conversation) {
+    final buffer = StringBuffer();
+
+    // 標題
+    buffer.writeln('=== VibeSync 對話分析紀錄 ===');
+    buffer.writeln('對象: ${conversation.name}');
+    buffer.writeln('匯出時間: ${DateTime.now().toString().substring(0, 19)}');
+    buffer.writeln('');
+
+    // 對話內容
+    buffer.writeln('--- 對話內容 ---');
+    for (final msg in conversation.messages) {
+      final sender = msg.isFromMe ? '我' : '她';
+      buffer.writeln('$sender: ${msg.content}');
+    }
+    buffer.writeln('');
+
+    // AI 分析結果
+    if (_enthusiasmScore != null) {
+      buffer.writeln('--- AI 分析結果 ---');
+      buffer.writeln('熱度分數: $_enthusiasmScore/100');
+
+      if (_gameStage != null) {
+        buffer.writeln('GAME 階段: ${_gameStage!.current.label}');
+        buffer.writeln('階段狀態: ${_gameStage!.status}');
+        buffer.writeln('下一步: ${_gameStage!.nextStep}');
+      }
+
+      if (_psychology != null) {
+        buffer.writeln('');
+        buffer.writeln('心理解讀: ${_psychology!.subtext}');
+        if (_psychology!.shitTest != null) {
+          buffer.writeln('廢測偵測: ${_psychology!.shitTest}');
+        }
+      }
+
+      if (_topicDepth != null) {
+        buffer.writeln('話題深度: ${_topicDepth!.current.label}');
+        if (_topicDepth!.suggestion.isNotEmpty) {
+          buffer.writeln('深度建議: ${_topicDepth!.suggestion}');
+        }
+      }
+
+      if (_strategy != null) {
+        buffer.writeln('');
+        buffer.writeln('策略建議: $_strategy');
+      }
+
+      buffer.writeln('');
+      buffer.writeln('--- 建議回覆 ---');
+      if (_replies != null) {
+        _replies!.forEach((type, content) {
+          final typeLabel = {
+            'extend': '延展',
+            'resonate': '共鳴',
+            'tease': '調情',
+            'humor': '幽默',
+            'coldRead': '冷讀',
+          }[type] ?? type;
+          buffer.writeln('[$typeLabel] $content');
+        });
+      }
+
+      if (_finalRecommendation != null) {
+        buffer.writeln('');
+        buffer.writeln('--- AI 推薦 ---');
+        buffer.writeln('推薦回覆: ${_finalRecommendation!.content}');
+        buffer.writeln('推薦理由: ${_finalRecommendation!.reason}');
+        buffer.writeln('心理學依據: ${_finalRecommendation!.psychology}');
+      }
+
+      if (_healthCheck != null && _healthCheck!.issues.isNotEmpty) {
+        buffer.writeln('');
+        buffer.writeln('--- 對話健檢 ---');
+        for (final issue in _healthCheck!.issues) {
+          buffer.writeln('⚠️ $issue');
+        }
+        for (final suggestion in _healthCheck!.suggestions) {
+          buffer.writeln('💡 $suggestion');
+        }
+      }
+    }
+
+    buffer.writeln('');
+    buffer.writeln('=== 紀錄結束 ===');
+
+    // 複製到剪貼簿
+    Clipboard.setData(ClipboardData(text: buffer.toString()));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('對話紀錄已複製到剪貼簿')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final conversation = ref.watch(conversationProvider(widget.conversationId));
@@ -327,6 +421,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           onPressed: () => context.go('/'),
         ),
         actions: [
+          // 匯出按鈕
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: '匯出對話紀錄',
+            onPressed: () => _exportConversation(conversation),
+          ),
           if (_isAnalyzing)
             const Padding(
               padding: EdgeInsets.all(16),
