@@ -17,6 +17,19 @@
 - **Claude Model**: `claude-sonnet-4-20250514` (Essential) / `claude-haiku-4-5-20251001` (Free/Starter)
 - **Vercel**: https://web-beta-tawny.vercel.app
 
+### CI/CD 狀態
+| 平台 | 狀態 | 備註 |
+|------|------|------|
+| Android | ✅ 成功 | APK 可下載 |
+| iOS | ❌ 失敗 | 等待 Apple Developer 帳號核准 |
+
+### Apple Developer 帳號 (2026-02-27 購買)
+- **狀態**: ⏳ 等待 Apple 審核 email
+- **預計時間**: 24-48 小時（可能更長）
+- **核准後需設定**:
+  - GitHub Secrets: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE`
+  - App Store Connect API Key
+
 ### 關鍵文件指引
 | 要了解什麼 | 讀哪個文件 |
 |------------|-----------|
