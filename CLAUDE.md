@@ -16,12 +16,16 @@
 - **Edge Function**: `analyze-chat` (已部署，--no-verify-jwt)
 - **Claude Model**: `claude-sonnet-4-20250514` (Essential) / `claude-haiku-4-5-20251001` (Free/Starter)
 - **Vercel**: https://web-beta-tawny.vercel.app
+- **新功能**: 對話延續 - 可在分析頁面新增訊息並重新分析
 
 ### CI/CD 狀態
 | 平台 | 狀態 | 備註 |
 |------|------|------|
+| **Web** | ✅ 自動部署 | push main → Vercel 自動更新 |
 | Android | ✅ 成功 | APK 可下載 |
-| iOS | ❌ 失敗 | 等待 Apple Developer 帳號核准 |
+| iOS | ⏸️ 暫停 | 等待 Apple Developer 帳號核准 |
+
+> **⚠️ 提醒**: iOS 部署暫時無法使用，請先用 **Web 沙盒測試**。Apple 核准後需設定 iOS 憑證。
 
 ### Apple Developer 帳號 (2026-02-27 購買)
 - **狀態**: ⏳ 等待 Apple 審核 email
