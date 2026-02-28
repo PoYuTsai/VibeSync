@@ -22,8 +22,14 @@ jobs:
         with:
           version: latest
 
+      - name: Link Supabase Project
+        run: |
+          supabase link --project-ref fcmwrmwdoqiqdnbisdpg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: Deploy Edge Function
         run: |
-          supabase functions deploy analyze-chat --no-verify-jwt --project-ref fcmwrmwdoqiqdnbisdpg
+          supabase functions deploy analyze-chat --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
