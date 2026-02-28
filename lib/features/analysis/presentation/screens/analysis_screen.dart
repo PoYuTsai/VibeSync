@@ -13,8 +13,10 @@ import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
+import '../../data/services/analysis_service.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 
 class AnalysisScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -32,8 +34,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Map<String, String>? _replies;
   TopicDepth? _topicDepth;
   HealthCheck? _healthCheck;
-  // ignore: prefer_final_fields
-  bool _isFreeUser = true; // TODO: Get from subscription provider
+  String? _errorMessage;
 
   // GAME 階段分析
   GameStageInfo? _gameStage;
@@ -63,103 +64,73 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   Future<void> _runAnalysis() async {
-    setState(() => _isAnalyzing = true);
+    setState(() {
+      _isAnalyzing = true;
+      _errorMessage = null;
+    });
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) {
-      setState(() => _isAnalyzing = false);
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = '找不到對話';
+      });
       return;
     }
 
-    // TODO: Replace with actual API call to Supabase Edge Function
-    await Future.delayed(const Duration(seconds: 1));
-
-    // 根據實際對話內容產生合理的分析結果
-    final messages = conversation.messages;
-    final theirMessages = messages.where((m) => !m.isFromMe).toList();
-    final myMessages = messages.where((m) => m.isFromMe).toList();
-    final lastTheirMessage = theirMessages.isNotEmpty ? theirMessages.last.content : '';
-    final totalRounds = (messages.length / 2).ceil();
-
-    // 計算熱度分數 (根據對話長度和內容)
-    int score = _calculateEnthusiasmScore(theirMessages, myMessages, totalRounds);
-
-    // 判斷 GAME 階段
-    GameStage stage = _determineGameStage(totalRounds, theirMessages);
-
-    // 判斷話題深度
-    TopicDepthLevel depth = _determineTopicDepth(theirMessages);
-
-    setState(() {
-      _isAnalyzing = false;
-      _enthusiasmScore = score;
-
-      // 根據熱度給策略建議
-      if (score < 30) {
-        _strategy = '熱度較低，建議用輕鬆話題破冰，不要太積極';
-        _shouldGiveUp = score < 15;
-      } else if (score < 60) {
-        _strategy = '熱度溫和，可以引導式提問，拋出有趣話題';
-      } else if (score < 80) {
-        _strategy = '她有興趣且主動分享，保持沉穩，80%鏡像即可';
-      } else {
-        _strategy = '熱度很高，可以適度推拉，保持神秘感';
-      }
-
-      _topicDepth = TopicDepth(
-        current: depth,
-        suggestion: depth == TopicDepthLevel.event
-            ? '可以往個人層面深入'
-            : depth == TopicDepthLevel.personal
-                ? '可以往曖昧導向推進'
-                : '已經很曖昧，可以考慮邀約',
-      );
-
-      _healthCheck = HealthCheck(
-        issues: _checkHealthIssues(myMessages, theirMessages),
-        suggestions: [],
-      );
-
-      // GAME 階段分析
-      _gameStage = GameStageInfo(
-        current: stage,
-        status: GameStageStatus.normal,
-        nextStep: _getNextStepForStage(stage),
-      );
-
-      // 心理分析 (根據實際內容)
-      _psychology = PsychologyAnalysis(
-        subtext: _generateSubtext(lastTheirMessage, stage),
-        shitTest: null,
-        qualificationSignal: theirMessages.length > 2,
-      );
-
-      // 生成回覆建議 (根據最後一則訊息)
-      _replies = _generateReplies(lastTheirMessage);
-
-      // 最終建議
-      final recommendedType = score > 60 ? 'tease' : 'extend';
-      _finalRecommendation = FinalRecommendation(
-        pick: recommendedType,
-        content: _replies![recommendedType]!,
-        reason: '根據目前 ${stage.label} 階段和 $score 分熱度，建議使用${recommendedType == 'tease' ? '調情' : '延展'}回覆',
-        psychology: '保持對話流動，讓她有回應的空間',
-      );
-
-      // 一致性提醒
-      _reminder = '記得用你的方式說，見面才自然';
-    });
-
-    // Update conversation with score (may fail in tests without Hive)
     try {
-      final repository = ref.read(conversationRepositoryProvider);
-      final conversation = repository.getConversation(widget.conversationId);
-      if (conversation != null && _enthusiasmScore != null) {
-        conversation.lastEnthusiasmScore = _enthusiasmScore;
-        await repository.updateConversation(conversation);
+      // 呼叫真正的 Supabase Edge Function
+      final analysisService = AnalysisService();
+      final result = await analysisService.analyzeConversation(
+        conversation.messages,
+        sessionContext: conversation.sessionContext,
+      );
+
+      setState(() {
+        _isAnalyzing = false;
+        _enthusiasmScore = result.enthusiasmScore;
+        _strategy = result.strategy;
+        _replies = result.replies;
+        _topicDepth = result.topicDepth;
+        _healthCheck = result.healthCheck;
+        _gameStage = result.gameStage;
+        _psychology = result.psychology;
+        _finalRecommendation = result.recommendation;
+        _reminder = result.reminder;
+        _shouldGiveUp = result.shouldGiveUp;
+      });
+
+      // Update conversation with score
+      try {
+        final repository = ref.read(conversationRepositoryProvider);
+        final conv = repository.getConversation(widget.conversationId);
+        if (conv != null && _enthusiasmScore != null) {
+          conv.lastEnthusiasmScore = _enthusiasmScore;
+          await repository.updateConversation(conv);
+        }
+      } catch (_) {
+        // Ignore errors in test environment
       }
-    } catch (_) {
-      // Ignore errors in test environment
+    } on DailyLimitExceededException catch (e) {
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = '今日額度已用完 (${e.used}/${e.dailyLimit})，明天再來！';
+      });
+    } on MonthlyLimitExceededException catch (e) {
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = '本月額度已用完 (${e.used}/${e.monthlyLimit})，升級方案獲得更多！';
+      });
+    } on AnalysisException catch (e) {
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = e.message;
+      });
+    } catch (e) {
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = '分析失敗: $e';
+      });
     }
   }
 
@@ -348,6 +319,40 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ),
 
             const SizedBox(height: 24),
+
+            // Error message
+            if (_errorMessage != null) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.error),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: AppTypography.bodyMedium.copyWith(color: AppColors.error),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: _runAnalysis,
+                      child: const Text('重試'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
 
             // Enthusiasm Gauge
             if (_enthusiasmScore != null) ...[
@@ -587,35 +592,60 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
               const SizedBox(height: 12),
               // 延展回覆 (所有方案都有)
-              ReplyCard(
-                type: ReplyType.extend,
-                content: _replies!['extend']!,
-              ),
-              // 以下回覆 Starter/Essential 才有
-              ReplyCard(
-                type: ReplyType.resonate,
-                content: _replies!['resonate']!,
-                isLocked: _isFreeUser,
-                onTap: _isFreeUser ? () => _showPaywall(context) : null,
-              ),
-              ReplyCard(
-                type: ReplyType.tease,
-                content: _replies!['tease']!,
-                isLocked: _isFreeUser,
-                onTap: _isFreeUser ? () => _showPaywall(context) : null,
-              ),
-              ReplyCard(
-                type: ReplyType.humor,
-                content: _replies!['humor']!,
-                isLocked: _isFreeUser,
-                onTap: _isFreeUser ? () => _showPaywall(context) : null,
-              ),
-              ReplyCard(
-                type: ReplyType.coldRead,
-                content: _replies!['coldRead']!,
-                isLocked: _isFreeUser,
-                onTap: _isFreeUser ? () => _showPaywall(context) : null,
-              ),
+              if (_replies!.containsKey('extend'))
+                ReplyCard(
+                  type: ReplyType.extend,
+                  content: _replies!['extend']!,
+                ),
+              // 以下回覆根據 API 回傳結果顯示 (已在後端過濾)
+              if (_replies!.containsKey('resonate'))
+                ReplyCard(
+                  type: ReplyType.resonate,
+                  content: _replies!['resonate']!,
+                ),
+              if (_replies!.containsKey('tease'))
+                ReplyCard(
+                  type: ReplyType.tease,
+                  content: _replies!['tease']!,
+                ),
+              if (_replies!.containsKey('humor'))
+                ReplyCard(
+                  type: ReplyType.humor,
+                  content: _replies!['humor']!,
+                ),
+              if (_replies!.containsKey('coldRead'))
+                ReplyCard(
+                  type: ReplyType.coldRead,
+                  content: _replies!['coldRead']!,
+                ),
+              // 如果只有 extend，顯示升級提示
+              if (_replies!.length == 1 && _replies!.containsKey('extend')) ...[
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () => _showPaywall(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_outline, color: AppColors.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '升級解鎖共鳴、調情、幽默、冷讀等回覆風格',
+                            style: AppTypography.bodyMedium.copyWith(color: AppColors.primary),
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.primary),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
 
             // 最終建議 (AI 推薦)
