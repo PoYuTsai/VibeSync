@@ -1,4 +1,5 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,10 +63,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     context.push('/paywall');
   }
 
+  // 記錄已分析的訊息數量，用於判斷是否需要重新分析
+  int _lastAnalyzedMessageCount = 0;
+
   @override
   void initState() {
     super.initState();
-    _runAnalysis();
+    // 不再自動分析，讓用戶手動點擊
   }
 
   @override
@@ -134,6 +138,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         conversation.messages,
         sessionContext: conversation.sessionContext,
       );
+
+      // 記錄已分析的訊息數量
+      _lastAnalyzedMessageCount = conversation.messages.length;
 
       setState(() {
         _isAnalyzing = false;
@@ -441,12 +448,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       body: Column(
         children: [
           Expanded(
-            child: SingleChildScrollView(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              // 優化滑動效能
-              physics: const ClampingScrollPhysics(),
-              child: Column(
+            // 防止 iOS Safari pull-to-refresh 關閉頁面
+            child: ScrollConfiguration(
+              behavior: kIsWeb
+                  ? ScrollConfiguration.of(context).copyWith(
+                      overscroll: false,
+                      physics: const ClampingScrollPhysics(),
+                    )
+                  : ScrollConfiguration.of(context),
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                // 優化滑動效能：使用 Clamping 防止 overscroll
+                physics: const ClampingScrollPhysics(),
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Messages preview
@@ -520,6 +535,50 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     ElevatedButton(
                       onPressed: _runAnalysis,
                       child: const Text('重試'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // 手動分析按鈕 (尚未分析時顯示)
+            if (_enthusiasmScore == null && !_isAnalyzing && _errorMessage == null) ...[
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  children: [
+                    const Text('🎯', style: TextStyle(fontSize: 48)),
+                    const SizedBox(height: 12),
+                    Text(
+                      '準備好分析這段對話了嗎？',
+                      style: AppTypography.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '我會分析熱度、GAME階段、心理解讀，\n並給你最適合的回覆建議',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _runAnalysis,
+                        icon: const Icon(Icons.auto_awesome),
+                        label: const Text('開始分析'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -916,11 +975,43 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ],
 
+            // 重新分析按鈕 (有新訊息時顯示)
+            if (_enthusiasmScore != null &&
+                conversation.messages.length > _lastAnalyzedMessageCount) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.update, color: AppColors.warning),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '有 ${conversation.messages.length - _lastAnalyzedMessageCount} 則新訊息',
+                        style: AppTypography.bodyMedium,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _isAnalyzing ? null : _runAnalysis,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('重新分析'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
                   const SizedBox(height: 24),
                 ],
               ),
             ),
           ),
+        ),
           // 對話延續輸入區
           _buildMessageInput(),
         ],
