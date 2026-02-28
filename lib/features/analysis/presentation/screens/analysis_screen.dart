@@ -52,6 +52,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // ignore: prefer_final_fields
   bool _shouldGiveUp = false;
 
+  // 對話延續功能
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
+  bool _showAllMessages = false;
+
   void _showPaywall(BuildContext context) {
     // TODO: Navigate to paywall screen
     context.push('/paywall');
@@ -61,6 +66,50 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   void initState() {
     super.initState();
     _runAnalysis();
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// 新增訊息到對話並重新分析
+  Future<void> _addMessage({required bool isFromMe}) async {
+    final content = _messageController.text.trim();
+    if (content.isEmpty) return;
+
+    final repository = ref.read(conversationRepositoryProvider);
+    final conversation = repository.getConversation(widget.conversationId);
+    if (conversation == null) return;
+
+    // 建立新訊息
+    final newMessage = Message(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      content: content,
+      isFromMe: isFromMe,
+      timestamp: DateTime.now(),
+    );
+
+    // 更新對話
+    conversation.messages.add(newMessage);
+    await repository.updateConversation(conversation);
+
+    // 清空輸入框
+    _messageController.clear();
+
+    // 重新分析
+    await _runAnalysis();
+
+    // 滾動到頂部顯示新分析結果
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   Future<void> _runAnalysis() async {
@@ -289,34 +338,56 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Messages preview
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-              ),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ...conversation.messages
-                      .take(5)
-                      .map((m) => MessageBubble(message: m)),
-                  if (conversation.messages.length > 5)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '...還有 ${conversation.messages.length - 5} 則訊息',
-                        style: AppTypography.caption,
-                      ),
+                  // Messages preview
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                ],
-              ),
-            ),
+                    child: Column(
+                      children: [
+                        // 顯示訊息 (可展開/收合)
+                        ...(_showAllMessages
+                                ? conversation.messages
+                                : conversation.messages.take(5))
+                            .map((m) => MessageBubble(message: m)),
+                        if (conversation.messages.length > 5)
+                          GestureDetector(
+                            onTap: () => setState(() => _showAllMessages = !_showAllMessages),
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    _showAllMessages ? Icons.expand_less : Icons.expand_more,
+                                    size: 16,
+                                    color: AppColors.primary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _showAllMessages
+                                        ? '收合訊息'
+                                        : '展開全部 ${conversation.messages.length} 則訊息',
+                                    style: AppTypography.caption.copyWith(color: AppColors.primary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
 
             const SizedBox(height: 24),
 
@@ -743,7 +814,84 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ],
 
-            const SizedBox(height: 24),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+          // 對話延續輸入區
+          _buildMessageInput(),
+        ],
+      ),
+    );
+  }
+
+  /// 建立訊息輸入區
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          top: BorderSide(color: AppColors.divider.withValues(alpha: 0.3)),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 輸入框
+            TextField(
+              controller: _messageController,
+              decoration: InputDecoration(
+                hintText: '輸入新訊息繼續分析...',
+                hintStyle: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                filled: true,
+                fillColor: AppColors.background,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              maxLines: 3,
+              minLines: 1,
+              textInputAction: TextInputAction.newline,
+              enabled: !_isAnalyzing,
+            ),
+            const SizedBox(height: 8),
+            // 新增按鈕
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: false),
+                    icon: const Text('👩'),
+                    label: const Text('她說...'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: true),
+                    icon: const Text('👤'),
+                    label: const Text('我說...'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
