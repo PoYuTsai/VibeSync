@@ -190,26 +190,32 @@ function selectModel(context: {
   return "claude-haiku-4-5-20251001";
 }
 
+// CORS headers for all responses
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, x-client-info, apikey",
+};
+
+// Helper to create JSON response with CORS
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
+
 serve(async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type",
-      },
-    });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
     // Verify auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -220,10 +226,7 @@ serve(async (req) => {
     } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Invalid token" }, 401);
     }
 
     // Check subscription
@@ -236,10 +239,7 @@ serve(async (req) => {
       .single();
 
     if (!sub) {
-      return new Response(JSON.stringify({ error: "No subscription found" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "No subscription found" }, 403);
     }
 
     // Check if daily reset needed
@@ -272,52 +272,37 @@ serve(async (req) => {
     // Check monthly limit
     const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier];
     if (sub.monthly_messages_used >= monthlyLimit) {
-      return new Response(
-        JSON.stringify({
-          error: "Monthly limit exceeded",
-          monthlyLimit,
-          used: sub.monthly_messages_used,
-        }),
-        { status: 429, headers: { "Content-Type": "application/json" } }
-      );
+      return jsonResponse({
+        error: "Monthly limit exceeded",
+        monthlyLimit,
+        used: sub.monthly_messages_used,
+      }, 429);
     }
 
     // Check daily limit
     const dailyLimit = TIER_DAILY_LIMITS[sub.tier];
     if (sub.daily_messages_used >= dailyLimit) {
-      return new Response(
-        JSON.stringify({
-          error: "Daily limit exceeded",
-          dailyLimit,
-          used: sub.daily_messages_used,
-          resetAt: "tomorrow",
-        }),
-        { status: 429, headers: { "Content-Type": "application/json" } }
-      );
+      return jsonResponse({
+        error: "Daily limit exceeded",
+        dailyLimit,
+        used: sub.daily_messages_used,
+        resetAt: "tomorrow",
+      }, 429);
     }
 
     // Parse request
     const { messages, sessionContext } = await req.json();
     if (!messages || !Array.isArray(messages)) {
-      return new Response(JSON.stringify({ error: "Invalid messages" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Invalid messages" }, 400);
     }
 
     // Check input for safety (AI 護欄)
     const inputCheck = checkInput(messages);
     if (!inputCheck.safe) {
-      return new Response(
-        JSON.stringify({
-          error: inputCheck.reason,
-          code: "UNSAFE_INPUT",
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      return jsonResponse({
+        error: inputCheck.reason,
+        code: "UNSAFE_INPUT",
+      }, 400);
     }
 
     // Format session context for Claude
@@ -385,17 +370,11 @@ serve(async (req) => {
           errorMessage: error.message,
         });
 
-        return new Response(
-          JSON.stringify({
-            error: error.message,
-            code: error.code,
-            retryable: error.retryable,
-          }),
-          {
-            status: 502,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
+        return jsonResponse({
+          error: error.message,
+          code: error.code,
+          retryable: error.retryable,
+        }, 502);
       }
       throw error;
     }
@@ -482,17 +461,9 @@ serve(async (req) => {
       retries: claudeResult.retries,
     };
 
-    return new Response(JSON.stringify(result), {
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+    return jsonResponse(result);
   } catch (error) {
     console.error("Error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
