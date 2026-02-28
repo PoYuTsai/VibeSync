@@ -19,7 +19,8 @@ CREATE TABLE token_usage (
 CREATE INDEX idx_token_usage_user_id ON token_usage(user_id);
 CREATE INDEX idx_token_usage_created_at ON token_usage(created_at);
 CREATE INDEX idx_token_usage_conversation_id ON token_usage(conversation_id);
-CREATE INDEX idx_token_usage_user_month ON token_usage(user_id, DATE_TRUNC('month', created_at));
+-- Note: Removed DATE_TRUNC index (not immutable in PostgreSQL)
+-- Use idx_token_usage_user_id + idx_token_usage_created_at for monthly queries
 
 -- RLS
 ALTER TABLE token_usage ENABLE ROW LEVEL SECURITY;
