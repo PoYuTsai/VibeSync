@@ -29,9 +29,9 @@ class AnalysisService {
               .toList(),
           if (sessionContext != null)
             'sessionContext': {
-              'meetingContext': sessionContext.meetingContext,
-              'duration': sessionContext.duration,
-              'goal': sessionContext.goal,
+              'meetingContext': sessionContext.meetingContext.label,
+              'duration': sessionContext.duration.label,
+              'goal': sessionContext.goal.label,
             },
         },
       );
