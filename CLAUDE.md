@@ -5,10 +5,17 @@
 ## Quick Start (新 Session 必讀)
 
 ```
-📌 專案狀態：設計完成，待實作
+📌 專案狀態：MVP 沙盒測試中
 📌 定價模式：訊息制 (2 付費方案)
-📌 下一步：執行 35 任務實作計畫 (v2.4，與設計規格 v1.3 同步)
+📌 測試網址：https://web-beta-tawny.vercel.app
+📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier)
 ```
+
+### 沙盒測試環境 (2026-02-28 上線)
+- **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
+- **Edge Function**: `analyze-chat` (已部署，--no-verify-jwt)
+- **Claude Model**: `claude-sonnet-4-20250514` (Essential) / `claude-haiku-4-5-20251001` (Free/Starter)
+- **Vercel**: https://web-beta-tawny.vercel.app
 
 ### 關鍵文件指引
 | 要了解什麼 | 讀哪個文件 |
@@ -271,10 +278,67 @@ npx supabase stop
 
 ---
 
+---
+
+## AI 回覆優化流程
+
+> **重要**: Claude API 不會從單次呼叫中「學習」，優化是透過改進 System Prompt
+
+### 沙盒測試 → Prompt 優化循環
+
+```
+1. 沙盒測試對話
+   ↓
+2. 記錄「不滿意的回覆」+ 原因
+   ↓
+3. 分析問題模式 (太直接? 太婉轉? 太長? 不自然?)
+   ↓
+4. 修改 System Prompt (supabase/functions/analyze-chat/index.ts)
+   ↓
+5. 重新部署 Edge Function
+   ↓
+6. 再次測試驗證
+```
+
+### 記錄格式 (在下方 Bugs & Fixes 記錄)
+
+```markdown
+#### [YYYY-MM-DD] 回覆優化 - [問題類型]
+**對話情境**: [簡述對話內容]
+**AI 回覆**: [原本的回覆]
+**問題**: [為什麼不好]
+**期望**: [應該怎麼回]
+**Prompt 修改**: [改了什麼]
+```
+
+### System Prompt 位置
+`supabase/functions/analyze-chat/index.ts` 中的 `SYSTEM_PROMPT` 常數
+
+### 部署指令
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-verify-jwt --project-ref fcmwrmwdoqiqdnbisdpg
+```
+
+---
+
 ## Lessons Learned
 
 ### Bugs & Fixes
 <!-- 遇到 bug 時在此記錄，格式見上方 Debugging Protocol -->
+
+#### [2026-02-28] Claude 模型名稱過期
+**症狀**: Edge Function 返回 "model not found" 錯誤
+**Root Cause**: Claude 3.5 模型已停用，需改用 Claude 4.x
+**修復**:
+- `claude-3-5-haiku-20241022` → `claude-haiku-4-5-20251001`
+- `claude-sonnet-4-20250514` 保持不變
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:190`
+
+#### [2026-02-28] Edge Function CORS 錯誤
+**症狀**: Flutter web 顯示 "Failed to fetch" 錯誤
+**Root Cause**: 錯誤回應沒有 CORS headers
+**修復**: 新增 `jsonResponse()` helper，所有回應都包含 CORS headers
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:193-205`
 
 ### Design Decisions
 
