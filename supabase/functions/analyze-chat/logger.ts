@@ -67,18 +67,27 @@ export async function logAiCall(
   }
 }
 
-// 從 Claude 回應中提取 token 使用量
+// 從 Claude 回應中提取 token 使用量 (含 cache 資訊)
 export function extractTokenUsage(claudeResponse: unknown): {
   inputTokens: number;
   outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
 } {
   const response = claudeResponse as {
-    usage?: { input_tokens?: number; output_tokens?: number };
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
   };
 
   return {
     inputTokens: response?.usage?.input_tokens || 0,
     outputTokens: response?.usage?.output_tokens || 0,
+    cacheCreationTokens: response?.usage?.cache_creation_input_tokens || 0,
+    cacheReadTokens: response?.usage?.cache_read_input_tokens || 0,
   };
 }
 

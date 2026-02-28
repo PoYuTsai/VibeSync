@@ -12,6 +12,17 @@ interface ClaudeRequest {
   messages: Array<{ role: string; content: string }>;
 }
 
+// 將 system prompt 轉換為支援 cache 的格式
+function buildCachedSystemPrompt(systemPrompt: string) {
+  return [
+    {
+      type: "text",
+      text: systemPrompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+}
+
 const DEFAULT_OPTIONS: CallOptions = {
   timeout: 30000, // 30 秒
   maxRetries: 2,
@@ -57,14 +68,23 @@ export async function callClaudeWithFallback(
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
 
+        // 建立支援 Prompt Caching 的請求
+        const cachedRequest = {
+          model: currentModel,
+          max_tokens: request.max_tokens,
+          system: buildCachedSystemPrompt(request.system),
+          messages: request.messages,
+        };
+
         const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-api-key": apiKey,
             "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
           },
-          body: JSON.stringify({ ...request, model: currentModel }),
+          body: JSON.stringify(cachedRequest),
           signal: controller.signal,
         });
 

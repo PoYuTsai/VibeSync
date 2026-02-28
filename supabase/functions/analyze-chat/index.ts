@@ -163,6 +163,9 @@ function countMessages(messages: Array<{ content: string }>): number {
   return Math.max(1, total);
 }
 
+// 測試模式：強制使用 Haiku 省錢
+const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
+
 // 模型選擇函數 (設計規格 4.9)
 function selectModel(context: {
   conversationLength: number;
@@ -171,6 +174,11 @@ function selectModel(context: {
   isFirstAnalysis: boolean;
   tier: string;
 }): string {
+  // 🧪 測試模式：強制使用 Haiku (省錢)
+  if (TEST_MODE) {
+    return "claude-haiku-4-5-20251001";
+  }
+
   // Essential 用戶優先使用 Sonnet
   if (context.tier === "essential") {
     return "claude-sonnet-4-20250514";
