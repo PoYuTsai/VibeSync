@@ -187,7 +187,7 @@ function selectModel(context: {
   }
 
   // 預設使用 Haiku (70%)
-  return "claude-3-5-haiku-20241022";
+  return "claude-haiku-4-5-20251001";
 }
 
 serve(async (req) => {

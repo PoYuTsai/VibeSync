@@ -19,8 +19,8 @@ const DEFAULT_OPTIONS: CallOptions = {
 
 // 模型降級鏈
 const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
-  "claude-sonnet-4-20250514": "claude-3-5-haiku-20241022",
-  "claude-3-5-haiku-20241022": null, // Haiku 是最後一層
+  "claude-sonnet-4-20250514": "claude-haiku-4-5-20251001",
+  "claude-haiku-4-5-20251001": null, // Haiku 是最後一層
 };
 
 export interface FallbackResult {
@@ -71,7 +71,13 @@ export async function callClaudeWithFallback(
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          const error = await response.json();
+          const errorText = await response.text();
+          let error;
+          try {
+            error = JSON.parse(errorText);
+          } catch {
+            error = { message: errorText };
+          }
 
           // 429 Too Many Requests - 可重試
           if (response.status === 429) {
@@ -99,7 +105,18 @@ export async function callClaudeWithFallback(
           );
         }
 
-        const data = await response.json();
+        const responseText = await response.text();
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("Failed to parse Claude response:", responseText.substring(0, 200));
+          throw new AiServiceError(
+            `Failed to parse Claude response: ${(parseError as Error).message}`,
+            "PARSE_ERROR",
+            false
+          );
+        }
         return {
           data,
           model: currentModel,

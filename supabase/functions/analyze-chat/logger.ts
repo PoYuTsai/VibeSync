@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 // Token 成本 (USD per 1K tokens) - 根據 Anthropic 定價
 const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
-  "claude-3-5-haiku-20241022": { input: 0.0008, output: 0.004 },
+  "claude-haiku-4-5-20251001": { input: 0.0008, output: 0.004 },
 };
 
 export interface LogEntry {
@@ -30,7 +30,7 @@ function calculateCost(
   inputTokens: number,
   outputTokens: number
 ): number {
-  const costs = TOKEN_COSTS[model] || TOKEN_COSTS["claude-3-5-haiku-20241022"];
+  const costs = TOKEN_COSTS[model] || TOKEN_COSTS["claude-haiku-4-5-20251001"];
   return (inputTokens / 1000) * costs.input + (outputTokens / 1000) * costs.output;
 }
 

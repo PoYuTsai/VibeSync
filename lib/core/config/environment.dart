@@ -46,16 +46,14 @@ class AppConfig {
   static String get supabaseUrl {
     switch (environment) {
       case Environment.dev:
-        return 'http://localhost:54321';
+        // Dev 也使用遠端 Supabase (方便測試)
+        return 'https://fcmwrmwdoqiqdnbisdpg.supabase.co';
       case Environment.staging:
-        return const String.fromEnvironment(
-          'SUPABASE_STAGING_URL',
-          defaultValue: 'https://your-staging-project.supabase.co',
-        );
+        return 'https://fcmwrmwdoqiqdnbisdpg.supabase.co';
       case Environment.prod:
         return const String.fromEnvironment(
           'SUPABASE_PROD_URL',
-          defaultValue: 'https://your-prod-project.supabase.co',
+          defaultValue: 'https://fcmwrmwdoqiqdnbisdpg.supabase.co',
         );
     }
   }
@@ -64,14 +62,15 @@ class AppConfig {
   static String get supabaseAnonKey {
     switch (environment) {
       case Environment.dev:
-        return const String.fromEnvironment(
-          'SUPABASE_LOCAL_ANON_KEY',
-          defaultValue: 'your-local-anon-key',
-        );
+        // Dev 也使用遠端 Supabase anon key
+        return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg';
       case Environment.staging:
-        return const String.fromEnvironment('SUPABASE_STAGING_ANON_KEY');
+        return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg';
       case Environment.prod:
-        return const String.fromEnvironment('SUPABASE_PROD_ANON_KEY');
+        return const String.fromEnvironment(
+          'SUPABASE_PROD_ANON_KEY',
+          defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg',
+        );
     }
   }
 
