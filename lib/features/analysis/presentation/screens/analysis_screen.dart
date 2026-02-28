@@ -444,6 +444,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             child: SingleChildScrollView(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
+              // 優化滑動效能
+              physics: const ClampingScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
