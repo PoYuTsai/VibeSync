@@ -5,25 +5,64 @@
 ## Quick Start (新 Session 必讀)
 
 ```
-📌 專案狀態：MVP 沙盒測試中
+📌 專案狀態：MVP 沙盒測試中 (功能已可用)
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
-📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier)
+📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
+📌 最後更新：2026-02-28
 ```
+
+### 🎯 當前開發進度
+
+#### ✅ 已完成功能
+| 功能 | 狀態 | 備註 |
+|------|------|------|
+| **AI 分析引擎** | ✅ 完成 | GAME 階段、心理分析、5種回覆、最終建議 |
+| **Supabase Edge Function** | ✅ 部署 | `analyze-chat`，含護欄、fallback、日誌 |
+| **訂閱系統** | ✅ 完成 | 訊息制額度、每日/每月上限、功能分層 |
+| **對話延續** | ✅ 完成 | 可新增訊息並重新分析 |
+| **匯出對話** | ✅ 完成 | 複製完整對話+分析結果供 prompt 優化 |
+| **手動分析觸發** | ✅ 完成 | 不再自動分析，用戶手動點擊 |
+| **Prompt Caching** | ✅ 完成 | 減少 ~60% token 成本 |
+| **測試帳號白名單** | ✅ 完成 | 不扣額度，方便測試 |
+| **CI/CD Web** | ✅ 完成 | push main → Vercel 自動部署 |
+| **CI/CD Edge Function** | ✅ 完成 | push main → Supabase 自動部署 |
+| **RWD 響應式設計** | ✅ 完成 | 手機/平板/桌面自適應 |
+| **跨平台 UX 優化** | ✅ 完成 | iOS/Android 防 pull-to-refresh |
+
+#### 🔄 待測試驗證
+- [ ] iOS Safari 滑動體驗 (pull-to-refresh 是否完全修復)
+- [ ] Android Chrome 滑動體驗
+- [ ] 大螢幕 RWD 顯示效果
+
+#### ⏸️ 暫停中
+- [ ] iOS App 部署 (等待 Apple Developer 帳號核准)
+- [ ] Admin Dashboard (排在實作計畫後段)
+
+#### 📋 下一步
+1. 繼續測試 AI 回覆品質，收集 prompt 優化案例
+2. 若有 UX 問題持續調整
+3. Apple 帳號核准後設定 iOS 部署
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
 - **Edge Function**: `analyze-chat` (已部署，--no-verify-jwt)
 - **Claude Model**: `claude-sonnet-4-20250514` (Essential) / `claude-haiku-4-5-20251001` (Free/Starter)
 - **Vercel**: https://web-beta-tawny.vercel.app
-- **新功能**: 對話延續 - 可在分析頁面新增訊息並重新分析
+- **成本優化**: Prompt Caching 已啟用 (ephemeral cache)
+
+### 測試帳號
+| Email | 密碼 | Tier | 特性 |
+|-------|------|------|------|
+| `vibesync.test@gmail.com` | `test123456` | Essential | **不扣額度**，完整功能 |
 
 ### CI/CD 狀態
-| 平台 | 狀態 | 備註 |
-|------|------|------|
-| **Web** | ✅ 自動部署 | push main → Vercel 自動更新 |
-| Android | ✅ 成功 | APK 可下載 |
-| iOS | ⏸️ 暫停 | 等待 Apple Developer 帳號核准 |
+| 平台 | 狀態 | 觸發條件 | 備註 |
+|------|------|----------|------|
+| **Web** | ✅ 自動部署 | push main | Vercel |
+| **Edge Function** | ✅ 自動部署 | push main (supabase/functions/**) | Supabase |
+| Android | ✅ 成功 | 手動觸發 | APK 可下載 |
+| iOS | ⏸️ 暫停 | - | 等待 Apple Developer 帳號核准 |
 
 > **⚠️ 提醒**: iOS 部署暫時無法使用，請先用 **Web 沙盒測試**。Apple 核准後需設定 iOS 憑證。
 
@@ -338,10 +377,47 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 
 ---
 
+## 成本優化技術細節
+
+### Prompt Caching (已啟用)
+- **位置**: `supabase/functions/analyze-chat/fallback.ts:16-24`
+- **原理**: System Prompt 加上 `cache_control: { type: "ephemeral" }`
+- **效果**: 重複使用的 System Prompt tokens 減少 90% 成本
+- **Header**: `anthropic-beta: prompt-caching-2024-07-31`
+
+### 測試帳號白名單 (不扣額度)
+- **位置**: `supabase/functions/analyze-chat/index.ts:169`
+- **白名單**: `TEST_EMAILS = ["vibesync.test@gmail.com"]`
+- **效果**: 白名單內的帳號不會扣除每日/每月額度
+- **模型**: 測試模式可強制使用 Haiku (設定 `TEST_MODE=true`)
+
+### AI 日誌追蹤
+- **位置**: `supabase/functions/analyze-chat/logger.ts`
+- **記錄**: user_id, model, tokens, cost, latency, status, fallback_used
+- **表格**: `ai_logs` (Supabase)
+
+---
+
 ## Lessons Learned
 
 ### Bugs & Fixes
 <!-- 遇到 bug 時在此記錄，格式見上方 Debugging Protocol -->
+
+#### [2026-02-28] iOS Safari Pull-to-refresh 關閉頁面
+**症狀**: 在 iOS Safari 上下滑動時，整個網頁會被關閉
+**Root Cause**: iOS Safari 的 pull-to-refresh 手勢會觸發頁面關閉
+**修復**:
+1. 在 `web/index.html` 加入 JS 防止頂部下拉時的默認行為
+2. 使用 `overscroll-behavior: none` CSS
+3. Flutter 端使用 `ClampingScrollPhysics` + `ScrollConfiguration`
+**相關檔案**:
+- `web/index.html` (JS + CSS)
+- `lib/features/analysis/presentation/screens/analysis_screen.dart:452-458`
+
+#### [2026-02-28] 每次開對話都自動分析
+**症狀**: 進入對話頁面就自動呼叫 API 分析，浪費額度
+**修復**: 改為手動觸發，新增「開始分析」按鈕
+**相關檔案**: `lib/features/analysis/presentation/screens/analysis_screen.dart:71`
 
 #### [2026-02-28] Claude 模型名稱過期
 **症狀**: Edge Function 返回 "model not found" 錯誤
