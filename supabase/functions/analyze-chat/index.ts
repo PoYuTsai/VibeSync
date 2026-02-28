@@ -163,8 +163,10 @@ function countMessages(messages: Array<{ content: string }>): number {
   return Math.max(1, total);
 }
 
-// 測試模式：強制使用 Haiku 省錢
+// 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
+// 測試帳號白名單 (不扣額度)
+const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
 // 模型選擇函數 (設計規格 4.9)
 function selectModel(context: {
@@ -237,6 +239,9 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
+    // 測試帳號：不檢查額度、不扣額度
+    const isTestAccount = TEST_EMAILS.includes(user.email || "");
+
     // Check subscription
     const { data: sub } = await supabase
       .from("subscriptions")
@@ -277,9 +282,9 @@ serve(async (req) => {
       sub.monthly_messages_used = 0;
     }
 
-    // Check monthly limit
+    // Check monthly limit (測試帳號跳過)
     const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier];
-    if (sub.monthly_messages_used >= monthlyLimit) {
+    if (!isTestAccount && sub.monthly_messages_used >= monthlyLimit) {
       return jsonResponse({
         error: "Monthly limit exceeded",
         monthlyLimit,
@@ -287,9 +292,9 @@ serve(async (req) => {
       }, 429);
     }
 
-    // Check daily limit
+    // Check daily limit (測試帳號跳過)
     const dailyLimit = TIER_DAILY_LIMITS[sub.tier];
-    if (sub.daily_messages_used >= dailyLimit) {
+    if (!isTestAccount && sub.daily_messages_used >= dailyLimit) {
       return jsonResponse({
         error: "Daily limit exceeded",
         dailyLimit,
@@ -444,29 +449,32 @@ serve(async (req) => {
     // Calculate message count
     const messageCount = countMessages(messages);
 
-    // Update usage count
-    await supabase
-      .from("subscriptions")
-      .update({
-        monthly_messages_used: sub.monthly_messages_used + messageCount,
-        daily_messages_used: sub.daily_messages_used + messageCount,
-      })
-      .eq("user_id", user.id);
+    // Update usage count (測試帳號不扣額度)
+    if (!isTestAccount) {
+      await supabase
+        .from("subscriptions")
+        .update({
+          monthly_messages_used: sub.monthly_messages_used + messageCount,
+          daily_messages_used: sub.daily_messages_used + messageCount,
+        })
+        .eq("user_id", user.id);
 
-    // Update user stats
-    await supabase.rpc("increment_usage", {
-      p_user_id: user.id,
-      p_messages: messageCount,
-    });
+      // Update user stats
+      await supabase.rpc("increment_usage", {
+        p_user_id: user.id,
+        p_messages: messageCount,
+      });
+    }
 
     // Add usage info to response
     result.usage = {
       messagesUsed: messageCount,
-      monthlyRemaining: monthlyLimit - sub.monthly_messages_used - messageCount,
-      dailyRemaining: dailyLimit - sub.daily_messages_used - messageCount,
+      monthlyRemaining: isTestAccount ? 999999 : monthlyLimit - sub.monthly_messages_used - messageCount,
+      dailyRemaining: isTestAccount ? 999999 : dailyLimit - sub.daily_messages_used - messageCount,
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
+      isTestAccount, // 標記是否為測試帳號
     };
 
     return jsonResponse(result);
