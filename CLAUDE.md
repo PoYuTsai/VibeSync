@@ -433,6 +433,12 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 **修復**: 新增 `jsonResponse()` helper，所有回應都包含 CORS headers
 **相關檔案**: `supabase/functions/analyze-chat/index.ts:193-205`
 
+#### [2026-03-01] 熱度分析受用戶發言影響
+**症狀**: 熱度分數會因為用戶自己說很多話而升高
+**Root Cause**: AI 沒有明確指示只從對方回覆判斷熱度
+**修復**: 在 System Prompt 新增「熱度分析規則」章節，明確列出只從「她」的訊息判斷：回覆長度、表情符號、主動提問、話題延伸、回應態度
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:88-95`
+
 ### Design Decisions
 
 #### [2026-02-26] 對話資料不上雲
