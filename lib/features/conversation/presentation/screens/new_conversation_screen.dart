@@ -27,11 +27,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
   UserGoal _goal = UserGoal.dateInvite;
 
+  // 個人化設定
+  UserStyle? _userStyle;
+  final _userInterestsController = TextEditingController();
+  final _targetDescriptionController = TextEditingController();
+  bool _showPersonalization = false;
+
   @override
   void dispose() {
     _nameController.dispose();
     _herMessageController.dispose();
     _myMessageController.dispose();
+    _userInterestsController.dispose();
+    _targetDescriptionController.dispose();
     super.dispose();
   }
 
@@ -102,6 +110,13 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         meetingContext: _meetingContext,
         duration: _duration,
         goal: _goal,
+        userStyle: _userStyle,
+        userInterests: _userInterestsController.text.trim().isEmpty
+            ? null
+            : _userInterestsController.text.trim(),
+        targetDescription: _targetDescriptionController.text.trim().isEmpty
+            ? null
+            : _targetDescriptionController.text.trim(),
       );
       await repository.updateConversation(conversation);
 
@@ -190,6 +205,67 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               selected: {_goal},
               onSelectionChanged: (v) => setState(() => _goal = v.first),
             ),
+
+            // === 個人化設定區塊（可折疊）===
+            const SizedBox(height: 24),
+            InkWell(
+              onTap: () =>
+                  setState(() => _showPersonalization = !_showPersonalization),
+              child: Row(
+                children: [
+                  Icon(
+                    _showPersonalization
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '個人化設定（選填）',
+                    style: AppTypography.bodyLarge
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            if (_showPersonalization) ...[
+              const SizedBox(height: 16),
+              Text('你的風格', style: AppTypography.bodyMedium),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: UserStyle.values.map((style) {
+                  final isSelected = _userStyle == style;
+                  return ChoiceChip(
+                    label: Text(style.label),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() => _userStyle = selected ? style : null);
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              Text('你的興趣', style: AppTypography.bodyMedium),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _userInterestsController,
+                decoration: const InputDecoration(
+                  hintText: '例如：咖啡、攝影、露營',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('對方特質', style: AppTypography.bodyMedium),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _targetDescriptionController,
+                decoration: const InputDecoration(
+                  hintText: '例如：慢熱、喜歡旅行',
+                  isDense: true,
+                ),
+              ),
+            ],
 
             const SizedBox(height: 24),
             Text('對話內容', style: AppTypography.bodyLarge),
