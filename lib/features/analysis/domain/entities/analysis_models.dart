@@ -195,6 +195,7 @@ class AnalysisResult {
   final FinalRecommendation recommendation;
   final String? reminder;
   final bool shouldGiveUp; // 冰點放棄建議
+  final Map<String, dynamic>? rawResponse; // 原始 AI 回應 (用於反饋)
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -207,6 +208,7 @@ class AnalysisResult {
     required this.recommendation,
     this.reminder,
     this.shouldGiveUp = false,
+    this.rawResponse,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -236,6 +238,7 @@ class AnalysisResult {
       recommendation: FinalRecommendation.fromJson(json['finalRecommendation'] as Map<String, dynamic>?),
       reminder: json['reminder'] as String?,
       shouldGiveUp: shouldGiveUp,
+      rawResponse: json, // 保存原始回應
     );
   }
 }

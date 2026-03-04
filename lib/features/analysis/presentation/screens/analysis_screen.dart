@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -53,6 +54,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // ignore: prefer_final_fields
   bool _shouldGiveUp = false;
 
+  // 反饋相關
+  bool _feedbackSubmitted = false;
+  bool _showFeedbackForm = false;
+  String? _feedbackCategory;
+  final _feedbackCommentController = TextEditingController();
+  Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
+
   // 對話延續功能
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
@@ -76,6 +84,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _feedbackCommentController.dispose();
     super.dispose();
   }
 
@@ -154,6 +163,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _finalRecommendation = result.recommendation;
         _reminder = result.reminder;
         _shouldGiveUp = result.shouldGiveUp;
+        _lastAiResponse = result.rawResponse; // 儲存原始 AI 回應
+        _feedbackSubmitted = false; // 重置反饋狀態
+        _showFeedbackForm = false;
+        _feedbackCategory = null;
       });
 
       // Update conversation with score
@@ -399,6 +412,77 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     Clipboard.setData(ClipboardData(text: buffer.toString()));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('對話紀錄已複製到剪貼簿')),
+    );
+  }
+
+  /// 提交反饋
+  Future<void> _submitFeedback(String rating) async {
+    if (_feedbackSubmitted) return;
+
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return;
+
+    // 取得用戶訂閱資訊
+    final subscription = ref.read(subscriptionProvider);
+    final userTier = subscription.tier;
+
+    // 建構對話片段 (最後 6 則訊息)
+    final messages = conversation.messages;
+    final lastMessages = messages.length > 6
+        ? messages.sublist(messages.length - 6)
+        : messages;
+    final conversationSnippet = lastMessages
+        .map((m) => '${m.isFromMe ? "我" : "她"}: ${m.content}')
+        .join('\n');
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'submit-feedback',
+        body: {
+          'rating': rating,
+          'category': _feedbackCategory,
+          'comment': _feedbackCommentController.text.trim().isEmpty
+              ? null
+              : _feedbackCommentController.text.trim(),
+          'conversationSnippet': conversationSnippet,
+          'aiResponse': _lastAiResponse,
+          'userTier': userTier,
+          'modelUsed': _lastAiResponse?['usage']?['model'],
+        },
+      );
+
+      if (response.status == 200) {
+        setState(() {
+          _feedbackSubmitted = true;
+          _showFeedbackForm = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(rating == 'positive'
+                  ? '謝謝回饋！'
+                  : '感謝你的回饋，我們會持續改進！'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('反饋送出失敗，請稍後再試')),
+        );
+      }
+    }
+  }
+
+  Widget _buildFeedbackCategoryChip(String value, String label) {
+    final isSelected = _feedbackCategory == value;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() => _feedbackCategory = selected ? value : null);
+      },
     );
   }
 
@@ -978,6 +1062,87 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   ],
                 ),
               ),
+            ],
+
+            // 反饋區塊 (有分析結果時顯示)
+            if (_enthusiasmScore != null) ...[
+              const SizedBox(height: 24),
+              if (!_feedbackSubmitted) ...[
+                const Divider(),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('這個建議有幫助嗎？', style: AppTypography.bodyMedium),
+                    const SizedBox(width: 16),
+                    IconButton(
+                      icon: const Icon(Icons.thumb_up_outlined),
+                      onPressed: () => _submitFeedback('positive'),
+                      tooltip: '有幫助',
+                      color: AppColors.success,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.thumb_down_outlined),
+                      onPressed: () => setState(() => _showFeedbackForm = true),
+                      tooltip: '需要改進',
+                      color: AppColors.error,
+                    ),
+                  ],
+                ),
+                if (_showFeedbackForm) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('哪裡需要改進？', style: AppTypography.bodyLarge),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _buildFeedbackCategoryChip('too_direct', '太直接/不自然'),
+                            _buildFeedbackCategoryChip('too_long', '回覆太長'),
+                            _buildFeedbackCategoryChip('wrong_style', '不符合我的風格'),
+                            _buildFeedbackCategoryChip('other', '其他'),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _feedbackCommentController,
+                          decoration: const InputDecoration(
+                            hintText: '補充說明（選填）',
+                            isDense: true,
+                          ),
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _feedbackCategory != null
+                                ? () => _submitFeedback('negative')
+                                : null,
+                            child: const Text('送出反饋'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ] else ...[
+                Center(
+                  child: Text(
+                    '已收到你的回饋',
+                    style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              ],
             ],
 
             // 重新分析按鈕 (有新訊息時顯示)
