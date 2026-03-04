@@ -21,6 +21,7 @@ class StorageService {
     Hive.registerAdapter(MeetingContextAdapter());
     Hive.registerAdapter(AcquaintanceDurationAdapter());
     Hive.registerAdapter(UserGoalAdapter());
+    Hive.registerAdapter(UserStyleAdapter());
     Hive.registerAdapter(ConversationSummaryAdapter()); // v2.0: Memory feature
 
     // Get or create encryption key

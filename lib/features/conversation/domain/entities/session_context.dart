@@ -3,6 +3,36 @@ import 'package:hive_ce/hive_ce.dart';
 
 part 'session_context.g.dart';
 
+/// 用戶說話風格
+@HiveType(typeId: 7)
+enum UserStyle {
+  @HiveField(0)
+  humorous, // 幽默型
+  @HiveField(1)
+  steady, // 穩重型
+  @HiveField(2)
+  direct, // 直球型
+  @HiveField(3)
+  gentle, // 溫柔型
+  @HiveField(4)
+  playful; // 調皮型
+
+  String get label {
+    switch (this) {
+      case humorous:
+        return '幽默型';
+      case steady:
+        return '穩重型';
+      case direct:
+        return '直球型';
+      case gentle:
+        return '溫柔型';
+      case playful:
+        return '調皮型';
+    }
+  }
+}
+
 /// 認識場景
 @HiveType(typeId: 3)
 enum MeetingContext {
@@ -89,15 +119,30 @@ class SessionContext extends HiveObject {
   @HiveField(2)
   final UserGoal goal;
 
+  @HiveField(3)
+  final UserStyle? userStyle;
+
+  @HiveField(4)
+  final String? userInterests;
+
+  @HiveField(5)
+  final String? targetDescription;
+
   SessionContext({
     required this.meetingContext,
     required this.duration,
     this.goal = UserGoal.dateInvite, // 預設：約出來
+    this.userStyle,
+    this.userInterests,
+    this.targetDescription,
   });
 
   Map<String, dynamic> toJson() => {
-        'meetingContext': meetingContext.name,
-        'duration': duration.name,
-        'goal': goal.name,
+        'meetingContext': meetingContext.label,
+        'duration': duration.label,
+        'goal': goal.label,
+        'userStyle': userStyle?.label,
+        'userInterests': userInterests,
+        'targetDescription': targetDescription,
       };
 }
