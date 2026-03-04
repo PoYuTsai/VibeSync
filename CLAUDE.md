@@ -9,7 +9,7 @@
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-02-28
+📌 最後更新：2026-03-04
 ```
 
 ### 🎯 當前開發進度
@@ -29,11 +29,17 @@
 | **CI/CD Edge Function** | ✅ 完成 | push main → Supabase 自動部署 |
 | **RWD 響應式設計** | ✅ 完成 | 手機/平板/桌面自適應 |
 | **跨平台 UX 優化** | ✅ 完成 | iOS/Android 防 pull-to-refresh |
+| **System Prompt 優化** | ✅ 完成 | 70/30 法則、英文話題深度 (Topic Depth Ladder) |
+| **個人化資料收集** | ✅ 完成 | 用戶風格、興趣、對方特質（選填） |
+| **反饋機制** | ✅ 完成 | 👍👎 按鈕 + Telegram 通知 |
+| **submit-feedback Function** | ✅ 部署 | 反饋存 Supabase + TG 通知 |
 
 #### 🔄 待測試驗證
 - [ ] iOS Safari 滑動體驗 (pull-to-refresh 是否完全修復)
 - [ ] Android Chrome 滑動體驗
 - [ ] 大螢幕 RWD 顯示效果
+- [ ] 個人化資料對 AI 回覆品質的影響
+- [ ] 反饋機制端對端測試 (👎 → Telegram 通知)
 
 #### ⏸️ 暫停中
 - [ ] iOS App 部署 (等待 Apple Developer 帳號核准)
@@ -46,10 +52,13 @@
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
-- **Edge Function**: `analyze-chat` (已部署，--no-verify-jwt)
+- **Edge Functions**:
+  - `analyze-chat` - AI 分析引擎
+  - `submit-feedback` - 反饋收集 + Telegram 通知
 - **Claude Model**: `claude-sonnet-4-20250514` (Essential) / `claude-haiku-4-5-20251001` (Free/Starter)
 - **Vercel**: https://web-beta-tawny.vercel.app
 - **成本優化**: Prompt Caching 已啟用 (ephemeral cache)
+- **Telegram Bot**: `@vibesync_feedback_bot` (反饋通知)
 
 ### 測試帳號
 | Email | 密碼 | Tier | 特性 |
@@ -78,6 +87,8 @@
 |------------|-----------|
 | **完整設計規格 (v1.3)** | `docs/plans/2026-02-26-vibesync-design.md` |
 | **實作計畫 (35 任務)** | `docs/plans/2026-02-26-vibesync-implementation.md` |
+| **System Prompt 優化設計** | `docs/plans/2026-03-04-system-prompt-optimization-design.md` |
+| **System Prompt 優化實作** | `docs/plans/2026-03-04-system-prompt-optimization-impl.md` |
 | **實作前檢查清單** | `docs/PRE-IMPLEMENTATION-CHECKLIST.md` |
 | **定價方案** | `docs/pricing-final.md` |
 | **法規文件** | `docs/legal/*.md` |
@@ -481,9 +492,9 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 - 🔮 冷讀 (假設代替問句)
 
 **新增功能**:
-- 話題深度階梯 (事件→個人→曖昧)
+- 話題深度階梯 (Event→Personal→Intimate)
 - 對話健檢 (Essential 專屬)
-- 82/18 原則 (聆聽 vs 說話)
+- 70/30 法則 (聆聽 vs 說話)
 - 面試式提問警告
 
 #### [2026-02-26] 對話記憶設計
@@ -542,6 +553,27 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 - CI/CD：GitHub Actions 自動 build + 分發
 
 **總任務數更新**: 28 → 35 tasks
+
+#### [2026-03-04] System Prompt 優化 + 個人化 + 反饋機制
+**決定**: 根據測試夥伴反饋進行三項優化
+**變更內容**:
+1. **名詞修改** (規避著作權)
+   - 82/18 原則 → 70/30 法則
+   - 話題深度階梯改英文 (Event-oriented / Personal-oriented / Intimate-oriented)
+2. **個人化資料收集**
+   - 用戶風格 (幽默/穩重/直球/溫柔/調皮)
+   - 用戶興趣 (自由填寫)
+   - 對方特質 (選填)
+   - AI 會根據這些資料調整回覆風格
+3. **反饋機制**
+   - 分析結果頁底部 👍👎 按鈕
+   - 負面反饋展開表單 (分類 + 補充說明)
+   - 反饋存入 Supabase `feedback` 表
+   - 負面反饋自動發送 Telegram 通知
+
+**相關文件**:
+- 設計: `docs/plans/2026-03-04-system-prompt-optimization-design.md`
+- 實作: `docs/plans/2026-03-04-system-prompt-optimization-impl.md`
 
 ## Notes
 
