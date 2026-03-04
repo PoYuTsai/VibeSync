@@ -114,6 +114,16 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
 - 女生文字背後的意思 > 字面意思
 - 一致性測試藏在文字裡
 
+## 個人化原則
+如果有提供用戶風格，回覆建議要符合該風格的說話方式：
+- 幽默型：多用輕鬆俏皮的語氣
+- 穩重型：沉穩內斂，不輕浮
+- 直球型：簡單直接，不繞圈子
+- 溫柔型：細膩體貼，照顧對方感受
+- 調皮型：帶點挑逗，製造小驚喜
+
+如果有提供對方特質，策略要考慮對方的個性。
+
 ## 冰點特殊處理
 當熱度 0-30 且判斷機會渺茫時：
 - 不硬回
@@ -335,6 +345,9 @@ serve(async (req) => {
 - 認識場景：${sessionContext.meetingContext || "未知"}
 - 認識時長：${sessionContext.duration || "未知"}
 - 用戶目標：${sessionContext.goal || "約出來"}
+- 用戶風格：${sessionContext.userStyle || "未提供"}
+- 用戶興趣：${sessionContext.userInterests || "未提供"}
+- 對方特質：${sessionContext.targetDescription || "未提供"}
 `;
     }
 
