@@ -140,6 +140,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
+    // 驗證：最後一則必須是「她」的訊息
+    if (conversation.messages.isEmpty) {
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = '請先輸入對話內容';
+      });
+      return;
+    }
+
+    if (conversation.messages.last.isFromMe) {
+      setState(() {
+        _isAnalyzing = false;
+        _errorMessage = '請先輸入對方的回覆，才能給你建議';
+      });
+      return;
+    }
+
     try {
       // 呼叫真正的 Supabase Edge Function
       final analysisService = AnalysisService();
@@ -1207,11 +1224,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 輸入框
+            // 輸入框 + 貼上按鈕
             TextField(
               controller: _messageController,
               decoration: InputDecoration(
-                hintText: '輸入新訊息繼續分析...',
+                hintText: '貼上對方的回覆...',
                 hintStyle: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -1223,36 +1240,56 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 12,
+                  vertical: 16,
+                ),
+                // 貼上按鈕
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.content_paste, color: AppColors.primary),
+                  onPressed: _isAnalyzing ? null : () async {
+                    final data = await Clipboard.getData(Clipboard.kTextPlain);
+                    if (data?.text != null && data!.text!.isNotEmpty) {
+                      _messageController.text = data.text!;
+                      _messageController.selection = TextSelection.fromPosition(
+                        TextPosition(offset: _messageController.text.length),
+                      );
+                    }
+                  },
+                  tooltip: '貼上',
                 ),
               ),
-              maxLines: 3,
-              minLines: 1,
+              maxLines: 5,
+              minLines: 2,
               textInputAction: TextInputAction.newline,
               enabled: !_isAnalyzing,
             ),
-            const SizedBox(height: 8),
-            // 新增按鈕
+            const SizedBox(height: 12),
+            // 新增按鈕 - 加大點擊區域
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: false),
-                    icon: const Text('👩'),
-                    label: const Text('她說...'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: false),
+                      icon: const Text('👩', style: TextStyle(fontSize: 18)),
+                      label: const Text('她說...'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: true),
-                    icon: const Text('👤'),
-                    label: const Text('我說...'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: true),
+                      icon: const Text('👤', style: TextStyle(fontSize: 18)),
+                      label: const Text('我說...'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
                     ),
                   ),
                 ),
