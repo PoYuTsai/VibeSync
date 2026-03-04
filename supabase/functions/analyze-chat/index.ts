@@ -521,13 +521,48 @@ serve(async (req) => {
 `;
     }
 
-    // Format messages for Claude
-    const conversationText = messages
-      .map(
-        (m: { isFromMe: boolean; content: string }) =>
-          `${m.isFromMe ? "我" : "她"}: ${m.content}`
-      )
-      .join("\n");
+    // 對話記憶策略：最近 30 則訊息完整保留（約 15 輪）
+    // 超過時，保留開頭 + 最近對話，中間省略
+    const MAX_RECENT_MESSAGES = 30;
+    const OPENING_MESSAGES = 4; // 保留最初的 4 則（破冰階段）
+    let conversationText = "";
+
+    if (messages.length > MAX_RECENT_MESSAGES + OPENING_MESSAGES) {
+      // 長對話：保留開頭 + 最近
+      const openingMessages = messages.slice(0, OPENING_MESSAGES);
+      const recentMessages = messages.slice(-MAX_RECENT_MESSAGES);
+      const skippedCount = messages.length - OPENING_MESSAGES - MAX_RECENT_MESSAGES;
+
+      const openingText = openingMessages
+        .map(
+          (m: { isFromMe: boolean; content: string }) =>
+            `${m.isFromMe ? "我" : "她"}: ${m.content}`
+        )
+        .join("\n");
+
+      const recentText = recentMessages
+        .map(
+          (m: { isFromMe: boolean; content: string }) =>
+            `${m.isFromMe ? "我" : "她"}: ${m.content}`
+        )
+        .join("\n");
+
+      conversationText = `## 對話開頭（破冰階段）
+${openingText}
+
+---（中間省略 ${skippedCount} 則訊息）---
+
+## 最近對話
+${recentText}`;
+    } else {
+      // 訊息數量在限制內，完整送出
+      conversationText = messages
+        .map(
+          (m: { isFromMe: boolean; content: string }) =>
+            `${m.isFromMe ? "我" : "她"}: ${m.content}`
+        )
+        .join("\n");
+    }
 
     // Select model based on complexity
     const model = selectModel({
