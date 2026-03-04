@@ -112,8 +112,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     // 清空輸入框
     _messageController.clear();
 
-    // 重新分析
-    await _runAnalysis();
+    // 只有當最後一則是「她說」才自動分析
+    if (!isFromMe) {
+      await _runAnalysis();
+    } else {
+      // 如果是「我說」，只更新 UI 顯示提示
+      setState(() {});
+    }
 
     // 滾動到頂部顯示新分析結果
     if (_scrollController.hasClients) {
@@ -1162,34 +1167,66 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ],
             ],
 
-            // 重新分析按鈕 (有新訊息時顯示)
-            if (_enthusiasmScore != null &&
+            // 新訊息提示 (根據最後一則是誰來顯示不同內容)
+            if (conversation.messages.isNotEmpty &&
                 conversation.messages.length > _lastAnalyzedMessageCount) ...[
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.update, color: AppColors.warning),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '有 ${conversation.messages.length - _lastAnalyzedMessageCount} 則新訊息',
-                        style: AppTypography.bodyMedium,
+              Builder(
+                builder: (context) {
+                  final lastIsFromMe = conversation.messages.last.isFromMe;
+                  final newCount = conversation.messages.length - _lastAnalyzedMessageCount;
+
+                  if (lastIsFromMe) {
+                    // 最後是「我說」→ 提示輸入她的回覆
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
                       ),
-                    ),
-                    TextButton.icon(
-                      onPressed: _isAnalyzing ? null : _runAnalysis,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('重新分析'),
-                    ),
-                  ],
-                ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.arrow_downward, color: AppColors.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '請在下方輸入她的回覆，再點「👩 她說...」',
+                              style: AppTypography.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else {
+                    // 最後是「她說」→ 可以重新分析
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.update, color: AppColors.warning),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '有 $newCount 則新訊息',
+                              style: AppTypography.bodyMedium,
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: _isAnalyzing ? null : _runAnalysis,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('重新分析'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                },
               ),
             ],
 
