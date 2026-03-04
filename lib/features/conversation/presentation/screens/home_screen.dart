@@ -40,54 +40,10 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   itemBuilder: (context, index) {
                     final conversation = conversations[index];
-                    return Dismissible(
-                      key: Key(conversation.id),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        color: Colors.red,
-                        child: const Icon(
-                          Icons.delete,
-                          color: Colors.white,
-                        ),
-                      ),
-                      confirmDismiss: (direction) async {
-                        return await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('刪除對話'),
-                            content: Text('確定要刪除與「${conversation.name}」的對話嗎？'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
-                                child: const Text('取消'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(true),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                ),
-                                child: const Text('刪除'),
-                              ),
-                            ],
-                          ),
-                        ) ?? false;
-                      },
-                      onDismissed: (direction) async {
-                        final repository = ref.read(conversationRepositoryProvider);
-                        await repository.deleteConversation(conversation.id);
-                        ref.invalidate(conversationsProvider);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('已刪除「${conversation.name}」')),
-                          );
-                        }
-                      },
-                      child: ConversationTile(
-                        conversation: conversation,
-                        onTap: () => context.push('/conversation/${conversation.id}'),
-                      ),
+                    return ConversationTile(
+                      conversation: conversation,
+                      onTap: () => context.push('/conversation/${conversation.id}'),
+                      onDelete: () => _showDeleteDialog(context, ref, conversation),
                     );
                   },
                 ),
@@ -99,6 +55,44 @@ class HomeScreen extends ConsumerWidget {
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  Future<void> _showDeleteDialog(
+    BuildContext context,
+    WidgetRef ref,
+    dynamic conversation,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('刪除對話'),
+        content: Text('確定要刪除與「${conversation.name}」的對話嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final repository = ref.read(conversationRepositoryProvider);
+      await repository.deleteConversation(conversation.id);
+      ref.invalidate(conversationsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已刪除「${conversation.name}」')),
+        );
+      }
+    }
   }
 
   Widget _buildEmptyState(BuildContext context) {

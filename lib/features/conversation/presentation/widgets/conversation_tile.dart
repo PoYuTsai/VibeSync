@@ -9,11 +9,13 @@ import 'package:intl/intl.dart';
 class ConversationTile extends StatelessWidget {
   final Conversation conversation;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   const ConversationTile({
     super.key,
     required this.conversation,
     required this.onTap,
+    this.onDelete,
   });
 
   String _formatDate(DateTime date) {
@@ -39,6 +41,13 @@ class ConversationTile extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      trailing: onDelete != null
+          ? IconButton(
+              icon: const Icon(Icons.delete_outline, color: AppColors.textSecondary),
+              onPressed: onDelete,
+              tooltip: '刪除對話',
+            )
+          : null,
       leading: CircleAvatar(
         backgroundColor: AppColors.surfaceVariant,
         child: Text(
