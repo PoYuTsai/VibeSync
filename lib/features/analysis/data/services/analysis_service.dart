@@ -23,6 +23,42 @@ class AnalysisService {
       throw AnalysisException('Messages cannot be empty');
     }
 
+    // 最多重試 2 次
+    const maxRetries = 2;
+    Exception? lastError;
+
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await _doAnalyze(
+          messages,
+          sessionContext: sessionContext,
+          userDraft: userDraft,
+          analyzeMode: analyzeMode,
+        );
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        // 如果是 AnalysisException (非網路錯誤)，不重試
+        if (e is AnalysisException &&
+            !e.message.contains('Failed to fetch') &&
+            !e.message.contains('連線') &&
+            !e.message.contains('逾時')) {
+          rethrow;
+        }
+        // 等待後重試
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(seconds: attempt + 1));
+        }
+      }
+    }
+    throw lastError ?? AnalysisException('分析失敗');
+  }
+
+  Future<AnalysisResult> _doAnalyze(
+    List<Message> messages, {
+    SessionContext? sessionContext,
+    String? userDraft,
+    String? analyzeMode,
+  }) async {
     try {
       final response = await SupabaseService.invokeFunction(
         'analyze-chat',
