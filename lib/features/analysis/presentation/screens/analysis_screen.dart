@@ -258,31 +258,31 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
       setState(() {
         _isOptimizing = false;
+        // 只更新優化結果，不覆蓋其他分析
         _optimizedMessage = result.optimizedMessage;
-        // 同時更新其他分析結果
-        _enthusiasmScore = result.enthusiasmScore;
-        _strategy = result.strategy;
-        _replies = result.replies;
-        _topicDepth = result.topicDepth;
-        _healthCheck = result.healthCheck;
-        _gameStage = result.gameStage;
-        _psychology = result.psychology;
-        _finalRecommendation = result.recommendation;
-        _reminder = result.reminder;
-        _shouldGiveUp = result.shouldGiveUp;
-        _lastAiResponse = result.rawResponse;
-        _lastAnalyzedMessageCount = conversation.messages.length;
+
+        // 檢查優化是否成功
+        if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
+          // 優化失敗，顯示錯誤但保留原本的分析結果
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('優化失敗，請重試')),
+          );
+        }
       });
     } on AnalysisException catch (e) {
       setState(() {
         _isOptimizing = false;
-        _errorMessage = e.message;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('優化失敗: ${e.message}')),
+      );
     } catch (e) {
       setState(() {
         _isOptimizing = false;
-        _errorMessage = '優化失敗: $e';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('優化失敗: $e')),
+      );
     }
   }
 

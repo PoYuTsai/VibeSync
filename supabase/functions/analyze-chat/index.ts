@@ -693,8 +693,13 @@ ${recentText}`;
     let result;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      result = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch {
+      if (!jsonMatch) {
+        console.error("No JSON found in AI response:", content?.substring(0, 500));
+        throw new Error("No JSON in response");
+      }
+      result = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError, "Content:", content?.substring(0, 500));
       result = {
         enthusiasm: { score: 50, level: "warm" },
         replies: {
@@ -702,6 +707,14 @@ ${recentText}`;
         },
         warnings: [],
         strategy: "分析失敗，請重試",
+        // 如果有 userDraft，也返回 fallback
+        ...(userDraft ? {
+          optimizedMessage: {
+            original: userDraft,
+            optimized: "優化失敗，請重試",
+            reason: "AI 回應解析錯誤",
+          }
+        } : {}),
       };
     }
 
