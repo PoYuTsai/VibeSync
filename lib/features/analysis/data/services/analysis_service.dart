@@ -1,6 +1,5 @@
 // lib/features/analysis/data/services/analysis_service.dart
 import 'dart:async';
-import 'dart:io';
 
 import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/domain/entities/message.dart';
@@ -72,13 +71,25 @@ class AnalysisService {
         throw AnalysisException(errorMessage);
       }
 
-      return AnalysisResult.fromJson(response.data as Map<String, dynamic>);
+      // 安全解析 JSON 回應
+      try {
+        final data = response.data;
+        if (data == null) {
+          throw AnalysisException('伺服器回應為空');
+        }
+        if (data is! Map<String, dynamic>) {
+          throw AnalysisException('伺服器回應格式錯誤');
+        }
+        return AnalysisResult.fromJson(data);
+      } on AnalysisException {
+        rethrow;
+      } catch (parseError) {
+        throw AnalysisException('解析回應失敗，請重試');
+      }
     } on AnalysisException {
       rethrow;
     } on TimeoutException {
       throw AnalysisException('分析逾時，請稍後再試');
-    } on SocketException {
-      throw AnalysisException('網路連線失敗，請檢查網路');
     } catch (e) {
       // 提供更詳細的錯誤資訊
       final errorStr = e.toString();
@@ -91,7 +102,7 @@ class AnalysisService {
       if (errorStr.contains('FunctionException')) {
         throw AnalysisException('伺服器忙碌中，請稍後再試');
       }
-      throw AnalysisException('分析失敗: ${e.runtimeType}');
+      throw AnalysisException('連線失敗，請檢查網路');
     }
   }
 }
