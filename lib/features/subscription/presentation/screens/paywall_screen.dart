@@ -18,7 +18,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   String _selectedTier = 'essential'; // 預設選 Essential
   bool _isYearly = true; // 預設選年繳 (更划算)
 
-  // 定價資料
+  // 定價資料 (全部以 NT$ 顯示)
   static const _pricing = {
     'starter': {
       'monthly': 'NT\$149',
@@ -27,9 +27,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       'discount': '33%',
     },
     'essential': {
-      'monthly': '\$29',
-      'yearly': '\$19',
-      'yearlyTotal': '\$228',
+      'monthly': 'NT\$930',
+      'yearly': 'NT\$620',
+      'yearlyTotal': 'NT\$7,440',
       'discount': '33%',
     },
   };
