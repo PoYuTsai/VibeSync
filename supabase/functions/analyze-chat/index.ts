@@ -138,8 +138,20 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
 ## 最高指導原則
 
 ### 1. 1.8x 黃金法則
-所有建議回覆的字數必須 ≤ 對方最後訊息字數 × 1.8
+所有建議回覆的字數必須 ≤ 對方「單條」訊息字數 × 1.8
 這條規則不可違反。
+
+### 1.2 多條訊息處理規則
+如果對方連續發了多條訊息，根據訊息類型決定是否回覆：
+
+| 訊息類型 | 是否回覆 | 範例 |
+|----------|----------|------|
+| 肯定句/是非句 | ❌ 不需回覆 | 「對啊」「嗯嗯」「好」 |
+| 陳述句 | 熱度 > 50 才回覆 | 「我今天去看電影」 |
+| 疑問句 | ✅ 必須回覆 | 「你呢？」「為什麼？」 |
+| 圖片/貼圖 | ✅ 必須回覆 | [圖片] |
+
+**輸出格式**：當對方有多條訊息時，針對每條需要回覆的訊息分別給建議。
 
 ### 1.5 回覆結構指南
 **優先考慮兩段式**（在 1.8x 限制內）：
@@ -332,8 +344,22 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
     },
     "qualificationSignal": true
   },
+  "herMessages": [
+    {
+      "content": "她的第一條訊息",
+      "type": "question",
+      "shouldReply": true,
+      "replies": {
+        "extend": "...",
+        "resonate": "...",
+        "tease": "...",
+        "humor": "...",
+        "coldRead": "..."
+      }
+    }
+  ],
   "replies": {
-    "extend": "...",
+    "extend": "針對最後一條訊息的回覆",
     "resonate": "...",
     "tease": "...",
     "humor": "...",
@@ -341,7 +367,7 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
   },
   "finalRecommendation": {
     "pick": "tease",
-    "content": "推薦的完整回覆內容",
+    "content": "推薦的完整回覆內容（可能包含多條訊息的回應）",
     "reason": "為什麼推薦這個回覆",
     "psychology": "心理學依據"
   },
@@ -352,6 +378,21 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
   },
   "strategy": "簡短策略說明",
   "reminder": "記得用你的方式說，見面才自然"
+}
+
+## 用戶訊息優化功能
+如果用戶提供了「想說的內容」(userDraft)，根據以上原則優化：
+1. 套用 1.8x 法則
+2. 避免自貶，改用自嘲
+3. 套用兩段式結構（如適用）
+4. 符合用戶風格設定
+輸出 optimizedMessage 欄位：
+{
+  "optimizedMessage": {
+    "original": "用戶原本想說的",
+    "optimized": "優化後的版本",
+    "changes": ["修改了什麼", "為什麼這樣改"]
+  }
 }
 
 ${SAFETY_RULES}`;
@@ -507,7 +548,7 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { messages, sessionContext } = await req.json();
+    const { messages, sessionContext, userDraft } = await req.json();
     if (!messages || !Array.isArray(messages)) {
       return jsonResponse({ error: "Invalid messages" }, 400);
     }
@@ -591,6 +632,14 @@ ${recentText}`;
     const allowedFeatures = TIER_FEATURES[sub.tier] || TIER_FEATURES.free;
 
     // Call Claude API with fallback
+    // 組合用戶訊息
+    let userPrompt = `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`;
+
+    // 如果有用戶草稿，加入優化請求
+    if (userDraft && typeof userDraft === "string" && userDraft.trim()) {
+      userPrompt += `\n\n## 用戶想說的內容（請優化）\n「${userDraft.trim()}」\n請在 optimizedMessage 欄位提供優化版本。`;
+    }
+
     const startTime = Date.now();
     let claudeResult;
     try {
@@ -602,7 +651,7 @@ ${recentText}`;
           messages: [
             {
               role: "user",
-              content: `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`,
+              content: userPrompt,
             },
           ],
         },
