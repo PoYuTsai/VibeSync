@@ -16,6 +16,23 @@ class PaywallScreen extends ConsumerStatefulWidget {
 
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   String _selectedTier = 'essential'; // 預設選 Essential
+  bool _isYearly = true; // 預設選年繳 (更划算)
+
+  // 定價資料
+  static const _pricing = {
+    'starter': {
+      'monthly': 'NT\$149',
+      'yearly': 'NT\$99',
+      'yearlyTotal': 'NT\$1,190',
+      'discount': '33%',
+    },
+    'essential': {
+      'monthly': '\$29',
+      'yearly': '\$19',
+      'yearlyTotal': '\$228',
+      'discount': '33%',
+    },
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -44,13 +61,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               style: AppTypography.bodyLarge.copyWith(color: AppColors.textSecondary),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+
+            // Billing toggle
+            _buildBillingToggle(),
+            const SizedBox(height: 24),
 
             // Plan cards
             _buildPlanCard(
               tier: 'starter',
               name: 'Starter',
-              price: 'NT\$149/月',
               features: const [
                 '300 則訊息/月',
                 '每日 50 則上限',
@@ -65,7 +85,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             _buildPlanCard(
               tier: 'essential',
               name: 'Essential',
-              price: '\$29/月',
               features: const [
                 '1,000 則訊息/月',
                 '每日 150 則上限',
@@ -154,15 +173,92 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
   }
 
+  Widget _buildBillingToggle() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _isYearly = false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: !_isYearly ? AppColors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '月繳',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.labelLarge.copyWith(
+                    color: !_isYearly ? Colors.white : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _isYearly = true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _isYearly ? AppColors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '年繳',
+                      style: AppTypography.labelLarge.copyWith(
+                        color: _isYearly ? Colors.white : AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _isYearly
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : AppColors.success.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '省 33%',
+                        style: AppTypography.caption.copyWith(
+                          color: _isYearly ? Colors.white : AppColors.success,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPlanCard({
     required String tier,
     required String name,
-    required String price,
     required List<String> features,
     required bool isSelected,
     bool isRecommended = false,
     required VoidCallback onTap,
   }) {
+    final pricing = _pricing[tier]!;
+    final currentPrice = _isYearly ? pricing['yearly']! : pricing['monthly']!;
+    final originalPrice = pricing['monthly']!;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -203,7 +299,38 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
               ],
             ),
-            Text(price, style: AppTypography.headlineMedium),
+            const SizedBox(height: 4),
+            // Price display
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$currentPrice/月',
+                  style: AppTypography.headlineMedium.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (_isYearly) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '$originalPrice/月',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (_isYearly) ...[
+              const SizedBox(height: 4),
+              Text(
+                '年繳 ${pricing['yearlyTotal']}',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             ...features.map(
               (f) => Padding(
