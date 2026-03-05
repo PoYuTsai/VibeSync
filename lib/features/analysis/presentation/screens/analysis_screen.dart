@@ -123,17 +123,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     // 清空輸入框
     _messageController.clear();
 
-    // 只有當最後一則是「她說」才自動分析
+    // 根據訊息類型決定行為
     if (!isFromMe) {
-      await _runAnalysis();
+      // 「她說」：不自動分析，顯示提示讓用戶決定
+      _showAnalyzePrompt();
     } else {
-      // 如果是「我說」，檢查是否 Essential 用戶
+      // 「我說」：Essential 用戶自動分析話題延續 (Haiku, 快速)
       final subscription = ref.read(subscriptionProvider);
       if (subscription.tier == 'essential') {
-        // Essential 用戶：呼叫「我說」分析
         await _runMyMessageAnalysis();
       } else {
-        // 非 Essential 用戶：只更新 UI 顯示提示
         setState(() {
           _myMessageAnalysis = null;
         });
@@ -150,7 +149,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
   }
 
+  /// 顯示分析提示，讓用戶決定是否分析「她說」的訊息
+  void _showAnalyzePrompt() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('已新增對方訊息'),
+        backgroundColor: AppColors.surface,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: '分析熱度與建議',
+          textColor: AppColors.primary,
+          onPressed: _runAnalysis,
+        ),
+      ),
+    );
+  }
+
   Future<void> _runAnalysis() async {
+    // 先關閉 SnackBar (如果有的話)
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
     setState(() {
       _isAnalyzing = true;
       _errorMessage = null;
