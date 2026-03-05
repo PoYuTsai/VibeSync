@@ -556,7 +556,7 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { messages, sessionContext, userDraft } = await req.json();
+    const { messages, sessionContext, userDraft, forceModel } = await req.json();
     if (!messages || !Array.isArray(messages)) {
       return jsonResponse({ error: "Invalid messages" }, 400);
     }
@@ -627,14 +627,17 @@ ${recentText}`;
         .join("\n");
     }
 
-    // Select model based on complexity
-    const model = selectModel({
-      conversationLength: messages.length,
-      enthusiasmLevel: null, // 首次分析前不知道
-      hasComplexEmotions: false,
-      isFirstAnalysis: messages.length <= 5,
-      tier: sub.tier,
-    });
+    // Select model based on complexity (or force for testing)
+    const VALID_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-20250514"];
+    const model = (forceModel && VALID_MODELS.includes(forceModel))
+      ? forceModel
+      : selectModel({
+          conversationLength: messages.length,
+          enthusiasmLevel: null, // 首次分析前不知道
+          hasComplexEmotions: false,
+          isFirstAnalysis: messages.length <= 5,
+          tier: sub.tier,
+        });
 
     // Get available features for this tier
     const allowedFeatures = TIER_FEATURES[sub.tier] || TIER_FEATURES.free;
