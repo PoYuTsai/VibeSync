@@ -91,18 +91,23 @@ class AnalysisService {
     } on TimeoutException {
       throw AnalysisException('分析逾時，請稍後再試');
     } catch (e) {
-      // 提供更詳細的錯誤資訊
+      // 顯示完整錯誤訊息以便除錯
       final errorStr = e.toString();
-      if (errorStr.contains('SocketException') || errorStr.contains('Connection')) {
+      final errorType = e.runtimeType.toString();
+
+      // 針對特定錯誤類型提供建議
+      if (errorStr.contains('Unauthorized') || errorStr.contains('401')) {
+        throw AnalysisException('登入已過期，請重新登入');
+      }
+      if (errorStr.contains('SocketException') || errorStr.contains('Connection refused')) {
         throw AnalysisException('網路連線失敗，請檢查網路');
       }
       if (errorStr.contains('timeout') || errorStr.contains('Timeout')) {
         throw AnalysisException('分析逾時，請稍後再試');
       }
-      if (errorStr.contains('FunctionException')) {
-        throw AnalysisException('伺服器忙碌中，請稍後再試');
-      }
-      throw AnalysisException('連線失敗，請檢查網路');
+
+      // 顯示完整錯誤以便除錯
+      throw AnalysisException('錯誤 ($errorType): $errorStr');
     }
   }
 }
