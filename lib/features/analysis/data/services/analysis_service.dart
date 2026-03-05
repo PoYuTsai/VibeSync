@@ -1,4 +1,7 @@
 // lib/features/analysis/data/services/analysis_service.dart
+import 'dart:async';
+import 'dart:io';
+
 import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
@@ -70,9 +73,25 @@ class AnalysisService {
       }
 
       return AnalysisResult.fromJson(response.data as Map<String, dynamic>);
+    } on AnalysisException {
+      rethrow;
+    } on TimeoutException {
+      throw AnalysisException('分析逾時，請稍後再試');
+    } on SocketException {
+      throw AnalysisException('網路連線失敗，請檢查網路');
     } catch (e) {
-      if (e is AnalysisException) rethrow;
-      throw AnalysisException('Network error: ${e.toString()}');
+      // 提供更詳細的錯誤資訊
+      final errorStr = e.toString();
+      if (errorStr.contains('SocketException') || errorStr.contains('Connection')) {
+        throw AnalysisException('網路連線失敗，請檢查網路');
+      }
+      if (errorStr.contains('timeout') || errorStr.contains('Timeout')) {
+        throw AnalysisException('分析逾時，請稍後再試');
+      }
+      if (errorStr.contains('FunctionException')) {
+        throw AnalysisException('伺服器忙碌中，請稍後再試');
+      }
+      throw AnalysisException('分析失敗: ${e.runtimeType}');
     }
   }
 }

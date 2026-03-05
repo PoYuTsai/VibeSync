@@ -1,4 +1,6 @@
 // lib/core/services/supabase_service.dart
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
@@ -69,14 +71,22 @@ class SupabaseService {
       ? client.auth.currentSession?.accessToken
       : null;
 
-  /// Invoke Edge Function
+  /// Invoke Edge Function with timeout
   static Future<FunctionResponse> invokeFunction(
     String functionName, {
     Map<String, dynamic>? body,
+    Duration timeout = const Duration(seconds: 60),
   }) async {
-    return await client.functions.invoke(
-      functionName,
-      body: body,
-    );
+    return await client.functions
+        .invoke(
+          functionName,
+          body: body,
+        )
+        .timeout(
+          timeout,
+          onTimeout: () => throw TimeoutException(
+            'Edge Function timeout after ${timeout.inSeconds}s',
+          ),
+        );
   }
 }
