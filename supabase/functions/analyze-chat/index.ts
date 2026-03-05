@@ -714,14 +714,14 @@ ${recentText}`;
     }
 
     // 「我說」模式用 Haiku 省成本
-    const actualModel = isMyMessageMode ? "claude-haiku-4-5-20251001" : model;
+    const selectedModel = isMyMessageMode ? "claude-haiku-4-5-20251001" : model;
 
     const startTime = Date.now();
     let claudeResult;
     try {
       claudeResult = await callClaudeWithFallback(
         {
-          model: actualModel,
+          model: selectedModel,
           max_tokens: isMyMessageMode ? 512 : 1024, // 「我說」模式輸出較短
           system: systemPrompt,
           messages: [
@@ -864,4 +864,4 @@ ${recentText}`;
 });
 
 // Prompt Caching enabled
-// Last deployed: 2026-03-05
+// Last deployed: 2026-03-06
