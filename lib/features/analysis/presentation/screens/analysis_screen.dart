@@ -367,8 +367,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       buffer.writeln('熱度分數: $_enthusiasmScore/100');
 
       if (_gameStage != null) {
-        buffer.writeln('GAME 階段: ${_gameStage!.current.label}');
-        buffer.writeln('階段狀態: ${_gameStage!.status}');
+        buffer.writeln('對話進度: ${_gameStage!.current.label}');
+        buffer.writeln('狀態: ${_gameStage!.status}');
         buffer.writeln('下一步: ${_gameStage!.nextStep}');
       }
 
@@ -376,7 +376,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         buffer.writeln('');
         buffer.writeln('心理解讀: ${_psychology!.subtext}');
         if (_psychology!.shitTest != null) {
-          buffer.writeln('廢測偵測: ${_psychology!.shitTest}');
+          buffer.writeln('試探偵測: ${_psychology!.shitTest}');
         }
       }
 
@@ -673,7 +673,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '我會分析熱度、GAME階段、心理解讀，\n並給你最適合的回覆建議',
+                      '我會分析熱度、對話進度、心理解讀，\n並給你最適合的回覆建議',
                       style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.textSecondary,
                       ),

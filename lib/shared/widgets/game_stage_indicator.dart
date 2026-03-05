@@ -43,7 +43,7 @@ class GameStageIndicator extends StatelessWidget {
           Row(
             children: [
               Text(
-                'GAME 階段',
+                '對話進度',
                 style: AppTypography.caption,
               ),
               const Spacer(),
