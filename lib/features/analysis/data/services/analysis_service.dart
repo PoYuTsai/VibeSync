@@ -9,11 +9,13 @@ class AnalysisService {
   /// Analyze a conversation and get AI suggestions
   ///
   /// If [userDraft] is provided, AI will also optimize the user's message draft.
+  /// If [analyzeMode] is "my_message", AI will provide topic continuation suggestions.
   /// Throws [AnalysisException] if the analysis fails
   Future<AnalysisResult> analyzeConversation(
     List<Message> messages, {
     SessionContext? sessionContext,
     String? userDraft,
+    String? analyzeMode, // "normal" | "my_message"
   }) async {
     if (messages.isEmpty) {
       throw AnalysisException('Messages cannot be empty');
@@ -37,6 +39,8 @@ class AnalysisService {
             },
           if (userDraft != null && userDraft.trim().isNotEmpty)
             'userDraft': userDraft.trim(),
+          if (analyzeMode != null)
+            'analyzeMode': analyzeMode,
         },
       );
 

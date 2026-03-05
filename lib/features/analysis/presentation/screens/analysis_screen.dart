@@ -63,6 +63,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   bool _isOptimizing = false;
   final _optimizeController = TextEditingController();
   OptimizedMessage? _optimizedMessage;
+
+  // 「我說」話題延續功能
+  MyMessageAnalysis? _myMessageAnalysis;
+  bool _isAnalyzingMyMessage = false;
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
@@ -123,8 +127,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     if (!isFromMe) {
       await _runAnalysis();
     } else {
-      // 如果是「我說」，只更新 UI 顯示提示
-      setState(() {});
+      // 如果是「我說」，檢查是否 Essential 用戶
+      final subscription = ref.read(subscriptionProvider);
+      if (subscription.tier == 'essential') {
+        // Essential 用戶：呼叫「我說」分析
+        await _runMyMessageAnalysis();
+      } else {
+        // 非 Essential 用戶：只更新 UI 顯示提示
+        setState(() {
+          _myMessageAnalysis = null;
+        });
+      }
     }
 
     // 滾動到頂部顯示新分析結果
@@ -229,6 +242,52 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _isAnalyzing = false;
         _errorMessage = '分析失敗: $e';
       });
+    }
+  }
+
+  /// 「我說」話題延續分析（Essential 專屬）
+  Future<void> _runMyMessageAnalysis() async {
+    setState(() {
+      _isAnalyzingMyMessage = true;
+      _myMessageAnalysis = null;
+    });
+
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) {
+      setState(() => _isAnalyzingMyMessage = false);
+      return;
+    }
+
+    try {
+      final analysisService = AnalysisService();
+      final result = await analysisService.analyzeConversation(
+        conversation.messages,
+        sessionContext: conversation.sessionContext,
+        analyzeMode: 'my_message',
+      );
+
+      setState(() {
+        _isAnalyzingMyMessage = false;
+        _myMessageAnalysis = result.myMessageAnalysis;
+      });
+    } on AnalysisException catch (e) {
+      setState(() {
+        _isAnalyzingMyMessage = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('分析失敗: ${e.message}')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isAnalyzingMyMessage = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('分析失敗: $e')),
+        );
+      }
     }
   }
 
@@ -1413,6 +1472,33 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ],
 
+            // 「我說」話題延續分析結果（Essential 專屬）
+            if (_isAnalyzingMyMessage) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                ),
+                child: const Column(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(height: 8),
+                    Text('分析話題延續方向...'),
+                  ],
+                ),
+              ),
+            ] else if (_myMessageAnalysis != null) ...[
+              const SizedBox(height: 16),
+              _buildMyMessageAnalysisCard(),
+            ],
+
                   const SizedBox(height: 24),
                 ],
               ),
@@ -1425,6 +1511,148 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 建立「我說」話題延續分析卡片
+  Widget _buildMyMessageAnalysisCard() {
+    final analysis = _myMessageAnalysis!;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(alpha: 0.1),
+            AppColors.primary.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('💡', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Text('話題延續建議', style: AppTypography.titleLarge),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 如果她冷淡回覆
+          if (analysis.ifColdResponse.suggestion.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text('😐', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 8),
+                      Text('如果她冷淡回覆', style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  if (analysis.ifColdResponse.prediction.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '她可能說：「${analysis.ifColdResponse.prediction}」',
+                      style: AppTypography.caption.copyWith(fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    '→ ${analysis.ifColdResponse.suggestion}',
+                    style: AppTypography.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 如果她熱情回覆
+          if (analysis.ifWarmResponse.suggestion.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text('😊', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 8),
+                      Text('如果她熱情回覆', style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  if (analysis.ifWarmResponse.prediction.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '她可能說：「${analysis.ifWarmResponse.prediction}」',
+                      style: AppTypography.caption.copyWith(fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    '→ ${analysis.ifWarmResponse.suggestion}',
+                    style: AppTypography.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 備用話題
+          if (analysis.backupTopics.isNotEmpty) ...[
+            Text('📚 備用話題', style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ...analysis.backupTopics.map((topic) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('•', style: TextStyle(fontSize: 14)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(topic, style: AppTypography.bodyMedium)),
+                ],
+              ),
+            )),
+          ],
+
+          // 注意事項
+          if (analysis.warnings.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...analysis.warnings.map((warning) => Container(
+              margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber, size: 14, color: AppColors.error),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(warning, style: AppTypography.caption.copyWith(color: AppColors.error)),
+                  ),
+                ],
+              ),
+            )),
+          ],
+        ],
       ),
     );
   }

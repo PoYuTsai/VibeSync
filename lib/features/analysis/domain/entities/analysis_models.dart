@@ -183,6 +183,63 @@ class FinalRecommendation {
   }
 }
 
+/// 「我說」話題延續分析結果
+class MyMessageAnalysis {
+  final String sentMessage;
+  final ResponsePrediction ifColdResponse;
+  final ResponsePrediction ifWarmResponse;
+  final List<String> backupTopics;
+  final List<String> warnings;
+
+  const MyMessageAnalysis({
+    required this.sentMessage,
+    required this.ifColdResponse,
+    required this.ifWarmResponse,
+    required this.backupTopics,
+    required this.warnings,
+  });
+
+  factory MyMessageAnalysis.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return MyMessageAnalysis(
+        sentMessage: '',
+        ifColdResponse: ResponsePrediction.empty(),
+        ifWarmResponse: ResponsePrediction.empty(),
+        backupTopics: [],
+        warnings: [],
+      );
+    }
+    return MyMessageAnalysis(
+      sentMessage: json['sentMessage'] as String? ?? '',
+      ifColdResponse: ResponsePrediction.fromJson(json['ifColdResponse'] as Map<String, dynamic>?),
+      ifWarmResponse: ResponsePrediction.fromJson(json['ifWarmResponse'] as Map<String, dynamic>?),
+      backupTopics: (json['backupTopics'] as List?)?.cast<String>() ?? [],
+      warnings: (json['warnings'] as List?)?.cast<String>() ?? [],
+    );
+  }
+}
+
+/// 回覆預測
+class ResponsePrediction {
+  final String prediction;
+  final String suggestion;
+
+  const ResponsePrediction({
+    required this.prediction,
+    required this.suggestion,
+  });
+
+  factory ResponsePrediction.empty() => const ResponsePrediction(prediction: '', suggestion: '');
+
+  factory ResponsePrediction.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return ResponsePrediction.empty();
+    return ResponsePrediction(
+      prediction: json['prediction'] as String? ?? '',
+      suggestion: json['suggestion'] as String? ?? '',
+    );
+  }
+}
+
 /// Optimized user message result
 class OptimizedMessage {
   final String original;   // 用戶原本的訊息
@@ -219,6 +276,7 @@ class AnalysisResult {
   final bool shouldGiveUp; // 冰點放棄建議
   final Map<String, dynamic>? rawResponse; // 原始 AI 回應 (用於反饋)
   final OptimizedMessage? optimizedMessage; // 用戶訊息優化結果
+  final MyMessageAnalysis? myMessageAnalysis; // 「我說」話題延續分析
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -233,6 +291,7 @@ class AnalysisResult {
     this.shouldGiveUp = false,
     this.rawResponse,
     this.optimizedMessage,
+    this.myMessageAnalysis,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -257,6 +316,12 @@ class AnalysisResult {
       optimizedMessage = OptimizedMessage.fromJson(json['optimizedMessage'] as Map<String, dynamic>?);
     }
 
+    // Parse myMessageAnalysis if present (「我說」模式)
+    MyMessageAnalysis? myMessageAnalysis;
+    if (json['myMessageAnalysis'] != null) {
+      myMessageAnalysis = MyMessageAnalysis.fromJson(json['myMessageAnalysis'] as Map<String, dynamic>?);
+    }
+
     return AnalysisResult(
       enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
       strategy: json['strategy'] as String? ?? '',
@@ -270,6 +335,7 @@ class AnalysisResult {
       shouldGiveUp: shouldGiveUp,
       rawResponse: json, // 保存原始回應
       optimizedMessage: optimizedMessage,
+      myMessageAnalysis: myMessageAnalysis,
     );
   }
 }

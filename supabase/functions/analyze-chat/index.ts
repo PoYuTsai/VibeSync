@@ -405,6 +405,53 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
 
 ${SAFETY_RULES}`;
 
+// 「我說」模式的 System Prompt（話題延續建議）
+const MY_MESSAGE_PROMPT = `你是一位專業的社交溝通教練。用戶剛剛發送了一則訊息給對方，現在需要你根據對話脈絡，提供話題延續的建議。
+
+## 你的任務
+
+根據：
+1. 用戶剛發送的訊息
+2. 之前對話中了解到的「她」的特質、興趣、話題
+3. 目前的對話熱度和階段
+
+提供：
+1. 如果她冷淡回覆，可以怎麼延續
+2. 如果她熱情回覆，可以怎麼深入
+3. 備用話題方向（根據她之前提過的興趣）
+4. 注意事項（避免踩雷）
+
+## 輸出格式 (JSON)
+
+{
+  "myMessageAnalysis": {
+    "sentMessage": "用戶剛發送的訊息",
+    "ifColdResponse": {
+      "prediction": "她可能的冷淡回覆",
+      "suggestion": "你可以這樣接"
+    },
+    "ifWarmResponse": {
+      "prediction": "她可能的熱情回覆",
+      "suggestion": "你可以這樣深入"
+    },
+    "backupTopics": [
+      "根據她之前提過喜歡咖啡 → 可以聊最近喝到的好店",
+      "她說過週末喜歡追劇 → 可以問最近在看什麼"
+    ],
+    "warnings": [
+      "她之前對工作話題反應冷淡，避免再提"
+    ]
+  },
+  "enthusiasm": { "score": 50, "level": "warm" }
+}
+
+## 重要原則
+- 建議要具體可執行，不要泛泛而談
+- 備用話題要根據對話中「她」提過的內容
+- 如果對話太短沒有足夠資訊，就說「對話還太短，多聊幾輪後會更了解她」
+
+${SAFETY_RULES}`;
+
 // 訊息計算函數
 function countMessages(messages: Array<{ content: string }>): number {
   let total = 0;
@@ -556,7 +603,8 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { messages, sessionContext, userDraft, forceModel } = await req.json();
+    const { messages, sessionContext, userDraft, forceModel, analyzeMode } = await req.json();
+    // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
     if (!messages || !Array.isArray(messages)) {
       return jsonResponse({ error: "Invalid messages" }, 400);
     }
@@ -642,23 +690,40 @@ ${recentText}`;
     // Get available features for this tier
     const allowedFeatures = TIER_FEATURES[sub.tier] || TIER_FEATURES.free;
 
-    // Call Claude API with fallback
-    // 組合用戶訊息
-    let userPrompt = `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`;
+    // 檢查「我說」模式權限（只限 Essential）
+    const isMyMessageMode = analyzeMode === "my_message";
+    if (isMyMessageMode && sub.tier !== "essential") {
+      return jsonResponse({
+        error: "「我說」分析功能僅限 Essential 方案",
+        code: "FEATURE_NOT_AVAILABLE",
+        requiredTier: "essential",
+      }, 403);
+    }
 
-    // 如果有用戶草稿，加入優化請求
-    if (userDraft && typeof userDraft === "string" && userDraft.trim()) {
+    // 選擇 System Prompt
+    const systemPrompt = isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT;
+
+    // 組合用戶訊息
+    let userPrompt = isMyMessageMode
+      ? `${contextInfo}\n\n## 對話紀錄\n${conversationText}\n\n請根據用戶剛發送的最後一則訊息，提供話題延續建議。`
+      : `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`;
+
+    // 如果有用戶草稿，加入優化請求（只在 normal 模式）
+    if (!isMyMessageMode && userDraft && typeof userDraft === "string" && userDraft.trim()) {
       userPrompt += `\n\n## 用戶想說的內容（請優化）\n「${userDraft.trim()}」\n請在 optimizedMessage 欄位提供優化版本。`;
     }
+
+    // 「我說」模式用 Haiku 省成本
+    const actualModel = isMyMessageMode ? "claude-haiku-4-5-20251001" : model;
 
     const startTime = Date.now();
     let claudeResult;
     try {
       claudeResult = await callClaudeWithFallback(
         {
-          model,
-          max_tokens: 1024,
-          system: SYSTEM_PROMPT,
+          model: actualModel,
+          max_tokens: isMyMessageMode ? 512 : 1024, // 「我說」模式輸出較短
+          system: systemPrompt,
           messages: [
             {
               role: "user",
