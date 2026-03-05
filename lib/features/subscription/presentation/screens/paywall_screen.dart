@@ -65,7 +65,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             _buildPlanCard(
               tier: 'essential',
               name: 'Essential',
-              price: 'NT\$349/月',
+              price: '\$29/月',
               features: const [
                 '1,000 則訊息/月',
                 '每日 150 則上限',
@@ -74,6 +74,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 '話題深度分析',
                 '對話健檢 (獨家)',
                 'Sonnet 優先模型',
+                '「我說」話題延續建議',
               ],
               isSelected: _selectedTier == 'essential',
               isRecommended: true,

@@ -71,7 +71,7 @@ function countMessages(text: string): number {
 |------|------|-----|---------|----------|------|
 | **Free** | NT$0 | $0 | 30 則 | 15 則 | 體驗試用 |
 | **Starter** | NT$149 | ~$5 | 300 則 | 50 則 | 輕度用戶 |
-| **Essential** | NT$349 | ~$11 | 1,000 則 | 150 則 | 主力方案 |
+| **Essential** | NT$930 | $29 | 1,000 則 | 150 則 | 主力方案 |
 
 ### 功能對照
 
@@ -93,14 +93,14 @@ function countMessages(text: string): number {
 | 方案 | 目標價 | iOS Tier | 實際價 |
 |------|--------|----------|--------|
 | Starter | NT$149 | Tier 5 | NT$170 ($4.99) |
-| Essential | NT$349 | Tier 11 | NT$350 ($10.99) |
+| Essential | $29 | Tier 87 | $29.99 |
 
 ### 年繳優惠
 
 | 方案 | 月繳 | 年繳 (等於) | 折扣 |
 |------|------|-------------|------|
 | Starter | NT$149/月 | NT$99/月 (年繳 NT$1,190) | 33% off |
-| Essential | NT$349/月 | NT$233/月 (年繳 NT$2,790) | 33% off |
+| Essential | $29/月 | $19/月 (年繳 $228) | 33% off |
 
 ---
 
@@ -118,11 +118,13 @@ function countMessages(text: string): number {
 
 ## 成本與毛利
 
-| 方案 | 月費 | 我們成本 | 毛利率 |
-|------|------|----------|--------|
-| Free | NT$0 | ~$0.03 | - |
-| Starter | NT$149 | ~$0.30 | 94% |
-| Essential | NT$349 | ~$1.00 | 91% |
+| 方案 | 月費 | 最大成本 (全用滿) | 毛利率 |
+|------|------|-------------------|--------|
+| Free | NT$0 | ~NT$1.5 (30×Haiku) | - |
+| Starter | NT$149 | ~NT$15 (300×Haiku) | 90% |
+| Essential | $29 (~NT$930) | ~NT$340 (混合模型) | 63% |
+
+> Essential 使用 70% Haiku + 30% Sonnet 混合策略
 
 ### 損益平衡
 

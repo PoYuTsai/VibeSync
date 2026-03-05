@@ -477,7 +477,7 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 **定價**:
 - Free: NT$0 / 30則/月 / 15則/天
 - Starter: NT$149 / 300則/月 / 50則/天
-- Essential: NT$349 / 1,000則/月 / 150則/天
+- Essential: $29 USD / 1,000則/月 / 150則/天
 
 **訊息計算**: 換行分割 + 每則上限 200 字
 
