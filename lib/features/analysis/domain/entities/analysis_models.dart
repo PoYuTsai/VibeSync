@@ -183,6 +183,28 @@ class FinalRecommendation {
   }
 }
 
+/// Optimized user message result
+class OptimizedMessage {
+  final String original;   // 用戶原本的訊息
+  final String optimized;  // AI 優化後的訊息
+  final String reason;     // 優化理由
+
+  const OptimizedMessage({
+    required this.original,
+    required this.optimized,
+    required this.reason,
+  });
+
+  factory OptimizedMessage.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const OptimizedMessage(original: '', optimized: '', reason: '');
+    return OptimizedMessage(
+      original: json['original'] as String? ?? '',
+      optimized: json['optimized'] as String? ?? '',
+      reason: json['reason'] as String? ?? '',
+    );
+  }
+}
+
 /// Complete analysis result from AI
 class AnalysisResult {
   final int enthusiasmScore;
@@ -196,6 +218,7 @@ class AnalysisResult {
   final String? reminder;
   final bool shouldGiveUp; // 冰點放棄建議
   final Map<String, dynamic>? rawResponse; // 原始 AI 回應 (用於反饋)
+  final OptimizedMessage? optimizedMessage; // 用戶訊息優化結果
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -209,6 +232,7 @@ class AnalysisResult {
     this.reminder,
     this.shouldGiveUp = false,
     this.rawResponse,
+    this.optimizedMessage,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -227,6 +251,12 @@ class AnalysisResult {
     final shouldGiveUp = enthusiasmLevel == 'cold' &&
         (warnings.contains('建議放棄') || warnings.contains('開新對話'));
 
+    // Parse optimizedMessage if present (when user provided draft)
+    OptimizedMessage? optimizedMessage;
+    if (json['optimizedMessage'] != null) {
+      optimizedMessage = OptimizedMessage.fromJson(json['optimizedMessage'] as Map<String, dynamic>?);
+    }
+
     return AnalysisResult(
       enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
       strategy: json['strategy'] as String? ?? '',
@@ -239,6 +269,7 @@ class AnalysisResult {
       reminder: json['reminder'] as String?,
       shouldGiveUp: shouldGiveUp,
       rawResponse: json, // 保存原始回應
+      optimizedMessage: optimizedMessage,
     );
   }
 }

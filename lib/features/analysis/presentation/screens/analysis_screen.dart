@@ -57,6 +57,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // 反饋相關
   bool _feedbackSubmitted = false;
   bool _showFeedbackForm = false;
+
+  // 訊息優化功能
+  bool _showOptimizeInput = false;
+  bool _isOptimizing = false;
+  final _optimizeController = TextEditingController();
+  OptimizedMessage? _optimizedMessage;
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
@@ -85,6 +91,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _feedbackCommentController.dispose();
+    _optimizeController.dispose();
     super.dispose();
   }
 
@@ -221,6 +228,60 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       setState(() {
         _isAnalyzing = false;
         _errorMessage = '分析失敗: $e';
+      });
+    }
+  }
+
+  /// 優化用戶訊息
+  Future<void> _optimizeMessage() async {
+    final draft = _optimizeController.text.trim();
+    if (draft.isEmpty) return;
+
+    setState(() {
+      _isOptimizing = true;
+      _optimizedMessage = null;
+    });
+
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) {
+      setState(() => _isOptimizing = false);
+      return;
+    }
+
+    try {
+      final analysisService = AnalysisService();
+      final result = await analysisService.analyzeConversation(
+        conversation.messages,
+        sessionContext: conversation.sessionContext,
+        userDraft: draft,
+      );
+
+      setState(() {
+        _isOptimizing = false;
+        _optimizedMessage = result.optimizedMessage;
+        // 同時更新其他分析結果
+        _enthusiasmScore = result.enthusiasmScore;
+        _strategy = result.strategy;
+        _replies = result.replies;
+        _topicDepth = result.topicDepth;
+        _healthCheck = result.healthCheck;
+        _gameStage = result.gameStage;
+        _psychology = result.psychology;
+        _finalRecommendation = result.recommendation;
+        _reminder = result.reminder;
+        _shouldGiveUp = result.shouldGiveUp;
+        _lastAiResponse = result.rawResponse;
+        _lastAnalyzedMessageCount = conversation.messages.length;
+      });
+    } on AnalysisException catch (e) {
+      setState(() {
+        _isOptimizing = false;
+        _errorMessage = e.message;
+      });
+    } catch (e) {
+      setState(() {
+        _isOptimizing = false;
+        _errorMessage = '優化失敗: $e';
       });
     }
   }
@@ -1055,6 +1116,128 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                         label: const Text('複製推薦回覆'),
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ],
+
+            // 優化我的訊息功能
+            if (_enthusiasmScore != null) ...[
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () => setState(() => _showOptimizeInput = !_showOptimizeInput),
+                      child: Row(
+                        children: [
+                          const Text('✏️', style: TextStyle(fontSize: 20)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '我有想說的，幫我優化',
+                              style: AppTypography.titleMedium,
+                            ),
+                          ),
+                          Icon(
+                            _showOptimizeInput ? Icons.expand_less : Icons.expand_more,
+                            color: AppColors.textSecondary,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_showOptimizeInput) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _optimizeController,
+                        decoration: InputDecoration(
+                          hintText: '輸入你想說的內容...',
+                          hintStyle: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                          filled: true,
+                          fillColor: AppColors.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        maxLines: 3,
+                        enabled: !_isOptimizing,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isOptimizing || _optimizeController.text.trim().isEmpty
+                              ? null
+                              : _optimizeMessage,
+                          icon: _isOptimizing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.auto_fix_high),
+                          label: Text(_isOptimizing ? '優化中...' : '幫我優化'),
+                        ),
+                      ),
+                    ],
+                    // 顯示優化結果
+                    if (_optimizedMessage != null && _optimizedMessage!.optimized.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Text('✨', style: TextStyle(fontSize: 18)),
+                          const SizedBox(width: 8),
+                          Text('優化後的訊息', style: AppTypography.titleMedium),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          _optimizedMessage!.optimized,
+                          style: AppTypography.bodyLarge,
+                        ),
+                      ),
+                      if (_optimizedMessage!.reason.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '💡 ${_optimizedMessage!.reason}',
+                          style: AppTypography.caption,
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: _optimizedMessage!.optimized));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('已複製到剪貼簿')),
+                            );
+                          },
+                          icon: const Icon(Icons.copy),
+                          label: const Text('複製優化訊息'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

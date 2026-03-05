@@ -8,10 +8,12 @@ import '../../domain/entities/analysis_models.dart';
 class AnalysisService {
   /// Analyze a conversation and get AI suggestions
   ///
+  /// If [userDraft] is provided, AI will also optimize the user's message draft.
   /// Throws [AnalysisException] if the analysis fails
   Future<AnalysisResult> analyzeConversation(
     List<Message> messages, {
     SessionContext? sessionContext,
+    String? userDraft,
   }) async {
     if (messages.isEmpty) {
       throw AnalysisException('Messages cannot be empty');
@@ -33,6 +35,8 @@ class AnalysisService {
               'duration': sessionContext.duration.label,
               'goal': sessionContext.goal.label,
             },
+          if (userDraft != null && userDraft.trim().isNotEmpty)
+            'userDraft': userDraft.trim(),
         },
       );
 
