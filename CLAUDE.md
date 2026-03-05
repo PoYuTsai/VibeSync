@@ -253,6 +253,9 @@ Bug 發生 → 分析 → 修復 → 寫測試 → 更新 CLAUDE.md → commit &
 - [ ] Web 平台 secure storage 限制 → MVP 專注 mobile
 - [ ] Edge Function 冷啟動 → 加 loading state + timeout 處理
 - [ ] 訊息格式解析失敗 → 提供清楚錯誤訊息和格式範例
+- [ ] Edge Function 變數重複宣告 → 新增變數前先搜尋 `const/let variableName`
+- [ ] Flutter Web 使用 dart:io → Web 不支援，用字串檢查代替
+- [ ] 錯誤訊息顯示 minified → 開發時顯示完整錯誤，上線再簡化
 
 ---
 
@@ -454,6 +457,24 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 **Root Cause**: AI 沒有明確指示只從對方回覆判斷熱度
 **修復**: 在 System Prompt 新增「熱度分析規則」章節，明確列出只從「她」的訊息判斷：回覆長度、表情符號、主動提問、話題延伸、回應態度
 **相關檔案**: `supabase/functions/analyze-chat/index.ts:88-95`
+
+#### [2026-03-06] Edge Function 變數重複宣告導致 Boot Failure
+**症狀**: 點擊分析後顯示 "Failed to fetch"，Edge Function 完全無法啟動
+**Root Cause**: `actualModel` 變數在同一 scope 宣告兩次 (line 717 和 762)
+**修復**: 第一個 `actualModel` 改名為 `selectedModel`
+**預防**: 新增變數前先搜尋是否已存在同名變數
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:717`
+
+#### [2026-03-06] 分析失敗錯誤訊息太籠統
+**症狀**: 所有錯誤都顯示 "Network error" 或 minified 錯誤碼
+**修復**:
+1. 移除 `dart:io` (Web 不支援)
+2. 顯示完整錯誤類型和訊息以便除錯
+3. 新增自動重試機制 (最多 2 次)
+4. 新增 60 秒 timeout
+**相關檔案**:
+- `lib/features/analysis/data/services/analysis_service.dart`
+- `lib/core/services/supabase_service.dart`
 
 ### Design Decisions
 
