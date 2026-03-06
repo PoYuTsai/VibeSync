@@ -37,7 +37,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Clean iOS pods (keep Flutter framework)
+      - name: Clean Flutter build
+        run: flutter clean
+
+      - name: Reinstall dependencies
+        run: flutter pub get
+
+      - name: Clean iOS pods
         run: |
           cd ios
           rm -rf Pods Podfile.lock
@@ -161,18 +167,64 @@ jobs:
           echo "Generated ExportOptions.plist:"
           cat ios/ExportOptions.plist
 
-      - name: Build iOS IPA
+      - name: Build iOS Archive
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: ${{ secrets.REVENUECAT_PROD_KEY }}
         run: |
-          flutter build ipa --release \
+          flutter build ios --release \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY" \
-            --export-options-plist=ios/ExportOptions.plist
+            --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY"
+
+      - name: Create Xcode Archive
+        run: |
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath $PWD/build/Runner.xcarchive \
+            archive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=TTQHTVG8CC \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="VibeSync App Store"
+
+      - name: Fix App.framework MinimumOSVersion
+        run: |
+          ARCHIVE_PATH="ios/build/Runner.xcarchive"
+          APP_FRAMEWORK="$ARCHIVE_PATH/Products/Applications/Runner.app/Frameworks/App.framework"
+
+          echo "=== Checking App.framework Info.plist ==="
+          if [ -f "$APP_FRAMEWORK/Info.plist" ]; then
+            echo "Current Info.plist:"
+            cat "$APP_FRAMEWORK/Info.plist"
+
+            # Check if MinimumOSVersion exists
+            if ! /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APP_FRAMEWORK/Info.plist" 2>/dev/null; then
+              echo "Adding MinimumOSVersion..."
+              /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 13.0" "$APP_FRAMEWORK/Info.plist"
+            else
+              echo "MinimumOSVersion already exists, updating..."
+              /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 13.0" "$APP_FRAMEWORK/Info.plist"
+            fi
+
+            echo "Updated Info.plist:"
+            cat "$APP_FRAMEWORK/Info.plist"
+          else
+            echo "Warning: App.framework/Info.plist not found!"
+            ls -la "$APP_FRAMEWORK" || echo "App.framework directory not found"
+          fi
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath ios/build/Runner.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ios/ExportOptions.plist
 
       - name: Verify IPA exists
         run: |
