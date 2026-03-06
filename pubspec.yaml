@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -29,7 +29,7 @@ dependencies:
   go_router: ^14.6.0
 
   # Subscription
-  purchases_flutter: ^6.30.0
+  purchases_flutter: ^9.13.1
 
   # Security
   flutter_secure_storage: ^9.2.0

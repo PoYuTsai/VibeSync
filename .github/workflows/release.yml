@@ -37,6 +37,15 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Clean iOS pods cache
+        run: |
+          cd ios
+          rm -rf Pods Podfile.lock .symlinks
+          pod cache clean --all || true
+          cd ..
+          flutter clean
+          flutter pub get
+
       - name: Run tests
         run: flutter test || echo "Some tests failed, continuing build..."
         continue-on-error: true
