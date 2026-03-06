@@ -9,9 +9,11 @@ platform :ios do
   lane :beta do
     # Find the IPA built by flutter build ipa
     # Use absolute path to avoid working directory issues
-    project_root = File.expand_path("../..", __FILE__)
+    # Fastfile is at ios/fastlane/Fastfile, so go up 3 levels to reach project root
+    project_root = File.expand_path("../../..", __FILE__)
     ipa_dir = File.join(project_root, "build", "ios", "ipa")
 
+    UI.message("Project root: #{project_root}")
     UI.message("Looking for IPA in: #{ipa_dir}")
     UI.message("Current working directory: #{Dir.pwd}")
     UI.message("Directory exists: #{File.directory?(ipa_dir)}")
