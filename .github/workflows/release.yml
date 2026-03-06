@@ -174,6 +174,24 @@ jobs:
             --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY" \
             --export-options-plist=ios/ExportOptions.plist
 
+      - name: Verify IPA exists
+        run: |
+          echo "=== Checking build directory structure ==="
+          echo "Contents of build/:"
+          ls -la build/ || echo "build/ directory not found"
+          echo ""
+          echo "Contents of build/ios/:"
+          ls -la build/ios/ || echo "build/ios/ directory not found"
+          echo ""
+          echo "Contents of build/ios/ipa/:"
+          ls -la build/ios/ipa/ || echo "build/ios/ipa/ directory not found"
+          echo ""
+          echo "Looking for any .ipa files:"
+          find build -name "*.ipa" 2>/dev/null || echo "No .ipa files found"
+          echo ""
+          echo "Looking for any .xcarchive:"
+          find build -name "*.xcarchive" -type d 2>/dev/null || echo "No .xcarchive found"
+
       - name: Upload to TestFlight
         env:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
