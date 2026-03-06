@@ -60,47 +60,67 @@ jobs:
           PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
           KEYCHAIN_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          set -e  # Exit on error
+
           # Create variables
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           PROFILE_PATH=$RUNNER_TEMP/build_profile.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          # Import certificate and provisioning profile from secrets
+          echo "=== Step 1: Decode certificate and profile from base64 ==="
           echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PROFILE_PATH
+          echo "Certificate decoded, size: $(wc -c < $CERTIFICATE_PATH) bytes"
 
-          # Create temporary keychain
+          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PROFILE_PATH
+          echo "Profile decoded, size: $(wc -c < $PROFILE_PATH) bytes"
+
+          echo "=== Step 2: Create and configure keychain ==="
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # Import certificate to keychain
-          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
+          echo "Keychain created and unlocked"
 
-          # Allow codesign to access keychain
+          echo "=== Step 3: Import certificate to keychain ==="
+          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          echo "Certificate imported"
 
-          # Install provisioning profile
+          echo "=== Step 4: Verify certificate ==="
+          security find-identity -v -p codesigning $KEYCHAIN_PATH
+
+          echo "=== Step 5: Install provisioning profile ==="
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
 
-          # Extract UUID from provisioning profile
-          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin <<< $(security cms -D -i $PROFILE_PATH))
+          # Decode profile content
+          PROFILE_CONTENT=$(security cms -D -i $PROFILE_PATH)
+
+          # Extract UUID
+          PROFILE_UUID=$(echo "$PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
           echo "Profile UUID: $PROFILE_UUID"
 
-          # Extract profile name for debugging
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin <<< $(security cms -D -i $PROFILE_PATH))
+          # Extract profile name
+          PROFILE_NAME=$(echo "$PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin)
           echo "Profile Name: $PROFILE_NAME"
 
-          # Copy profile with UUID as filename (this is how Xcode finds it)
-          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+          # Extract Team ID
+          TEAM_ID=$(echo "$PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" /dev/stdin)
+          echo "Team ID: $TEAM_ID"
 
-          # Debug: List installed profiles
-          echo "Installed profiles:"
+          # Extract Bundle ID
+          APP_ID=$(echo "$PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" /dev/stdin)
+          echo "App ID: $APP_ID"
+
+          # Copy profile with UUID as filename
+          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+          echo "Profile installed as: $PROFILE_UUID.mobileprovision"
+
+          echo "=== Step 6: Verify installation ==="
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
 
-          # Export UUID for later use
+          # Export for later steps
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "=== Setup complete ==="
 
       - name: Generate ExportOptions.plist
         run: |
@@ -132,18 +152,47 @@ jobs:
           echo "Generated ExportOptions.plist:"
           cat ios/ExportOptions.plist
 
-      - name: Build iOS (Production)
+      - name: Build Flutter iOS (No codesign)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: ${{ secrets.REVENUECAT_PROD_KEY }}
         run: |
-          flutter build ipa --release \
+          # Build Flutter without codesigning, we'll sign manually
+          flutter build ios --release --no-codesign \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY" \
-            --export-options-plist=ios/ExportOptions.plist
+            --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY"
+
+      - name: Archive and Export IPA
+        run: |
+          cd ios
+
+          # Clean previous builds
+          xcodebuild clean -workspace Runner.xcworkspace -scheme Runner -configuration Release
+
+          # Archive with explicit provisioning profile
+          xcodebuild archive \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/Runner.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=TTQHTVG8CC \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            -allowProvisioningUpdates
+
+          # Export IPA
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/Runner.xcarchive \
+            -exportPath $RUNNER_TEMP/ipa \
+            -exportOptionsPlist ExportOptions.plist
+
+          # Copy IPA to expected location
+          mkdir -p ../build/ios/ipa
+          cp $RUNNER_TEMP/ipa/*.ipa ../build/ios/ipa/
 
       - name: Upload to TestFlight
         env:
