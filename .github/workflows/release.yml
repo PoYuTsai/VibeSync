@@ -161,47 +161,18 @@ jobs:
           echo "Generated ExportOptions.plist:"
           cat ios/ExportOptions.plist
 
-      - name: Build Flutter iOS (No codesign)
+      - name: Build iOS IPA
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: ${{ secrets.REVENUECAT_PROD_KEY }}
         run: |
-          # Build Flutter without codesigning, we'll sign manually
-          flutter build ios --release --no-codesign \
+          flutter build ipa --release \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY"
-
-      - name: Archive and Export IPA
-        run: |
-          cd ios
-
-          # Clean previous builds
-          xcodebuild clean -workspace Runner.xcworkspace -scheme Runner -configuration Release
-
-          # Archive with explicit provisioning profile
-          xcodebuild archive \
-            -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath $RUNNER_TEMP/Runner.xcarchive \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM=TTQHTVG8CC \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE="$PROFILE_UUID" \
-            -allowProvisioningUpdates
-
-          # Export IPA
-          xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/Runner.xcarchive \
-            -exportPath $RUNNER_TEMP/ipa \
-            -exportOptionsPlist ExportOptions.plist
-
-          # Copy IPA to expected location
-          mkdir -p ../build/ios/ipa
-          cp $RUNNER_TEMP/ipa/*.ipa ../build/ios/ipa/
+            --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY" \
+            --export-options-plist=ios/ExportOptions.plist
 
       - name: Upload to TestFlight
         env:
