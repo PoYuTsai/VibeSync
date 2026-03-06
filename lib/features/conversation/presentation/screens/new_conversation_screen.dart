@@ -120,6 +120,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       );
       await repository.updateConversation(conversation);
 
+      // 刷新對話列表，確保返回首頁時能看到新對話
+      ref.invalidate(conversationsProvider);
+
       if (mounted) {
         context.go('/conversation/${conversation.id}');
       }

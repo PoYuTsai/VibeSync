@@ -120,6 +120,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     conversation.messages.add(newMessage);
     await repository.updateConversation(conversation);
 
+    // 刷新對話列表，確保返回首頁時能看到更新
+    ref.invalidate(conversationsProvider);
+
     // 清空輸入框
     _messageController.clear();
 
@@ -237,6 +240,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         if (conv != null && _enthusiasmScore != null) {
           conv.lastEnthusiasmScore = _enthusiasmScore;
           await repository.updateConversation(conv);
+          ref.invalidate(conversationsProvider);
         }
       } catch (_) {
         // Ignore errors in test environment
