@@ -8,12 +8,16 @@ platform :ios do
   desc "Upload existing IPA to TestFlight"
   lane :beta do
     # Find the IPA built by flutter build ipa
-    ipa_path = "../build/ios/ipa/vibesync.ipa"
+    ipa_dir = "../build/ios/ipa"
 
-    unless File.exist?(ipa_path)
-      UI.user_error!("IPA not found at #{ipa_path}. Make sure 'flutter build ipa' completed successfully.")
+    # Try to find any .ipa file in the directory
+    ipa_files = Dir.glob("#{ipa_dir}/*.ipa")
+
+    if ipa_files.empty?
+      UI.user_error!("No IPA found in #{ipa_dir}. Make sure 'flutter build ipa' completed successfully.")
     end
 
+    ipa_path = ipa_files.first
     UI.message("Found IPA at: #{ipa_path}")
 
     # Upload to TestFlight
