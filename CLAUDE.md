@@ -264,6 +264,84 @@ Bug 發生 → 分析 → 修復 → 寫測試 → 更新 CLAUDE.md → commit &
 - [ ] App.framework 缺少 MinimumOSVersion → 編輯 `ios/Flutter/AppFrameworkInfo.plist` 加入該欄位
 - [ ] Fastfile 路徑錯誤 → 用 `File.expand_path("../../..", __FILE__)` 取得專案根目錄
 - [ ] xcodebuild 將 profile 套用到所有 target → 用 `flutter build ipa` 而非手動 `xcodebuild archive`
+- [ ] TestFlight 重複 build number → 用 `--build-number=${{ github.run_number }}` 自動遞增
+- [ ] Fastlane Slack 通知失敗導致 workflow 失敗 → 用 `begin/rescue` 包住，設為 non-fatal
+- [ ] TestFlight Export Compliance 每次都要手動填 → 在 Info.plist 加入 `ITSAppUsesNonExemptEncryption = false`
+
+---
+
+## iOS CI/CD 完整指南 (2026-03-06)
+
+> **重要**: 這是從零到成功上傳 TestFlight 的完整經驗，未來新專案可直接參考
+
+### 必要的 GitHub Secrets
+| Secret 名稱 | 內容 | 取得方式 |
+|------------|------|----------|
+| `APPLE_CERTIFICATE` | Distribution 憑證 (base64) | Keychain 匯出 .p12 → `base64 -w 0 cert.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | 憑證密碼 | 匯出時設定的密碼 |
+| `APPLE_PROVISIONING_PROFILE` | App Store profile (base64) | Apple Developer 下載 → `base64 -w 0 profile.mobileprovision` |
+| `APP_STORE_CONNECT_KEY_ID` | API Key ID | App Store Connect → Keys |
+| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID | App Store Connect → Keys |
+| `APP_STORE_CONNECT_API_KEY` | API Key 內容 (.p8 檔案內容) | 下載的 .p8 檔案內容 |
+
+### 關鍵檔案設定
+
+**ios/Flutter/AppFrameworkInfo.plist** - 必須加入：
+```xml
+<key>MinimumOSVersion</key>
+<string>13.0</string>
+```
+
+**ios/Runner/Info.plist** - 必須加入：
+```xml
+<key>ITSAppUsesNonExemptEncryption</key>
+<false/>
+```
+
+**ios/Podfile** - 必須設定 iOS 版本：
+```ruby
+platform :ios, '13.0'
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+    end
+  end
+end
+```
+
+**ios/fastlane/Fastfile** - 重點：
+```ruby
+# 用絕對路徑找 IPA
+project_root = File.expand_path("../../..", __FILE__)
+ipa_dir = File.join(project_root, "build", "ios", "ipa")
+
+# Slack 通知用 begin/rescue 包住 (non-fatal)
+begin
+  slack(...)
+rescue => e
+  UI.important("Slack failed (non-fatal): #{e.message}")
+end
+```
+
+### workflow 重點
+```yaml
+# 自動遞增 build number
+flutter build ipa --release --build-number=${{ github.run_number }}
+
+# 動態產生 ExportOptions.plist 使用 UUID
+PROFILE_UUID=$(security cms -D -i $PROFILE_PATH | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
+```
+
+### 常見錯誤對照表
+| 錯誤訊息 | 原因 | 解決 |
+|---------|------|------|
+| `No profile matching 'xxx' found` | 用名稱匹配 profile | 改用 UUID |
+| `MinimumOSVersion is ''` | AppFrameworkInfo.plist 缺少欄位 | 加入 MinimumOSVersion |
+| `bundle version must be higher` | build number 重複 | 用 github.run_number |
+| `Pods does not support provisioning profiles` | xcodebuild 套用 profile 到所有 target | 用 flutter build ipa |
+| `Missing Compliance` | 沒設定 Export Compliance | 加 ITSAppUsesNonExemptEncryption |
 
 ---
 
@@ -517,6 +595,43 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 ```
 **預防**: Flutter 專案需檢查 AppFrameworkInfo.plist 是否有 MinimumOSVersion
 **相關檔案**: `ios/Flutter/AppFrameworkInfo.plist`
+
+#### [2026-03-06] Fastfile 找不到 IPA 檔案
+**症狀**: `No IPA found in ../build/ios/ipa`
+**Root Cause**:
+1. Fastfile 使用相對路徑 `../build/ios/ipa`
+2. 但 Fastlane 的工作目錄不固定，相對路徑不可靠
+**修復**:
+```ruby
+project_root = File.expand_path("../../..", __FILE__)
+ipa_dir = File.join(project_root, "build", "ios", "ipa")
+```
+**預防**: Fastfile 永遠用 `__FILE__` 計算絕對路徑
+**相關檔案**: `ios/fastlane/Fastfile`
+
+#### [2026-03-06] TestFlight 拒絕重複 build number
+**症狀**: `The bundle version must be higher than the previously uploaded version: '1'`
+**Root Cause**: 每次上傳 TestFlight 的 build number 必須遞增，但 Flutter 預設使用 pubspec.yaml 的版本
+**修復**:
+```yaml
+flutter build ipa --release --build-number=${{ github.run_number }}
+```
+**預防**: CI 永遠用 `github.run_number` 作為 build number
+**相關檔案**: `.github/workflows/release.yml`
+
+#### [2026-03-06] Slack 通知失敗導致整個 workflow 失敗
+**症狀**: TestFlight 上傳成功，但 workflow 顯示失敗
+**Root Cause**: Slack webhook URL 無效時 Fastlane 會拋出錯誤，中斷整個 lane
+**修復**:
+```ruby
+begin
+  slack(...)
+rescue => e
+  UI.important("Slack failed (non-fatal): #{e.message}")
+end
+```
+**預防**: 選用性通知永遠用 begin/rescue 包住
+**相關檔案**: `ios/fastlane/Fastfile`
 
 ### Design Decisions
 
