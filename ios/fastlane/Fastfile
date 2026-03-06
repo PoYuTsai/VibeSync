@@ -8,10 +8,21 @@ platform :ios do
   desc "Upload existing IPA to TestFlight"
   lane :beta do
     # Find the IPA built by flutter build ipa
-    ipa_dir = "../build/ios/ipa"
+    # Use absolute path to avoid working directory issues
+    project_root = File.expand_path("../..", __FILE__)
+    ipa_dir = File.join(project_root, "build", "ios", "ipa")
+
+    UI.message("Looking for IPA in: #{ipa_dir}")
+    UI.message("Current working directory: #{Dir.pwd}")
+    UI.message("Directory exists: #{File.directory?(ipa_dir)}")
+
+    # List directory contents for debugging
+    if File.directory?(ipa_dir)
+      UI.message("Contents: #{Dir.entries(ipa_dir).join(', ')}")
+    end
 
     # Try to find any .ipa file in the directory
-    ipa_files = Dir.glob("#{ipa_dir}/*.ipa")
+    ipa_files = Dir.glob(File.join(ipa_dir, "*.ipa"))
 
     if ipa_files.empty?
       UI.user_error!("No IPA found in #{ipa_dir}. Make sure 'flutter build ipa' completed successfully.")
