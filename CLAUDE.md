@@ -9,7 +9,7 @@
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-05
+📌 最後更新：2026-03-06
 ```
 
 ### 🎯 當前開發進度
@@ -36,6 +36,7 @@
 | **刪除對話功能** | ✅ 完成 | 對話列表顯示刪除按鈕 + 確認對話框 |
 | **多條訊息處理** | ✅ 完成 | 根據訊息類型(肯定句/陳述句/疑問句/圖片)決定是否回覆 |
 | **優化我的訊息** | ✅ 完成 | 用戶輸入草稿，AI 依據 1.8x 法則+風格優化 |
+| **CI/CD iOS** | ✅ 完成 | 手動觸發 → TestFlight 自動上傳 |
 
 #### 🔄 待測試驗證
 - [ ] iOS Safari 滑動體驗 (pull-to-refresh 是否完全修復)
@@ -47,7 +48,6 @@
 - [ ] 優化我的訊息功能 (輸入草稿 → AI 優化)
 
 #### ⏸️ 暫停中
-- [ ] iOS App 部署 (等待 Apple Developer 帳號核准)
 - [ ] Admin Dashboard (排在實作計畫後段)
 
 #### 📋 下一步
@@ -75,17 +75,20 @@
 |------|------|----------|------|
 | **Web** | ✅ 自動部署 | push main | Vercel |
 | **Edge Function** | ✅ 自動部署 | push main (supabase/functions/**) | Supabase |
-| Android | ✅ 成功 | 手動觸發 | APK 可下載 |
-| iOS | ⏸️ 暫停 | - | 等待 Apple Developer 帳號核准 |
+| **Android** | ✅ 成功 | 手動觸發 | APK 可下載 |
+| **iOS** | ✅ 成功 | 手動觸發 | TestFlight 自動上傳 |
 
-> **⚠️ 提醒**: iOS 部署暫時無法使用，請先用 **Web 沙盒測試**。Apple 核准後需設定 iOS 憑證。
-
-### Apple Developer 帳號 (2026-02-27 購買)
-- **狀態**: ⏳ 等待 Apple 審核 email
-- **預計時間**: 24-48 小時（可能更長）
-- **核准後需設定**:
-  - GitHub Secrets: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE`
-  - App Store Connect API Key
+### Apple Developer 設定 (2026-03-06 完成)
+- **App ID**: `com.poyutsai.vibesync`
+- **Team ID**: `TTQHTVG8CC`
+- **TestFlight**: 已上傳第一個 build
+- **GitHub Secrets 已設定**:
+  - `APPLE_CERTIFICATE` - Distribution 憑證 (base64)
+  - `APPLE_CERTIFICATE_PASSWORD` - 憑證密碼
+  - `APPLE_PROVISIONING_PROFILE` - App Store profile (base64)
+  - `APP_STORE_CONNECT_KEY_ID` - API Key ID
+  - `APP_STORE_CONNECT_ISSUER_ID` - Issuer ID
+  - `APP_STORE_CONNECT_API_KEY` - API Key 內容
 
 ### 關鍵文件指引
 | 要了解什麼 | 讀哪個文件 |
@@ -258,6 +261,9 @@ Bug 發生 → 分析 → 修復 → 寫測試 → 更新 CLAUDE.md → commit &
 - [ ] 錯誤訊息顯示 minified → 開發時顯示完整錯誤，上線再簡化
 - [ ] iOS CI 用 profile 名稱簽名 → 永遠用 UUID，名稱匹配會失敗
 - [ ] Xcode project 設 PROVISIONING_PROFILE_SPECIFIER → CI 環境改用 PROVISIONING_PROFILE (UUID)
+- [ ] App.framework 缺少 MinimumOSVersion → 編輯 `ios/Flutter/AppFrameworkInfo.plist` 加入該欄位
+- [ ] Fastfile 路徑錯誤 → 用 `File.expand_path("../../..", __FILE__)` 取得專案根目錄
+- [ ] xcodebuild 將 profile 套用到所有 target → 用 `flutter build ipa` 而非手動 `xcodebuild archive`
 
 ---
 
@@ -496,6 +502,21 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 - `.github/workflows/release.yml`
 - `ios/Runner.xcodeproj/project.pbxproj`
 - `ios/ExportOptions.plist`
+
+#### [2026-03-06] App Store 拒絕上傳：MinimumOSVersion 缺失
+**症狀**: `Invalid MinimumOSVersion. MinimumOSVersion in 'Runner.app/Frameworks/App.framework' is ''`
+**Root Cause**:
+1. `App.framework` 是 Flutter 編譯 Dart 程式碼產生的 framework
+2. 它的 Info.plist 從 `ios/Flutter/AppFrameworkInfo.plist` 模板複製
+3. Flutter 預設模板缺少 `MinimumOSVersion` 欄位
+**修復**:
+編輯 `ios/Flutter/AppFrameworkInfo.plist`，加入：
+```xml
+<key>MinimumOSVersion</key>
+<string>13.0</string>
+```
+**預防**: Flutter 專案需檢查 AppFrameworkInfo.plist 是否有 MinimumOSVersion
+**相關檔案**: `ios/Flutter/AppFrameworkInfo.plist`
 
 ### Design Decisions
 
