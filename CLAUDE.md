@@ -256,6 +256,8 @@ Bug 發生 → 分析 → 修復 → 寫測試 → 更新 CLAUDE.md → commit &
 - [ ] Edge Function 變數重複宣告 → 新增變數前先搜尋 `const/let variableName`
 - [ ] Flutter Web 使用 dart:io → Web 不支援，用字串檢查代替
 - [ ] 錯誤訊息顯示 minified → 開發時顯示完整錯誤，上線再簡化
+- [ ] iOS CI 用 profile 名稱簽名 → 永遠用 UUID，名稱匹配會失敗
+- [ ] Xcode project 設 PROVISIONING_PROFILE_SPECIFIER → CI 環境改用 PROVISIONING_PROFILE (UUID)
 
 ---
 
@@ -475,6 +477,25 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 **相關檔案**:
 - `lib/features/analysis/data/services/analysis_service.dart`
 - `lib/core/services/supabase_service.dart`
+
+#### [2026-03-06] GitHub Actions iOS Code Signing 失敗
+**症狀**: "No profile for team 'TTQHTVG8CC' matching 'VibeSync App Store' found"
+**Root Cause**:
+1. `PROVISIONING_PROFILE_SPECIFIER` 使用 profile **名稱**匹配
+2. 但 Xcode 在 CI 環境安裝 profile 時是用 **UUID** 作為檔名
+3. 名稱匹配找不到已安裝的 profile
+**修復**:
+1. 分離 `flutter build ios --no-codesign` 和 `xcodebuild archive`
+2. 用 `PROVISIONING_PROFILE=UUID` 直接指定 (而非名稱)
+3. 從 profile 內容提取 UUID: `security cms -D -i profile.mobileprovision | PlistBuddy -c "Print :UUID"`
+4. 動態產生 ExportOptions.plist 使用 UUID
+**預防**:
+- iOS CI 簽名永遠用 UUID，不要用名稱
+- 加入充分的除錯輸出 (證書列表、profile UUID/Name/TeamID)
+**相關檔案**:
+- `.github/workflows/release.yml`
+- `ios/Runner.xcodeproj/project.pbxproj`
+- `ios/ExportOptions.plist`
 
 ### Design Decisions
 
