@@ -173,7 +173,9 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: ${{ secrets.REVENUECAT_PROD_KEY }}
         run: |
+          echo "Building with build number: ${{ github.run_number }}"
           flutter build ipa --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
