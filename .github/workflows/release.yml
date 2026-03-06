@@ -83,11 +83,54 @@ jobs:
 
           # Install provisioning profile
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
 
-          # Extract UUID and rename profile
-          PROFILE_UUID=$(security cms -D -i $PROFILE_PATH | grep -A1 UUID | grep string | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+          # Extract UUID from provisioning profile
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin <<< $(security cms -D -i $PROFILE_PATH))
+          echo "Profile UUID: $PROFILE_UUID"
+
+          # Extract profile name for debugging
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin <<< $(security cms -D -i $PROFILE_PATH))
+          echo "Profile Name: $PROFILE_NAME"
+
+          # Copy profile with UUID as filename (this is how Xcode finds it)
           cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+
+          # Debug: List installed profiles
+          echo "Installed profiles:"
+          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
+
+          # Export UUID for later use
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+
+      - name: Generate ExportOptions.plist
+        run: |
+          cat > ios/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>TTQHTVG8CC</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.poyutsai.vibesync</key>
+                  <string>${PROFILE_UUID}</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+          echo "Generated ExportOptions.plist:"
+          cat ios/ExportOptions.plist
 
       - name: Build iOS (Production)
         env:
