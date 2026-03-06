@@ -3,16 +3,21 @@
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>ad-hoc</string>
+    <string>app-store</string>
     <key>teamID</key>
-    <string>YOUR_TEAM_ID</string>
-    <key>compileBitcode</key>
+    <string>TTQHTVG8CC</string>
+    <key>uploadBitcode</key>
     <false/>
-    <key>signingStyle</key>
-    <string>automatic</string>
-    <key>stripSwiftSymbols</key>
+    <key>uploadSymbols</key>
     <true/>
-    <key>thinning</key>
-    <string>&lt;none&gt;</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>Apple Distribution</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.poyutsai.vibesync</key>
+        <string>VibeSync App Store</string>
+    </dict>
 </dict>
 </plist>
