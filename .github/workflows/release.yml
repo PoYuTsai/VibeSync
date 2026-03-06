@@ -37,14 +37,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Clean iOS pods cache
+      - name: Clean iOS pods (keep Flutter framework)
         run: |
           cd ios
-          rm -rf Pods Podfile.lock .symlinks
+          rm -rf Pods Podfile.lock
           pod cache clean --all || true
-          cd ..
-          flutter clean
-          flutter pub get
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
