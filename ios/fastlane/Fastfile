@@ -34,16 +34,21 @@ platform :ios do
       )
     )
 
-    # Notify via Slack if webhook URL is set and valid
-    slack_url = ENV["SLACK_WEBHOOK_URL"]
-    if slack_url && slack_url.start_with?("https://")
-      slack(
-        message: "VibeSync iOS build uploaded to TestFlight! 🚀",
-        slack_url: slack_url,
-        default_payloads: [:git_branch, :last_git_commit_message]
-      )
-    else
-      UI.message("Slack notification skipped (no valid webhook URL)")
+    # Notify via Slack (optional, won't fail the build)
+    begin
+      slack_url = ENV["SLACK_WEBHOOK_URL"]
+      if slack_url && slack_url.start_with?("https://hooks.slack.com/")
+        slack(
+          message: "VibeSync iOS build uploaded to TestFlight! 🚀",
+          slack_url: slack_url,
+          default_payloads: [:git_branch, :last_git_commit_message]
+        )
+        UI.success("Slack notification sent!")
+      else
+        UI.message("Slack notification skipped (no valid webhook URL)")
+      end
+    rescue => e
+      UI.important("Slack notification failed (non-fatal): #{e.message}")
     end
   end
 
