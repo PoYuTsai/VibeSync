@@ -28,4 +28,32 @@ class AppColors {
   static const error = Color(0xFFE57373);
   static const warning = Color(0xFFFFB74D);
   static const info = Color(0xFF64B5F6);
+
+  // === Warm Theme - 漸層背景 ===
+  static const backgroundGradientStart = Color(0xFF1A0533);  // 深紫
+  static const backgroundGradientMid = Color(0xFF2D1B4E);    // 中紫
+  static const backgroundGradientEnd = Color(0xFF4A2C6A);    // 淡紫
+
+  // === Warm Theme - 光暈泡泡 ===
+  static const bokehPink = Color(0xFFFF6B9D);
+  static const bokehCoral = Color(0xFFFF8A65);
+  static const bokehYellow = Color(0xFFFFD54F);
+
+  // === Warm Theme - 毛玻璃 ===
+  static const glassWhite = Color(0x1AFFFFFF);     // 10% 白
+  static const glassBorder = Color(0x33FFFFFF);    // 20% 白
+
+  // === Warm Theme - 選中狀態 ===
+  static const selectedStart = Color(0xFFFF6B9D);
+  static const selectedEnd = Color(0xFFFF8A65);
+
+  // === Warm Theme - CTA 按鈕 ===
+  static const ctaStart = Color(0xFFFF7043);
+  static const ctaEnd = Color(0xFFFF5722);
+
+  // === Warm Theme - 頭像漸層 ===
+  static const avatarHerStart = Color(0xFFFFD54F);
+  static const avatarHerEnd = Color(0xFFFFC107);
+  static const avatarMeStart = Color(0xFF9D8DF7);
+  static const avatarMeEnd = Color(0xFF6B4EE6);
 }
