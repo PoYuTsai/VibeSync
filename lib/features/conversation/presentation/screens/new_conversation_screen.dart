@@ -268,36 +268,34 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
             // 已新增的訊息列表
             if (_messages.isNotEmpty) ...[
-              Container(
-                constraints: const BoxConstraints(maxHeight: 200),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.divider),
-                ),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = _messages[index];
-                    final isFromMe = msg['isFromMe'] as bool;
-                    return ListTile(
-                      dense: true,
-                      leading: BubbleAvatar(
-                        label: isFromMe ? '我' : '她',
-                        isMe: isFromMe,
-                        size: 28,
-                      ),
-                      title: Text(
-                        msg['content'] as String,
-                        style: AppTypography.bodyMedium,
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => _removeMessage(index),
-                      ),
-                    );
-                  },
+              GlassmorphicContainer(
+                borderRadius: 12,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = _messages[index];
+                      final isFromMe = msg['isFromMe'] as bool;
+                      return ListTile(
+                        dense: true,
+                        leading: BubbleAvatar(
+                          label: isFromMe ? '我' : '她',
+                          isMe: isFromMe,
+                          size: 28,
+                        ),
+                        title: Text(
+                          msg['content'] as String,
+                          style: AppTypography.bodyMedium,
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => _removeMessage(index),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
