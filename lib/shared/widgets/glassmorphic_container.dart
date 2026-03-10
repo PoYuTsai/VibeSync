@@ -1,9 +1,8 @@
 // lib/shared/widgets/glassmorphic_container.dart
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 
-/// 毛玻璃效果容器
+/// 毛玻璃效果容器 (改用實色背景)
 class GlassmorphicContainer extends StatelessWidget {
   final Widget child;
   final double borderRadius;
@@ -24,11 +23,22 @@ class GlassmorphicContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 改用實色背景，不依賴 BackdropFilter
     return Container(
       width: width,
       height: height,
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
+        color: isSelected
+            ? AppColors.selectedStart.withValues(alpha: 0.3)
+            : AppColors.glassWhite,
         borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(
+          color: isSelected
+              ? AppColors.selectedStart.withValues(alpha: 0.5)
+              : AppColors.glassBorder,
+          width: 1,
+        ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
@@ -39,28 +49,7 @@ class GlassmorphicContainer extends StatelessWidget {
               ]
             : null,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppColors.selectedStart.withValues(alpha: 0.3)
-                  : AppColors.glassWhite,
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: Border.all(
-                color: isSelected
-                    ? AppColors.selectedStart.withValues(alpha: 0.5)
-                    : AppColors.glassBorder,
-                width: 1,
-              ),
-            ),
-            child: child,
-          ),
-        ),
-      ),
+      child: child,
     );
   }
 }

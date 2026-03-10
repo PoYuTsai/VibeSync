@@ -1,5 +1,4 @@
 // lib/shared/widgets/glassmorphic_text_field.dart
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
@@ -23,36 +22,31 @@ class GlassmorphicTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.glassWhite,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.glassBorder),
+    // 改用實色背景，不依賴 BackdropFilter (更穩定)
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.glassWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: TextField(
+        controller: controller,
+        style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
+        textInputAction: textInputAction,
+        onSubmitted: onSubmitted,
+        decoration: InputDecoration(
+          hintText: hintText,
+          hintStyle: AppTypography.bodyMedium.copyWith(
+            color: AppColors.glassTextHint,
           ),
-          child: TextField(
-            controller: controller,
-            style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
-            textInputAction: textInputAction,
-            onSubmitted: onSubmitted,
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextHint,
-              ),
-              isDense: isDense,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: isDense ? 12 : 14,
-              ),
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-            ),
+          isDense: isDense,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: isDense ? 12 : 14,
           ),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
         ),
       ),
     );
