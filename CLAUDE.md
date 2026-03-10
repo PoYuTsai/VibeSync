@@ -9,7 +9,7 @@
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-06
+📌 最後更新：2026-03-11
 ```
 
 ### 🎯 當前開發進度
@@ -37,8 +37,11 @@
 | **多條訊息處理** | ✅ 完成 | 根據訊息類型(肯定句/陳述句/疑問句/圖片)決定是否回覆 |
 | **優化我的訊息** | ✅ 完成 | 用戶輸入草稿，AI 依據 1.8x 法則+風格優化 |
 | **CI/CD iOS** | ✅ 完成 | 手動觸發 → TestFlight 自動上傳 |
+| **UI 重構 Phase 1** | ✅ 完成 | 新增對話頁：粉紫漸層背景、毛玻璃元件、漸層按鈕 |
 
 #### 🔄 待測試驗證
+- [ ] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景)
+- [ ] UI 重構 Safari/Chrome 相容性測試
 - [ ] iOS Safari 滑動體驗 (pull-to-refresh 是否完全修復)
 - [ ] Android Chrome 滑動體驗
 - [ ] 大螢幕 RWD 顯示效果
@@ -51,9 +54,11 @@
 - [ ] Admin Dashboard (排在實作計畫後段)
 
 #### 📋 下一步
-1. 繼續測試 AI 回覆品質，收集 prompt 優化案例
-2. 若有 UX 問題持續調整
-3. Apple 帳號核准後設定 iOS 部署
+1. **測試 UI 重構 Phase 1** - 在 Web 上確認視覺效果 (https://web-beta-tawny.vercel.app)
+2. **微調 Phase 1** - 根據測試結果調整顏色、透明度、模糊度
+3. **UI 重構 Phase 2** - 擴展到其他頁面（首頁、分析結果、登入、設定）
+4. **UI 重構 Phase 3** - 動態光球效果 (B2)
+5. 繼續測試 AI 回覆品質，收集 prompt 優化案例
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
@@ -97,6 +102,8 @@
 | **實作計畫 (35 任務)** | `docs/plans/2026-02-26-vibesync-implementation.md` |
 | **System Prompt 優化設計** | `docs/plans/2026-03-04-system-prompt-optimization-design.md` |
 | **System Prompt 優化實作** | `docs/plans/2026-03-04-system-prompt-optimization-impl.md` |
+| **UI 重構設計規格** | `docs/plans/2026-03-10-ui-redesign-design.md` |
+| **UI 重構實作計畫 (15 任務)** | `docs/plans/2026-03-10-ui-redesign-impl.md` |
 | **實作前檢查清單** | `docs/PRE-IMPLEMENTATION-CHECKLIST.md` |
 | **定價方案** | `docs/pricing-final.md` |
 | **法規文件** | `docs/legal/*.md` |
@@ -757,6 +764,40 @@ end
 **相關文件**:
 - 設計: `docs/plans/2026-03-04-system-prompt-optimization-design.md`
 - 實作: `docs/plans/2026-03-04-system-prompt-optimization-impl.md`
+
+#### [2026-03-11] UI 重構 - 溫暖粉紫漸層毛玻璃風格
+**決定**: 將 VibeSync 從暗黑主題改為溫暖粉紫漸層 + 毛玻璃風格
+**目標**: 創造 Gen Z 友善、約會 app 氛圍的視覺體驗
+
+**設計決策**:
+| 項目 | 決定 |
+|------|------|
+| 背景風格 | B1 靜態光球（最終目標 B2 動態） |
+| 毛玻璃範圍 | 僅互動元件（輸入框、選項按鈕） |
+| 發光效果 | BoxShadow 實作 |
+| CTA 按鈕 | 珊瑚漸層，全 app 統一 |
+| 頭像風格 | 漸層泡泡 |
+| 實作方案 | 修改現有 Theme 系統 |
+| 重構範圍 | 分階段，Phase 1 先做「新增對話」頁 |
+| 平台策略 | Web 優先，iOS 自動同步 |
+
+**Phase 1 完成內容** (15 Tasks):
+- AppColors 新增 Warm Theme 色系
+- 6 個共用元件：GradientBackground、GlassmorphicContainer、GradientButton、BubbleAvatar、GlassmorphicSegmentedButton、GlassmorphicTextField
+- NewConversationScreen 完整重構
+
+**相關文件**:
+- 設計: `docs/plans/2026-03-10-ui-redesign-design.md`
+- 實作: `docs/plans/2026-03-10-ui-redesign-impl.md`
+
+**新增檔案**:
+- `lib/shared/widgets/gradient_background.dart`
+- `lib/shared/widgets/glassmorphic_container.dart`
+- `lib/shared/widgets/gradient_button.dart`
+- `lib/shared/widgets/bubble_avatar.dart`
+- `lib/shared/widgets/glassmorphic_segmented_button.dart`
+- `lib/shared/widgets/glassmorphic_text_field.dart`
+- `lib/shared/widgets/warm_theme_widgets.dart` (統一匯出)
 
 ## Notes
 
