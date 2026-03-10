@@ -361,19 +361,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ),
 
             const SizedBox(height: 12),
-            GlassmorphicContainer(
-              padding: const EdgeInsets.all(12),
-              borderRadius: 8,
+            // 提示文字（參考圖無背景框）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Row(
                 children: [
                   Icon(Icons.info_outline,
-                      size: 18, color: AppColors.glassTextHint),
+                      size: 18, color: AppColors.textSecondary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '依序輸入對話，最後一則須為「她」的訊息',
                       style: AppTypography.caption.copyWith(
-                        color: AppColors.glassTextHint,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ),
