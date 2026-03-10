@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../../domain/entities/session_context.dart';
 
@@ -135,15 +136,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('新增對話', style: AppTypography.titleLarge),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: Text('新增對話', style: AppTypography.titleLarge),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.pop(),
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
+        body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -403,6 +408,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }
