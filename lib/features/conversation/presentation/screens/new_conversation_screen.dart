@@ -164,52 +164,41 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             const SizedBox(height: 24),
             Text('認識場景', style: AppTypography.bodyLarge),
             const SizedBox(height: 8),
-            SegmentedButton<MeetingContext>(
+            GlassmorphicSegmentedButton<MeetingContext>(
               segments: const [
-                ButtonSegment(
-                    value: MeetingContext.datingApp, label: Text('交友軟體')),
-                ButtonSegment(
-                    value: MeetingContext.inPerson, label: Text('現實搭訕')),
-                ButtonSegment(
-                    value: MeetingContext.friendIntro, label: Text('朋友介紹')),
+                GlassSegment(value: MeetingContext.datingApp, label: '交友軟體'),
+                GlassSegment(value: MeetingContext.inPerson, label: '現實搭訕'),
+                GlassSegment(value: MeetingContext.friendIntro, label: '朋友介紹'),
               ],
-              selected: {_meetingContext},
-              onSelectionChanged: (v) =>
-                  setState(() => _meetingContext = v.first),
+              selected: _meetingContext,
+              onChanged: (v) => setState(() => _meetingContext = v),
             ),
 
             const SizedBox(height: 16),
             Text('認識多久', style: AppTypography.bodyLarge),
             const SizedBox(height: 8),
-            SegmentedButton<AcquaintanceDuration>(
+            GlassmorphicSegmentedButton<AcquaintanceDuration>(
               segments: const [
-                ButtonSegment(
-                    value: AcquaintanceDuration.justMet, label: Text('剛認識')),
-                ButtonSegment(
-                    value: AcquaintanceDuration.fewDays, label: Text('幾天')),
-                ButtonSegment(
-                    value: AcquaintanceDuration.fewWeeks, label: Text('幾週')),
-                ButtonSegment(
-                    value: AcquaintanceDuration.monthPlus,
-                    label: Text('一個月+')),
+                GlassSegment(value: AcquaintanceDuration.justMet, label: '剛認識'),
+                GlassSegment(value: AcquaintanceDuration.fewDays, label: '幾天'),
+                GlassSegment(value: AcquaintanceDuration.fewWeeks, label: '幾週'),
+                GlassSegment(value: AcquaintanceDuration.monthPlus, label: '一個月+'),
               ],
-              selected: {_duration},
-              onSelectionChanged: (v) => setState(() => _duration = v.first),
+              selected: _duration,
+              onChanged: (v) => setState(() => _duration = v),
             ),
 
             const SizedBox(height: 16),
             Text('你的目標', style: AppTypography.bodyLarge),
             const SizedBox(height: 8),
-            SegmentedButton<UserGoal>(
+            GlassmorphicSegmentedButton<UserGoal>(
               segments: const [
-                ButtonSegment(
-                    value: UserGoal.dateInvite, label: Text('約出來')),
-                ButtonSegment(
-                    value: UserGoal.maintainHeat, label: Text('維持熱度')),
-                ButtonSegment(value: UserGoal.justChat, label: Text('隨意聊')),
+                GlassSegment(value: UserGoal.dateInvite, label: '約出來'),
+                GlassSegment(value: UserGoal.maintainHeat, label: '維持熱度'),
+                GlassSegment(value: UserGoal.justChat, label: '隨意聊'),
               ],
-              selected: {_goal},
-              onSelectionChanged: (v) => setState(() => _goal = v.first),
+              selected: _goal,
+              onChanged: (v) => setState(() => _goal = v),
             ),
 
             // === 個人化設定區塊（可折疊）===
