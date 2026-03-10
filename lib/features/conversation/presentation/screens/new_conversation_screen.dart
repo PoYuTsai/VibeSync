@@ -313,12 +313,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
+                  child: GlassmorphicTextField(
                     controller: _herMessageController,
-                    decoration: const InputDecoration(
-                      hintText: '她說了什麼...',
-                      isDense: true,
-                    ),
+                    hintText: '她說了什麼...',
                     onSubmitted: (_) => _addHerMessage(),
                   ),
                 ),
@@ -341,12 +338,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
+                  child: GlassmorphicTextField(
                     controller: _myMessageController,
-                    decoration: const InputDecoration(
-                      hintText: '我回了什麼...',
-                      isDense: true,
-                    ),
+                    hintText: '我回了什麼...',
                     onSubmitted: (_) => _addMyMessage(),
                   ),
                 ),
