@@ -44,7 +44,8 @@ class BubbleAvatar extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.4,
             fontWeight: FontWeight.w600,
-            color: Colors.white,
+            // 「她」黃色背景用深色文字，「我」紫色背景用白色文字
+            color: isMe ? Colors.white : const Color(0xFF2D1B4E),
           ),
         ),
       ),

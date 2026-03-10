@@ -243,22 +243,18 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               const SizedBox(height: 16),
               Text('你的興趣', style: AppTypography.bodyMedium),
               const SizedBox(height: 8),
-              TextField(
+              GlassmorphicTextField(
                 controller: _userInterestsController,
-                decoration: const InputDecoration(
-                  hintText: '例如：咖啡、攝影、露營',
-                  isDense: true,
-                ),
+                hintText: '例如：咖啡、攝影、露營',
+                isDense: true,
               ),
               const SizedBox(height: 16),
               Text('對方特質', style: AppTypography.bodyMedium),
               const SizedBox(height: 8),
-              TextField(
+              GlassmorphicTextField(
                 controller: _targetDescriptionController,
-                decoration: const InputDecoration(
-                  hintText: '例如：慢熱、喜歡旅行',
-                  isDense: true,
-                ),
+                hintText: '例如：慢熱、喜歡旅行',
+                isDense: true,
               ),
             ],
 
@@ -290,7 +286,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                           style: AppTypography.bodyMedium,
                         ),
                         trailing: IconButton(
-                          icon: const Icon(Icons.close, size: 18),
+                          icon: Icon(Icons.close, size: 18, color: AppColors.glassTextHint),
                           onPressed: () => _removeMessage(index),
                         ),
                       );
@@ -350,21 +346,20 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ),
 
             const SizedBox(height: 12),
-            Container(
+            GlassmorphicContainer(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceVariant,
-                borderRadius: BorderRadius.circular(8),
-              ),
+              borderRadius: 8,
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline,
-                      size: 18, color: AppColors.textSecondary),
+                  Icon(Icons.info_outline,
+                      size: 18, color: AppColors.glassTextHint),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '依序輸入對話，最後一則須為「她」的訊息',
-                      style: AppTypography.caption,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.glassTextHint,
+                      ),
                     ),
                   ),
                 ],

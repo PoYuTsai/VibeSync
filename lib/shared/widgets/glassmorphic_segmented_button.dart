@@ -72,7 +72,8 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
                         Text(
                           segment.label,
                           style: AppTypography.bodyMedium.copyWith(
-                            color: Colors.white,
+                            // 選中用白色，未選中用深色
+                            color: isSelected ? Colors.white : AppColors.glassTextPrimary,
                             fontWeight:
                                 isSelected ? FontWeight.w600 : FontWeight.normal,
                           ),

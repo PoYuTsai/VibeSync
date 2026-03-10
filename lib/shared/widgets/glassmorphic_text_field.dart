@@ -35,13 +35,13 @@ class GlassmorphicTextField extends StatelessWidget {
           ),
           child: TextField(
             controller: controller,
-            style: AppTypography.bodyMedium.copyWith(color: Colors.white),
+            style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
             textInputAction: textInputAction,
             onSubmitted: onSubmitted,
             decoration: InputDecoration(
               hintText: hintText,
               hintStyle: AppTypography.bodyMedium.copyWith(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: AppColors.glassTextHint,
               ),
               isDense: isDense,
               contentPadding: EdgeInsets.symmetric(
