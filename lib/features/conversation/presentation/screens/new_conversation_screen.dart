@@ -155,11 +155,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           children: [
             Text('對話對象暱稱', style: AppTypography.bodyLarge),
             const SizedBox(height: 8),
-            TextField(
+            GlassmorphicTextField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                hintText: '例如：小美',
-              ),
+              hintText: '例如：小美',
             ),
 
             // === 情境收集區塊 ===
