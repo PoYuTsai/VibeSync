@@ -40,8 +40,8 @@ class AppColors {
   static const bokehYellow = Color(0xFFFFD54F);
 
   // === Warm Theme - 毛玻璃 ===
-  static const glassWhite = Color(0x59FFFFFF);     // 35% 白 (調亮)
-  static const glassBorder = Color(0x4DFFFFFF);    // 30% 白 (調亮)
+  static const glassWhite = Color(0xB3FFFFFF);     // 70% 白 (更亮，接近參考圖)
+  static const glassBorder = Color(0x80FFFFFF);    // 50% 白 (更明顯邊框)
 
   // === Warm Theme - 毛玻璃文字 ===
   static const glassTextPrimary = Color(0xFF2D1B4E);   // 深紫 (主要文字)
