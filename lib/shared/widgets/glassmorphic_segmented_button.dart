@@ -22,8 +22,8 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.glassBorder),
+        borderRadius: BorderRadius.circular(16),  // 更圓潤
+        border: Border.all(color: AppColors.glassBorder, width: 1.5),  // 更粗的白色邊框
       ),
       child: Row(
         children: segments.map((segment) {
@@ -43,7 +43,7 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
                           ],
                         )
                       : null,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(14),  // 內部圓角
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
@@ -68,8 +68,8 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
                     Text(
                       segment.label,
                       style: AppTypography.bodyMedium.copyWith(
-                        // 選中用白色，未選中用深色
-                        color: isSelected ? Colors.white : AppColors.glassTextPrimary,
+                        // 選中用白色，未選中用深紫灰
+                        color: isSelected ? Colors.white : AppColors.unselectedText,
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.normal,
                       ),

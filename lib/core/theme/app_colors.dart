@@ -40,12 +40,15 @@ class AppColors {
   static const bokehYellow = Color(0xFFFFD54F);
 
   // === Warm Theme - 毛玻璃 (改用實色，更穩定) ===
-  static const glassWhite = Color(0xFFF5EBF2);     // 淺粉白實色
-  static const glassBorder = Color(0xFFE8D5E0);    // 淺粉邊框實色
+  static const glassWhite = Color(0xFFFAF5F8);     // 更淺的粉白色
+  static const glassBorder = Color(0xFFFFFFFF);    // 純白邊框
 
   // === Warm Theme - 毛玻璃文字 ===
-  static const glassTextPrimary = Color(0xFF2D1B4E);   // 深紫 (主要文字)
-  static const glassTextHint = Color(0x992D1B4E);      // 60% 深紫 (hint)
+  static const glassTextPrimary = Color(0xFF4A3548);   // 深紫灰 (主要文字)
+  static const glassTextHint = Color(0xFF8B4557);      // 酒紅色 (hint，參考圖風格)
+
+  // === Warm Theme - 未選中狀態文字 ===
+  static const unselectedText = Color(0xFF5D4E6B);     // 深紫灰色
 
   // === Warm Theme - 選中狀態 ===
   static const selectedStart = Color(0xFFFF6B9D);

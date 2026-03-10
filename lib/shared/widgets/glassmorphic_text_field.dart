@@ -26,8 +26,8 @@ class GlassmorphicTextField extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.glassBorder),
+        borderRadius: BorderRadius.circular(16),  // 更圓潤
+        border: Border.all(color: AppColors.glassBorder, width: 1.5),  // 更粗的白色邊框
       ),
       child: TextField(
         controller: controller,

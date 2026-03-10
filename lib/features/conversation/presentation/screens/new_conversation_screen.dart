@@ -134,6 +134,27 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     }
   }
 
+  // + 按鈕：淺灰圓形背景 + 深色 + 符號（參考圖風格）
+  Widget _buildAddButton(VoidCallback onPressed) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: AppColors.glassWhite,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.glassBorder.withValues(alpha: 0.5)),
+        ),
+        child: Icon(
+          Icons.add,
+          size: 20,
+          color: AppColors.unselectedText,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
@@ -313,10 +334,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     onSubmitted: (_) => _addHerMessage(),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle, color: AppColors.warm),
-                  onPressed: _addHerMessage,
-                ),
+                _buildAddButton(_addHerMessage),
               ],
             ),
 
@@ -338,10 +356,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     onSubmitted: (_) => _addMyMessage(),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle, color: AppColors.primary),
-                  onPressed: _addMyMessage,
-                ),
+                _buildAddButton(_addMyMessage),
               ],
             ),
 
