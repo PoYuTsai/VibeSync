@@ -39,9 +39,9 @@ class AppColors {
   static const bokehCoral = Color(0xFFFF8A65);
   static const bokehYellow = Color(0xFFFFD54F);
 
-  // === Warm Theme - 毛玻璃 (改用實色，更穩定) ===
-  static const glassWhite = Color(0xFFFAF5F8);     // 更淺的粉白色
-  static const glassBorder = Color(0xFFFFFFFF);    // 純白邊框
+  // === Warm Theme - 毛玻璃 (半透明，讓背景透出) ===
+  static const glassWhite = Color(0xCCFFFFFF);     // 80% 透明白（高級透明感）
+  static const glassBorder = Color(0xAAFFFFFF);    // 67% 透明白邊框
 
   // === Warm Theme - 毛玻璃文字 ===
   static const glassTextPrimary = Color(0xFF4A3548);   // 深紫灰 (主要文字)
