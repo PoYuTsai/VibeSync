@@ -44,6 +44,9 @@ class GlassmorphicTextField extends StatelessWidget {
             horizontal: 16,
             vertical: isDense ? 12 : 14,
           ),
+          // 覆蓋 theme 的深灰色 fillColor，讓 Container 背景色顯示
+          filled: true,
+          fillColor: Colors.transparent,
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
