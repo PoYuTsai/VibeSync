@@ -283,13 +283,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     final isFromMe = msg['isFromMe'] as bool;
                     return ListTile(
                       dense: true,
-                      leading: CircleAvatar(
-                        radius: 14,
-                        backgroundColor: isFromMe ? AppColors.primary : AppColors.warm,
-                        child: Text(
-                          isFromMe ? '我' : '她',
-                          style: const TextStyle(fontSize: 12, color: Colors.white),
-                        ),
+                      leading: BubbleAvatar(
+                        label: isFromMe ? '我' : '她',
+                        isMe: isFromMe,
+                        size: 28,
                       ),
                       title: Text(
                         msg['content'] as String,
@@ -309,10 +306,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             // 新增「她的訊息」
             Row(
               children: [
-                const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: AppColors.warm,
-                  child: Text('她', style: TextStyle(fontSize: 12, color: Colors.white)),
+                const BubbleAvatar(
+                  label: '她',
+                  isMe: false,
+                  size: 32,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -337,10 +334,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             // 新增「我的訊息」
             Row(
               children: [
-                const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: AppColors.primary,
-                  child: Text('我', style: TextStyle(fontSize: 12, color: Colors.white)),
+                const BubbleAvatar(
+                  label: '我',
+                  isMe: true,
+                  size: 32,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -382,15 +379,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            ElevatedButton(
+            GradientButton(
+              text: '開始分析',
               onPressed: _isLoading ? null : _analyze,
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('開始分析'),
+              isLoading: _isLoading,
             ),
           ],
         ),
