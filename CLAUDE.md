@@ -9,7 +9,7 @@
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-11
+📌 最後更新：2026-03-12
 ```
 
 ### 🎯 當前開發進度
@@ -55,7 +55,9 @@
 - **2026-03-11**: 前端 UI 重構完成 (Phase 1-3)，Warm Theme 全面套用
 
 #### 🚀 待實作
-- [ ] **截圖上傳功能** - 用戶上傳聊天截圖，AI 讀取分析 (Claude Vision)
+- [ ] **截圖上傳功能** - 設計 ✅ 計畫 ✅ 待實作 (12 Tasks)
+  - 設計規格：`docs/plans/2026-03-12-screenshot-upload-design.md`
+  - 實作計畫：`docs/plans/2026-03-12-screenshot-upload-impl.md`
 
 #### ⏸️ 暫停中
 - [ ] Admin Dashboard (排在實作計畫後段)
@@ -65,7 +67,7 @@
 - [ ] **定價最終 Review** - 根據所有功能成本重新審視定價
 
 #### 📋 下一步
-1. **截圖上傳功能設計 + 實作**
+1. **執行截圖上傳功能實作計畫** (12 Tasks)
 2. 繼續沙盒測試，收集用戶反饋
 3. AI 回覆品質優化 (根據反饋調整 System Prompt)
 4. Admin Dashboard (後續)
