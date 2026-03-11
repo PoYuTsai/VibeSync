@@ -54,13 +54,22 @@
 #### ✅ 里程碑
 - **2026-03-11**: 前端 UI 重構完成 (Phase 1-3)，Warm Theme 全面套用
 
+#### 🚀 待實作
+- [ ] **截圖上傳功能** - 用戶上傳聊天截圖，AI 讀取分析 (Claude Vision)
+
 #### ⏸️ 暫停中
 - [ ] Admin Dashboard (排在實作計畫後段)
 
+#### ⚠️ 上線前待決定
+- [ ] **截圖功能計費方案** - 選項：A) 1截圖=N訊息 B) 獨立額度 C) 僅付費可用
+- [ ] **定價最終 Review** - 根據所有功能成本重新審視定價
+
 #### 📋 下一步
-1. 繼續沙盒測試，收集用戶反饋
-2. AI 回覆品質優化 (根據反饋調整 System Prompt)
-3. Admin Dashboard (後續)
+1. **截圖上傳功能設計 + 實作**
+2. 繼續沙盒測試，收集用戶反饋
+3. AI 回覆品質優化 (根據反饋調整 System Prompt)
+4. Admin Dashboard (後續)
+5. **上線前：定價最終 Review**
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
