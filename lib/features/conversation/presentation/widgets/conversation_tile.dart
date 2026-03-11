@@ -43,16 +43,27 @@ class ConversationTile extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       trailing: onDelete != null
           ? IconButton(
-              icon: const Icon(Icons.delete_outline, color: AppColors.textSecondary),
+              icon: Icon(Icons.delete_outline, color: AppColors.glassTextHint),
               onPressed: onDelete,
               tooltip: '刪除對話',
             )
           : null,
-      leading: CircleAvatar(
-        backgroundColor: AppColors.surfaceVariant,
-        child: Text(
-          conversation.name.isNotEmpty ? conversation.name[0] : '?',
-          style: AppTypography.titleLarge,
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppColors.avatarHerStart, AppColors.avatarHerEnd],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Text(
+            conversation.name.isNotEmpty ? conversation.name[0] : '?',
+            style: AppTypography.titleLarge.copyWith(color: Colors.black87),
+          ),
         ),
       ),
       title: Row(
@@ -60,13 +71,13 @@ class ConversationTile extends StatelessWidget {
           Expanded(
             child: Text(
               conversation.name,
-              style: AppTypography.titleLarge,
+              style: AppTypography.titleLarge.copyWith(color: AppColors.glassTextPrimary),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           Text(
             _formatDate(conversation.updatedAt),
-            style: AppTypography.caption,
+            style: AppTypography.caption.copyWith(color: AppColors.glassTextHint),
           ),
         ],
       ),
@@ -90,7 +101,7 @@ class ConversationTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               conversation.lastMessage!.content,
-              style: AppTypography.caption,
+              style: AppTypography.caption.copyWith(color: AppColors.glassTextHint),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

@@ -16,8 +16,9 @@ class EnthusiasmGauge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.glassWhite,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -28,7 +29,7 @@ class EnthusiasmGauge extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 '$score/100',
-                style: AppTypography.headlineMedium,
+                style: AppTypography.headlineMedium.copyWith(color: AppColors.glassTextPrimary),
               ),
               const SizedBox(width: 8),
               Text(
@@ -42,7 +43,7 @@ class EnthusiasmGauge extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: score / 100,
-              backgroundColor: AppColors.surfaceVariant,
+              backgroundColor: AppColors.glassBorder,
               valueColor: AlwaysStoppedAnimation(level.color),
               minHeight: 8,
             ),

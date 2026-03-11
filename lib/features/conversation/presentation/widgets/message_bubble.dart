@@ -20,16 +20,24 @@ class MessageBubble extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         decoration: BoxDecoration(
-          color: message.isFromMe ? AppColors.primary : AppColors.surfaceVariant,
+          gradient: message.isFromMe
+              ? const LinearGradient(
+                  colors: [AppColors.avatarMeStart, AppColors.avatarMeEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: message.isFromMe ? null : Colors.white.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(16).copyWith(
             bottomRight: message.isFromMe ? const Radius.circular(4) : null,
             bottomLeft: !message.isFromMe ? const Radius.circular(4) : null,
           ),
+          border: message.isFromMe ? null : Border.all(color: AppColors.glassBorder),
         ),
         child: Text(
           message.content,
           style: AppTypography.bodyMedium.copyWith(
-            color: message.isFromMe ? Colors.white : AppColors.textPrimary,
+            color: message.isFromMe ? Colors.white : AppColors.glassTextPrimary,
           ),
         ),
       ),
