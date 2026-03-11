@@ -70,67 +70,76 @@ class _GradientBackgroundState extends State<GradientBackground>
       ),
       child: Stack(
         children: [
-          // 光球 1 - 右上粉紅 (更大更亮)
-          Positioned(
-            top: -30,
-            right: -20,
-            child: _AnimatedBokehOrb(
-              controller: _controller1,
-              color: AppColors.bokehPink,
-              size: 180,
-              blur: 100,
-              opacity: 0.7,
-              floatRange: 25,
-              breatheScale: 0.18,
+          // 光球層 - 用 RepaintBoundary 隔離動畫重繪，避免影響滾動效能
+          RepaintBoundary(
+            child: Stack(
+              children: [
+                // 光球 1 - 右上粉紅
+                Positioned(
+                  top: -30,
+                  right: -20,
+                  child: _AnimatedBokehOrb(
+                    controller: _controller1,
+                    color: AppColors.bokehPink,
+                    size: 180,
+                    blur: 80, // 降低 blur 提升效能
+                    opacity: 0.7,
+                    floatRange: 25,
+                    breatheScale: 0.18,
+                  ),
+                ),
+                // 光球 2 - 左下珊瑚
+                Positioned(
+                  bottom: 80,
+                  left: -30,
+                  child: _AnimatedBokehOrb(
+                    controller: _controller2,
+                    color: AppColors.bokehCoral,
+                    size: 160,
+                    blur: 60, // 降低 blur 提升效能
+                    opacity: 0.65,
+                    floatRange: 30,
+                    breatheScale: 0.15,
+                    floatAngle: math.pi / 3,
+                  ),
+                ),
+                // 光球 3 - 中右黃色
+                Positioned(
+                  top: screenHeight * 0.45,
+                  right: -10,
+                  child: _AnimatedBokehOrb(
+                    controller: _controller3,
+                    color: AppColors.bokehYellow,
+                    size: 140,
+                    blur: 50, // 降低 blur 提升效能
+                    opacity: 0.6,
+                    floatRange: 20,
+                    breatheScale: 0.12,
+                    floatAngle: -math.pi / 4,
+                  ),
+                ),
+                // 光球 4 - 左上淡粉
+                Positioned(
+                  top: screenHeight * 0.15,
+                  left: -40,
+                  child: _AnimatedBokehOrb(
+                    controller: _controller1,
+                    color: AppColors.bokehPink.withValues(alpha: 0.5),
+                    size: 100,
+                    blur: 40, // 降低 blur 提升效能
+                    opacity: 0.4,
+                    floatRange: 15,
+                    breatheScale: 0.1,
+                    floatAngle: math.pi / 6,
+                  ),
+                ),
+              ],
             ),
           ),
-          // 光球 2 - 左下珊瑚 (更大更亮)
-          Positioned(
-            bottom: 80,
-            left: -30,
-            child: _AnimatedBokehOrb(
-              controller: _controller2,
-              color: AppColors.bokehCoral,
-              size: 160,
-              blur: 80,
-              opacity: 0.65,
-              floatRange: 30,
-              breatheScale: 0.15,
-              floatAngle: math.pi / 3,
-            ),
+          // 主內容 - 用 RepaintBoundary 隔離滾動重繪
+          RepaintBoundary(
+            child: widget.child,
           ),
-          // 光球 3 - 中右黃色 (更大更亮)
-          Positioned(
-            top: screenHeight * 0.45,
-            right: -10,
-            child: _AnimatedBokehOrb(
-              controller: _controller3,
-              color: AppColors.bokehYellow,
-              size: 140,
-              blur: 70,
-              opacity: 0.6,
-              floatRange: 20,
-              breatheScale: 0.12,
-              floatAngle: -math.pi / 4,
-            ),
-          ),
-          // 光球 4 - 左上淡粉 (新增，增加層次)
-          Positioned(
-            top: screenHeight * 0.15,
-            left: -40,
-            child: _AnimatedBokehOrb(
-              controller: _controller1,
-              color: AppColors.bokehPink.withValues(alpha: 0.5),
-              size: 100,
-              blur: 60,
-              opacity: 0.4,
-              floatRange: 15,
-              breatheScale: 0.1,
-              floatAngle: math.pi / 6,
-            ),
-          ),
-          // 主內容
-          widget.child,
         ],
       ),
     );

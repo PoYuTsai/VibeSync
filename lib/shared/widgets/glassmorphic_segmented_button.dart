@@ -20,18 +20,12 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     // 改用實色背景，不依賴 BackdropFilter
     // 加入微妙的外發光效果 (果凍感)
+    // 移除外層 boxShadow 提升滾動效能
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
         borderRadius: BorderRadius.circular(16),  // 更圓潤
         border: Border.all(color: AppColors.glassBorder, width: 1.5),  // 更粗的白色邊框
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.15),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
-        ],
       ),
       child: Row(
         children: segments.map((segment) {
@@ -52,18 +46,13 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
                         )
                       : null,
                   borderRadius: BorderRadius.circular(14),  // 內部圓角
+                  // 簡化為單層陰影，提升效能但保持發光效果
                   boxShadow: isSelected
                       ? [
-                          // 強化選中狀態的發光效果
                           BoxShadow(
-                            color: AppColors.selectedStart.withValues(alpha: 0.6),
-                            blurRadius: 15,
-                            spreadRadius: 2,
-                          ),
-                          BoxShadow(
-                            color: AppColors.selectedEnd.withValues(alpha: 0.3),
-                            blurRadius: 25,
-                            spreadRadius: 4,
+                            color: AppColors.selectedStart.withValues(alpha: 0.5),
+                            blurRadius: 12,
+                            spreadRadius: 1,
                           ),
                         ]
                       : null,

@@ -40,22 +40,16 @@ class GlassmorphicContainer extends StatelessWidget {
               : AppColors.glassBorder,
           width: 1.5,
         ),
+        // 優化：只在選中時使用 boxShadow，減少滾動時的重繪負擔
         boxShadow: isSelected
             ? [
                 BoxShadow(
                   color: AppColors.selectedStart.withValues(alpha: 0.5),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                ),
-              ]
-            : [
-                // 未選中時也有微妙的白色外發光 (果凍感)
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  blurRadius: 10,
+                  blurRadius: 15,
                   spreadRadius: 1,
                 ),
-              ],
+              ]
+            : null,
       ),
       child: child,
     );
