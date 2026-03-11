@@ -1,55 +1,15 @@
 // lib/shared/widgets/gradient_background.dart
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 
-/// 溫暖漸層背景 + 動態光球效果 (Phase 3)
-class GradientBackground extends StatefulWidget {
+/// 溫暖漸層背景 + 靜態光球效果 (效能優化版)
+class GradientBackground extends StatelessWidget {
   final Widget child;
 
   const GradientBackground({
     super.key,
     required this.child,
   });
-
-  @override
-  State<GradientBackground> createState() => _GradientBackgroundState();
-}
-
-class _GradientBackgroundState extends State<GradientBackground>
-    with TickerProviderStateMixin {
-  late final AnimationController _controller1;
-  late final AnimationController _controller2;
-  late final AnimationController _controller3;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // 放慢動畫速度，減少 CPU 負擔
-    _controller1 = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 15),
-    )..repeat(reverse: true);
-
-    _controller2 = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 20),
-    )..repeat(reverse: true);
-
-    _controller3 = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 25),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller1.dispose();
-    _controller2.dispose();
-    _controller3.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,125 +30,73 @@ class _GradientBackgroundState extends State<GradientBackground>
       ),
       child: Stack(
         children: [
-          // 光球層 - 用 RepaintBoundary 隔離動畫重繪，避免影響滾動效能
-          RepaintBoundary(
-            child: Stack(
-              children: [
-                // 光球 1 - 右上粉紅
-                Positioned(
-                  top: -30,
-                  right: -20,
-                  child: _AnimatedBokehOrb(
-                    controller: _controller1,
-                    color: AppColors.bokehPink,
-                    size: 180,
-                    blur: 70,
-                    opacity: 0.7,
-                    floatRange: 15, // 減少浮動範圍
-                    breatheScale: 0.1, // 減少縮放幅度
-                  ),
-                ),
-                // 光球 2 - 左下珊瑚
-                Positioned(
-                  bottom: 80,
-                  left: -30,
-                  child: _AnimatedBokehOrb(
-                    controller: _controller2,
-                    color: AppColors.bokehCoral,
-                    size: 160,
-                    blur: 55,
-                    opacity: 0.65,
-                    floatRange: 18, // 減少浮動範圍
-                    breatheScale: 0.1, // 減少縮放幅度
-                    floatAngle: math.pi / 3,
-                  ),
-                ),
-                // 光球 3 - 中右黃色
-                Positioned(
-                  top: screenHeight * 0.45,
-                  right: -10,
-                  child: _AnimatedBokehOrb(
-                    controller: _controller3,
-                    color: AppColors.bokehYellow,
-                    size: 140,
-                    blur: 50,
-                    opacity: 0.6,
-                    floatRange: 15, // 減少浮動範圍
-                    breatheScale: 0.08, // 減少縮放幅度
-                    floatAngle: -math.pi / 4,
-                  ),
-                ),
-                // 移除第 4 顆光球，減少渲染負擔
-              ],
+          // 靜態光球層 - 不需要動畫，效能最佳
+          Positioned(
+            top: -30,
+            right: -20,
+            child: _StaticBokehOrb(
+              color: AppColors.bokehPink,
+              size: 180,
+              blur: 70,
+              opacity: 0.7,
             ),
           ),
-          // 主內容 - 用 RepaintBoundary 隔離滾動重繪
-          RepaintBoundary(
-            child: widget.child,
+          Positioned(
+            bottom: 80,
+            left: -30,
+            child: _StaticBokehOrb(
+              color: AppColors.bokehCoral,
+              size: 160,
+              blur: 55,
+              opacity: 0.65,
+            ),
           ),
+          Positioned(
+            top: screenHeight * 0.45,
+            right: -10,
+            child: _StaticBokehOrb(
+              color: AppColors.bokehYellow,
+              size: 140,
+              blur: 50,
+              opacity: 0.6,
+            ),
+          ),
+          // 主內容
+          child,
         ],
       ),
     );
   }
 }
 
-/// 動態光球元件
-class _AnimatedBokehOrb extends StatelessWidget {
-  final AnimationController controller;
+/// 靜態光球元件 - 無動畫，效能最佳
+class _StaticBokehOrb extends StatelessWidget {
   final Color color;
   final double size;
   final double blur;
-  final double opacity; // 光球不透明度
-  final double floatRange; // 浮動範圍（像素）
-  final double breatheScale; // 呼吸縮放比例 (0.1 = 10%)
-  final double floatAngle; // 浮動方向角度
+  final double opacity;
 
-  const _AnimatedBokehOrb({
-    required this.controller,
+  const _StaticBokehOrb({
     required this.color,
     required this.size,
     required this.blur,
     this.opacity = 0.6,
-    this.floatRange = 20,
-    this.breatheScale = 0.1,
-    this.floatAngle = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        // 計算浮動位移
-        final floatProgress = math.sin(controller.value * math.pi * 2);
-        final dx = math.cos(floatAngle) * floatRange * floatProgress;
-        final dy = math.sin(floatAngle) * floatRange * floatProgress;
-
-        // 計算呼吸縮放
-        final breatheProgress = math.sin(controller.value * math.pi * 2 + math.pi / 2);
-        final scale = 1.0 + (breatheScale * breatheProgress);
-
-        return Transform.translate(
-          offset: Offset(dx, dy),
-          child: Transform.scale(
-            scale: scale,
-            child: child,
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: opacity),
+            blurRadius: blur,
+            spreadRadius: blur / 2,
           ),
-        );
-      },
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: opacity),
-              blurRadius: blur,
-              spreadRadius: blur / 2,
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
