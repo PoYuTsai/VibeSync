@@ -26,20 +26,20 @@ class _GradientBackgroundState extends State<GradientBackground>
   void initState() {
     super.initState();
 
-    // 不同速度的動畫控制器，讓光球運動更自然
+    // 放慢動畫速度，減少 CPU 負擔
     _controller1 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 8),
+      duration: const Duration(seconds: 15),
     )..repeat(reverse: true);
 
     _controller2 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 20),
     )..repeat(reverse: true);
 
     _controller3 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 12),
+      duration: const Duration(seconds: 25),
     )..repeat(reverse: true);
   }
 
@@ -82,10 +82,10 @@ class _GradientBackgroundState extends State<GradientBackground>
                     controller: _controller1,
                     color: AppColors.bokehPink,
                     size: 180,
-                    blur: 80, // 降低 blur 提升效能
+                    blur: 70,
                     opacity: 0.7,
-                    floatRange: 25,
-                    breatheScale: 0.18,
+                    floatRange: 15, // 減少浮動範圍
+                    breatheScale: 0.1, // 減少縮放幅度
                   ),
                 ),
                 // 光球 2 - 左下珊瑚
@@ -96,10 +96,10 @@ class _GradientBackgroundState extends State<GradientBackground>
                     controller: _controller2,
                     color: AppColors.bokehCoral,
                     size: 160,
-                    blur: 60, // 降低 blur 提升效能
+                    blur: 55,
                     opacity: 0.65,
-                    floatRange: 30,
-                    breatheScale: 0.15,
+                    floatRange: 18, // 減少浮動範圍
+                    breatheScale: 0.1, // 減少縮放幅度
                     floatAngle: math.pi / 3,
                   ),
                 ),
@@ -111,28 +111,14 @@ class _GradientBackgroundState extends State<GradientBackground>
                     controller: _controller3,
                     color: AppColors.bokehYellow,
                     size: 140,
-                    blur: 50, // 降低 blur 提升效能
+                    blur: 50,
                     opacity: 0.6,
-                    floatRange: 20,
-                    breatheScale: 0.12,
+                    floatRange: 15, // 減少浮動範圍
+                    breatheScale: 0.08, // 減少縮放幅度
                     floatAngle: -math.pi / 4,
                   ),
                 ),
-                // 光球 4 - 左上淡粉
-                Positioned(
-                  top: screenHeight * 0.15,
-                  left: -40,
-                  child: _AnimatedBokehOrb(
-                    controller: _controller1,
-                    color: AppColors.bokehPink.withValues(alpha: 0.5),
-                    size: 100,
-                    blur: 40, // 降低 blur 提升效能
-                    opacity: 0.4,
-                    floatRange: 15,
-                    breatheScale: 0.1,
-                    floatAngle: math.pi / 6,
-                  ),
-                ),
+                // 移除第 4 顆光球，減少渲染負擔
               ],
             ),
           ),
