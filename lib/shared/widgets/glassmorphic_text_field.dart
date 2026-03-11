@@ -23,11 +23,19 @@ class GlassmorphicTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 改用實色背景，不依賴 BackdropFilter (更穩定)
+    // 加入微妙的外發光效果 (果凍感)
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
         borderRadius: BorderRadius.circular(16),  // 更圓潤
         border: Border.all(color: AppColors.glassBorder, width: 1.5),  // 更粗的白色邊框
+        boxShadow: [
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.15),
+            blurRadius: 10,
+            spreadRadius: 1,
+          ),
+        ],
       ),
       child: TextField(
         controller: controller,

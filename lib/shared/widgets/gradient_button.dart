@@ -41,6 +41,8 @@ class _GradientButtonState extends State<GradientButton> {
           height: widget.height,
           decoration: BoxDecoration(
             gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
               colors: isDisabled
                   ? [Colors.grey.shade600, Colors.grey.shade700]
                   : [AppColors.ctaStart, AppColors.ctaEnd],
@@ -49,10 +51,17 @@ class _GradientButtonState extends State<GradientButton> {
             boxShadow: isDisabled
                 ? null
                 : [
+                    // 主要陰影 (立體感)
+                    BoxShadow(
+                      color: AppColors.ctaEnd.withValues(alpha: 0.5),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                    // 外發光 (夢幻感)
                     BoxShadow(
                       color: AppColors.ctaStart.withValues(alpha: 0.4),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
+                      blurRadius: 30,
+                      spreadRadius: 2,
                     ),
                   ],
           ),

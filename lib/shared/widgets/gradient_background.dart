@@ -70,45 +70,63 @@ class _GradientBackgroundState extends State<GradientBackground>
       ),
       child: Stack(
         children: [
-          // 光球 1 - 右上粉紅
+          // 光球 1 - 右上粉紅 (更大更亮)
           Positioned(
-            top: -50,
-            right: -30,
+            top: -30,
+            right: -20,
             child: _AnimatedBokehOrb(
               controller: _controller1,
               color: AppColors.bokehPink,
-              size: 150,
-              blur: 80,
-              floatRange: 20,
-              breatheScale: 0.15,
+              size: 180,
+              blur: 100,
+              opacity: 0.7,
+              floatRange: 25,
+              breatheScale: 0.18,
             ),
           ),
-          // 光球 2 - 左下珊瑚
+          // 光球 2 - 左下珊瑚 (更大更亮)
           Positioned(
-            bottom: 100,
-            left: -40,
+            bottom: 80,
+            left: -30,
             child: _AnimatedBokehOrb(
               controller: _controller2,
               color: AppColors.bokehCoral,
-              size: 120,
-              blur: 60,
-              floatRange: 25,
-              breatheScale: 0.12,
-              floatAngle: math.pi / 3, // 不同方向
+              size: 160,
+              blur: 80,
+              opacity: 0.65,
+              floatRange: 30,
+              breatheScale: 0.15,
+              floatAngle: math.pi / 3,
             ),
           ),
-          // 光球 3 - 中右黃色
+          // 光球 3 - 中右黃色 (更大更亮)
           Positioned(
-            top: screenHeight * 0.4,
-            right: -20,
+            top: screenHeight * 0.45,
+            right: -10,
             child: _AnimatedBokehOrb(
               controller: _controller3,
               color: AppColors.bokehYellow,
+              size: 140,
+              blur: 70,
+              opacity: 0.6,
+              floatRange: 20,
+              breatheScale: 0.12,
+              floatAngle: -math.pi / 4,
+            ),
+          ),
+          // 光球 4 - 左上淡粉 (新增，增加層次)
+          Positioned(
+            top: screenHeight * 0.15,
+            left: -40,
+            child: _AnimatedBokehOrb(
+              controller: _controller1,
+              color: AppColors.bokehPink.withValues(alpha: 0.5),
               size: 100,
-              blur: 50,
+              blur: 60,
+              opacity: 0.4,
               floatRange: 15,
               breatheScale: 0.1,
-              floatAngle: -math.pi / 4, // 又一個不同方向
+              floatAngle: math.pi / 6,
             ),
           ),
           // 主內容
@@ -125,6 +143,7 @@ class _AnimatedBokehOrb extends StatelessWidget {
   final Color color;
   final double size;
   final double blur;
+  final double opacity; // 光球不透明度
   final double floatRange; // 浮動範圍（像素）
   final double breatheScale; // 呼吸縮放比例 (0.1 = 10%)
   final double floatAngle; // 浮動方向角度
@@ -134,6 +153,7 @@ class _AnimatedBokehOrb extends StatelessWidget {
     required this.color,
     required this.size,
     required this.blur,
+    this.opacity = 0.6,
     this.floatRange = 20,
     this.breatheScale = 0.1,
     this.floatAngle = 0,
@@ -168,7 +188,7 @@ class _AnimatedBokehOrb extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: 0.6),
+              color: color.withValues(alpha: opacity),
               blurRadius: blur,
               spreadRadius: blur / 2,
             ),

@@ -24,6 +24,7 @@ class GlassmorphicContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 改用實色背景，不依賴 BackdropFilter
+    // 加入微妙的外發光效果 (果凍感)
     return Container(
       width: width,
       height: height,
@@ -37,17 +38,24 @@ class GlassmorphicContainer extends StatelessWidget {
           color: isSelected
               ? AppColors.selectedStart.withValues(alpha: 0.5)
               : AppColors.glassBorder,
-          width: 1,
+          width: 1.5,
         ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
-                  color: AppColors.selectedStart.withValues(alpha: 0.4),
-                  blurRadius: 15,
+                  color: AppColors.selectedStart.withValues(alpha: 0.5),
+                  blurRadius: 20,
                   spreadRadius: 2,
                 ),
               ]
-            : null,
+            : [
+                // 未選中時也有微妙的白色外發光 (果凍感)
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                ),
+              ],
       ),
       child: child,
     );
