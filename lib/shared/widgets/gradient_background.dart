@@ -26,20 +26,20 @@ class _GradientBackgroundState extends State<GradientBackground>
   void initState() {
     super.initState();
 
-    // 緩慢動畫，減少 CPU 負擔
+    // 更明顯的動畫效果
     _controller1 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 12),
+      duration: const Duration(seconds: 6),
     )..repeat(reverse: true);
 
     _controller2 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 15),
+      duration: const Duration(seconds: 8),
     )..repeat(reverse: true);
 
     _controller3 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 18),
+      duration: const Duration(seconds: 7),
     )..repeat(reverse: true);
   }
 
@@ -83,6 +83,8 @@ class _GradientBackgroundState extends State<GradientBackground>
                     size: 180,
                     blur: 70,
                     opacity: 0.7,
+                    floatRange: 30,
+                    floatAngle: math.pi / 4, // 45度方向浮動
                   ),
                 ),
                 Positioned(
@@ -94,6 +96,8 @@ class _GradientBackgroundState extends State<GradientBackground>
                     size: 160,
                     blur: 55,
                     opacity: 0.65,
+                    floatRange: 25,
+                    floatAngle: -math.pi / 3, // -60度方向浮動
                   ),
                 ),
                 Positioned(
@@ -105,6 +109,8 @@ class _GradientBackgroundState extends State<GradientBackground>
                     size: 140,
                     blur: 50,
                     opacity: 0.6,
+                    floatRange: 20,
+                    floatAngle: math.pi / 6, // 30度方向浮動
                   ),
                 ),
               ],
@@ -125,6 +131,8 @@ class _AnimatedBokehOrb extends StatelessWidget {
   final double size;
   final double blur;
   final double opacity;
+  final double floatRange; // 浮動範圍
+  final double floatAngle; // 浮動方向
 
   const _AnimatedBokehOrb({
     required this.controller,
@@ -132,6 +140,8 @@ class _AnimatedBokehOrb extends StatelessWidget {
     required this.size,
     required this.blur,
     this.opacity = 0.6,
+    this.floatRange = 20,
+    this.floatAngle = 0,
   });
 
   @override
@@ -139,11 +149,20 @@ class _AnimatedBokehOrb extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, child) {
-        // 緩慢呼吸縮放
-        final scale = 1.0 + (0.08 * math.sin(controller.value * math.pi * 2));
-        return Transform.scale(
-          scale: scale,
-          child: child,
+        // 呼吸縮放 (更明顯: 18%)
+        final scale = 1.0 + (0.18 * math.sin(controller.value * math.pi * 2));
+
+        // 浮動位移
+        final floatProgress = math.sin(controller.value * math.pi * 2);
+        final dx = math.cos(floatAngle) * floatRange * floatProgress;
+        final dy = math.sin(floatAngle) * floatRange * floatProgress;
+
+        return Transform.translate(
+          offset: Offset(dx, dy),
+          child: Transform.scale(
+            scale: scale,
+            child: child,
+          ),
         );
       },
       child: Container(
