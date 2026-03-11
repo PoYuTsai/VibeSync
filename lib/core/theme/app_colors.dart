@@ -11,8 +11,8 @@ class AppColors {
 
   // Enthusiasm Levels (調整為 Warm Theme 友善)
   static const cold = Color(0xFF64B5F6);      // 藍色 - 冰點
-  static const warm = Color(0xFFFFB347);      // 柔和橘黃 - 溫和 (原本太亮)
-  static const hot = Color(0xFFFF7043);       // 珊瑚橘 - 熱情
+  static const warm = Color(0xFFD4A574);      // 沙棕色 - 溫和 (降低飽和度，手機不刺眼)
+  static const hot = Color(0xFFE57373);       // 柔和紅 - 熱情 (降低飽和度)
   static const veryHot = Color(0xFFFF6B9D);   // 粉紅 - 高熱
 
   // Neutral (Dark Mode)
