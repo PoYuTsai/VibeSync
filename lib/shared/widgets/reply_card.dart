@@ -55,9 +55,9 @@ class ReplyCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.glassWhite,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Material(
         color: Colors.transparent,
@@ -87,11 +87,11 @@ class ReplyCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     if (isLocked)
-                      const Icon(Icons.lock,
-                          size: 16, color: AppColors.textSecondary)
+                      Icon(Icons.lock,
+                          size: 16, color: AppColors.glassTextHint)
                     else
-                      const Icon(Icons.copy,
-                          size: 16, color: AppColors.textSecondary),
+                      Icon(Icons.copy,
+                          size: 16, color: AppColors.glassTextHint),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -99,10 +99,12 @@ class ReplyCard extends StatelessWidget {
                   isLocked ? '升級 Pro 解鎖' : content,
                   style: isLocked
                       ? AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
+                          color: AppColors.glassTextHint,
                           fontStyle: FontStyle.italic,
                         )
-                      : AppTypography.bodyLarge,
+                      : AppTypography.bodyLarge.copyWith(
+                          color: AppColors.glassTextPrimary,
+                        ),
                 ),
               ],
             ),

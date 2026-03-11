@@ -34,8 +34,9 @@ class GameStageIndicator extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.glassWhite,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,7 +45,9 @@ class GameStageIndicator extends StatelessWidget {
             children: [
               Text(
                 '對話進度',
-                style: AppTypography.caption,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextHint,
+                ),
               ),
               const Spacer(),
               Container(
@@ -76,11 +79,15 @@ class GameStageIndicator extends StatelessWidget {
                   children: [
                     Text(
                       currentStage.label,
-                      style: AppTypography.headlineMedium,
+                      style: AppTypography.headlineMedium.copyWith(
+                        color: AppColors.glassTextPrimary,
+                      ),
                     ),
                     Text(
                       currentStage.description,
-                      style: AppTypography.caption,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.glassTextHint,
+                      ),
                     ),
                   ],
                 ),
@@ -92,7 +99,7 @@ class GameStageIndicator extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.surfaceVariant,
+                color: Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -106,7 +113,9 @@ class GameStageIndicator extends StatelessWidget {
                   Expanded(
                     child: Text(
                       nextStep!,
-                      style: AppTypography.bodyMedium,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.glassTextPrimary,
+                      ),
                     ),
                   ),
                 ],
@@ -136,7 +145,7 @@ class GameStageIndicator extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isActive
                         ? AppColors.primary
-                        : AppColors.surfaceVariant,
+                        : AppColors.glassBorder,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -145,9 +154,6 @@ class GameStageIndicator extends StatelessWidget {
                   stage.emoji,
                   style: TextStyle(
                     fontSize: isCurrent ? 16 : 12,
-                    color: isActive
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary,
                   ),
                 ),
               ],

@@ -847,7 +847,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
             // Enthusiasm Gauge
             if (_enthusiasmScore != null) ...[
-              Text('熱度分析', style: AppTypography.titleLarge),
+              Text('熱度分析', style: AppTypography.titleLarge.copyWith(color: AppColors.glassTextPrimary)),
               const SizedBox(height: 12),
               EnthusiasmGauge(score: _enthusiasmScore!),
 
@@ -909,11 +909,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       children: [
                         const Text('🧠', style: TextStyle(fontSize: 18)),
                         const SizedBox(width: 8),
-                        Text('心理解讀', style: AppTypography.titleMedium),
+                        Text('心理解讀', style: AppTypography.titleMedium.copyWith(color: AppColors.glassTextPrimary)),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text(_psychology!.subtext, style: AppTypography.bodyMedium),
+                    Text(_psychology!.subtext, style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary)),
                     if (_psychology!.shitTest != null) ...[
                       const SizedBox(height: 8),
                       Container(
@@ -929,7 +929,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             Expanded(
                               child: Text(
                                 '偵測到廢測: ${_psychology!.shitTest}',
-                                style: AppTypography.caption,
+                                style: AppTypography.caption.copyWith(color: AppColors.glassTextPrimary),
                               ),
                             ),
                           ],
@@ -943,7 +943,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           const Icon(Icons.check_circle,
                               size: 16, color: AppColors.success),
                           const SizedBox(width: 4),
-                          Text('她在向你證明自己', style: AppTypography.caption),
+                          Text('她在向你證明自己', style: AppTypography.caption.copyWith(color: AppColors.glassTextPrimary)),
                         ],
                       ),
                     ],
@@ -955,12 +955,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             // Strategy
             if (_strategy != null) ...[
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
+              GlassmorphicContainer(
                 child: Row(
                   children: [
                     const Text('💡', style: TextStyle(fontSize: 20)),
@@ -968,7 +963,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     Expanded(
                       child: Text(
                         _strategy!,
-                        style: AppTypography.bodyMedium,
+                        style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
                       ),
                     ),
                   ],
@@ -990,10 +985,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('話題深度: ${_topicDepth!.current.label}',
-                              style: AppTypography.bodyMedium),
+                              style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary)),
                           if (_topicDepth!.suggestion.isNotEmpty)
                             Text(_topicDepth!.suggestion,
-                                style: AppTypography.caption),
+                                style: AppTypography.caption.copyWith(color: AppColors.glassTextHint)),
                         ],
                       ),
                     ),
@@ -1063,11 +1058,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               const SizedBox(height: 24),
               Row(
                 children: [
-                  Text('建議回覆', style: AppTypography.titleLarge),
+                  Text('建議回覆', style: AppTypography.titleLarge.copyWith(color: AppColors.glassTextPrimary)),
                   const Spacer(),
                   Text(
                     '字數上限: $maxLength字',
-                    style: AppTypography.caption,
+                    style: AppTypography.caption.copyWith(color: AppColors.glassTextHint),
                   ),
                 ],
               ),
@@ -1214,12 +1209,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           Expanded(
                             child: Text(
                               '我有想說的，幫我優化',
-                              style: AppTypography.titleMedium,
+                              style: AppTypography.titleMedium.copyWith(color: AppColors.glassTextPrimary),
                             ),
                           ),
                           Icon(
                             _showOptimizeInput ? Icons.expand_less : Icons.expand_more,
-                            color: AppColors.textSecondary,
+                            color: AppColors.glassTextHint,
                           ),
                         ],
                       ),
@@ -1359,7 +1354,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('這個建議有幫助嗎？', style: AppTypography.bodyMedium),
+                    Text('這個建議有幫助嗎？', style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary)),
                     const SizedBox(width: 16),
                     IconButton(
                       icon: const Icon(Icons.thumb_up_outlined),
@@ -1381,7 +1376,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('哪裡需要改進？', style: AppTypography.bodyLarge),
+                        Text('哪裡需要改進？', style: AppTypography.bodyLarge.copyWith(color: AppColors.glassTextPrimary)),
                         const SizedBox(height: 12),
                         Wrap(
                           spacing: 8,
