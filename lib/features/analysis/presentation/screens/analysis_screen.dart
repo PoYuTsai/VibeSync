@@ -1758,23 +1758,50 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: false),
                       icon: const Text('👩', style: TextStyle(fontSize: 18)),
-                      label: const Text('她說...'),
+                      label: Text('她說...', style: TextStyle(color: AppColors.glassTextPrimary)),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: BorderSide(color: AppColors.glassBorder, width: 1.5),
+                        backgroundColor: Colors.white.withValues(alpha: 0.3),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: SizedBox(
+                  child: Container(
                     height: 48,
-                    child: ElevatedButton.icon(
-                      onPressed: _isAnalyzing ? null : () => _addMessage(isFromMe: true),
-                      icon: const Text('👤', style: TextStyle(fontSize: 18)),
-                      label: const Text('我說...'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.ctaStart.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _isAnalyzing ? null : () => _addMessage(isFromMe: true),
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('👤', style: TextStyle(fontSize: 18)),
+                              SizedBox(width: 8),
+                              Text('我說...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),

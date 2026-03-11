@@ -9,11 +9,11 @@ class AppColors {
   static const primaryLight = Color(0xFF9D8DF7);
   static const primaryDark = Color(0xFF4527A0);
 
-  // Enthusiasm Levels
-  static const cold = Color(0xFF64B5F6);
-  static const warm = Color(0xFFFFD54F);
-  static const hot = Color(0xFFFF8A65);
-  static const veryHot = Color(0xFFFF6B9D);
+  // Enthusiasm Levels (調整為 Warm Theme 友善)
+  static const cold = Color(0xFF64B5F6);      // 藍色 - 冰點
+  static const warm = Color(0xFFFFB347);      // 柔和橘黃 - 溫和 (原本太亮)
+  static const hot = Color(0xFFFF7043);       // 珊瑚橘 - 熱情
+  static const veryHot = Color(0xFFFF6B9D);   // 粉紅 - 高熱
 
   // Neutral (Dark Mode)
   static const background = Color(0xFF121212);
