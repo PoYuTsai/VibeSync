@@ -38,9 +38,10 @@
 | **優化我的訊息** | ✅ 完成 | 用戶輸入草稿，AI 依據 1.8x 法則+風格優化 |
 | **CI/CD iOS** | ✅ 完成 | 手動觸發 → TestFlight 自動上傳 |
 | **UI 重構 Phase 1** | ✅ 完成 | 新增對話頁：粉紫漸層背景、毛玻璃元件、漸層按鈕 |
+| **UI 重構 Phase 1 微調** | ✅ 完成 | 半透明白、酒紅色 hint、移除提示框背景 |
 
 #### 🔄 待測試驗證
-- [ ] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景)
+- [x] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景) ✅
 - [ ] UI 重構 Safari/Chrome 相容性測試
 - [ ] iOS Safari 滑動體驗 (pull-to-refresh 是否完全修復)
 - [ ] Android Chrome 滑動體驗
@@ -54,11 +55,9 @@
 - [ ] Admin Dashboard (排在實作計畫後段)
 
 #### 📋 下一步
-1. **測試 UI 重構 Phase 1** - 在 Web 上確認視覺效果 (https://web-beta-tawny.vercel.app)
-2. **微調 Phase 1** - 根據測試結果調整顏色、透明度、模糊度
-3. **UI 重構 Phase 2** - 擴展到其他頁面（首頁、分析結果、登入、設定）
-4. **UI 重構 Phase 3** - 動態光球效果 (B2)
-5. 繼續測試 AI 回覆品質，收集 prompt 優化案例
+1. **UI 重構 Phase 2** - 擴展到其他頁面（首頁、分析結果、登入、設定）
+2. **UI 重構 Phase 3** - 動態光球效果 (B2)
+3. 繼續測試 AI 回覆品質，收集 prompt 優化案例
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
