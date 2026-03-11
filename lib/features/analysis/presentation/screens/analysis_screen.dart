@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/enthusiasm_gauge.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/reply_card.dart';
@@ -656,27 +657,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     final conversation = ref.watch(conversationProvider(widget.conversationId));
 
     if (conversation == null) {
-      return Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.go('/'),
+      return GradientBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => context.go('/'),
+            ),
           ),
+          body: const Center(child: Text('找不到對話')),
         ),
-        body: const Center(child: Text('找不到對話')),
       );
     }
 
     final maxLength = _calculateMaxReplyLength(conversation);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(conversation.name, style: AppTypography.titleLarge),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
-        ),
-        actions: [
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: Text(conversation.name, style: AppTypography.titleLarge),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.go('/'),
+          ),
+          actions: [
           // 匯出按鈕
           IconButton(
             icon: const Icon(Icons.share),
@@ -719,12 +729,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Messages preview
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  GlassmorphicContainer(
                     child: Column(
                       children: [
                         // 顯示訊息 (可展開/收合)
@@ -896,12 +901,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             // 心理分析 (淺溝通解讀)
             if (_psychology != null) ...[
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceVariant,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+              GlassmorphicContainer(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -979,12 +979,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             // Topic Depth (話題深度)
             if (_topicDepth != null) ...[
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceVariant,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+              GlassmorphicContainer(
                 child: Row(
                   children: [
                     Text(_topicDepth!.current.emoji,
@@ -1206,12 +1201,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             // 優化我的訊息功能
             if (_enthusiasmScore != null) ...[
               const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceVariant,
-                  borderRadius: BorderRadius.circular(12),
-                ),
+              GlassmorphicContainer(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1238,16 +1228,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: _optimizeController,
+                        style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
                         decoration: InputDecoration(
                           hintText: '輸入你想說的內容...',
                           hintStyle: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textSecondary,
+                            color: AppColors.glassTextHint,
                           ),
                           filled: true,
-                          fillColor: AppColors.background,
+                          fillColor: Colors.white.withValues(alpha: 0.5),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none,
+                            borderSide: BorderSide(color: AppColors.glassBorder),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: AppColors.glassBorder),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: AppColors.selectedStart, width: 1.5),
                           ),
                         ),
                         maxLines: 3,
@@ -1378,12 +1377,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
                 if (_showFeedbackForm) ...[
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  GlassmorphicContainer(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1402,9 +1396,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                         const SizedBox(height: 16),
                         TextField(
                           controller: _feedbackCommentController,
-                          decoration: const InputDecoration(
+                          style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
+                          decoration: InputDecoration(
                             hintText: '補充說明（選填）',
+                            hintStyle: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextHint),
                             isDense: true,
+                            filled: true,
+                            fillColor: Colors.white.withValues(alpha: 0.5),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: AppColors.glassBorder),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: AppColors.glassBorder),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: AppColors.selectedStart, width: 1.5),
+                            ),
                           ),
                           maxLines: 2,
                         ),
@@ -1527,15 +1537,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ),
           ),
-              ),
-                // 對話延續輸入區
-                _buildMessageInput(),
+        ),
+        // 對話延續輸入區
+        _buildMessageInput(),
               ],
             ),
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   /// 建立「我說」話題延續分析卡片
@@ -1685,9 +1696,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.glassWhite,
         border: Border(
-          top: BorderSide(color: AppColors.divider.withValues(alpha: 0.3)),
+          top: BorderSide(color: AppColors.glassBorder),
         ),
       ),
       child: SafeArea(
@@ -1698,16 +1709,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             // 輸入框 + 貼上按鈕
             TextField(
               controller: _messageController,
+              style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
               decoration: InputDecoration(
                 hintText: '貼上對方的回覆...',
                 hintStyle: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
+                  color: AppColors.glassTextHint,
                 ),
                 filled: true,
-                fillColor: AppColors.background,
+                fillColor: Colors.white.withValues(alpha: 0.5),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: AppColors.glassBorder),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.glassBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.selectedStart, width: 1.5),
                 ),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -1715,7 +1735,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
                 // 貼上按鈕
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.content_paste, color: AppColors.primary),
+                  icon: Icon(Icons.content_paste, color: AppColors.glassTextHint),
                   onPressed: _isAnalyzing ? null : () async {
                     final data = await Clipboard.getData(Clipboard.kTextPlain);
                     if (data?.text != null && data!.text!.isNotEmpty) {

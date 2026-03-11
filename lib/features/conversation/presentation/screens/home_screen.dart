@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../widgets/conversation_tile.dart';
 
@@ -14,45 +15,69 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final conversations = ref.watch(conversationsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('VibeSync', style: AppTypography.headlineMedium),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => context.push('/settings'),
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: Text('VibeSync', style: AppTypography.headlineMedium),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => context.push('/settings'),
+            ),
+          ],
+        ),
+        // RWD: 限制最大寬度，大螢幕置中顯示
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: conversations.isEmpty
+                ? _buildEmptyState(context)
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    itemCount: conversations.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final conversation = conversations[index];
+                      return GlassmorphicContainer(
+                        padding: EdgeInsets.zero,
+                        child: ConversationTile(
+                          conversation: conversation,
+                          onTap: () => context.push('/conversation/${conversation.id}'),
+                          onDelete: () => _showDeleteDialog(context, ref, conversation),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+        floatingActionButton: _buildFab(context),
+      ),
+    );
+  }
+
+  Widget _buildFab(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.ctaStart, AppColors.ctaEnd],
+        ),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ctaStart.withValues(alpha: 0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      // RWD: 限制最大寬度，大螢幕置中顯示
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: conversations.isEmpty
-              ? _buildEmptyState(context)
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: conversations.length,
-                  separatorBuilder: (_, __) => const Divider(
-                    color: AppColors.divider,
-                    height: 1,
-                    indent: 72,
-                  ),
-                  itemBuilder: (context, index) {
-                    final conversation = conversations[index];
-                    return ConversationTile(
-                      conversation: conversation,
-                      onTap: () => context.push('/conversation/${conversation.id}'),
-                      onDelete: () => _showDeleteDialog(context, ref, conversation),
-                    );
-                  },
-                ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
+      child: FloatingActionButton(
         onPressed: () => context.push('/new'),
-        backgroundColor: AppColors.primary,
-        child: const Icon(Icons.add),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
@@ -65,17 +90,21 @@ class HomeScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('刪除對話'),
-        content: Text('確定要刪除與「${conversation.name}」的對話嗎？'),
+        backgroundColor: AppColors.glassWhite,
+        title: Text('刪除對話', style: TextStyle(color: AppColors.glassTextPrimary)),
+        content: Text(
+          '確定要刪除與「${conversation.name}」的對話嗎？',
+          style: TextStyle(color: AppColors.glassTextPrimary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
+              foregroundColor: AppColors.error,
             ),
             child: const Text('刪除'),
           ),

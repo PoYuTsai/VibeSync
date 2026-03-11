@@ -48,6 +48,25 @@ class AppTypography {
     color: AppColors.textSecondary,
   );
 
+  static const labelMedium = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.1,
+    color: AppColors.textSecondary,
+  );
+
+  static const titleSmall = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+
+  static const bodySmall = TextStyle(
+    fontSize: 12,
+    height: 1.4,
+    color: AppColors.textPrimary,
+  );
+
   static const caption = TextStyle(
     fontSize: 12,
     color: AppColors.textSecondary,

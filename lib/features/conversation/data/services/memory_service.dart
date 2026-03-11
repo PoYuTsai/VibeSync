@@ -20,8 +20,8 @@ class MemoryService {
       final ctx = conversation.sessionContext!;
       buffer.writeln('【對話情境】');
       buffer.writeln('認識場景: ${_meetingContextToString(ctx.meetingContext)}');
-      buffer.writeln('認識多久: ${_durationToString(ctx.acquaintanceDuration)}');
-      buffer.writeln('目標: ${_goalToString(ctx.userGoal)}');
+      buffer.writeln('認識多久: ${_durationToString(ctx.duration)}');
+      buffer.writeln('目標: ${_goalToString(ctx.goal)}');
       buffer.writeln('---');
     }
 

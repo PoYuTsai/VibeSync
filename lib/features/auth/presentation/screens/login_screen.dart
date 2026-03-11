@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../../shared/widgets/warm_theme_widgets.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -71,128 +72,166 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 60),
-              Text(
-                'VibeSync',
-                style: AppTypography.headlineLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '提升你的社交對話技巧',
-                style: AppTypography.bodyLarge.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 48),
-
-              Text(
-                _isSignUp ? '建立帳號' : '登入',
-                style: AppTypography.titleLarge,
-              ),
-              const SizedBox(height: 16),
-
-              TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  hintText: 'your@email.com',
-                ),
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-              ),
-              const SizedBox(height: 16),
-
-              TextField(
-                controller: _passwordController,
-                decoration: const InputDecoration(
-                  labelText: '密碼',
-                  hintText: '至少 6 個字元',
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 24),
-
-              if (_error != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              ElevatedButton(
-                onPressed: _isLoading ? null : _submit,
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(_isSignUp ? '註冊' : '登入'),
-              ),
-              const SizedBox(height: 16),
-
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _isSignUp = !_isSignUp;
-                    _error = null;
-                  });
-                },
-                child: Text(
-                  _isSignUp ? '已有帳號？登入' : '沒有帳號？註冊',
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceVariant,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    const SizedBox(height: 40),
                     Text(
-                      '🧪 沙盒測試帳號',
-                      style: AppTypography.titleMedium,
+                      'VibeSync',
+                      style: AppTypography.headlineLarge,
+                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Email: vibesync.test@gmail.com\n密碼: test123456',
-                      style: AppTypography.caption.copyWith(
+                      '提升你的社交對話技巧',
+                      style: AppTypography.bodyLarge.copyWith(
                         color: AppColors.textSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 48),
+
+                    Text(
+                      _isSignUp ? '建立帳號' : '登入',
+                      style: AppTypography.titleLarge,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Email 輸入框
+                    _buildLabeledTextField(
+                      label: 'Email',
+                      controller: _emailController,
+                      hintText: 'your@email.com',
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 密碼輸入框
+                    _buildLabeledTextField(
+                      label: '密碼',
+                      controller: _passwordController,
+                      hintText: '至少 6 個字元',
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 24),
+
+                    if (_error != null) ...[
+                      GlassmorphicContainer(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          _error!,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: _error!.contains('成功')
+                                ? AppColors.success
+                                : AppColors.error,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    GradientButton(
+                      text: _isSignUp ? '註冊' : '登入',
+                      onPressed: _isLoading ? null : _submit,
+                      isLoading: _isLoading,
+                    ),
+                    const SizedBox(height: 16),
+
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _isSignUp = !_isSignUp;
+                          _error = null;
+                        });
+                      },
+                      child: Text(
+                        _isSignUp ? '已有帳號？登入' : '沒有帳號？註冊',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
+                    GlassmorphicContainer(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '🧪 沙盒測試帳號',
+                            style: AppTypography.titleMedium.copyWith(
+                              color: AppColors.glassTextPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Email: vibesync.test@gmail.com\n密碼: test123456',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.glassTextHint,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildLabeledTextField({
+    required String label,
+    required TextEditingController controller,
+    required String hintText,
+    TextInputType? keyboardType,
+    bool obscureText = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: AppTypography.bodyMedium),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.glassWhite,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.glassBorder, width: 1.5),
+          ),
+          child: TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            obscureText: obscureText,
+            autocorrect: false,
+            style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextHint,
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              filled: true,
+              fillColor: Colors.transparent,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
