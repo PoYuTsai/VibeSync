@@ -1,5 +1,4 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -712,19 +711,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             child: Column(
               children: [
                 Expanded(
-                  // 防止 iOS Safari pull-to-refresh 關閉頁面
-                  child: ScrollConfiguration(
-                    behavior: kIsWeb
-                        ? ScrollConfiguration.of(context).copyWith(
-                            overscroll: false,
-                            physics: const ClampingScrollPhysics(),
-                          )
-                        : ScrollConfiguration.of(context),
-                    child: SingleChildScrollView(
+                  child: SingleChildScrollView(
                       controller: _scrollController,
                       padding: const EdgeInsets.all(16),
-                      // 優化滑動效能：使用 Clamping 防止 overscroll
-                      physics: const ClampingScrollPhysics(),
+                      // 移除 physics 設定，使用平台預設（與第一頁一致）
                       child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1532,7 +1522,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ),
           ),
-        ),
         // 對話延續輸入區
         _buildMessageInput(),
               ],
