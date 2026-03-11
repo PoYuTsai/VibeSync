@@ -87,14 +87,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 40),
                     Text(
                       'VibeSync',
-                      style: AppTypography.headlineLarge,
+                      style: AppTypography.headlineLarge.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       '提升你的社交對話技巧',
                       style: AppTypography.bodyLarge.copyWith(
-                        color: AppColors.textSecondary,
+                        color: AppColors.onBackgroundSecondary,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -102,7 +104,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     Text(
                       _isSignUp ? '建立帳號' : '登入',
-                      style: AppTypography.titleLarge,
+                      style: AppTypography.titleLarge.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -156,7 +160,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: Text(
                         _isSignUp ? '已有帳號？登入' : '沒有帳號？註冊',
                         style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
+                          color: AppColors.onBackgroundSecondary,
                         ),
                       ),
                     ),
@@ -203,7 +207,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTypography.bodyMedium),
+        Text(label, style: AppTypography.bodyMedium.copyWith(color: AppColors.onBackgroundPrimary)),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(

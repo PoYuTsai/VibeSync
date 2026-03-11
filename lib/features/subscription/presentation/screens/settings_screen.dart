@@ -122,7 +122,7 @@ class SettingsScreen extends ConsumerWidget {
           child: Text(
             title,
             style: AppTypography.labelLarge.copyWith(
-              color: AppColors.textSecondary,
+              color: AppColors.onBackgroundSecondary,
             ),
           ),
         ),

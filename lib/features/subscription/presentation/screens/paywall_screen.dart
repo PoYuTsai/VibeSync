@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../domain/entities/message_booster.dart';
 import '../widgets/booster_purchase_sheet.dart';
 
@@ -36,31 +37,35 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('升級方案', style: AppTypography.titleLarge),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => context.pop(),
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: Text('升級方案', style: AppTypography.titleLarge.copyWith(color: AppColors.onBackgroundPrimary)),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => context.pop(),
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            Text(
-              '解鎖完整功能',
-              style: AppTypography.headlineLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '提升你的社交溝通能力',
-              style: AppTypography.bodyLarge.copyWith(color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Text(
+                '解鎖完整功能',
+                style: AppTypography.headlineLarge.copyWith(color: AppColors.onBackgroundPrimary),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '提升你的社交溝通能力',
+                style: AppTypography.bodyLarge.copyWith(color: AppColors.onBackgroundSecondary),
+                textAlign: TextAlign.center,
+              ),
             const SizedBox(height: 24),
 
             // Billing toggle
@@ -102,22 +107,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             const SizedBox(height: 32),
 
             // CTA button
-            ElevatedButton(
+            GradientButton(
+              text: '開始 7 天免費試用',
               onPressed: _subscribe,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: Text(
-                '開始 7 天免費試用',
-                style: AppTypography.titleMedium.copyWith(color: Colors.white),
-              ),
             ),
             const SizedBox(height: 12),
             Text(
               '試用結束後自動扣款，可隨時取消',
-              style: AppTypography.caption,
+              style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -160,6 +157,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -174,13 +172,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Widget _buildBillingToggle() {
-    return Container(
+    return GlassmorphicContainer(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider),
-      ),
       child: Row(
         children: [
           Expanded(
@@ -189,14 +182,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: !_isYearly ? AppColors.primary : Colors.transparent,
+                  gradient: !_isYearly
+                      ? const LinearGradient(colors: [AppColors.selectedStart, AppColors.selectedEnd])
+                      : null,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   '月繳',
                   textAlign: TextAlign.center,
                   style: AppTypography.labelLarge.copyWith(
-                    color: !_isYearly ? Colors.white : AppColors.textSecondary,
+                    color: !_isYearly ? Colors.white : AppColors.unselectedText,
                   ),
                 ),
               ),
@@ -208,7 +203,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: _isYearly ? AppColors.primary : Colors.transparent,
+                  gradient: _isYearly
+                      ? const LinearGradient(colors: [AppColors.selectedStart, AppColors.selectedEnd])
+                      : null,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -217,7 +214,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     Text(
                       '年繳',
                       style: AppTypography.labelLarge.copyWith(
-                        color: _isYearly ? Colors.white : AppColors.textSecondary,
+                        color: _isYearly ? Colors.white : AppColors.unselectedText,
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -261,28 +258,21 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: GlassmorphicContainer(
+        isSelected: isSelected,
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.divider,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Text(name, style: AppTypography.titleLarge),
+                Text(name, style: AppTypography.titleLarge.copyWith(color: AppColors.glassTextPrimary)),
                 if (isRecommended) ...[
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
+                      gradient: const LinearGradient(colors: [AppColors.selectedStart, AppColors.selectedEnd]),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -296,6 +286,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   value: tier,
                   groupValue: _selectedTier,
                   onChanged: (v) => setState(() => _selectedTier = v!),
+                  activeColor: AppColors.selectedStart,
                 ),
               ],
             ),
@@ -307,7 +298,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 Text(
                   '$currentPrice/月',
                   style: AppTypography.headlineMedium.copyWith(
-                    color: AppColors.textPrimary,
+                    color: AppColors.glassTextPrimary,
                   ),
                 ),
                 if (_isYearly) ...[
@@ -315,7 +306,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   Text(
                     '$originalPrice/月',
                     style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textSecondary,
+                      color: AppColors.glassTextHint,
                       decoration: TextDecoration.lineThrough,
                     ),
                   ),
@@ -327,7 +318,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               Text(
                 '年繳 ${pricing['yearlyTotal']}',
                 style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
+                  color: AppColors.glassTextHint,
                 ),
               ),
             ],
@@ -339,7 +330,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   children: [
                     const Icon(Icons.check, size: 16, color: AppColors.success),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(f, style: AppTypography.bodyMedium)),
+                    Expanded(child: Text(f, style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary))),
                   ],
                 ),
               ),

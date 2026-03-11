@@ -129,23 +129,23 @@ class HomeScreen extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
+          Icon(
             Icons.chat_bubble_outline,
             size: 64,
-            color: AppColors.textSecondary,
+            color: AppColors.onBackgroundSecondary,
           ),
           const SizedBox(height: 16),
           Text(
             '還沒有對話',
             style: AppTypography.titleLarge.copyWith(
-              color: AppColors.textSecondary,
+              color: AppColors.onBackgroundPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '點擊右下角 + 開始新增',
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
+              color: AppColors.onBackgroundSecondary,
             ),
           ),
         ],
