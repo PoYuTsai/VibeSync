@@ -847,7 +847,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
             // Enthusiasm Gauge
             if (_enthusiasmScore != null) ...[
-              Text('熱度分析', style: AppTypography.titleLarge.copyWith(color: AppColors.glassTextPrimary)),
+              Text('熱度分析', style: AppTypography.titleLarge.copyWith(color: AppColors.onBackgroundPrimary)),
               const SizedBox(height: 12),
               EnthusiasmGauge(score: _enthusiasmScore!),
 
@@ -1058,7 +1058,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               const SizedBox(height: 24),
               Row(
                 children: [
-                  Text('建議回覆', style: AppTypography.titleLarge.copyWith(color: AppColors.glassTextPrimary)),
+                  Text('建議回覆', style: AppTypography.titleLarge.copyWith(color: AppColors.onBackgroundPrimary)),
                   const Spacer(),
                   Text(
                     '字數上限: $maxLength字',
@@ -1349,12 +1349,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             if (_enthusiasmScore != null) ...[
               const SizedBox(height: 24),
               if (!_feedbackSubmitted) ...[
-                const Divider(),
+                Divider(color: AppColors.onBackgroundSecondary.withValues(alpha: 0.5)),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('這個建議有幫助嗎？', style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary)),
+                    Text('這個建議有幫助嗎？', style: AppTypography.bodyMedium.copyWith(color: AppColors.onBackgroundPrimary)),
                     const SizedBox(width: 16),
                     IconButton(
                       icon: const Icon(Icons.thumb_up_outlined),

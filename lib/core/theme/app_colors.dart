@@ -44,8 +44,12 @@ class AppColors {
   static const glassBorder = Color(0xAAFFFFFF);    // 67% 透明白邊框
 
   // === Warm Theme - 毛玻璃文字 ===
-  static const glassTextPrimary = Color(0xFF4A3548);   // 深紫灰 (主要文字)
+  static const glassTextPrimary = Color(0xFF4A3548);   // 深紫灰 (主要文字，用於玻璃容器內)
   static const glassTextHint = Color(0xFF8B4557);      // 酒紅色 (hint，參考圖風格)
+
+  // === Warm Theme - 背景上的文字（不在玻璃容器內）===
+  static const onBackgroundPrimary = Color(0xFFFFFFFF);   // 白色 (標題)
+  static const onBackgroundSecondary = Color(0xFFE0D0E8); // 淡紫白 (副標題)
 
   // === Warm Theme - 未選中狀態文字 ===
   static const unselectedText = Color(0xFF5D4E6B);     // 深紫灰色
