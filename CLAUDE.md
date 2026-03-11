@@ -39,9 +39,11 @@
 | **CI/CD iOS** | ✅ 完成 | 手動觸發 → TestFlight 自動上傳 |
 | **UI 重構 Phase 1** | ✅ 完成 | 新增對話頁：粉紫漸層背景、毛玻璃元件、漸層按鈕 |
 | **UI 重構 Phase 1 微調** | ✅ 完成 | 半透明白、酒紅色 hint、移除提示框背景 |
+| **UI 重構 Phase 2** | ✅ 完成 | 首頁、登入頁、設定頁、分析結果頁：全套 Warm Theme |
 
 #### 🔄 待測試驗證
 - [x] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景) ✅
+- [ ] **UI 重構 Phase 2 視覺測試** (首頁、登入、設定、分析結果頁)
 - [ ] UI 重構 Safari/Chrome 相容性測試
 - [ ] iOS Safari 滑動體驗 (pull-to-refresh 是否完全修復)
 - [ ] Android Chrome 滑動體驗
@@ -55,9 +57,10 @@
 - [ ] Admin Dashboard (排在實作計畫後段)
 
 #### 📋 下一步
-1. **UI 重構 Phase 2** - 擴展到其他頁面（首頁、分析結果、登入、設定）
-2. **UI 重構 Phase 3** - 動態光球效果 (B2)
-3. 繼續測試 AI 回覆品質，收集 prompt 優化案例
+1. **測試 UI 重構 Phase 2** - 在 Web 上確認視覺效果 (https://web-beta-tawny.vercel.app)
+2. **微調 Phase 2** - 根據測試結果調整顏色、透明度
+3. **UI 重構 Phase 3** - 動態光球效果 (B2)
+4. 繼續測試 AI 回覆品質，收集 prompt 優化案例
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
@@ -784,6 +787,12 @@ end
 - AppColors 新增 Warm Theme 色系
 - 6 個共用元件：GradientBackground、GlassmorphicContainer、GradientButton、BubbleAvatar、GlassmorphicSegmentedButton、GlassmorphicTextField
 - NewConversationScreen 完整重構
+
+**Phase 2 完成內容** (2026-03-11):
+- HomeScreen: GradientBackground + 對話卡片 GlassmorphicContainer
+- LoginScreen: GradientBackground + 毛玻璃輸入框 + GradientButton
+- SettingsScreen: GradientBackground + 區塊 GlassmorphicContainer
+- AnalysisScreen: GradientBackground + 所有容器更新為 Warm Theme 配色
 
 **相關文件**:
 - 設計: `docs/plans/2026-03-10-ui-redesign-design.md`
