@@ -40,10 +40,12 @@
 | **UI 重構 Phase 1** | ✅ 完成 | 新增對話頁：粉紫漸層背景、毛玻璃元件、漸層按鈕 |
 | **UI 重構 Phase 1 微調** | ✅ 完成 | 半透明白、酒紅色 hint、移除提示框背景 |
 | **UI 重構 Phase 2** | ✅ 完成 | 首頁、登入頁、設定頁、分析結果頁：全套 Warm Theme |
+| **UI 重構 Phase 3** | ✅ 完成 | 動態光球效果：緩慢浮動 + 呼吸縮放 |
 
 #### 🔄 待測試驗證
 - [x] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景) ✅
 - [ ] **UI 重構 Phase 2 視覺測試** (首頁、登入、設定、分析結果頁)
+- [ ] **UI 重構 Phase 3 視覺測試** (動態光球效果流暢度)
 - [ ] UI 重構 Safari/Chrome 相容性測試
 - [ ] iOS Safari 滑動體驗 (pull-to-refresh 是否完全修復)
 - [ ] Android Chrome 滑動體驗
@@ -57,10 +59,9 @@
 - [ ] Admin Dashboard (排在實作計畫後段)
 
 #### 📋 下一步
-1. **測試 UI 重構 Phase 2** - 在 Web 上確認視覺效果 (https://web-beta-tawny.vercel.app)
-2. **微調 Phase 2** - 根據測試結果調整顏色、透明度
-3. **UI 重構 Phase 3** - 動態光球效果 (B2)
-4. 繼續測試 AI 回覆品質，收集 prompt 優化案例
+1. **測試 UI 重構 Phase 3** - 確認動態光球效果流暢
+2. 繼續測試 AI 回覆品質，收集 prompt 優化案例
+3. Admin Dashboard (後續)
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
@@ -793,6 +794,12 @@ end
 - LoginScreen: GradientBackground + 毛玻璃輸入框 + GradientButton
 - SettingsScreen: GradientBackground + 區塊 GlassmorphicContainer
 - AnalysisScreen: GradientBackground + 所有容器更新為 Warm Theme 配色
+
+**Phase 3 完成內容** (2026-03-11):
+- 動態光球效果 (B2)
+- 緩慢浮動動畫 (8-12秒週期，不同方向)
+- 呼吸效果 (大小漸變 10-15%)
+- AnimationController + Transform 實作
 
 **相關文件**:
 - 設計: `docs/plans/2026-03-10-ui-redesign-design.md`
