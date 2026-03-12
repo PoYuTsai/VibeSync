@@ -47,6 +47,8 @@
 | **截圖識別與分析分離** | ✅ 完成 | 先識別存入對話、再分析；截圖和手動輸入可交錯使用 |
 | **截圖識別自動抓名字** | ✅ 完成 | AI 從截圖標題抓對方名字、確認對話框、情境設定 |
 | **截圖識別撤銷功能** | ✅ 完成 | 加入後 8 秒內可撤銷，移除錯誤加入的訊息 |
+| **測試帳號 Tier 修復** | ✅ 完成 | 測試帳號強制使用 essential tier 功能 |
+| **付費用戶 UX 優化** | ✅ 完成 | 只有延展回覆時，付費用戶顯示「AI 判斷最適合」而非升級提示 |
 
 #### 🔄 待測試驗證
 - [x] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景) ✅
@@ -658,6 +660,33 @@ end
 ```
 **預防**: 選用性通知永遠用 begin/rescue 包住
 **相關檔案**: `ios/fastlane/Fastfile`
+
+#### [2026-03-12] 測試帳號功能被限制為 Free tier
+**症狀**: 測試帳號看到「升級解鎖共鳴、調情...」提示，只有延展回覆
+**Root Cause**: Edge Function 從資料庫讀取 tier，但資料庫可能設定錯誤
+**修復**: 測試帳號強制使用 essential tier 功能
+```javascript
+const effectiveTier = isTestAccount ? "essential" : sub.tier;
+```
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:750`
+
+#### [2026-03-12] 付費用戶看到升級提示
+**症狀**: 付費用戶在某些情境只收到延展回覆，卻看到「升級解鎖」提示
+**Root Cause**: UI 判斷邏輯是「只有 extend 就顯示升級提示」，沒考慮用戶 tier
+**修復**: 根據用戶 tier 顯示不同提示
+- Free 用戶：「升級解鎖共鳴、調情、幽默、冷讀等回覆風格」
+- 付費用戶：「AI 判斷此情境最適合使用延展回覆」
+**相關檔案**: `lib/features/analysis/presentation/screens/analysis_screen.dart:1515-1565`
+
+#### [2026-03-12] warnings 欄位型別轉換錯誤
+**症狀**: 解析回應失敗
+**Root Cause**: `warnings` 可能是 String 或 Object 陣列，直接 cast 會失敗
+**修復**: 安全轉換為 String 再處理
+```dart
+final rawWarnings = json['warnings'] as List? ?? [];
+final warnings = rawWarnings.map((w) => w is String ? w : w.toString()).toList();
+```
+**相關檔案**: `lib/features/analysis/domain/entities/analysis_models.dart:362`
 
 ### Design Decisions
 
