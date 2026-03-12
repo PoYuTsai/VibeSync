@@ -240,6 +240,52 @@ class ResponsePrediction {
   }
 }
 
+/// 截圖識別結果中的單則訊息
+class RecognizedMessage {
+  final bool isFromMe;
+  final String content;
+
+  const RecognizedMessage({
+    required this.isFromMe,
+    required this.content,
+  });
+
+  factory RecognizedMessage.fromJson(Map<String, dynamic> json) {
+    return RecognizedMessage(
+      isFromMe: json['isFromMe'] as bool? ?? false,
+      content: json['content'] as String? ?? '',
+    );
+  }
+}
+
+/// 截圖識別結果
+class RecognizedConversation {
+  final int messageCount;
+  final String summary;
+  final List<RecognizedMessage>? messages;
+
+  const RecognizedConversation({
+    required this.messageCount,
+    required this.summary,
+    this.messages,
+  });
+
+  factory RecognizedConversation.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return const RecognizedConversation(messageCount: 0, summary: '');
+    }
+    return RecognizedConversation(
+      messageCount: json['messageCount'] as int? ?? 0,
+      summary: json['summary'] as String? ?? '',
+      messages: json['messages'] != null
+          ? (json['messages'] as List)
+              .map((m) => RecognizedMessage.fromJson(m as Map<String, dynamic>))
+              .toList()
+          : null,
+    );
+  }
+}
+
 /// Optimized user message result
 class OptimizedMessage {
   final String original;   // 用戶原本的訊息
@@ -277,6 +323,8 @@ class AnalysisResult {
   final Map<String, dynamic>? rawResponse; // 原始 AI 回應 (用於反饋)
   final OptimizedMessage? optimizedMessage; // 用戶訊息優化結果
   final MyMessageAnalysis? myMessageAnalysis; // 「我說」話題延續分析
+  final RecognizedConversation? recognizedConversation; // 截圖識別結果
+  final int? imagesUsed; // 使用的截圖數量
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -292,6 +340,8 @@ class AnalysisResult {
     this.rawResponse,
     this.optimizedMessage,
     this.myMessageAnalysis,
+    this.recognizedConversation,
+    this.imagesUsed,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -322,6 +372,16 @@ class AnalysisResult {
       myMessageAnalysis = MyMessageAnalysis.fromJson(json['myMessageAnalysis'] as Map<String, dynamic>?);
     }
 
+    // Parse recognizedConversation if present (截圖識別結果)
+    RecognizedConversation? recognizedConversation;
+    if (json['recognizedConversation'] != null) {
+      recognizedConversation = RecognizedConversation.fromJson(json['recognizedConversation'] as Map<String, dynamic>?);
+    }
+
+    // Parse imagesUsed from usage
+    final usage = json['usage'] as Map<String, dynamic>?;
+    final imagesUsed = usage?['imagesUsed'] as int?;
+
     return AnalysisResult(
       enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
       strategy: json['strategy'] as String? ?? '',
@@ -336,6 +396,8 @@ class AnalysisResult {
       rawResponse: json, // 保存原始回應
       optimizedMessage: optimizedMessage,
       myMessageAnalysis: myMessageAnalysis,
+      recognizedConversation: recognizedConversation,
+      imagesUsed: imagesUsed,
     );
   }
 }
