@@ -80,6 +80,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // 截圖上傳功能
   List<Uint8List> _selectedImages = [];
   RecognizedConversation? _recognizedConversation;
+  bool _isRecognizing = false;
 
   void _showPaywall(BuildContext context) {
     // TODO: Navigate to paywall screen
@@ -174,6 +175,93 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
+  /// 識別截圖並加入對話（不進行完整分析）
+  Future<void> _recognizeAndAddToConversation() async {
+    if (_selectedImages.isEmpty) return;
+
+    setState(() {
+      _isRecognizing = true;
+      _errorMessage = null;
+    });
+
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) {
+      setState(() {
+        _isRecognizing = false;
+        _errorMessage = '找不到對話';
+      });
+      return;
+    }
+
+    try {
+      // 呼叫 API 識別截圖（用最少的訊息，主要是識別）
+      final analysisService = AnalysisService();
+      final result = await analysisService.analyzeConversation(
+        conversation.messages.isEmpty
+            ? [Message(id: 'placeholder', content: '請識別截圖內容', isFromMe: true, timestamp: DateTime.now())]
+            : conversation.messages,
+        images: _selectedImages,
+        sessionContext: conversation.sessionContext,
+      );
+
+      // 把識別結果存入對話
+      if (result.recognizedConversation != null &&
+          result.recognizedConversation!.messages != null &&
+          result.recognizedConversation!.messages!.isNotEmpty) {
+        final repository = ref.read(conversationRepositoryProvider);
+        final conv = repository.getConversation(widget.conversationId);
+        if (conv != null) {
+          final baseTimestamp = DateTime.now();
+          for (var i = 0; i < result.recognizedConversation!.messages!.length; i++) {
+            final rm = result.recognizedConversation!.messages![i];
+            final newMessage = Message(
+              id: '${DateTime.now().millisecondsSinceEpoch}_$i',
+              content: rm.content,
+              isFromMe: rm.isFromMe,
+              timestamp: baseTimestamp.add(Duration(milliseconds: i)),
+            );
+            conv.messages.add(newMessage);
+          }
+          await repository.updateConversation(conv);
+          ref.invalidate(conversationsProvider);
+          ref.invalidate(conversationProvider(widget.conversationId));
+
+          setState(() {
+            _isRecognizing = false;
+            _selectedImages = []; // 清空截圖
+          });
+
+          // 顯示成功訊息
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('已加入 ${result.recognizedConversation!.messages!.length} 則訊息'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // 識別失敗或沒有識別到訊息
+      setState(() {
+        _isRecognizing = false;
+        _errorMessage = result.recognizedConversation?.summary ?? '無法識別截圖中的對話';
+      });
+    } on AnalysisException catch (e) {
+      setState(() {
+        _isRecognizing = false;
+        _errorMessage = e.message;
+      });
+    } catch (e) {
+      setState(() {
+        _isRecognizing = false;
+        _errorMessage = '識別失敗: $e';
+      });
+    }
+  }
+
   Future<void> _runAnalysis() async {
     // 先關閉 SnackBar (如果有的話)
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -192,21 +280,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
-    // 驗證分析條件
-    final hasImages = _selectedImages.isNotEmpty;
-    final hasMessages = conversation.messages.isNotEmpty;
-
-    // 沒有截圖也沒有訊息 → 不行
-    if (!hasImages && !hasMessages) {
+    // 驗證分析條件：必須有訊息
+    if (conversation.messages.isEmpty) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '請上傳截圖或輸入對話內容';
+        _errorMessage = '請先輸入對話內容或上傳截圖';
       });
       return;
     }
 
-    // 沒有截圖，但有訊息，最後一則必須是「她」的
-    if (!hasImages && hasMessages && conversation.messages.last.isFromMe) {
+    // 最後一則必須是「她」的訊息
+    if (conversation.messages.last.isFromMe) {
       setState(() {
         _isAnalyzing = false;
         _errorMessage = '請先輸入對方的回覆，才能給你建議';
@@ -215,11 +299,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     try {
-      // 呼叫真正的 Supabase Edge Function
+      // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
         conversation.messages,
-        images: _selectedImages.isNotEmpty ? _selectedImages : null,
         sessionContext: conversation.sessionContext,
       );
 
@@ -242,43 +325,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _feedbackSubmitted = false; // 重置反饋狀態
         _showFeedbackForm = false;
         _feedbackCategory = null;
-        // 截圖識別結果
-        _recognizedConversation = result.recognizedConversation;
-        // 清除已上傳的截圖
-        _selectedImages = [];
       });
-
-      // 把截圖識別出的訊息存入對話
-      if (result.recognizedConversation != null &&
-          result.recognizedConversation!.messages != null &&
-          result.recognizedConversation!.messages!.isNotEmpty) {
-        try {
-          final repository = ref.read(conversationRepositoryProvider);
-          final conv = repository.getConversation(widget.conversationId);
-          if (conv != null) {
-            // 把 RecognizedMessage 轉成 Message 並加入對話
-            final baseTimestamp = DateTime.now().subtract(
-              Duration(minutes: result.recognizedConversation!.messages!.length),
-            );
-            for (var i = 0; i < result.recognizedConversation!.messages!.length; i++) {
-              final rm = result.recognizedConversation!.messages![i];
-              final newMessage = Message(
-                id: '${DateTime.now().millisecondsSinceEpoch}_$i',
-                content: rm.content,
-                isFromMe: rm.isFromMe,
-                timestamp: baseTimestamp.add(Duration(minutes: i)),
-              );
-              conv.messages.add(newMessage);
-            }
-            await repository.updateConversation(conv);
-            ref.invalidate(conversationsProvider);
-            ref.invalidate(conversationProvider(widget.conversationId));
-          }
-        } catch (e) {
-          // 儲存失敗不影響分析結果顯示
-          debugPrint('Failed to save recognized messages: $e');
-        }
-      }
 
       // Update conversation with score
       try {
@@ -940,14 +987,38 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     ),
                     const SizedBox(height: 16),
 
+                    // 如果有截圖，顯示「識別並加入對話」按鈕
+                    if (_selectedImages.isNotEmpty) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isRecognizing ? null : _recognizeAndAddToConversation,
+                          icon: _isRecognizing
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.add_photo_alternate),
+                          label: Text(_isRecognizing
+                              ? '識別中...'
+                              : '識別並加入對話 (${_selectedImages.length}張)'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // 開始分析按鈕（分析已存入的對話內容）
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: _runAnalysis,
+                        onPressed: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
                         icon: const Icon(Icons.auto_awesome),
-                        label: Text(_selectedImages.isNotEmpty
-                            ? '分析截圖 (${_selectedImages.length}張)'
-                            : '開始分析'),
+                        label: const Text('開始分析'),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
