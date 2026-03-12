@@ -9,7 +9,7 @@
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-12
+📌 最後更新：2026-03-12 (訂閱付款規劃完成)
 ```
 
 ### 🎯 當前開發進度
@@ -71,21 +71,32 @@
 - **2026-03-12**: 截圖識別 UX 優化 (識別與分析分離、自動抓名字、確認對話框)
 - **2026-03-12**: 純識別模式 + 分析後繼續對話 + 對話長度提示
 - **2026-03-12**: 截圖 UX 完善（流程優化、確認預覽、繁體中文識別）
+- **2026-03-12**: 訂閱付款功能規劃完成 (Phase 1 設計 + 11 任務實作計畫)
+
+#### 📝 規劃完成待實作
+| 功能 | 設計文件 | 實作計畫 | 狀態 |
+|------|---------|---------|------|
+| **訂閱付款 Phase 1** | `docs/superpowers/specs/2026-03-12-subscription-payment-design.md` | `docs/superpowers/plans/2026-03-12-subscription-payment-impl.md` | 待實作 (11 任務) |
+
+**Phase 1 範圍：** RevenueCat + iOS 月訂閱 (Starter/Essential)
+**需先完成：** RevenueCat 帳號註冊、App Store Connect 產品設定
 
 #### ⏸️ 暫停中
-- [ ] Admin Dashboard (排在實作計畫後段)
+- [ ] Admin Dashboard (排在 Phase 4)
 
 #### ⚠️ 上線前待決定
 - [ ] **截圖功能計費方案** - 選項：A) 1截圖=N訊息 B) 獨立額度 C) 僅付費可用
-- [ ] **定價最終 Review** - 根據所有功能成本重新審視定價
+- [ ] **定價最終 Review** - 根據所有功能成本重新審視定價（可能改 Weekly）
 - [ ] **Free 用戶模型選擇** - Haiku 或 Sonnet
+- [ ] **試用期天數** - 7天 / 3天 / 無
 
 #### 📋 下一步（重要）
-1. **🔴 訂閱付款功能** - RevenueCat 整合、iOS/Android IAP
-2. **🔴 登入/設定頁完善** - 帳號管理、訂閱狀態、付款入口
-3. 測試截圖上傳功能
-4. AI 回覆品質優化
-5. Admin Dashboard (後續)
+1. **🔴 訂閱付款功能 Phase 1** - RevenueCat 帳號設定 → App Store 產品 → SDK 串接 → Webhook
+2. 測試截圖上傳功能
+3. AI 回覆品質優化
+4. Phase 2: 年訂閱 + Booster
+5. Phase 3: 試用期
+6. Phase 4: Admin Dashboard
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
@@ -133,6 +144,8 @@
 | **UI 重構實作計畫 (15 任務)** | `docs/plans/2026-03-10-ui-redesign-impl.md` |
 | **截圖上傳設計規格** | `docs/plans/2026-03-12-screenshot-upload-design.md` |
 | **截圖上傳實作計畫 (12 任務)** | `docs/plans/2026-03-12-screenshot-upload-impl.md` |
+| **訂閱付款設計規格** | `docs/superpowers/specs/2026-03-12-subscription-payment-design.md` |
+| **訂閱付款實作計畫 (11 任務)** | `docs/superpowers/plans/2026-03-12-subscription-payment-impl.md` |
 | **實作前檢查清單** | `docs/PRE-IMPLEMENTATION-CHECKLIST.md` |
 | **定價方案** | `docs/pricing-final.md` |
 | **法規文件** | `docs/legal/*.md` |
