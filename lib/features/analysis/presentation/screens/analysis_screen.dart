@@ -192,17 +192,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
-    // 驗證：最後一則必須是「她」的訊息
-    if (conversation.messages.isEmpty) {
+    // 驗證分析條件
+    final hasImages = _selectedImages.isNotEmpty;
+    final hasMessages = conversation.messages.isNotEmpty;
+
+    // 沒有截圖也沒有訊息 → 不行
+    if (!hasImages && !hasMessages) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '請先輸入對話內容';
+        _errorMessage = '請上傳截圖或輸入對話內容';
       });
       return;
     }
 
-    // 如果有截圖，允許空訊息列表；否則最後一則必須是「她」的訊息
-    if (_selectedImages.isEmpty && conversation.messages.last.isFromMe) {
+    // 沒有截圖，但有訊息，最後一則必須是「她」的
+    if (!hasImages && hasMessages && conversation.messages.last.isFromMe) {
       setState(() {
         _isAnalyzing = false;
         _errorMessage = '請先輸入對方的回覆，才能給你建議';
