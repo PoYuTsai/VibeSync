@@ -1512,32 +1512,62 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   type: ReplyType.coldRead,
                   content: _replies!['coldRead']!,
                 ),
-              // 如果只有 extend，顯示升級提示
+              // 如果只有 extend，根據用戶 tier 顯示不同提示
               if (_replies!.length == 1 && _replies!.containsKey('extend')) ...[
                 const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: () => _showPaywall(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.lock_outline, color: AppColors.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '升級解鎖共鳴、調情、幽默、冷讀等回覆風格',
-                            style: AppTypography.bodyMedium.copyWith(color: AppColors.primary),
+                Builder(
+                  builder: (context) {
+                    final subscription = ref.read(subscriptionProvider);
+                    // Free 用戶：顯示升級提示
+                    if (subscription.isFreeUser) {
+                      return GestureDetector(
+                        onTap: () => _showPaywall(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.lock_outline, color: AppColors.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '升級解鎖共鳴、調情、幽默、冷讀等回覆風格',
+                                  style: AppTypography.bodyMedium.copyWith(color: AppColors.primary),
+                                ),
+                              ),
+                              const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.primary),
+                            ],
                           ),
                         ),
-                        const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.primary),
-                      ],
-                    ),
-                  ),
+                      );
+                    }
+                    // 付費用戶：AI 判斷此情境最適合延展
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.onBackgroundSecondary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.lightbulb_outline, color: AppColors.onBackgroundSecondary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'AI 判斷此情境最適合使用延展回覆',
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.onBackgroundSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ],
             ],
