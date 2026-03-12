@@ -747,7 +747,9 @@ ${recentText}`;
           });
 
     // Get available features for this tier
-    const allowedFeatures = TIER_FEATURES[sub.tier] || TIER_FEATURES.free;
+    // 測試帳號強制使用 essential tier 功能
+    const effectiveTier = isTestAccount ? "essential" : sub.tier;
+    const allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
 
     // 檢查「我說」模式權限（只限 Essential）
     const isMyMessageMode = analyzeMode === "my_message";
