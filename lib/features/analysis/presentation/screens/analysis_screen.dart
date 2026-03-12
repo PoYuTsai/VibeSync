@@ -1169,10 +1169,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: _runAnalysis,
-                      child: const Text('重試'),
-                    ),
+                    // 如果是「沒有內容」錯誤，顯示引導而非重試
+                    if (_errorMessage!.contains('請先輸入對話內容')) ...[
+                      Text(
+                        '請在下方輸入對話，或上傳截圖後點「識別並加入對話」',
+                        style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: () => setState(() => _errorMessage = null),
+                        child: const Text('知道了'),
+                      ),
+                    ] else ...[
+                      ElevatedButton(
+                        onPressed: _runAnalysis,
+                        child: const Text('重試'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1250,21 +1264,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      // 提示：有截圖時要先識別
+                      Text(
+                        '請先點擊上方按鈕識別截圖，再進行分析',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.warning,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: 12),
-                    ],
-
-                    // 開始分析按鈕（分析已存入的對話內容）
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
-                        icon: const Icon(Icons.auto_awesome),
-                        label: const Text('開始分析'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                    ] else ...[
+                      // 沒有截圖時才顯示「開始分析」按鈕
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
+                          icon: const Icon(Icons.auto_awesome),
+                          label: const Text('開始分析'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
