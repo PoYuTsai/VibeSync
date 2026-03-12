@@ -359,9 +359,11 @@ class AnalysisResult {
 
     // Determine if should give up (cold enthusiasm + specific signals)
     final enthusiasmLevel = enthusiasm?['level'] as String?;
-    final warnings = (json['warnings'] as List?)?.cast<String>() ?? [];
+    // warnings 可能是 String 或 Object 陣列，安全處理
+    final rawWarnings = json['warnings'] as List? ?? [];
+    final warnings = rawWarnings.map((w) => w is String ? w : w.toString()).toList();
     final shouldGiveUp = enthusiasmLevel == 'cold' &&
-        (warnings.contains('建議放棄') || warnings.contains('開新對話'));
+        (warnings.any((w) => w.contains('建議放棄') || w.contains('開新對話')));
 
     // Parse optimizedMessage if present (when user provided draft)
     OptimizedMessage? optimizedMessage;
