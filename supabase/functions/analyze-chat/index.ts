@@ -46,6 +46,42 @@ const TIER_FEATURES: Record<string, string[]> = {
   ],
 };
 
+// 截圖上傳相關類型
+interface ImageData {
+  data: string; // base64 encoded
+  mediaType: string; // e.g., "image/jpeg"
+  order: number; // 1, 2, 3...
+}
+
+// 建構 Vision API 內容格式
+function buildVisionContent(
+  textContent: string,
+  images: ImageData[]
+): Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> {
+  const content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
+
+  // 先加入圖片（按 order 排序）
+  const sortedImages = [...images].sort((a, b) => a.order - b.order);
+  for (const img of sortedImages) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: img.mediaType,
+        data: img.data,
+      },
+    });
+  }
+
+  // 最後加入文字內容
+  content.push({
+    type: "text",
+    text: textContent,
+  });
+
+  return content;
+}
+
 const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提升對話技巧，最終目標是幫助用戶成功邀約。
 
 ## AI 核心人設
@@ -603,10 +639,30 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { messages, sessionContext, userDraft, forceModel, analyzeMode } = await req.json();
+    const { messages, images, sessionContext, userDraft, forceModel, analyzeMode } = await req.json();
     // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
+    // images: optional array of ImageData for screenshot analysis
     if (!messages || !Array.isArray(messages)) {
       return jsonResponse({ error: "Invalid messages" }, 400);
+    }
+
+    // Validate images if provided
+    const hasImages = images && Array.isArray(images) && images.length > 0;
+    if (hasImages) {
+      if (images.length > 3) {
+        return jsonResponse({ error: "最多上傳 3 張截圖" }, 400);
+      }
+      // Validate each image
+      for (const img of images) {
+        if (!img.data || !img.mediaType || typeof img.order !== "number") {
+          return jsonResponse({ error: "圖片格式錯誤" }, 400);
+        }
+        // Check base64 size (rough estimate: ~1.33x of actual bytes)
+        const estimatedBytes = (img.data.length * 3) / 4;
+        if (estimatedBytes > 600 * 1024) { // 600KB limit per image
+          return jsonResponse({ error: "圖片太大，請壓縮後重試" }, 400);
+        }
+      }
     }
 
     // Check input for safety (AI 護欄)
@@ -676,16 +732,19 @@ ${recentText}`;
     }
 
     // Select model based on complexity (or force for testing)
+    // 有圖片時強制使用 Sonnet (Vision 功能需要)
     const VALID_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-20250514"];
-    const model = (forceModel && VALID_MODELS.includes(forceModel))
-      ? forceModel
-      : selectModel({
-          conversationLength: messages.length,
-          enthusiasmLevel: null, // 首次分析前不知道
-          hasComplexEmotions: false,
-          isFirstAnalysis: messages.length <= 5,
-          tier: sub.tier,
-        });
+    const model = hasImages
+      ? "claude-sonnet-4-20250514" // Vision 強制 Sonnet
+      : (forceModel && VALID_MODELS.includes(forceModel))
+        ? forceModel
+        : selectModel({
+            conversationLength: messages.length,
+            enthusiasmLevel: null, // 首次分析前不知道
+            hasComplexEmotions: false,
+            isFirstAnalysis: messages.length <= 5,
+            tier: sub.tier,
+          });
 
     // Get available features for this tier
     const allowedFeatures = TIER_FEATURES[sub.tier] || TIER_FEATURES.free;
@@ -708,13 +767,53 @@ ${recentText}`;
       ? `${contextInfo}\n\n## 對話紀錄\n${conversationText}\n\n請根據用戶剛發送的最後一則訊息，提供話題延續建議。`
       : `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`;
 
+    // 如果有截圖，加入截圖識別指示
+    if (hasImages) {
+      const imageCount = images.length;
+      userPrompt = `## 截圖分析任務
+
+你收到了 ${imageCount} 張聊天截圖，請先識別截圖中的對話內容，然後進行分析。
+
+### 截圖識別規則：
+1. 識別每張截圖中的訊息，判斷是「我」還是「她」發送的
+2. 按照截圖順序（1, 2, 3...）和訊息時間順序整理
+3. 如果截圖有重疊的訊息，請去重
+4. 忽略系統訊息、時間戳記、未讀標記等非對話內容
+
+### 輸出格式（在原本的 JSON 中增加）：
+{
+  "recognizedConversation": {
+    "messageCount": 10,
+    "summary": "識別到 10 則訊息（我: 4, 她: 6）",
+    "messages": [
+      { "isFromMe": true, "content": "訊息內容" },
+      { "isFromMe": false, "content": "訊息內容" }
+    ]
+  },
+  // ...其他原有欄位
+}
+
+${contextInfo}
+
+${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conversationText}\n\n` : ""}請識別截圖中的對話，並提供分析建議。`;
+    }
+
     // 如果有用戶草稿，加入優化請求（只在 normal 模式）
     if (!isMyMessageMode && userDraft && typeof userDraft === "string" && userDraft.trim()) {
       userPrompt += `\n\n## 用戶想說的內容（請優化）\n「${userDraft.trim()}」\n請在 optimizedMessage 欄位提供優化版本。`;
     }
 
-    // 「我說」模式用 Haiku 省成本
-    const selectedModel = isMyMessageMode ? "claude-haiku-4-5-20251001" : model;
+    // 「我說」模式用 Haiku 省成本（但有圖片時強制 Sonnet）
+    const selectedModel = hasImages
+      ? "claude-sonnet-4-20250514"
+      : isMyMessageMode
+        ? "claude-haiku-4-5-20251001"
+        : model;
+
+    // 建構 user message content（純文字或 Vision 格式）
+    const userMessageContent = hasImages
+      ? buildVisionContent(userPrompt, images as ImageData[])
+      : userPrompt;
 
     const startTime = Date.now();
     let claudeResult;
@@ -722,12 +821,12 @@ ${recentText}`;
       claudeResult = await callClaudeWithFallback(
         {
           model: selectedModel,
-          max_tokens: isMyMessageMode ? 512 : 1024, // 「我說」模式輸出較短
+          max_tokens: hasImages ? 2048 : (isMyMessageMode ? 512 : 1024), // 截圖分析需要更多 tokens
           system: systemPrompt,
           messages: [
             {
               role: "user",
-              content: userPrompt,
+              content: userMessageContent,
             },
           ],
         },
@@ -792,6 +891,26 @@ ${recentText}`;
       };
     }
 
+    // 檢查截圖識別是否失敗
+    if (hasImages && (!result.recognizedConversation || result.recognizedConversation.messageCount === 0)) {
+      // Log failed recognition
+      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        userId: user.id,
+        model: actualModel,
+        inputTokens: tokenUsage.inputTokens,
+        outputTokens: tokenUsage.outputTokens,
+        latencyMs,
+        status: "recognition_failed",
+      });
+
+      return jsonResponse({
+        error: "無法識別截圖中的對話內容",
+        code: "RECOGNITION_FAILED",
+        message: "請確保截圖清晰且為聊天畫面，支援 LINE、iMessage、WhatsApp 等常見通訊軟體",
+        shouldChargeQuota: false,
+      }, 400);
+    }
+
     // Check AI output for safety (AI 護欄)
     const originalResult = { ...result };
     result = checkAiOutput(result);
@@ -853,6 +972,7 @@ ${recentText}`;
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
+      imagesUsed: hasImages ? images.length : 0,
       isTestAccount, // 標記是否為測試帳號
     };
 
