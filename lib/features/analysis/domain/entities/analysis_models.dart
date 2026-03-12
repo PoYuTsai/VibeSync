@@ -260,11 +260,13 @@ class RecognizedMessage {
 
 /// 截圖識別結果
 class RecognizedConversation {
+  final String? contactName; // 從截圖標題識別的對方名字
   final int messageCount;
   final String summary;
   final List<RecognizedMessage>? messages;
 
   const RecognizedConversation({
+    this.contactName,
     required this.messageCount,
     required this.summary,
     this.messages,
@@ -275,6 +277,7 @@ class RecognizedConversation {
       return const RecognizedConversation(messageCount: 0, summary: '');
     }
     return RecognizedConversation(
+      contactName: json['contactName'] as String?,
       messageCount: json['messageCount'] as int? ?? 0,
       summary: json['summary'] as String? ?? '',
       messages: json['messages'] != null

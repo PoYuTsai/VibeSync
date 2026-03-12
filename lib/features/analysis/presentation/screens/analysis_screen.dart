@@ -15,6 +15,7 @@ import '../../../../shared/widgets/reply_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
+import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../data/services/analysis_service.dart';
 import '../../domain/entities/analysis_models.dart';
@@ -175,6 +176,147 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
+  /// 顯示識別確認對話框，讓用戶設定對方名字和情境
+  Future<Map<String, dynamic>?> _showRecognitionConfirmDialog({
+    required String? recognizedName,
+    required int messageCount,
+    required Conversation currentConversation,
+  }) async {
+    final nameController = TextEditingController(text: recognizedName ?? '');
+    MeetingContext? selectedMeeting = currentConversation.sessionContext?.meetingContext;
+    AcquaintanceDuration? selectedDuration = currentConversation.sessionContext?.duration;
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.glassWhite,
+          title: Text(
+            '識別成功',
+            style: TextStyle(color: AppColors.glassTextPrimary),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '識別到 $messageCount 則訊息',
+                  style: TextStyle(color: AppColors.glassTextPrimary),
+                ),
+                const SizedBox(height: 16),
+                // 對方名字
+                Text(
+                  '對方名字',
+                  style: TextStyle(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    hintText: '輸入對方名字',
+                    hintStyle: TextStyle(color: AppColors.unselectedText),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.5),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  style: TextStyle(color: AppColors.glassTextPrimary),
+                ),
+                const SizedBox(height: 16),
+                // 認識場景（如果尚未設定）
+                if (currentConversation.sessionContext == null) ...[
+                  Text(
+                    '認識場景（選填）',
+                    style: TextStyle(
+                      color: AppColors.glassTextPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: MeetingContext.values.map((m) {
+                      final isSelected = selectedMeeting == m;
+                      return ChoiceChip(
+                        label: Text(m.label),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setDialogState(() {
+                            selectedMeeting = selected ? m : null;
+                          });
+                        },
+                        selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                        labelStyle: TextStyle(
+                          color: isSelected ? AppColors.primary : AppColors.glassTextPrimary,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '認識多久（選填）',
+                    style: TextStyle(
+                      color: AppColors.glassTextPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: AcquaintanceDuration.values.map((d) {
+                      final isSelected = selectedDuration == d;
+                      return ChoiceChip(
+                        label: Text(d.label),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setDialogState(() {
+                            selectedDuration = selected ? d : null;
+                          });
+                        },
+                        selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                        labelStyle: TextStyle(
+                          color: isSelected ? AppColors.primary : AppColors.glassTextPrimary,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(ctx).pop({
+                  'name': nameController.text.trim(),
+                  'meetingContext': selectedMeeting,
+                  'duration': selectedDuration,
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+              ),
+              child: const Text('確認加入'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 識別截圖並加入對話（不進行完整分析）
   Future<void> _recognizeAndAddToConversation() async {
     if (_selectedImages.isEmpty) return;
@@ -208,9 +350,45 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       if (result.recognizedConversation != null &&
           result.recognizedConversation!.messages != null &&
           result.recognizedConversation!.messages!.isNotEmpty) {
+
+        setState(() => _isRecognizing = false);
+
+        // 顯示確認對話框
+        if (!mounted) return;
+        final dialogResult = await _showRecognitionConfirmDialog(
+          recognizedName: result.recognizedConversation!.contactName,
+          messageCount: result.recognizedConversation!.messages!.length,
+          currentConversation: conversation,
+        );
+
+        // 用戶取消
+        if (dialogResult == null) {
+          setState(() => _selectedImages = []);
+          return;
+        }
+
         final repository = ref.read(conversationRepositoryProvider);
         final conv = repository.getConversation(widget.conversationId);
         if (conv != null) {
+          // 更新對話名稱（如果用戶有輸入）
+          final newName = dialogResult['name'] as String?;
+          if (newName != null && newName.isNotEmpty && conv.name == '新對話') {
+            conv.name = newName;
+          }
+
+          // 更新情境設定（如果用戶有選擇且尚未設定）
+          if (conv.sessionContext == null) {
+            final meeting = dialogResult['meetingContext'] as MeetingContext?;
+            final duration = dialogResult['duration'] as AcquaintanceDuration?;
+            if (meeting != null && duration != null) {
+              conv.sessionContext = SessionContext(
+                meetingContext: meeting,
+                duration: duration,
+              );
+            }
+          }
+
+          // 加入識別的訊息
           final baseTimestamp = DateTime.now();
           for (var i = 0; i < result.recognizedConversation!.messages!.length; i++) {
             final rm = result.recognizedConversation!.messages![i];
@@ -226,10 +404,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           ref.invalidate(conversationsProvider);
           ref.invalidate(conversationProvider(widget.conversationId));
 
-          setState(() {
-            _isRecognizing = false;
-            _selectedImages = []; // 清空截圖
-          });
+          setState(() => _selectedImages = []);
 
           // 顯示成功訊息
           if (mounted) {
