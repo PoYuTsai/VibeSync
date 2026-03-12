@@ -1,4 +1,5 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -75,6 +76,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   bool _showAllMessages = false;
+
+  // 截圖上傳功能
+  List<Uint8List> _selectedImages = [];
+  RecognizedConversation? _recognizedConversation;
 
   void _showPaywall(BuildContext context) {
     // TODO: Navigate to paywall screen
@@ -196,7 +201,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
-    if (conversation.messages.last.isFromMe) {
+    // 如果有截圖，允許空訊息列表；否則最後一則必須是「她」的訊息
+    if (_selectedImages.isEmpty && conversation.messages.last.isFromMe) {
       setState(() {
         _isAnalyzing = false;
         _errorMessage = '請先輸入對方的回覆，才能給你建議';
@@ -209,6 +215,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
         conversation.messages,
+        images: _selectedImages.isNotEmpty ? _selectedImages : null,
         sessionContext: conversation.sessionContext,
       );
 
@@ -231,6 +238,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _feedbackSubmitted = false; // 重置反饋狀態
         _showFeedbackForm = false;
         _feedbackCategory = null;
+        // 截圖識別結果
+        _recognizedConversation = result.recognizedConversation;
+        // 清除已上傳的截圖
+        _selectedImages = [];
       });
 
       // Update conversation with score
@@ -640,6 +651,62 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
   }
 
+  /// 截圖識別結果卡片
+  Widget _buildRecognizedConversationCard() {
+    final recognized = _recognizedConversation!;
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.photo_library, size: 20, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  recognized.summary,
+                  style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          if (recognized.messages != null && recognized.messages!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ExpansionTile(
+              title: Text(
+                '查看識別內容',
+                style: AppTypography.bodySmall.copyWith(color: AppColors.primary),
+              ),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 8),
+              children: recognized.messages!.map((m) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      m.isFromMe ? Icons.person : Icons.person_outline,
+                      size: 16,
+                      color: m.isFromMe ? AppColors.avatarMeStart : AppColors.avatarHerStart,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        m.content,
+                        style: AppTypography.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              )).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildFeedbackCategoryChip(String value, String label) {
     final isSelected = _feedbackCategory == value;
     return ChoiceChip(
@@ -818,12 +885,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),
+
+                    // 截圖上傳區
+                    ImagePickerWidget(
+                      maxImages: 3,
+                      onImagesChanged: (images) {
+                        setState(() {
+                          _selectedImages = images;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: _runAnalysis,
                         icon: const Icon(Icons.auto_awesome),
-                        label: const Text('開始分析'),
+                        label: Text(_selectedImages.isNotEmpty
+                            ? '分析截圖 (${_selectedImages.length}張)'
+                            : '開始分析'),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -833,6 +914,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+            ],
+
+            // 截圖識別結果
+            if (_recognizedConversation != null && _recognizedConversation!.messageCount > 0) ...[
+              _buildRecognizedConversationCard(),
+              const SizedBox(height: 16),
             ],
 
             // Enthusiasm Gauge
