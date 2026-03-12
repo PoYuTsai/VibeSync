@@ -639,9 +639,10 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { messages, images, sessionContext, userDraft, forceModel, analyzeMode } = await req.json();
+    const { messages, images, sessionContext, userDraft, forceModel, analyzeMode, recognizeOnly } = await req.json();
     // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
     // images: optional array of ImageData for screenshot analysis
+    // recognizeOnly: boolean - 只識別截圖，不做完整分析（節省時間和 tokens）
     if (!messages || !Array.isArray(messages)) {
       return jsonResponse({ error: "Invalid messages" }, 400);
     }
@@ -762,7 +763,12 @@ ${recentText}`;
     }
 
     // 選擇 System Prompt
-    const systemPrompt = isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT;
+    // 純識別模式用極簡 prompt，節省 tokens
+    const RECOGNIZE_ONLY_PROMPT = `你是一個聊天截圖識別助手。你的任務是準確識別聊天截圖中的對話內容，區分「我」和「她」的訊息，並按時間順序整理。`;
+
+    const systemPrompt = recognizeOnly
+      ? RECOGNIZE_ONLY_PROMPT
+      : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT);
 
     // 組合用戶訊息
     let userPrompt = isMyMessageMode
@@ -772,7 +778,39 @@ ${recentText}`;
     // 如果有截圖，加入截圖識別指示
     if (hasImages) {
       const imageCount = images.length;
-      userPrompt = `## 截圖分析任務
+
+      // 純識別模式：只識別，不分析
+      if (recognizeOnly) {
+        userPrompt = `## 截圖識別任務（純識別模式）
+
+你收到了 ${imageCount} 張聊天截圖，請識別截圖中的對話內容。
+
+### 識別規則：
+1. 識別每張截圖中的訊息，判斷是「我」還是「她」發送的
+2. 按照截圖順序（1, 2, 3...）和訊息時間順序整理
+3. 如果截圖有重疊的訊息，請去重
+4. 忽略系統訊息、時間戳記、未讀標記等非對話內容
+5. 從聊天視窗標題/頂部抓取對方的名字
+
+### 輸出格式（只需要這個 JSON）：
+{
+  "recognizedConversation": {
+    "contactName": "小美",
+    "messageCount": 10,
+    "summary": "識別到 10 則訊息（我: 4, 她: 6）",
+    "messages": [
+      { "isFromMe": true, "content": "訊息內容" },
+      { "isFromMe": false, "content": "訊息內容" }
+    ]
+  }
+}
+
+注意：
+- contactName 是從聊天視窗標題識別的對方名字，無法識別則設為 null
+- 不需要提供其他分析欄位，只需要 recognizedConversation`;
+      } else {
+        // 完整分析模式：識別 + 分析
+        userPrompt = `## 截圖分析任務
 
 你收到了 ${imageCount} 張聊天截圖，請先識別截圖中的對話內容，然後進行分析。
 
@@ -802,6 +840,7 @@ ${recentText}`;
 ${contextInfo}
 
 ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conversationText}\n\n` : ""}請識別截圖中的對話，並提供分析建議。`;
+      }
     }
 
     // 如果有用戶草稿，加入優化請求（只在 normal 模式）
@@ -953,8 +992,8 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     // Calculate message count
     const messageCount = countMessages(messages);
 
-    // Update usage count (測試帳號不扣額度)
-    if (!isTestAccount) {
+    // Update usage count (測試帳號、純識別模式不扣額度)
+    if (!isTestAccount && !recognizeOnly) {
       await supabase
         .from("subscriptions")
         .update({

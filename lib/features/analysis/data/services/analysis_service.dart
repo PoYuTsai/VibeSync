@@ -41,6 +41,7 @@ class AnalysisService {
     SessionContext? sessionContext,
     String? userDraft,
     String? analyzeMode, // "normal" | "my_message"
+    bool recognizeOnly = false, // 純識別模式：只識別截圖，不做完整分析
   }) async {
     if (messages.isEmpty) {
       throw AnalysisException('Messages cannot be empty');
@@ -58,6 +59,7 @@ class AnalysisService {
           sessionContext: sessionContext,
           userDraft: userDraft,
           analyzeMode: analyzeMode,
+          recognizeOnly: recognizeOnly,
         );
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
@@ -83,6 +85,7 @@ class AnalysisService {
     SessionContext? sessionContext,
     String? userDraft,
     String? analyzeMode,
+    bool recognizeOnly = false,
   }) async {
     try {
       // 處理圖片轉換為 base64
@@ -96,6 +99,12 @@ class AnalysisService {
           ).toJson();
         }).toList();
       }
+
+      // 有圖片時使用較長的 timeout（120 秒），否則 60 秒
+      final hasImages = imageDataList != null && imageDataList.isNotEmpty;
+      final timeout = hasImages
+          ? const Duration(seconds: 120)
+          : const Duration(seconds: 60);
 
       final response = await SupabaseService.invokeFunction(
         'analyze-chat',
@@ -117,7 +126,10 @@ class AnalysisService {
             'userDraft': userDraft.trim(),
           if (analyzeMode != null)
             'analyzeMode': analyzeMode,
+          if (recognizeOnly)
+            'recognizeOnly': true,
         },
+        timeout: timeout,
       );
 
       if (response.status != 200) {

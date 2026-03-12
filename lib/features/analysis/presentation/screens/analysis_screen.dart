@@ -84,6 +84,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   bool _isRecognizing = false;
   List<String> _lastAddedMessageIds = []; // 用於撤銷功能
 
+  // 分析後繼續對話展開狀態
+  bool _showContinueConversation = false;
+
   void _showPaywall(BuildContext context) {
     // TODO: Navigate to paywall screen
     context.push('/paywall');
@@ -337,7 +340,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     try {
-      // 呼叫 API 識別截圖（用最少的訊息，主要是識別）
+      // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
         conversation.messages.isEmpty
@@ -345,6 +348,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             : conversation.messages,
         images: _selectedImages,
         sessionContext: conversation.sessionContext,
+        recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
       );
 
       // 把識別結果存入對話
@@ -1212,7 +1216,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                         });
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+
+                    // 對話長度提示
+                    Text(
+                      '建議每張截圖小於 15 則訊息，過長可能導致識別超時',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.unselectedText,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
 
                     // 如果有截圖，顯示「識別並加入對話」按鈕
                     if (_selectedImages.isNotEmpty) ...[
@@ -1980,8 +1994,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ),
           ),
-        // 對話延續輸入區
-        _buildMessageInput(),
+        // 對話延續輸入區（有分析結果時可收合）
+        _buildCollapsibleMessageInput(),
               ],
             ),
           ),
@@ -2128,6 +2142,85 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             )),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// 建立可收合的訊息輸入區（有分析結果時預設收合）
+  Widget _buildCollapsibleMessageInput() {
+    // 沒有分析結果時，直接顯示輸入區
+    if (_enthusiasmScore == null) {
+      return _buildMessageInput();
+    }
+
+    // 有分析結果時，顯示可展開的「繼續對話」區塊
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 收合時顯示「繼續對話」按鈕
+          if (!_showContinueConversation)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.glassWhite,
+                border: Border(
+                  top: BorderSide(color: AppColors.glassBorder),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => setState(() => _showContinueConversation = true),
+                    icon: const Icon(Icons.add_comment_outlined),
+                    label: const Text('繼續對話'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.5)),
+                      foregroundColor: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            // 展開時顯示完整輸入區
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 收合按鈕
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.glassWhite,
+                    border: Border(
+                      top: BorderSide(color: AppColors.glassBorder),
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: () => setState(() => _showContinueConversation = false),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.keyboard_arrow_down, color: AppColors.unselectedText, size: 20),
+                          const SizedBox(width: 4),
+                          Text(
+                            '收合',
+                            style: AppTypography.bodySmall.copyWith(color: AppColors.unselectedText),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                _buildMessageInput(),
+              ],
+            ),
         ],
       ),
     );
