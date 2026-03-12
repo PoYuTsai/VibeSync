@@ -53,12 +53,12 @@ class HomeScreen extends ConsumerWidget {
                   ),
           ),
         ),
-        floatingActionButton: _buildFab(context),
+        floatingActionButton: _buildFab(context, ref),
       ),
     );
   }
 
-  Widget _buildFab(BuildContext context) {
+  Widget _buildFab(BuildContext context, WidgetRef ref) {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -74,12 +74,103 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       child: FloatingActionButton(
-        onPressed: () => context.push('/new'),
+        onPressed: () => _showNewConversationOptions(context, ref),
         backgroundColor: Colors.transparent,
         elevation: 0,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
+  }
+
+  void _showNewConversationOptions(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: AppColors.glassWhite,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '新增對話',
+              style: AppTypography.titleMedium.copyWith(
+                color: AppColors.glassTextPrimary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // 手動輸入
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.edit_note, color: AppColors.primary),
+              ),
+              title: Text(
+                '手動輸入',
+                style: TextStyle(color: AppColors.glassTextPrimary),
+              ),
+              subtitle: Text(
+                '輸入對話內容和情境設定',
+                style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/new');
+              },
+            ),
+            const SizedBox(height: 8),
+            // 截圖開始
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.ctaStart.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.photo_camera, color: AppColors.ctaStart),
+              ),
+              title: Text(
+                '截圖開始',
+                style: TextStyle(color: AppColors.glassTextPrimary),
+              ),
+              subtitle: Text(
+                '上傳聊天截圖，AI 自動識別對話',
+                style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
+              ),
+              onTap: () async {
+                Navigator.pop(context);
+                await _createConversationFromScreenshot(context, ref);
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createConversationFromScreenshot(BuildContext context, WidgetRef ref) async {
+    final repository = ref.read(conversationRepositoryProvider);
+
+    // 創建一個新對話（名稱稍後由用戶設定或從截圖識別）
+    final conversation = await repository.createConversation(
+      name: '新對話',
+      messages: [],
+    );
+
+    ref.invalidate(conversationsProvider);
+
+    if (context.mounted) {
+      // 導航到分析頁面，用戶可以上傳截圖
+      context.push('/conversation/${conversation.id}');
+    }
   }
 
   Future<void> _showDeleteDialog(
@@ -143,7 +234,7 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '點擊右下角 + 開始新增',
+            '點擊右下角 + 手動輸入或上傳截圖',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),

@@ -248,6 +248,38 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _selectedImages = [];
       });
 
+      // 把截圖識別出的訊息存入對話
+      if (result.recognizedConversation != null &&
+          result.recognizedConversation!.messages != null &&
+          result.recognizedConversation!.messages!.isNotEmpty) {
+        try {
+          final repository = ref.read(conversationRepositoryProvider);
+          final conv = repository.getConversation(widget.conversationId);
+          if (conv != null) {
+            // 把 RecognizedMessage 轉成 Message 並加入對話
+            final baseTimestamp = DateTime.now().subtract(
+              Duration(minutes: result.recognizedConversation!.messages!.length),
+            );
+            for (var i = 0; i < result.recognizedConversation!.messages!.length; i++) {
+              final rm = result.recognizedConversation!.messages![i];
+              final newMessage = Message(
+                id: '${DateTime.now().millisecondsSinceEpoch}_$i',
+                content: rm.content,
+                isFromMe: rm.isFromMe,
+                timestamp: baseTimestamp.add(Duration(minutes: i)),
+              );
+              conv.messages.add(newMessage);
+            }
+            await repository.updateConversation(conv);
+            ref.invalidate(conversationsProvider);
+            ref.invalidate(conversationProvider(widget.conversationId));
+          }
+        } catch (e) {
+          // 儲存失敗不影響分析結果顯示
+          debugPrint('Failed to save recognized messages: $e');
+        }
+      }
+
       // Update conversation with score
       try {
         final repository = ref.read(conversationRepositoryProvider);
