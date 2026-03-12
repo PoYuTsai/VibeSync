@@ -670,7 +670,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               Expanded(
                 child: Text(
                   recognized.summary,
-                  style: AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                  style: AppTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.glassTextPrimary,
+                  ),
                 ),
               ),
             ],
@@ -682,6 +685,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 '查看識別內容',
                 style: AppTypography.bodySmall.copyWith(color: AppColors.primary),
               ),
+              iconColor: AppColors.glassTextPrimary,
+              collapsedIconColor: AppColors.glassTextPrimary,
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(top: 8),
               children: recognized.messages!.map((m) => Padding(
@@ -698,7 +703,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     Expanded(
                       child: Text(
                         m.content,
-                        style: AppTypography.bodySmall,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.glassTextPrimary,
+                        ),
                       ),
                     ),
                   ],
