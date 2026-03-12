@@ -183,11 +183,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<Map<String, dynamic>?> _showRecognitionConfirmDialog({
     required String? recognizedName,
     required int messageCount,
+    required List<RecognizedMessage> messages,
     required Conversation currentConversation,
   }) async {
     final nameController = TextEditingController(text: recognizedName ?? '');
     MeetingContext? selectedMeeting = currentConversation.sessionContext?.meetingContext;
     AcquaintanceDuration? selectedDuration = currentConversation.sessionContext?.duration;
+
+    // 預覽前 5 則訊息
+    final previewMessages = messages.take(5).toList();
+    final remainingCount = messages.length - previewMessages.length;
 
     return showDialog<Map<String, dynamic>>(
       context: context,
@@ -207,6 +212,49 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 Text(
                   '識別到 $messageCount 則訊息',
                   style: TextStyle(color: AppColors.glassTextPrimary),
+                ),
+                const SizedBox(height: 12),
+                // 訊息預覽
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '📋 預覽：',
+                        style: TextStyle(
+                          color: AppColors.glassTextPrimary,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...previewMessages.map((m) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '${m.isFromMe ? "我" : "她"}：${m.content.length > 20 ? "${m.content.substring(0, 20)}..." : m.content}',
+                          style: TextStyle(
+                            color: AppColors.glassTextPrimary,
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      )),
+                      if (remainingCount > 0)
+                        Text(
+                          '...還有 $remainingCount 則',
+                          style: TextStyle(
+                            color: AppColors.unselectedText,
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 // 對方名字
@@ -362,6 +410,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         final dialogResult = await _showRecognitionConfirmDialog(
           recognizedName: result.recognizedConversation!.contactName,
           messageCount: result.recognizedConversation!.messages!.length,
+          messages: result.recognizedConversation!.messages!,
           currentConversation: conversation,
         );
 
