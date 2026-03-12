@@ -152,13 +152,14 @@ class AnalysisService {
           throw AnalysisException('伺服器回應為空');
         }
         if (data is! Map<String, dynamic>) {
-          throw AnalysisException('伺服器回應格式錯誤');
+          throw AnalysisException('伺服器回應格式錯誤: ${data.runtimeType}');
         }
         return AnalysisResult.fromJson(data);
       } on AnalysisException {
         rethrow;
       } catch (parseError) {
-        throw AnalysisException('解析回應失敗，請重試');
+        // 顯示詳細錯誤以便除錯
+        throw AnalysisException('解析失敗: $parseError');
       }
     } on AnalysisException {
       rethrow;
