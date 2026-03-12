@@ -1,20 +1,43 @@
 // lib/features/analysis/data/services/analysis_service.dart
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
 
+/// 圖片資料類別 (用於 API 傳輸)
+class ImageData {
+  final String data; // base64
+  final String mediaType;
+  final int order;
+
+  ImageData({
+    required this.data,
+    required this.mediaType,
+    required this.order,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'data': data,
+        'mediaType': mediaType,
+        'order': order,
+      };
+}
+
 /// Service for analyzing conversations via Supabase Edge Function
 class AnalysisService {
   /// Analyze a conversation and get AI suggestions
   ///
+  /// If [images] is provided, AI will use Claude Vision to recognize and analyze screenshots.
   /// If [userDraft] is provided, AI will also optimize the user's message draft.
   /// If [analyzeMode] is "my_message", AI will provide topic continuation suggestions.
   /// Throws [AnalysisException] if the analysis fails
   Future<AnalysisResult> analyzeConversation(
     List<Message> messages, {
+    List<Uint8List>? images,
     SessionContext? sessionContext,
     String? userDraft,
     String? analyzeMode, // "normal" | "my_message"
@@ -31,6 +54,7 @@ class AnalysisService {
       try {
         return await _doAnalyze(
           messages,
+          images: images,
           sessionContext: sessionContext,
           userDraft: userDraft,
           analyzeMode: analyzeMode,
@@ -55,11 +79,24 @@ class AnalysisService {
 
   Future<AnalysisResult> _doAnalyze(
     List<Message> messages, {
+    List<Uint8List>? images,
     SessionContext? sessionContext,
     String? userDraft,
     String? analyzeMode,
   }) async {
     try {
+      // 處理圖片轉換為 base64
+      List<Map<String, dynamic>>? imageDataList;
+      if (images != null && images.isNotEmpty) {
+        imageDataList = images.asMap().entries.map((entry) {
+          return ImageData(
+            data: base64Encode(entry.value),
+            mediaType: 'image/jpeg',
+            order: entry.key + 1,
+          ).toJson();
+        }).toList();
+      }
+
       final response = await SupabaseService.invokeFunction(
         'analyze-chat',
         body: {
@@ -69,6 +106,7 @@ class AnalysisService {
                     'content': m.content,
                   })
               .toList(),
+          if (imageDataList != null) 'images': imageDataList,
           if (sessionContext != null)
             'sessionContext': {
               'meetingContext': sessionContext.meetingContext.label,
