@@ -41,6 +41,7 @@
 | **UI 重構 Phase 1 微調** | ✅ 完成 | 半透明白、酒紅色 hint、移除提示框背景 |
 | **UI 重構 Phase 2** | ✅ 完成 | 首頁、登入頁、設定頁、Paywall、分析結果頁：全套 Warm Theme |
 | **UI 重構 Phase 3** | ✅ 完成 | 動態光球：18% 呼吸縮放 + 6-8 秒週期 + 多方向浮動 |
+| **截圖上傳功能** | ✅ 完成 | Claude Vision 識別對話、最多 3 張、自動壓縮 |
 
 #### 🔄 待測試驗證
 - [x] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景) ✅
@@ -50,14 +51,11 @@
 - [ ] Android Chrome 滑動體驗
 - [ ] 個人化資料對 AI 回覆品質的影響
 - [ ] 反饋機制端對端測試 (👎 → Telegram 通知)
+- [ ] **截圖上傳功能測試** - UI 上傳、Edge Function 識別、分析結果顯示
 
 #### ✅ 里程碑
 - **2026-03-11**: 前端 UI 重構完成 (Phase 1-3)，Warm Theme 全面套用
-
-#### 🚀 待實作
-- [ ] **截圖上傳功能** - 設計 ✅ 計畫 ✅ 待實作 (12 Tasks)
-  - 設計規格：`docs/plans/2026-03-12-screenshot-upload-design.md`
-  - 實作計畫：`docs/plans/2026-03-12-screenshot-upload-impl.md`
+- **2026-03-12**: 截圖上傳功能實作完成 (Flutter + Edge Function)
 
 #### ⏸️ 暫停中
 - [ ] Admin Dashboard (排在實作計畫後段)
@@ -67,11 +65,11 @@
 - [ ] **定價最終 Review** - 根據所有功能成本重新審視定價
 
 #### 📋 下一步
-1. **執行截圖上傳功能實作計畫** (12 Tasks)
+1. **測試截圖上傳功能** (UI + Edge Function)
 2. 繼續沙盒測試，收集用戶反饋
 3. AI 回覆品質優化 (根據反饋調整 System Prompt)
 4. Admin Dashboard (後續)
-5. **上線前：定價最終 Review**
+5. **上線前：定價最終 Review (含截圖功能計費)**
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`
@@ -117,6 +115,8 @@
 | **System Prompt 優化實作** | `docs/plans/2026-03-04-system-prompt-optimization-impl.md` |
 | **UI 重構設計規格** | `docs/plans/2026-03-10-ui-redesign-design.md` |
 | **UI 重構實作計畫 (15 任務)** | `docs/plans/2026-03-10-ui-redesign-impl.md` |
+| **截圖上傳設計規格** | `docs/plans/2026-03-12-screenshot-upload-design.md` |
+| **截圖上傳實作計畫 (12 任務)** | `docs/plans/2026-03-12-screenshot-upload-impl.md` |
 | **實作前檢查清單** | `docs/PRE-IMPLEMENTATION-CHECKLIST.md` |
 | **定價方案** | `docs/pricing-final.md` |
 | **法規文件** | `docs/legal/*.md` |
@@ -823,6 +823,41 @@ end
 - `lib/shared/widgets/glassmorphic_segmented_button.dart`
 - `lib/shared/widgets/glassmorphic_text_field.dart`
 - `lib/shared/widgets/warm_theme_widgets.dart` (統一匯出)
+
+#### [2026-03-12] 截圖上傳功能 - Claude Vision
+**決定**: 新增截圖上傳功能，使用 Claude Vision API 識別對話內容
+**目標**: 讓用戶可以直接上傳聊天截圖，AI 自動識別對話並分析
+
+**設計決策**:
+| 項目 | 決定 |
+|------|------|
+| 功能定位 | 補充手動輸入（非取代） |
+| 最大圖片數 | 3 張/次分析 |
+| 圖片+文字 | 一起分析（截圖為較早對話） |
+| 進入點 | 對話列表上方獨立按鈕 |
+| 上傳後 | 直接分析 |
+| 壓縮策略 | 自動壓縮（~1024px、85% quality） |
+| AI 模型 | 有圖片時強制 Sonnet |
+| 來源 | 相簿 + 剪貼簿（Web） |
+| 順序 | 上傳順序 + 提示用戶 |
+| 失敗處理 | 顯示錯誤，不扣額度 |
+| 儲存 | 用完即丟（不存檔） |
+| 傳輸方式 | Base64 直傳（方案 A） |
+
+**技術架構**:
+- 前端: ImagePickerWidget + ImageCompressService
+- 後端: Edge Function buildVisionContent + 識別指示
+- API: Claude Vision (Sonnet)
+
+**新增檔案**:
+- `lib/shared/services/image_compress_service.dart`
+- `lib/shared/widgets/image_picker_widget.dart`
+
+**相關文件**:
+- 設計: `docs/plans/2026-03-12-screenshot-upload-design.md`
+- 實作: `docs/plans/2026-03-12-screenshot-upload-impl.md`
+
+**待決定**: 計費方案（上線前決定）
 
 ## Notes
 
