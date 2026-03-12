@@ -82,6 +82,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   List<Uint8List> _selectedImages = [];
   RecognizedConversation? _recognizedConversation;
   bool _isRecognizing = false;
+  List<String> _lastAddedMessageIds = []; // 用於撤銷功能
 
   void _showPaywall(BuildContext context) {
     // TODO: Navigate to paywall screen
@@ -388,30 +389,43 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             }
           }
 
-          // 加入識別的訊息
+          // 加入識別的訊息，並記錄 ID 供撤銷用
           final baseTimestamp = DateTime.now();
+          final addedIds = <String>[];
           for (var i = 0; i < result.recognizedConversation!.messages!.length; i++) {
             final rm = result.recognizedConversation!.messages![i];
+            final messageId = '${DateTime.now().millisecondsSinceEpoch}_$i';
             final newMessage = Message(
-              id: '${DateTime.now().millisecondsSinceEpoch}_$i',
+              id: messageId,
               content: rm.content,
               isFromMe: rm.isFromMe,
               timestamp: baseTimestamp.add(Duration(milliseconds: i)),
             );
             conv.messages.add(newMessage);
+            addedIds.add(messageId);
           }
           await repository.updateConversation(conv);
           ref.invalidate(conversationsProvider);
           ref.invalidate(conversationProvider(widget.conversationId));
 
-          setState(() => _selectedImages = []);
+          setState(() {
+            _selectedImages = [];
+            _lastAddedMessageIds = addedIds;
+          });
 
-          // 顯示成功訊息
+          // 顯示成功訊息（含撤銷按鈕）
           if (mounted) {
+            final messageCount = result.recognizedConversation!.messages!.length;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('已加入 ${result.recognizedConversation!.messages!.length} 則訊息'),
+                content: Text('已加入 $messageCount 則訊息'),
                 backgroundColor: Colors.green,
+                duration: const Duration(seconds: 8),
+                action: SnackBarAction(
+                  label: '撤銷',
+                  textColor: Colors.white,
+                  onPressed: () => _undoLastAddedMessages(),
+                ),
               ),
             );
           }
@@ -434,6 +448,44 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _isRecognizing = false;
         _errorMessage = '識別失敗: $e';
       });
+    }
+  }
+
+  /// 撤銷最後一批加入的訊息
+  Future<void> _undoLastAddedMessages() async {
+    if (_lastAddedMessageIds.isEmpty) return;
+
+    try {
+      final repository = ref.read(conversationRepositoryProvider);
+      final conv = repository.getConversation(widget.conversationId);
+      if (conv != null) {
+        // 移除最後加入的訊息
+        conv.messages.removeWhere((m) => _lastAddedMessageIds.contains(m.id));
+        await repository.updateConversation(conv);
+        ref.invalidate(conversationsProvider);
+        ref.invalidate(conversationProvider(widget.conversationId));
+
+        setState(() => _lastAddedMessageIds = []);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已撤銷'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('撤銷失敗: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
