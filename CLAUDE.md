@@ -5,16 +5,16 @@
 ## Quick Start (新 Session 必讀)
 
 ```
-📌 專案狀態：MVP 沙盒測試中 + RevenueCat 整合測試中
+📌 專案狀態：MVP 沙盒測試中
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-14 (RevenueCat 設定完成，等待測試購買)
+📌 最後更新：2026-03-14 (RevenueCat 整合完成 ✅)
 ```
 
-### 🔴 RevenueCat 整合狀態 (2026-03-14)
+### ✅ RevenueCat 整合狀態 (2026-03-14)
 
-> **目前狀態**: 設定完成，等待 Apple 同步 (預計 2026-03-14 晚間或隔天再測)
+> **目前狀態**: 整合完成，購買測試成功！
 
 #### RevenueCat 設定 (已完成 ✅)
 | 項目 | 狀態 | 值 |
@@ -40,12 +40,11 @@
 - 已建立 Sandbox Tester 帳號 ✅
 - 銀行/稅務設定已通過 ✅
 
-#### 待驗證
-- [ ] **等 Apple 同步後重新測試** ← 預計 2026-03-14 晚間或隔天
+#### 驗證結果 ✅
 - [x] 確認 RevenueCat 初始化狀態 → ✅ RC Configured
-- [x] 確認 Offerings/Packages 載入情況 → ❌ CONFIGURATION_ERROR (等 Apple 同步)
-- [ ] 購買流程是否正常
-- [ ] Webhook 是否正常觸發
+- [x] 確認 Offerings/Packages 載入情況 → ✅ 2 packages 正確載入
+- [x] 購買流程是否正常 → ✅ TestFlight Sandbox 購買成功
+- [ ] Webhook 是否正常觸發 (待測試)
 
 #### 除錯記錄 (2026-03-14)
 
@@ -69,15 +68,13 @@
 15. ✅ 在 App Store Connect 的 "1.0 Prepare for Submission" 版本中加入訂閱
 16. 🔄 **等待 Apple 同步** - 產品剛建立 (Mar 13) + 剛關聯版本，需等幾小時
 
-**下次測試時**:
-1. 刪除 app → TestFlight 重裝
-2. 進 Paywall 看 debug info
-3. 如果顯示 packages，就可以測試購買
+**測試結果** (2026-03-14):
+1. ✅ Apple 同步完成
+2. ✅ Packages 正確載入 (Starter + Essential)
+3. ✅ TestFlight Sandbox 購買成功
+4. ✅ RevenueCat Dashboard 顯示 New Customer
 
-**已加入 Debug 程式碼** (commit b08cc10):
-- 位置: `lib/features/subscription/presentation/screens/paywall_screen.dart`
-- 顯示: RC Configured、Current Offering、Packages 列表
-- 測試完成後記得移除
+**Debug 程式碼已移除** (原 commit b08cc10)
 
 **重要發現**:
 - RevenueCat 有兩個 P8 key 區塊，兩個都要設定：
@@ -131,6 +128,7 @@
 | **截圖 UX 流程優化** | ✅ 完成 | 有截圖時隱藏分析按鈕、錯誤提示優化 |
 | **確認對話框訊息預覽** | ✅ 完成 | 顯示前 5 則識別訊息，避免傳錯截圖 |
 | **繁體中文名字識別優化** | ✅ 完成 | prompt 強調繁體中文、不確定返回 null |
+| **RevenueCat 整合** | ✅ 完成 | iOS 訂閱購買、Sandbox 測試通過 |
 
 #### 🔄 待測試驗證
 - [x] **UI 重構 Phase 1 視覺測試** (新增對話頁毛玻璃效果、漸層背景) ✅
@@ -148,16 +146,16 @@
 - **2026-03-12**: 截圖識別 UX 優化 (識別與分析分離、自動抓名字、確認對話框)
 - **2026-03-12**: 純識別模式 + 分析後繼續對話 + 對話長度提示
 - **2026-03-12**: 截圖 UX 完善（流程優化、確認預覽、繁體中文識別）
+- **2026-03-14**: RevenueCat 整合完成，iOS Sandbox 購買測試成功 🎉
 - **2026-03-12**: 訂閱付款功能規劃完成 (Phase 1 設計 + 11 任務實作計畫)
 - **2026-03-14**: RevenueCat + App Store Connect 完整設定完成，等待購買測試
 
 #### 📝 規劃完成待實作
 | 功能 | 設計文件 | 實作計畫 | 狀態 |
 |------|---------|---------|------|
-| **訂閱付款 Phase 1** | `docs/superpowers/specs/2026-03-12-subscription-payment-design.md` | `docs/superpowers/plans/2026-03-12-subscription-payment-impl.md` | 待實作 (11 任務) |
+| **訂閱付款 Phase 1** | `docs/superpowers/specs/2026-03-12-subscription-payment-design.md` | `docs/superpowers/plans/2026-03-12-subscription-payment-impl.md` | ✅ 完成 |
 
-**Phase 1 範圍：** RevenueCat + iOS 月訂閱 (Starter/Essential)
-**需先完成：** RevenueCat 帳號註冊、App Store Connect 產品設定
+**Phase 1 完成內容：** RevenueCat 整合 + iOS 月訂閱 (Starter/Essential) + Sandbox 購買測試
 
 #### ⏸️ 暫停中
 - [ ] Admin Dashboard (排在 Phase 4)
@@ -169,12 +167,16 @@
 - [ ] **試用期天數** - 7天 / 3天 / 無
 
 #### 📋 下一步（重要）
-1. **🔴 訂閱付款功能 Phase 1** - RevenueCat 帳號設定 → App Store 產品 → SDK 串接 → Webhook
+1. ~~訂閱付款功能 Phase 1~~ ✅ 完成
 2. 測試截圖上傳功能
 3. AI 回覆品質優化
-4. Phase 2: 年訂閱 + Booster
+4. **Phase 2: 年訂閱 + Booster**
 5. Phase 3: 試用期
 6. Phase 4: Admin Dashboard
+
+#### 🧪 夥伴測試購買說明
+> TestFlight App 的購買會自動走 Sandbox 環境，**不會真的扣款**。
+> 夥伴直接用自己的 Apple ID 購買即可，不需要特別設定 Sandbox 帳號。
 
 ### 沙盒測試環境 (2026-02-28 上線)
 - **Supabase Project**: `fcmwrmwdoqiqdnbisdpg`

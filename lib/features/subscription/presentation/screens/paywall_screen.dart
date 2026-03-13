@@ -19,35 +19,6 @@ class PaywallScreen extends ConsumerStatefulWidget {
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   String _selectedTier = 'essential'; // 預設選 Essential
   bool _isPurchasing = false;
-  String _debugInfo = 'Loading...';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadDebugInfo();
-  }
-
-  Future<void> _loadDebugInfo() async {
-    try {
-      final isConfigured = await Purchases.isConfigured;
-      final offerings = await Purchases.getOfferings();
-      final currentOffering = offerings.current;
-      final packages = currentOffering?.availablePackages ?? [];
-
-      setState(() {
-        _debugInfo = '''
-RC Configured: $isConfigured
-Current Offering: ${currentOffering?.identifier ?? 'NULL'}
-Packages: ${packages.length}
-${packages.map((p) => '- ${p.identifier}: ${p.storeProduct.identifier}').join('\n')}
-''';
-      });
-    } catch (e) {
-      setState(() {
-        _debugInfo = 'Error: $e';
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,23 +45,6 @@ ${packages.map((p) => '- ${p.identifier}: ${p.storeProduct.identifier}').join('\
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // DEBUG INFO - 測試完成後移除
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _debugInfo,
-                      style: const TextStyle(
-                        color: Colors.greenAccent,
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
                   // Header
                   Text(
                     '解鎖完整功能',
