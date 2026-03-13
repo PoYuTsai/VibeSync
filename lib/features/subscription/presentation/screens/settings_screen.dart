@@ -1,17 +1,23 @@
 // lib/features/subscription/presentation/screens/settings_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../data/providers/subscription_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final subscription = ref.watch(subscriptionProvider);
+    final user = SupabaseService.currentUser;
+
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -37,21 +43,29 @@ class SettingsScreen extends ConsumerWidget {
                       context: context,
                       icon: Icons.workspace_premium,
                       title: '訂閱方案',
-                      trailing: 'Free',
+                      trailing: _getTierDisplayName(subscription.tier),
                       onTap: () => context.push('/paywall'),
                     ),
                     _buildTile(
                       context: context,
                       icon: Icons.analytics,
                       title: '本月用量',
-                      trailing: '0/30 則',
+                      trailing:
+                          '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit} 則',
                     ),
                     _buildTile(
                       context: context,
                       icon: Icons.person,
                       title: '帳號',
-                      trailing: '未登入',
+                      trailing: user?.email ?? '未登入',
                     ),
+                    if (!kIsWeb) // 只在 App 顯示恢復購買
+                      _buildTile(
+                        context: context,
+                        icon: Icons.restore,
+                        title: '恢復購買',
+                        onTap: () => _restorePurchases(context, ref),
+                      ),
                   ],
                 ),
                 _buildSection(
@@ -99,6 +113,13 @@ class SettingsScreen extends ConsumerWidget {
                       title: '意見回饋',
                       onTap: () => _showComingSoonSnackBar(context, '意見回饋'),
                     ),
+                    _buildTile(
+                      context: context,
+                      icon: Icons.logout,
+                      title: '登出',
+                      titleColor: AppColors.error,
+                      onTap: () => _logout(context, ref),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 32),
@@ -108,6 +129,17 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  String _getTierDisplayName(String tier) {
+    switch (tier) {
+      case 'starter':
+        return 'Starter';
+      case 'essential':
+        return 'Essential';
+      default:
+        return 'Free';
+    }
   }
 
   Widget _buildSection({
@@ -160,6 +192,74 @@ class SettingsScreen extends ConsumerWidget {
           : Icon(Icons.chevron_right, color: AppColors.glassTextHint),
       onTap: onTap,
     );
+  }
+
+  Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
+    // 顯示 loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final restored =
+          await ref.read(subscriptionProvider.notifier).restorePurchases();
+
+      if (context.mounted) {
+        Navigator.pop(context); // 關閉 loading
+
+        if (restored) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('購買已恢復！'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('沒有找到可恢復的購買')),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // 關閉 loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('恢復失敗: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.glassWhite,
+        title: Text(
+          '確定要登出？',
+          style: TextStyle(color: AppColors.glassTextPrimary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text('登出', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      await SupabaseService.signOut();
+      if (context.mounted) {
+        context.go('/login');
+      }
+    }
   }
 
   void _showDeleteDialog(BuildContext context) {
