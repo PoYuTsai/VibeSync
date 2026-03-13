@@ -14,7 +14,7 @@
 
 ### 🔴 RevenueCat 整合狀態 (2026-03-14)
 
-> **目前狀態**: 設定完成但 App 無法取得產品，已加 debug info 等待 v28 build
+> **目前狀態**: 設定完成，等待 Apple 同步 (預計 2026-03-14 晚間或隔天再測)
 
 #### RevenueCat 設定 (已完成 ✅)
 | 項目 | 狀態 | 值 |
@@ -41,9 +41,9 @@
 - 銀行/稅務設定已通過 ✅
 
 #### 待驗證
-- [ ] **TestFlight 新 build (v28) 測試 debug info** ← 等待打包
-- [ ] 確認 RevenueCat 初始化狀態
-- [ ] 確認 Offerings/Packages 載入情況
+- [ ] **等 Apple 同步後重新測試** ← 預計 2026-03-14 晚間或隔天
+- [x] 確認 RevenueCat 初始化狀態 → ✅ RC Configured
+- [x] 確認 Offerings/Packages 載入情況 → ❌ CONFIGURATION_ERROR (等 Apple 同步)
 - [ ] 購買流程是否正常
 - [ ] Webhook 是否正常觸發
 
@@ -63,7 +63,16 @@
 9. ✅ **找到問題 2**: Packages 內有多餘的 RevenueCat 測試產品 (Monthly, Yearly, Lifetime)
 10. ✅ 移除無效產品，只保留 App Store 產品
 11. ❌ 重新安裝 app 後還是無法取得
-12. 🔄 **目前**: 加入 debug info 到 Paywall，等待新 build 看詳細錯誤
+12. 🔄 加入 debug info 到 Paywall
+13. ✅ Debug info 顯示: `CONFIGURATION_ERROR - None of the products could be fetched from App Store Connect`
+14. ✅ **找到問題 3**: 訂閱產品沒有關聯到 App 版本
+15. ✅ 在 App Store Connect 的 "1.0 Prepare for Submission" 版本中加入訂閱
+16. 🔄 **等待 Apple 同步** - 產品剛建立 (Mar 13) + 剛關聯版本，需等幾小時
+
+**下次測試時**:
+1. 刪除 app → TestFlight 重裝
+2. 進 Paywall 看 debug info
+3. 如果顯示 packages，就可以測試購買
 
 **已加入 Debug 程式碼** (commit b08cc10):
 - 位置: `lib/features/subscription/presentation/screens/paywall_screen.dart`
