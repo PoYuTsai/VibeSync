@@ -14,7 +14,7 @@
 
 ### 🔴 RevenueCat 整合狀態 (2026-03-14)
 
-> **目前狀態**: 設定完成，等待新 build 測試購買
+> **目前狀態**: 設定完成但 App 無法取得產品，已加 debug info 等待 v28 build
 
 #### RevenueCat 設定 (已完成 ✅)
 | 項目 | 狀態 | 值 |
@@ -41,7 +41,9 @@
 - 銀行/稅務設定已通過 ✅
 
 #### 待驗證
-- [ ] **TestFlight 新 build 測試購買** ← 正在打包 v27
+- [ ] **TestFlight 新 build (v28) 測試 debug info** ← 等待打包
+- [ ] 確認 RevenueCat 初始化狀態
+- [ ] 確認 Offerings/Packages 載入情況
 - [ ] 購買流程是否正常
 - [ ] Webhook 是否正常觸發
 
@@ -53,9 +55,20 @@
 1. ❌ Products 顯示 "Could not check" → 銀行審核已通過但還是出現
 2. ❌ 檢查 Offerings → 已設為 Current ✅
 3. ❌ 檢查 App Store Connect 產品 → Ready to Submit ✅
-4. ✅ **找到問題**: RevenueCat 的 "App Store Connect API" 區塊沒有上傳 P8 key
+4. ✅ **找到問題 1**: RevenueCat 的 "App Store Connect API" 區塊沒有上傳 P8 key
 5. ✅ 上傳 P8 key 後出現權限錯誤 → 需要 App Manager 權限的 Key
 6. ✅ **解決**: 在 App Store Connect 建立新的 API Key (App Manager 權限)，上傳到 RevenueCat
+7. ✅ Products 狀態變成 "Ready to Submit" (不再是 Could not check)
+8. ❌ App 還是顯示「無法取得產品資訊」
+9. ✅ **找到問題 2**: Packages 內有多餘的 RevenueCat 測試產品 (Monthly, Yearly, Lifetime)
+10. ✅ 移除無效產品，只保留 App Store 產品
+11. ❌ 重新安裝 app 後還是無法取得
+12. 🔄 **目前**: 加入 debug info 到 Paywall，等待新 build 看詳細錯誤
+
+**已加入 Debug 程式碼** (commit b08cc10):
+- 位置: `lib/features/subscription/presentation/screens/paywall_screen.dart`
+- 顯示: RC Configured、Current Offering、Packages 列表
+- 測試完成後記得移除
 
 **重要發現**:
 - RevenueCat 有兩個 P8 key 區塊，兩個都要設定：
@@ -63,6 +76,7 @@
   2. **App Store Connect API** - 用於產品同步 (需要 App Manager 權限)
 - 原本的 `SubscriptionKey_xxx.p8` 是 In-App Purchase 專用，權限不夠
 - 需要另外建立 App Store Connect API Key
+- Packages 不能包含無效的 RevenueCat 測試產品，會導致載入失敗
 
 ---
 
