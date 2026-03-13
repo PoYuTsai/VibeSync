@@ -74,11 +74,13 @@ class AppConfig {
     }
   }
 
-  /// RevenueCat API Key (Sandbox vs Production)
+  /// RevenueCat API Key (iOS)
+  /// Dev/Staging 使用同一個 key，Production 可透過環境變數覆蓋
   static String get revenueCatApiKey {
-    return isProduction
-        ? const String.fromEnvironment('REVENUECAT_PROD_KEY')
-        : const String.fromEnvironment('REVENUECAT_SANDBOX_KEY');
+    return const String.fromEnvironment(
+      'REVENUECAT_API_KEY',
+      defaultValue: 'appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY',
+    );
   }
 
   /// 顯示環境名稱
