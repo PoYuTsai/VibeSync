@@ -55,11 +55,21 @@ class ImageCompressService {
   }
 
   /// 檢查圖片格式是否支援
+  /// iOS 截圖通常是 HEIC 格式，也需要支援
+  /// 當 mimeType 為 null 時，允許嘗試處理（讓圖片庫判斷）
   static bool isSupportedFormat(String? mimeType) {
-    if (mimeType == null) return false;
-    return mimeType == 'image/jpeg' ||
-        mimeType == 'image/jpg' ||
-        mimeType == 'image/png';
+    // 如果沒有 mimeType，允許嘗試處理
+    if (mimeType == null) return true;
+
+    final supported = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/heic',
+      'image/heif',
+      'image/webp',
+    ];
+    return supported.contains(mimeType.toLowerCase());
   }
 
   /// 將 bytes 轉成 base64

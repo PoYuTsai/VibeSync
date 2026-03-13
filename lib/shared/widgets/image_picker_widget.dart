@@ -69,7 +69,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   Future<void> _processImage(Uint8List bytes, String? mimeType) async {
     if (!ImageCompressService.isSupportedFormat(mimeType)) {
-      _showError('僅支援 JPG、PNG 格式');
+      _showError('不支援的圖片格式');
       return;
     }
 
