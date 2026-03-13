@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/app.dart';
 import 'core/config/environment.dart';
 import 'core/services/storage_service.dart';
+import 'core/services/revenuecat_service.dart';
 import 'core/services/supabase_service.dart';
 
 void main() async {
@@ -24,6 +25,9 @@ void main() async {
     url: AppConfig.supabaseUrl,
     anonKey: AppConfig.supabaseAnonKey,
   );
+
+  // Initialize RevenueCat (iOS/Android only)
+  await RevenueCatService.initialize();
 
   runApp(
     const ProviderScope(
