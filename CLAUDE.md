@@ -5,12 +5,66 @@
 ## Quick Start (新 Session 必讀)
 
 ```
-📌 專案狀態：MVP 沙盒測試中 (功能已可用)
+📌 專案狀態：MVP 沙盒測試中 + RevenueCat 整合測試中
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-12 (訂閱付款規劃完成)
+📌 最後更新：2026-03-14 (RevenueCat 設定完成，等待測試購買)
 ```
+
+### 🔴 RevenueCat 整合狀態 (2026-03-14)
+
+> **目前狀態**: 設定完成，等待新 build 測試購買
+
+#### RevenueCat 設定 (已完成 ✅)
+| 項目 | 狀態 | 值 |
+|------|------|-----|
+| RevenueCat Project | ✅ | VibeSync (`projd482586c`) |
+| iOS App 連接 | ✅ | `app73a7f8a72d` |
+| Bundle ID | ✅ | `com.poyutsai.vibesync` |
+| iOS Public API Key | ✅ | `appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY` |
+| In-App Purchase Key | ✅ | `SF836SBCKL` (P8 key uploaded) |
+| App Store Connect API Key | ✅ | 另一個 App Manager 權限的 Key |
+| Issuer ID | ✅ | `35ed1ede-ef4b-4b24-9dd1-47d777cb032b` |
+| Vendor Number | ✅ | `94060817` |
+| Offerings (default) | ✅ | Current, 2 packages |
+| Products | ✅ | Ready to Submit |
+
+#### App Store Connect 產品 (已完成 ✅)
+| 產品 | Product ID | 價格 | 狀態 |
+|------|-----------|------|------|
+| Starter Monthly | `vibesync_starter_monthly` | NT$149/月 | Ready to Submit |
+| Essential Monthly | `vibesync_essential_monthly` | $29 USD/月 | Ready to Submit |
+
+#### Sandbox Tester
+- 已建立 Sandbox Tester 帳號 ✅
+- 銀行/稅務設定已通過 ✅
+
+#### 待驗證
+- [ ] **TestFlight 新 build 測試購買** ← 正在打包 v27
+- [ ] 購買流程是否正常
+- [ ] Webhook 是否正常觸發
+
+#### 除錯記錄 (2026-03-14)
+
+**問題**: App 顯示「無法取得產品資訊」
+
+**除錯過程**:
+1. ❌ Products 顯示 "Could not check" → 銀行審核已通過但還是出現
+2. ❌ 檢查 Offerings → 已設為 Current ✅
+3. ❌ 檢查 App Store Connect 產品 → Ready to Submit ✅
+4. ✅ **找到問題**: RevenueCat 的 "App Store Connect API" 區塊沒有上傳 P8 key
+5. ✅ 上傳 P8 key 後出現權限錯誤 → 需要 App Manager 權限的 Key
+6. ✅ **解決**: 在 App Store Connect 建立新的 API Key (App Manager 權限)，上傳到 RevenueCat
+
+**重要發現**:
+- RevenueCat 有兩個 P8 key 區塊，兩個都要設定：
+  1. **In-app purchase key configuration** - 用於訂閱驗證
+  2. **App Store Connect API** - 用於產品同步 (需要 App Manager 權限)
+- 原本的 `SubscriptionKey_xxx.p8` 是 In-App Purchase 專用，權限不夠
+- 需要另外建立 App Store Connect API Key
+
+---
 
 ### 🎯 當前開發進度
 
@@ -72,6 +126,7 @@
 - **2026-03-12**: 純識別模式 + 分析後繼續對話 + 對話長度提示
 - **2026-03-12**: 截圖 UX 完善（流程優化、確認預覽、繁體中文識別）
 - **2026-03-12**: 訂閱付款功能規劃完成 (Phase 1 設計 + 11 任務實作計畫)
+- **2026-03-14**: RevenueCat + App Store Connect 完整設定完成，等待購買測試
 
 #### 📝 規劃完成待實作
 | 功能 | 設計文件 | 實作計畫 | 狀態 |
@@ -708,6 +763,38 @@ final rawWarnings = json['warnings'] as List? ?? [];
 final warnings = rawWarnings.map((w) => w is String ? w : w.toString()).toList();
 ```
 **相關檔案**: `lib/features/analysis/domain/entities/analysis_models.dart:362`
+
+#### [2026-03-14] RevenueCat 無法取得產品資訊
+**症狀**: App 顯示「無法取得產品資訊」，RevenueCat Products 顯示 "Could not check"
+**重現步驟**:
+1. 打開 iOS app
+2. 進入 Paywall 頁面
+3. 產品資訊無法載入
+
+**Root Cause**: RevenueCat 有兩個 P8 key 設定區塊，只設定了一個：
+1. **In-app purchase key configuration** - 已設定 ✅
+2. **App Store Connect API** - 沒設定 ❌
+
+且 App Store Connect API 需要的是 **App Manager 權限**的 Key，原本的 Subscription Key 權限不夠。
+
+**修復**:
+1. 在 App Store Connect → Users and Access → Integrations → **App Store Connect API** 建立新 Key
+2. 權限選擇 **App Manager**
+3. 下載 P8 檔案，命名為 `AuthKey_XXXXXX.p8` 格式
+4. 上傳到 RevenueCat 的 "App Store Connect API" 區塊
+5. 填入 Key ID、Issuer ID、Vendor Number
+
+**預防**:
+- RevenueCat 設定時，兩個 P8 key 區塊都要設定
+- In-App Purchase Key 和 App Store Connect API Key 是不同的 Key
+- App Store Connect API Key 必須有 App Manager 權限
+
+**相關設定**:
+- RevenueCat Project: `projd482586c`
+- iOS API Key: `appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY`
+- Bundle ID: `com.poyutsai.vibesync`
+- Issuer ID: `35ed1ede-ef4b-4b24-9dd1-47d777cb032b`
+- Vendor Number: `94060817`
 
 ### Design Decisions
 
