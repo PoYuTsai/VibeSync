@@ -194,6 +194,42 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
   }
 
+  /// 強制同步 tier 到 Supabase（含重置每日用量）
+  Future<void> forceSyncTier(String tier) async {
+    try {
+      final user = SupabaseService.currentUser;
+      if (user == null) {
+        debugPrint('forceSyncTier: No user logged in');
+        return;
+      }
+
+      final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+
+      // 更新 Supabase，同時重置每日用量
+      await SupabaseService.client
+          .from('subscriptions')
+          .update({
+            'tier': tier,
+            'daily_messages_used': 0, // 重置每日用量
+          })
+          .eq('user_id', user.id);
+
+      debugPrint('Supabase force synced: tier=$tier, daily_messages_used=0');
+
+      // 更新本地 state
+      state = state.copyWith(
+        tier: tier,
+        monthlyLimit: limits['monthly']!,
+        dailyLimit: limits['daily']!,
+        dailyMessagesUsed: 0,
+      );
+
+    } catch (e) {
+      debugPrint('forceSyncTier error: $e');
+      rethrow;
+    }
+  }
+
   /// 主動更新 Supabase tier（作為 webhook 的 backup）
   Future<void> _updateSupabaseTier(String tier) async {
     try {

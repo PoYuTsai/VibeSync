@@ -135,9 +135,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   const SizedBox(height: 16),
 
                   // Debug info button
-                  TextButton(
-                    onPressed: _showDebugInfo,
-                    child: Text('🔧 Debug Info', style: AppTypography.caption.copyWith(color: Colors.orange)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton(
+                        onPressed: _showDebugInfo,
+                        child: Text('🔧 Debug', style: AppTypography.caption.copyWith(color: Colors.orange)),
+                      ),
+                      TextButton(
+                        onPressed: _forceSyncToSupabase,
+                        child: Text('🔄 Force Sync', style: AppTypography.caption.copyWith(color: Colors.orange)),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -294,6 +303,38 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('購買失敗: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPurchasing = false);
+      }
+    }
+  }
+
+  Future<void> _forceSyncToSupabase() async {
+    try {
+      setState(() => _isPurchasing = true);
+
+      // 從 RevenueCat 取得最新狀態
+      final customerInfo = await RevenueCatService.getCustomerInfo();
+      final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+
+      // 強制同步到 Supabase
+      await ref.read(subscriptionProvider.notifier).forceSyncTier(tier);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已同步到 Supabase: $tier'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('同步失敗: $e')),
         );
       }
     } finally {
