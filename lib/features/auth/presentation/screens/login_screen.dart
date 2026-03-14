@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -40,13 +41,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
-      final success = await SupabaseService.signInWithGoogle();
+      final response = await SupabaseService.signInWithGoogle();
 
-      if (!success) {
-        setState(() => _error = 'Google 登入失敗');
+      if (response.user != null) {
+        // Ensure subscription exists for new users
+        await SupabaseService.ensureSubscriptionExists(response.user!.id);
+
+        if (mounted) {
+          context.go('/');
+        }
       }
-      // Note: OAuth flow will redirect, so we don't navigate here
-      // The auth state change listener will handle navigation
+    } on AuthException catch (e) {
+      if (e.message.contains('cancel')) {
+        // User cancelled, don't show error
+        return;
+      }
+      setState(() => _error = 'Google 登入失敗：${e.message}');
     } catch (e) {
       setState(() => _error = 'Google 登入失敗，請稍後再試');
     } finally {
@@ -360,24 +370,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Google "G" logo using text
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Center(
-                child: Text(
-                  'G',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF4285F4), // Google Blue
-                  ),
-                ),
-              ),
+            // Official Google logo
+            const FaIcon(
+              FontAwesomeIcons.google,
+              size: 20,
+              color: Color(0xFF4285F4), // Google Blue
             ),
             const SizedBox(width: 12),
             Text(

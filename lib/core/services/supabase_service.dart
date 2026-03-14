@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -109,11 +110,39 @@ class SupabaseService {
     return List.generate(length, (_) => charset[random.nextInt(charset.length)]).join();
   }
 
-  /// Sign in with Google (OAuth)
-  static Future<bool> signInWithGoogle() async {
-    return await client.auth.signInWithOAuth(
-      OAuthProvider.google,
-      redirectTo: 'com.poyutsai.vibesync://login-callback',
+  /// iOS Client ID for Google Sign In
+  static const String _googleIOSClientId =
+      '568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52.apps.googleusercontent.com';
+
+  /// Web Client ID for Supabase (serverClientId)
+  static const String _googleWebClientId =
+      '568378103108-3nsc1ecskfpod51dqgko2d7g2q7pccad.apps.googleusercontent.com';
+
+  /// Sign in with Google (Native)
+  /// Uses google_sign_in package for native UX (shows existing accounts)
+  static Future<AuthResponse> signInWithGoogle() async {
+    final googleSignIn = GoogleSignIn(
+      clientId: _googleIOSClientId,
+      serverClientId: _googleWebClientId,
+    );
+
+    final googleUser = await googleSignIn.signIn();
+    if (googleUser == null) {
+      throw const AuthException('Google Sign In was cancelled');
+    }
+
+    final googleAuth = await googleUser.authentication;
+    final idToken = googleAuth.idToken;
+    final accessToken = googleAuth.accessToken;
+
+    if (idToken == null) {
+      throw const AuthException('Google Sign In failed: No ID token');
+    }
+
+    return await client.auth.signInWithIdToken(
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: accessToken,
     );
   }
 
