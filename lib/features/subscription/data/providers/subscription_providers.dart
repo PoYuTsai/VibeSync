@@ -163,12 +163,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     try {
       state = state.copyWith(isLoading: true);
 
-      await RevenueCatService.purchase(package);
+      // purchase() 直接返回更新後的 CustomerInfo
+      final customerInfo = await RevenueCatService.purchase(package);
 
-      // 購買成功後從 RevenueCat 確認 tier
-      final customerInfo = await RevenueCatService.getCustomerInfo();
+      debugPrint('Purchase successful, checking tier from CustomerInfo...');
+
+      // 直接從購買結果取得 tier（不需要再呼叫 getCustomerInfo）
       final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+
+      debugPrint('Detected tier: $tier, limits: $limits');
 
       // 主動更新 Supabase（不依賴 webhook）
       await _updateSupabaseTier(tier);
@@ -179,6 +183,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyLimit: limits['daily']!,
         isLoading: false,
       );
+
+      debugPrint('State updated: tier=${state.tier}, monthlyLimit=${state.monthlyLimit}');
 
       return true;
     } catch (e) {
