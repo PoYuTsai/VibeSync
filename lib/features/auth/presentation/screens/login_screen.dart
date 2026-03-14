@@ -33,6 +33,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   bool get _isIOS => !kIsWeb && Platform.isIOS;
 
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final success = await SupabaseService.signInWithGoogle();
+
+      if (!success) {
+        setState(() => _error = 'Google 登入失敗');
+      }
+      // Note: OAuth flow will redirect, so we don't navigate here
+      // The auth state change listener will handle navigation
+    } catch (e) {
+      setState(() => _error = 'Google 登入失敗，請稍後再試');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   Future<void> _signInWithApple() async {
     setState(() {
       _isLoading = true;
@@ -139,9 +162,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 48),
 
-                    // Apple Sign In Button (iOS only)
+                    // Third-party Sign In Buttons (iOS only, login mode)
                     if (_isIOS && !_isSignUp) ...[
                       _buildAppleSignInButton(),
+                      const SizedBox(height: 12),
+                      _buildGoogleSignInButton(),
                       const SizedBox(height: 24),
                       _buildDivider(),
                       const SizedBox(height: 24),
@@ -308,6 +333,57 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               '使用 Apple 登入',
               style: AppTypography.bodyLarge.copyWith(
                 color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoogleSignInButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: OutlinedButton(
+        onPressed: _isLoading ? null : _signInWithGoogle,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          side: const BorderSide(color: Colors.grey, width: 1),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Google "G" logo using text
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Center(
+                child: Text(
+                  'G',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF4285F4), // Google Blue
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '使用 Google 登入',
+              style: AppTypography.bodyLarge.copyWith(
+                color: Colors.black87,
                 fontWeight: FontWeight.w600,
               ),
             ),
