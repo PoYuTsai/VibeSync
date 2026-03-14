@@ -138,7 +138,6 @@ Deno.serve(async (req) => {
         .update({
           tier: newTier,
           // 升級時不重置用量，讓用戶保留已使用的額度
-          updated_at: new Date().toISOString(),
         })
         .eq("user_id", app_user_id);
 
@@ -154,8 +153,7 @@ Deno.serve(async (req) => {
               tier: newTier,
               monthly_messages_used: 0,
               daily_messages_used: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              started_at: new Date().toISOString(),
             });
 
           if (insertError) {
