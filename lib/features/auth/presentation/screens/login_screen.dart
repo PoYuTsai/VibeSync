@@ -173,9 +173,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                     // Third-party Sign In Buttons (iOS only, login mode)
                     if (_isIOS && !_isSignUp) ...[
-                      _buildAppleSignInButton(),
-                      const SizedBox(height: 12),
                       _buildGoogleSignInButton(),
+                      const SizedBox(height: 12),
+                      _buildAppleSignInButton(),
                       const SizedBox(height: 24),
                       _buildDivider(),
                       const SizedBox(height: 24),
