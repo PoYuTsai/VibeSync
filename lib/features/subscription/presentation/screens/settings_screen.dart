@@ -79,12 +79,6 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _buildTile(
                       context: context,
-                      icon: Icons.download,
-                      title: '匯出我的資料',
-                      onTap: () => _showComingSoonSnackBar(context, '匯出功能'),
-                    ),
-                    _buildTile(
-                      context: context,
                       icon: Icons.privacy_tip,
                       title: '隱私權政策',
                       onTap: () => _showComingSoonSnackBar(context, '隱私權政策'),
