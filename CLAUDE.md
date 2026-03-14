@@ -9,7 +9,7 @@
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-14 (RevenueCat 整合完成 ✅)
+📌 最後更新：2026-03-14 (Apple + Google Sign In 實作完成)
 ```
 
 ### ✅ RevenueCat 整合狀態 (2026-03-14)
@@ -92,6 +92,42 @@
 - 原本的 `SubscriptionKey_xxx.p8` 是 In-App Purchase 專用，權限不夠
 - 需要另外建立 App Store Connect API Key
 - Packages 不能包含無效的 RevenueCat 測試產品，會導致載入失敗
+
+---
+
+### ✅ Third-Party Login 設定 (2026-03-14)
+
+> **目前狀態**: Apple + Google Sign In 實作完成，待 TestFlight 測試
+
+#### Apple Sign In (已完成 ✅)
+| 項目 | 狀態 | 備註 |
+|------|------|------|
+| Supabase Apple Provider | ✅ | Client ID: `com.poyutsai.vibesync` |
+| Xcode Entitlements | ✅ | `Runner.entitlements` 已建立 |
+| sign_in_with_apple 套件 | ✅ | v7.0.1 |
+| LoginScreen 按鈕 | ✅ | 黑底白字 Apple 風格 |
+
+#### Google Sign In (已完成 ✅)
+| 項目 | 狀態 | 值 |
+|------|------|-----|
+| Google Cloud Project | ✅ | VibeSync |
+| iOS OAuth Client ID | ✅ | `568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52.apps.googleusercontent.com` |
+| Web OAuth Client ID | ✅ | `568378103108-3nsc1ecskfpod51dqgko2d7g2q7pccad.apps.googleusercontent.com` |
+| Supabase Google Provider | ✅ | 已設定 Client ID + Secret |
+| Info.plist URL Scheme | ✅ | 已加入 reversed client ID |
+| LoginScreen 按鈕 | ✅ | 白底 Google 風格 |
+
+#### 相關檔案
+- `lib/core/services/supabase_service.dart` - signInWithApple(), signInWithGoogle()
+- `lib/features/auth/presentation/screens/login_screen.dart` - 登入按鈕 UI
+- `ios/Runner/Runner.entitlements` - Sign in with Apple capability
+- `ios/Runner/Info.plist` - Google URL Scheme
+
+#### 待測試 (TestFlight)
+- [ ] Apple Sign In 完整流程
+- [ ] Google Sign In 完整流程
+- [ ] 新用戶自動建立 subscription
+- [ ] 登出後重新登入
 
 ---
 
