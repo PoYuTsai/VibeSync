@@ -5,11 +5,12 @@
 ## Quick Start (新 Session 必讀)
 
 ```
-📌 專案狀態：MVP 沙盒測試中
+📌 專案狀態：TestFlight v41 伙伴測試中
 📌 定價模式：訊息制 (2 付費方案)
 📌 測試網址：https://web-beta-tawny.vercel.app
 📌 測試帳號：vibesync.test@gmail.com / test123456 (Essential tier, 不扣額度)
-📌 最後更新：2026-03-14 (Apple + Google Sign In 實作完成)
+📌 最後更新：2026-03-14 (TestFlight v41 發布給伙伴測試)
+📌 TestFlight Build：41
 ```
 
 ### ✅ RevenueCat 整合狀態 (2026-03-14)
