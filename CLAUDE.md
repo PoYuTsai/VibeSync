@@ -171,21 +171,26 @@
 **Phase 1 完成內容：** RevenueCat 整合 + iOS 月訂閱 (Starter/Essential) + Sandbox 購買測試
 
 #### ⏸️ 暫停中
-- [ ] Admin Dashboard (排在 Phase 4)
+- [ ] 年訂閱 / 季度訂閱 / Weekly 訂閱（待研究後決定）
+- [ ] 試用期（Free 30則/月 已足夠體驗）
+- [ ] Admin Dashboard
+
+#### 📝 訂閱方案備註
+> **目前方案**：Starter ($4.99/月) + Essential ($29.99/月)
+> **未來可能調整**：Weekly / 季度訂閱等，待與夥伴研究後決定
+> **暫時不動**，等 PMF 驗證後再調整
 
 #### ⚠️ 上線前待決定
 - [ ] **截圖功能計費方案** - 選項：A) 1截圖=N訊息 B) 獨立額度 C) 僅付費可用
-- [ ] **定價最終 Review** - 根據所有功能成本重新審視定價（可能改 Weekly）
+- [ ] **定價最終 Review** - 根據所有功能成本重新審視定價
 - [ ] **Free 用戶模型選擇** - Haiku 或 Sonnet
-- [ ] **試用期天數** - 7天 / 3天 / 無
 
 #### 📋 下一步（重要）
 1. ~~訂閱付款功能 Phase 1~~ ✅ 完成
-2. 測試截圖上傳功能
-3. AI 回覆品質優化
-4. **Phase 2: 年訂閱 + Booster**
-5. Phase 3: 試用期
-6. Phase 4: Admin Dashboard
+2. ~~截圖上傳功能~~ ✅ 完成
+3. **🔴 登入/註冊系統** ← 當前優先
+4. 上架準備（App Store 審核）
+5. AI 回覆品質優化
 
 #### 🧪 夥伴測試購買說明
 > TestFlight App 的購買會自動走 Sandbox 環境，**不會真的扣款**。
@@ -196,6 +201,7 @@
 - **Edge Functions**:
   - `analyze-chat` - AI 分析引擎
   - `submit-feedback` - 反饋收集 + Telegram 通知
+  - `revenuecat-webhook` - 訂閱事件同步 Supabase tier
 - **Claude Model**: `claude-sonnet-4-20250514` (Essential) / `claude-haiku-4-5-20251001` (Free/Starter)
 - **Vercel**: https://web-beta-tawny.vercel.app
 - **成本優化**: Prompt Caching 已啟用 (ephemeral cache)
