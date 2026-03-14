@@ -16,7 +16,6 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subscription = ref.watch(subscriptionProvider);
-    final user = SupabaseService.currentUser;
 
     return GradientBackground(
       child: Scaffold(
@@ -57,7 +56,7 @@ class SettingsScreen extends ConsumerWidget {
                       context: context,
                       icon: Icons.person,
                       title: '帳號',
-                      trailing: user?.email ?? '未登入',
+                      trailing: _getAccountDisplay(),
                     ),
                     if (!kIsWeb) // 只在 App 顯示恢復購買
                       _buildTile(
@@ -140,6 +139,24 @@ class SettingsScreen extends ConsumerWidget {
       default:
         return 'Free';
     }
+  }
+
+  String _getAccountDisplay() {
+    final user = SupabaseService.currentUser;
+    if (user == null) return '未登入';
+
+    // Check login provider from app_metadata
+    final provider = user.appMetadata['provider'] as String?;
+
+    if (provider == 'apple') {
+      // Apple user: prefer name, fallback to "Apple 帳號"
+      final fullName = user.userMetadata?['full_name'] as String?;
+      final name = user.userMetadata?['name'] as String?;
+      return fullName ?? name ?? 'Apple 帳號';
+    }
+
+    // Google / Email user: show email
+    return user.email ?? '未知帳號';
   }
 
   Widget _buildSection({
