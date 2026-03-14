@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -139,6 +140,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
@@ -243,6 +251,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 24),
+                    _buildLegalDisclaimer(),
 
                   ],
                 ),
@@ -392,6 +402,52 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLegalDisclaimer() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text.rich(
+        TextSpan(
+          style: AppTypography.caption.copyWith(
+            color: AppColors.onBackgroundSecondary,
+          ),
+          children: [
+            const TextSpan(text: '繼續即表示您同意 '),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: GestureDetector(
+                onTap: () => _launchUrl('https://vibesyncai.app/terms'),
+                child: Text(
+                  '使用條款',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ),
+            const TextSpan(text: ' 並確認已閱讀 '),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: GestureDetector(
+                onTap: () => _launchUrl('https://vibesyncai.app/privacy'),
+                child: Text(
+                  '隱私權政策',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }
