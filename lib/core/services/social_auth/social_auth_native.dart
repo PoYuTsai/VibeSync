@@ -46,12 +46,12 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
-    // Use Supabase OAuth flow for Google (handles nonce automatically)
-    // This opens a web view for Google sign in
+    // Use Supabase OAuth flow with external browser (ASWebAuthenticationSession on iOS)
+    // This shows system dialog and shares Safari cookies for better UX
     final response = await Supabase.instance.client.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: 'com.poyutsai.vibesync://login-callback',
-      authScreenLaunchMode: LaunchMode.inAppBrowserView,
+      authScreenLaunchMode: LaunchMode.externalApplication,
     );
 
     if (!response) {
@@ -69,9 +69,9 @@ class SocialAuthServiceImpl implements SocialAuthService {
       }
     });
 
-    // Timeout after 60 seconds
+    // Timeout after 120 seconds (user might need time for 2FA)
     return completer.future.timeout(
-      const Duration(seconds: 60),
+      const Duration(seconds: 120),
       onTimeout: () {
         subscription.cancel();
         throw const AuthException('Google Sign In timed out');
