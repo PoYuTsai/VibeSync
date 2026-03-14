@@ -148,8 +148,34 @@ class RevenueCatService {
       return 'free';
     }
 
+    // 印出所有 entitlements（包括 inactive）
+    debugPrint('RevenueCat: All entitlements: ${customerInfo.entitlements.all.keys.toList()}');
+
     final activeEntitlements = customerInfo.entitlements.active;
-    debugPrint('RevenueCat: Active entitlements: ${activeEntitlements.keys.toList()}');
+    debugPrint('RevenueCat: Active entitlements count: ${activeEntitlements.length}');
+    debugPrint('RevenueCat: Active entitlements keys: ${activeEntitlements.keys.toList()}');
+
+    // 如果沒有 active entitlements，印出更多資訊
+    if (activeEntitlements.isEmpty) {
+      debugPrint('RevenueCat: No active entitlements!');
+      debugPrint('RevenueCat: Active subscriptions: ${customerInfo.activeSubscriptions}');
+      debugPrint('RevenueCat: All purchased product IDs: ${customerInfo.allPurchasedProductIdentifiers}');
+
+      // 直接從 activeSubscriptions 判斷
+      for (final productId in customerInfo.activeSubscriptions) {
+        debugPrint('RevenueCat: Checking activeSubscription: $productId');
+        if (productId.contains('essential')) {
+          debugPrint('RevenueCat: Detected tier from activeSubscriptions: essential');
+          return 'essential';
+        }
+        if (productId.contains('starter')) {
+          debugPrint('RevenueCat: Detected tier from activeSubscriptions: starter');
+          return 'starter';
+        }
+      }
+
+      return 'free';
+    }
 
     // 檢查所有 active entitlements
     for (final entry in activeEntitlements.entries) {
