@@ -1,46 +1,15 @@
 // supabase/functions/revenuecat-webhook/index.ts
+// RevenueCat Webhook 處理器
+// 接收訂閱事件並更新 Supabase 訂閱狀態
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-// RevenueCat Webhook 事件類型
-type RevenueCatEventType =
-  | "INITIAL_PURCHASE"
-  | "RENEWAL"
-  | "CANCELLATION"
-  | "UNCANCELLATION"
-  | "EXPIRATION"
-  | "BILLING_ISSUE"
-  | "PRODUCT_CHANGE"
-  | "SUBSCRIBER_ALIAS"
-  | "TRANSFER";
-
-interface RevenueCatEvent {
-  api_version: string;
-  event: {
-    type: RevenueCatEventType;
-    app_user_id: string;
-    product_id: string;
-    entitlement_ids?: string[];
-    period_type?: string;
-    purchased_at_ms?: number;
-    expiration_at_ms?: number;
-    environment?: string;
-    original_app_user_id?: string;
-  };
-}
-
-// CORS headers
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-revenuecat-authorization",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// JSON response helper
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -50,15 +19,26 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 // 從 product_id 判斷 tier
 function getTierFromProductId(productId: string): string {
+  if (!productId) return "free";
   if (productId.includes("essential")) return "essential";
   if (productId.includes("starter")) return "starter";
   return "free";
 }
 
-serve(async (req) => {
-  // Handle CORS preflight
+// 取得 tier 的額度限制
+function getTierLimits(tier: string): { monthly: number; daily: number } {
+  const limits: Record<string, { monthly: number; daily: number }> = {
+    free: { monthly: 30, daily: 15 },
+    starter: { monthly: 300, daily: 50 },
+    essential: { monthly: 1000, daily: 150 },
+  };
+  return limits[tier] || limits.free;
+}
+
+Deno.serve(async (req) => {
+  // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
@@ -66,121 +46,153 @@ serve(async (req) => {
   }
 
   try {
-    const body: RevenueCatEvent = await req.json();
-    const { event } = body;
+    // 驗證 Authorization header (RevenueCat Webhook Secret)
+    const authHeader = req.headers.get("Authorization");
+    const webhookSecret = Deno.env.get("REVENUECAT_WEBHOOK_SECRET");
 
-    console.log(
-      `RevenueCat webhook: ${event.type} for user ${event.app_user_id}`
-    );
-    console.log(
-      `   Product: ${event.product_id}, Environment: ${event.environment}`
-    );
-
-    // 建立 Supabase client (使用 service role 以繞過 RLS)
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // 根據事件類型處理
-    switch (event.type) {
-      case "INITIAL_PURCHASE":
-      case "RENEWAL":
-      case "UNCANCELLATION":
-      case "PRODUCT_CHANGE": {
-        // 新訂閱、續訂、取消後恢復、換方案
-        const tier = getTierFromProductId(event.product_id);
-
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({
-            tier,
-            status: "active",
-            rc_customer_id: event.original_app_user_id || event.app_user_id,
-            rc_entitlement_id: event.entitlement_ids?.[0] || null,
-            monthly_messages_used: 0, // 重置額度
-            daily_messages_used: 0,
-            monthly_reset_at: new Date().toISOString(),
-            daily_reset_at: new Date().toISOString(),
-            started_at: event.purchased_at_ms
-              ? new Date(event.purchased_at_ms).toISOString()
-              : new Date().toISOString(),
-            expires_at: event.expiration_at_ms
-              ? new Date(event.expiration_at_ms).toISOString()
-              : null,
-          })
-          .eq("user_id", event.app_user_id);
-
-        if (error) {
-          console.error("Update subscription error:", error);
-          return jsonResponse({ error: error.message }, 500);
-        }
-
-        console.log(`Subscription updated: ${event.app_user_id} -> ${tier}`);
-        break;
-      }
-
-      case "CANCELLATION": {
-        // 用戶取消訂閱（但還沒到期）
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({
-            status: "cancelled",
-          })
-          .eq("user_id", event.app_user_id);
-
-        if (error) {
-          console.error("Update cancellation error:", error);
-          return jsonResponse({ error: error.message }, 500);
-        }
-
-        console.log(`Subscription cancelled: ${event.app_user_id}`);
-        break;
-      }
-
-      case "EXPIRATION": {
-        // 訂閱到期，降級為 Free
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({
-            tier: "free",
-            status: "expired",
-            monthly_messages_used: 0,
-            daily_messages_used: 0,
-          })
-          .eq("user_id", event.app_user_id);
-
-        if (error) {
-          console.error("Update expiration error:", error);
-          return jsonResponse({ error: error.message }, 500);
-        }
-
-        console.log(`Subscription expired: ${event.app_user_id} -> free`);
-        break;
-      }
-
-      case "BILLING_ISSUE": {
-        // 付款問題
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({
-            status: "billing_issue",
-          })
-          .eq("user_id", event.app_user_id);
-
-        if (error) {
-          console.error("Update billing issue error:", error);
-          return jsonResponse({ error: error.message }, 500);
-        }
-
-        console.log(`Billing issue: ${event.app_user_id}`);
-        break;
-      }
-
-      default:
-        console.log(`Unhandled event type: ${event.type}`);
+    if (webhookSecret && authHeader !== `Bearer ${webhookSecret}`) {
+      console.error("Invalid webhook authorization");
+      return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    return jsonResponse({ success: true });
+    const body = await req.json();
+    console.log("RevenueCat webhook received:", JSON.stringify(body, null, 2));
+
+    const { event } = body;
+    if (!event) {
+      return jsonResponse({ error: "No event in body" }, 400);
+    }
+
+    const {
+      type,
+      app_user_id,
+      product_id,
+      entitlement_ids,
+      expiration_at_ms,
+    } = event;
+
+    console.log(`Event type: ${type}, User: ${app_user_id}, Product: ${product_id}`);
+
+    // app_user_id 是我們在 RevenueCat.login() 時傳入的 Supabase user id
+    if (!app_user_id || app_user_id.startsWith("$RCAnonymousID")) {
+      console.log("Skipping anonymous user event");
+      return jsonResponse({ success: true, message: "Skipped anonymous user" });
+    }
+
+    // 初始化 Supabase Admin Client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // 根據事件類型處理
+    let newTier = "free";
+    let shouldUpdate = false;
+
+    switch (type) {
+      // 購買相關事件 - 升級 tier
+      case "INITIAL_PURCHASE":
+      case "RENEWAL":
+      case "PRODUCT_CHANGE":
+      case "UNCANCELLATION":
+      case "SUBSCRIPTION_EXTENDED":
+        newTier = getTierFromProductId(product_id);
+        shouldUpdate = true;
+        console.log(`Upgrading user ${app_user_id} to ${newTier}`);
+        break;
+
+      // 取消/過期相關事件 - 降級到 free
+      case "EXPIRATION":
+      case "BILLING_ISSUE":
+        newTier = "free";
+        shouldUpdate = true;
+        console.log(`Downgrading user ${app_user_id} to free`);
+        break;
+
+      // 取消訂閱 - 不立即降級，等到過期
+      case "CANCELLATION":
+        // 用戶取消但訂閱還沒過期，不需要立即改變 tier
+        // 只記錄取消狀態，等 EXPIRATION 事件再處理
+        console.log(`User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`);
+        shouldUpdate = false;
+        break;
+
+      // 其他事件 - 記錄但不處理
+      case "NON_RENEWING_PURCHASE":
+      case "SUBSCRIBER_ALIAS":
+      case "TRANSFER":
+        console.log(`Event ${type} logged but no action taken`);
+        shouldUpdate = false;
+        break;
+
+      default:
+        console.log(`Unknown event type: ${type}`);
+        shouldUpdate = false;
+    }
+
+    if (shouldUpdate) {
+      const limits = getTierLimits(newTier);
+
+      // 更新 subscriptions 表
+      const { error: updateError } = await supabase
+        .from("subscriptions")
+        .update({
+          tier: newTier,
+          // 升級時不重置用量，讓用戶保留已使用的額度
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", app_user_id);
+
+      if (updateError) {
+        console.error("Failed to update subscription:", updateError);
+
+        // 如果找不到記錄，嘗試插入新記錄
+        if (updateError.code === "PGRST116") {
+          const { error: insertError } = await supabase
+            .from("subscriptions")
+            .insert({
+              user_id: app_user_id,
+              tier: newTier,
+              monthly_messages_used: 0,
+              daily_messages_used: 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+
+          if (insertError) {
+            console.error("Failed to insert subscription:", insertError);
+            return jsonResponse({ error: "Database error" }, 500);
+          }
+        } else {
+          return jsonResponse({ error: "Database error" }, 500);
+        }
+      }
+
+      console.log(`Successfully updated user ${app_user_id} to tier: ${newTier}`);
+    }
+
+    // 記錄 webhook 事件到 logs 表（可選）
+    try {
+      await supabase.from("webhook_logs").insert({
+        source: "revenuecat",
+        event_type: type,
+        user_id: app_user_id,
+        payload: body,
+        created_at: new Date().toISOString(),
+      });
+    } catch (logError) {
+      // 記錄失敗不影響主流程
+      console.log("Failed to log webhook event (non-fatal):", logError);
+    }
+
+    return jsonResponse({
+      success: true,
+      event_type: type,
+      user_id: app_user_id,
+      new_tier: shouldUpdate ? newTier : undefined,
+    });
+
   } catch (error) {
     console.error("Webhook error:", error);
-    return jsonResponse({ error: String(error) }, 500);
+    return jsonResponse({ error: (error as Error).message }, 500);
   }
 });
