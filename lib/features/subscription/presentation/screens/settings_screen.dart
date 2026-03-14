@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -81,7 +82,7 @@ class SettingsScreen extends ConsumerWidget {
                       context: context,
                       icon: Icons.privacy_tip,
                       title: '隱私權政策',
-                      onTap: () => _showComingSoonSnackBar(context, '隱私權政策'),
+                      onTap: () => _launchUrl('https://vibesyncai.app/privacy'),
                     ),
                   ],
                 ),
@@ -98,7 +99,7 @@ class SettingsScreen extends ConsumerWidget {
                       context: context,
                       icon: Icons.description,
                       title: '使用條款',
-                      onTap: () => _showComingSoonSnackBar(context, '使用條款'),
+                      onTap: () => _launchUrl('https://vibesyncai.app/terms'),
                     ),
                     _buildTile(
                       context: context,
@@ -323,5 +324,12 @@ class SettingsScreen extends ConsumerWidget {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 }
