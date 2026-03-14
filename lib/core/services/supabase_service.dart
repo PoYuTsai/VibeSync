@@ -1,12 +1,9 @@
 // lib/core/services/supabase_service.dart
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
 
-import 'package:crypto/crypto.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'social_auth/social_auth_service.dart';
 
 class SupabaseService {
   static late SupabaseClient _client;
@@ -74,76 +71,22 @@ class SupabaseService {
     await client.auth.signOut();
   }
 
+  // 社群登入服務實例 (平台相容)
+  static final SocialAuthService _socialAuth = getSocialAuthService();
+
+  /// Check if social auth is available on this platform
+  static bool get isSocialAuthAvailable => _socialAuth.isAvailable;
+
   /// Sign in with Apple (iOS Native)
   /// Uses sign_in_with_apple package and Supabase signInWithIdToken
   static Future<AuthResponse> signInWithApple() async {
-    // Generate a secure random nonce
-    final rawNonce = _generateRandomString(32);
-    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
-
-    // Request Apple Sign In
-    final credential = await SignInWithApple.getAppleIDCredential(
-      scopes: [
-        AppleIDAuthorizationScopes.email,
-        AppleIDAuthorizationScopes.fullName,
-      ],
-      nonce: hashedNonce,
-    );
-
-    final idToken = credential.identityToken;
-    if (idToken == null) {
-      throw const AuthException('Apple Sign In failed: No identity token');
-    }
-
-    // Sign in to Supabase with the Apple ID token
-    return await client.auth.signInWithIdToken(
-      provider: OAuthProvider.apple,
-      idToken: idToken,
-      nonce: rawNonce,
-    );
+    return await _socialAuth.signInWithApple();
   }
-
-  /// Generate a random string for nonce
-  static String _generateRandomString(int length) {
-    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    final random = Random.secure();
-    return List.generate(length, (_) => charset[random.nextInt(charset.length)]).join();
-  }
-
-  /// iOS Client ID for Google Sign In
-  static const String _googleIOSClientId =
-      '568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52.apps.googleusercontent.com';
-
-  /// Web Client ID for Supabase (serverClientId)
-  static const String _googleWebClientId =
-      '568378103108-3nsc1ecskfpod51dqgko2d7g2q7pccad.apps.googleusercontent.com';
 
   /// Sign in with Google (Native)
   /// Uses google_sign_in package for native UX (shows existing accounts)
   static Future<AuthResponse> signInWithGoogle() async {
-    final googleSignIn = GoogleSignIn(
-      clientId: _googleIOSClientId,
-      serverClientId: _googleWebClientId,
-    );
-
-    final googleUser = await googleSignIn.signIn();
-    if (googleUser == null) {
-      throw const AuthException('Google Sign In was cancelled');
-    }
-
-    final googleAuth = await googleUser.authentication;
-    final idToken = googleAuth.idToken;
-    final accessToken = googleAuth.accessToken;
-
-    if (idToken == null) {
-      throw const AuthException('Google Sign In failed: No ID token');
-    }
-
-    return await client.auth.signInWithIdToken(
-      provider: OAuthProvider.google,
-      idToken: idToken,
-      accessToken: accessToken,
-    );
+    return await _socialAuth.signInWithGoogle();
   }
 
   /// Ensure subscription record exists for user

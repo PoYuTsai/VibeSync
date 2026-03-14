@@ -1,10 +1,9 @@
 // lib/core/services/revenuecat_service.dart
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../config/environment.dart';
+import '../utils/platform_info.dart';
 
 /// RevenueCat 服務封裝
 class RevenueCatService {
@@ -30,9 +29,9 @@ class RevenueCatService {
     await Purchases.setLogLevel(LogLevel.debug);
 
     PurchasesConfiguration configuration;
-    if (Platform.isIOS) {
+    if (isIOSPlatform) {
       configuration = PurchasesConfiguration(apiKey);
-    } else if (Platform.isAndroid) {
+    } else if (isAndroidPlatform) {
       // Android 暫不支援，之後再加
       debugPrint('RevenueCat: Android not yet configured');
       return;

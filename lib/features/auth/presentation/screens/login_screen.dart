@@ -1,6 +1,4 @@
 // lib/features/auth/presentation/screens/login_screen.dart
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +7,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/utils/platform_info.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -32,7 +31,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  bool get _isIOS => !kIsWeb && Platform.isIOS;
+  bool get _isIOS => isIOSPlatform;
 
   Future<void> _signInWithGoogle() async {
     setState(() {
