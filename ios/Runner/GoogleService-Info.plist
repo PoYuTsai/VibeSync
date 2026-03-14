@@ -6,9 +6,13 @@
 	<string>568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
 	<string>com.googleusercontent.apps.568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52</string>
+	<key>GCM_SENDER_ID</key>
+	<string>568378103108</string>
 	<key>BUNDLE_ID</key>
 	<string>com.poyutsai.vibesync</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true/>
 </dict>
 </plist>
