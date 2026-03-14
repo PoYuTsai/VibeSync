@@ -54,9 +54,12 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
+    // For iOS native Google Sign In with Supabase
+    // clientId comes from GoogleService-Info.plist (CLIENT_ID)
+    // serverClientId is the Web client ID configured in Supabase
     final googleSignIn = GoogleSignIn(
-      clientId: _googleIOSClientId,
       serverClientId: _googleWebClientId,
+      scopes: ['email', 'profile'],
     );
 
     final googleUser = await googleSignIn.signIn();
