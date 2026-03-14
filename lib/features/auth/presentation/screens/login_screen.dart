@@ -1,9 +1,9 @@
 // lib/features/auth/presentation/screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -369,11 +369,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Official Google logo
-            const FaIcon(
-              FontAwesomeIcons.google,
-              size: 20,
-              color: Color(0xFF4285F4), // Google Blue
+            // Official Google logo (multicolored)
+            SvgPicture.asset(
+              'assets/images/google_logo.svg',
+              width: 20,
+              height: 20,
             ),
             const SizedBox(width: 12),
             Text(
