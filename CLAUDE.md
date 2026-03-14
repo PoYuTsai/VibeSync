@@ -97,7 +97,7 @@
 
 ### ✅ Third-Party Login 設定 (2026-03-14)
 
-> **目前狀態**: Apple + Google Sign In 實作完成，待 TestFlight 測試
+> **目前狀態**: Apple + Google Sign In 測試通過 ✅
 
 #### Apple Sign In (已完成 ✅)
 | 項目 | 狀態 | 備註 |
@@ -114,20 +114,29 @@
 | iOS OAuth Client ID | ✅ | `568378103108-ptl0icvkk7v2vp6ob21hatm73unokg52.apps.googleusercontent.com` |
 | Web OAuth Client ID | ✅ | `568378103108-3nsc1ecskfpod51dqgko2d7g2q7pccad.apps.googleusercontent.com` |
 | Supabase Google Provider | ✅ | 已設定 Client ID + Secret |
-| Info.plist URL Scheme | ✅ | 已加入 reversed client ID |
+| Info.plist URL Scheme | ✅ | 已加入 reversed client ID + callback scheme |
+| flutter_web_auth_2 套件 | ✅ | v4.0.1 (ASWebAuthenticationSession) |
 | LoginScreen 按鈕 | ✅ | 白底 Google 風格 |
 
 #### 相關檔案
-- `lib/core/services/supabase_service.dart` - signInWithApple(), signInWithGoogle()
+- `lib/core/services/social_auth/social_auth_native.dart` - signInWithApple(), signInWithGoogle()
 - `lib/features/auth/presentation/screens/login_screen.dart` - 登入按鈕 UI
 - `ios/Runner/Runner.entitlements` - Sign in with Apple capability
-- `ios/Runner/Info.plist` - Google URL Scheme
+- `ios/Runner/Info.plist` - Google URL Scheme + callback scheme
 
-#### 待測試 (TestFlight)
-- [ ] Apple Sign In 完整流程
-- [ ] Google Sign In 完整流程
-- [ ] 新用戶自動建立 subscription
-- [ ] 登出後重新登入
+#### 測試結果 ✅
+- [x] Apple Sign In 完整流程
+- [x] Google Sign In 完整流程 (使用 flutter_web_auth_2 + ASWebAuthenticationSession)
+- [x] 新用戶自動建立 subscription
+- [x] 登出後重新登入
+
+#### 除錯記錄 (2026-03-14)
+
+**Google Sign In 問題排除過程**:
+1. ❌ 原生 google_sign_in 套件 → Nonce 錯誤
+2. ❌ signInWithOAuth → 空白頁面 / 轉圈圈不返回
+3. ✅ **解決**: 使用 `flutter_web_auth_2` 實現 ASWebAuthenticationSession (像 Claude app)
+4. ✅ Callback scheme: `com.poyutsai.vibesync://login-callback`
 
 ---
 
@@ -875,6 +884,34 @@ final warnings = rawWarnings.map((w) => w is String ? w : w.toString()).toList()
 - Bundle ID: `com.poyutsai.vibesync`
 - Issuer ID: `35ed1ede-ef4b-4b24-9dd1-47d777cb032b`
 - Vendor Number: `94060817`
+
+#### [2026-03-14] Google Sign In Nonce 錯誤 + 空白頁面
+**症狀**:
+1. 使用 google_sign_in 套件：Nonce 錯誤
+2. 使用 signInWithOAuth：空白頁面 / 一直轉圈圈
+
+**Root Cause**:
+- google_sign_in 套件與 Supabase 的 nonce 處理不相容
+- signInWithOAuth 在 iOS 上的 redirect 處理有問題
+
+**修復**:
+使用 `flutter_web_auth_2` 套件實現 ASWebAuthenticationSession（像 Claude app 一樣）
+```dart
+final result = await FlutterWebAuth2.authenticate(
+  url: authUrl.toString(),
+  callbackUrlScheme: 'com.poyutsai.vibesync',
+  options: const FlutterWebAuth2Options(
+    preferEphemeral: false, // 使用共享 Safari cookies
+  ),
+);
+```
+
+**預防**:
+- iOS OAuth 登入優先使用 `flutter_web_auth_2` 而非原生 SDK
+- ASWebAuthenticationSession 提供最流暢的用戶體驗
+- Callback scheme 必須在 Info.plist 中註冊
+
+**相關檔案**: `lib/core/services/social_auth/social_auth_native.dart`
 
 ### Design Decisions
 
