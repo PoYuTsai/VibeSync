@@ -1,6 +1,10 @@
 // lib/core/services/supabase_service.dart
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
+import 'package:crypto/crypto.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
@@ -64,6 +68,70 @@ class SupabaseService {
   /// Sign out
   static Future<void> signOut() async {
     await client.auth.signOut();
+  }
+
+  /// Sign in with Apple (iOS Native)
+  /// Uses sign_in_with_apple package and Supabase signInWithIdToken
+  static Future<AuthResponse> signInWithApple() async {
+    // Generate a secure random nonce
+    final rawNonce = _generateRandomString(32);
+    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+
+    // Request Apple Sign In
+    final credential = await SignInWithApple.getAppleIDCredential(
+      scopes: [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName,
+      ],
+      nonce: hashedNonce,
+    );
+
+    final idToken = credential.identityToken;
+    if (idToken == null) {
+      throw const AuthException('Apple Sign In failed: No identity token');
+    }
+
+    // Sign in to Supabase with the Apple ID token
+    return await client.auth.signInWithIdToken(
+      provider: OAuthProvider.apple,
+      idToken: idToken,
+      nonce: rawNonce,
+    );
+  }
+
+  /// Generate a random string for nonce
+  static String _generateRandomString(int length) {
+    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    return List.generate(length, (_) => charset[random.nextInt(charset.length)]).join();
+  }
+
+  /// Sign in with Google (OAuth)
+  static Future<bool> signInWithGoogle() async {
+    return await client.auth.signInWithOAuth(
+      OAuthProvider.google,
+      redirectTo: 'com.poyutsai.vibesync://login-callback',
+    );
+  }
+
+  /// Ensure subscription record exists for user
+  /// Creates a free tier subscription if none exists
+  static Future<void> ensureSubscriptionExists(String userId) async {
+    final existing = await client
+        .from('subscriptions')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (existing == null) {
+      await client.from('subscriptions').insert({
+        'user_id': userId,
+        'tier': 'free',
+        'monthly_messages_used': 0,
+        'daily_messages_used': 0,
+        'started_at': DateTime.now().toIso8601String(),
+      });
+    }
   }
 
   /// Get current session token

@@ -1,7 +1,10 @@
 // lib/features/auth/presentation/screens/login_screen.dart
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -26,6 +29,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  bool get _isIOS => !kIsWeb && Platform.isIOS;
+
+  Future<void> _signInWithApple() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final response = await SupabaseService.signInWithApple();
+
+      if (response.user != null) {
+        // Ensure subscription exists for new users
+        await SupabaseService.ensureSubscriptionExists(response.user!.id);
+
+        if (mounted) {
+          context.go('/');
+        }
+      }
+    } on AuthException catch (e) {
+      if (e.message.contains('canceled') || e.message.contains('cancelled')) {
+        // User cancelled, don't show error
+        return;
+      }
+      setState(() => _error = 'Apple 登入失敗：${e.message}');
+    } catch (e) {
+      setState(() => _error = '登入失敗，請稍後再試');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _submit() async {
@@ -102,8 +139,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 48),
 
+                    // Apple Sign In Button (iOS only)
+                    if (_isIOS && !_isSignUp) ...[
+                      _buildAppleSignInButton(),
+                      const SizedBox(height: 24),
+                      _buildDivider(),
+                      const SizedBox(height: 24),
+                    ],
+
                     Text(
-                      _isSignUp ? '建立帳號' : '登入',
+                      _isSignUp ? '建立帳號' : '使用 Email ${_isSignUp ? '註冊' : '登入'}',
                       style: AppTypography.titleLarge.copyWith(
                         color: AppColors.onBackgroundPrimary,
                       ),
@@ -233,6 +278,67 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAppleSignInButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _signInWithApple,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.black54,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.apple, size: 24),
+            const SizedBox(width: 12),
+            Text(
+              '使用 Apple 登入',
+              style: AppTypography.bodyLarge.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 1,
+            color: AppColors.glassBorder,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            '或',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: AppColors.glassBorder,
           ),
         ),
       ],
