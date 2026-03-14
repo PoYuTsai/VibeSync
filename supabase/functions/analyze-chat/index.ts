@@ -895,6 +895,9 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     const startTime = Date.now();
     let claudeResult;
     try {
+      // Vision API 需要更長的 timeout（120 秒），純文字用預設 30 秒
+      const timeoutMs = hasImages ? 120000 : 30000;
+
       claudeResult = await callClaudeWithFallback(
         {
           model: selectedModel,
@@ -907,7 +910,8 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
             },
           ],
         },
-        CLAUDE_API_KEY
+        CLAUDE_API_KEY,
+        { timeout: timeoutMs }
       );
     } catch (error) {
       const latencyMs = Date.now() - startTime;

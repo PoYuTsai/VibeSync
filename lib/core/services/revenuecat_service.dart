@@ -141,16 +141,36 @@ class RevenueCatService {
   }
 
   /// 從 CustomerInfo 取得 tier
+  /// 檢查所有 active entitlements，不限定名稱
   static String getTierFromCustomerInfo(CustomerInfo? customerInfo) {
-    if (customerInfo == null) return 'free';
+    if (customerInfo == null) {
+      debugPrint('RevenueCat: customerInfo is null');
+      return 'free';
+    }
 
-    final premiumEntitlement = customerInfo.entitlements.active['premium'];
-    if (premiumEntitlement == null) return 'free';
+    final activeEntitlements = customerInfo.entitlements.active;
+    debugPrint('RevenueCat: Active entitlements: ${activeEntitlements.keys.toList()}');
 
-    final productId = premiumEntitlement.productIdentifier;
-    if (productId.contains('essential')) return 'essential';
-    if (productId.contains('starter')) return 'starter';
+    // 檢查所有 active entitlements
+    for (final entry in activeEntitlements.entries) {
+      final entitlementId = entry.key;
+      final entitlement = entry.value;
+      final productId = entitlement.productIdentifier;
 
+      debugPrint('RevenueCat: Entitlement "$entitlementId" -> Product "$productId"');
+
+      // 從 product_id 判斷 tier
+      if (productId.contains('essential')) {
+        debugPrint('RevenueCat: Detected tier: essential');
+        return 'essential';
+      }
+      if (productId.contains('starter')) {
+        debugPrint('RevenueCat: Detected tier: starter');
+        return 'starter';
+      }
+    }
+
+    debugPrint('RevenueCat: No matching tier found, returning free');
     return 'free';
   }
 }
