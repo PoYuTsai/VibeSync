@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -11,11 +12,33 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../data/providers/subscription_providers.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  String _versionString = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _versionString = '${packageInfo.version} (${packageInfo.buildNumber})';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
 
     return GradientBackground(
@@ -93,7 +116,7 @@ class SettingsScreen extends ConsumerWidget {
                       context: context,
                       icon: Icons.info,
                       title: '版本',
-                      trailing: '1.0.0',
+                      trailing: _versionString.isNotEmpty ? _versionString : '載入中...',
                     ),
                     _buildTile(
                       context: context,
