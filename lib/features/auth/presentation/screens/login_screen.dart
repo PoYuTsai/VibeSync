@@ -244,28 +244,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 32),
-                    GlassmorphicContainer(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '🧪 沙盒測試帳號',
-                            style: AppTypography.titleMedium.copyWith(
-                              color: AppColors.glassTextPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Email: vibesync.test@gmail.com\n密碼: test123456',
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.glassTextHint,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
