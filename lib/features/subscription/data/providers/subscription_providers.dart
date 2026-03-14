@@ -95,6 +95,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   Future<void> _initialize() async {
     await _loadSubscription();
     await _loadOfferings();
+    // 同步 RevenueCat 狀態（捕捉 webhook 漏掉的更新）
+    await syncWithRevenueCat();
   }
 
   /// 從 Supabase 載入訂閱狀態
@@ -163,11 +165,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       await RevenueCatService.purchase(package);
 
-      // 購買成功後刷新訂閱狀態
-      // Webhook 會更新 Supabase，但我們也主動從 RevenueCat 確認
+      // 購買成功後從 RevenueCat 確認 tier
       final customerInfo = await RevenueCatService.getCustomerInfo();
       final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+
+      // 主動更新 Supabase（不依賴 webhook）
+      await _updateSupabaseTier(tier);
 
       state = state.copyWith(
         tier: tier,
@@ -184,6 +188,24 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
   }
 
+  /// 主動更新 Supabase tier（作為 webhook 的 backup）
+  Future<void> _updateSupabaseTier(String tier) async {
+    try {
+      final user = SupabaseService.currentUser;
+      if (user == null) return;
+
+      await SupabaseService.client
+          .from('subscriptions')
+          .update({'tier': tier})
+          .eq('user_id', user.id);
+
+      debugPrint('Supabase tier updated to: $tier');
+    } catch (e) {
+      // 更新失敗不影響主流程，webhook 會再試
+      debugPrint('Failed to update Supabase tier: $e');
+    }
+  }
+
   /// 恢復購買
   Future<bool> restorePurchases() async {
     try {
@@ -192,6 +214,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final customerInfo = await RevenueCatService.restorePurchases();
       final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+
+      // 主動更新 Supabase
+      if (tier != 'free') {
+        await _updateSupabaseTier(tier);
+      }
 
       state = state.copyWith(
         tier: tier,
@@ -205,6 +232,36 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       debugPrint('Restore error: $e');
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
+    }
+  }
+
+  /// 同步 RevenueCat 狀態到本地和 Supabase
+  /// 可在 App 啟動或進入設定頁時呼叫
+  Future<void> syncWithRevenueCat() async {
+    try {
+      final customerInfo = await RevenueCatService.getCustomerInfo();
+      if (customerInfo == null) return;
+
+      final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+
+      // 如果 RevenueCat 的 tier 和目前不同，更新
+      if (rcTier != state.tier) {
+        debugPrint('Tier mismatch: local=${state.tier}, RevenueCat=$rcTier');
+
+        final limits = _tierLimits[rcTier] ?? _tierLimits['free']!;
+
+        // 更新 Supabase
+        await _updateSupabaseTier(rcTier);
+
+        // 更新本地 state
+        state = state.copyWith(
+          tier: rcTier,
+          monthlyLimit: limits['monthly']!,
+          dailyLimit: limits['daily']!,
+        );
+      }
+    } catch (e) {
+      debugPrint('Sync with RevenueCat error: $e');
     }
   }
 }
