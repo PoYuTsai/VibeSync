@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
@@ -130,6 +131,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         child: Text('恢復購買', style: AppTypography.caption),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Debug info button
+                  TextButton(
+                    onPressed: _showDebugInfo,
+                    child: Text('🔧 Debug Info', style: AppTypography.caption.copyWith(color: Colors.orange)),
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -292,6 +300,72 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       if (mounted) {
         setState(() => _isPurchasing = false);
       }
+    }
+  }
+
+  Future<void> _showDebugInfo() async {
+    String debugInfo = 'Loading...';
+
+    try {
+      final customerInfo = await RevenueCatService.getCustomerInfo();
+
+      if (customerInfo == null) {
+        debugInfo = 'CustomerInfo is NULL\n\nRevenueCat not initialized?';
+      } else {
+        final allEntitlements = customerInfo.entitlements.all.keys.toList();
+        final activeEntitlements = customerInfo.entitlements.active;
+        final activeKeys = activeEntitlements.keys.toList();
+        final activeSubscriptions = customerInfo.activeSubscriptions.toList();
+        final allPurchased = customerInfo.allPurchasedProductIdentifiers.toList();
+
+        final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+
+        debugInfo = '''
+=== RevenueCat Debug ===
+
+All Entitlements: $allEntitlements
+
+Active Entitlements: $activeKeys
+Count: ${activeEntitlements.length}
+
+Active Subscriptions: $activeSubscriptions
+
+All Purchased Products: $allPurchased
+
+--- Entitlement Details ---
+${activeEntitlements.entries.map((e) => '${e.key}: ${e.value.productIdentifier}').join('\n')}
+
+=== Detected Tier: $tier ===
+
+=== Local State ===
+Tier: ${ref.read(subscriptionProvider).tier}
+Monthly Limit: ${ref.read(subscriptionProvider).monthlyLimit}
+Daily Limit: ${ref.read(subscriptionProvider).dailyLimit}
+''';
+      }
+    } catch (e) {
+      debugInfo = 'Error: $e';
+    }
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Debug Info'),
+          content: SingleChildScrollView(
+            child: SelectableText(
+              debugInfo,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('關閉'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
