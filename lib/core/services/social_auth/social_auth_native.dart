@@ -1,18 +1,22 @@
 // lib/core/services/social_auth/social_auth_native.dart
 // Native 平台 (iOS/Android) 的社群登入實作
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/environment.dart';
 import 'social_auth_interface.dart';
 
 /// Native 平台的社群登入服務
 class SocialAuthServiceImpl implements SocialAuthService {
+  // Callback scheme for OAuth
+  static const String _callbackScheme = 'com.poyutsai.vibesync';
+
   @override
   bool get isAvailable => true;
 
@@ -46,36 +50,63 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
-    // Use Supabase OAuth flow
-    // The redirect URL must be configured in Supabase Dashboard → Auth → URL Configuration
-    final response = await Supabase.instance.client.auth.signInWithOAuth(
-      OAuthProvider.google,
-      redirectTo: 'com.poyutsai.vibesync://login-callback',
-    );
+    // Get the Supabase URL from config
+    final supabaseUrl = AppConfig.supabaseUrl;
+    final redirectUri = '$_callbackScheme://login-callback';
 
-    if (!response) {
-      throw const AuthException('Google Sign In failed');
-    }
-
-    // Wait for the auth state to change
-    final completer = Completer<AuthResponse>();
-    late final StreamSubscription<AuthState> subscription;
-
-    subscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedIn && data.session != null) {
-        subscription.cancel();
-        completer.complete(AuthResponse(session: data.session, user: data.session!.user));
-      }
-    });
-
-    // Timeout after 120 seconds (user might need time for 2FA)
-    return completer.future.timeout(
-      const Duration(seconds: 120),
-      onTimeout: () {
-        subscription.cancel();
-        throw const AuthException('Google Sign In timed out');
+    // Construct the OAuth URL for Google via Supabase
+    final authUrl = Uri.parse('$supabaseUrl/auth/v1/authorize').replace(
+      queryParameters: {
+        'provider': 'google',
+        'redirect_to': redirectUri,
       },
     );
+
+    // Use flutter_web_auth_2 for ASWebAuthenticationSession on iOS
+    // This provides the smooth native OAuth experience like Claude app
+    final result = await FlutterWebAuth2.authenticate(
+      url: authUrl.toString(),
+      callbackUrlScheme: _callbackScheme,
+      options: const FlutterWebAuth2Options(
+        preferEphemeral: false, // Use shared Safari cookies
+      ),
+    );
+
+    // Parse the callback URL to get the tokens
+    final uri = Uri.parse(result);
+
+    // Check for error
+    final error = uri.queryParameters['error'];
+    if (error != null) {
+      final errorDescription = uri.queryParameters['error_description'] ?? error;
+      throw AuthException(errorDescription);
+    }
+
+    // The callback URL contains the access_token in the fragment
+    // Format: scheme://callback#access_token=xxx&refresh_token=yyy&...
+    final fragment = uri.fragment;
+    if (fragment.isEmpty) {
+      // Maybe tokens are in query params instead
+      final accessToken = uri.queryParameters['access_token'];
+      final refreshToken = uri.queryParameters['refresh_token'];
+
+      if (accessToken != null) {
+        return await Supabase.instance.client.auth.setSession(refreshToken ?? accessToken);
+      }
+      throw const AuthException('Google Sign In failed: No tokens received');
+    }
+
+    // Parse fragment parameters
+    final params = Uri.splitQueryString(fragment);
+    final accessToken = params['access_token'];
+    final refreshToken = params['refresh_token'];
+
+    if (accessToken == null) {
+      throw const AuthException('Google Sign In failed: No access token');
+    }
+
+    // Set the session in Supabase
+    return await Supabase.instance.client.auth.setSession(refreshToken ?? accessToken);
   }
 
   /// Generate a random string for nonce
