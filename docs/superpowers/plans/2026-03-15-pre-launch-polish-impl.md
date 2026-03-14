@@ -291,7 +291,7 @@ import '../../../../core/services/supabase_service.dart';
 
 - [ ] **Step 3: 修改帳號顯示**
 
-找到 lines 56-61，將：
+搜尋 `trailing: user?.email ?? '未登入'`，將整個 `_buildTile` 區塊：
 
 ```dart
                     _buildTile(
@@ -331,11 +331,11 @@ git commit -m "feat: 設定頁帳號顯示優化（Apple 用戶不顯示 relay e
 ### Task 6: 設定頁 - 刪除「匯出我的資料」
 
 **Files:**
-- Modify: `lib/features/subscription/presentation/screens/settings_screen.dart:81-86`
+- Modify: `lib/features/subscription/presentation/screens/settings_screen.dart`
 
 - [ ] **Step 1: 刪除匯出資料項目**
 
-找到 lines 81-86，刪除：
+搜尋 `title: '匯出我的資料'`，刪除整個 `_buildTile` 區塊：
 
 ```dart
                     _buildTile(
@@ -553,7 +553,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ref = this.ref;
 ```
 
 - [ ] **Step 3: 修改版本顯示**
@@ -607,7 +606,7 @@ Expected: No errors (warnings are acceptable)
 
 - [ ] **Step 2: 登入頁視覺驗證**
 
-Run: `flutter run -d <device>`
+Run: `flutter run` (選擇 iOS Simulator 或實機)
 
 檢查：
 - [ ] Google 登入按鈕在 Apple 按鈕上方
@@ -615,6 +614,7 @@ Run: `flutter run -d <device>`
 - [ ] 法律聲明顯示在底部
 - [ ] 點擊「使用條款」可開啟網頁（或顯示 404 如果夥伴尚未建立頁面）
 - [ ] 點擊「隱私權政策」可開啟網頁
+- [ ] Email + 密碼登入仍正常運作（使用測試帳號驗證）
 
 - [ ] **Step 3: 設定頁視覺驗證**
 
