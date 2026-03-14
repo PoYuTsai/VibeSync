@@ -18,6 +18,10 @@ class SupabaseService {
     await Supabase.initialize(
       url: url,
       anonKey: anonKey,
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.implicit,
+      ),
+      debug: true, // Enable debug logging
     );
     _client = Supabase.instance.client;
     _initialized = true;

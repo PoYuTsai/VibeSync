@@ -46,12 +46,11 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
-    // Use Supabase OAuth flow with external browser (ASWebAuthenticationSession on iOS)
-    // This shows system dialog and shares Safari cookies for better UX
+    // Use Supabase OAuth flow
+    // The redirect URL must be configured in Supabase Dashboard → Auth → URL Configuration
     final response = await Supabase.instance.client.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: 'com.poyutsai.vibesync://login-callback',
-      authScreenLaunchMode: LaunchMode.externalApplication,
     );
 
     if (!response) {
