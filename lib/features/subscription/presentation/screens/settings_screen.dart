@@ -105,7 +105,7 @@ class SettingsScreen extends ConsumerWidget {
                       context: context,
                       icon: Icons.feedback,
                       title: '意見回饋',
-                      onTap: () => _showComingSoonSnackBar(context, '意見回饋'),
+                      onTap: () => _launchUrl('https://t.me/vibesync_feedback_bot'),
                     ),
                     _buildTile(
                       context: context,
@@ -313,15 +313,6 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showComingSoonSnackBar(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature 即將推出'),
-        duration: const Duration(seconds: 2),
       ),
     );
   }
