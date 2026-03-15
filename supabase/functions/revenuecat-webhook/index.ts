@@ -47,16 +47,20 @@ Deno.serve(async (req) => {
 
   try {
     // 驗證 Authorization header (RevenueCat Webhook Secret)
-    const authHeader = req.headers.get("Authorization");
     const webhookSecret = Deno.env.get("REVENUECAT_WEBHOOK_SECRET");
+    if (!webhookSecret) {
+      console.error("REVENUECAT_WEBHOOK_SECRET is not configured");
+      return jsonResponse({ error: "Server misconfigured" }, 500);
+    }
 
-    if (webhookSecret && authHeader !== `Bearer ${webhookSecret}`) {
+    const authHeader = req.headers.get("Authorization") || "";
+    if (authHeader !== `Bearer ${webhookSecret}`) {
       console.error("Invalid webhook authorization");
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
     const body = await req.json();
-    console.log("RevenueCat webhook received:", JSON.stringify(body, null, 2));
+    // Avoid logging full webhook payload (can contain sensitive subscriber info).
 
     const { event } = body;
     if (!event) {

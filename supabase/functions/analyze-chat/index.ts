@@ -767,7 +767,7 @@ ${recentText}`;
     const VALID_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-20250514"];
     const model = hasImages
       ? "claude-sonnet-4-20250514" // Vision 強制 Sonnet
-      : (forceModel && VALID_MODELS.includes(forceModel))
+      : (forceModel && (isTestAccount || TEST_MODE) && VALID_MODELS.includes(forceModel))
         ? forceModel
         : selectModel({
             conversationLength: messages.length,
@@ -1011,10 +1011,13 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
       await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
         userId: user.id,
         model: actualModel,
+        requestType: recognizeOnly ? "recognize_only" : "analyze_with_images",
         inputTokens: tokenUsage.inputTokens,
         outputTokens: tokenUsage.outputTokens,
         latencyMs,
-        status: "recognition_failed",
+        status: "failed",
+        errorCode: "RECOGNITION_FAILED",
+        errorMessage: "No recognizedConversation in response",
       });
 
       return jsonResponse({
@@ -1062,20 +1065,16 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     const messageCount = countMessages(messages);
 
     // Update usage count (測試帳號、純識別模式不扣額度)
-    if (!isTestAccount && !recognizeOnly) {
-      await supabase
-        .from("subscriptions")
-        .update({
-          monthly_messages_used: sub.monthly_messages_used + messageCount,
-          daily_messages_used: sub.daily_messages_used + messageCount,
-        })
-        .eq("user_id", user.id);
-
-      // Update user stats
-      await supabase.rpc("increment_usage", {
+    if (!isTestAccount) {
+      // Single source of truth for usage accounting (avoid double counting).
+      const { error: usageError } = await supabase.rpc("increment_usage", {
         p_user_id: user.id,
         p_messages: messageCount,
       });
+
+      if (usageError) {
+        console.error("Failed to increment usage:", usageError);
+      }
     }
 
     // Add usage info to response

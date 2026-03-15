@@ -135,6 +135,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   const SizedBox(height: 16),
 
                   // Debug info button
+                  if (kDebugMode)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
