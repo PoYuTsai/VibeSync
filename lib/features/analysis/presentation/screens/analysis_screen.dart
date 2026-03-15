@@ -1,4 +1,5 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -107,6 +108,32 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
     super.dispose();
+  }
+
+  /// 啟動識別計時器
+  void _startRecognizeTimer() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted || !_isRecognizing || _recognizeCancelled) {
+        return false;
+      }
+      setState(() {
+        _recognizeElapsedSeconds++;
+      });
+      debugPrint('[Timer] $_recognizeElapsedSeconds 秒');
+      return true;
+    });
+  }
+
+  /// 取消識別
+  void _cancelRecognize() {
+    debugPrint('用戶取消識別');
+    _recognizeCancelled = true;
+    setState(() {
+      _isRecognizing = false;
+      _errorMessage = '已取消識別';
+      _selectedImages = [];
+    });
   }
 
   /// 新增訊息到對話並重新分析
@@ -368,6 +395,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
+  // 識別計時器
+  int _recognizeElapsedSeconds = 0;
+  bool _recognizeCancelled = false;
+
   /// 識別截圖並加入對話（不進行完整分析）
   Future<void> _recognizeAndAddToConversation() async {
     if (_selectedImages.isEmpty) return;
@@ -376,10 +407,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     debugPrint('圖片數量: ${_selectedImages.length}');
     debugPrint('圖片大小: ${_selectedImages.map((i) => '${(i.length / 1024).toStringAsFixed(1)}KB').join(', ')}');
 
+    // 重置計時器狀態
+    _recognizeElapsedSeconds = 0;
+    _recognizeCancelled = false;
+
     setState(() {
       _isRecognizing = true;
       _errorMessage = null;
     });
+
+    // 啟動計時器更新 UI
+    _startRecognizeTimer();
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) {
@@ -395,18 +433,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     debugPrint('現有訊息數: ${conversation.messages.length}');
     final startTime = DateTime.now();
 
+    // 複製圖片列表，避免狀態問題
+    final imagesToProcess = List<Uint8List>.from(_selectedImages);
+    debugPrint('複製圖片列表完成，數量: ${imagesToProcess.length}');
+
     try {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
       debugPrint('呼叫 API... (timeout: 120s)');
       final analysisService = AnalysisService();
-      final result = await analysisService.analyzeConversation(
-        conversation.messages.isEmpty
-            ? [Message(id: 'placeholder', content: '請識別截圖內容', isFromMe: true, timestamp: DateTime.now())]
-            : conversation.messages,
-        images: _selectedImages,
-        sessionContext: conversation.sessionContext,
-        recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
-      );
+
+      // 使用 Future.any 來實現強制 timeout
+      final result = await Future.any([
+        analysisService.analyzeConversation(
+          conversation.messages.isEmpty
+              ? [Message(id: 'placeholder', content: '請識別截圖內容', isFromMe: true, timestamp: DateTime.now())]
+              : conversation.messages,
+          images: imagesToProcess,
+          sessionContext: conversation.sessionContext,
+          recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
+        ),
+        // 強制 130 秒 timeout (比 API 的 120 秒稍長)
+        Future.delayed(const Duration(seconds: 130), () {
+          throw TimeoutException('識別超時 (130秒)');
+        }),
+      ]);
       debugPrint('API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
 
       // 把識別結果存入對話
@@ -1299,7 +1349,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           child: Column(
                             children: [
                               Text(
-                                '🔄 正在識別截圖...',
+                                '🔄 正在識別截圖... ($_recognizeElapsedSeconds 秒)',
                                 style: AppTypography.bodySmall.copyWith(
                                   color: Colors.orange,
                                   fontWeight: FontWeight.bold,
@@ -1315,10 +1365,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                 ),
                               ),
                               Text(
-                                '請等待 API 回應（最長 120 秒）',
+                                '最長等待 130 秒',
                                 style: AppTypography.caption.copyWith(
                                   color: Colors.orange.withValues(alpha: 0.8),
                                   fontSize: 10,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              // 取消按鈕
+                              TextButton(
+                                onPressed: _cancelRecognize,
+                                child: Text(
+                                  '取消',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: Colors.red,
+                                  ),
                                 ),
                               ),
                             ],
