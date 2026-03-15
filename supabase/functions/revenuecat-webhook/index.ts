@@ -53,10 +53,29 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Server misconfigured" }, 500);
     }
 
-    const authHeader = req.headers.get("Authorization") || "";
-    if (authHeader !== `Bearer ${webhookSecret}`) {
-      console.error("Invalid webhook authorization");
+    const authHeaderRaw = req.headers.get("Authorization") || "";
+    const authHeader = authHeaderRaw.trim();
+
+    const expectedBearer = `Bearer ${webhookSecret}`;
+    const isAuthorized = authHeader === expectedBearer || authHeader === webhookSecret;
+
+    if (!isAuthorized) {
+      console.error(
+        "Invalid webhook authorization",
+        JSON.stringify({
+          hasAuth: authHeader.length > 0,
+          startsWithBearer: authHeader.startsWith("Bearer "),
+          authLength: authHeader.length,
+        })
+      );
       return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
+    if (authHeader === webhookSecret) {
+      console.warn(
+        "Webhook authorization matched raw secret (missing 'Bearer ' prefix). " +
+          "Update RevenueCat Authorization header value to: 'Bearer <secret>'."
+      );
     }
 
     const body = await req.json();
@@ -64,6 +83,13 @@ Deno.serve(async (req) => {
 
     const { event } = body;
     if (!event) {
+      console.error(
+        "No event in body",
+        JSON.stringify({
+          bodyType: typeof body,
+          bodyKeys: body && typeof body === "object" ? Object.keys(body) : null,
+        })
+      );
       return jsonResponse({ error: "No event in body" }, 400);
     }
 
@@ -71,11 +97,19 @@ Deno.serve(async (req) => {
       type,
       app_user_id,
       product_id,
+      new_product_id,
       entitlement_ids,
       expiration_at_ms,
     } = event;
 
-    console.log(`Event type: ${type}, User: ${app_user_id}, Product: ${product_id}`);
+    const effectiveProductId =
+      type === "PRODUCT_CHANGE" && new_product_id
+        ? new_product_id
+        : product_id;
+
+    console.log(
+      `Event type: ${type}, User: ${app_user_id}, product_id: ${product_id}, new_product_id: ${new_product_id}`
+    );
 
     // app_user_id 是我們在 RevenueCat.login() 時傳入的 Supabase user id
     if (!app_user_id || app_user_id.startsWith("$RCAnonymousID")) {
@@ -99,7 +133,7 @@ Deno.serve(async (req) => {
       case "PRODUCT_CHANGE":
       case "UNCANCELLATION":
       case "SUBSCRIPTION_EXTENDED":
-        newTier = getTierFromProductId(product_id);
+        newTier = getTierFromProductId(effectiveProductId);
         shouldUpdate = true;
         console.log(`Upgrading user ${app_user_id} to ${newTier}`);
         break;
@@ -174,16 +208,21 @@ Deno.serve(async (req) => {
 
     // 記錄 webhook 事件到 logs 表（可選）
     try {
-      await supabase.from("webhook_logs").insert({
+      const { error: logError } = await supabase.from("webhook_logs").insert({
         source: "revenuecat",
         event_type: type,
         user_id: app_user_id,
         payload: body,
         created_at: new Date().toISOString(),
       });
-    } catch (logError) {
-      // 記錄失敗不影響主流程
-      console.log("Failed to log webhook event (non-fatal):", logError);
+
+      if (logError) {
+        // 記錄失敗不影響主流程
+        console.log("Failed to log webhook event (non-fatal):", logError);
+      }
+    } catch (unexpectedError) {
+      // 意外例外（例如網路層）
+      console.log("Failed to log webhook event (non-fatal):", unexpectedError);
     }
 
     return jsonResponse({
