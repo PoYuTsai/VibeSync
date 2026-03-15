@@ -1,6 +1,5 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:pasteboard/pasteboard.dart';
 import '../services/image_compress_service.dart';
@@ -12,11 +11,15 @@ import 'glassmorphic_container.dart';
 class ImagePickerWidget extends StatefulWidget {
   final int maxImages;
   final Function(List<Uint8List>) onImagesChanged;
+  /// 外部傳入的圖片列表，用於同步狀態
+  /// 當外部清空時，內部也會清空
+  final List<Uint8List>? externalImages;
 
   const ImagePickerWidget({
     super.key,
     this.maxImages = 3,
     required this.onImagesChanged,
+    this.externalImages,
   });
 
   @override
@@ -24,9 +27,21 @@ class ImagePickerWidget extends StatefulWidget {
 }
 
 class _ImagePickerWidgetState extends State<ImagePickerWidget> {
-  final List<Uint8List> _images = [];
+  List<Uint8List> _images = [];
   final ImagePicker _picker = ImagePicker();
   bool _isProcessing = false;
+
+  @override
+  void didUpdateWidget(ImagePickerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 如果外部圖片列表被清空，同步清空內部狀態
+    if (widget.externalImages != null && widget.externalImages!.isEmpty && _images.isNotEmpty) {
+      debugPrint('[ImagePickerWidget] 外部清空，同步清空內部狀態');
+      setState(() {
+        _images = [];
+      });
+    }
+  }
 
   Future<void> _pickImage() async {
     if (_images.length >= widget.maxImages) {

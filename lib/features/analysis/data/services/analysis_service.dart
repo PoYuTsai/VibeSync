@@ -1,8 +1,8 @@
 // lib/features/analysis/data/services/analysis_service.dart
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
@@ -51,8 +51,12 @@ class AnalysisService {
     const maxRetries = 2;
     Exception? lastError;
 
+    debugPrint('[AnalysisService] analyzeConversation 開始');
+    debugPrint('[AnalysisService] messages: ${messages.length}, images: ${images?.length ?? 0}, recognizeOnly: $recognizeOnly');
+
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
+        debugPrint('[AnalysisService] 嘗試 ${attempt + 1}/${maxRetries + 1}');
         return await _doAnalyze(
           messages,
           images: images,
@@ -62,20 +66,24 @@ class AnalysisService {
           recognizeOnly: recognizeOnly,
         );
       } catch (e) {
+        debugPrint('[AnalysisService] 嘗試 ${attempt + 1} 失敗: ${e.runtimeType} - $e');
         lastError = e is Exception ? e : Exception(e.toString());
         // 如果是 AnalysisException (非網路錯誤)，不重試
         if (e is AnalysisException &&
             !e.message.contains('Failed to fetch') &&
             !e.message.contains('連線') &&
             !e.message.contains('逾時')) {
+          debugPrint('[AnalysisService] 不可重試的錯誤，直接拋出');
           rethrow;
         }
         // 等待後重試
         if (attempt < maxRetries) {
+          debugPrint('[AnalysisService] 等待 ${attempt + 1}s 後重試...');
           await Future.delayed(Duration(seconds: attempt + 1));
         }
       }
     }
+    debugPrint('[AnalysisService] 所有重試失敗');
     throw lastError ?? AnalysisException('分析失敗');
   }
 
@@ -88,16 +96,24 @@ class AnalysisService {
     bool recognizeOnly = false,
   }) async {
     try {
+      debugPrint('[AnalysisService] _doAnalyze 開始');
+      debugPrint('[AnalysisService] recognizeOnly: $recognizeOnly');
+      debugPrint('[AnalysisService] images: ${images?.length ?? 0}');
+
       // 處理圖片轉換為 base64
       List<Map<String, dynamic>>? imageDataList;
       if (images != null && images.isNotEmpty) {
+        debugPrint('[AnalysisService] 開始轉換圖片為 base64...');
         imageDataList = images.asMap().entries.map((entry) {
+          final base64Data = base64Encode(entry.value);
+          debugPrint('[AnalysisService] 圖片 ${entry.key + 1}: ${(base64Data.length / 1024).toStringAsFixed(1)}KB (base64)');
           return ImageData(
-            data: base64Encode(entry.value),
+            data: base64Data,
             mediaType: 'image/jpeg',
             order: entry.key + 1,
           ).toJson();
         }).toList();
+        debugPrint('[AnalysisService] 圖片轉換完成');
       }
 
       // 有圖片時使用較長的 timeout（120 秒），否則 60 秒
@@ -105,6 +121,9 @@ class AnalysisService {
       final timeout = hasImages
           ? const Duration(seconds: 120)
           : const Duration(seconds: 60);
+
+      debugPrint('[AnalysisService] 呼叫 Edge Function (timeout: ${timeout.inSeconds}s)...');
+      final requestStartTime = DateTime.now();
 
       final response = await SupabaseService.invokeFunction(
         'analyze-chat',
@@ -131,6 +150,10 @@ class AnalysisService {
         },
         timeout: timeout,
       );
+
+      final requestElapsed = DateTime.now().difference(requestStartTime).inSeconds;
+      debugPrint('[AnalysisService] Edge Function 回應，耗時: ${requestElapsed}s');
+      debugPrint('[AnalysisService] 狀態碼: ${response.status}');
 
       if (response.status != 200) {
         final errorData = response.data as Map<String, dynamic>?;
@@ -173,11 +196,16 @@ class AnalysisService {
         // 顯示詳細錯誤以便除錯
         throw AnalysisException('解析失敗: $parseError');
       }
-    } on AnalysisException {
+    } on AnalysisException catch (e) {
+      debugPrint('[AnalysisService] AnalysisException: ${e.message}');
       rethrow;
-    } on TimeoutException {
+    } on TimeoutException catch (e) {
+      debugPrint('[AnalysisService] TimeoutException: $e');
       throw AnalysisException('分析逾時，請稍後再試');
     } catch (e) {
+      debugPrint('[AnalysisService] 未知錯誤: ${e.runtimeType}');
+      debugPrint('[AnalysisService] 錯誤詳情: $e');
+
       // 顯示完整錯誤訊息以便除錯
       final errorStr = e.toString();
       final errorType = e.runtimeType.toString();

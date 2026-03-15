@@ -1,5 +1,5 @@
 // lib/features/analysis/presentation/screens/analysis_screen.dart
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -372,6 +372,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _recognizeAndAddToConversation() async {
     if (_selectedImages.isEmpty) return;
 
+    debugPrint('=== 開始截圖識別 ===');
+    debugPrint('圖片數量: ${_selectedImages.length}');
+    debugPrint('圖片大小: ${_selectedImages.map((i) => '${(i.length / 1024).toStringAsFixed(1)}KB').join(', ')}');
+
     setState(() {
       _isRecognizing = true;
       _errorMessage = null;
@@ -379,6 +383,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) {
+      debugPrint('錯誤: 找不到對話');
       setState(() {
         _isRecognizing = false;
         _errorMessage = '找不到對話';
@@ -386,8 +391,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
+    debugPrint('對話 ID: ${conversation.id}');
+    debugPrint('現有訊息數: ${conversation.messages.length}');
+    final startTime = DateTime.now();
+
     try {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
+      debugPrint('呼叫 API... (timeout: 120s)');
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
         conversation.messages.isEmpty
@@ -397,6 +407,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         sessionContext: conversation.sessionContext,
         recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
       );
+      debugPrint('API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
 
       // 把識別結果存入對話
       if (result.recognizedConversation != null &&
@@ -476,16 +487,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       }
 
       // 識別失敗或沒有識別到訊息
+      final elapsed = DateTime.now().difference(startTime).inSeconds;
+      debugPrint('識別失敗 (無訊息)，耗時: ${elapsed}s');
+      debugPrint('recognizedConversation: ${result.recognizedConversation}');
       setState(() {
         _isRecognizing = false;
         _errorMessage = result.recognizedConversation?.summary ?? '無法識別截圖中的對話';
       });
     } on AnalysisException catch (e) {
+      final elapsed = DateTime.now().difference(startTime).inSeconds;
+      debugPrint('AnalysisException，耗時: ${elapsed}s');
+      debugPrint('錯誤訊息: ${e.message}');
       setState(() {
         _isRecognizing = false;
         _errorMessage = e.message;
       });
     } catch (e) {
+      final elapsed = DateTime.now().difference(startTime).inSeconds;
+      debugPrint('未知錯誤，耗時: ${elapsed}s');
+      debugPrint('錯誤類型: ${e.runtimeType}');
+      debugPrint('錯誤詳情: $e');
       setState(() {
         _isRecognizing = false;
         _errorMessage = '識別失敗: $e';
@@ -1224,6 +1245,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     // 截圖上傳區
                     ImagePickerWidget(
                       maxImages: 3,
+                      externalImages: _selectedImages, // 同步外部狀態
                       onImagesChanged: (images) {
                         setState(() {
                           _selectedImages = images;
@@ -1265,14 +1287,52 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // 提示：有截圖時要先識別
-                      Text(
-                        '請先點擊上方按鈕識別截圖，再進行分析',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.warning,
+                      // Debug 狀態顯示
+                      if (_isRecognizing)
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                '🔄 正在識別截圖...',
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '圖片: ${_selectedImages.length}張 (${_selectedImages.map((i) => '${(i.length / 1024).toStringAsFixed(0)}KB').join(', ')})',
+                                style: AppTypography.caption.copyWith(
+                                  color: Colors.orange.withValues(alpha: 0.8),
+                                  fontFamily: 'monospace',
+                                  fontSize: 10,
+                                ),
+                              ),
+                              Text(
+                                '請等待 API 回應（最長 120 秒）',
+                                style: AppTypography.caption.copyWith(
+                                  color: Colors.orange.withValues(alpha: 0.8),
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
+                      if (!_isRecognizing)
+                        // 提示：有截圖時要先識別
+                        Text(
+                          '請先點擊上方按鈕識別截圖，再進行分析',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.warning,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       const SizedBox(height: 12),
                     ] else ...[
                       // 沒有截圖時才顯示「開始分析」按鈕
