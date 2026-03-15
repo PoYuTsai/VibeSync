@@ -578,7 +578,7 @@ serve(async (req) => {
     const isTestAccount = TEST_EMAILS.includes(user.email || "");
 
     // Check subscription
-    const { data: sub } = await supabase
+    const { data: sub, error: subError } = await supabase
       .from("subscriptions")
       .select(
         "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at"
@@ -586,13 +586,24 @@ serve(async (req) => {
       .eq("user_id", user.id)
       .single();
 
+    console.log(`[DEBUG] User: ${user.email}, Subscription query result:`, {
+      hasSub: !!sub,
+      error: subError?.message,
+      tier: sub?.tier,
+      daily_reset_at: sub?.daily_reset_at,
+      monthly_reset_at: sub?.monthly_reset_at,
+    });
+
     if (!sub) {
+      console.error(`[ERROR] No subscription for user ${user.email}:`, subError);
       return jsonResponse({ error: "No subscription found" }, 403);
     }
 
     // Check if daily reset needed
     const now = new Date();
-    const dailyResetAt = new Date(sub.daily_reset_at);
+    // 安全處理 null 值
+    const dailyResetAt = sub.daily_reset_at ? new Date(sub.daily_reset_at) : new Date(0);
+    console.log(`[DEBUG] Daily reset check: now=${now.toDateString()}, resetAt=${dailyResetAt.toDateString()}`);
     if (now.toDateString() !== dailyResetAt.toDateString()) {
       await supabase
         .from("subscriptions")
@@ -602,7 +613,8 @@ serve(async (req) => {
     }
 
     // Check monthly reset needed
-    const monthlyResetAt = new Date(sub.monthly_reset_at);
+    const monthlyResetAt = sub.monthly_reset_at ? new Date(sub.monthly_reset_at) : new Date(0);
+    console.log(`[DEBUG] Monthly reset check: now=${now.getMonth()}/${now.getFullYear()}, resetAt=${monthlyResetAt.getMonth()}/${monthlyResetAt.getFullYear()}`);
     if (
       now.getMonth() !== monthlyResetAt.getMonth() ||
       now.getFullYear() !== monthlyResetAt.getFullYear()
@@ -639,7 +651,19 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { messages, images, sessionContext, userDraft, forceModel, analyzeMode, recognizeOnly } = await req.json();
+    console.log(`[DEBUG] Parsing request body...`);
+    let requestBody;
+    try {
+      requestBody = await req.json();
+      console.log(`[DEBUG] Request body parsed successfully`);
+    } catch (parseError) {
+      console.error(`[ERROR] Failed to parse request body:`, parseError);
+      return jsonResponse({ error: "Invalid request body" }, 400);
+    }
+
+    const { messages, images, sessionContext, userDraft, forceModel, analyzeMode, recognizeOnly } = requestBody;
+    console.log(`[DEBUG] Request params: messages=${messages?.length}, images=${images?.length || 0}, recognizeOnly=${recognizeOnly}, analyzeMode=${analyzeMode}`);
+
     // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
     // images: optional array of ImageData for screenshot analysis
     // recognizeOnly: boolean - 只識別截圖，不做完整分析（節省時間和 tokens）
@@ -897,6 +921,7 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     try {
       // Vision API 需要更長的 timeout（120 秒），純文字用預設 30 秒
       const timeoutMs = hasImages ? 120000 : 30000;
+      console.log(`[DEBUG] Calling Claude API: model=${selectedModel}, hasImages=${hasImages}, timeout=${timeoutMs}ms`);
 
       claudeResult = await callClaudeWithFallback(
         {
@@ -938,10 +963,12 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
       throw error;
     }
 
+    console.log(`[DEBUG] Claude API returned successfully`);
     const content = claudeResult.data.content[0]?.text;
     const actualModel = claudeResult.model;
     const latencyMs = Date.now() - startTime;
     const tokenUsage = extractTokenUsage(claudeResult.data);
+    console.log(`[DEBUG] Claude response: model=${actualModel}, latency=${latencyMs}ms, tokens=${JSON.stringify(tokenUsage)}`);
 
     // Parse Claude's response
     let result;
