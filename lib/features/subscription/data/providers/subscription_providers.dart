@@ -175,13 +175,37 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       debugPrint('Active Entitlements: ${customerInfo.entitlements.active.keys.toList()}');
 
       // 直接從購買結果取得 tier（不需要再呼叫 getCustomerInfo）
-      final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      String tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+
+      // 如果 RevenueCat 返回 free 但有購買紀錄，從 product ID 推測 tier
+      if (tier == 'free' && customerInfo.allPurchasedProductIdentifiers.isNotEmpty) {
+        debugPrint('[purchase] WARNING: tier is free but has purchases, inferring from product ID');
+        final productId = package.storeProduct.identifier;
+        if (productId.contains('essential')) {
+          tier = 'essential';
+        } else if (productId.contains('starter')) {
+          tier = 'starter';
+        }
+        debugPrint('[purchase] Inferred tier from product ID: $tier');
+      }
+
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
 
       debugPrint('Detected tier: $tier, limits: $limits');
 
-      // 主動更新 Supabase（不依賴 webhook）
-      await _updateSupabaseTier(tier);
+      // 主動更新 Supabase（不依賴 webhook），重試最多 3 次
+      bool syncSuccess = false;
+      for (var attempt = 1; attempt <= 3; attempt++) {
+        debugPrint('[purchase] Supabase sync attempt $attempt/3');
+        syncSuccess = await _updateSupabaseTier(tier);
+        if (syncSuccess) break;
+        await Future.delayed(Duration(seconds: attempt));
+      }
+
+      if (!syncSuccess) {
+        debugPrint('[purchase] WARNING: Supabase sync failed after 3 attempts, using forceSyncTier');
+        await forceSyncTier(tier);
+      }
 
       state = state.copyWith(
         tier: tier,
@@ -206,22 +230,47 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     try {
       final user = SupabaseService.currentUser;
       if (user == null) {
-        debugPrint('forceSyncTier: No user logged in');
-        return;
+        debugPrint('[forceSyncTier] ERROR: No user logged in');
+        throw Exception('請先登入');
       }
+
+      debugPrint('[forceSyncTier] Starting sync: tier=$tier, user=${user.id}');
 
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
 
-      // 更新 Supabase，同時重置每日用量
-      await SupabaseService.client
+      // 先檢查是否有 subscription record
+      final existing = await SupabaseService.client
           .from('subscriptions')
-          .update({
-            'tier': tier,
-            'daily_messages_used': 0, // 重置每日用量
-          })
-          .eq('user_id', user.id);
+          .select()
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-      debugPrint('Supabase force synced: tier=$tier, daily_messages_used=0');
+      debugPrint('[forceSyncTier] Existing record: $existing');
+
+      if (existing == null) {
+        // 沒有記錄，插入新的
+        debugPrint('[forceSyncTier] No existing record, inserting new one');
+        await SupabaseService.client
+            .from('subscriptions')
+            .insert({
+              'user_id': user.id,
+              'tier': tier,
+              'monthly_messages_used': 0,
+              'daily_messages_used': 0,
+            });
+      } else {
+        // 有記錄，更新
+        debugPrint('[forceSyncTier] Updating existing record');
+        await SupabaseService.client
+            .from('subscriptions')
+            .update({
+              'tier': tier,
+              'daily_messages_used': 0, // 重置每日用量
+            })
+            .eq('user_id', user.id);
+      }
+
+      debugPrint('[forceSyncTier] SUCCESS: Supabase force synced: tier=$tier, daily_messages_used=0');
 
       // 更新本地 state
       state = state.copyWith(
@@ -231,27 +280,53 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyMessagesUsed: 0,
       );
 
+      debugPrint('[forceSyncTier] Local state updated: tier=${state.tier}, limits=${limits}');
+
     } catch (e) {
-      debugPrint('forceSyncTier error: $e');
+      debugPrint('[forceSyncTier] ERROR: $e');
       rethrow;
     }
   }
 
   /// 主動更新 Supabase tier（作為 webhook 的 backup）
-  Future<void> _updateSupabaseTier(String tier) async {
+  Future<bool> _updateSupabaseTier(String tier) async {
     try {
       final user = SupabaseService.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        debugPrint('[_updateSupabaseTier] ERROR: No user logged in');
+        return false;
+      }
 
-      await SupabaseService.client
+      debugPrint('[_updateSupabaseTier] Updating tier to "$tier" for user ${user.id}');
+
+      final result = await SupabaseService.client
           .from('subscriptions')
           .update({'tier': tier})
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .select();
 
-      debugPrint('Supabase tier updated to: $tier');
+      debugPrint('[_updateSupabaseTier] Update result: $result');
+
+      if (result.isEmpty) {
+        debugPrint('[_updateSupabaseTier] WARNING: No rows updated - subscription record might not exist');
+        // 嘗試 upsert
+        await SupabaseService.client
+            .from('subscriptions')
+            .upsert({
+              'user_id': user.id,
+              'tier': tier,
+              'monthly_messages_used': 0,
+              'daily_messages_used': 0,
+            });
+        debugPrint('[_updateSupabaseTier] Upserted subscription record');
+      }
+
+      debugPrint('[_updateSupabaseTier] SUCCESS: Supabase tier updated to: $tier');
+      return true;
     } catch (e) {
       // 更新失敗不影響主流程，webhook 會再試
-      debugPrint('Failed to update Supabase tier: $e');
+      debugPrint('[_updateSupabaseTier] FAILED: $e');
+      return false;
     }
   }
 

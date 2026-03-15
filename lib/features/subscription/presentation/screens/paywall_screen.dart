@@ -342,11 +342,47 @@ Daily Limit: ${localState.dailyLimit}
       setState(() => _isPurchasing = true);
 
       // 從 RevenueCat 取得最新狀態
+      debugPrint('[ForceSync] Getting customer info from RevenueCat...');
       final customerInfo = await RevenueCatService.getCustomerInfo();
+
+      if (customerInfo == null) {
+        debugPrint('[ForceSync] CustomerInfo is NULL!');
+        if (mounted) {
+          // 顯示選擇對話框讓用戶手動選擇 tier
+          await _showManualTierDialog('RevenueCat 未初始化或無法取得資訊');
+        }
+        return;
+      }
+
+      final activeEntitlements = customerInfo.entitlements.active.keys.toList();
+      final activeSubscriptions = customerInfo.activeSubscriptions.toList();
+      final allPurchased = customerInfo.allPurchasedProductIdentifiers.toList();
+
+      debugPrint('[ForceSync] Active entitlements: $activeEntitlements');
+      debugPrint('[ForceSync] Active subscriptions: $activeSubscriptions');
+      debugPrint('[ForceSync] All purchased: $allPurchased');
+
       final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      debugPrint('[ForceSync] Detected tier: $tier');
+
+      // 如果偵測到 free 但有購買紀錄，顯示警告並讓用戶手動選擇
+      if (tier == 'free' && allPurchased.isNotEmpty) {
+        if (mounted) {
+          await _showManualTierDialog(
+            '偵測到購買紀錄但 tier 為 free\n\n'
+            'Purchased: $allPurchased\n'
+            'Active Subs: $activeSubscriptions\n'
+            'Entitlements: $activeEntitlements\n\n'
+            '請手動選擇正確的 tier：'
+          );
+        }
+        return;
+      }
 
       // 強制同步到 Supabase
+      debugPrint('[ForceSync] Syncing to Supabase...');
       await ref.read(subscriptionProvider.notifier).forceSyncTier(tier);
+      debugPrint('[ForceSync] Sync complete!');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -357,6 +393,7 @@ Daily Limit: ${localState.dailyLimit}
         );
       }
     } catch (e) {
+      debugPrint('[ForceSync] Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('同步失敗: $e')),
@@ -366,6 +403,56 @@ Daily Limit: ${localState.dailyLimit}
       if (mounted) {
         setState(() => _isPurchasing = false);
       }
+    }
+  }
+
+  Future<void> _showManualTierDialog(String message) async {
+    final selectedTier = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('手動選擇 Tier'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              message,
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            const Text('選擇要同步的 tier：'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'free'),
+            child: const Text('Free'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'starter'),
+            child: const Text('Starter'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'essential'),
+            child: const Text('Essential'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedTier != null && mounted) {
+      debugPrint('[ForceSync] Manual tier selected: $selectedTier');
+      await ref.read(subscriptionProvider.notifier).forceSyncTier(selectedTier);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已手動同步到 Supabase: $selectedTier'),
+          backgroundColor: AppColors.success,
+        ),
+      );
     }
   }
 
