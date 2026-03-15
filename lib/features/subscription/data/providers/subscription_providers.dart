@@ -164,8 +164,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       state = state.copyWith(isLoading: true);
 
       debugPrint('=== PURCHASE START ===');
-      final productId = package.storeProduct.identifier;
-      debugPrint('Package: $productId');
+      debugPrint('Package: ${package.storeProduct.identifier}');
 
       // purchase() 直接返回更新後的 CustomerInfo
       final customerInfo = await RevenueCatService.purchase(package);
@@ -175,18 +174,20 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       debugPrint('All Purchased: ${customerInfo.allPurchasedProductIdentifiers}');
       debugPrint('Active Entitlements: ${customerInfo.entitlements.active.keys.toList()}');
 
-      // 重要：直接從剛購買的 package 推斷 tier，而不是依賴 entitlements
-      // 這樣降級時也能正確更新（因為 entitlements 可能還顯示舊訂閱）
-      String tier;
-      if (productId.contains('essential')) {
-        tier = 'essential';
-      } else if (productId.contains('starter')) {
-        tier = 'starter';
-      } else {
-        // fallback: 從 entitlements 推斷
-        tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      // 直接從購買結果取得 tier（不需要再呼叫 getCustomerInfo）
+      String tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+
+      // 如果 RevenueCat 返回 free 但有購買紀錄，從 product ID 推測 tier
+      if (tier == 'free' && customerInfo.allPurchasedProductIdentifiers.isNotEmpty) {
+        debugPrint('[purchase] WARNING: tier is free but has purchases, inferring from product ID');
+        final productId = package.storeProduct.identifier;
+        if (productId.contains('essential')) {
+          tier = 'essential';
+        } else if (productId.contains('starter')) {
+          tier = 'starter';
+        }
+        debugPrint('[purchase] Inferred tier from product ID: $tier');
       }
-      debugPrint('[purchase] Tier from purchased product: $tier');
 
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
 
