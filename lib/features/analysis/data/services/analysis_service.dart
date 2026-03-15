@@ -3,7 +3,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/config/environment.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
@@ -125,80 +127,86 @@ class AnalysisService {
       debugPrint('[AnalysisService] 呼叫 Edge Function (timeout: ${timeout.inSeconds}s)...');
       final requestStartTime = DateTime.now();
 
-      final response = await SupabaseService.invokeFunction(
-        'analyze-chat',
-        body: {
-          'messages': messages
-              .map((m) => {
-                    'isFromMe': m.isFromMe,
-                    'content': m.content,
-                  })
-              .toList(),
-          if (imageDataList != null) 'images': imageDataList,
-          if (sessionContext != null)
-            'sessionContext': {
-              'meetingContext': sessionContext.meetingContext.label,
-              'duration': sessionContext.duration.label,
-              'goal': sessionContext.goal.label,
-            },
-          if (userDraft != null && userDraft.trim().isNotEmpty)
-            'userDraft': userDraft.trim(),
-          if (analyzeMode != null)
-            'analyzeMode': analyzeMode,
-          if (recognizeOnly)
-            'recognizeOnly': true,
-        },
-        timeout: timeout,
-      );
-
-      final requestElapsed = DateTime.now().difference(requestStartTime).inSeconds;
-      debugPrint('[AnalysisService] Edge Function 回應，耗時: ${requestElapsed}s');
-      debugPrint('[AnalysisService] 狀態碼: ${response.status}');
-
-      if (response.status != 200) {
-        final errorData = response.data as Map<String, dynamic>?;
-        final errorMessage = errorData?['error'] as String? ?? 'Analysis failed';
-
-        // Check for rate limit errors
-        if (response.status == 429) {
-          final monthlyLimit = errorData?['monthlyLimit'];
-          final dailyLimit = errorData?['dailyLimit'];
-          if (dailyLimit != null) {
-            throw DailyLimitExceededException(
-              dailyLimit: dailyLimit as int,
-              used: errorData?['used'] as int? ?? 0,
-            );
-          }
-          if (monthlyLimit != null) {
-            throw MonthlyLimitExceededException(
-              monthlyLimit: monthlyLimit as int,
-              used: errorData?['used'] as int? ?? 0,
-            );
-          }
-        }
-
-        throw AnalysisException(errorMessage);
+      // 使用直接 HTTP 請求而非 Supabase SDK，避免連線狀態問題
+      final accessToken = SupabaseService.accessToken;
+      if (accessToken == null) {
+        throw AnalysisException('請重新登入');
       }
 
-      // 安全解析 JSON 回應
+      final requestBody = {
+        'messages': messages
+            .map((m) => {
+                  'isFromMe': m.isFromMe,
+                  'content': m.content,
+                })
+            .toList(),
+        if (imageDataList != null) 'images': imageDataList,
+        if (sessionContext != null)
+          'sessionContext': {
+            'meetingContext': sessionContext.meetingContext.label,
+            'duration': sessionContext.duration.label,
+            'goal': sessionContext.goal.label,
+          },
+        if (userDraft != null && userDraft.trim().isNotEmpty)
+          'userDraft': userDraft.trim(),
+        if (analyzeMode != null)
+          'analyzeMode': analyzeMode,
+        if (recognizeOnly)
+          'recognizeOnly': true,
+      };
+
+      debugPrint('[AnalysisService] Request body size: ${jsonEncode(requestBody).length} bytes');
+
+      // 使用 http package 直接發送請求
+      final httpClient = http.Client();
       try {
-        final data = response.data;
-        if (data == null) {
-          throw AnalysisException('伺服器回應為空');
+        final httpResponse = await httpClient.post(
+          Uri.parse('${AppConfig.supabaseUrl}/functions/v1/analyze-chat'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $accessToken',
+            'apikey': AppConfig.supabaseAnonKey,
+          },
+          body: jsonEncode(requestBody),
+        ).timeout(timeout);
+
+        final requestElapsed = DateTime.now().difference(requestStartTime).inSeconds;
+        debugPrint('[AnalysisService] HTTP 回應，耗時: ${requestElapsed}s');
+        debugPrint('[AnalysisService] 狀態碼: ${httpResponse.statusCode}');
+
+        // 轉換為類似 FunctionResponse 的格式
+        final responseData = jsonDecode(httpResponse.body);
+        final status = httpResponse.statusCode;
+
+        if (status != 200) {
+          final errorMessage = responseData['error'] as String? ?? 'Analysis failed';
+
+          // Check for rate limit errors
+          if (status == 429) {
+            final monthlyLimit = responseData['monthlyLimit'];
+            final dailyLimit = responseData['dailyLimit'];
+            if (dailyLimit != null) {
+              throw DailyLimitExceededException(
+                dailyLimit: dailyLimit as int,
+                used: responseData['used'] as int? ?? 0,
+              );
+            }
+            if (monthlyLimit != null) {
+              throw MonthlyLimitExceededException(
+                monthlyLimit: monthlyLimit as int,
+                used: responseData['used'] as int? ?? 0,
+              );
+            }
+          }
+
+          throw AnalysisException(errorMessage);
         }
-        if (data is! Map<String, dynamic>) {
-          throw AnalysisException('伺服器回應格式錯誤: ${data.runtimeType}');
-        }
-        return AnalysisResult.fromJson(data);
-      } on AnalysisException {
-        rethrow;
-      } catch (parseError) {
-        // 顯示詳細錯誤以便除錯
-        throw AnalysisException('解析失敗: $parseError');
+
+        // 安全解析 JSON 回應
+        return AnalysisResult.fromJson(responseData);
+      } finally {
+        httpClient.close();
       }
-    } on AnalysisException catch (e) {
-      debugPrint('[AnalysisService] AnalysisException: ${e.message}');
-      rethrow;
     } on TimeoutException catch (e) {
       debugPrint('[AnalysisService] TimeoutException: $e');
       throw AnalysisException('分析逾時，請稍後再試');
