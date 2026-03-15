@@ -630,8 +630,10 @@ serve(async (req) => {
     }
 
     // Check monthly limit (測試帳號跳過)
-    const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier];
+    const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] || TIER_MONTHLY_LIMITS.free;
+    console.log(`[DEBUG] Monthly limit check: tier=${sub.tier}, limit=${monthlyLimit}, used=${sub.monthly_messages_used}, isTestAccount=${isTestAccount}`);
     if (!isTestAccount && sub.monthly_messages_used >= monthlyLimit) {
+      console.log(`[DEBUG] Monthly limit exceeded, returning 429`);
       return jsonResponse({
         error: "Monthly limit exceeded",
         monthlyLimit,
@@ -640,8 +642,10 @@ serve(async (req) => {
     }
 
     // Check daily limit (測試帳號跳過)
-    const dailyLimit = TIER_DAILY_LIMITS[sub.tier];
+    const dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+    console.log(`[DEBUG] Daily limit check: tier=${sub.tier}, limit=${dailyLimit}, used=${sub.daily_messages_used}, isTestAccount=${isTestAccount}`);
     if (!isTestAccount && sub.daily_messages_used >= dailyLimit) {
+      console.log(`[DEBUG] Daily limit exceeded, returning 429`);
       return jsonResponse({
         error: "Daily limit exceeded",
         dailyLimit,
@@ -649,6 +653,8 @@ serve(async (req) => {
         resetAt: "tomorrow",
       }, 429);
     }
+
+    console.log(`[DEBUG] Limit checks passed, proceeding to parse request body`);
 
     // Parse request
     console.log(`[DEBUG] Parsing request body...`);
