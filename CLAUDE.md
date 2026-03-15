@@ -461,6 +461,7 @@ Bug 發生 → 分析 → 修復 → 寫測試 → 更新 CLAUDE.md → commit &
 - [ ] TestFlight 重複 build number → 用 `--build-number=${{ github.run_number }}` 自動遞增
 - [ ] Fastlane Slack 通知失敗導致 workflow 失敗 → 用 `begin/rescue` 包住，設為 non-fatal
 - [ ] TestFlight Export Compliance 每次都要手動填 → 在 Info.plist 加入 `ITSAppUsesNonExemptEncryption = false`
+- [ ] RevenueCat 購買後 tier 未同步 → 檢查 entitlements 設定、使用 Force Sync 手動同步、或 SQL 直接更新
 
 ---
 
@@ -913,6 +914,41 @@ final result = await FlutterWebAuth2.authenticate(
 - Callback scheme 必須在 Info.plist 中註冊
 
 **相關檔案**: `lib/core/services/social_auth/social_auth_native.dart`
+
+#### [2026-03-15] 購買後 Tier 未同步到 Supabase - 截圖功能 Timeout
+**症狀**:
+- 測試帳號（白名單）截圖識別 8 秒成功
+- 真實帳號（已購買訂閱）截圖識別永遠 timeout
+- Edge Function 日誌顯示 `tier: "free"`，但用戶已購買 Essential
+
+**Root Cause**:
+1. RevenueCat 購買後，`_updateSupabaseTier()` 可能靜默失敗
+2. Force Sync 按鈕呼叫 `getTierFromCustomerInfo()`，但 RevenueCat 可能返回 `free`（entitlements 未正確設定）
+3. Supabase 的 `subscriptions` 表中 tier 仍是 `free`
+4. Edge Function 根據 `free` tier 檢查額度，15 則/天很快用完
+5. 超過額度後返回 429，但前端沒有正確處理，導致 timeout
+
+**修復**:
+1. 臨時修復：手動 SQL 更新 tier
+   ```sql
+   UPDATE subscriptions
+   SET tier = 'essential'
+   WHERE user_id = (SELECT id FROM auth.users WHERE email = 'xxx@xxx.com');
+   ```
+2. 永久修復：
+   - Force Sync 顯示 RevenueCat 詳細資訊，允許手動選擇 tier
+   - `_updateSupabaseTier` 使用 `select()` 驗證更新成功，失敗時 upsert
+   - `forceSyncTier` 檢查記錄是否存在，不存在則 insert
+   - `purchase` 流程從 product ID 推測 tier，重試 3 次同步
+
+**預防**:
+- RevenueCat Entitlements 必須正確關聯產品
+- 購買後應顯示同步結果，不要靜默失敗
+- Edge Function 應返回明確的 429 錯誤訊息，前端正確處理
+
+**相關檔案**:
+- `lib/features/subscription/data/providers/subscription_providers.dart`
+- `lib/features/subscription/presentation/screens/paywall_screen.dart`
 
 ### Design Decisions
 
