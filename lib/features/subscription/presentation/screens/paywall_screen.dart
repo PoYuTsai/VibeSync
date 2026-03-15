@@ -274,16 +274,41 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final success =
           await ref.read(subscriptionProvider.notifier).purchase(package);
 
-      if (mounted) {
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('訂閱成功！'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-          context.pop();
-        }
+      if (mounted && success) {
+        // 購買成功後顯示詳細結果
+        final customerInfo = await RevenueCatService.getCustomerInfo();
+        final newTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+        final localState = ref.read(subscriptionProvider);
+
+        if (!mounted) return;
+
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('購買結果'),
+            content: SelectableText('''
+購買成功！
+
+=== RevenueCat ===
+Active Subscriptions: ${customerInfo?.activeSubscriptions.toList()}
+Active Entitlements: ${customerInfo?.entitlements.active.keys.toList()}
+Detected Tier: $newTier
+
+=== Local State ===
+Tier: ${localState.tier}
+Daily Limit: ${localState.dailyLimit}
+'''),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  if (context.mounted) context.pop();
+                },
+                child: const Text('確定'),
+              ),
+            ],
+          ),
+        );
       }
     } on PurchasesErrorCode catch (e) {
       if (mounted) {

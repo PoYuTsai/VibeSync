@@ -163,10 +163,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     try {
       state = state.copyWith(isLoading: true);
 
+      debugPrint('=== PURCHASE START ===');
+      debugPrint('Package: ${package.storeProduct.identifier}');
+
       // purchase() 直接返回更新後的 CustomerInfo
       final customerInfo = await RevenueCatService.purchase(package);
 
-      debugPrint('Purchase successful, checking tier from CustomerInfo...');
+      debugPrint('=== PURCHASE RESULT ===');
+      debugPrint('Active Subscriptions: ${customerInfo.activeSubscriptions}');
+      debugPrint('All Purchased: ${customerInfo.allPurchasedProductIdentifiers}');
+      debugPrint('Active Entitlements: ${customerInfo.entitlements.active.keys.toList()}');
 
       // 直接從購買結果取得 tier（不需要再呼叫 getCustomerInfo）
       final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
@@ -185,6 +191,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
 
       debugPrint('State updated: tier=${state.tier}, monthlyLimit=${state.monthlyLimit}');
+      debugPrint('=== PURCHASE END ===');
 
       return true;
     } catch (e) {
