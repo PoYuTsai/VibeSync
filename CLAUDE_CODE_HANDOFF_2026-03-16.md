@@ -148,6 +148,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The doc now describes the current Free / Starter / Essential structure as monthly plans, keeps billing/refund language anchored to App Store / Play rules, and removes implied availability of annual plans, paid-plan free trials, and message-booster add-ons that are not fully launched yet.
    - The acceptable-use and AI-content sections were also tightened to cover unsupported screenshots, harmful uploads, OCR limitations, and the fact that VibeSync is a decision-support tool rather than a guaranteed outcome service.
 
+31. `docs/launch-readiness-checklist.md`
+   - Added a single launch-readiness document that turns the current review findings into a concrete execution checklist.
+   - The checklist is split into `必修 / 應修 / 可延後 / 伙伴待辦 / 品質門檻`, covering legal sync, auth regression, subscription regression, OCR boundary cases, telemetry verification, and the higher-level quality bar needed before public launch.
+   - This is intended to be the working source of truth for the remaining TestFlight-to-App-Review gap, instead of relying on scattered chat messages or handoff bullets alone.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
