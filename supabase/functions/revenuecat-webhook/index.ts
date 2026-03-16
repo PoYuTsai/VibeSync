@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -72,8 +73,12 @@ Deno.serve(async (req) => {
         authHeaderLength: authHeader.length,
         receivedTokenLength: receivedToken.length,
         expectedTokenLength: expectedToken.length,
-        receivedTokenHash12: receivedToken ? await sha256Prefix(receivedToken) : null,
-        expectedTokenHash12: expectedToken ? await sha256Prefix(expectedToken) : null,
+        receivedTokenHash12: receivedToken
+          ? await sha256Prefix(receivedToken)
+          : null,
+        expectedTokenHash12: expectedToken
+          ? await sha256Prefix(expectedToken)
+          : null,
       };
 
       console.error(`Invalid webhook authorization: ${JSON.stringify(debug)}`);
@@ -103,7 +108,8 @@ Deno.serve(async (req) => {
     } = event;
 
     const effectiveProductId =
-      type === "PRODUCT_CHANGE" && typeof new_product_id === "string" && new_product_id
+      type === "PRODUCT_CHANGE" && typeof new_product_id === "string" &&
+        new_product_id
         ? new_product_id
         : product_id;
 
@@ -147,7 +153,9 @@ Deno.serve(async (req) => {
         break;
 
       case "CANCELLATION":
-        console.log(`User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`);
+        console.log(
+          `User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`,
+        );
         shouldUpdate = false;
         break;
 
@@ -200,7 +208,9 @@ Deno.serve(async (req) => {
         console.log(`Inserted subscription record for user ${app_user_id}`);
       }
 
-      console.log(`Successfully updated user ${app_user_id} to tier: ${newTier}`);
+      console.log(
+        `Successfully updated user ${app_user_id} to tier: ${newTier}`,
+      );
     }
 
     const { error: logError } = await supabase.from("webhook_logs").insert({

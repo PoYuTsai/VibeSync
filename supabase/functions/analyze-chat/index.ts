@@ -1,9 +1,14 @@
 // supabase/functions/analyze-chat/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { SAFETY_RULES, checkAiOutput, checkInput } from "./guardrails.ts";
-import { callClaudeWithFallback, AiServiceError } from "./fallback.ts";
-import { logAiCall, extractTokenUsage } from "./logger.ts";
+import {
+  type AnalysisResult as GuardrailAnalysisResult,
+  checkAiOutput,
+  checkInput,
+  SAFETY_RULES,
+} from "./guardrails.ts";
+import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
+import { extractTokenUsage, logAiCall } from "./logger.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -88,9 +93,21 @@ const MAX_TOTAL_IMAGE_BYTES = 1500 * 1024;
 // 建構 Vision API 內容格式
 function buildVisionContent(
   textContent: string,
-  images: ImageData[]
-): Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> {
-  const content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
+  images: ImageData[],
+): Array<
+  {
+    type: string;
+    text?: string;
+    source?: { type: string; media_type: string; data: string };
+  }
+> {
+  const content: Array<
+    {
+      type: string;
+      text?: string;
+      source?: { type: string; media_type: string; data: string };
+    }
+  > = [];
 
   // 先加入圖片（按 order 排序）
   const sortedImages = [...images].sort((a, b) => a.order - b.order);
@@ -114,7 +131,8 @@ function buildVisionContent(
   return content;
 }
 
-const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提升對話技巧，最終目標是幫助用戶成功邀約。
+const SYSTEM_PROMPT =
+  `你是一位專業的社交溝通教練，幫助用戶提升對話技巧，最終目標是幫助用戶成功邀約。
 
 ## AI 核心人設
 
@@ -474,7 +492,8 @@ const SYSTEM_PROMPT = `你是一位專業的社交溝通教練，幫助用戶提
 ${SAFETY_RULES}`;
 
 // 「我說」模式的 System Prompt（話題延續建議）
-const MY_MESSAGE_PROMPT = `你是一位專業的社交溝通教練。用戶剛剛發送了一則訊息給對方，現在需要你根據對話脈絡，提供話題延續的建議。
+const MY_MESSAGE_PROMPT =
+  `你是一位專業的社交溝通教練。用戶剛剛發送了一則訊息給對方，現在需要你根據對話脈絡，提供話題延續的建議。
 
 ## 你的任務
 
@@ -530,19 +549,22 @@ function countMessages(messages: Array<{ content: string }>): number {
   return Math.max(1, total);
 }
 
-function normalizeRecognizedConversation(result: Record<string, unknown>): Record<string, unknown> {
+function normalizeRecognizedConversation(
+  result: Record<string, unknown>,
+): Record<string, unknown> {
   const normalizedResult = { ...result };
-  const recognizedRaw =
-    normalizedResult.recognizedConversation &&
-    typeof normalizedResult.recognizedConversation === "object"
-      ? { ...(normalizedResult.recognizedConversation as Record<string, unknown>) }
-      : {};
+  const recognizedRaw = normalizedResult.recognizedConversation &&
+      typeof normalizedResult.recognizedConversation === "object"
+    ? {
+      ...(normalizedResult.recognizedConversation as Record<string, unknown>),
+    }
+    : {};
 
   const rawMessages = Array.isArray(recognizedRaw.messages)
     ? recognizedRaw.messages
     : Array.isArray(normalizedResult.messages)
-      ? normalizedResult.messages
-      : null;
+    ? normalizedResult.messages
+    : null;
 
   if (!rawMessages) {
     return normalizedResult;
@@ -555,33 +577,36 @@ function normalizeRecognizedConversation(result: Record<string, unknown>): Recor
       }
 
       const record = message as Record<string, unknown>;
-      const content =
-        typeof record.content === "string" ? record.content.trim() : "";
+      const content = typeof record.content === "string"
+        ? record.content.trim()
+        : "";
 
       if (!content) {
         return null;
       }
 
       return {
-        isFromMe:
-          record.isFromMe === true ||
+        isFromMe: record.isFromMe === true ||
           record.isFromMe === "true" ||
           record.side === "right",
         content,
       };
     })
-    .filter((message): message is { isFromMe: boolean; content: string } => message !== null);
+    .filter((message): message is { isFromMe: boolean; content: string } =>
+      message !== null
+    );
 
   if (normalizedMessages.length === 0) {
     return normalizedResult;
   }
 
   const normalizedMessageCount =
-    typeof recognizedRaw.messageCount === "number" && recognizedRaw.messageCount > 0
+    typeof recognizedRaw.messageCount === "number" &&
+      recognizedRaw.messageCount > 0
       ? recognizedRaw.messageCount
       : Number(recognizedRaw.messageCount) > 0
-        ? Number(recognizedRaw.messageCount)
-        : normalizedMessages.length;
+      ? Number(recognizedRaw.messageCount)
+      : normalizedMessages.length;
 
   normalizedResult.recognizedConversation = {
     ...recognizedRaw,
@@ -605,7 +630,9 @@ function sanitizeMessages(
   }
 
   if (input.length === 0) {
-    return options.allowEmpty ? { messages: [] } : { error: "Messages cannot be empty" };
+    return options.allowEmpty
+      ? { messages: [] }
+      : { error: "Messages cannot be empty" };
   }
 
   if (input.length > MAX_MESSAGES) {
@@ -640,7 +667,9 @@ function sanitizeMessages(
 
     totalChars += content.length;
     if (totalChars > MAX_TOTAL_MESSAGE_CHARS) {
-      return { error: `Messages too long (max ${MAX_TOTAL_MESSAGE_CHARS} chars)` };
+      return {
+        error: `Messages too long (max ${MAX_TOTAL_MESSAGE_CHARS} chars)`,
+      };
     }
 
     sanitizedMessages.push({
@@ -652,7 +681,9 @@ function sanitizeMessages(
   return { messages: sanitizedMessages };
 }
 
-function sanitizeSessionContext(input: unknown): { sessionContext?: SessionContextInput; error?: string } {
+function sanitizeSessionContext(
+  input: unknown,
+): { sessionContext?: SessionContextInput; error?: string } {
   if (input == null) {
     return {};
   }
@@ -664,14 +695,16 @@ function sanitizeSessionContext(input: unknown): { sessionContext?: SessionConte
   const raw = input as Record<string, unknown>;
   const sanitized: SessionContextInput = {};
 
-  for (const key of [
-    "meetingContext",
-    "duration",
-    "goal",
-    "userStyle",
-    "userInterests",
-    "targetDescription",
-  ] as const) {
+  for (
+    const key of [
+      "meetingContext",
+      "duration",
+      "goal",
+      "userStyle",
+      "userInterests",
+      "targetDescription",
+    ] as const
+  ) {
     const value = raw[key];
     if (value == null) continue;
 
@@ -733,7 +766,8 @@ function selectModel(context: {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, x-client-info, apikey",
+  "Access-Control-Allow-Headers":
+    "Authorization, Content-Type, x-client-info, apikey",
 };
 
 // Helper to create JSON response with CORS
@@ -769,9 +803,7 @@ serve(async (req) => {
     }
 
     // 測試帳號：不檢查額度、不扣額度
-    const isTestAccount = TEST_EMAILS.includes(user.email || "");
-
-    const isTestAccount = TEST_EMAILS.includes(user.email || "");
+    const accountIsTest = TEST_EMAILS.includes(user.email || "");
 
     // Parse request early so recognizeOnly can bypass quota checks.
     console.log(`[DEBUG] Parsing request body...`);
@@ -784,7 +816,10 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid request body" }, 400);
     }
 
-    if (!requestBody || typeof requestBody !== "object" || Array.isArray(requestBody)) {
+    if (
+      !requestBody || typeof requestBody !== "object" ||
+      Array.isArray(requestBody)
+    ) {
       return jsonResponse({ error: "Invalid request body" }, 400);
     }
 
@@ -804,13 +839,13 @@ serve(async (req) => {
     const recognizeOnly = rawRecognizeOnly === true;
 
     // Check subscription
-    const { data: sub, error: subError } = await supabase
+    let { data: sub, error: subError } = await supabase
       .from("subscriptions")
       .select(
-        "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at"
+        "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
       )
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     console.log(`[DEBUG] User: ${user.email}, Subscription query result:`, {
       hasSub: !!sub,
@@ -821,15 +856,48 @@ serve(async (req) => {
     });
 
     if (!sub) {
-      console.error(`[ERROR] No subscription for user ${user.email}:`, subError);
-      return jsonResponse({ error: "No subscription found" }, 403);
+      console.warn(
+        `[WARN] No subscription for user ${user.email}, creating free-tier fallback`,
+        subError,
+      );
+
+      const nowIso = new Date().toISOString();
+      const { data: insertedSub, error: insertSubError } = await supabase
+        .from("subscriptions")
+        .insert({
+          user_id: user.id,
+          tier: "free",
+          monthly_messages_used: 0,
+          daily_messages_used: 0,
+          daily_reset_at: nowIso,
+          monthly_reset_at: nowIso,
+          started_at: nowIso,
+        })
+        .select(
+          "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
+        )
+        .single();
+
+      if (insertSubError || !insertedSub) {
+        console.error(
+          `[ERROR] Failed to self-heal subscription for user ${user.email}:`,
+          insertSubError,
+        );
+        return jsonResponse({ error: "No subscription found" }, 403);
+      }
+
+      sub = insertedSub;
     }
 
     // Check if daily reset needed
     const now = new Date();
     // 安全處理 null 值
-    const dailyResetAt = sub.daily_reset_at ? new Date(sub.daily_reset_at) : new Date(0);
-    console.log(`[DEBUG] Daily reset check: now=${now.toDateString()}, resetAt=${dailyResetAt.toDateString()}`);
+    const dailyResetAt = sub.daily_reset_at
+      ? new Date(sub.daily_reset_at)
+      : new Date(0);
+    console.log(
+      `[DEBUG] Daily reset check: now=${now.toDateString()}, resetAt=${dailyResetAt.toDateString()}`,
+    );
     if (now.toDateString() !== dailyResetAt.toDateString()) {
       await supabase
         .from("subscriptions")
@@ -839,8 +907,12 @@ serve(async (req) => {
     }
 
     // Check monthly reset needed
-    const monthlyResetAt = sub.monthly_reset_at ? new Date(sub.monthly_reset_at) : new Date(0);
-    console.log(`[DEBUG] Monthly reset check: now=${now.getMonth()}/${now.getFullYear()}, resetAt=${monthlyResetAt.getMonth()}/${monthlyResetAt.getFullYear()}`);
+    const monthlyResetAt = sub.monthly_reset_at
+      ? new Date(sub.monthly_reset_at)
+      : new Date(0);
+    console.log(
+      `[DEBUG] Monthly reset check: now=${now.getMonth()}/${now.getFullYear()}, resetAt=${monthlyResetAt.getMonth()}/${monthlyResetAt.getFullYear()}`,
+    );
     if (
       now.getMonth() !== monthlyResetAt.getMonth() ||
       now.getFullYear() !== monthlyResetAt.getFullYear()
@@ -856,9 +928,15 @@ serve(async (req) => {
     }
 
     // Check monthly limit (測試帳號跳過)
-    const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] || TIER_MONTHLY_LIMITS.free;
-    console.log(`[DEBUG] Monthly limit check: tier=${sub.tier}, limit=${monthlyLimit}, used=${sub.monthly_messages_used}, isTestAccount=${isTestAccount}`);
-    if (!recognizeOnly && !isTestAccount && sub.monthly_messages_used >= monthlyLimit) {
+    const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+      TIER_MONTHLY_LIMITS.free;
+    console.log(
+      `[DEBUG] Monthly limit check: tier=${sub.tier}, limit=${monthlyLimit}, used=${sub.monthly_messages_used}, isTestAccount=${accountIsTest}`,
+    );
+    if (
+      !recognizeOnly && !accountIsTest &&
+      sub.monthly_messages_used >= monthlyLimit
+    ) {
       console.log(`[DEBUG] Monthly limit exceeded, returning 429`);
       return jsonResponse({
         error: "Monthly limit exceeded",
@@ -869,8 +947,13 @@ serve(async (req) => {
 
     // Check daily limit (測試帳號跳過)
     const dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
-    console.log(`[DEBUG] Daily limit check: tier=${sub.tier}, limit=${dailyLimit}, used=${sub.daily_messages_used}, isTestAccount=${isTestAccount}`);
-    if (!recognizeOnly && !isTestAccount && sub.daily_messages_used >= dailyLimit) {
+    console.log(
+      `[DEBUG] Daily limit check: tier=${sub.tier}, limit=${dailyLimit}, used=${sub.daily_messages_used}, isTestAccount=${accountIsTest}`,
+    );
+    if (
+      !recognizeOnly && !accountIsTest &&
+      sub.daily_messages_used >= dailyLimit
+    ) {
       console.log(`[DEBUG] Daily limit exceeded, returning 429`);
       return jsonResponse({
         error: "Daily limit exceeded",
@@ -885,26 +968,44 @@ serve(async (req) => {
         ? `[DEBUG] Skipping quota checks for recognizeOnly request`
         : `[DEBUG] Limit checks passed, proceeding to validate request body`,
     );
-    console.log(`[DEBUG] Request params: messages=${rawMessages?.length}, images=${images?.length || 0}, recognizeOnly=${rawRecognizeOnly}, analyzeMode=${rawAnalyzeMode}`);
+    console.log(
+      `[DEBUG] Request params: messages=${rawMessages?.length}, images=${
+        images?.length || 0
+      }, recognizeOnly=${rawRecognizeOnly}, analyzeMode=${rawAnalyzeMode}`,
+    );
 
     // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
     // images: optional array of ImageData for screenshot analysis
+    /*
     // recognizeOnly: boolean - 只識別截圖，不做完整分析（節省時間和 tokens）
     const messageValidation = sanitizeMessages(rawMessages, {
+    */
     const messageValidation = sanitizeMessages(rawMessages ?? [], {
       allowEmpty: recognizeOnly,
     });
     if (messageValidation.error || !messageValidation.messages) {
-      return jsonResponse({ error: messageValidation.error || "Invalid messages" }, 400);
+      return jsonResponse({
+        error: messageValidation.error || "Invalid messages",
+      }, 400);
     }
     const messages = messageValidation.messages;
 
-    if (rawAnalyzeMode != null && (typeof rawAnalyzeMode !== "string" || !VALID_ANALYZE_MODES.has(rawAnalyzeMode))) {
+    if (
+      rawAnalyzeMode != null &&
+      (typeof rawAnalyzeMode !== "string" ||
+        !VALID_ANALYZE_MODES.has(rawAnalyzeMode))
+    ) {
       return jsonResponse({ error: "Invalid analyzeMode" }, 400);
     }
-    const analyzeMode = rawAnalyzeMode === "my_message" ? "my_message" : "normal";
+    const analyzeMode = rawAnalyzeMode === "my_message"
+      ? "my_message"
+      : "normal";
 
-    if (rawForceModel != null && (typeof rawForceModel !== "string" || !VALID_FORCE_MODELS.has(rawForceModel))) {
+    if (
+      rawForceModel != null &&
+      (typeof rawForceModel !== "string" ||
+        !VALID_FORCE_MODELS.has(rawForceModel))
+    ) {
       return jsonResponse({ error: "Invalid forceModel" }, 400);
     }
     const forceModel = rawForceModel;
@@ -912,9 +1013,13 @@ serve(async (req) => {
     if (rawUserDraft != null && typeof rawUserDraft !== "string") {
       return jsonResponse({ error: "Invalid userDraft" }, 400);
     }
-    const userDraft = typeof rawUserDraft === "string" ? rawUserDraft.trim() : undefined;
+    const userDraft = typeof rawUserDraft === "string"
+      ? rawUserDraft.trim()
+      : undefined;
     if (userDraft && userDraft.length > MAX_USER_DRAFT_LENGTH) {
-      return jsonResponse({ error: `userDraft too long (max ${MAX_USER_DRAFT_LENGTH} chars)` }, 400);
+      return jsonResponse({
+        error: `userDraft too long (max ${MAX_USER_DRAFT_LENGTH} chars)`,
+      }, 400);
     }
 
     const sessionContextValidation = sanitizeSessionContext(rawSessionContext);
@@ -979,12 +1084,22 @@ serve(async (req) => {
         }, 400);
       }
 
-      if (analyzeMode === "my_message" && !messages[messages.length - 1]?.isFromMe) {
-        return jsonResponse({ error: "my_message mode requires the latest message to be from the user" }, 400);
+      if (
+        analyzeMode === "my_message" && !messages[messages.length - 1]?.isFromMe
+      ) {
+        return jsonResponse({
+          error:
+            "my_message mode requires the latest message to be from the user",
+        }, 400);
       }
 
-      if (analyzeMode === "normal" && !messages.some((message) => !message.isFromMe)) {
-        return jsonResponse({ error: "At least one incoming message is required for analysis" }, 400);
+      if (
+        analyzeMode === "normal" &&
+        !messages.some((message) => !message.isFromMe)
+      ) {
+        return jsonResponse({
+          error: "At least one incoming message is required for analysis",
+        }, 400);
       }
     }
 
@@ -1006,29 +1121,43 @@ serve(async (req) => {
     // 超過時，保留開頭 + 最近對話，中間省略
     const MAX_RECENT_MESSAGES = 30;
     const OPENING_MESSAGES = 4; // 保留最初的 4 則（破冰階段）
+    let compiledConversationText = "";
+
+    const formatConversationLine = (
+      message: { isFromMe: boolean; content: string },
+    ) => `${message.isFromMe ? "Me" : "Her"}: ${message.content}`;
     let conversationText = "";
 
     if (messages.length > MAX_RECENT_MESSAGES + OPENING_MESSAGES) {
       // 長對話：保留開頭 + 最近
       const openingMessages = messages.slice(0, OPENING_MESSAGES);
       const recentMessages = messages.slice(-MAX_RECENT_MESSAGES);
-      const skippedCount = messages.length - OPENING_MESSAGES - MAX_RECENT_MESSAGES;
+      const skippedCount = messages.length - OPENING_MESSAGES -
+        MAX_RECENT_MESSAGES;
 
+      const openingText = openingMessages.map(formatConversationLine).join(
+        "\n",
+      );
+      /*
       const openingText = openingMessages
         .map(
           (m: { isFromMe: boolean; content: string }) =>
             `${m.isFromMe ? "我" : "她"}: ${m.content}`
         )
         .join("\n");
+      */
 
+      const recentText = recentMessages.map(formatConversationLine).join("\n");
+      /*
       const recentText = recentMessages
         .map(
           (m: { isFromMe: boolean; content: string }) =>
             `${m.isFromMe ? "我" : "她"}: ${m.content}`
         )
         .join("\n");
+      */
 
-      conversationText = `## 對話開頭（破冰階段）
+      compiledConversationText = `## 對話開頭（破冰階段）
 ${openingText}
 
 ---（中間省略 ${skippedCount} 則訊息）---
@@ -1037,32 +1166,41 @@ ${openingText}
 ${recentText}`;
     } else {
       // 訊息數量在限制內，完整送出
+      compiledConversationText = messages.map(formatConversationLine).join(
+        "\n",
+      );
+      /*
       conversationText = messages
         .map(
           (m: { isFromMe: boolean; content: string }) =>
             `${m.isFromMe ? "我" : "她"}: ${m.content}`
         )
         .join("\n");
+      */
     }
 
     // Select model based on complexity (or force for testing)
     // 有圖片時強制使用 Sonnet (Vision 功能需要)
-    const VALID_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-20250514"];
+    const VALID_MODELS = [
+      "claude-haiku-4-5-20251001",
+      "claude-sonnet-4-20250514",
+    ];
     const model = hasImages
       ? "claude-sonnet-4-20250514" // Vision 強制 Sonnet
-      : (forceModel && (isTestAccount || TEST_MODE) && VALID_MODELS.includes(forceModel))
-        ? forceModel
-        : selectModel({
-            conversationLength: messages.length,
-            enthusiasmLevel: null, // 首次分析前不知道
-            hasComplexEmotions: false,
-            isFirstAnalysis: messages.length <= 5,
-            tier: sub.tier,
-          });
+      : (forceModel && (accountIsTest || TEST_MODE) &&
+          VALID_MODELS.includes(forceModel))
+      ? forceModel
+      : selectModel({
+        conversationLength: messages.length,
+        enthusiasmLevel: null, // 首次分析前不知道
+        hasComplexEmotions: false,
+        isFirstAnalysis: messages.length <= 5,
+        tier: sub.tier,
+      });
 
     // Get available features for this tier
     // 測試帳號強制使用 essential tier 功能
-    const effectiveTier = isTestAccount ? "essential" : sub.tier;
+    const effectiveTier = accountIsTest ? "essential" : sub.tier;
     const allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
 
     // 檢查「我說」模式權限（只限 Essential）
@@ -1077,7 +1215,8 @@ ${recentText}`;
 
     // 選擇 System Prompt
     // 純識別模式用極簡 prompt，節省 tokens
-    const RECOGNIZE_ONLY_PROMPT = `你是一個聊天截圖識別助手。你的任務是準確識別聊天截圖中的對話內容，區分「我」和「她」的訊息，並按時間順序整理。`;
+    const RECOGNIZE_ONLY_PROMPT =
+      `你是一個聊天截圖識別助手。你的任務是準確識別聊天截圖中的對話內容，區分「我」和「她」的訊息，並按時間順序整理。`;
 
     const systemPrompt = recognizeOnly
       ? RECOGNIZE_ONLY_PROMPT
@@ -1092,15 +1231,35 @@ ${recentText}`;
         `- Goal: ${sessionContext.goal || "not provided"}`,
         `- User style: ${sessionContext.userStyle || "not provided"}`,
         `- User interests: ${sessionContext.userInterests || "not provided"}`,
-        `- Target description: ${sessionContext.targetDescription || "not provided"}`,
+        `- Target description: ${
+          sessionContext.targetDescription || "not provided"
+        }`,
       ].join("\n");
     }
 
     let userPrompt = isMyMessageMode
-      ? `${contextInfo}\n\n## 對話紀錄\n${conversationText}\n\n請根據用戶剛發送的最後一則訊息，提供話題延續建議。`
-      : `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`;
+      ? [
+        contextInfo,
+        "",
+        "## Conversation",
+        compiledConversationText,
+        "",
+        "Continue from the user's latest draft and suggest how to keep the conversation flowing naturally.",
+      ].join("\n")
+      : [
+        contextInfo,
+        "",
+        "Analyze the conversation below and return the structured JSON response.",
+        "",
+        compiledConversationText,
+      ].join("\n");
+    /*
+    let userPrompt = isMyMessageMode
+      ? `${contextInfo}\n\n## 對話紀錄\n${compiledConversationText}\n\n請根據用戶剛發送的最後一則訊息，提供話題延續建議。`
+      : `${contextInfo}\n分析以下對話並提供建議：\n\n${compiledConversationText}`;
 
     // 如果有截圖，加入截圖識別指示
+    */
     if (hasImages) {
       const imageCount = images.length;
 
@@ -1196,21 +1355,29 @@ ${recentText}`;
 
 ${contextInfo}
 
-${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conversationText}\n\n` : ""}請識別截圖中的對話，並提供分析建議。`;
+${
+          compiledConversationText
+            ? `## 用戶手動輸入的對話（作為參考）\n${compiledConversationText}\n\n`
+            : ""
+        }請識別截圖中的對話，並提供分析建議。`;
       }
     }
 
     // 如果有用戶草稿，加入優化請求（只在 normal 模式）
-    if (!isMyMessageMode && userDraft && typeof userDraft === "string" && userDraft.trim()) {
-      userPrompt += `\n\n## 用戶想說的內容（請優化）\n「${userDraft.trim()}」\n請在 optimizedMessage 欄位提供優化版本。`;
+    if (
+      !isMyMessageMode && userDraft && typeof userDraft === "string" &&
+      userDraft.trim()
+    ) {
+      userPrompt +=
+        `\n\n## 用戶想說的內容（請優化）\n「${userDraft.trim()}」\n請在 optimizedMessage 欄位提供優化版本。`;
     }
 
     // 「我說」模式用 Haiku 省成本（但有圖片時強制 Sonnet）
     const selectedModel = hasImages
       ? "claude-sonnet-4-20250514"
       : isMyMessageMode
-        ? "claude-haiku-4-5-20251001"
-        : model;
+      ? "claude-haiku-4-5-20251001"
+      : model;
 
     // 建構 user message content（純文字或 Vision 格式）
     const userMessageContent = hasImages
@@ -1222,7 +1389,9 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     try {
       // Vision API 需要更長的 timeout（120 秒），純文字用預設 30 秒
       const timeoutMs = hasImages ? 120000 : 30000;
-      console.log(`[DEBUG] Calling Claude API: model=${selectedModel}, hasImages=${hasImages}, timeout=${timeoutMs}ms`);
+      console.log(
+        `[DEBUG] Calling Claude API: model=${selectedModel}, hasImages=${hasImages}, timeout=${timeoutMs}ms`,
+      );
 
       claudeResult = await callClaudeWithFallback(
         {
@@ -1237,7 +1406,7 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
           ],
         },
         CLAUDE_API_KEY,
-        { timeout: timeoutMs }
+        { timeout: timeoutMs },
       );
     } catch (error) {
       const latencyMs = Date.now() - startTime;
@@ -1265,23 +1434,40 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     }
 
     console.log(`[DEBUG] Claude API returned successfully`);
-    const content = claudeResult.data.content[0]?.text;
+    const claudeData = claudeResult.data as {
+      content?: Array<{ text?: string }>;
+      [key: string]: unknown;
+    };
+    const content = claudeData.content?.[0]?.text;
     const actualModel = claudeResult.model;
     const latencyMs = Date.now() - startTime;
-    const tokenUsage = extractTokenUsage(claudeResult.data);
-    console.log(`[DEBUG] Claude response: model=${actualModel}, latency=${latencyMs}ms, tokens=${JSON.stringify(tokenUsage)}`);
+    const tokenUsage = extractTokenUsage(claudeData);
+    console.log(
+      `[DEBUG] Claude response: model=${actualModel}, latency=${latencyMs}ms, tokens=${
+        JSON.stringify(tokenUsage)
+      }`,
+    );
 
     // Parse Claude's response
     let result;
     try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const aiText = content ?? "";
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        console.error("No JSON found in AI response:", content?.substring(0, 500));
+        console.error(
+          "No JSON found in AI response:",
+          aiText.substring(0, 500),
+        );
         throw new Error("No JSON in response");
       }
       result = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-      console.error("JSON parse error:", parseError, "Content:", content?.substring(0, 500));
+      console.error(
+        "JSON parse error:",
+        parseError,
+        "Content:",
+        (content ?? "").substring(0, 500),
+      );
       result = {
         enthusiasm: { score: 50, level: "warm" },
         replies: {
@@ -1290,20 +1476,28 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
         warnings: [],
         strategy: "分析失敗，請重試",
         // 如果有 userDraft，也返回 fallback
-        ...(userDraft ? {
-          optimizedMessage: {
-            original: userDraft,
-            optimized: "優化失敗，請重試",
-            reason: "AI 回應解析錯誤",
+        ...(userDraft
+          ? {
+            optimizedMessage: {
+              original: userDraft,
+              optimized: "優化失敗，請重試",
+              reason: "AI 回應解析錯誤",
+            },
           }
-        } : {}),
+          : {}),
       };
     }
 
     result = normalizeRecognizedConversation(result);
 
     // 檢查截圖識別是否失敗
-    if (hasImages && (!result.recognizedConversation || result.recognizedConversation.messageCount === 0)) {
+    const recognizedConversation = result.recognizedConversation as
+      | { messageCount?: number }
+      | undefined;
+    if (
+      hasImages &&
+      (!recognizedConversation || recognizedConversation.messageCount === 0)
+    ) {
       // Log failed recognition
       await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
         userId: user.id,
@@ -1320,15 +1514,26 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
       return jsonResponse({
         error: "無法識別截圖中的對話內容",
         code: "RECOGNITION_FAILED",
-        message: "請確認截圖清晰、包含聊天泡泡，並盡量帶到對話頂部與最新訊息；單張截圖也可以分析，但畫面太裁切時容易失敗",
+        message:
+          "請確認截圖清晰、包含聊天泡泡，並盡量帶到對話頂部與最新訊息；單張截圖也可以分析，但畫面太裁切時容易失敗",
         shouldChargeQuota: false,
       }, 400);
     }
 
     // Check AI output for safety (AI 護欄)
     const originalResult = { ...result };
-    result = checkAiOutput(result);
-    const wasFiltered = result.warnings?.some((w: { type: string }) => w.type === "safety_filter");
+    result = checkAiOutput(result as GuardrailAnalysisResult) as Record<
+      string,
+      unknown
+    >;
+    const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
+      ? ((result as {
+        warnings?: Array<{ type?: string }>;
+      }).warnings ?? [])
+      : [];
+    const wasFiltered = warnings.some((warning) =>
+      warning.type === "safety_filter"
+    );
 
     // Log successful request
     await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -1362,7 +1567,7 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     const messageCount = recognizeOnly ? 0 : countMessages(messages);
 
     // Update usage count (測試帳號、純識別模式不扣額度)
-    if (!isTestAccount && !recognizeOnly) {
+    if (!accountIsTest && !recognizeOnly) {
       // Single source of truth for usage accounting (avoid double counting).
       const { error: usageError } = await supabase.rpc("increment_usage", {
         p_user_id: user.id,
@@ -1377,13 +1582,17 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     // Add usage info to response
     result.usage = {
       messagesUsed: messageCount,
-      monthlyRemaining: isTestAccount ? 999999 : monthlyLimit - sub.monthly_messages_used - messageCount,
-      dailyRemaining: isTestAccount ? 999999 : dailyLimit - sub.daily_messages_used - messageCount,
+      monthlyRemaining: accountIsTest
+        ? 999999
+        : monthlyLimit - sub.monthly_messages_used - messageCount,
+      dailyRemaining: accountIsTest
+        ? 999999
+        : dailyLimit - sub.daily_messages_used - messageCount,
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
       imagesUsed: hasImages ? images.length : 0,
-      isTestAccount, // 標記是否為測試帳號
+      isTestAccount: accountIsTest, // 標記是否為測試帳號
     };
 
     return jsonResponse(result);

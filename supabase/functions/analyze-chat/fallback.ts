@@ -5,11 +5,19 @@ interface CallOptions {
   maxRetries: number;
 }
 
+type ClaudeMessageContent =
+  | string
+  | Array<{
+    type: string;
+    text?: string;
+    source?: { type: string; media_type: string; data: string };
+  }>;
+
 interface ClaudeRequest {
   model: string;
   max_tokens: number;
   system: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: Array<{ role: string; content: ClaudeMessageContent }>;
 }
 
 // 將 system prompt 轉換為支援 cache 的格式
@@ -45,7 +53,7 @@ export class AiServiceError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly retryable: boolean = false
+    public readonly retryable: boolean = false,
   ) {
     super(message);
     this.name = "AiServiceError";
@@ -55,7 +63,7 @@ export class AiServiceError extends Error {
 export async function callClaudeWithFallback(
   request: ClaudeRequest,
   apiKey: string,
-  options: Partial<CallOptions> = {}
+  options: Partial<CallOptions> = {},
 ): Promise<FallbackResult> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let currentModel = request.model;
@@ -104,7 +112,7 @@ export async function callClaudeWithFallback(
             throw new AiServiceError(
               "AI 服務繁忙，請稍後再試",
               "RATE_LIMITED",
-              true
+              true,
             );
           }
 
@@ -113,7 +121,7 @@ export async function callClaudeWithFallback(
             throw new AiServiceError(
               "AI 服務暫時無法使用",
               "SERVER_ERROR",
-              true
+              true,
             );
           }
 
@@ -121,7 +129,7 @@ export async function callClaudeWithFallback(
           throw new AiServiceError(
             `API Error: ${response.status} - ${error.message}`,
             "API_ERROR",
-            false
+            false,
           );
         }
 
@@ -130,11 +138,14 @@ export async function callClaudeWithFallback(
         try {
           data = JSON.parse(responseText);
         } catch (parseError) {
-          console.error("Failed to parse Claude response:", responseText.substring(0, 200));
+          console.error(
+            "Failed to parse Claude response:",
+            responseText.substring(0, 200),
+          );
           throw new AiServiceError(
             `Failed to parse Claude response: ${(parseError as Error).message}`,
             "PARSE_ERROR",
-            false
+            false,
           );
         }
         return {
@@ -149,7 +160,7 @@ export async function callClaudeWithFallback(
         // Timeout 錯誤
         if (error instanceof Error && error.name === "AbortError") {
           console.log(
-            `${currentModel} attempt ${attempt} timeout after ${opts.timeout}ms`
+            `${currentModel} attempt ${attempt} timeout after ${opts.timeout}ms`,
           );
         } else if (error instanceof AiServiceError) {
           console.log(`${currentModel} attempt ${attempt}: ${error.message}`);
@@ -159,7 +170,7 @@ export async function callClaudeWithFallback(
         } else {
           console.log(
             `${currentModel} attempt ${attempt} failed:`,
-            (error as Error).message
+            (error as Error).message,
           );
         }
 
@@ -175,7 +186,7 @@ export async function callClaudeWithFallback(
             throw new AiServiceError(
               "AI 服務暫時無法使用，請稍後再試",
               "ALL_MODELS_FAILED",
-              false
+              false,
             );
           }
         }
@@ -191,6 +202,6 @@ export async function callClaudeWithFallback(
   throw new AiServiceError(
     "AI 服務無法回應",
     "UNEXPECTED_ERROR",
-    false
+    false,
   );
 }

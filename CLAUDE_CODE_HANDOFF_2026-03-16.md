@@ -88,6 +88,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Session context prompt text is rebuilt with clean interpolated values before prompt generation.
    - Telegram feedback notifications are rebuilt into a readable, correctly interpolated message payload.
 
+22. `lib/features/conversation/data/services/memory_service.dart`, `lib/features/subscription/data/providers/subscription_providers.dart`, `supabase/functions/analyze-chat/index.ts`, `supabase/functions/submit-feedback/index.ts`
+   - Conversation-summary round slicing now follows actual incoming-message boundaries instead of assuming every round is exactly two messages, which fixes summary drift when one side sends multiple messages in a row.
+   - The app subscription loader now self-heals missing `subscriptions` rows by inserting a free-tier record instead of collapsing into a loading error.
+   - `analyze-chat` now performs the same free-tier self-heal for older or partially-migrated accounts, avoiding a hard `No subscription found` failure on first analysis.
+   - `submit-feedback` was rewritten into a clean ASCII-safe version, and Telegram notification failures now log non-200 API responses explicitly.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -151,6 +157,14 @@ After deploy, verify:
 9. Memory summary / OCR request hygiene:
    - conversations with enough history should accumulate heuristic summary entries over time
    - OCR-only requests should no longer include the placeholder message in the request payload
+
+10. Subscription self-heal path:
+   - accounts missing a `subscriptions` row should recreate a free-tier record automatically
+   - first analysis after self-heal should proceed instead of returning `No subscription found`
+
+11. Local toolchain validation:
+   - `flutter analyze` passes with local Flutter `3.41.4`
+   - Supabase Edge Functions pass `deno check` with local Deno `2.7.5`
 
 ## Notes for Claude Code
 

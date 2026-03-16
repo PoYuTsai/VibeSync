@@ -6,6 +6,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
 const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID");
+
 const VALID_CATEGORIES = new Set([
   "too_direct",
   "too_long",
@@ -13,6 +14,7 @@ const VALID_CATEGORIES = new Set([
   "wrong_style",
   "other",
 ]);
+
 const COMMENT_MAX_LENGTH = 2000;
 const SNIPPET_MAX_LENGTH = 4000;
 const MODEL_MAX_LENGTH = 120;
@@ -24,7 +26,8 @@ const TELEGRAM_SNIPPET_PREVIEW = 500;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, x-client-info, apikey",
+  "Access-Control-Allow-Headers":
+    "Authorization, Content-Type, x-client-info, apikey",
 };
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -34,11 +37,18 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-function normalizeOptionalString(value: unknown, maxLength: number): string | undefined {
-  if (typeof value !== "string") return undefined;
+function normalizeOptionalString(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
 
   const normalized = value.trim();
-  if (!normalized) return undefined;
+  if (!normalized) {
+    return undefined;
+  }
 
   if (normalized.length > maxLength) {
     throw new Error(`STRING_TOO_LONG:${maxLength}`);
@@ -66,73 +76,79 @@ async function sendTelegramNotification(feedback: {
     return;
   }
 
-  // 只有負面反饋才發通知
-  if (feedback.rating !== "negative") return;
+  if (feedback.rating !== "negative") {
+    return;
+  }
 
   const categoryLabels: Record<string, string> = {
-    too_direct: "太直接/不自然",
-    too_long: "回覆太長",
-    unnatural: "聽起來像機器人",
-    wrong_style: "不符合我的風格",
-    other: "其他",
+    too_direct: "Too direct",
+    too_long: "Too long",
+    unnatural: "Unnatural",
+    wrong_style: "Wrong style",
+    other: "Other",
   };
 
-  // 遮蔽 email
   const maskedEmail = feedback.userEmail.replace(/(.{2})(.*)(@.*)/, "$1***$3");
-
-  let message = `🔴 新的負面反饋\n\n`;
-  message += `用戶：${maskedEmail} (${feedback.userTier})\n`;
-  message += `問題類型：${categoryLabels[feedback.category || "other"] || feedback.category}\n`;
-
-  if (feedback.comment) {
-    message += `補充：「${truncateForPreview(feedback.comment, TELEGRAM_COMMENT_PREVIEW)}」\n`;
-  }
-
-  if (feedback.conversationSnippet) {
-    message += `\n📝 對話片段：\n${truncateForPreview(feedback.conversationSnippet, TELEGRAM_SNIPPET_PREVIEW)}\n`;
-  }
-
-  if (feedback.aiResponse?.finalRecommendation) {
-    const rec = feedback.aiResponse.finalRecommendation as Record<string, string>;
-    message += `\n🤖 AI 推薦回覆：\n${rec.pick}: 「${rec.content}」\n`;
-  }
-
   const messageParts: string[] = [
     "Negative feedback received\n\n",
     `User: ${maskedEmail} (${feedback.userTier})\n`,
-    `Category: ${categoryLabels[feedback.category || "other"] || feedback.category}\n`,
+    `Category: ${
+      categoryLabels[feedback.category || "other"] || feedback.category
+    }\n`,
   ];
 
   if (feedback.comment) {
     messageParts.push(
-      `Comment: "${truncateForPreview(feedback.comment, TELEGRAM_COMMENT_PREVIEW)}"\n`,
+      `Comment: "${
+        truncateForPreview(feedback.comment, TELEGRAM_COMMENT_PREVIEW)
+      }"\n`,
     );
   }
 
   if (feedback.conversationSnippet) {
     messageParts.push(
-      `\nConversation snippet:\n${truncateForPreview(feedback.conversationSnippet, TELEGRAM_SNIPPET_PREVIEW)}\n`,
+      `\nConversation snippet:\n${
+        truncateForPreview(
+          feedback.conversationSnippet,
+          TELEGRAM_SNIPPET_PREVIEW,
+        )
+      }\n`,
     );
   }
 
   if (feedback.aiResponse?.finalRecommendation) {
-    const rec = feedback.aiResponse.finalRecommendation as Record<string, string>;
+    const rec = feedback.aiResponse.finalRecommendation as Record<
+      string,
+      string
+    >;
     messageParts.push(`\nAI recommendation:\n${rec.pick}: "${rec.content}"\n`);
   }
 
-  message = messageParts.join("");
+  let message = messageParts.join("");
   message += `\nModel: ${feedback.modelUsed || "unknown"}`;
   message += `\nTime: ${new Date().toISOString()}`;
 
   try {
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-      }),
-    });
+    const response = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text: message,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      console.error(
+        "Telegram notification failed:",
+        response.status,
+        responseText,
+      );
+    }
   } catch (error) {
     console.error("Failed to send Telegram notification:", error);
   }
@@ -144,7 +160,6 @@ serve(async (req) => {
   }
 
   try {
-    // Verify auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return jsonResponse({ error: "Unauthorized" }, 401);
@@ -152,39 +167,58 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
-    // Parse request
     const body = await req.json();
     const rating = body?.rating;
     const category = body?.category;
     const comment = normalizeOptionalString(body?.comment, COMMENT_MAX_LENGTH);
-    const conversationSnippet = normalizeOptionalString(body?.conversationSnippet, SNIPPET_MAX_LENGTH);
-    const userTier = normalizeOptionalString(body?.userTier, USER_TIER_MAX_LENGTH);
-    const modelUsed = normalizeOptionalString(body?.modelUsed, MODEL_MAX_LENGTH);
+    const conversationSnippet = normalizeOptionalString(
+      body?.conversationSnippet,
+      SNIPPET_MAX_LENGTH,
+    );
+    const userTier = normalizeOptionalString(
+      body?.userTier,
+      USER_TIER_MAX_LENGTH,
+    );
+    const modelUsed = normalizeOptionalString(
+      body?.modelUsed,
+      MODEL_MAX_LENGTH,
+    );
     const aiResponse = body?.aiResponse;
 
     if (!rating || !["positive", "negative"].includes(rating)) {
       return jsonResponse({ error: "Invalid rating" }, 400);
     }
 
-    if (category != null && (typeof category !== "string" || !VALID_CATEGORIES.has(category))) {
+    if (
+      category != null &&
+      (typeof category !== "string" || !VALID_CATEGORIES.has(category))
+    ) {
       return jsonResponse({ error: "Invalid category" }, 400);
     }
 
-    if (aiResponse != null && (typeof aiResponse !== "object" || Array.isArray(aiResponse))) {
+    if (
+      aiResponse != null &&
+      (typeof aiResponse !== "object" || Array.isArray(aiResponse))
+    ) {
       return jsonResponse({ error: "Invalid aiResponse" }, 400);
     }
 
-    if (aiResponse != null && JSON.stringify(aiResponse).length > AI_RESPONSE_MAX_LENGTH) {
+    if (
+      aiResponse != null &&
+      JSON.stringify(aiResponse).length > AI_RESPONSE_MAX_LENGTH
+    ) {
       return jsonResponse({ error: "aiResponse too large" }, 400);
     }
 
-    // Insert feedback
     const { error: insertError } = await supabase.from("feedback").insert({
       user_id: user.id,
       rating,
@@ -201,7 +235,6 @@ serve(async (req) => {
       return jsonResponse({ error: "Failed to save feedback" }, 500);
     }
 
-    // Send Telegram notification for negative feedback
     await sendTelegramNotification({
       userEmail: user.email || "unknown",
       userTier: userTier || "unknown",
@@ -215,10 +248,16 @@ serve(async (req) => {
 
     return jsonResponse({ success: true });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("STRING_TOO_LONG:")) {
+    if (
+      error instanceof Error && error.message.startsWith("STRING_TOO_LONG:")
+    ) {
       const maxLength = error.message.split(":")[1];
-      return jsonResponse({ error: `Text field exceeds maximum length (${maxLength})` }, 400);
+      return jsonResponse(
+        { error: `Text field exceeds maximum length (${maxLength})` },
+        400,
+      );
     }
+
     console.error("Error:", error);
     return jsonResponse({ error: "Internal server error" }, 500);
   }

@@ -64,7 +64,8 @@ class MemoryService {
           buffer.writeln('Topics: ${summary.keyTopics.join(", ")}');
         }
         if (summary.sharedInterests.isNotEmpty) {
-          buffer.writeln('Shared interests: ${summary.sharedInterests.join(", ")}');
+          buffer.writeln(
+              'Shared interests: ${summary.sharedInterests.join(", ")}');
         }
       }
       buffer.writeln('---');
@@ -168,13 +169,38 @@ class MemoryService {
       return const [];
     }
 
-    final startIndex = (fromRound * 2).clamp(0, conversation.messages.length);
-    final endIndex = (toRound * 2).clamp(0, conversation.messages.length);
-    if (endIndex <= startIndex) {
+    final startIndex = _indexAfterIncomingRound(
+      conversation.messages,
+      fromRound,
+    );
+    final endIndex = _indexAfterIncomingRound(
+      conversation.messages,
+      toRound,
+    );
+
+    if (startIndex < 0 || endIndex <= startIndex) {
       return const [];
     }
 
     return conversation.messages.sublist(startIndex, endIndex);
+  }
+
+  int _indexAfterIncomingRound(List<Message> messages, int roundCount) {
+    if (roundCount <= 0) {
+      return 0;
+    }
+
+    var incomingSeen = 0;
+    for (var i = 0; i < messages.length; i++) {
+      if (!messages[i].isFromMe) {
+        incomingSeen++;
+        if (incomingSeen == roundCount) {
+          return i + 1;
+        }
+      }
+    }
+
+    return -1;
   }
 
   String _buildSummaryContent(
@@ -191,7 +217,8 @@ class MemoryService {
     }
 
     final myMessages = messages.where((message) => message.isFromMe).toList();
-    final theirMessages = messages.where((message) => !message.isFromMe).toList();
+    final theirMessages =
+        messages.where((message) => !message.isFromMe).toList();
     final questionCount =
         messages.where((message) => message.content.contains('?')).length;
 
