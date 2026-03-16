@@ -89,6 +89,13 @@ const VALID_IMAGE_MEDIA_TYPES = new Set([
 ]);
 const MAX_IMAGE_BYTES = 600 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 1500 * 1024;
+const VALID_SCREENSHOT_CLASSIFICATIONS = new Set([
+  "valid_chat",
+  "low_confidence",
+  "social_feed",
+  "unsupported",
+]);
+const VALID_IMPORT_POLICIES = new Set(["allow", "confirm", "reject"]);
 
 // 建構 Vision API 內容格式
 function buildVisionContent(
@@ -549,6 +556,89 @@ function countMessages(messages: Array<{ content: string }>): number {
   return Math.max(1, total);
 }
 
+function normalizeScreenshotClassification(
+  value: unknown,
+  messageCount: number,
+): string {
+  if (
+    typeof value === "string" &&
+    VALID_SCREENSHOT_CLASSIFICATIONS.has(value)
+  ) {
+    return value;
+  }
+
+  if (messageCount <= 0) {
+    return "unsupported";
+  }
+
+  if (messageCount < 2) {
+    return "low_confidence";
+  }
+
+  return "valid_chat";
+}
+
+function normalizeImportPolicy(
+  value: unknown,
+  classification: string,
+): string {
+  if (typeof value === "string" && VALID_IMPORT_POLICIES.has(value)) {
+    return value;
+  }
+
+  switch (classification) {
+    case "social_feed":
+    case "unsupported":
+      return "reject";
+    case "low_confidence":
+      return "confirm";
+    default:
+      return "allow";
+  }
+}
+
+function normalizeConfidenceLabel(
+  value: unknown,
+  classification: string,
+  messageCount: number,
+): string {
+  if (
+    value === "high" || value === "medium" || value === "low"
+  ) {
+    return value;
+  }
+
+  if (classification === "valid_chat" && messageCount >= 4) {
+    return "high";
+  }
+
+  if (classification === "low_confidence") {
+    return "low";
+  }
+
+  return "medium";
+}
+
+function normalizeWarningMessage(
+  value: unknown,
+  classification: string,
+): string | undefined {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  switch (classification) {
+    case "social_feed":
+      return "這張圖片看起來比較像社群貼文或留言串，不像雙人聊天視窗，建議改傳聊天截圖。";
+    case "unsupported":
+      return "這張圖片不像可辨識的聊天截圖，請改傳包含聊天泡泡與標題列的畫面。";
+    case "low_confidence":
+      return "這張截圖辨識信心較低，匯入前請先確認預覽內容與左右方向是否正確。";
+    default:
+      return undefined;
+  }
+}
+
 function normalizeRecognizedConversation(
   result: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -567,6 +657,35 @@ function normalizeRecognizedConversation(
     : null;
 
   if (!rawMessages) {
+    if (Object.keys(recognizedRaw).length > 0) {
+      const classification = normalizeScreenshotClassification(
+        recognizedRaw.classification,
+        0,
+      );
+      normalizedResult.recognizedConversation = {
+        ...recognizedRaw,
+        messageCount: 0,
+        summary:
+          typeof recognizedRaw.summary === "string" && recognizedRaw.summary.trim()
+            ? recognizedRaw.summary
+            : "無法從這張圖片穩定辨識出可匯入的聊天內容",
+        messages: [],
+        classification,
+        importPolicy: normalizeImportPolicy(
+          recognizedRaw.importPolicy,
+          classification,
+        ),
+        confidence: normalizeConfidenceLabel(
+          recognizedRaw.confidence,
+          classification,
+          0,
+        ),
+        warning: normalizeWarningMessage(
+          recognizedRaw.warning,
+          classification,
+        ),
+      };
+    }
     return normalizedResult;
   }
 
@@ -607,6 +726,23 @@ function normalizeRecognizedConversation(
       : Number(recognizedRaw.messageCount) > 0
       ? Number(recognizedRaw.messageCount)
       : normalizedMessages.length;
+  const classification = normalizeScreenshotClassification(
+    recognizedRaw.classification,
+    normalizedMessages.length,
+  );
+  const importPolicy = normalizeImportPolicy(
+    recognizedRaw.importPolicy,
+    classification,
+  );
+  const confidence = normalizeConfidenceLabel(
+    recognizedRaw.confidence,
+    classification,
+    normalizedMessages.length,
+  );
+  const warning = normalizeWarningMessage(
+    recognizedRaw.warning,
+    classification,
+  );
 
   normalizedResult.recognizedConversation = {
     ...recognizedRaw,
@@ -616,6 +752,10 @@ function normalizeRecognizedConversation(
         ? recognizedRaw.summary
         : `已識別 ${normalizedMessages.length} 則訊息`,
     messages: normalizedMessages,
+    classification,
+    importPolicy,
+    confidence,
+    warning,
   };
 
   return normalizedResult;
@@ -1296,6 +1436,10 @@ ${recentText}`;
 {
   "recognizedConversation": {
     "contactName": "小美",
+    "classification": "valid_chat",
+    "importPolicy": "allow",
+    "confidence": "high",
+    "warning": null,
     "messageCount": 10,
     "summary": "識別到 10 則訊息（我: 4, 她: 6）",
     "messages": [
@@ -1307,6 +1451,11 @@ ${recentText}`;
 
 注意：
 - contactName 是從聊天視窗標題識別的對方名字
+- classification 必須是 valid_chat / low_confidence / social_feed / unsupported 其中之一
+- importPolicy 必須是 allow / confirm / reject 其中之一
+- confidence 必須是 high / medium / low 其中之一
+- 如果圖片像社群貼文、留言串、非聊天介面、色情暴力畫面、或根本看不清楚，請用 social_feed 或 unsupported，並把 importPolicy 設為 reject
+- 如果勉強看起來像聊天，但左右方向、人物、順序或內容不夠確定，請用 low_confidence，並把 importPolicy 設為 confirm
 - 如果無法確定正確的繁體中文字，請設為 null
 - 不需要提供其他分析欄位，只需要 recognizedConversation`;
       } else {
@@ -1341,6 +1490,10 @@ ${recentText}`;
 {
   "recognizedConversation": {
     "contactName": "小美",
+    "classification": "valid_chat",
+    "importPolicy": "allow",
+    "confidence": "high",
+    "warning": null,
     "messageCount": 10,
     "summary": "識別到 10 則訊息（我: 4, 她: 6）",
     "messages": [
@@ -1352,6 +1505,10 @@ ${recentText}`;
 }
 
 注意：contactName 如果無法確定正確的繁體中文字，請設為 null。
+另外請務必補上 classification / importPolicy / confidence / warning：
+- 正常雙人聊天截圖：valid_chat + allow
+- 低信心或可能有誤：low_confidence + confirm
+- 社群貼文、留言串、非聊天畫面或不支援內容：social_feed 或 unsupported + reject
 
 ${contextInfo}
 
@@ -1494,8 +1651,35 @@ ${
 
     // 檢查截圖識別是否失敗
     const recognizedConversation = result.recognizedConversation as
-      | { messageCount?: number }
+      | { messageCount?: number; importPolicy?: string; warning?: string; summary?: string }
       | undefined;
+    if (
+      hasImages &&
+      recognizedConversation?.importPolicy === "reject"
+    ) {
+      const rejectMessage = recognizedConversation.warning ||
+        recognizedConversation.summary ||
+        "這張圖片不像可支援的聊天截圖，請換一張再試。";
+
+      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        userId: user.id,
+        model: actualModel,
+        requestType: recognizeOnly ? "recognize_only" : "analyze_with_images",
+        inputTokens: tokenUsage.inputTokens,
+        outputTokens: tokenUsage.outputTokens,
+        latencyMs,
+        status: "failed",
+        errorCode: "RECOGNITION_UNSUPPORTED",
+        errorMessage: rejectMessage,
+      });
+
+      return jsonResponse({
+        error: rejectMessage,
+        code: "RECOGNITION_UNSUPPORTED",
+        message: rejectMessage,
+        shouldChargeQuota: false,
+      }, 400);
+    }
     if (
       hasImages &&
       (!recognizedConversation || recognizedConversation.messageCount === 0)

@@ -153,6 +153,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The checklist is split into `必修 / 應修 / 可延後 / 伙伴待辦 / 品質門檻`, covering legal sync, auth regression, subscription regression, OCR boundary cases, telemetry verification, and the higher-level quality bar needed before public launch.
    - This is intended to be the working source of truth for the remaining TestFlight-to-App-Review gap, instead of relying on scattered chat messages or handoff bullets alone.
 
+32. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/domain/entities/analysis_models.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - Screenshot recognition now returns a lightweight boundary decision alongside the OCR payload: `classification`, `importPolicy`, `confidence`, and `warning`.
+   - The Edge Function now explicitly rejects likely social-feed / unsupported / unreadable images before they can be imported into a conversation, while lower-confidence chat detections are still allowed but marked as `confirm` instead of being treated like a clean high-confidence import.
+   - The Flutter client now surfaces those warnings in the confirmation dialog and the recognized-conversation card, and it also warns when the recognized contact name does not match the current thread name, reducing accidental cross-thread screenshot pollution.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

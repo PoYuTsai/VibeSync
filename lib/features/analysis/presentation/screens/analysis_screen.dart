@@ -294,12 +294,50 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return messages.sublist(0, lastIncomingIndex + 1);
   }
 
+  String? _buildRecognitionWarning({
+    required RecognizedConversation recognized,
+    required Conversation currentConversation,
+  }) {
+    final warnings = <String>[];
+    final serverWarning = recognized.warning?.trim();
+    if (serverWarning != null && serverWarning.isNotEmpty) {
+      warnings.add(serverWarning);
+    }
+
+    final recognizedName = recognized.contactName?.trim();
+    final currentName = currentConversation.name.trim();
+    final hasExistingThread = currentConversation.messages.isNotEmpty;
+    final hasNamedThread = currentName.isNotEmpty && currentName != '新對話';
+
+    if (
+        hasExistingThread &&
+        hasNamedThread &&
+        recognizedName != null &&
+        recognizedName.isNotEmpty &&
+        recognizedName != currentName) {
+      warnings.add(
+        '這張截圖辨識到的對方名字是「$recognizedName」，和目前對話名稱不同，請先確認沒有選錯截圖。',
+      );
+    }
+
+    if (recognized.importPolicy == 'confirm' && warnings.isEmpty) {
+      warnings.add('這張截圖辨識信心較低，匯入前請先確認預覽內容是否正確。');
+    }
+
+    if (warnings.isEmpty) {
+      return null;
+    }
+
+    return warnings.join('\n');
+  }
+
   /// 顯示識別確認對話框，讓用戶設定對方名字和情境
   Future<Map<String, dynamic>?> _showRecognitionConfirmDialog({
     required String? recognizedName,
     required int messageCount,
     required List<RecognizedMessage> messages,
     required Conversation currentConversation,
+    String? warningMessage,
   }) async {
     final nameController = TextEditingController(text: recognizedName ?? '');
     MeetingContext? selectedMeeting =
@@ -330,6 +368,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   '識別到 $messageCount 則訊息',
                   style: TextStyle(color: AppColors.glassTextPrimary),
                 ),
+                if (warningMessage != null && warningMessage.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.error.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 18,
+                            color: AppColors.error,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              warningMessage,
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.glassTextPrimary,
+                                height: 1.45,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 // 訊息預覽
                 Container(
@@ -576,15 +649,31 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       if (result.recognizedConversation != null &&
           result.recognizedConversation!.messages != null &&
           result.recognizedConversation!.messages!.isNotEmpty) {
+        final recognized = result.recognizedConversation!;
+        final warningMessage = _buildRecognitionWarning(
+          recognized: recognized,
+          currentConversation: conversation,
+        );
+
+        if (recognized.importPolicy == 'reject') {
+          setState(() {
+            _isRecognizing = false;
+            _errorMessage = warningMessage ?? recognized.summary;
+            _recognizedConversation = recognized;
+          });
+          return;
+        }
+
         setState(() => _isRecognizing = false);
 
         // 顯示確認對話框
         if (!mounted) return;
         final dialogResult = await _showRecognitionConfirmDialog(
-          recognizedName: result.recognizedConversation!.contactName,
-          messageCount: result.recognizedConversation!.messages!.length,
-          messages: result.recognizedConversation!.messages!,
+          recognizedName: recognized.contactName,
+          messageCount: recognized.messages!.length,
+          messages: recognized.messages!,
           currentConversation: conversation,
+          warningMessage: warningMessage,
         );
 
         // 用戶取消
@@ -600,7 +689,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         final repository = ref.read(conversationRepositoryProvider);
         final conv = repository.getConversation(widget.conversationId);
         if (conv != null) {
-          final recognizedMessages = result.recognizedConversation?.messages ??
+          final recognizedMessages = recognized.messages ??
               const <RecognizedMessage>[];
           // 更新對話名稱（如果用戶有輸入）
           final newName = dialogResult['name'] as String?;
@@ -645,7 +734,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           setState(() {
             _selectedImages = [];
             _selectedImageMetrics = [];
-            _recognizedConversation = result.recognizedConversation;
+            _recognizedConversation = recognized;
           });
 
           // 顯示成功訊息
@@ -1227,6 +1316,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ],
           ),
+          if (recognized.warning != null && recognized.warning!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Text(
+                  recognized.warning!,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ),
           if (recognized.messages != null &&
               recognized.messages!.isNotEmpty) ...[
             const SizedBox(height: 12),

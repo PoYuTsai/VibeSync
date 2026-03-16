@@ -264,12 +264,20 @@ class RecognizedConversation {
   final int messageCount;
   final String summary;
   final List<RecognizedMessage>? messages;
+  final String classification;
+  final String importPolicy;
+  final String confidence;
+  final String? warning;
 
   const RecognizedConversation({
     this.contactName,
     required this.messageCount,
     required this.summary,
     this.messages,
+    this.classification = 'valid_chat',
+    this.importPolicy = 'allow',
+    this.confidence = 'high',
+    this.warning,
   });
 
   factory RecognizedConversation.fromJson(Map<String, dynamic>? json) {
@@ -285,6 +293,10 @@ class RecognizedConversation {
               .map((m) => RecognizedMessage.fromJson(m as Map<String, dynamic>))
               .toList()
           : null,
+      classification: json['classification'] as String? ?? 'valid_chat',
+      importPolicy: json['importPolicy'] as String? ?? 'allow',
+      confidence: json['confidence'] as String? ?? 'high',
+      warning: json['warning'] as String?,
     );
   }
 }
