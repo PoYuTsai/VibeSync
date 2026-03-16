@@ -138,6 +138,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The client now records request payload size, local payload-preparation time, round-trip latency, and server-side AI latency estimates.
    - `analyze-chat` responses now include lightweight OCR telemetry so TestFlight debugging can better distinguish transport overhead from Claude time.
 
+29. `docs/legal/privacy-policy.md`
+   - Rewrote the privacy policy so its wording matches the actual shipped product behavior more closely.
+   - The doc no longer claims that user-submitted analysis content is never transmitted anywhere; it now explicitly documents the local-first storage model plus the fact that user-triggered analysis / screenshot recognition requests pass through backend processing and AI providers.
+   - The user-rights section was also softened to email-based requests instead of implying in-app data export / consent-management screens that are not yet fully shipped.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
