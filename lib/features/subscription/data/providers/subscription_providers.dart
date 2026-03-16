@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/services/usage_service.dart';
 
 /// 訂閱狀態
 class SubscriptionState {
@@ -92,6 +93,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     'essential': {'monthly': 1000, 'daily': 150},
   };
 
+  void _syncUsageCache(String tier, Map<String, int> limits) {
+    UsageService.syncSubscriptionSnapshot(
+      tier: tier,
+      monthlyLimit: limits['monthly']!,
+      dailyLimit: limits['daily']!,
+    );
+  }
+
   Future<void> _initialize() async {
     await _loadSubscription();
     await _loadOfferings();
@@ -128,6 +137,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyLimit: limits['daily']!,
         isLoading: false,
       );
+      _syncUsageCache(tier, limits);
     } catch (e) {
       debugPrint('Load subscription error: $e');
       state = SubscriptionState(
@@ -213,6 +223,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyLimit: limits['daily']!,
         isLoading: false,
       );
+      _syncUsageCache(tier, limits);
 
       debugPrint('State updated: tier=${state.tier}, monthlyLimit=${state.monthlyLimit}');
       debugPrint('=== PURCHASE END ===');
@@ -279,6 +290,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyLimit: limits['daily']!,
         dailyMessagesUsed: 0,
       );
+      _syncUsageCache(tier, limits);
 
       debugPrint('[forceSyncTier] Local state updated: tier=${state.tier}, limits=${limits}');
 
@@ -350,6 +362,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyLimit: limits['daily']!,
         isLoading: false,
       );
+      _syncUsageCache(tier, limits);
 
       return tier != 'free';
     } catch (e) {
@@ -383,6 +396,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           monthlyLimit: limits['monthly']!,
           dailyLimit: limits['daily']!,
         );
+        _syncUsageCache(rcTier, limits);
       }
     } catch (e) {
       debugPrint('Sync with RevenueCat error: $e');

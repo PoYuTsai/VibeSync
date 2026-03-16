@@ -43,6 +43,15 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 10. `admin-dashboard/app/(dashboard)/activity/page.tsx`
    - Removed two unused variables so the dashboard lint run is clean.
 
+11. `lib/core/services/usage_service.dart`, `lib/features/subscription/data/providers/subscription_providers.dart`
+   - Local usage fallback now caches tier/limit snapshots from the real subscription provider instead of always returning free-tier limits.
+
+12. `supabase/functions/analyze-chat/index.ts`
+   - Added stricter API boundary validation for request body shape, message count/content, analyze mode, draft length, session context fields, image media types, duplicate image order, and `recognizeOnly` misuse.
+
+13. `admin-dashboard/package-lock.json`
+   - Applied lockfile-only `npm audit fix`; `npm audit` now reports 0 vulnerabilities.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -73,7 +82,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - auth / authorization consistency
    - rate-limit / quota edge cases
 2. Performance pass on analysis payload construction and logging volume
-3. Replace local usage fallback with subscription-backed truth
+3. Complete the remaining TODO-backed product gaps (memory summary / booster IAP flow)
 
 ## Validation Checklist
 
@@ -94,6 +103,10 @@ After deploy, verify:
    - login succeeds only for `admin_users`
    - cookie is no longer visible in `document.cookie`
    - logout clears access correctly
+
+5. Admin dashboard toolchain:
+   - `npm.cmd run lint` passes
+   - `npm.cmd audit --json` reports 0 vulnerabilities
 
 ## Notes for Claude Code
 

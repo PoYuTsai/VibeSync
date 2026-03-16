@@ -62,5 +62,8 @@ Private - All Rights Reserved
 - AI logging now checks returned Supabase insert errors instead of assuming `insert()` will throw.
 - Admin dashboard auth now uses server-side login/logout routes with an `HttpOnly` cookie instead of a client-readable token cookie.
 - Feedback submission now validates category / payload shape, enforces length limits, and truncates Telegram previews to reduce oversharing.
+- Local usage fallback now syncs tier/limits from the subscription provider instead of always pretending the user is free-tier.
+- `analyze-chat` now validates request shape more strictly: message count/content, analyze mode, draft length, session context, image media types, and recognition-only misuse.
+- `admin-dashboard` dependency audit is now clean (`npm audit` reports 0 vulnerabilities after lockfile-only fixes).
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

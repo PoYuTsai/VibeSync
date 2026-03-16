@@ -53,6 +53,36 @@ interface ImageData {
   order: number; // 1, 2, 3...
 }
 
+interface AnalyzeMessage {
+  isFromMe: boolean;
+  content: string;
+}
+
+interface SessionContextInput {
+  meetingContext?: string;
+  duration?: string;
+  goal?: string;
+  userStyle?: string;
+  userInterests?: string;
+  targetDescription?: string;
+}
+
+const MAX_MESSAGES = 120;
+const MAX_MESSAGE_LENGTH = 2000;
+const MAX_TOTAL_MESSAGE_CHARS = 20000;
+const MAX_USER_DRAFT_LENGTH = 1500;
+const MAX_SESSION_FIELD_LENGTH = 300;
+const VALID_ANALYZE_MODES = new Set(["normal", "my_message"]);
+const VALID_FORCE_MODELS = new Set([
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-20250514",
+]);
+const VALID_IMAGE_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
 // 建構 Vision API 內容格式
 function buildVisionContent(
   textContent: string,
@@ -564,6 +594,99 @@ function normalizeRecognizedConversation(result: Record<string, unknown>): Recor
   return normalizedResult;
 }
 
+function sanitizeMessages(input: unknown): { messages?: AnalyzeMessage[]; error?: string } {
+  if (!Array.isArray(input)) {
+    return { error: "Invalid messages" };
+  }
+
+  if (input.length === 0) {
+    return { error: "Messages cannot be empty" };
+  }
+
+  if (input.length > MAX_MESSAGES) {
+    return { error: `Too many messages (max ${MAX_MESSAGES})` };
+  }
+
+  let totalChars = 0;
+  const sanitizedMessages: AnalyzeMessage[] = [];
+
+  for (const message of input) {
+    if (!message || typeof message !== "object") {
+      return { error: "Invalid message item" };
+    }
+
+    const record = message as Record<string, unknown>;
+    if (typeof record.isFromMe !== "boolean") {
+      return { error: "Invalid message sender" };
+    }
+
+    if (typeof record.content !== "string") {
+      return { error: "Invalid message content" };
+    }
+
+    const content = record.content.trim();
+    if (!content) {
+      return { error: "Message content cannot be empty" };
+    }
+
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      return { error: `Message too long (max ${MAX_MESSAGE_LENGTH} chars)` };
+    }
+
+    totalChars += content.length;
+    if (totalChars > MAX_TOTAL_MESSAGE_CHARS) {
+      return { error: `Messages too long (max ${MAX_TOTAL_MESSAGE_CHARS} chars)` };
+    }
+
+    sanitizedMessages.push({
+      isFromMe: record.isFromMe,
+      content,
+    });
+  }
+
+  return { messages: sanitizedMessages };
+}
+
+function sanitizeSessionContext(input: unknown): { sessionContext?: SessionContextInput; error?: string } {
+  if (input == null) {
+    return {};
+  }
+
+  if (typeof input !== "object" || Array.isArray(input)) {
+    return { error: "Invalid sessionContext" };
+  }
+
+  const raw = input as Record<string, unknown>;
+  const sanitized: SessionContextInput = {};
+
+  for (const key of [
+    "meetingContext",
+    "duration",
+    "goal",
+    "userStyle",
+    "userInterests",
+    "targetDescription",
+  ] as const) {
+    const value = raw[key];
+    if (value == null) continue;
+
+    if (typeof value !== "string") {
+      return { error: `Invalid sessionContext.${key}` };
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.length > MAX_SESSION_FIELD_LENGTH) {
+      return { error: `sessionContext.${key} too long` };
+    }
+
+    sanitized[key] = trimmed;
+  }
+
+  return { sessionContext: sanitized };
+}
+
 // 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
 // 測試帳號白名單 (不扣額度)
@@ -733,27 +856,92 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid request body" }, 400);
     }
 
-    const { messages, images, sessionContext, userDraft, forceModel, analyzeMode, recognizeOnly } = requestBody;
-    console.log(`[DEBUG] Request params: messages=${messages?.length}, images=${images?.length || 0}, recognizeOnly=${recognizeOnly}, analyzeMode=${analyzeMode}`);
+    if (!requestBody || typeof requestBody !== "object" || Array.isArray(requestBody)) {
+      return jsonResponse({ error: "Invalid request body" }, 400);
+    }
+
+    const {
+      messages: rawMessages,
+      images,
+      sessionContext: rawSessionContext,
+      userDraft: rawUserDraft,
+      forceModel: rawForceModel,
+      analyzeMode: rawAnalyzeMode,
+      recognizeOnly: rawRecognizeOnly,
+    } = requestBody;
+    console.log(`[DEBUG] Request params: messages=${rawMessages?.length}, images=${images?.length || 0}, recognizeOnly=${rawRecognizeOnly}, analyzeMode=${rawAnalyzeMode}`);
 
     // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
     // images: optional array of ImageData for screenshot analysis
     // recognizeOnly: boolean - 只識別截圖，不做完整分析（節省時間和 tokens）
-    if (!messages || !Array.isArray(messages)) {
-      return jsonResponse({ error: "Invalid messages" }, 400);
+    const messageValidation = sanitizeMessages(rawMessages);
+    if (messageValidation.error || !messageValidation.messages) {
+      return jsonResponse({ error: messageValidation.error || "Invalid messages" }, 400);
+    }
+    const messages = messageValidation.messages;
+
+    if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
+      return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
+    }
+    const recognizeOnly = rawRecognizeOnly === true;
+
+    if (rawAnalyzeMode != null && (typeof rawAnalyzeMode !== "string" || !VALID_ANALYZE_MODES.has(rawAnalyzeMode))) {
+      return jsonResponse({ error: "Invalid analyzeMode" }, 400);
+    }
+    const analyzeMode = rawAnalyzeMode === "my_message" ? "my_message" : "normal";
+
+    if (rawForceModel != null && (typeof rawForceModel !== "string" || !VALID_FORCE_MODELS.has(rawForceModel))) {
+      return jsonResponse({ error: "Invalid forceModel" }, 400);
+    }
+    const forceModel = rawForceModel;
+
+    if (rawUserDraft != null && typeof rawUserDraft !== "string") {
+      return jsonResponse({ error: "Invalid userDraft" }, 400);
+    }
+    const userDraft = typeof rawUserDraft === "string" ? rawUserDraft.trim() : undefined;
+    if (userDraft && userDraft.length > MAX_USER_DRAFT_LENGTH) {
+      return jsonResponse({ error: `userDraft too long (max ${MAX_USER_DRAFT_LENGTH} chars)` }, 400);
     }
 
+    const sessionContextValidation = sanitizeSessionContext(rawSessionContext);
+    if (sessionContextValidation.error) {
+      return jsonResponse({ error: sessionContextValidation.error }, 400);
+    }
+    const sessionContext = sessionContextValidation.sessionContext;
+
     // Validate images if provided
-    const hasImages = images && Array.isArray(images) && images.length > 0;
+    if (images != null && !Array.isArray(images)) {
+      return jsonResponse({ error: "Invalid images" }, 400);
+    }
+
+    const hasImages = Array.isArray(images) && images.length > 0;
+    if (recognizeOnly && !hasImages) {
+      return jsonResponse({ error: "recognizeOnly requires images" }, 400);
+    }
     if (hasImages) {
+      const imageOrders = new Set<number>();
       if (images.length > 3) {
         return jsonResponse({ error: "最多上傳 3 張截圖" }, 400);
       }
       // Validate each image
       for (const img of images) {
-        if (!img.data || !img.mediaType || typeof img.order !== "number") {
+        if (
+          typeof img.data !== "string" ||
+          typeof img.mediaType !== "string" ||
+          typeof img.order !== "number"
+        ) {
           return jsonResponse({ error: "圖片格式錯誤" }, 400);
         }
+        if (!VALID_IMAGE_MEDIA_TYPES.has(img.mediaType)) {
+          return jsonResponse({ error: "Unsupported image type" }, 400);
+        }
+        if (!Number.isInteger(img.order) || img.order < 1) {
+          return jsonResponse({ error: "圖片排序錯誤" }, 400);
+        }
+        if (imageOrders.has(img.order)) {
+          return jsonResponse({ error: "圖片排序重複" }, 400);
+        }
+        imageOrders.add(img.order);
         // Check base64 size (rough estimate: ~1.33x of actual bytes)
         const estimatedBytes = (img.data.length * 3) / 4;
         if (estimatedBytes > 600 * 1024) { // 600KB limit per image
@@ -769,6 +957,14 @@ serve(async (req) => {
         error: inputCheck.reason,
         code: "UNSAFE_INPUT",
       }, 400);
+    }
+
+    if (analyzeMode === "my_message" && !messages[messages.length - 1]?.isFromMe) {
+      return jsonResponse({ error: "my_message mode requires the latest message to be from the user" }, 400);
+    }
+
+    if (analyzeMode === "normal" && !messages.some((message) => !message.isFromMe)) {
+      return jsonResponse({ error: "At least one incoming message is required for analysis" }, 400);
     }
 
     // Format session context for Claude

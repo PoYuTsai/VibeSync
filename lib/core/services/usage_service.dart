@@ -83,6 +83,44 @@ class UsageService {
   static const _dailyUsedKey = 'daily_used';
   static const _dailyResetAtKey = 'daily_reset_at';
   static const _monthlyResetAtKey = 'monthly_reset_at';
+  static const _tierKey = 'subscription_tier';
+  static const _monthlyLimitKey = 'subscription_monthly_limit';
+  static const _dailyLimitKey = 'subscription_daily_limit';
+
+  static void syncSubscriptionSnapshot({
+    required String tier,
+    required int monthlyLimit,
+    required int dailyLimit,
+  }) {
+    final box = StorageService.usageBox;
+    box.put(_tierKey, tier);
+    box.put(_monthlyLimitKey, monthlyLimit);
+    box.put(_dailyLimitKey, dailyLimit);
+  }
+
+  static int _defaultMonthlyLimitForTier(String tier) {
+    switch (tier) {
+      case 'starter':
+        return AppConstants.starterMonthlyLimit;
+      case 'essential':
+        return AppConstants.essentialMonthlyLimit;
+      case 'free':
+      default:
+        return AppConstants.freeMonthlyLimit;
+    }
+  }
+
+  static int _defaultDailyLimitForTier(String tier) {
+    switch (tier) {
+      case 'starter':
+        return AppConstants.starterDailyLimit;
+      case 'essential':
+        return AppConstants.essentialDailyLimit;
+      case 'free':
+      default:
+        return AppConstants.freeDailyLimit;
+    }
+  }
 
   /// Get current usage data (local cache)
   UsageData getLocalUsage() {
@@ -130,14 +168,19 @@ class UsageService {
       box.put(_monthlyResetAtKey, now.toIso8601String());
     }
 
-    // TODO: Get actual tier from subscription service
+    final tier = box.get(_tierKey) as String? ?? 'free';
+    final monthlyLimit =
+        box.get(_monthlyLimitKey) as int? ?? _defaultMonthlyLimitForTier(tier);
+    final dailyLimit =
+        box.get(_dailyLimitKey) as int? ?? _defaultDailyLimitForTier(tier);
+
     return UsageData(
       monthlyUsed: monthlyUsed,
-      monthlyLimit: AppConstants.freeMonthlyLimit,
+      monthlyLimit: monthlyLimit,
       dailyUsed: dailyUsed,
-      dailyLimit: AppConstants.freeDailyLimit,
+      dailyLimit: dailyLimit,
       dailyResetAt: dailyResetAt,
-      tier: 'free',
+      tier: tier,
     );
   }
 
