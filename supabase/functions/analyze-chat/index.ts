@@ -1396,7 +1396,9 @@ ${
       claudeResult = await callClaudeWithFallback(
         {
           model: selectedModel,
-          max_tokens: hasImages ? 2048 : (isMyMessageMode ? 512 : 1024), // 截圖分析需要更多 tokens
+          max_tokens: recognizeOnly
+            ? 1200
+            : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1024)), // 截圖分析需要更多 tokens
           system: systemPrompt,
           messages: [
             {

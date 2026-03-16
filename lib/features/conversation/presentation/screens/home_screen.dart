@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
@@ -29,14 +30,16 @@ class HomeScreen extends ConsumerWidget {
             ),
           ],
         ),
-        // RWD: 限制最大寬度，大螢幕置中顯示
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
             child: conversations.isEmpty
                 ? _buildEmptyState(context)
                 : ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 16,
+                    ),
                     itemCount: conversations.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
@@ -45,8 +48,10 @@ class HomeScreen extends ConsumerWidget {
                         padding: EdgeInsets.zero,
                         child: ConversationTile(
                           conversation: conversation,
-                          onTap: () => context.push('/conversation/${conversation.id}'),
-                          onDelete: () => _showDeleteDialog(context, ref, conversation),
+                          onTap: () =>
+                              context.push('/conversation/${conversation.id}'),
+                          onDelete: () =>
+                              _showDeleteDialog(context, ref, conversation),
                         ),
                       );
                     },
@@ -102,7 +107,6 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 20),
-            // 手動輸入
             ListTile(
               leading: Container(
                 padding: const EdgeInsets.all(10),
@@ -117,7 +121,7 @@ class HomeScreen extends ConsumerWidget {
                 style: TextStyle(color: AppColors.glassTextPrimary),
               ),
               subtitle: Text(
-                '輸入對話內容和情境設定',
+                '輸入聊天內容並開始分析',
                 style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
               ),
               onTap: () {
@@ -126,7 +130,6 @@ class HomeScreen extends ConsumerWidget {
               },
             ),
             const SizedBox(height: 8),
-            // 截圖開始
             ListTile(
               leading: Container(
                 padding: const EdgeInsets.all(10),
@@ -141,7 +144,7 @@ class HomeScreen extends ConsumerWidget {
                 style: TextStyle(color: AppColors.glassTextPrimary),
               ),
               subtitle: Text(
-                '上傳聊天截圖，AI 自動識別對話',
+                '從相簿選擇聊天截圖，AI 先幫你辨識再建立對話',
                 style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
               ),
               onTap: () async {
@@ -156,19 +159,20 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _createConversationFromScreenshot(BuildContext context, WidgetRef ref) async {
+  Future<void> _createConversationFromScreenshot(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final repository = ref.read(conversationRepositoryProvider);
 
-    // 創建一個新對話（名稱稍後由用戶設定或從截圖識別）
     final conversation = await repository.createConversation(
-      name: '新對話',
+      name: '新的對話',
       messages: [],
     );
 
     ref.invalidate(conversationsProvider);
 
     if (context.mounted) {
-      // 導航到分析頁面，用戶可以上傳截圖
       context.push('/conversation/${conversation.id}');
     }
   }
@@ -182,15 +186,21 @@ class HomeScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
-        title: Text('刪除對話', style: TextStyle(color: AppColors.glassTextPrimary)),
+        title: Text(
+          '刪除對話',
+          style: TextStyle(color: AppColors.glassTextPrimary),
+        ),
         content: Text(
-          '確定要刪除與「${conversation.name}」的對話嗎？',
+          '確定要刪除「${conversation.name}」這個對話嗎？',
           style: TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            child: Text(
+              '取消',
+              style: TextStyle(color: AppColors.unselectedText),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
@@ -234,7 +244,7 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '點擊右下角 + 手動輸入或上傳截圖',
+            '點擊右下角 +，用手動輸入或截圖開始建立新對話。',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),

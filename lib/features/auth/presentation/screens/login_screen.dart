@@ -45,8 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     if (_isPasswordRecoveryMode) {
-      _noticeMessage =
-          'Reset link verified. Enter a new password to finish recovery.';
+      _noticeMessage = '已驗證重設連結，請輸入新密碼完成設定。';
     }
     _authSubscription =
         SupabaseService.authStateChanges.listen(_handleAuthStateChange);
@@ -75,8 +74,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _isSignUp = false;
         _isPasswordRecoveryMode = true;
         _errorMessage = null;
-        _noticeMessage =
-            'Reset link verified. Enter a new password to finish recovery.';
+        _noticeMessage = '已驗證重設連結，請輸入新密碼完成設定。';
         _pendingVerificationEmail = null;
       });
       return;
@@ -105,15 +103,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     required String confirmPassword,
   }) {
     if (password.isEmpty || confirmPassword.isEmpty) {
-      return 'Enter and confirm your new password.';
+      return '請輸入並再次確認新密碼。';
     }
 
     if (!_isStrongSignupPassword(password)) {
-      return 'Use at least 8 characters with both letters and numbers.';
+      return '請使用至少 8 個字元，且同時包含英文字母與數字。';
     }
 
     if (password != confirmPassword) {
-      return 'Passwords do not match.';
+      return '兩次輸入的密碼不一致。';
     }
 
     return null;
@@ -146,15 +144,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     required bool isSignUp,
   }) {
     if (email.isEmpty || password.isEmpty) {
-      return 'Email and password are required.';
+      return '請輸入 Email 和密碼。';
     }
 
     if (!_isValidEmail(email)) {
-      return 'Please enter a valid email address.';
+      return '請輸入有效的 Email。';
     }
 
     if (isSignUp && !_isStrongSignupPassword(password)) {
-      return 'Use at least 8 characters with both letters and numbers.';
+      return '請使用至少 8 個字元，且同時包含英文字母與數字。';
     }
 
     return null;
@@ -170,7 +168,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final email = _emailController.text.trim();
 
     if (message.contains('invalid login credentials')) {
-      return 'Invalid email or password.';
+      return 'Email 或密碼錯誤。';
     }
 
     if (message.contains('email not confirmed') ||
@@ -178,44 +176,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (_isValidEmail(email)) {
         _pendingVerificationEmail = email;
       }
-      return 'Please verify your email before signing in.';
+      return '請先完成 Email 驗證再登入。';
     }
 
     if (message.contains('user already registered')) {
       if (_isValidEmail(email)) {
         _pendingVerificationEmail = email;
       }
-      return isSignUp
-          ? 'This email is already registered. Try signing in or resend verification email.'
-          : 'This email is already registered.';
+      return isSignUp ? '這個 Email 已註冊，請直接登入或重新寄送驗證信。' : '這個 Email 已註冊。';
     }
 
     if (message.contains('weak password')) {
-      return 'Password must be at least 8 characters and include letters and numbers.';
+      return '密碼至少 8 個字元，且需包含英文字母與數字。';
     }
 
     if (message.contains('same_password') ||
         message.contains('same password') ||
         message.contains('password should be different')) {
-      return 'Choose a new password you have not used recently.';
+      return '請改用最近未使用過的新密碼。';
     }
 
     if (message.contains('rate limit') || error.statusCode == '429') {
-      return 'Too many attempts. Please wait a moment and try again.';
+      return '嘗試次數過多，請稍候再試。';
     }
 
     if (message.contains('invalid callback url')) {
-      return 'Sign-in callback failed. Please try again.';
+      return '登入回呼失敗，請再試一次。';
     }
 
     if (providerLabel != null) {
-      return '$providerLabel sign-in failed. Please try again.';
+      return '$providerLabel 登入失敗，請再試一次。';
     }
 
-    return fallbackMessage ??
-        (isSignUp
-            ? 'Could not create your account. Please try again.'
-            : 'Sign-in failed. Please try again.');
+    return fallbackMessage ?? (isSignUp ? '建立帳號失敗，請再試一次。' : '登入失敗，請再試一次。');
   }
 
   Future<void> _handleSuccessfulLogin(User user) async {
@@ -239,7 +232,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final email = (_pendingVerificationEmail ?? _emailController.text).trim();
 
     if (!_isValidEmail(email)) {
-      _setError('Enter a valid email before resending verification.');
+      _setError('請先輸入有效的 Email 再重新寄送驗證信。');
       return;
     }
 
@@ -255,13 +248,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() {
         _pendingVerificationEmail = email;
       });
-      _setNotice('Verification email sent again. Please check your inbox.');
+      _setNotice('驗證信已重新寄出，請到信箱查看。');
     } on AuthException catch (e) {
       if (!mounted) return;
       _setError(_mapAuthError(e, isSignUp: true));
     } catch (_) {
       if (!mounted) return;
-      _setError('Could not resend verification email. Please try again.');
+      _setError('重新寄送驗證信失敗，請再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -273,7 +266,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final email = _emailController.text.trim();
 
     if (!_isValidEmail(email)) {
-      _setError('Enter a valid email address before resetting your password.');
+      _setError('請先輸入有效的 Email 再重設密碼。');
       return;
     }
 
@@ -287,22 +280,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await SupabaseService.sendPasswordResetEmail(email: email);
       if (!mounted) return;
       _setNotice(
-        'If an account exists for this email, we sent a password reset link. Open it on this device to continue.',
+        '如果這個 Email 已註冊，我們已寄出重設密碼連結；請在這台裝置上開啟。',
       );
     } on AuthException catch (e) {
       if (!mounted) return;
       final message = e.message.toLowerCase();
       if (message.contains('rate limit') || e.statusCode == '429') {
-        _setError(
-            'Too many reset requests. Please wait a moment and try again.');
+        _setError('重設密碼請求過多，請稍候再試。');
       } else {
         _setNotice(
-          'If an account exists for this email, we sent a password reset link. Open it on this device to continue.',
+          '如果這個 Email 已註冊，我們已寄出重設密碼連結；請在這台裝置上開啟。',
         );
       }
     } catch (_) {
       if (!mounted) return;
-      _setError('Could not send a password reset email. Please try again.');
+      _setError('寄送重設密碼信失敗，請再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -347,12 +339,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _mapAuthError(
           e,
           isSignUp: true,
-          fallbackMessage: 'Could not update your password. Please try again.',
+          fallbackMessage: '更新密碼失敗，請再試一次。',
         ),
       );
     } catch (_) {
       if (!mounted) return;
-      _setError('Could not update your password. Please try again.');
+      _setError('更新密碼失敗，請再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -389,7 +381,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
       if (!mounted) return;
-      _setError('Google sign-in failed. Please try again.');
+      _setError('Google 登入失敗，請再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -426,7 +418,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
       if (!mounted) return;
-      _setError('Apple sign-in failed. Please try again.');
+      _setError('Apple 登入失敗，請再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -476,7 +468,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _pendingVerificationEmail = email;
           _isSignUp = false;
         });
-        _setNotice('Verification email sent. Please check your inbox.');
+        _setNotice('驗證信已寄出，請到信箱查看。');
         return;
       }
 
@@ -494,9 +486,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (_) {
       if (!mounted) return;
       _setError(
-        _isSignUp
-            ? 'Could not create your account. Please try again.'
-            : 'Sign-in failed. Please try again.',
+        _isSignUp ? '建立帳號失敗，請再試一次。' : '登入失敗，請再試一次。',
       );
     } finally {
       if (mounted) {
@@ -515,15 +505,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final headline = _isPasswordRecoveryMode
-        ? 'Set a new password'
+        ? '設定新密碼'
         : _isSignUp
-            ? 'Create account'
-            : 'Sign in with email';
+            ? '建立帳號'
+            : 'Email 登入';
     final primaryButtonText = _isPasswordRecoveryMode
-        ? 'Update password'
+        ? '更新密碼'
         : _isSignUp
-            ? 'Create account'
-            : 'Sign in';
+            ? '建立帳號'
+            : '登入';
 
     return GradientBackground(
       child: Scaffold(
@@ -547,7 +537,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Sharpen every conversation with more confidence.',
+                      '讓每段對話更有節奏，也更有自信。',
                       style: AppTypography.bodyLarge.copyWith(
                         color: AppColors.onBackgroundSecondary,
                       ),
@@ -579,25 +569,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 16),
                     ],
                     _buildLabeledTextField(
-                      label:
-                          _isPasswordRecoveryMode ? 'New password' : 'Password',
+                      label: _isPasswordRecoveryMode ? '新密碼' : '密碼',
                       controller: _passwordController,
                       hintText: _isPasswordRecoveryMode || _isSignUp
-                          ? 'At least 8 characters with letters and numbers'
-                          : 'Enter your password',
+                          ? '至少 8 個字元，需包含英文字母與數字'
+                          : '請輸入密碼',
                       obscureText: true,
                     ),
                     if (_isPasswordRecoveryMode) ...[
                       const SizedBox(height: 16),
                       _buildLabeledTextField(
-                        label: 'Confirm new password',
+                        label: '確認新密碼',
                         controller: _confirmPasswordController,
-                        hintText: 'Re-enter your new password',
+                        hintText: '再次輸入新密碼',
                         obscureText: true,
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Use a fresh password you can remember on this device.',
+                        '請設定一組這台裝置上也方便記住的新密碼。',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.onBackgroundSecondary,
                         ),
@@ -605,7 +594,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ] else if (_isSignUp) ...[
                       const SizedBox(height: 12),
                       Text(
-                        'We support email verification links, so use an inbox you can access on this device.',
+                        '我們會寄送 Email 驗證連結，請使用這台裝置可存取的信箱。',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.onBackgroundSecondary,
                         ),
@@ -629,7 +618,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     if (_hasPendingVerification && !_isSignUp) ...[
                       TextButton(
                         onPressed: _isLoading ? null : _resendVerificationEmail,
-                        child: const Text('Resend verification email'),
+                        child: const Text('重新寄送驗證信'),
                       ),
                       const SizedBox(height: 8),
                     ],
@@ -642,12 +631,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     if (!_isSignUp && !_isPasswordRecoveryMode)
                       TextButton(
                         onPressed: _isLoading ? null : _sendPasswordResetEmail,
-                        child: const Text('Forgot password?'),
+                        child: const Text('忘記密碼？'),
                       ),
                     if (!_isSignUp && !_isPasswordRecoveryMode)
                       TextButton(
                         onPressed: _isLoading ? null : _resendVerificationEmail,
-                        child: const Text('Need a new verification email?'),
+                        child: const Text('需要重新寄送驗證信？'),
                       ),
                     if (!_isPasswordRecoveryMode)
                       TextButton(
@@ -662,9 +651,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           });
                         },
                         child: Text(
-                          _isSignUp
-                              ? 'Already have an account? Sign in'
-                              : 'Need an account? Create one',
+                          _isSignUp ? '已經有帳號了？登入' : '還沒有帳號？建立帳號',
                           style: AppTypography.bodyMedium.copyWith(
                             color: AppColors.onBackgroundSecondary,
                           ),
@@ -768,7 +755,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             const Icon(Icons.apple, size: 24),
             const SizedBox(width: 12),
             Text(
-              'Continue with Apple',
+              '使用 Apple 繼續',
               style: AppTypography.bodyLarge.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
@@ -805,7 +792,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-              'Continue with Google',
+              '使用 Google 繼續',
               style: AppTypography.bodyLarge.copyWith(
                 color: Colors.black87,
                 fontWeight: FontWeight.w600,
@@ -829,7 +816,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            'or',
+            '或',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),
@@ -854,14 +841,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             color: AppColors.onBackgroundSecondary,
           ),
           children: [
-            const TextSpan(text: 'By continuing, you agree to the '),
+            const TextSpan(text: '繼續即表示你同意 '),
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
               child: GestureDetector(
                 onTap: () => _launchUrl('https://vibesyncai.app/terms'),
                 child: Text(
-                  'Terms of Service',
+                  '服務條款',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     decoration: TextDecoration.underline,
@@ -869,14 +856,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
             ),
-            const TextSpan(text: ' and '),
+            const TextSpan(text: ' 與 '),
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
               child: GestureDetector(
                 onTap: () => _launchUrl('https://vibesyncai.app/privacy'),
                 child: Text(
-                  'Privacy Policy',
+                  '隱私政策',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     decoration: TextDecoration.underline,
@@ -884,7 +871,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
             ),
-            const TextSpan(text: '.'),
+            const TextSpan(text: '。'),
           ],
         ),
         textAlign: TextAlign.center,

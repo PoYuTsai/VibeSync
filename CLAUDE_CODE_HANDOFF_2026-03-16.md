@@ -121,6 +121,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `environment_test.dart` was updated to match the real shared-dev Supabase setup and to assert the mobile auth callback URI instead of the old localhost-only assumption.
    - Local Supabase auth defaults are now stricter: longer passwords, confirmation emails enabled, secure password change enabled, and redirect allow-lists include the mobile callback URI.
 
+26. `lib/features/auth/presentation/screens/login_screen.dart`, `lib/features/conversation/presentation/screens/home_screen.dart`, `lib/shared/services/image_compress_service.dart`, `lib/shared/widgets/image_picker_widget.dart`, `supabase/functions/analyze-chat/index.ts`
+   - Home and login copy is now consistently Traditional Chinese again, replacing the temporary English/auth-hardening wording and lingering mojibake on the screenshot picker path.
+   - The screenshot picker's visible labels and error messages were rebuilt cleanly, and the size gate now aligns with the image compression service instead of an outdated hard-coded limit.
+   - Single-image screenshot imports now target smaller JPEG payloads (`960px`, about `350KB`) before upload.
+   - `recognizeOnly` image requests now ask Claude for fewer output tokens, which should modestly reduce OCR-only latency without touching the higher-budget full image-analysis path.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -140,7 +146,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - request size / timeout behavior
    - logging volume / sensitive data review
    - sensitive-data exposure in logs and retries
-2. Add regression tests around auth/session switching, login validation, forgot-password recovery callbacks, OAuth callback handling, and subscription self-heal races
+2. Add regression tests around auth/session switching, login validation, forgot-password recovery callbacks, OCR import latency, OAuth callback handling, and subscription self-heal races
 3. Complete the remaining TODO-backed product gaps (real booster IAP flow)
 
 ## Validation Checklist
@@ -210,6 +216,10 @@ After deploy, verify:
    - retest Google Sign-In on TestFlight/iPhone to confirm the SDK-generated PKCE URL still round-trips cleanly through ASWebAuthenticationSession
    - verify email sign-up + resend verification on a real inbox and ensure the confirmation deep link returns to the app correctly
    - verify forgot-password on both warm-start and cold-start app launches, and confirm the new-password screen stays on `/login` until completion
+
+16. Screenshot import latency:
+   - measure a single-image OCR import on TestFlight after the new compression settings
+   - verify recognition quality still holds on dense chat screenshots after lowering the upload size and OCR-only token budget
 
 ## Notes for Claude Code
 

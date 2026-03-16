@@ -6,9 +6,10 @@ import 'package:image/image.dart' as img;
 /// 圖片壓縮服務
 /// 用於壓縮用戶上傳的截圖到適合 API 傳輸的大小
 class ImageCompressService {
-  static const int maxWidth = 1024;
-  static const int quality = 85;
-  static const int maxSizeBytes = 500 * 1024; // 500KB
+  static const int maxWidth = 960;
+  static const int quality = 78;
+  static const int fallbackQuality = 60;
+  static const int maxSizeBytes = 350 * 1024; // 350KB
 
   /// 壓縮圖片到適合上傳的大小
   /// 返回壓縮後的 JPEG bytes，或 null 如果壓縮失敗
@@ -43,7 +44,7 @@ class ImageCompressService {
           imageBytes,
           minWidth: targetWidth,
           minHeight: targetHeight,
-          quality: 60,
+          quality: fallbackQuality,
           format: CompressFormat.jpeg,
         );
       }

@@ -2,17 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pasteboard/pasteboard.dart';
-import '../services/image_compress_service.dart';
+
 import '../../core/theme/app_colors.dart';
+import '../services/image_compress_service.dart';
 import 'glassmorphic_container.dart';
 
-/// 圖片選擇元件
-/// 支援從相簿選圖、剪貼簿貼上，自動壓縮
 class ImagePickerWidget extends StatefulWidget {
   final int maxImages;
   final ValueChanged<List<Uint8List>> onImagesChanged;
-  /// 外部傳入的圖片列表，用於同步狀態
-  /// 當外部清空時，內部也會清空
   final List<Uint8List>? externalImages;
 
   const ImagePickerWidget({
@@ -27,16 +24,18 @@ class ImagePickerWidget extends StatefulWidget {
 }
 
 class _ImagePickerWidgetState extends State<ImagePickerWidget> {
-  List<Uint8List> _images = [];
   final ImagePicker _picker = ImagePicker();
+
+  List<Uint8List> _images = [];
   bool _isProcessing = false;
 
   @override
   void didUpdateWidget(ImagePickerWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 如果外部圖片列表被清空，同步清空內部狀態
-    if (widget.externalImages != null && widget.externalImages!.isEmpty && _images.isNotEmpty) {
-      debugPrint('[ImagePickerWidget] 外部清空，同步清空內部狀態');
+
+    if (widget.externalImages != null &&
+        widget.externalImages!.isEmpty &&
+        _images.isNotEmpty) {
       setState(() {
         _images = [];
       });
@@ -45,7 +44,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   Future<void> _pickImage() async {
     if (_images.length >= widget.maxImages) {
-      _showError('最多上傳 ${widget.maxImages} 張截圖');
+      _showError('最多只能選擇 ${widget.maxImages} 張圖片。');
       return;
     }
 
@@ -54,53 +53,54 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       if (file == null) return;
 
       await _processImage(await file.readAsBytes(), file.mimeType);
-    } catch (e) {
-      _showError('選取圖片失敗');
+    } catch (_) {
+      _showError('選取圖片失敗，請再試一次。');
     }
   }
 
   Future<void> _pasteFromClipboard() async {
     if (!kIsWeb) {
-      _showError('剪貼簿貼上僅支援網頁版');
+      _showError('只有網頁版支援從剪貼簿貼上圖片。');
       return;
     }
 
     if (_images.length >= widget.maxImages) {
-      _showError('最多上傳 ${widget.maxImages} 張截圖');
+      _showError('最多只能選擇 ${widget.maxImages} 張圖片。');
       return;
     }
 
     try {
       final imageBytes = await Pasteboard.image;
       if (imageBytes == null) {
-        _showError('剪貼簿中沒有圖片');
+        _showError('剪貼簿裡沒有圖片。');
         return;
       }
+
       await _processImage(imageBytes, 'image/png');
-    } catch (e) {
-      _showError('貼上圖片失敗');
+    } catch (_) {
+      _showError('貼上圖片失敗，請再試一次。');
     }
   }
 
   Future<void> _processImage(Uint8List bytes, String? mimeType) async {
     if (!ImageCompressService.isSupportedFormat(mimeType)) {
-      _showError('不支援的圖片格式');
+      _showError('這個圖片格式目前不支援。');
       return;
     }
 
     setState(() => _isProcessing = true);
-
     final compressed = await ImageCompressService.compressImage(bytes);
-
-    setState(() => _isProcessing = false);
+    if (mounted) {
+      setState(() => _isProcessing = false);
+    }
 
     if (compressed == null) {
-      _showError('圖片處理失敗');
+      _showError('圖片處理失敗，請換一張試試。');
       return;
     }
 
-    if (compressed.length > 500 * 1024) {
-      _showError('圖片太大，請選擇較小的截圖');
+    if (compressed.length > ImageCompressService.maxSizeBytes) {
+      _showError('圖片仍然過大，請改用內容更精簡的截圖。');
       return;
     }
 
@@ -119,7 +119,10 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
     );
   }
 
@@ -128,34 +131,25 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 提示文字
         if (_images.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              '請按對話時間順序上傳，先傳較早的',
+              '建議每張截圖小於 15 則訊息，辨識會更快也更準。',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.unselectedText,
               ),
             ),
           ),
-
-        // 圖片預覽區
         SizedBox(
           height: 80,
           child: Row(
             children: [
-              // 已選圖片
-              ..._images.asMap().entries.map((entry) => _buildImageThumbnail(
-                    entry.value,
-                    entry.key,
-                  )),
-
-              // 新增按鈕
+              ..._images.asMap().entries.map(
+                    (entry) => _buildImageThumbnail(entry.value, entry.key),
+                  ),
               if (_images.length < widget.maxImages) _buildAddButton(),
-
-              // 處理中指示器
               if (_isProcessing)
                 const Padding(
                   padding: EdgeInsets.only(left: 8),
@@ -193,7 +187,6 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               ),
             ),
           ),
-          // 刪除按鈕
           Positioned(
             top: -6,
             right: -6,
@@ -214,7 +207,6 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               ),
             ),
           ),
-          // 順序標籤
           Positioned(
             bottom: 4,
             left: 4,
