@@ -9,6 +9,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+const DEPLOY_VERSION = "2026-03-16-rc-webhook-v2";
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -41,6 +42,10 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method === "GET") {
+    return jsonResponse({ ok: true, name: "revenuecat-webhook", version: DEPLOY_VERSION }, 200);
+  }
+
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
@@ -56,26 +61,36 @@ Deno.serve(async (req) => {
     const authHeaderRaw = req.headers.get("Authorization") || "";
     const authHeader = authHeaderRaw.trim();
 
-    const expectedBearer = `Bearer ${webhookSecret}`;
-    const isAuthorized = authHeader === expectedBearer || authHeader === webhookSecret;
+    const stripBearer = (value: string) => value.trim().replace(/^Bearer\s+/i, "");
+
+    const receivedToken = stripBearer(authHeader);
+    const expectedToken = stripBearer(webhookSecret);
+
+    const isAuthorized = receivedToken.length > 0 && receivedToken === expectedToken;
 
     if (!isAuthorized) {
-      console.error(
-        "Invalid webhook authorization",
-        JSON.stringify({
-          hasAuth: authHeader.length > 0,
-          startsWithBearer: authHeader.startsWith("Bearer "),
-          authLength: authHeader.length,
-        })
-      );
-      return jsonResponse({ error: "Unauthorized" }, 401);
-    }
+      const sha256Prefix = async (input: string) => {
+        const data = new TextEncoder().encode(input);
+        const digest = await crypto.subtle.digest("SHA-256", data);
+        const hex = Array.from(new Uint8Array(digest))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        return hex.slice(0, 12);
+      };
 
-    if (authHeader === webhookSecret) {
-      console.warn(
-        "Webhook authorization matched raw secret (missing 'Bearer ' prefix). " +
-          "Update RevenueCat Authorization header value to: 'Bearer <secret>'."
-      );
+      const debug = {
+        version: DEPLOY_VERSION,
+        hasAuth: authHeader.length > 0,
+        startsWithBearer: /^Bearer\s+/i.test(authHeader),
+        authHeaderLength: authHeader.length,
+        receivedTokenLength: receivedToken.length,
+        expectedTokenLength: expectedToken.length,
+        receivedTokenHash12: receivedToken ? await sha256Prefix(receivedToken) : null,
+        expectedTokenHash12: expectedToken ? await sha256Prefix(expectedToken) : null,
+      };
+
+      console.error(`Invalid webhook authorization: ${JSON.stringify(debug)}`);
+      return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
     const body = await req.json();
