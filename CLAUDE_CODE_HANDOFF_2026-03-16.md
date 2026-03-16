@@ -163,6 +163,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The client now builds a summary-aware payload: older context is sent as `conversationSummary`, while the raw message list is clipped to recent incoming-message rounds when summary coverage exists.
    - The old round-window assumption (`2 messages = 1 round`) was also removed from the main context helpers, so both memory slicing and live analysis now follow actual incoming-message boundaries more consistently.
 
+34. `lib/features/conversation/domain/entities/conversation.dart`, `lib/features/conversation/domain/entities/conversation.g.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - Conversations now persist the latest completed analysis snapshot locally (`lastAnalysisSnapshotJson` + `lastAnalyzedMessageCount`) alongside the existing metadata.
+   - Reopening an analyzed thread now restores the previous score, strategy, reply set, recommendation, and raw AI payload instead of rendering the analysis area as blank state until the user manually reruns it.
+   - The persisted analyzed-message count is also restored, so the existing "new messages arrived since last analysis" prompt still compares against the right baseline after a reopen.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -261,6 +266,10 @@ After deploy, verify:
    - create a conversation that ends with `我`
    - create a conversation that only contains `我`
    - verify the helper copy, draft-saving behavior, and post-save analysis guidance all feel consistent on TestFlight
+
+18. Analysis persistence:
+   - analyze a conversation, back out to the list, and reopen it; the previous analysis should still be visible without rerunning
+   - append one or more new messages after that reopen and confirm the existing "new messages since last analysis" prompt still appears off the restored baseline
 
 ## Notes for Claude Code
 

@@ -2,6 +2,7 @@
 
 // lib/features/analysis/presentation/screens/analysis_screen.dart
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -107,7 +108,96 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   @override
   void initState() {
     super.initState();
+    _restorePersistedAnalysis();
     // 不再自動分析，讓用戶手動點擊
+  }
+
+  void _restorePersistedAnalysis() {
+    final repository = ref.read(conversationRepositoryProvider);
+    final conversation = repository.getConversation(widget.conversationId);
+    if (conversation == null) {
+      return;
+    }
+
+    _lastAnalyzedMessageCount =
+        conversation.lastAnalyzedMessageCount ?? conversation.messages.length;
+
+    final snapshotJson = conversation.lastAnalysisSnapshotJson;
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final snapshot = _normalizeJsonMap(jsonDecode(snapshotJson));
+      if (snapshot == null) {
+        return;
+      }
+
+      _applyAnalysisResult(AnalysisResult.fromJson(snapshot));
+    } catch (error) {
+      debugPrint(
+        '[AnalysisScreen] Failed to restore persisted analysis for '
+        '${widget.conversationId}: $error',
+      );
+    }
+  }
+
+  Map<String, dynamic>? _normalizeJsonMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+
+    if (value is Map) {
+      return value.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+    }
+
+    return null;
+  }
+
+  void _applyAnalysisResult(
+    AnalysisResult result, {
+    bool resetFeedbackState = true,
+  }) {
+    _enthusiasmScore = result.enthusiasmScore;
+    _strategy = result.strategy;
+    _replies = result.replies;
+    _topicDepth = result.topicDepth;
+    _healthCheck = result.healthCheck;
+    _gameStage = result.gameStage;
+    _psychology = result.psychology;
+    _finalRecommendation = result.recommendation;
+    _reminder = result.reminder;
+    _shouldGiveUp = result.shouldGiveUp;
+    _lastAiResponse = result.rawResponse;
+
+    if (resetFeedbackState) {
+      _feedbackSubmitted = false;
+      _showFeedbackForm = false;
+      _feedbackCategory = null;
+    }
+  }
+
+  Future<void> _persistLatestAnalysisSnapshot(
+    Conversation conversation,
+    AnalysisResult result,
+  ) async {
+    final repository = ref.read(conversationRepositoryProvider);
+    final conv = repository.getConversation(widget.conversationId);
+    if (conv == null) {
+      return;
+    }
+
+    conv.lastEnthusiasmScore = result.enthusiasmScore;
+    conv.lastAnalyzedMessageCount = conversation.messages.length;
+    conv.lastAnalysisSnapshotJson =
+        result.rawResponse == null || result.rawResponse!.isEmpty
+            ? null
+            : jsonEncode(result.rawResponse);
+
+    await repository.updateConversation(conv);
+    ref.invalidate(conversationsProvider);
   }
 
   @override
@@ -909,6 +999,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
       setState(() {
         _isAnalyzing = false;
+        _applyAnalysisResult(result);
         _enthusiasmScore = result.enthusiasmScore;
         _strategy = result.strategy;
         _replies = result.replies;
@@ -925,15 +1016,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _feedbackCategory = null;
       });
 
-      // Update conversation with score
       try {
-        final repository = ref.read(conversationRepositoryProvider);
-        final conv = repository.getConversation(widget.conversationId);
-        if (conv != null && _enthusiasmScore != null) {
-          conv.lastEnthusiasmScore = _enthusiasmScore;
-          await repository.updateConversation(conv);
-          ref.invalidate(conversationsProvider);
-        }
+        await _persistLatestAnalysisSnapshot(conversation, result);
       } catch (_) {
         // Ignore errors in test environment
       }

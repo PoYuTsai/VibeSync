@@ -50,6 +50,14 @@ class Conversation extends HiveObject {
   @HiveField(11)
   String? lastUserChoice;
 
+  /// Serialized raw analysis response for restoring the latest analysis UI
+  @HiveField(12)
+  String? lastAnalysisSnapshotJson;
+
+  /// Message count included in the latest persisted analysis
+  @HiveField(13)
+  int? lastAnalyzedMessageCount;
+
   Conversation({
     required this.id,
     required this.name,
@@ -63,6 +71,8 @@ class Conversation extends HiveObject {
     this.currentRound = 0,
     this.summaries,
     this.lastUserChoice,
+    this.lastAnalysisSnapshotJson,
+    this.lastAnalyzedMessageCount,
   });
 
   Message? get lastMessage => messages.isNotEmpty ? messages.last : null;
