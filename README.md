@@ -102,5 +102,6 @@ Private - All Rights Reserved
 - `docs/legal/terms-of-service.md` now reflects the actually shipped offering: current monthly Free / Starter / Essential plans, platform-managed billing, and quota-based usage limits without promising annual plans, paid free trials, or booster add-ons that are not live yet.
 - `docs/launch-readiness-checklist.md` now captures the current go-live gap review in one place, split into `必修 / 應修 / 可延後 / 伙伴待辦`, so TestFlight feedback and launch prep can be tracked without digging through chat history.
 - Screenshot OCR now carries a lightweight preflight decision: likely social-feed / unsupported / unreadable images are rejected before import, while low-confidence chat detections stay importable but surface an explicit warning banner and confirmation step instead of silently polluting the current thread.
+- Long conversations now send `older context summary + recent turns` into live analysis instead of relying only on the raw tail of the thread. The round windowing logic also now follows actual incoming-message boundaries rather than the old `2 messages = 1 round` shortcut.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

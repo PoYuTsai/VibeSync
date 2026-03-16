@@ -77,6 +77,7 @@ const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TOTAL_MESSAGE_CHARS = 20000;
 const MAX_USER_DRAFT_LENGTH = 1500;
 const MAX_SESSION_FIELD_LENGTH = 300;
+const MAX_CONVERSATION_SUMMARY_LENGTH = 5000;
 const VALID_ANALYZE_MODES = new Set(["normal", "my_message"]);
 const VALID_FORCE_MODELS = new Set([
   "claude-haiku-4-5-20251001",
@@ -865,6 +866,32 @@ function sanitizeSessionContext(
   return { sessionContext: sanitized };
 }
 
+function sanitizeConversationSummary(
+  input: unknown,
+): { conversationSummary?: string; error?: string } {
+  if (input == null) {
+    return {};
+  }
+
+  if (typeof input !== "string") {
+    return { error: "Invalid conversationSummary" };
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  if (trimmed.length > MAX_CONVERSATION_SUMMARY_LENGTH) {
+    return {
+      error:
+        `conversationSummary too long (max ${MAX_CONVERSATION_SUMMARY_LENGTH} chars)`,
+    };
+  }
+
+  return { conversationSummary: trimmed };
+}
+
 // 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
 // 測試帳號白名單 (不扣額度)
@@ -967,6 +994,7 @@ serve(async (req) => {
       messages: rawMessages,
       images,
       sessionContext: rawSessionContext,
+      conversationSummary: rawConversationSummary,
       userDraft: rawUserDraft,
       forceModel: rawForceModel,
       analyzeMode: rawAnalyzeMode,
@@ -1167,6 +1195,18 @@ serve(async (req) => {
       return jsonResponse({ error: sessionContextValidation.error }, 400);
     }
     const sessionContext = sessionContextValidation.sessionContext;
+
+    const conversationSummaryValidation = sanitizeConversationSummary(
+      rawConversationSummary,
+    );
+    if (conversationSummaryValidation.error) {
+      return jsonResponse(
+        { error: conversationSummaryValidation.error },
+        400,
+      );
+    }
+    const conversationSummary =
+      conversationSummaryValidation.conversationSummary;
 
     // Validate images if provided
     if (images != null && !Array.isArray(images)) {
@@ -1376,21 +1416,27 @@ ${recentText}`;
         }`,
       ].join("\n");
     }
+    const historicalContextInfo = conversationSummary
+      ? ["## Older Context Summary", conversationSummary].join("\n")
+      : "";
 
     let userPrompt = isMyMessageMode
       ? [
         contextInfo,
+        historicalContextInfo,
         "",
-        "## Conversation",
+        "## Recent Conversation",
         compiledConversationText,
         "",
         "Continue from the user's latest draft and suggest how to keep the conversation flowing naturally.",
       ].join("\n")
       : [
         contextInfo,
+        historicalContextInfo,
         "",
         "Analyze the conversation below and return the structured JSON response.",
         "",
+        "## Recent Conversation",
         compiledConversationText,
       ].join("\n");
     /*
@@ -1511,6 +1557,12 @@ ${recentText}`;
 - 社群貼文、留言串、非聊天畫面或不支援內容：social_feed 或 unsupported + reject
 
 ${contextInfo}
+
+${
+          conversationSummary
+            ? `## Older Context Summary\n${conversationSummary}\n\n`
+            : ""
+        }
 
 ${
           compiledConversationText

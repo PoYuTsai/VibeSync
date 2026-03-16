@@ -16,7 +16,9 @@ import '../../../../shared/widgets/enthusiasm_gauge.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/reply_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../conversation/domain/entities/conversation_summary.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
@@ -35,6 +37,7 @@ class AnalysisScreen extends ConsumerStatefulWidget {
 }
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
+  final MemoryService _memoryService = MemoryService();
   bool _isAnalyzing = false;
   int? _enthusiasmScore;
   String? _strategy;
@@ -292,6 +295,60 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     return messages.sublist(0, lastIncomingIndex + 1);
+  }
+
+  Future<String?> _buildHistoricalContextSummary(
+    Conversation conversation,
+  ) async {
+    final persistedSummary = _memoryService.buildHistoricalSummary(conversation);
+    if (persistedSummary != null && persistedSummary.isNotEmpty) {
+      return persistedSummary;
+    }
+
+    final olderRounds = conversation.currentRound - MemoryService.maxRecentRounds;
+    if (olderRounds < MemoryService.minRoundsPerSummary) {
+      return null;
+    }
+
+    final ephemeralSummary = await _memoryService.generateSummary(
+      conversation,
+      0,
+      olderRounds,
+    );
+
+    final formattedSummary = _memoryService.formatSummarySegments(
+      <ConversationSummary>[ephemeralSummary],
+    );
+
+    return formattedSummary.isEmpty ? null : formattedSummary;
+  }
+
+  Future<({List<Message> requestMessages, String? conversationSummary})>
+      _buildSummaryAwareAnalysisContext({
+    required Conversation conversation,
+    required List<Message> baseMessages,
+  }) async {
+    final conversationSummary = await _buildHistoricalContextSummary(
+      conversation,
+    );
+
+    if (conversationSummary == null || conversationSummary.isEmpty) {
+      return (
+        requestMessages: baseMessages,
+        conversationSummary: null,
+      );
+    }
+
+    final requestMessages = _memoryService.clipToRecentRounds(
+      baseMessages,
+      MemoryService.maxRecentRounds,
+    );
+
+    return (
+      requestMessages:
+          requestMessages.isEmpty ? baseMessages : requestMessages,
+      conversationSummary: conversationSummary,
+    );
   }
 
   String? _buildRecognitionWarning({
@@ -834,11 +891,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     try {
+      final analysisContext = await _buildSummaryAwareAnalysisContext(
+        conversation: conversation,
+        baseMessages: messagesForAnalysis,
+      );
+
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
-        messagesForAnalysis,
+        analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
+        conversationSummary: analysisContext.conversationSummary,
       );
 
       // 記錄已分析的訊息數量
@@ -911,10 +974,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     try {
+      final analysisContext = await _buildSummaryAwareAnalysisContext(
+        conversation: conversation,
+        baseMessages: conversation.messages,
+      );
+
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
-        conversation.messages,
+        analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
+        conversationSummary: analysisContext.conversationSummary,
         analyzeMode: 'my_message',
       );
 
@@ -961,10 +1030,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     try {
+      final analysisContext = await _buildSummaryAwareAnalysisContext(
+        conversation: conversation,
+        baseMessages: conversation.messages,
+      );
+
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
-        conversation.messages,
+        analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
+        conversationSummary: analysisContext.conversationSummary,
         userDraft: draft,
       );
       if (!mounted) return;

@@ -71,11 +71,30 @@ class Conversation extends HiveObject {
       messages.where((m) => !m.isFromMe).toList();
 
   /// Get recent N rounds of messages (for AI context)
-  /// Each round is approximately 2 messages (user + them)
   List<Message> getRecentMessages(int rounds) {
-    final messageCount = rounds * 2;
-    if (messages.length <= messageCount) return messages;
-    return messages.sublist(messages.length - messageCount);
+    if (rounds <= 0 || messages.isEmpty) {
+      return const [];
+    }
+
+    final totalIncomingMessages =
+        messages.where((message) => !message.isFromMe).length;
+    if (totalIncomingMessages <= rounds) {
+      return messages;
+    }
+
+    final roundsToSkip = totalIncomingMessages - rounds;
+    var incomingSeen = 0;
+
+    for (var i = 0; i < messages.length; i++) {
+      if (!messages[i].isFromMe) {
+        incomingSeen++;
+        if (incomingSeen == roundsToSkip) {
+          return messages.sublist(i + 1);
+        }
+      }
+    }
+
+    return messages;
   }
 
   /// Whether this conversation needs summarization

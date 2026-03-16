@@ -158,6 +158,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The Edge Function now explicitly rejects likely social-feed / unsupported / unreadable images before they can be imported into a conversation, while lower-confidence chat detections are still allowed but marked as `confirm` instead of being treated like a clean high-confidence import.
    - The Flutter client now surfaces those warnings in the confirmation dialog and the recognized-conversation card, and it also warns when the recognized contact name does not match the current thread name, reducing accidental cross-thread screenshot pollution.
 
+33. `lib/features/conversation/domain/entities/conversation.dart`, `lib/features/conversation/data/services/memory_service.dart`, `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `supabase/functions/analyze-chat/index.ts`
+   - Historical conversation summaries are now wired into the live analysis request path instead of being generated only for storage.
+   - The client now builds a summary-aware payload: older context is sent as `conversationSummary`, while the raw message list is clipped to recent incoming-message rounds when summary coverage exists.
+   - The old round-window assumption (`2 messages = 1 round`) was also removed from the main context helpers, so both memory slicing and live analysis now follow actual incoming-message boundaries more consistently.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

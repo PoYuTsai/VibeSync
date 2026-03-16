@@ -89,6 +89,7 @@ class AnalysisService {
     List<Message> messages, {
     List<Uint8List>? images,
     SessionContext? sessionContext,
+    String? conversationSummary,
     String? userDraft,
     String? analyzeMode,
     bool recognizeOnly = false,
@@ -119,6 +120,7 @@ class AnalysisService {
           sanitizedMessages,
           images: images,
           sessionContext: sessionContext,
+          conversationSummary: conversationSummary,
           userDraft: userDraft,
           analyzeMode: analyzeMode,
           recognizeOnly: recognizeOnly,
@@ -196,6 +198,7 @@ class AnalysisService {
     List<Message> messages, {
     List<Uint8List>? images,
     SessionContext? sessionContext,
+    String? conversationSummary,
     String? userDraft,
     String? analyzeMode,
     required bool recognizeOnly,
@@ -252,6 +255,8 @@ class AnalysisService {
             'duration': sessionContext.duration.label,
             'goal': sessionContext.goal.label,
           },
+        if (conversationSummary != null && conversationSummary.trim().isNotEmpty)
+          'conversationSummary': conversationSummary.trim(),
         if (userDraft != null && userDraft.trim().isNotEmpty)
           'userDraft': userDraft.trim(),
         if (analyzeMode != null) 'analyzeMode': analyzeMode,

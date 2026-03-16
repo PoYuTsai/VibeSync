@@ -82,6 +82,80 @@ class MemoryService {
     return buffer.toString();
   }
 
+  /// Build a compact summary string for older context that has already been
+  /// distilled into historical summary segments.
+  String? buildHistoricalSummary(Conversation conversation) {
+    final summaries = conversation.summaries
+        ?.where((summary) => summary.content.trim().isNotEmpty)
+        .toList();
+    if (summaries == null || summaries.isEmpty) {
+      return null;
+    }
+
+    return formatSummarySegments(summaries);
+  }
+
+  String formatSummarySegments(Iterable<ConversationSummary> summaries) {
+    final nonEmptySummaries =
+        summaries.where((summary) => summary.content.trim().isNotEmpty).toList();
+    if (nonEmptySummaries.isEmpty) {
+      return '';
+    }
+
+    final summarizedRounds = summaries.fold<int>(
+      0,
+      (total, summary) => total + summary.roundsCovered,
+    );
+    final buffer = StringBuffer()
+      ..writeln('Older context summary (covers $summarizedRounds rounds):');
+
+    for (final summary in nonEmptySummaries) {
+      buffer.writeln('- ${summary.content}');
+      if (summary.keyTopics.isNotEmpty) {
+        buffer.writeln('  Topics: ${summary.keyTopics.join(", ")}');
+      }
+      if (summary.sharedInterests.isNotEmpty) {
+        buffer.writeln(
+          '  Shared interests: ${summary.sharedInterests.join(", ")}',
+        );
+      }
+      if (summary.relationshipStage.trim().isNotEmpty) {
+        buffer.writeln('  Stage: ${summary.relationshipStage}');
+      }
+    }
+
+    return buffer.toString().trim();
+  }
+
+  /// Keep only the most recent incoming-message rounds from an arbitrary
+  /// message slice. This matches how summaries are generated and avoids the old
+  /// "2 messages = 1 round" assumption.
+  List<Message> clipToRecentRounds(List<Message> messages, int roundLimit) {
+    if (roundLimit <= 0 || messages.isEmpty) {
+      return const <Message>[];
+    }
+
+    final totalIncomingMessages =
+        messages.where((message) => !message.isFromMe).length;
+    if (totalIncomingMessages <= roundLimit) {
+      return messages;
+    }
+
+    final roundsToSkip = totalIncomingMessages - roundLimit;
+    var incomingSeen = 0;
+
+    for (var i = 0; i < messages.length; i++) {
+      if (!messages[i].isFromMe) {
+        incomingSeen++;
+        if (incomingSeen == roundsToSkip) {
+          return messages.sublist(i + 1);
+        }
+      }
+    }
+
+    return messages;
+  }
+
   /// Infer which reply type user chose from the next incoming message.
   String? inferUserChoice(
     Message theirReply,
