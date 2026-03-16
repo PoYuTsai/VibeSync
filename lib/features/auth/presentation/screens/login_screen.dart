@@ -26,11 +26,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   StreamSubscription<AuthState>? _authSubscription;
 
   bool _isLoading = false;
   bool _isSignUp = false;
+  bool _isPasswordRecoveryMode = SupabaseService.isPasswordRecoveryInProgress;
   String? _errorMessage;
   String? _noticeMessage;
   String? _pendingVerificationEmail;
@@ -42,10 +44,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _authSubscription = SupabaseService.authStateChanges.listen((_) {
-      if (!mounted) return;
-      ref.invalidate(subscriptionProvider);
-    });
+    if (_isPasswordRecoveryMode) {
+      _noticeMessage =
+          'Reset link verified. Enter a new password to finish recovery.';
+    }
+    _authSubscription =
+        SupabaseService.authStateChanges.listen(_handleAuthStateChange);
   }
 
   @override
@@ -53,7 +57,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _authSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  void _handleAuthStateChange(AuthState authState) {
+    if (!mounted) return;
+
+    ref.invalidate(subscriptionProvider);
+
+    if (authState.event == AuthChangeEvent.passwordRecovery) {
+      _passwordController.clear();
+      _confirmPasswordController.clear();
+
+      setState(() {
+        _isLoading = false;
+        _isSignUp = false;
+        _isPasswordRecoveryMode = true;
+        _errorMessage = null;
+        _noticeMessage =
+            'Reset link verified. Enter a new password to finish recovery.';
+        _pendingVerificationEmail = null;
+      });
+      return;
+    }
+
+    if (authState.event == AuthChangeEvent.signedOut &&
+        _isPasswordRecoveryMode) {
+      setState(() {
+        _isPasswordRecoveryMode = false;
+      });
+    }
   }
 
   bool _isValidEmail(String value) {
@@ -64,6 +98,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return value.length >= 8 &&
         RegExp(r'[A-Za-z]').hasMatch(value) &&
         RegExp(r'\d').hasMatch(value);
+  }
+
+  String? _validateRecoveryForm({
+    required String password,
+    required String confirmPassword,
+  }) {
+    if (password.isEmpty || confirmPassword.isEmpty) {
+      return 'Enter and confirm your new password.';
+    }
+
+    if (!_isStrongSignupPassword(password)) {
+      return 'Use at least 8 characters with both letters and numbers.';
+    }
+
+    if (password != confirmPassword) {
+      return 'Passwords do not match.';
+    }
+
+    return null;
   }
 
   bool _isCancellationError(Object error) {
@@ -111,6 +164,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     AuthException error, {
     required bool isSignUp,
     String? providerLabel,
+    String? fallbackMessage,
   }) {
     final message = error.message.toLowerCase();
     final email = _emailController.text.trim();
@@ -140,6 +194,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return 'Password must be at least 8 characters and include letters and numbers.';
     }
 
+    if (message.contains('same_password') ||
+        message.contains('same password') ||
+        message.contains('password should be different')) {
+      return 'Choose a new password you have not used recently.';
+    }
+
     if (message.contains('rate limit') || error.statusCode == '429') {
       return 'Too many attempts. Please wait a moment and try again.';
     }
@@ -152,18 +212,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return '$providerLabel sign-in failed. Please try again.';
     }
 
-    return isSignUp
-        ? 'Could not create your account. Please try again.'
-        : 'Sign-in failed. Please try again.';
+    return fallbackMessage ??
+        (isSignUp
+            ? 'Could not create your account. Please try again.'
+            : 'Sign-in failed. Please try again.');
   }
 
   Future<void> _handleSuccessfulLogin(User user) async {
     await SupabaseService.ensureSubscriptionExists(user.id);
     if (!mounted) return;
 
+    SupabaseService.clearPasswordRecoveryState();
     setState(() {
+      _isPasswordRecoveryMode = false;
       _pendingVerificationEmail = null;
+      _errorMessage = null;
+      _noticeMessage = null;
     });
+    _passwordController.clear();
+    _confirmPasswordController.clear();
     ref.invalidate(subscriptionProvider);
     context.go('/');
   }
@@ -195,6 +262,97 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (_) {
       if (!mounted) return;
       _setError('Could not resend verification email. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _sendPasswordResetEmail() async {
+    final email = _emailController.text.trim();
+
+    if (!_isValidEmail(email)) {
+      _setError('Enter a valid email address before resetting your password.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _noticeMessage = null;
+    });
+
+    try {
+      await SupabaseService.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      _setNotice(
+        'If an account exists for this email, we sent a password reset link. Open it on this device to continue.',
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      final message = e.message.toLowerCase();
+      if (message.contains('rate limit') || e.statusCode == '429') {
+        _setError(
+            'Too many reset requests. Please wait a moment and try again.');
+      } else {
+        _setNotice(
+          'If an account exists for this email, we sent a password reset link. Open it on this device to continue.',
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _setError('Could not send a password reset email. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _completePasswordRecovery() async {
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+    final validationError = _validateRecoveryForm(
+      password: password,
+      confirmPassword: confirmPassword,
+    );
+
+    if (validationError != null) {
+      _setError(validationError);
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _noticeMessage = null;
+    });
+
+    try {
+      await SupabaseService.updatePassword(password: password);
+      final user = SupabaseService.currentUser;
+
+      if (user != null) {
+        await _handleSuccessfulLogin(user);
+        return;
+      }
+
+      SupabaseService.clearPasswordRecoveryState();
+      if (!mounted) return;
+      context.go('/');
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _setError(
+        _mapAuthError(
+          e,
+          isSignUp: true,
+          fallbackMessage: 'Could not update your password. Please try again.',
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _setError('Could not update your password. Please try again.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -277,6 +435,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    if (_isPasswordRecoveryMode) {
+      await _completePasswordRecovery();
+      return;
+    }
+
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final validationError = _validateForm(
@@ -351,6 +514,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final headline = _isPasswordRecoveryMode
+        ? 'Set a new password'
+        : _isSignUp
+            ? 'Create account'
+            : 'Sign in with email';
+    final primaryButtonText = _isPasswordRecoveryMode
+        ? 'Update password'
+        : _isSignUp
+            ? 'Create account'
+            : 'Sign in';
+
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -380,7 +554,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
-                    if (_isIOS && !_isSignUp) ...[
+                    if (_isIOS && !_isSignUp && !_isPasswordRecoveryMode) ...[
                       _buildGoogleSignInButton(),
                       const SizedBox(height: 12),
                       _buildAppleSignInButton(),
@@ -389,28 +563,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 24),
                     ],
                     Text(
-                      _isSignUp ? 'Create account' : 'Sign in with email',
+                      headline,
                       style: AppTypography.titleLarge.copyWith(
                         color: AppColors.onBackgroundPrimary,
                       ),
                     ),
                     const SizedBox(height: 16),
+                    if (!_isPasswordRecoveryMode) ...[
+                      _buildLabeledTextField(
+                        label: 'Email',
+                        controller: _emailController,
+                        hintText: 'you@example.com',
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     _buildLabeledTextField(
-                      label: 'Email',
-                      controller: _emailController,
-                      hintText: 'you@example.com',
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildLabeledTextField(
-                      label: 'Password',
+                      label:
+                          _isPasswordRecoveryMode ? 'New password' : 'Password',
                       controller: _passwordController,
-                      hintText: _isSignUp
+                      hintText: _isPasswordRecoveryMode || _isSignUp
                           ? 'At least 8 characters with letters and numbers'
                           : 'Enter your password',
                       obscureText: true,
                     ),
-                    if (_isSignUp) ...[
+                    if (_isPasswordRecoveryMode) ...[
+                      const SizedBox(height: 16),
+                      _buildLabeledTextField(
+                        label: 'Confirm new password',
+                        controller: _confirmPasswordController,
+                        hintText: 'Re-enter your new password',
+                        obscureText: true,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Use a fresh password you can remember on this device.',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.onBackgroundSecondary,
+                        ),
+                      ),
+                    ] else if (_isSignUp) ...[
                       const SizedBox(height: 12),
                       Text(
                         'We support email verification links, so use an inbox you can access on this device.',
@@ -442,36 +634,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 8),
                     ],
                     GradientButton(
-                      text: _isSignUp ? 'Create account' : 'Sign in',
+                      text: primaryButtonText,
                       onPressed: _isLoading ? null : _submit,
                       isLoading: _isLoading,
                     ),
                     const SizedBox(height: 12),
-                    if (!_isSignUp)
+                    if (!_isSignUp && !_isPasswordRecoveryMode)
+                      TextButton(
+                        onPressed: _isLoading ? null : _sendPasswordResetEmail,
+                        child: const Text('Forgot password?'),
+                      ),
+                    if (!_isSignUp && !_isPasswordRecoveryMode)
                       TextButton(
                         onPressed: _isLoading ? null : _resendVerificationEmail,
                         child: const Text('Need a new verification email?'),
                       ),
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _isSignUp = !_isSignUp;
-                          _errorMessage = null;
-                          _noticeMessage = null;
-                          if (_isSignUp) {
-                            _pendingVerificationEmail = null;
-                          }
-                        });
-                      },
-                      child: Text(
-                        _isSignUp
-                            ? 'Already have an account? Sign in'
-                            : 'Need an account? Create one',
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.onBackgroundSecondary,
+                    if (!_isPasswordRecoveryMode)
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _isSignUp = !_isSignUp;
+                            _errorMessage = null;
+                            _noticeMessage = null;
+                            if (_isSignUp) {
+                              _pendingVerificationEmail = null;
+                            }
+                          });
+                        },
+                        child: Text(
+                          _isSignUp
+                              ? 'Already have an account? Sign in'
+                              : 'Need an account? Create one',
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                          ),
                         ),
                       ),
-                    ),
                     const SizedBox(height: 24),
                     _buildLegalDisclaimer(),
                   ],

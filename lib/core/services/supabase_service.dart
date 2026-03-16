@@ -1,6 +1,7 @@
 // lib/core/services/supabase_service.dart
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,6 +12,9 @@ import 'social_auth/social_auth_service.dart';
 class SupabaseService {
   static late SupabaseClient _client;
   static bool _initialized = false;
+  static StreamSubscription<AuthState>? _authStateSubscription;
+  static bool _passwordRecoveryInProgress = false;
+  static final AppLinks _appLinks = AppLinks();
 
   static Future<void> initialize({
     required String url,
@@ -27,7 +31,52 @@ class SupabaseService {
       debug: kDebugMode,
     );
     _client = Supabase.instance.client;
+    _authStateSubscription?.cancel();
+    _authStateSubscription = _client.auth.onAuthStateChange.listen(
+      _handleAuthStateChange,
+    );
+    await _syncPasswordRecoveryStateFromInitialLink();
     _initialized = true;
+  }
+
+  static Future<void> _syncPasswordRecoveryStateFromInitialLink() async {
+    try {
+      final initialLink = await _appLinks.getInitialLink();
+      _passwordRecoveryInProgress =
+          currentUser != null && _isPasswordRecoveryLink(initialLink);
+    } catch (error) {
+      debugPrint('Password recovery link sync skipped: $error');
+    }
+  }
+
+  static bool _isPasswordRecoveryLink(Uri? uri) {
+    if (uri == null) {
+      return false;
+    }
+
+    final normalizedUri = _normalizeAuthCallbackUri(uri);
+    return normalizedUri.queryParameters['type'] == 'recovery';
+  }
+
+  static Uri _normalizeAuthCallbackUri(Uri uri) {
+    final normalizedRaw = uri.hasQuery
+        ? uri.toString().replaceAll('#', '&')
+        : uri.toString().replaceAll('#', '?');
+    return Uri.parse(normalizedRaw);
+  }
+
+  static void _handleAuthStateChange(AuthState authState) {
+    switch (authState.event) {
+      case AuthChangeEvent.passwordRecovery:
+        _passwordRecoveryInProgress = true;
+        break;
+      case AuthChangeEvent.signedIn:
+      case AuthChangeEvent.signedOut:
+        _passwordRecoveryInProgress = false;
+        break;
+      default:
+        break;
+    }
   }
 
   static SupabaseClient get client {
@@ -42,6 +91,8 @@ class SupabaseService {
       _initialized ? _client.auth.currentUser : null;
 
   static bool get isAuthenticated => currentUser != null;
+
+  static bool get isPasswordRecoveryInProgress => _passwordRecoveryInProgress;
 
   static Stream<AuthState> get authStateChanges {
     if (!_initialized) {
@@ -84,6 +135,27 @@ class SupabaseService {
     );
   }
 
+  static Future<void> sendPasswordResetEmail({
+    required String email,
+  }) async {
+    await client.auth.resetPasswordForEmail(
+      email,
+      redirectTo: AppConfig.authRedirectUri,
+    );
+  }
+
+  static Future<UserResponse> updatePassword({
+    required String password,
+  }) async {
+    return await client.auth.updateUser(
+      UserAttributes(password: password),
+    );
+  }
+
+  static void clearPasswordRecoveryState() {
+    _passwordRecoveryInProgress = false;
+  }
+
   /// Sign out
   static Future<void> signOut() async {
     Object? signOutError;
@@ -100,6 +172,8 @@ class SupabaseService {
       debugPrint('RevenueCat logout cleanup error: $error');
       signOutError ??= error;
     }
+
+    _passwordRecoveryInProgress = false;
 
     if (signOutError == null) {
       return;

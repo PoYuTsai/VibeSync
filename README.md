@@ -89,6 +89,9 @@ Private - All Rights Reserved
 - Supabase auth now initializes with PKCE instead of the legacy implicit flow, which hardens email-link and OAuth callback handling.
 - Native Google Sign-In still uses the iOS web-auth session UX, but the OAuth URL now comes from Supabase SDK PKCE generation instead of a hand-built `/authorize` link.
 - Email sign-up now uses an auth redirect URI, surfaces friendlier auth errors, enforces stronger client-side password rules for new accounts, and supports resending verification emails from the login screen.
+- The login screen now supports forgot-password requests and in-app password recovery completion, including the router exception needed to keep `/login` open during a recovery callback.
+- Password recovery now also checks the initial startup deep link, which protects the cold-start reset flow from missing the one-time `passwordRecovery` auth event without reusing stale old callbacks.
+- `app_links` is now declared directly in `pubspec.yaml` because the auth service relies on it for password-recovery callback detection.
 - Local `supabase/config.toml` auth defaults are now stricter: 8-character passwords with letters+digits, email confirmations on, secure password change on, and redirect allow-lists include the mobile callback URI.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

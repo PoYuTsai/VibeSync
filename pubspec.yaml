@@ -55,6 +55,7 @@ dependencies:
   flutter_svg: ^2.0.10
   url_launcher: ^6.2.5
   flutter_web_auth_2: ^4.0.1
+  app_links: ^6.4.1
   package_info_plus: ^8.0.0
   http: ^1.6.0
   shared_preferences: ^2.5.4

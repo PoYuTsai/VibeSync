@@ -21,11 +21,13 @@ final router = GoRouter(
   redirect: (context, state) {
     final isLoggedIn = SupabaseService.isAuthenticated;
     final isLoginRoute = state.matchedLocation == '/login';
+    final isPasswordRecoveryRoute =
+        isLoginRoute && SupabaseService.isPasswordRecoveryInProgress;
 
     if (!isLoggedIn && !isLoginRoute) {
       return '/login';
     }
-    if (isLoggedIn && isLoginRoute) {
+    if (isLoggedIn && isLoginRoute && !isPasswordRecoveryRoute) {
       return '/';
     }
     return null;

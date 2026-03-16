@@ -41,11 +41,17 @@ void main() {
       expect(AppConfig.isProduction, isFalse);
     });
 
-    test('dev supabaseUrl points to localhost', () {
-      // In dev mode, should point to localhost
+    test('dev supabaseUrl points to the shared Supabase project', () {
       if (AppConfig.isDevelopment) {
-        expect(AppConfig.supabaseUrl, contains('localhost'));
+        expect(AppConfig.supabaseUrl, contains('supabase.co'));
       }
+    });
+
+    test('native auth redirect uses the login callback scheme', () {
+      expect(
+        AppConfig.authRedirectUri,
+        startsWith('com.poyutsai.vibesync://login-callback'),
+      );
     });
   });
 
