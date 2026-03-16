@@ -10,7 +10,7 @@ import 'glassmorphic_container.dart';
 /// 支援從相簿選圖、剪貼簿貼上，自動壓縮
 class ImagePickerWidget extends StatefulWidget {
   final int maxImages;
-  final Function(List<Uint8List>) onImagesChanged;
+  final ValueChanged<List<Uint8List>> onImagesChanged;
   /// 外部傳入的圖片列表，用於同步狀態
   /// 當外部清空時，內部也會清空
   final List<Uint8List>? externalImages;
@@ -107,14 +107,14 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     setState(() {
       _images.add(compressed);
     });
-    widget.onImagesChanged(_images);
+    widget.onImagesChanged(List<Uint8List>.from(_images));
   }
 
   void _removeImage(int index) {
     setState(() {
       _images.removeAt(index);
     });
-    widget.onImagesChanged(_images);
+    widget.onImagesChanged(List<Uint8List>.from(_images));
   }
 
   void _showError(String message) {

@@ -94,6 +94,13 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `analyze-chat` now performs the same free-tier self-heal for older or partially-migrated accounts, avoiding a hard `No subscription found` failure on first analysis.
    - `submit-feedback` was rewritten into a clean ASCII-safe version, and Telegram notification failures now log non-200 API responses explicitly.
 
+23. `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/shared/widgets/image_picker_widget.dart`, `supabase/functions/analyze-chat/rate_limiter.ts`
+   - Screenshot recognition now clears stale OCR state when the user picks new images or cancels the flow.
+   - Cancelling the OCR import confirmation dialog now returns cleanly instead of falling through and dereferencing `dialogResult`.
+   - Late OCR results are now ignored after user cancellation so the screen does not resurrect an abandoned flow.
+   - `ImagePickerWidget` now returns copied image lists instead of leaking the same mutable list reference to the parent screen.
+   - The legacy rate limiter helper now self-heals missing `subscriptions` / `rate_limits` rows, resets daily and monthly counters safely, clamps remaining counts to non-negative values, and routes usage increments through the canonical `increment_usage` RPC.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -165,6 +172,10 @@ After deploy, verify:
 11. Local toolchain validation:
    - `flutter analyze` passes with local Flutter `3.41.4`
    - Supabase Edge Functions pass `deno check` with local Deno `2.7.5`
+
+12. Screenshot cancel / retry behavior:
+   - start OCR, then cancel before the request returns; no late dialog or stale error should reappear
+   - cancel the import confirmation dialog; the screen should clear selected images and avoid a null-crash
 
 ## Notes for Claude Code
 

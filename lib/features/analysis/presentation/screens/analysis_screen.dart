@@ -135,6 +135,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _isRecognizing = false;
       _errorMessage = '已取消識別';
       _selectedImages = [];
+      _recognizedConversation = null;
     });
   }
 
@@ -427,6 +428,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     setState(() {
       _isRecognizing = true;
       _errorMessage = null;
+      _recognizedConversation = null;
     });
 
     // 啟動計時器更新 UI
@@ -473,6 +475,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       debugPrint('API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
 
       // 把識別結果存入對話
+      if (!mounted || _recognizeCancelled) {
+        debugPrint('[Recognize] Ignore result after cancel/dispose');
+        return;
+      }
+
       if (result.recognizedConversation != null &&
           result.recognizedConversation!.messages != null &&
           result.recognizedConversation!.messages!.isNotEmpty) {
@@ -490,8 +497,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
         // 用戶取消
         if (dialogResult == null) {
-          setState(() => _selectedImages = []);
-          // return;
+          setState(() {
+            _selectedImages = [];
+            _recognizedConversation = null;
+          });
+          return;
         }
 
         final repository = ref.read(conversationRepositoryProvider);
@@ -535,6 +545,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           ref.invalidate(conversationProvider(widget.conversationId));
 
           final messageCount = recognizedMessages.length;
+          if (!mounted || _recognizeCancelled) {
+            debugPrint('[Recognize] Ignore post-save UI update after cancel/dispose');
+            return;
+          }
           setState(() {
             _selectedImages = [];
             _recognizedConversation = result.recognizedConversation;
@@ -574,6 +588,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       final elapsed = DateTime.now().difference(startTime).inSeconds;
       debugPrint('AnalysisException，耗時: ${elapsed}s');
       debugPrint('錯誤訊息: ${e.message}');
+      if (!mounted || _recognizeCancelled) {
+        debugPrint('[Recognize] Ignore AnalysisException after cancel/dispose');
+        return;
+      }
       setState(() {
         _isRecognizing = false;
         _errorMessage = e.message;
@@ -1340,7 +1358,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       externalImages: _selectedImages, // 同步外部狀態
                       onImagesChanged: (images) {
                         setState(() {
-                          _selectedImages = images;
+                          _selectedImages = List<Uint8List>.from(images);
+                          _recognizedConversation = null;
+                          if (_selectedImages.isNotEmpty) {
+                            _errorMessage = null;
+                          }
                         });
                       },
                     ),
