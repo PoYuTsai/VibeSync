@@ -1,73 +1,99 @@
-// lib/features/conversation/data/services/memory_service.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/conversation_summary.dart';
 import '../../domain/entities/message.dart';
 
-/// Service for managing conversation memory and context
-/// Handles: context preparation, choice inference, summary generation
+/// Service for managing conversation memory and context.
 class MemoryService {
-  /// Maximum rounds to keep as full messages
+  /// Maximum rounds to keep as full messages when building AI context.
   static const int maxRecentRounds = 15;
 
-  /// Prepare AI analysis context
-  /// Recent 15 rounds complete + older summaries
+  /// Minimum older rounds before we create a summary segment.
+  static const int minRoundsPerSummary = 5;
+
+  static const Set<String> _stopWords = {
+    'the',
+    'and',
+    'for',
+    'with',
+    'that',
+    'this',
+    'have',
+    'just',
+    'really',
+    'about',
+    '你們',
+    '我們',
+    '你我',
+    '就是',
+    '真的',
+    '可以',
+    '一下',
+    '然後',
+    '因為',
+    '如果',
+    '那個',
+    '這個',
+    '一個',
+    '今天',
+    '昨天',
+    '明天',
+    '哈哈',
+    '欸欸',
+  };
+
+  /// Prepare AI analysis context.
   String prepareContext(Conversation conversation) {
     final buffer = StringBuffer();
 
-    // Add session context if available
     if (conversation.sessionContext != null) {
       final ctx = conversation.sessionContext!;
-      buffer.writeln('【對話情境】');
-      buffer.writeln('認識場景: ${_meetingContextToString(ctx.meetingContext)}');
-      buffer.writeln('認識多久: ${_durationToString(ctx.duration)}');
-      buffer.writeln('目標: ${_goalToString(ctx.goal)}');
+      buffer.writeln('Session context:');
+      buffer.writeln('Meeting context: ${_enumToLabel(ctx.meetingContext)}');
+      buffer.writeln('Duration: ${_enumToLabel(ctx.duration)}');
+      buffer.writeln('Goal: ${_enumToLabel(ctx.goal)}');
       buffer.writeln('---');
     }
 
-    // Add historical summaries if available
     if (conversation.summaries?.isNotEmpty ?? false) {
-      buffer.writeln('【歷史摘要】');
+      buffer.writeln('Historical summaries:');
       for (final summary in conversation.summaries!) {
         buffer.writeln(summary.content);
         if (summary.keyTopics.isNotEmpty) {
-          buffer.writeln('關鍵話題: ${summary.keyTopics.join(", ")}');
+          buffer.writeln('Topics: ${summary.keyTopics.join(", ")}');
         }
         if (summary.sharedInterests.isNotEmpty) {
-          buffer.writeln('共同興趣: ${summary.sharedInterests.join(", ")}');
+          buffer.writeln('Shared interests: ${summary.sharedInterests.join(", ")}');
         }
       }
       buffer.writeln('---');
     }
 
-    // Add recent messages
     final recentMessages = conversation.getRecentMessages(maxRecentRounds);
     if (recentMessages.isNotEmpty) {
-      buffer.writeln('【最近對話】');
+      buffer.writeln('Recent messages:');
       for (final msg in recentMessages) {
-        buffer.writeln('${msg.isFromMe ? "我" : "她"}: ${msg.content}');
+        buffer.writeln('${msg.isFromMe ? "Me" : "Her"}: ${msg.content}');
       }
     }
 
     return buffer.toString();
   }
 
-  /// Infer which reply type user chose
-  /// Analyzes their reply to guess what user said
-  /// Returns null if cannot determine (may need to ask user)
+  /// Infer which reply type user chose from the next incoming message.
   String? inferUserChoice(
     Message theirReply,
     Map<String, String> previousSuggestions,
   ) {
     final content = theirReply.content.toLowerCase();
 
-    // Score each suggestion based on keyword overlap
     String? bestMatch;
-    int bestScore = 0;
+    var bestScore = 0;
 
     for (final entry in previousSuggestions.entries) {
       final keywords = _extractKeywords(entry.value);
-      int score = 0;
+      var score = 0;
 
       for (final keyword in keywords) {
         if (content.contains(keyword.toLowerCase())) {
@@ -81,110 +107,216 @@ class MemoryService {
       }
     }
 
-    // Require at least 2 keyword matches to be confident
     return bestScore >= 2 ? bestMatch : null;
   }
 
-  /// Extract meaningful keywords from text
-  List<String> _extractKeywords(String text) {
-    // Remove punctuation, keep Chinese characters and alphanumeric
-    final cleaned = text.replaceAll(RegExp(r'[^\w\u4e00-\u9fff]'), ' ');
-
-    // Split and filter short words
-    return cleaned
-        .split(RegExp(r'\s+'))
-        .where((w) => w.length > 1)
-        .toSet()
-        .toList();
-  }
-
-  /// Generate summary for older messages
-  /// Called in background when conversation exceeds threshold
+  /// Generate a heuristic summary for older messages.
   Future<ConversationSummary> generateSummary(
     Conversation conversation,
     int fromRound,
     int toRound,
   ) async {
-    // TODO: Call AI to generate actual summary
-    // For MVP, create a placeholder summary
+    final safeFromRound = fromRound.clamp(0, toRound);
+    final safeToRound = toRound.clamp(safeFromRound, conversation.currentRound);
+    final segmentMessages = _messagesForRoundRange(
+      conversation,
+      safeFromRound,
+      safeToRound,
+    );
+    final keyTopics = _extractTopicsFromSegment(segmentMessages);
+    final sharedInterests = _extractSharedInterests(segmentMessages);
+
     return ConversationSummary(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      roundsCovered: toRound - fromRound,
-      content: _generatePlaceholderSummary(conversation, fromRound, toRound),
-      keyTopics: _extractTopicsFromMessages(conversation, fromRound, toRound),
-      sharedInterests: [],
-      relationshipStage: _guessRelationshipStage(conversation),
+      roundsCovered: safeToRound - safeFromRound,
+      content: _buildSummaryContent(
+        segmentMessages,
+        safeFromRound,
+        safeToRound,
+        keyTopics,
+        sharedInterests,
+      ),
+      keyTopics: keyTopics,
+      sharedInterests: sharedInterests,
+      relationshipStage: _guessRelationshipStageForRoundCount(safeToRound),
       createdAt: DateTime.now(),
     );
   }
 
-  /// Generate a simple placeholder summary
-  String _generatePlaceholderSummary(
+  List<Message> messagesForRoundRange(
     Conversation conversation,
     int fromRound,
     int toRound,
   ) {
-    final messageCount = (toRound - fromRound) * 2;
-    return '對話進行了 $messageCount 則訊息，涵蓋第 $fromRound 到 $toRound 輪。';
+    return _messagesForRoundRange(conversation, fromRound, toRound);
   }
 
-  /// Extract key topics from message range
+  List<String> extractTopicsFromMessages(
+    Conversation conversation,
+    int fromRound,
+    int toRound,
+  ) {
+    return _extractTopicsFromMessages(conversation, fromRound, toRound);
+  }
+
+  List<Message> _messagesForRoundRange(
+    Conversation conversation,
+    int fromRound,
+    int toRound,
+  ) {
+    if (toRound <= fromRound || conversation.messages.isEmpty) {
+      return const [];
+    }
+
+    final startIndex = (fromRound * 2).clamp(0, conversation.messages.length);
+    final endIndex = (toRound * 2).clamp(0, conversation.messages.length);
+    if (endIndex <= startIndex) {
+      return const [];
+    }
+
+    return conversation.messages.sublist(startIndex, endIndex);
+  }
+
+  String _buildSummaryContent(
+    List<Message> messages,
+    int fromRound,
+    int toRound,
+    List<String> keyTopics,
+    List<String> sharedInterests,
+  ) {
+    final displayFromRound = fromRound + 1;
+
+    if (messages.isEmpty) {
+      return 'Rounds $displayFromRound-$toRound had no usable messages to summarize.';
+    }
+
+    final myMessages = messages.where((message) => message.isFromMe).toList();
+    final theirMessages = messages.where((message) => !message.isFromMe).toList();
+    final questionCount =
+        messages.where((message) => message.content.contains('?')).length;
+
+    final parts = <String>[
+      'Rounds $displayFromRound-$toRound covered ${messages.length} messages.',
+      _describeBalance(myMessages.length, theirMessages.length),
+    ];
+
+    if (keyTopics.isNotEmpty) {
+      parts.add('Main topics: ${keyTopics.join(", ")}.');
+    }
+
+    if (sharedInterests.isNotEmpty) {
+      parts.add('Possible shared interests: ${sharedInterests.join(", ")}.');
+    }
+
+    if (questionCount > 0) {
+      parts.add('Questions asked in this segment: $questionCount.');
+    }
+
+    return parts.join(' ');
+  }
+
+  String _describeBalance(int myCount, int theirCount) {
+    if (myCount == 0 && theirCount == 0) {
+      return 'No clear participation balance was detected.';
+    }
+
+    if (myCount == theirCount) {
+      return 'The exchange stayed balanced between both sides.';
+    }
+
+    final moreActiveSide = myCount > theirCount ? 'The user' : 'The other side';
+    final difference = (myCount - theirCount).abs();
+    return '$moreActiveSide sent $difference more messages in this segment.';
+  }
+
+  /// Extract meaningful keywords from text.
+  List<String> _extractKeywords(String text) {
+    final cleaned = text.replaceAll(RegExp(r'[^\w\u4e00-\u9fff]'), ' ');
+
+    return cleaned
+        .split(RegExp(r'\s+'))
+        .map((word) => word.trim())
+        .where((word) => word.length > 1)
+        .toSet()
+        .toList();
+  }
+
   List<String> _extractTopicsFromMessages(
     Conversation conversation,
     int fromRound,
     int toRound,
   ) {
-    // Simple extraction: find frequently used non-trivial words
-    final wordCount = <String, int>{};
-    final startIndex = fromRound * 2;
-    final endIndex = (toRound * 2).clamp(0, conversation.messages.length);
+    return _extractTopicsFromSegment(
+      _messagesForRoundRange(conversation, fromRound, toRound),
+    );
+  }
 
-    for (int i = startIndex; i < endIndex && i < conversation.messages.length; i++) {
-      final keywords = _extractKeywords(conversation.messages[i].content);
+  List<String> _extractTopicsFromSegment(List<Message> messages) {
+    final wordCount = <String, int>{};
+
+    for (final message in messages) {
+      final keywords = _extractKeywords(message.content);
       for (final keyword in keywords) {
-        if (keyword.length >= 2) {
-          wordCount[keyword] = (wordCount[keyword] ?? 0) + 1;
+        final normalized = keyword.toLowerCase();
+        if (normalized.length < 2 || _stopWords.contains(normalized)) {
+          continue;
         }
+        wordCount[normalized] = (wordCount[normalized] ?? 0) + 1;
       }
     }
 
-    // Return top 5 most frequent topics
     final sorted = wordCount.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    return sorted.take(5).map((e) => e.key).toList();
+    return sorted.take(5).map((entry) => entry.key).toList();
   }
 
-  /// Guess relationship stage based on conversation content
-  String _guessRelationshipStage(Conversation conversation) {
-    if (conversation.currentRound < 5) {
-      return 'initial';
-    } else if (conversation.currentRound < 15) {
-      return 'getting_to_know';
-    } else if (conversation.currentRound < 30) {
-      return 'rapport';
-    } else {
-      return 'established';
+  List<String> _extractSharedInterests(List<Message> messages) {
+    final myKeywords = <String, int>{};
+    final theirKeywords = <String, int>{};
+
+    for (final message in messages) {
+      final bucket = message.isFromMe ? myKeywords : theirKeywords;
+      for (final keyword in _extractKeywords(message.content)) {
+        final normalized = keyword.toLowerCase();
+        if (normalized.length < 2 || _stopWords.contains(normalized)) {
+          continue;
+        }
+        bucket[normalized] = (bucket[normalized] ?? 0) + 1;
+      }
     }
+
+    final shared = myKeywords.keys
+        .where((keyword) => theirKeywords.containsKey(keyword))
+        .toList()
+      ..sort(
+        (a, b) => (theirKeywords[b]! + myKeywords[b]!).compareTo(
+          theirKeywords[a]! + myKeywords[a]!,
+        ),
+      );
+
+    return shared.take(3).toList();
   }
 
-  String _meetingContextToString(dynamic context) {
-    if (context == null) return '未設定';
-    return context.toString().split('.').last;
+  String _guessRelationshipStageForRoundCount(int roundCount) {
+    if (roundCount < 5) {
+      return 'initial';
+    }
+    if (roundCount < 15) {
+      return 'getting_to_know';
+    }
+    if (roundCount < 30) {
+      return 'rapport';
+    }
+    return 'established';
   }
 
-  String _durationToString(dynamic duration) {
-    if (duration == null) return '未設定';
-    return duration.toString().split('.').last;
-  }
-
-  String _goalToString(dynamic goal) {
-    if (goal == null) return '未設定';
-    return goal.toString().split('.').last;
+  String _enumToLabel(dynamic value) {
+    if (value == null) return 'unknown';
+    return value.toString().split('.').last;
   }
 }
 
-/// Provider for MemoryService
 final memoryServiceProvider = Provider<MemoryService>((ref) {
   return MemoryService();
 });

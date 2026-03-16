@@ -97,6 +97,30 @@ async function sendTelegramNotification(feedback: {
     message += `\n🤖 AI 推薦回覆：\n${rec.pick}: 「${rec.content}」\n`;
   }
 
+  const messageParts: string[] = [
+    "Negative feedback received\n\n",
+    `User: ${maskedEmail} (${feedback.userTier})\n`,
+    `Category: ${categoryLabels[feedback.category || "other"] || feedback.category}\n`,
+  ];
+
+  if (feedback.comment) {
+    messageParts.push(
+      `Comment: "${truncateForPreview(feedback.comment, TELEGRAM_COMMENT_PREVIEW)}"\n`,
+    );
+  }
+
+  if (feedback.conversationSnippet) {
+    messageParts.push(
+      `\nConversation snippet:\n${truncateForPreview(feedback.conversationSnippet, TELEGRAM_SNIPPET_PREVIEW)}\n`,
+    );
+  }
+
+  if (feedback.aiResponse?.finalRecommendation) {
+    const rec = feedback.aiResponse.finalRecommendation as Record<string, string>;
+    messageParts.push(`\nAI recommendation:\n${rec.pick}: "${rec.content}"\n`);
+  }
+
+  message = messageParts.join("");
   message += `\nModel: ${feedback.modelUsed || "unknown"}`;
   message += `\nTime: ${new Date().toISOString()}`;
 

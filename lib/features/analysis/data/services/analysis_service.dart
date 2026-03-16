@@ -45,7 +45,11 @@ class AnalysisService {
     String? analyzeMode, // "normal" | "my_message"
     bool recognizeOnly = false, // 純識別模式：只識別截圖，不做完整分析
   }) async {
-    if (messages.isEmpty && !recognizeOnly) {
+    final sanitizedMessages = recognizeOnly
+        ? messages.where((message) => message.id != 'placeholder').toList()
+        : messages;
+
+    if (sanitizedMessages.isEmpty && !recognizeOnly) {
       throw AnalysisException('Messages cannot be empty');
     }
 
@@ -54,13 +58,13 @@ class AnalysisService {
     Exception? lastError;
 
     debugPrint('[AnalysisService] analyzeConversation 開始');
-    debugPrint('[AnalysisService] messages: ${messages.length}, images: ${images?.length ?? 0}, recognizeOnly: $recognizeOnly');
+    debugPrint('[AnalysisService] messages: ${sanitizedMessages.length}, images: ${images?.length ?? 0}, recognizeOnly: $recognizeOnly');
 
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         debugPrint('[AnalysisService] 嘗試 ${attempt + 1}/${maxRetries + 1}');
         return await _doAnalyze(
-          messages,
+          sanitizedMessages,
           images: images,
           sessionContext: sessionContext,
           userDraft: userDraft,

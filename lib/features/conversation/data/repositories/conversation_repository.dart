@@ -1,11 +1,16 @@
 // lib/features/conversation/data/repositories/conversation_repository.dart
 import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
+import '../services/memory_service.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
 
 class ConversationRepository {
+  ConversationRepository({MemoryService? memoryService})
+      : _memoryService = memoryService ?? MemoryService();
+
   final _uuid = const Uuid();
+  final MemoryService _memoryService;
 
   List<Conversation> getAllConversations() {
     return StorageService.conversationsBox.values.toList()
@@ -27,6 +32,7 @@ class ConversationRepository {
       messages: messages,
       createdAt: now,
       updatedAt: now,
+      currentRound: _calculateRoundCount(messages),
     );
 
     await StorageService.conversationsBox.put(conversation.id, conversation);
@@ -34,6 +40,8 @@ class ConversationRepository {
   }
 
   Future<void> updateConversation(Conversation conversation) async {
+    conversation.currentRound = _calculateRoundCount(conversation.messages);
+    await _maybeGenerateSummary(conversation);
     conversation.updatedAt = DateTime.now();
     await conversation.save();
   }
@@ -84,5 +92,50 @@ class ConversationRepository {
       isFromMe: m['isFromMe'] as bool,
       timestamp: DateTime.now(),
     )).toList();
+  }
+
+  int _calculateRoundCount(List<Message> messages) {
+    return messages.where((message) => !message.isFromMe).length;
+  }
+
+  Future<void> _maybeGenerateSummary(Conversation conversation) async {
+    final summarizedRounds = conversation.summaries
+            ?.fold<int>(0, (total, summary) => total + summary.roundsCovered) ??
+        0;
+    final availableOlderRounds = conversation.currentRound -
+        summarizedRounds -
+        MemoryService.maxRecentRounds;
+
+    if (availableOlderRounds < MemoryService.minRoundsPerSummary) {
+      return;
+    }
+
+    final fromRound = summarizedRounds;
+    final toRound = summarizedRounds + availableOlderRounds;
+    if (toRound <= fromRound) {
+      return;
+    }
+
+    final summary = await _memoryService.generateSummary(
+      conversation,
+      fromRound,
+      toRound,
+    );
+
+    if (summary.roundsCovered <= 0 || summary.content.trim().isEmpty) {
+      return;
+    }
+
+    final alreadyCovered = conversation.summaries?.any(
+          (existing) =>
+              existing.roundsCovered == summary.roundsCovered &&
+              existing.content == summary.content,
+        ) ??
+        false;
+    if (alreadyCovered) {
+      return;
+    }
+
+    conversation.addSummary(summary);
   }
 }

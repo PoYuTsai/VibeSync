@@ -82,6 +82,8 @@ const VALID_IMAGE_MEDIA_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+const MAX_IMAGE_BYTES = 600 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 1500 * 1024;
 
 // 建構 Vision API 內容格式
 function buildVisionContent(
@@ -932,6 +934,7 @@ serve(async (req) => {
     }
     if (hasImages) {
       const imageOrders = new Set<number>();
+      let totalImageBytes = 0;
       if (images.length > 3) {
         return jsonResponse({ error: "最多上傳 3 張截圖" }, 400);
       }
@@ -956,7 +959,11 @@ serve(async (req) => {
         imageOrders.add(img.order);
         // Check base64 size (rough estimate: ~1.33x of actual bytes)
         const estimatedBytes = (img.data.length * 3) / 4;
-        if (estimatedBytes > 600 * 1024) { // 600KB limit per image
+        totalImageBytes += estimatedBytes;
+        if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+          return jsonResponse({ error: "Total image payload too large" }, 400);
+        }
+        if (estimatedBytes > MAX_IMAGE_BYTES) {
           return jsonResponse({ error: "圖片太大，請壓縮後重試" }, 400);
         }
       }
@@ -1077,6 +1084,18 @@ ${recentText}`;
       : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT);
 
     // 組合用戶訊息
+    if (sessionContext) {
+      contextInfo = [
+        "## Session Context",
+        `- Meeting context: ${sessionContext.meetingContext || "unknown"}`,
+        `- Duration: ${sessionContext.duration || "unknown"}`,
+        `- Goal: ${sessionContext.goal || "not provided"}`,
+        `- User style: ${sessionContext.userStyle || "not provided"}`,
+        `- User interests: ${sessionContext.userInterests || "not provided"}`,
+        `- Target description: ${sessionContext.targetDescription || "not provided"}`,
+      ].join("\n");
+    }
+
     let userPrompt = isMyMessageMode
       ? `${contextInfo}\n\n## 對話紀錄\n${conversationText}\n\n請根據用戶剛發送的最後一則訊息，提供話題延續建議。`
       : `${contextInfo}\n分析以下對話並提供建議：\n\n${conversationText}`;

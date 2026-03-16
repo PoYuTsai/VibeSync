@@ -78,6 +78,16 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `flutter analyze` now runs clean in this environment after installing Flutter locally and tightening several UI/analyzer edge cases.
    - `analysis_screen.dart` still contains mixed-encoding legacy comments; temporary file-level ignores were added for `dead_code` / `unchecked_use_of_nullable_value` so analyzer noise does not hide real findings while the file awaits a full cleanup pass.
 
+20. `lib/features/conversation/data/services/memory_service.dart`, `lib/features/conversation/data/repositories/conversation_repository.dart`, `lib/features/conversation/data/providers/conversation_providers.dart`
+   - Replaced the placeholder memory summary with a heuristic summary generator that extracts key topics, shared interests, participation balance, and question count.
+   - Conversation saves now keep `currentRound` in sync with message history and automatically append summary segments once older rounds fall outside the active context window.
+
+21. `lib/features/analysis/data/services/analysis_service.dart`, `supabase/functions/analyze-chat/index.ts`, `supabase/functions/submit-feedback/index.ts`
+   - OCR-only requests now strip the client-side placeholder message before sending to the Edge Function, reducing prompt noise and token waste.
+   - `analyze-chat` now enforces a total image payload cap in addition to the existing per-image limit.
+   - Session context prompt text is rebuilt with clean interpolated values before prompt generation.
+   - Telegram feedback notifications are rebuilt into a readable, correctly interpolated message payload.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -88,10 +98,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 
 ### P3 Incomplete Features / TODO
 
-1. `lib/features/conversation/data/services/memory_service.dart`
-   - Still has `TODO: Call AI to generate actual summary`.
-
-2. Booster one-time purchases are still not implemented end-to-end.
+1. Booster one-time purchases are still not implemented end-to-end.
    - The UI is now honest and non-deceptive, but actual RevenueCat booster IAP integration is still a future feature.
 
 ## Suggested Next Review Sweep
@@ -102,7 +109,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - auth / authorization consistency
    - rate-limit / quota edge cases
 2. Performance pass on analysis payload construction and logging volume
-3. Complete the remaining TODO-backed product gaps (memory summary / real booster IAP flow)
+3. Complete the remaining TODO-backed product gaps (real booster IAP flow)
 
 ## Validation Checklist
 
@@ -140,6 +147,10 @@ After deploy, verify:
 8. Flutter toolchain:
    - `flutter analyze` passes locally with Flutter `3.41.4`
    - `shared_preferences` is declared directly in `pubspec.yaml`
+
+9. Memory summary / OCR request hygiene:
+   - conversations with enough history should accumulate heuristic summary entries over time
+   - OCR-only requests should no longer include the placeholder message in the request payload
 
 ## Notes for Claude Code
 
