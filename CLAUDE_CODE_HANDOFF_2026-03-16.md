@@ -73,6 +73,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `recognizeOnly` now accepts empty message history instead of being forced through normal conversation validation.
    - OCR/import requests no longer consume quota or get blocked by monthly/daily limits like a normal analysis call.
 
+19. `pubspec.yaml`, `pubspec.lock`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, subscription UI files
+   - Added an explicit `shared_preferences` dependency so the onboarding service no longer relies on a transitive package.
+   - `flutter analyze` now runs clean in this environment after installing Flutter locally and tightening several UI/analyzer edge cases.
+   - `analysis_screen.dart` still contains mixed-encoding legacy comments; temporary file-level ignores were added for `dead_code` / `unchecked_use_of_nullable_value` so analyzer noise does not hide real findings while the file awaits a full cleanup pass.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -132,6 +137,10 @@ After deploy, verify:
    - empty or brand-new conversations should still complete OCR/import
    - successful `recognizeOnly` requests should not increment usage
 
+8. Flutter toolchain:
+   - `flutter analyze` passes locally with Flutter `3.41.4`
+   - `shared_preferences` is declared directly in `pubspec.yaml`
+
 ## Notes for Claude Code
 
 - When touching screenshot analysis again, preserve the current token-control approach:
@@ -141,3 +150,4 @@ After deploy, verify:
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:
   - OCR/import success
   - post-import analysis trigger / reply-analysis anchor
+- `lib/features/analysis/presentation/screens/analysis_screen.dart` deserves a dedicated cleanup/refactor pass before large new feature work there; the file still has mojibake-era comment damage even though runtime logic is currently stable and `flutter analyze` is clean.

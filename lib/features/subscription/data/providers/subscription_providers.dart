@@ -303,7 +303,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
       _syncUsageCache(tier, limits);
 
-      debugPrint('[forceSyncTier] Local state updated: tier=${state.tier}, limits=${limits}');
+      debugPrint('[forceSyncTier] Local state updated: tier=${state.tier}, limits=$limits');
 
     } catch (e) {
       debugPrint('[forceSyncTier] ERROR: $e');

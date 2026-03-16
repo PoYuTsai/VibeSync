@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 // lib/features/subscription/presentation/screens/paywall_screen.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -448,6 +450,7 @@ Daily Limit: ${localState.dailyLimit}
     if (selectedTier != null && mounted) {
       debugPrint('[ForceSync] Manual tier selected: $selectedTier');
       await ref.read(subscriptionProvider.notifier).forceSyncTier(selectedTier);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('已手動同步到 Supabase: $selectedTier'),

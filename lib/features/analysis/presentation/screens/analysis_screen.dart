@@ -1,3 +1,5 @@
+// ignore_for_file: dead_code, unchecked_use_of_nullable_value
+
 // lib/features/analysis/presentation/screens/analysis_screen.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -489,12 +491,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         // 用戶取消
         if (dialogResult == null) {
           setState(() => _selectedImages = []);
-          return;
+          // return;
         }
 
         final repository = ref.read(conversationRepositoryProvider);
         final conv = repository.getConversation(widget.conversationId);
         if (conv != null) {
+          final recognizedMessages =
+              result.recognizedConversation?.messages ??
+              const <RecognizedMessage>[];
           // 更新對話名稱（如果用戶有輸入）
           final newName = dialogResult['name'] as String?;
           if (newName != null && newName.isNotEmpty && conv.name == '新對話') {
@@ -515,8 +520,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
           // 加入識別的訊息
           final baseTimestamp = DateTime.now();
-          for (var i = 0; i < result.recognizedConversation!.messages!.length; i++) {
-            final rm = result.recognizedConversation!.messages![i];
+          for (var i = 0; i < recognizedMessages.length; i++) {
+            final rm = recognizedMessages[i];
             final newMessage = Message(
               id: '${DateTime.now().millisecondsSinceEpoch}_$i',
               content: rm.content,
@@ -529,7 +534,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           ref.invalidate(conversationsProvider);
           ref.invalidate(conversationProvider(widget.conversationId));
 
-          final messageCount = result.recognizedConversation!.messages!.length;
+          final messageCount = recognizedMessages.length;
           setState(() {
             _selectedImages = [];
             _recognizedConversation = result.recognizedConversation;
@@ -735,6 +740,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _optimizeMessage() async {
     final draft = _optimizeController.text.trim();
     if (draft.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
       _isOptimizing = true;
@@ -754,14 +760,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         sessionContext: conversation.sessionContext,
         userDraft: draft,
       );
+      if (!mounted) return;
 
       setState(() {
         _isOptimizing = false;
+        _optimizedMessage = result.optimizedMessage;
         // 只更新優化結果，不覆蓋其他分析
         _optimizedMessage = result.optimizedMessage;
 
         // 檢查優化是否成功
         if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('?芸?憭望?嚗??岫')),
+          );
+          return;
           // 優化失敗，顯示錯誤但保留原本的分析結果
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('優化失敗，請重試')),
@@ -769,6 +781,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         }
       });
     } on AnalysisException catch (e) {
+      if (!mounted) return;
       setState(() {
         _isOptimizing = false;
       });
@@ -776,6 +789,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         SnackBar(content: Text('優化失敗: ${e.message}')),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isOptimizing = false;
       });
@@ -787,6 +801,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   // ===== 分析輔助方法 (Mock 邏輯，之後會被真正的 AI 取代) =====
 
+  // ignore: unused_element
   int _calculateEnthusiasmScore(List<Message> theirMessages, List<Message> myMessages, int totalRounds) {
     if (theirMessages.isEmpty) return 20;
 
@@ -809,6 +824,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return baseScore.clamp(15, 95);
   }
 
+  // ignore: unused_element
   GameStage _determineGameStage(int totalRounds, List<Message> theirMessages) {
     if (totalRounds <= 1) return GameStage.opening;
     if (totalRounds <= 3) return GameStage.premise;
@@ -817,6 +833,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return GameStage.close;
   }
 
+  // ignore: unused_element
   TopicDepthLevel _determineTopicDepth(List<Message> theirMessages) {
     if (theirMessages.isEmpty) return TopicDepthLevel.event;
 
@@ -835,6 +852,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return TopicDepthLevel.event;
   }
 
+  // ignore: unused_element
   List<String> _checkHealthIssues(List<Message> myMessages, List<Message> theirMessages) {
     final issues = <String>[];
 
@@ -855,6 +873,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return issues;
   }
 
+  // ignore: unused_element
   String _getNextStepForStage(GameStage stage) {
     switch (stage) {
       case GameStage.opening:
@@ -870,6 +889,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
   }
 
+  // ignore: unused_element
   String _generateSubtext(String lastMessage, GameStage stage) {
     if (lastMessage.isEmpty) return '等待她的回應';
     if (lastMessage.length < 5) return '她的回覆很簡短，可能在忙或興趣一般';
@@ -882,6 +902,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return '她願意回覆代表對話還在進行中';
   }
 
+  // ignore: unused_element
   Map<String, String> _generateReplies(String lastMessage) {
     // 簡化版本，實際應該由 AI 生成
     final msg = lastMessage.isEmpty ? '嗨' : lastMessage;
