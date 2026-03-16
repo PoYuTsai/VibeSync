@@ -1,123 +1,147 @@
 # App Store 審核策略
 
-## 定位說明
+## 產品定位
 
-### ❌ 絕對避免的用詞
-- 把妹、搭訕、約會技巧、戀愛攻略
-- Pick-up、Dating hack、Seduction
-- 操控、控制、心理戰術
-- 讓對方愛上你、追到手
+### 不建議使用的定位
+- 戀愛操控工具
+- 把 AI 包裝成追女生捷徑
+- 暗示操縱、套路、操盤異性
 
-### ✅ 採用的用詞
-- 社交溝通教練 (Social Communication Coach)
-- 對話品質提升 (Conversation Quality)
-- 人際關係技巧 (Interpersonal Skills)
-- 溝通能力訓練 (Communication Training)
-- 情商提升 (Emotional Intelligence)
+### 建議對外定位
+- 社交溝通教練
+- 對話品質輔助工具
+- 溝通表達訓練
+- 人際互動分析與回覆建議
 
 ---
 
-## App Store 資訊
+## App Store 基本資訊建議
 
 ### App 名稱
-**VibeSync - 溝通教練**
+`VibeSync - 社交溝通教練`
 
-### 副標題
-提升對話品質，建立更好的人際連結
+### 一句話描述
+幫助使用者理解聊天互動訊號、整理對話脈絡，並取得 AI 輔助的回覆建議。
 
-### 描述 (繁體中文)
-```
-VibeSync 是你的私人溝通教練，幫助你提升日常對話的品質。
-
-【核心功能】
-• 對話分析：了解對話的互動程度
-• 回覆建議：獲得更有品質的回覆靈感
-• 溝通技巧：學習更好的表達方式
-
-【隱私保護】
-• 對話內容只存在你的手機
-• 我們不會儲存或分享你的對話
-• 隨時可以刪除所有資料
-
-【適合誰使用】
-• 想提升社交能力的人
-• 希望改善溝通技巧的人
-• 對人際關係感到困惑的人
-
-VibeSync 不是約會 App，而是幫助你成為更好的溝通者。
-```
-
-### 分類
-- 主要：Lifestyle
-- 次要：Education
+### 分類建議
+- `Lifestyle`
+- `Education`
 
 ### 年齡分級
-- 17+ (Mature/Suggestive Themes: Infrequent/Mild)
+- `17+`
+- 原因：可能包含戀愛、曖昧、成人互動語境，但不主打露骨內容
 
 ---
 
-## 審核備註 (Review Notes)
+## App Review 重點說明
 
-給 Apple 審核人員看的說明：
+以下內容可作為審核說明的基礎版本：
 
-```
-VibeSync is a communication coaching app that helps users improve their conversational skills.
+```text
+VibeSync is a communication coaching app that helps users review chat context,
+understand conversation signals, and receive AI-assisted reply suggestions.
 
 KEY POINTS FOR REVIEW:
 
-1. PRIVACY:
-   - All conversation data is stored locally on device only
-   - We do NOT upload or store user conversations on our servers
-   - Users can delete all data at any time
+1. PURPOSE
+   - This is a communication support tool focused on conversational quality.
+   - It is not a dating manipulation app and does not guarantee outcomes.
+   - Suggestions are intended to help users communicate more clearly and naturally.
 
-2. PURPOSE:
-   - This is an educational tool for improving communication skills
-   - Similar to apps like "Grammarly" but for conversational tone
-   - NOT a dating or manipulation app
+2. PRIVACY
+   - Conversation content is stored locally on the user's device by default.
+   - When a user explicitly requests analysis or screenshot recognition, only the
+     content required for that request is sent through our backend processing
+     service and AI providers to generate the response.
+   - We do not use users' raw conversation content to train our own models.
 
-3. CONTENT:
-   - No user-generated content
-   - No social features or messaging
-   - AI suggestions focus on healthy communication patterns
+3. CONTENT AND SAFETY
+   - The app does not provide social networking, public posting, or user-to-user messaging.
+   - The app focuses on private drafting, analysis, and communication support.
+   - The app can reject unsupported, unreadable, or inappropriate screenshot inputs.
 
-4. TEST ACCOUNT:
-   Email: review@vibesync.app
-   Password: [提供測試帳號]
+4. ACCOUNT AND BILLING
+   - The app supports email / Apple / Google sign-in.
+   - Paid plans are managed through Apple App Store subscriptions.
 
-5. DEMO:
-   To test, simply paste any casual conversation and tap "Analyze"
-   Example input:
-   她: 你好
-   我: 嗨
-   她: 週末有什麼計畫嗎？
+5. DEMO FLOW
+   - Reviewers can paste a short conversation or use a provided test account.
+   - The app then returns analysis and reply suggestions for communication improvement.
 ```
 
 ---
 
-## 被拒後的申訴模板
+## 隱私說法準則
 
-如果被拒，準備好的申訴信：
+### 可以說
+- 對話內容預設儲存在本地裝置
+- 用戶主動發起分析或截圖辨識時，必要內容會送往處理服務與 AI 供應商
+- 不把原始對話內容拿去訓練自家模型
+- 保留有限技術性中繼資料用於穩定性、安全性與成本控管
 
+### 不要再說
+- 所有資料永遠不會離開裝置
+- 絕不上傳雲端
+- Zero server-side storage of all user-submitted content
+- 我們完全不處理任何對話內容
+
+---
+
+## 若 Apple 問到資料流
+
+建議回答方向：
+
+```text
+Conversation content is local-first.
+
+When the user explicitly taps analysis or screenshot-recognition features,
+the minimum required content for that request is transmitted to our backend
+processing service and AI providers so we can generate the requested result.
+
+We do not position the app as a social network, we do not expose user content
+to other users, and we do not use raw conversation submissions to train our own model.
 ```
+
+---
+
+## 若 Apple 擔心產品定位
+
+建議回覆：
+
+```text
+VibeSync should be understood as a communication coaching and drafting tool.
+
+It helps users review conversation tone, identify interaction patterns,
+and consider clearer reply options. The app does not promise dating outcomes,
+does not automate messaging to third parties, and does not function as a social platform.
+```
+
+---
+
+## 若 Apple 要求補充說明
+
+可用這版作為申訴 / 補件模板：
+
+```text
 Dear App Review Team,
 
-Thank you for reviewing VibeSync. We would like to address your concerns:
+Thank you for reviewing VibeSync.
 
-1. VibeSync is NOT a dating manipulation tool. It is a communication coaching app similar to language learning apps like Duolingo, but focused on conversational skills.
+VibeSync is a communication coaching app that helps users improve the clarity,
+tone, and quality of their private conversations. It is not intended as a
+dating manipulation tool, and it does not guarantee social or romantic outcomes.
 
-2. Our target users include:
-   - People with social anxiety wanting to improve communication
-   - Professionals improving client communication
-   - Anyone wanting to be a better conversationalist
+Regarding privacy:
+- user conversation content is stored locally by default
+- when the user explicitly requests analysis or screenshot recognition, the
+  minimum required content is sent through backend processing and AI providers
+  to generate that request's result
+- we do not use raw user conversations to train our own model
 
-3. Privacy is our priority:
-   - Zero server-side storage of conversations
-   - Full user control over data
-   - GDPR compliant
+The app does not provide a public social feed, user-to-user messaging network,
+or public content sharing. It is a private analysis and drafting tool.
 
-4. We have removed/modified [specific concern] as requested.
-
-We believe VibeSync provides genuine value in helping people communicate better. We would appreciate a re-review.
+We appreciate your review and are happy to provide any additional clarification.
 
 Best regards,
 VibeSync Team
@@ -125,22 +149,9 @@ VibeSync Team
 
 ---
 
-## 類似 App 參考 (已上架)
+## 上線前自查
 
-這些 App 功能類似但成功上架：
-
-1. **Replika** - AI 聊天夥伴
-2. **Rizz AI** - 約會對話建議 (居然上架了)
-3. **YourMove AI** - Dating assistant
-4. **Keys AI** - Dating message helper
-
-這表示只要定位正確，是有機會通過的。
-
----
-
-## 備案：如果 Apple 拒絕
-
-1. **修改定位** - 更強調「職場溝通」「社交焦慮輔助」
-2. **移除敏感功能** - 調情回覆改為「幽默回覆」
-3. **Web App** - 做成 PWA，繞過 App Store
-4. **Android 優先** - Google Play 審核較寬鬆
+- [ ] App Store Connect 的 privacy disclosure 與實際資料流一致
+- [ ] 官網、隱私權政策、條款、審核文案對資料流的描述一致
+- [ ] 不再使用「絕不上傳雲端」這類絕對說法
+- [ ] 若尚未公開上架，官網不要放假的 App Store 下載連結

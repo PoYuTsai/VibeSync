@@ -105,5 +105,7 @@ Private - All Rights Reserved
 - Long conversations now send `older context summary + recent turns` into live analysis instead of relying only on the raw tail of the thread. The round windowing logic also now follows actual incoming-message boundaries rather than the old `2 messages = 1 round` shortcut.
 
 - The latest completed analysis is now persisted with each conversation locally, so reopening a thread restores the previous score, strategy, replies, and recommendation instead of showing a blank analysis screen until the user reruns it.
+- `docs/app-store-strategy.md` was rewritten into a clean, current review guide that no longer claims "all data stays on device only" and now matches the shipped local-first + user-triggered AI processing flow.
+- `docs/website-landing-page-handoff.md` now captures the exact homepage privacy copy and footer CTA rules for the partner-managed marketing site, including the instruction to stop using a fake `href=\"#\"` App Store button before the public listing exists.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

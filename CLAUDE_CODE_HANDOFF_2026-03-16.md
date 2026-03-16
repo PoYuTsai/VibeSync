@@ -168,6 +168,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Reopening an analyzed thread now restores the previous score, strategy, reply set, recommendation, and raw AI payload instead of rendering the analysis area as blank state until the user manually reruns it.
    - The persisted analyzed-message count is also restored, so the existing "new messages arrived since last analysis" prompt still compares against the right baseline after a reopen.
 
+35. `docs/app-store-strategy.md`, `docs/website-landing-page-handoff.md`
+   - The App Store review strategy doc was rewritten into a clean current version and no longer contains the old inaccurate claim that all user conversation content always stays on-device and never passes through backend processing.
+   - A new partner handoff doc now captures the exact homepage privacy copy, legal-link requirements, and footer download-button rule for the marketing site.
+   - Because the public App Store listing is not live yet, the handoff explicitly tells the partner to stop using a fake `href="#"` download CTA and switch either to a real store URL or a non-clickable "coming soon / TestFlight" state.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
