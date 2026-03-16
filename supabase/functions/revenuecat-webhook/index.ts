@@ -1,7 +1,3 @@
-// supabase/functions/revenuecat-webhook/index.ts
-// RevenueCat Webhook 處理器
-// 接收訂閱事件並更新 Supabase 訂閱狀態
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -9,7 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-const DEPLOY_VERSION = "2026-03-16-rc-webhook-v2";
+
+const DEPLOY_VERSION = "2026-03-16-rc-webhook-v3";
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -18,7 +15,6 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-// 從 product_id 判斷 tier
 function getTierFromProductId(productId: string): string {
   if (!productId) return "free";
   if (productId.includes("essential")) return "essential";
@@ -26,24 +22,30 @@ function getTierFromProductId(productId: string): string {
   return "free";
 }
 
-// 取得 tier 的額度限制
-function getTierLimits(tier: string): { monthly: number; daily: number } {
-  const limits: Record<string, { monthly: number; daily: number }> = {
-    free: { monthly: 30, daily: 15 },
-    starter: { monthly: 300, daily: 50 },
-    essential: { monthly: 1000, daily: 150 },
-  };
-  return limits[tier] || limits.free;
+function stripBearer(value: string): string {
+  return value.trim().replace(/^Bearer\s+/i, "");
+}
+
+async function sha256Prefix(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
 }
 
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   if (req.method === "GET") {
-    return jsonResponse({ ok: true, name: "revenuecat-webhook", version: DEPLOY_VERSION }, 200);
+    return jsonResponse({
+      ok: true,
+      name: "revenuecat-webhook",
+      version: DEPLOY_VERSION,
+    });
   }
 
   if (req.method !== "POST") {
@@ -51,7 +53,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 驗證 Authorization header (RevenueCat Webhook Secret)
     const webhookSecret = Deno.env.get("REVENUECAT_WEBHOOK_SECRET");
     if (!webhookSecret) {
       console.error("REVENUECAT_WEBHOOK_SECRET is not configured");
@@ -60,24 +61,10 @@ Deno.serve(async (req) => {
 
     const authHeaderRaw = req.headers.get("Authorization") || "";
     const authHeader = authHeaderRaw.trim();
-
-    const stripBearer = (value: string) => value.trim().replace(/^Bearer\s+/i, "");
-
     const receivedToken = stripBearer(authHeader);
     const expectedToken = stripBearer(webhookSecret);
 
-    const isAuthorized = receivedToken.length > 0 && receivedToken === expectedToken;
-
-    if (!isAuthorized) {
-      const sha256Prefix = async (input: string) => {
-        const data = new TextEncoder().encode(input);
-        const digest = await crypto.subtle.digest("SHA-256", data);
-        const hex = Array.from(new Uint8Array(digest))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-        return hex.slice(0, 12);
-      };
-
+    if (!receivedToken || receivedToken !== expectedToken) {
       const debug = {
         version: DEPLOY_VERSION,
         hasAuth: authHeader.length > 0,
@@ -94,16 +81,15 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    // Avoid logging full webhook payload (can contain sensitive subscriber info).
+    const { event } = body ?? {};
 
-    const { event } = body;
     if (!event) {
       console.error(
         "No event in body",
         JSON.stringify({
           bodyType: typeof body,
           bodyKeys: body && typeof body === "object" ? Object.keys(body) : null,
-        })
+        }),
       );
       return jsonResponse({ error: "No event in body" }, 400);
     }
@@ -113,36 +99,36 @@ Deno.serve(async (req) => {
       app_user_id,
       product_id,
       new_product_id,
-      entitlement_ids,
       expiration_at_ms,
     } = event;
 
     const effectiveProductId =
-      type === "PRODUCT_CHANGE" && new_product_id
+      type === "PRODUCT_CHANGE" && typeof new_product_id === "string" && new_product_id
         ? new_product_id
         : product_id;
 
     console.log(
-      `Event type: ${type}, User: ${app_user_id}, product_id: ${product_id}, new_product_id: ${new_product_id}`
+      `Event type: ${type}, User: ${app_user_id}, product_id: ${product_id}, new_product_id: ${new_product_id}`,
     );
 
-    // app_user_id 是我們在 RevenueCat.login() 時傳入的 Supabase user id
     if (!app_user_id || app_user_id.startsWith("$RCAnonymousID")) {
       console.log("Skipping anonymous user event");
       return jsonResponse({ success: true, message: "Skipped anonymous user" });
     }
 
-    // 初始化 Supabase Admin Client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Supabase env vars are missing");
+      return jsonResponse({ error: "Server misconfigured" }, 500);
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 根據事件類型處理
     let newTier = "free";
     let shouldUpdate = false;
 
     switch (type) {
-      // 購買相關事件 - 升級 tier
       case "INITIAL_PURCHASE":
       case "RENEWAL":
       case "PRODUCT_CHANGE":
@@ -153,7 +139,6 @@ Deno.serve(async (req) => {
         console.log(`Upgrading user ${app_user_id} to ${newTier}`);
         break;
 
-      // 取消/過期相關事件 - 降級到 free
       case "EXPIRATION":
       case "BILLING_ISSUE":
         newTier = "free";
@@ -161,15 +146,11 @@ Deno.serve(async (req) => {
         console.log(`Downgrading user ${app_user_id} to free`);
         break;
 
-      // 取消訂閱 - 不立即降級，等到過期
       case "CANCELLATION":
-        // 用戶取消但訂閱還沒過期，不需要立即改變 tier
-        // 只記錄取消狀態，等 EXPIRATION 事件再處理
         console.log(`User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`);
         shouldUpdate = false;
         break;
 
-      // 其他事件 - 記錄但不處理
       case "NON_RENEWING_PURCHASE":
       case "SUBSCRIBER_ALIAS":
       case "TRANSFER":
@@ -180,64 +161,58 @@ Deno.serve(async (req) => {
       default:
         console.log(`Unknown event type: ${type}`);
         shouldUpdate = false;
+        break;
     }
 
     if (shouldUpdate) {
-      const limits = getTierLimits(newTier);
+      const nowIso = new Date().toISOString();
 
-      // 更新 subscriptions 表
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from("subscriptions")
-        .update({
-          tier: newTier,
-          // 升級時不重置用量，讓用戶保留已使用的額度
-        })
-        .eq("user_id", app_user_id);
+        .update({ tier: newTier })
+        .eq("user_id", app_user_id)
+        .select("user_id")
+        .limit(1);
 
       if (updateError) {
         console.error("Failed to update subscription:", updateError);
+        return jsonResponse({ error: "Database error" }, 500);
+      }
 
-        // 如果找不到記錄，嘗試插入新記錄
-        if (updateError.code === "PGRST116") {
-          const { error: insertError } = await supabase
-            .from("subscriptions")
-            .insert({
-              user_id: app_user_id,
-              tier: newTier,
-              monthly_messages_used: 0,
-              daily_messages_used: 0,
-              started_at: new Date().toISOString(),
-            });
+      if (!updatedRows || updatedRows.length === 0) {
+        const { error: insertError } = await supabase
+          .from("subscriptions")
+          .insert({
+            user_id: app_user_id,
+            tier: newTier,
+            monthly_messages_used: 0,
+            daily_messages_used: 0,
+            daily_reset_at: nowIso,
+            monthly_reset_at: nowIso,
+            started_at: nowIso,
+          });
 
-          if (insertError) {
-            console.error("Failed to insert subscription:", insertError);
-            return jsonResponse({ error: "Database error" }, 500);
-          }
-        } else {
+        if (insertError) {
+          console.error("Failed to insert subscription:", insertError);
           return jsonResponse({ error: "Database error" }, 500);
         }
+
+        console.log(`Inserted subscription record for user ${app_user_id}`);
       }
 
       console.log(`Successfully updated user ${app_user_id} to tier: ${newTier}`);
     }
 
-    // 記錄 webhook 事件到 logs 表（可選）
-    try {
-      const { error: logError } = await supabase.from("webhook_logs").insert({
-        source: "revenuecat",
-        event_type: type,
-        user_id: app_user_id,
-        payload: body,
-        created_at: new Date().toISOString(),
-      });
+    const { error: logError } = await supabase.from("webhook_logs").insert({
+      source: "revenuecat",
+      event_type: type,
+      user_id: app_user_id,
+      payload: body,
+      created_at: new Date().toISOString(),
+    });
 
-      if (logError) {
-        // 記錄失敗不影響主流程
-        console.log("Failed to log webhook event (non-fatal):", logError);
-      }
-    } catch (unexpectedError) {
-      // 意外例外（例如網路層）
-      console.log("Failed to log webhook event (non-fatal):", unexpectedError);
+    if (logError) {
+      console.log("Failed to log webhook event (non-fatal):", logError);
     }
 
     return jsonResponse({
@@ -246,7 +221,6 @@ Deno.serve(async (req) => {
       user_id: app_user_id,
       new_tier: shouldUpdate ? newTier : undefined,
     });
-
   } catch (error) {
     console.error("Webhook error:", error);
     return jsonResponse({ error: (error as Error).message }, 500);

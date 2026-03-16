@@ -2,7 +2,7 @@
 
 ## Current Status
 
-This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, and the highest-risk admin/API security issues.
+This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, and subscription-state consistency around RevenueCat + Supabase sync.
 
 ### Fixed in this batch
 
@@ -52,27 +52,38 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 13. `admin-dashboard/package-lock.json`
    - Applied lockfile-only `npm audit fix`; `npm audit` now reports 0 vulnerabilities.
 
+14. `supabase/functions/revenuecat-webhook/index.ts`
+   - Reworked the webhook handler so it can distinguish a real `UPDATE` from "0 rows updated".
+   - Missing `subscriptions` rows are now inserted explicitly instead of being silently treated as success.
+   - New records initialize `daily_reset_at` / `monthly_reset_at` / `started_at`.
+
+15. `lib/core/services/supabase_service.dart`
+   - Supabase client debug logging now only runs in `kDebugMode`.
+   - Free-tier bootstrap records now initialize reset timestamps up front.
+
+16. `lib/features/subscription/data/providers/subscription_providers.dart`
+   - Added a shared helper for creating fresh subscription rows with reset timestamps.
+   - Force-sync / upsert fallback now creates complete records instead of partial rows.
+
+17. `lib/features/subscription/domain/entities/message_booster.dart`, `lib/features/subscription/presentation/widgets/booster_purchase_sheet.dart`
+   - Cleaned up the booster package labels.
+   - Removed the fake-success purchase flow; the sheet is now explicitly "coming soon" until booster IAP is actually wired to RevenueCat.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
-- Image analysis still uses Sonnet. `my_message` analysis still uses Haiku. This batch did not add any new model call path.
+- Image analysis still uses Sonnet. `my_message` remains Essential-only, and current model selection still routes Essential requests to Sonnet.
 - If the user wants analysis of **their own latest message**, the existing Essential-only `my_message` flow is still the right path.
 
 ## High-Priority Review Findings Still Open
 
-### P2 Reliability / API Boundary
-
-1. `lib/core/services/usage_service.dart`
-   - Still has `TODO: Get actual tier from subscription service`.
-   - Local usage fallback can diverge from server truth and mislead the UI.
-
 ### P3 Incomplete Features / TODO
 
-2. `lib/features/conversation/data/services/memory_service.dart`
+1. `lib/features/conversation/data/services/memory_service.dart`
    - Still has `TODO: Call AI to generate actual summary`.
 
-3. `lib/features/subscription/presentation/widgets/booster_purchase_sheet.dart`
-   - Still has `TODO: Integrate with RevenueCat for IAP`.
+2. Booster one-time purchases are still not implemented end-to-end.
+   - The UI is now honest and non-deceptive, but actual RevenueCat booster IAP integration is still a future feature.
 
 ## Suggested Next Review Sweep
 
@@ -82,7 +93,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - auth / authorization consistency
    - rate-limit / quota edge cases
 2. Performance pass on analysis payload construction and logging volume
-3. Complete the remaining TODO-backed product gaps (memory summary / booster IAP flow)
+3. Complete the remaining TODO-backed product gaps (memory summary / real booster IAP flow)
 
 ## Validation Checklist
 
@@ -108,12 +119,17 @@ After deploy, verify:
    - `npm.cmd run lint` passes
    - `npm.cmd audit --json` reports 0 vulnerabilities
 
+6. RevenueCat webhook:
+   - retry a real purchase or `PRODUCT_CHANGE` event
+   - confirm missing `subscriptions` rows are inserted instead of silently skipped
+   - confirm new rows carry `daily_reset_at` / `monthly_reset_at`
+
 ## Notes for Claude Code
 
 - When touching screenshot analysis again, preserve the current token-control approach:
   - `recognizeOnly` for OCR/import
   - Sonnet only when images are present
-  - Haiku for `my_message`
+  - do not assume `my_message` uses Haiku; current Essential path selects Sonnet
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:
   - OCR/import success
   - post-import analysis trigger / reply-analysis anchor

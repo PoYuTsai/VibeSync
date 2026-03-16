@@ -101,6 +101,22 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     );
   }
 
+  Map<String, dynamic> _buildFreshSubscriptionRecord({
+    required String userId,
+    required String tier,
+  }) {
+    final nowIso = DateTime.now().toIso8601String();
+    return {
+      'user_id': userId,
+      'tier': tier,
+      'monthly_messages_used': 0,
+      'daily_messages_used': 0,
+      'daily_reset_at': nowIso,
+      'monthly_reset_at': nowIso,
+      'started_at': nowIso,
+    };
+  }
+
   Future<void> _initialize() async {
     await _loadSubscription();
     await _loadOfferings();
@@ -263,12 +279,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         debugPrint('[forceSyncTier] No existing record, inserting new one');
         await SupabaseService.client
             .from('subscriptions')
-            .insert({
-              'user_id': user.id,
-              'tier': tier,
-              'monthly_messages_used': 0,
-              'daily_messages_used': 0,
-            });
+            .insert(_buildFreshSubscriptionRecord(userId: user.id, tier: tier));
       } else {
         // 有記錄，更新
         debugPrint('[forceSyncTier] Updating existing record');
@@ -325,10 +336,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         await SupabaseService.client
             .from('subscriptions')
             .upsert({
-              'user_id': user.id,
-              'tier': tier,
-              'monthly_messages_used': 0,
-              'daily_messages_used': 0,
+              ..._buildFreshSubscriptionRecord(userId: user.id, tier: tier),
             });
         debugPrint('[_updateSupabaseTier] Upserted subscription record');
       }

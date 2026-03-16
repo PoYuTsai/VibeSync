@@ -1,6 +1,7 @@
 // lib/core/services/supabase_service.dart
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'social_auth/social_auth_service.dart';
@@ -21,7 +22,7 @@ class SupabaseService {
       authOptions: const FlutterAuthClientOptions(
         authFlowType: AuthFlowType.implicit,
       ),
-      debug: true, // Enable debug logging
+      debug: kDebugMode,
     );
     _client = Supabase.instance.client;
     _initialized = true;
@@ -100,12 +101,15 @@ class SupabaseService {
         .maybeSingle();
 
     if (existing == null) {
+      final nowIso = DateTime.now().toIso8601String();
       await client.from('subscriptions').insert({
         'user_id': userId,
         'tier': 'free',
         'monthly_messages_used': 0,
         'daily_messages_used': 0,
-        'started_at': DateTime.now().toIso8601String(),
+        'daily_reset_at': nowIso,
+        'monthly_reset_at': nowIso,
+        'started_at': nowIso,
       });
     }
   }

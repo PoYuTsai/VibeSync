@@ -1,14 +1,11 @@
-// lib/features/subscription/domain/entities/message_booster.dart
-
-/// Available message booster packages for one-time purchase
+/// Available message booster packages for one-time purchase.
 enum BoosterPackage {
-  small,  // 50 messages
-  medium, // 150 messages
-  large,  // 300 messages
+  small,
+  medium,
+  large,
 }
 
 extension BoosterPackageExtension on BoosterPackage {
-  /// Number of messages in this package
   int get messageCount {
     switch (this) {
       case BoosterPackage.small:
@@ -20,7 +17,6 @@ extension BoosterPackageExtension on BoosterPackage {
     }
   }
 
-  /// Price in NTD
   int get priceNTD {
     switch (this) {
       case BoosterPackage.small:
@@ -32,30 +28,20 @@ extension BoosterPackageExtension on BoosterPackage {
     }
   }
 
-  /// Cost per message
-  double get costPerMessage {
-    return priceNTD / messageCount;
-  }
+  double get costPerMessage => priceNTD / messageCount;
 
-  /// Display label for message count
-  String get label {
-    return '$messageCount 則';
-  }
+  String get label => '$messageCount messages';
 
-  /// Display label for price
-  String get priceLabel {
-    return 'NT\$$priceNTD';
-  }
+  String get priceLabel => 'NT\$$priceNTD';
 
-  /// Savings label for discounted packages
   String get savingsLabel {
     switch (this) {
       case BoosterPackage.small:
         return '';
       case BoosterPackage.medium:
-        return '省 15%';
+        return 'Save 15%';
       case BoosterPackage.large:
-        return '省 23%';
+        return 'Save 23%';
     }
   }
 }
