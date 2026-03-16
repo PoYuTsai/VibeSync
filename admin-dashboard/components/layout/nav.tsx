@@ -15,7 +15,6 @@ import {
   Activity,
   LogOut,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 
 const navItems = [
   { href: "/", label: "總覽", icon: LayoutDashboard },
@@ -33,9 +32,11 @@ export function Nav() {
   const router = useRouter();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    document.cookie = "sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    await fetch("/api/auth/logout", {
+      method: "POST",
+    });
     router.push("/login");
+    router.refresh();
   };
 
   return (

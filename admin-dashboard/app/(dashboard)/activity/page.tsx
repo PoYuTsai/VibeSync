@@ -62,13 +62,6 @@ export default function ActivityPage() {
             formattedData.length;
           const peakDAU = Math.max(...formattedData.map((d) => d.dau));
 
-          // 估算 WAU (近 7 天)
-          const last7Days = formattedData.slice(-7);
-          const wau = new Set(last7Days.flatMap((d) => d.dau)).size;
-
-          // 估算 MAU (近 30 天)
-          const mau = new Set(formattedData.flatMap((d) => d.dau)).size;
-
           setSummary({
             todayDAU,
             avgDAU: Math.round(avgDAU),

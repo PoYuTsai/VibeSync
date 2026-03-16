@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { ADMIN_ACCESS_COOKIE } from "@/lib/auth";
 
 export async function middleware(request: NextRequest) {
   // 跳過登入頁面和 403
@@ -13,7 +14,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 從 cookie 取得 session token
-  const accessToken = request.cookies.get("sb-access-token")?.value;
+  const accessToken = request.cookies.get(ADMIN_ACCESS_COOKIE)?.value;
 
   if (!accessToken) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -36,7 +37,17 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    response.cookies.set({
+      name: ADMIN_ACCESS_COOKIE,
+      value: "",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+    return response;
   }
 
   // 檢查是否在 admin 白名單
@@ -47,7 +58,17 @@ export async function middleware(request: NextRequest) {
     .single();
 
   if (!adminUser) {
-    return NextResponse.redirect(new URL("/403", request.url));
+    const response = NextResponse.redirect(new URL("/403", request.url));
+    response.cookies.set({
+      name: ADMIN_ACCESS_COOKIE,
+      value: "",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+    return response;
   }
 
   return NextResponse.next();

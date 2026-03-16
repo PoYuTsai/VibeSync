@@ -60,5 +60,7 @@ Private - All Rights Reserved
 - Screenshot recognition is more tolerant of partial Claude JSON. If `messages` are present but `messageCount` is missing or malformed, the Edge Function now normalizes the payload instead of failing the whole request.
 - Client-side API parsing now handles non-JSON responses more safely and surfaces recognition failures with clearer messages.
 - AI logging now checks returned Supabase insert errors instead of assuming `insert()` will throw.
+- Admin dashboard auth now uses server-side login/logout routes with an `HttpOnly` cookie instead of a client-readable token cookie.
+- Feedback submission now validates category / payload shape, enforces length limits, and truncates Telegram previews to reduce oversharing.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

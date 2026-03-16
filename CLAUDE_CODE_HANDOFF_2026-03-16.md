@@ -2,7 +2,7 @@
 
 ## Current Status
 
-This hotfix batch focused on the core conversation-analysis path and screenshot recognition reliability.
+This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, and the highest-risk admin/API security issues.
 
 ### Fixed in this batch
 
@@ -26,6 +26,23 @@ This hotfix batch focused on the core conversation-analysis path and screenshot 
 5. `supabase/functions/analyze-chat/logger.ts`
    - `ai_logs` and `token_usage` inserts now inspect returned `{ error }` instead of assuming Supabase JS throws.
 
+6. `admin-dashboard/app/api/auth/login/route.ts`
+   - Added a server-side login route that validates credentials and checks `admin_users` before issuing a dashboard session.
+   - Dashboard auth now uses a server-set `HttpOnly` cookie.
+
+7. `admin-dashboard/app/api/auth/logout/route.ts`
+   - Added a server-side logout route that clears the admin session cookie.
+
+8. `admin-dashboard/app/login/page.tsx`, `admin-dashboard/components/layout/nav.tsx`, `admin-dashboard/middleware.ts`, `admin-dashboard/lib/auth.ts`
+   - Removed client-side token cookie writes.
+   - Middleware now reads the `HttpOnly` admin cookie and clears it when the token is invalid or unauthorized.
+
+9. `supabase/functions/submit-feedback/index.ts`
+   - Added category validation, string length limits, `aiResponse` shape/size checks, and safer Telegram preview truncation.
+
+10. `admin-dashboard/app/(dashboard)/activity/page.tsx`
+   - Removed two unused variables so the dashboard lint run is clean.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -34,48 +51,29 @@ This hotfix batch focused on the core conversation-analysis path and screenshot 
 
 ## High-Priority Review Findings Still Open
 
-### P1 Security
-
-1. `admin-dashboard/app/login/page.tsx`
-   - Access token is written with `document.cookie`.
-   - This cookie is readable by client-side JS and cannot be `HttpOnly`.
-
-2. `admin-dashboard/middleware.ts`
-   - Middleware trusts `sb-access-token` from the browser cookie.
-   - If the dashboard ever suffers XSS, the session token is exposed and reusable.
-
-Recommended follow-up:
-- Move login/logout to server routes or server actions.
-- Set the auth cookie from the server with `HttpOnly`, `Secure`, and `SameSite=Lax` or stricter.
-
 ### P2 Reliability / API Boundary
 
-3. `supabase/functions/submit-feedback/index.ts`
-   - Missing length caps / payload-size constraints for `comment`, `conversationSnippet`, and `aiResponse`.
-   - Negative feedback forwarding can leak too much content to Telegram if payloads get large.
-
-4. `lib/core/services/usage_service.dart`
+1. `lib/core/services/usage_service.dart`
    - Still has `TODO: Get actual tier from subscription service`.
    - Local usage fallback can diverge from server truth and mislead the UI.
 
 ### P3 Incomplete Features / TODO
 
-5. `lib/features/conversation/data/services/memory_service.dart`
+2. `lib/features/conversation/data/services/memory_service.dart`
    - Still has `TODO: Call AI to generate actual summary`.
 
-6. `lib/features/subscription/presentation/widgets/booster_purchase_sheet.dart`
+3. `lib/features/subscription/presentation/widgets/booster_purchase_sheet.dart`
    - Still has `TODO: Integrate with RevenueCat for IAP`.
 
 ## Suggested Next Review Sweep
 
-1. Admin dashboard auth hardening
-2. Feedback endpoint input limits and redaction
-3. Full API-boundary audit for edge functions:
+1. Full API-boundary audit for edge functions:
    - payload length
    - enum validation
    - auth / authorization consistency
    - rate-limit / quota edge cases
-4. Performance pass on analysis payload construction and logging volume
+2. Performance pass on analysis payload construction and logging volume
+3. Replace local usage fallback with subscription-backed truth
 
 ## Validation Checklist
 
@@ -92,9 +90,13 @@ After deploy, verify:
 3. Edge Function logs:
    - no new `ai_logs` / `token_usage` silent failures
 
+4. Admin dashboard auth:
+   - login succeeds only for `admin_users`
+   - cookie is no longer visible in `document.cookie`
+   - logout clears access correctly
+
 ## Notes for Claude Code
 
-- Prioritize the admin-dashboard auth fix next; it is the highest-confidence security issue in the current repo.
 - When touching screenshot analysis again, preserve the current token-control approach:
   - `recognizeOnly` for OCR/import
   - Sonnet only when images are present

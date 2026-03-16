@@ -6,6 +6,20 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
 const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID");
+const VALID_CATEGORIES = new Set([
+  "too_direct",
+  "too_long",
+  "unnatural",
+  "wrong_style",
+  "other",
+]);
+const COMMENT_MAX_LENGTH = 2000;
+const SNIPPET_MAX_LENGTH = 4000;
+const MODEL_MAX_LENGTH = 120;
+const USER_TIER_MAX_LENGTH = 50;
+const AI_RESPONSE_MAX_LENGTH = 12000;
+const TELEGRAM_COMMENT_PREVIEW = 300;
+const TELEGRAM_SNIPPET_PREVIEW = 500;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +32,23 @@ function jsonResponse(data: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+}
+
+function normalizeOptionalString(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+
+  if (normalized.length > maxLength) {
+    throw new Error(`STRING_TOO_LONG:${maxLength}`);
+  }
+
+  return normalized;
+}
+
+function truncateForPreview(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
 async function sendTelegramNotification(feedback: {
@@ -54,11 +85,11 @@ async function sendTelegramNotification(feedback: {
   message += `問題類型：${categoryLabels[feedback.category || "other"] || feedback.category}\n`;
 
   if (feedback.comment) {
-    message += `補充：「${feedback.comment}」\n`;
+    message += `補充：「${truncateForPreview(feedback.comment, TELEGRAM_COMMENT_PREVIEW)}」\n`;
   }
 
   if (feedback.conversationSnippet) {
-    message += `\n📝 對話片段：\n${feedback.conversationSnippet}\n`;
+    message += `\n📝 對話片段：\n${truncateForPreview(feedback.conversationSnippet, TELEGRAM_SNIPPET_PREVIEW)}\n`;
   }
 
   if (feedback.aiResponse?.finalRecommendation) {
@@ -105,18 +136,28 @@ serve(async (req) => {
 
     // Parse request
     const body = await req.json();
-    const {
-      rating,
-      category,
-      comment,
-      conversationSnippet,
-      aiResponse,
-      userTier,
-      modelUsed,
-    } = body;
+    const rating = body?.rating;
+    const category = body?.category;
+    const comment = normalizeOptionalString(body?.comment, COMMENT_MAX_LENGTH);
+    const conversationSnippet = normalizeOptionalString(body?.conversationSnippet, SNIPPET_MAX_LENGTH);
+    const userTier = normalizeOptionalString(body?.userTier, USER_TIER_MAX_LENGTH);
+    const modelUsed = normalizeOptionalString(body?.modelUsed, MODEL_MAX_LENGTH);
+    const aiResponse = body?.aiResponse;
 
     if (!rating || !["positive", "negative"].includes(rating)) {
       return jsonResponse({ error: "Invalid rating" }, 400);
+    }
+
+    if (category != null && (typeof category !== "string" || !VALID_CATEGORIES.has(category))) {
+      return jsonResponse({ error: "Invalid category" }, 400);
+    }
+
+    if (aiResponse != null && (typeof aiResponse !== "object" || Array.isArray(aiResponse))) {
+      return jsonResponse({ error: "Invalid aiResponse" }, 400);
+    }
+
+    if (aiResponse != null && JSON.stringify(aiResponse).length > AI_RESPONSE_MAX_LENGTH) {
+      return jsonResponse({ error: "aiResponse too large" }, 400);
     }
 
     // Insert feedback
@@ -150,6 +191,10 @@ serve(async (req) => {
 
     return jsonResponse({ success: true });
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith("STRING_TOO_LONG:")) {
+      const maxLength = error.message.split(":")[1];
+      return jsonResponse({ error: `Text field exceeds maximum length (${maxLength})` }, 400);
+    }
     console.error("Error:", error);
     return jsonResponse({ error: "Internal server error" }, 500);
   }
