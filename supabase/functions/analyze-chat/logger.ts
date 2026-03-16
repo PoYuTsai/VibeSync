@@ -44,7 +44,7 @@ export async function logAiCall(
 
     const costUsd = calculateCost(entry.model, entry.inputTokens, entry.outputTokens);
 
-    await supabase.from("ai_logs").insert({
+    const { error } = await supabase.from("ai_logs").insert({
       user_id: entry.userId,
       model: entry.model,
       request_type: entry.requestType || "analyze",
@@ -61,6 +61,10 @@ export async function logAiCall(
       request_body: entry.status === "failed" ? entry.requestBody : null,
       response_body: entry.status === "failed" ? entry.responseBody : null,
     });
+
+    if (error) {
+      console.error("Failed to log AI call:", error);
+    }
   } catch (error) {
     // 日誌失敗不應影響主要請求
     console.error("Failed to log AI call:", error);
@@ -109,7 +113,7 @@ export async function trackTokenUsage(
     const supabase = createClient(supabaseUrl, serviceKey);
     const costUsd = calculateCost(entry.model, entry.inputTokens, entry.outputTokens);
 
-    await supabase.from("token_usage").insert({
+    const { error } = await supabase.from("token_usage").insert({
       user_id: entry.userId,
       model: entry.model,
       input_tokens: entry.inputTokens,
@@ -117,6 +121,10 @@ export async function trackTokenUsage(
       cost_usd: costUsd,
       conversation_id: entry.conversationId,
     });
+
+    if (error) {
+      console.error("Failed to track token usage:", error);
+    }
   } catch (error) {
     // Token 追蹤失敗不應影響主要請求
     console.error("Failed to track token usage:", error);

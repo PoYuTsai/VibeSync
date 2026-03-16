@@ -89,6 +89,30 @@ class AnalysisService {
     throw lastError ?? AnalysisException('分析失敗');
   }
 
+  Map<String, dynamic> _decodeResponseBody(http.Response response) {
+    final body = response.body.trim();
+    if (body.isEmpty) {
+      return <String, dynamic>{};
+    }
+
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return decoded.map((key, value) => MapEntry(key.toString(), value));
+      }
+      return <String, dynamic>{'data': decoded};
+    } on FormatException {
+      final shortenedBody = body.length > 300 ? '${body.substring(0, 300)}...' : body;
+      return <String, dynamic>{
+        '_nonJson': true,
+        '_rawBody': shortenedBody,
+      };
+    }
+  }
+
   Future<AnalysisResult> _doAnalyze(
     List<Message> messages, {
     List<Uint8List>? images,
@@ -175,11 +199,21 @@ class AnalysisService {
         debugPrint('[AnalysisService] 狀態碼: ${httpResponse.statusCode}');
 
         // 轉換為類似 FunctionResponse 的格式
-        final responseData = jsonDecode(httpResponse.body);
+        final responseData = _decodeResponseBody(httpResponse);
         final status = httpResponse.statusCode;
 
+        if (responseData['_nonJson'] == true && status == 200) {
+          throw AnalysisException('伺服器回應格式異常，請稍後再試');
+        }
+
         if (status != 200) {
-          final errorMessage = responseData['error'] as String? ?? 'Analysis failed';
+          final errorCode = responseData['code'] as String?;
+          final errorMessage =
+              responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              (responseData['_nonJson'] == true
+                  ? '伺服器暫時無法處理請求，請稍後再試'
+                  : 'Analysis failed');
 
           // Check for rate limit errors
           if (status == 429) {
@@ -197,6 +231,10 @@ class AnalysisService {
                 used: responseData['used'] as int? ?? 0,
               );
             }
+          }
+
+          if (errorCode == 'RECOGNITION_FAILED') {
+            throw AnalysisException(errorMessage);
           }
 
           throw AnalysisException(errorMessage);

@@ -52,3 +52,13 @@ lib/
 ## 授權
 
 Private - All Rights Reserved
+
+## 2026-03-16 Hotfix Notes
+
+- Reply analysis now works even when the latest message is from me. The app analyzes up to the latest incoming message instead of hard-blocking the flow.
+- Screenshot import now preserves the recognized conversation in UI state and shows an `立即分析` action after successful import.
+- Screenshot recognition is more tolerant of partial Claude JSON. If `messages` are present but `messageCount` is missing or malformed, the Edge Function now normalizes the payload instead of failing the whole request.
+- Client-side API parsing now handles non-JSON responses more safely and surfaces recognition failures with clearer messages.
+- AI logging now checks returned Supabase insert errors instead of assuming `insert()` will throw.
+
+See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

@@ -498,6 +498,72 @@ function countMessages(messages: Array<{ content: string }>): number {
   return Math.max(1, total);
 }
 
+function normalizeRecognizedConversation(result: Record<string, unknown>): Record<string, unknown> {
+  const normalizedResult = { ...result };
+  const recognizedRaw =
+    normalizedResult.recognizedConversation &&
+    typeof normalizedResult.recognizedConversation === "object"
+      ? { ...(normalizedResult.recognizedConversation as Record<string, unknown>) }
+      : {};
+
+  const rawMessages = Array.isArray(recognizedRaw.messages)
+    ? recognizedRaw.messages
+    : Array.isArray(normalizedResult.messages)
+      ? normalizedResult.messages
+      : null;
+
+  if (!rawMessages) {
+    return normalizedResult;
+  }
+
+  const normalizedMessages = rawMessages
+    .map((message) => {
+      if (!message || typeof message !== "object") {
+        return null;
+      }
+
+      const record = message as Record<string, unknown>;
+      const content =
+        typeof record.content === "string" ? record.content.trim() : "";
+
+      if (!content) {
+        return null;
+      }
+
+      return {
+        isFromMe:
+          record.isFromMe === true ||
+          record.isFromMe === "true" ||
+          record.side === "right",
+        content,
+      };
+    })
+    .filter((message): message is { isFromMe: boolean; content: string } => message !== null);
+
+  if (normalizedMessages.length === 0) {
+    return normalizedResult;
+  }
+
+  const normalizedMessageCount =
+    typeof recognizedRaw.messageCount === "number" && recognizedRaw.messageCount > 0
+      ? recognizedRaw.messageCount
+      : Number(recognizedRaw.messageCount) > 0
+        ? Number(recognizedRaw.messageCount)
+        : normalizedMessages.length;
+
+  normalizedResult.recognizedConversation = {
+    ...recognizedRaw,
+    messageCount: normalizedMessageCount,
+    summary:
+      typeof recognizedRaw.summary === "string" && recognizedRaw.summary.trim()
+        ? recognizedRaw.summary
+        : `已識別 ${normalizedMessages.length} 則訊息`,
+    messages: normalizedMessages,
+  };
+
+  return normalizedResult;
+}
+
 // 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
 // 測試帳號白名單 (不扣額度)
@@ -1005,6 +1071,8 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
       };
     }
 
+    result = normalizeRecognizedConversation(result);
+
     // 檢查截圖識別是否失敗
     if (hasImages && (!result.recognizedConversation || result.recognizedConversation.messageCount === 0)) {
       // Log failed recognition
@@ -1023,7 +1091,7 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
       return jsonResponse({
         error: "無法識別截圖中的對話內容",
         code: "RECOGNITION_FAILED",
-        message: "請確保截圖清晰且為聊天畫面，支援 LINE、iMessage、WhatsApp 等常見通訊軟體",
+        message: "請確認截圖清晰、包含聊天泡泡，並盡量帶到對話頂部與最新訊息；單張截圖也可以分析，但畫面太裁切時容易失敗",
         shouldChargeQuota: false,
       }, 400);
     }

@@ -206,6 +206,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
+  List<Message>? _buildMessagesForReplyAnalysis(List<Message> messages) {
+    if (messages.isEmpty) return null;
+
+    final lastIncomingIndex = messages.lastIndexWhere((message) => !message.isFromMe);
+    if (lastIncomingIndex == -1) {
+      return null;
+    }
+
+    return messages.sublist(0, lastIncomingIndex + 1);
+  }
+
   /// 顯示識別確認對話框，讓用戶設定對方名字和情境
   Future<Map<String, dynamic>?> _showRecognitionConfirmDialog({
     required String? recognizedName,
@@ -521,14 +532,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           final messageCount = result.recognizedConversation!.messages!.length;
           setState(() {
             _selectedImages = [];
+            _recognizedConversation = result.recognizedConversation;
           });
 
           // 顯示成功訊息
           if (mounted) {
+            final canAnalyzeImportedConversation =
+                _buildMessagesForReplyAnalysis(conv.messages) != null;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('已加入 $messageCount 則訊息'),
                 backgroundColor: Colors.green,
+                action: canAnalyzeImportedConversation
+                    ? SnackBarAction(
+                        label: '立即分析',
+                        textColor: Colors.white,
+                        onPressed: _runAnalysis,
+                      )
+                    : null,
               ),
             );
           }
@@ -591,11 +612,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
-    // 最後一則必須是「她」的訊息
-    if (conversation.messages.last.isFromMe) {
+    final messagesForAnalysis = _buildMessagesForReplyAnalysis(conversation.messages);
+    if (messagesForAnalysis == null) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '請先輸入對方的回覆，才能給你建議';
+        _errorMessage = '至少要有一則對方訊息，才能開始分析';
       });
       return;
     }
@@ -604,7 +625,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
-        conversation.messages,
+        messagesForAnalysis,
         sessionContext: conversation.sessionContext,
       );
 
@@ -2053,7 +2074,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   final newCount = conversation.messages.length - _lastAnalyzedMessageCount;
 
                   if (lastIsFromMe) {
-                    // 最後是「我說」→ 提示輸入她的回覆
+                    // 最後是「我說」→ 仍可分析，但以前一則她的訊息為基準
                     return Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -2067,9 +2088,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '請在下方輸入她的回覆，再點「👩 她說...」',
+                              '有 $newCount 則新訊息，會以前一則她的回覆作為分析基準。',
                               style: AppTypography.bodyMedium,
                             ),
+                          ),
+                          TextButton.icon(
+                            onPressed: _isAnalyzing ? null : _runAnalysis,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('繼續分析'),
                           ),
                         ],
                       ),

@@ -86,15 +86,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       );
       return;
     }
-
-    // Check if last message is from her (we need to respond)
-    if (_messages.last['isFromMe'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('最後一則應該是對方的訊息，才能給你回覆建議')),
-      );
-      return;
-    }
-
     final repository = ref.read(conversationRepositoryProvider);
     final messages = repository.createMessagesFromList(_messages);
 
