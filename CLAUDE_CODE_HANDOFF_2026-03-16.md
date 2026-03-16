@@ -132,6 +132,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - If the user has only typed outgoing messages so far, manual input now saves that thread as a draft conversation instead of implying analysis should already work.
    - The analysis screen now returns a clearer boundary message when there is still no incoming message to analyze, with a better Essential-tier hint toward the existing `我說` continuation flow.
 
+28. `lib/shared/widgets/image_picker_widget.dart`, `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `supabase/functions/analyze-chat/index.ts`
+   - Screenshot picking now surfaces an explicit `壓縮中` state and records original/compressed image sizes for each selected screenshot.
+   - OCR import now shows clearer progress states (`準備圖片中 / 上傳圖片中 / AI 辨識中`) instead of a single generic spinner.
+   - The client now records request payload size, local payload-preparation time, round-trip latency, and server-side AI latency estimates.
+   - `analyze-chat` responses now include lightweight OCR telemetry so TestFlight debugging can better distinguish transport overhead from Claude time.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

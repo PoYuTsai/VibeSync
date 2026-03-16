@@ -1034,12 +1034,12 @@ serve(async (req) => {
     }
 
     const hasImages = Array.isArray(images) && images.length > 0;
+    let totalImageBytes = 0;
     if (recognizeOnly && !hasImages) {
       return jsonResponse({ error: "recognizeOnly requires images" }, 400);
     }
     if (hasImages) {
       const imageOrders = new Set<number>();
-      let totalImageBytes = 0;
       if (images.length > 3) {
         return jsonResponse({ error: "最多上傳 3 張截圖" }, 400);
       }
@@ -1595,6 +1595,15 @@ ${
       retries: claudeResult.retries,
       imagesUsed: hasImages ? images.length : 0,
       isTestAccount: accountIsTest, // 標記是否為測試帳號
+    };
+
+    result.telemetry = {
+      requestType: recognizeOnly ? "recognize_only" : "analyze",
+      imageCount: hasImages ? images.length : 0,
+      totalImageBytes: Math.round(totalImageBytes),
+      serverAiLatencyMs: latencyMs,
+      fallbackUsed: claudeResult.fallbackUsed,
+      retries: claudeResult.retries,
     };
 
     return jsonResponse(result);

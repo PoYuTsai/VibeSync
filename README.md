@@ -94,6 +94,8 @@ Private - All Rights Reserved
 - `app_links` is now declared directly in `pubspec.yaml` because the auth service relies on it for password-recovery callback detection.
 - Home and login user-facing copy is now consistently Traditional Chinese again, and the screenshot picker's visible labels / errors were cleaned up from mojibake-era text.
 - Single-image OCR now sends smaller JPEGs (960px / ~350KB target) and `recognizeOnly` requests use a lower Claude token budget, which should modestly reduce screenshot import latency.
+- Screenshot import now exposes clearer progress states across the flow: image compression while picking, then `準備圖片中 / 上傳圖片中 / AI 辨識中` during OCR.
+- OCR requests now capture lightweight latency telemetry in-app: original vs compressed image size, request payload size, local preparation time, round-trip time, and Claude-side AI latency estimates for TestFlight debugging.
 - Manual input no longer claims the last message must be from her. Users can end on either side, and if they only have outgoing messages so far the app now treats that as a saved draft instead of a dead-end.
 - Local `supabase/config.toml` auth defaults are now stricter: 8-character passwords with letters+digits, email confirmations on, secure password change on, and redirect allow-lists include the mobile callback URI.
 

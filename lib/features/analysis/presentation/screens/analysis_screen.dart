@@ -83,8 +83,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   // 截圖上傳功能
   List<Uint8List> _selectedImages = [];
+  List<SelectedImageMetrics> _selectedImageMetrics = [];
   RecognizedConversation? _recognizedConversation;
   bool _isRecognizing = false;
+  AnalysisProgressStage _recognizeStage =
+      AnalysisProgressStage.preparingPayload;
+  AnalysisTelemetry? _lastRecognizeTelemetry;
 
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
@@ -135,11 +139,80 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _isRecognizing = false;
       _errorMessage = '已取消識別';
       _selectedImages = [];
+      _selectedImageMetrics = [];
       _recognizedConversation = null;
     });
   }
 
   /// 新增訊息到對話並重新分析
+  void _handleRecognizeProgress(AnalysisProgressUpdate update) {
+    if (!mounted || !_isRecognizing || _recognizeCancelled) {
+      return;
+    }
+
+    setState(() {
+      _recognizeStage = update.stage;
+    });
+  }
+
+  void _handleRecognizeTelemetry(AnalysisTelemetry telemetry) {
+    if (!mounted || _recognizeCancelled) {
+      return;
+    }
+
+    setState(() {
+      _lastRecognizeTelemetry = telemetry;
+    });
+  }
+
+  String _recognizeStageLabel(AnalysisProgressStage stage) {
+    switch (stage) {
+      case AnalysisProgressStage.preparingPayload:
+        return '準備圖片中';
+      case AnalysisProgressStage.uploadingRequest:
+        return '上傳圖片中';
+      case AnalysisProgressStage.awaitingAi:
+        return 'AI 辨識中';
+    }
+  }
+
+  int get _totalOriginalImageBytes => _selectedImageMetrics.fold(
+        0,
+        (sum, metric) => sum + metric.originalBytes,
+      );
+
+  int get _totalCompressedImageBytes => _selectedImageMetrics.isEmpty
+      ? _selectedImages.fold(0, (sum, image) => sum + image.length)
+      : _selectedImageMetrics.fold(
+          0,
+          (sum, metric) => sum + metric.compressedBytes,
+        );
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  String _formatDuration(Duration? duration) {
+    if (duration == null) {
+      return '--';
+    }
+
+    final seconds = duration.inMilliseconds / 1000;
+    return '${seconds.toStringAsFixed(seconds >= 10 ? 0 : 1)} 秒';
+  }
+
+  String get _recognizeButtonLabel {
+    if (_isRecognizing) {
+      return _recognizeStageLabel(_recognizeStage);
+    }
+
+    return '識別並加入對話 (${_selectedImages.length} 張)';
+  }
+
   Future<void> _addMessage({required bool isFromMe}) async {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
@@ -438,6 +511,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _isRecognizing = true;
       _errorMessage = null;
       _recognizedConversation = null;
+      _recognizeStage = AnalysisProgressStage.preparingPayload;
+      _lastRecognizeTelemetry = null;
     });
 
     // 啟動計時器更新 UI
@@ -480,6 +555,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               : conversation.messages,
           images: imagesToProcess,
           sessionContext: conversation.sessionContext,
+          onProgress: _handleRecognizeProgress,
+          onTelemetry: _handleRecognizeTelemetry,
           recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
         ),
         // 強制 130 秒 timeout (比 API 的 120 秒稍長)
@@ -514,6 +591,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         if (dialogResult == null) {
           setState(() {
             _selectedImages = [];
+            _selectedImageMetrics = [];
             _recognizedConversation = null;
           });
           return;
@@ -566,6 +644,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           }
           setState(() {
             _selectedImages = [];
+            _selectedImageMetrics = [];
             _recognizedConversation = result.recognizedConversation;
           });
 
@@ -1413,10 +1492,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       setState(() {
                                         _selectedImages =
                                             List<Uint8List>.from(images);
+                                        _selectedImageMetrics = [];
                                         _recognizedConversation = null;
+                                        _lastRecognizeTelemetry = null;
                                         if (_selectedImages.isNotEmpty) {
                                           _errorMessage = null;
                                         }
+                                      });
+                                    },
+                                    onMetricsChanged: (metrics) {
+                                      setState(() {
+                                        _selectedImageMetrics =
+                                            List<SelectedImageMetrics>.from(
+                                          metrics,
+                                        );
                                       });
                                     },
                                   ),
@@ -1451,9 +1540,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                               )
                                             : const Icon(
                                                 Icons.add_photo_alternate),
-                                        label: Text(_isRecognizing
+                                        label: Text(_recognizeButtonLabel),
+                                        /*
                                             ? '識別中...'
                                             : '識別並加入對話 (${_selectedImages.length}張)'),
+                                        */
                                         style: ElevatedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
                                               vertical: 14),
@@ -1477,6 +1568,55 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         ),
                                         child: Column(
                                           children: [
+                                            Text(
+                                              '目前階段：${_recognizeStageLabel(_recognizeStage)} ($_recognizeElapsedSeconds 秒)',
+                                              style: AppTypography.bodySmall
+                                                  .copyWith(
+                                                color: Colors.orange,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '圖片：${_selectedImages.length} 張｜原始 ${_formatBytes(_totalOriginalImageBytes)} -> 壓縮 ${_formatBytes(_totalCompressedImageBytes)}',
+                                              style: AppTypography.caption
+                                                  .copyWith(
+                                                color: Colors.orange
+                                                    .withValues(alpha: 0.8),
+                                                fontFamily: 'monospace',
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                            if (_lastRecognizeTelemetry != null)
+                                              Text(
+                                                '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            if (_lastRecognizeTelemetry != null)
+                                              Text(
+                                                'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            Text(
+                                              '若超過 130 秒仍無結果，建議換更少訊息的截圖再試。',
+                                              style: AppTypography.caption
+                                                  .copyWith(
+                                                color: Colors.orange
+                                                    .withValues(alpha: 0.8),
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                            /*
                                             Text(
                                               '🔄 正在識別截圖... ($_recognizeElapsedSeconds 秒)',
                                               style: AppTypography.bodySmall
@@ -1507,6 +1647,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                             ),
                                             const SizedBox(height: 8),
                                             // 取消按鈕
+                                            */
+                                            /*
                                             TextButton(
                                               onPressed: _cancelRecognize,
                                               child: Text(
@@ -1517,10 +1659,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                                 ),
                                               ),
                                             ),
+                                            */
+                                            TextButton(
+                                              onPressed: _cancelRecognize,
+                                              child: const Text('取消'),
+                                            ),
                                           ],
                                         ),
                                       ),
                                     if (!_isRecognizing)
+                                      Text(
+                                        '先識別截圖並加入對話，再決定要不要開始分析。',
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: AppColors.warning,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    /*
                                       // 提示：有截圖時要先識別
                                       Text(
                                         '請先點擊上方按鈕識別截圖，再進行分析',
@@ -1529,6 +1684,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         ),
                                         textAlign: TextAlign.center,
                                       ),
+                                    */
                                     const SizedBox(height: 12),
                                   ] else ...[
                                     // 沒有截圖時才顯示「開始分析」按鈕
@@ -1555,6 +1711,49 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ],
 
                           // 截圖識別結果
+                          if (_lastRecognizeTelemetry != null &&
+                              !_isRecognizing) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.16),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '上次 OCR 量測',
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.onBackgroundPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
                           if (_recognizedConversation != null &&
                               _recognizedConversation!.messageCount > 0) ...[
                             _buildRecognizedConversationCard(),
