@@ -127,6 +127,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Single-image screenshot imports now target smaller JPEG payloads (`960px`, about `350KB`) before upload.
    - `recognizeOnly` image requests now ask Claude for fewer output tokens, which should modestly reduce OCR-only latency without touching the higher-budget full image-analysis path.
 
+27. `lib/features/conversation/presentation/screens/new_conversation_screen.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - Manual input now matches the live analysis logic: the last message can be from either side, and when the latest message is from the user the app clearly explains that normal analysis will anchor to the previous incoming reply.
+   - If the user has only typed outgoing messages so far, manual input now saves that thread as a draft conversation instead of implying analysis should already work.
+   - The analysis screen now returns a clearer boundary message when there is still no incoming message to analyze, with a better Essential-tier hint toward the existing `我說` continuation flow.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -220,6 +225,11 @@ After deploy, verify:
 16. Screenshot import latency:
    - measure a single-image OCR import on TestFlight after the new compression settings
    - verify recognition quality still holds on dense chat screenshots after lowering the upload size and OCR-only token budget
+
+17. Manual-input edge cases:
+   - create a conversation that ends with `我`
+   - create a conversation that only contains `我`
+   - verify the helper copy, draft-saving behavior, and post-save analysis guidance all feel consistent on TestFlight
 
 ## Notes for Claude Code
 
