@@ -143,6 +143,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The doc no longer claims that user-submitted analysis content is never transmitted anywhere; it now explicitly documents the local-first storage model plus the fact that user-triggered analysis / screenshot recognition requests pass through backend processing and AI providers.
    - The user-rights section was also softened to email-based requests instead of implying in-app data export / consent-management screens that are not yet fully shipped.
 
+30. `docs/legal/terms-of-service.md`
+   - Rewrote the terms of service so the legal offering matches the product that is actually live today.
+   - The doc now describes the current Free / Starter / Essential structure as monthly plans, keeps billing/refund language anchored to App Store / Play rules, and removes implied availability of annual plans, paid-plan free trials, and message-booster add-ons that are not fully launched yet.
+   - The acceptable-use and AI-content sections were also tightened to cover unsupported screenshots, harmful uploads, OCR limitations, and the fact that VibeSync is a decision-support tool rather than a guaranteed outcome service.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

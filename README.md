@@ -99,5 +99,6 @@ Private - All Rights Reserved
 - Manual input no longer claims the last message must be from her. Users can end on either side, and if they only have outgoing messages so far the app now treats that as a saved draft instead of a dead-end.
 - Local `supabase/config.toml` auth defaults are now stricter: 8-character passwords with letters+digits, email confirmations on, secure password change on, and redirect allow-lists include the mobile callback URI.
 - `docs/legal/privacy-policy.md` now matches the real product data flow more closely: local-first storage is preserved, but user-triggered analysis / screenshot recognition is explicitly documented as passing through backend processing and AI providers instead of claiming nothing is ever transmitted.
+- `docs/legal/terms-of-service.md` now reflects the actually shipped offering: current monthly Free / Starter / Essential plans, platform-managed billing, and quota-based usage limits without promising annual plans, paid free trials, or booster add-ons that are not live yet.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
