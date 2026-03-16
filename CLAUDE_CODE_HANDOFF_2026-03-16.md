@@ -2,7 +2,7 @@
 
 ## Current Status
 
-This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, and subscription-state consistency around RevenueCat + Supabase sync.
+This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, subscription-state consistency around RevenueCat + Supabase sync, and the remaining auth / webhook boundary issues that could still leak stale state or mis-handle malformed events.
 
 ### Fixed in this batch
 
@@ -101,6 +101,15 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `ImagePickerWidget` now returns copied image lists instead of leaking the same mutable list reference to the parent screen.
    - The legacy rate limiter helper now self-heals missing `subscriptions` / `rate_limits` rows, resets daily and monthly counters safely, clamps remaining counts to non-negative values, and routes usage increments through the canonical `increment_usage` RPC.
 
+24. `lib/app/routes.dart`, `lib/core/services/social_auth/social_auth_native.dart`, `lib/core/services/supabase_service.dart`, `lib/features/auth/presentation/screens/login_screen.dart`, `lib/features/subscription/data/providers/subscription_providers.dart`, `lib/features/subscription/presentation/screens/settings_screen.dart`, `supabase/functions/submit-feedback/index.ts`, `supabase/functions/revenuecat-webhook/index.ts`
+   - GoRouter now refreshes from the Supabase auth stream so sign-out / session changes no longer leave stale protected routes visible.
+   - Native Google OAuth now lets Supabase parse the callback URL directly via `getSessionFromUrl()`, avoiding the previous manual token parsing and the incorrect `access_token -> setSession()` fallback.
+   - Sign-out now also logs out RevenueCat, and login/logout invalidates the cached subscription provider so a previous user's tier does not bleed into the next session on the same device.
+   - Subscription bootstrap / force-sync / webhook-backup paths now tolerate duplicate `subscriptions.user_id` races instead of failing on `23505` when the row is created concurrently.
+   - Restore Purchases now syncs `free` back to Supabase as well, so stale paid tiers do not linger when RevenueCat reports no active entitlement.
+   - `submit-feedback` now rejects malformed bearer headers, invalid JSON, and non-object payloads before auth/database work begins.
+   - `revenuecat-webhook` now validates body shape and UUIDs, rejects unsupported product IDs instead of silently downgrading them to `free`, and records `status` / `expires_at` for tier-changing events.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -116,12 +125,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 
 ## Suggested Next Review Sweep
 
-1. Full API-boundary audit for edge functions:
-   - payload length
-   - enum validation
-   - auth / authorization consistency
-   - rate-limit / quota edge cases
-2. Performance pass on analysis payload construction and logging volume
+1. Continue with `analyze-chat` + client analysis flow:
+   - auth/token handling
+   - request size / timeout behavior
+   - logging volume / sensitive data review
+2. Add regression tests around auth/session switching and subscription self-heal races
 3. Complete the remaining TODO-backed product gaps (real booster IAP flow)
 
 ## Validation Checklist
@@ -177,12 +185,22 @@ After deploy, verify:
    - start OCR, then cancel before the request returns; no late dialog or stale error should reappear
    - cancel the import confirmation dialog; the screen should clear selected images and avoid a null-crash
 
+13. Auth / subscription boundary behavior:
+   - Google Sign-In should complete without `Refresh token cannot be empty` or stale-session issues
+   - sign out, then sign in as a different user on the same device; the paywall/settings tier should reflect the new account immediately
+   - session expiry / logout should redirect off protected routes without needing a manual restart
+
+14. Feedback + RevenueCat malformed-input handling:
+   - `submit-feedback` should return `400` for invalid JSON, array payloads, or malformed bearer headers
+   - `revenuecat-webhook` should return `400` for malformed `app_user_id` or unsupported `product_id` and must not silently downgrade the user to `free`
+
 ## Notes for Claude Code
 
 - When touching screenshot analysis again, preserve the current token-control approach:
   - `recognizeOnly` for OCR/import
   - Sonnet only when images are present
   - do not assume `my_message` uses Haiku; current Essential path selects Sonnet
+- `flutter analyze` passes after this auth/webhook pass. Targeted `flutter test` runs were attempted for `environment_test.dart` and `settings_screen_test.dart`, but both timed out in this desktop environment before producing useful output, so those two tests still need a clean rerun outside this session timeout.
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:
   - OCR/import success
   - post-import analysis trigger / reply-analysis anchor

@@ -16,15 +16,33 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-function getTierFromProductId(productId: string): string {
-  if (!productId) return "free";
-  if (productId.includes("essential")) return "essential";
-  if (productId.includes("starter")) return "starter";
-  return "free";
+function getTierFromProductId(productId: string): string | null {
+  const normalized = productId.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("essential")) return "essential";
+  if (normalized.includes("starter")) return "starter";
+  return null;
 }
 
 function stripBearer(value: string): string {
   return value.trim().replace(/^Bearer\s+/i, "");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value);
+}
+
+function normalizeExpirationAt(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return new Date(value).toISOString();
 }
 
 async function sha256Prefix(input: string): Promise<string> {
@@ -85,10 +103,20 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const body = await req.json();
-    const { event } = body ?? {};
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
 
-    if (!event) {
+    if (!isPlainObject(body)) {
+      return jsonResponse({ error: "Request body must be a JSON object" }, 400);
+    }
+
+    const { event } = body;
+
+    if (!isPlainObject(event)) {
       console.error(
         "No event in body",
         JSON.stringify({
@@ -99,27 +127,45 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "No event in body" }, 400);
     }
 
-    const {
-      type,
-      app_user_id,
-      product_id,
-      new_product_id,
-      expiration_at_ms,
-    } = event;
+    const type = typeof event.type === "string" ? event.type.trim() : "";
+    const app_user_id = typeof event.app_user_id === "string"
+      ? event.app_user_id.trim()
+      : "";
+    const product_id = typeof event.product_id === "string"
+      ? event.product_id.trim()
+      : "";
+    const new_product_id = typeof event.new_product_id === "string"
+      ? event.new_product_id.trim()
+      : "";
+    const expiration_at_ms = event.expiration_at_ms;
+
+    if (!type) {
+      return jsonResponse({ error: "Invalid event type" }, 400);
+    }
 
     const effectiveProductId =
       type === "PRODUCT_CHANGE" && typeof new_product_id === "string" &&
         new_product_id
         ? new_product_id
         : product_id;
+    const expiresAt = normalizeExpirationAt(expiration_at_ms);
 
     console.log(
       `Event type: ${type}, User: ${app_user_id}, product_id: ${product_id}, new_product_id: ${new_product_id}`,
     );
 
-    if (!app_user_id || app_user_id.startsWith("$RCAnonymousID")) {
+    if (!app_user_id) {
+      return jsonResponse({ error: "Missing app_user_id" }, 400);
+    }
+
+    if (app_user_id.startsWith("$RCAnonymousID")) {
       console.log("Skipping anonymous user event");
       return jsonResponse({ success: true, message: "Skipped anonymous user" });
+    }
+
+    if (!isValidUuid(app_user_id)) {
+      console.error(`Invalid app_user_id format: ${app_user_id}`);
+      return jsonResponse({ error: "Invalid app_user_id" }, 400);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -133,22 +179,42 @@ Deno.serve(async (req) => {
 
     let newTier = "free";
     let shouldUpdate = false;
+    let subscriptionUpdate: Record<string, unknown> | null = null;
 
     switch (type) {
       case "INITIAL_PURCHASE":
       case "RENEWAL":
       case "PRODUCT_CHANGE":
       case "UNCANCELLATION":
-      case "SUBSCRIPTION_EXTENDED":
-        newTier = getTierFromProductId(effectiveProductId);
+      case "SUBSCRIPTION_EXTENDED": {
+        const derivedTier = getTierFromProductId(effectiveProductId);
+        if (derivedTier == null) {
+          console.error(
+            `Unsupported product_id for ${type}: "${effectiveProductId}"`,
+          );
+          return jsonResponse({ error: "Unsupported product_id" }, 400);
+        }
+
+        newTier = derivedTier;
         shouldUpdate = true;
+        subscriptionUpdate = {
+          tier: newTier,
+          status: "active",
+          expires_at: expiresAt,
+        };
         console.log(`Upgrading user ${app_user_id} to ${newTier}`);
         break;
+      }
 
       case "EXPIRATION":
       case "BILLING_ISSUE":
         newTier = "free";
         shouldUpdate = true;
+        subscriptionUpdate = {
+          tier: newTier,
+          status: "expired",
+          expires_at: expiresAt,
+        };
         console.log(`Downgrading user ${app_user_id} to free`);
         break;
 
@@ -177,7 +243,7 @@ Deno.serve(async (req) => {
 
       const { data: updatedRows, error: updateError } = await supabase
         .from("subscriptions")
-        .update({ tier: newTier })
+        .update(subscriptionUpdate ?? { tier: newTier })
         .eq("user_id", app_user_id)
         .select("user_id")
         .limit(1);
@@ -192,7 +258,7 @@ Deno.serve(async (req) => {
           .from("subscriptions")
           .insert({
             user_id: app_user_id,
-            tier: newTier,
+            ...(subscriptionUpdate ?? { tier: newTier }),
             monthly_messages_used: 0,
             daily_messages_used: 0,
             daily_reset_at: nowIso,

@@ -116,7 +116,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       context: context,
                       icon: Icons.info,
                       title: '版本',
-                      trailing: _versionString.isNotEmpty ? _versionString : '載入中...',
+                      trailing:
+                          _versionString.isNotEmpty ? _versionString : '載入中...',
                     ),
                     _buildTile(
                       context: context,
@@ -128,7 +129,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       context: context,
                       icon: Icons.feedback,
                       title: '意見回饋',
-                      onTap: () => _launchUrl('https://t.me/vibesync_feedback_bot'),
+                      onTap: () =>
+                          _launchUrl('https://t.me/vibesync_feedback_bot'),
                     ),
                     _buildTile(
                       context: context,
@@ -279,7 +281,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            child:
+                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
@@ -291,6 +294,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (confirmed == true && context.mounted) {
       await SupabaseService.signOut();
+      ref.invalidate(subscriptionProvider);
       if (context.mounted) {
         context.go('/login');
       }
@@ -313,7 +317,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            child:
+                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
           ),
           TextButton(
             onPressed: () async {

@@ -72,41 +72,17 @@ class SocialAuthServiceImpl implements SocialAuthService {
       ),
     );
 
-    // Parse the callback URL to get the tokens
-    final uri = Uri.parse(result);
-
-    // Check for error
-    final error = uri.queryParameters['error'];
-    if (error != null) {
-      final errorDescription = uri.queryParameters['error_description'] ?? error;
-      throw AuthException(errorDescription);
+    final callbackUri = Uri.parse(result);
+    if (callbackUri.scheme != _callbackScheme) {
+      throw const AuthException('Google Sign In failed: Invalid callback URL');
     }
 
-    // The callback URL contains the access_token in the fragment
-    // Format: scheme://callback#access_token=xxx&refresh_token=yyy&...
-    final fragment = uri.fragment;
-    if (fragment.isEmpty) {
-      // Maybe tokens are in query params instead
-      final accessToken = uri.queryParameters['access_token'];
-      final refreshToken = uri.queryParameters['refresh_token'];
+    final sessionResponse =
+        await Supabase.instance.client.auth.getSessionFromUrl(
+      callbackUri,
+    );
 
-      if (accessToken != null) {
-        return await Supabase.instance.client.auth.setSession(refreshToken ?? accessToken);
-      }
-      throw const AuthException('Google Sign In failed: No tokens received');
-    }
-
-    // Parse fragment parameters
-    final params = Uri.splitQueryString(fragment);
-    final accessToken = params['access_token'];
-    final refreshToken = params['refresh_token'];
-
-    if (accessToken == null) {
-      throw const AuthException('Google Sign In failed: No access token');
-    }
-
-    // Set the session in Supabase
-    return await Supabase.instance.client.auth.setSession(refreshToken ?? accessToken);
+    return AuthResponse(session: sessionResponse.session);
   }
 
   /// Generate a random string for nonce

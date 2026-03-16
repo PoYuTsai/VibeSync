@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -46,6 +47,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (response.user != null) {
         // Ensure subscription exists for new users
         await SupabaseService.ensureSubscriptionExists(response.user!.id);
+        ref.invalidate(subscriptionProvider);
 
         if (mounted) {
           context.go('/');
@@ -78,6 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (response.user != null) {
         // Ensure subscription exists for new users
         await SupabaseService.ensureSubscriptionExists(response.user!.id);
+        ref.invalidate(subscriptionProvider);
 
         if (mounted) {
           context.go('/');
@@ -123,10 +126,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _isSignUp = false;
         });
       } else {
-        await SupabaseService.signInWithEmail(
+        final response = await SupabaseService.signInWithEmail(
           email: email,
           password: password,
         );
+        if (response.user != null) {
+          await SupabaseService.ensureSubscriptionExists(response.user!.id);
+        }
+        ref.invalidate(subscriptionProvider);
         if (mounted) {
           context.go('/');
         }
@@ -190,7 +197,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ],
 
                     Text(
-                      _isSignUp ? '建立帳號' : '使用 Email ${_isSignUp ? '註冊' : '登入'}',
+                      _isSignUp
+                          ? '建立帳號'
+                          : '使用 Email ${_isSignUp ? '註冊' : '登入'}',
                       style: AppTypography.titleLarge.copyWith(
                         color: AppColors.onBackgroundPrimary,
                       ),
@@ -253,7 +262,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
                     _buildLegalDisclaimer(),
-
                   ],
                 ),
               ),
@@ -274,7 +282,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTypography.bodyMedium.copyWith(color: AppColors.onBackgroundPrimary)),
+        Text(label,
+            style: AppTypography.bodyMedium
+                .copyWith(color: AppColors.onBackgroundPrimary)),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
@@ -287,13 +297,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             keyboardType: keyboardType,
             obscureText: obscureText,
             autocorrect: false,
-            style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
+            style: AppTypography.bodyMedium
+                .copyWith(color: AppColors.glassTextPrimary),
             decoration: InputDecoration(
               hintText: hintText,
               hintStyle: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextHint,
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               filled: true,
               fillColor: Colors.transparent,
               border: InputBorder.none,

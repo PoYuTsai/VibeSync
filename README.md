@@ -78,5 +78,13 @@ Private - All Rights Reserved
 - Screenshot recognition no longer crashes when the import confirmation dialog is cancelled, and stale OCR results are ignored after the user cancels the flow.
 - The screenshot picker now returns copied image lists instead of sharing the same mutable list instance with the parent screen.
 - The legacy `rate_limiter.ts` helper now self-heals missing `subscriptions` / `rate_limits` rows, clamps remaining counts to non-negative values, and reuses the canonical `increment_usage` RPC for quota updates.
+- Native Google Sign-In now restores the Supabase session via `getSessionFromUrl()` instead of manually shoving callback tokens into `setSession()`, which avoids bad callback parsing and missing-refresh-token edge cases.
+- App routing now refreshes from the Supabase auth stream, so logout / session changes redirect cleanly instead of leaving stale protected screens mounted.
+- Sign-out now also logs out RevenueCat, and login/logout invalidates the cached `subscriptionProvider`, which prevents the previous account's tier from leaking into the next session on the same device.
+- Subscription bootstrap / tier sync paths now tolerate duplicate-row races and retry safely instead of failing when `subscriptions.user_id` is created concurrently.
+- Restore Purchases now syncs `free` back to Supabase too, so expired or missing entitlements do not leave a stale paid tier behind locally.
+- `submit-feedback` now rejects malformed JSON, non-object payloads, and malformed bearer headers before touching the database.
+- `revenuecat-webhook` now validates event shape and `app_user_id`, rejects unknown product IDs instead of silently mapping them to `free`, and records `status` / `expires_at` when tier-changing events arrive.
+- Verification after this pass: `flutter analyze` passes, and `deno check` passes for `submit-feedback` and `revenuecat-webhook`.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

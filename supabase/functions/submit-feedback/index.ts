@@ -61,6 +61,14 @@ function truncateForPreview(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
+function stripBearer(value: string): string {
+  return value.trim().replace(/^Bearer\s+/i, "");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function sendTelegramNotification(feedback: {
   userEmail: string;
   userTier: string;
@@ -161,12 +169,12 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader || !/^Bearer\s+\S+/i.test(authHeader)) {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const token = authHeader.replace("Bearer ", "");
+    const token = stripBearer(authHeader);
     const {
       data: { user },
       error: authError,
@@ -176,9 +184,41 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
-    const body = await req.json();
-    const rating = body?.rating;
-    const category = body?.category;
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!isPlainObject(body)) {
+      return jsonResponse({ error: "Request body must be a JSON object" }, 400);
+    }
+
+    const rawRating = body.rating;
+    const rawCategory = body.category;
+    const rawAiResponse = body.aiResponse;
+
+    if (
+      typeof rawRating !== "string" ||
+      !["positive", "negative"].includes(rawRating)
+    ) {
+      return jsonResponse({ error: "Invalid rating" }, 400);
+    }
+
+    if (
+      rawCategory != null &&
+      (typeof rawCategory !== "string" || !VALID_CATEGORIES.has(rawCategory))
+    ) {
+      return jsonResponse({ error: "Invalid category" }, 400);
+    }
+
+    if (rawAiResponse != null && !isPlainObject(rawAiResponse)) {
+      return jsonResponse({ error: "Invalid aiResponse" }, 400);
+    }
+
+    const rating = rawRating;
+    const category = typeof rawCategory === "string" ? rawCategory : undefined;
     const comment = normalizeOptionalString(body?.comment, COMMENT_MAX_LENGTH);
     const conversationSnippet = normalizeOptionalString(
       body?.conversationSnippet,
@@ -192,25 +232,7 @@ serve(async (req) => {
       body?.modelUsed,
       MODEL_MAX_LENGTH,
     );
-    const aiResponse = body?.aiResponse;
-
-    if (!rating || !["positive", "negative"].includes(rating)) {
-      return jsonResponse({ error: "Invalid rating" }, 400);
-    }
-
-    if (
-      category != null &&
-      (typeof category !== "string" || !VALID_CATEGORIES.has(category))
-    ) {
-      return jsonResponse({ error: "Invalid category" }, 400);
-    }
-
-    if (
-      aiResponse != null &&
-      (typeof aiResponse !== "object" || Array.isArray(aiResponse))
-    ) {
-      return jsonResponse({ error: "Invalid aiResponse" }, 400);
-    }
+    const aiResponse = isPlainObject(rawAiResponse) ? rawAiResponse : undefined;
 
     if (
       aiResponse != null &&

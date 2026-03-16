@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'revenuecat_service.dart';
 import 'social_auth/social_auth_service.dart';
 
 class SupabaseService {
@@ -30,18 +31,21 @@ class SupabaseService {
 
   static SupabaseClient get client {
     if (!_initialized) {
-      throw StateError('SupabaseService not initialized. Call initialize() first.');
+      throw StateError(
+          'SupabaseService not initialized. Call initialize() first.');
     }
     return _client;
   }
 
-  static User? get currentUser => _initialized ? _client.auth.currentUser : null;
+  static User? get currentUser =>
+      _initialized ? _client.auth.currentUser : null;
 
   static bool get isAuthenticated => currentUser != null;
 
   static Stream<AuthState> get authStateChanges {
     if (!_initialized) {
-      throw StateError('SupabaseService not initialized. Call initialize() first.');
+      throw StateError(
+          'SupabaseService not initialized. Call initialize() first.');
     }
     return _client.auth.onAuthStateChange;
   }
@@ -70,7 +74,30 @@ class SupabaseService {
 
   /// Sign out
   static Future<void> signOut() async {
-    await client.auth.signOut();
+    Object? signOutError;
+
+    try {
+      await client.auth.signOut();
+    } catch (error) {
+      signOutError = error;
+    }
+
+    try {
+      await RevenueCatService.logout();
+    } catch (error) {
+      debugPrint('RevenueCat logout cleanup error: $error');
+      signOutError ??= error;
+    }
+
+    if (signOutError == null) {
+      return;
+    }
+
+    if (signOutError is Exception) {
+      throw signOutError;
+    }
+
+    throw Exception(signOutError.toString());
   }
 
   // 社群登入服務實例 (平台相容)
@@ -100,8 +127,13 @@ class SupabaseService {
         .eq('user_id', userId)
         .maybeSingle();
 
-    if (existing == null) {
-      final nowIso = DateTime.now().toIso8601String();
+    if (existing != null) {
+      return;
+    }
+
+    final nowIso = DateTime.now().toIso8601String();
+
+    try {
       await client.from('subscriptions').insert({
         'user_id': userId,
         'tier': 'free',
@@ -111,13 +143,20 @@ class SupabaseService {
         'monthly_reset_at': nowIso,
         'started_at': nowIso,
       });
+    } on PostgrestException catch (error) {
+      if (error.code != '23505') {
+        rethrow;
+      }
+
+      debugPrint(
+        'Subscription bootstrap raced with an existing row for user $userId; continuing.',
+      );
     }
   }
 
   /// Get current session token
-  static String? get accessToken => currentUser != null
-      ? client.auth.currentSession?.accessToken
-      : null;
+  static String? get accessToken =>
+      currentUser != null ? client.auth.currentSession?.accessToken : null;
 
   /// Invoke Edge Function with timeout
   static Future<FunctionResponse> invokeFunction(

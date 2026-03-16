@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -117,6 +118,51 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     };
   }
 
+  bool _isDuplicateSubscriptionError(Object error) {
+    return error is PostgrestException && error.code == '23505';
+  }
+
+  Future<Map<String, dynamic>> _loadOrCreateSubscriptionRecord({
+    required String userId,
+    required String tier,
+  }) async {
+    final existing = await SupabaseService.client
+        .from('subscriptions')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (existing != null) {
+      return Map<String, dynamic>.from(existing);
+    }
+
+    try {
+      final inserted = await SupabaseService.client
+          .from('subscriptions')
+          .insert(_buildFreshSubscriptionRecord(userId: userId, tier: tier))
+          .select()
+          .single();
+
+      return Map<String, dynamic>.from(inserted);
+    } on PostgrestException catch (error) {
+      if (!_isDuplicateSubscriptionError(error)) {
+        rethrow;
+      }
+
+      final recovered = await SupabaseService.client
+          .from('subscriptions')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (recovered != null) {
+        return Map<String, dynamic>.from(recovered);
+      }
+
+      rethrow;
+    }
+  }
+
   Future<void> _initialize() async {
     await _loadSubscription();
     await _loadOfferings();
@@ -136,26 +182,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       // 關聯 RevenueCat 用戶
       await RevenueCatService.login(user.id);
 
-      Map<String, dynamic>? response = await SupabaseService.client
-          .from('subscriptions')
-          .select()
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      if (response == null) {
-        final freshRecord = _buildFreshSubscriptionRecord(
-          userId: user.id,
-          tier: 'free',
-        );
-
-        final inserted = await SupabaseService.client
-            .from('subscriptions')
-            .insert(freshRecord)
-            .select()
-            .single();
-
-        response = Map<String, dynamic>.from(inserted);
-      }
+      final response = await _loadOrCreateSubscriptionRecord(
+        userId: user.id,
+        tier: 'free',
+      );
 
       final tier = response['tier'] as String? ?? 'free';
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
@@ -298,9 +328,23 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       if (existing == null) {
         // 沒有記錄，插入新的
         debugPrint('[forceSyncTier] No existing record, inserting new one');
-        await SupabaseService.client
-            .from('subscriptions')
-            .insert(_buildFreshSubscriptionRecord(userId: user.id, tier: tier));
+        try {
+          await SupabaseService.client.from('subscriptions').insert(
+                _buildFreshSubscriptionRecord(userId: user.id, tier: tier),
+              );
+        } on PostgrestException catch (error) {
+          if (!_isDuplicateSubscriptionError(error)) {
+            rethrow;
+          }
+
+          debugPrint(
+            '[forceSyncTier] Insert raced with an existing row, retrying as update',
+          );
+          await SupabaseService.client.from('subscriptions').update({
+            'tier': tier,
+            'daily_messages_used': 0,
+          }).eq('user_id', user.id);
+        }
       } else {
         // 有記錄，更新
         debugPrint('[forceSyncTier] Updating existing record');
@@ -354,10 +398,33 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         debugPrint(
             '[_updateSupabaseTier] WARNING: No rows updated - subscription record might not exist');
         // 嘗試 upsert
-        await SupabaseService.client.from('subscriptions').upsert({
-          ..._buildFreshSubscriptionRecord(userId: user.id, tier: tier),
-        });
-        debugPrint('[_updateSupabaseTier] Upserted subscription record');
+        try {
+          await SupabaseService.client.from('subscriptions').insert(
+                _buildFreshSubscriptionRecord(userId: user.id, tier: tier),
+              );
+          debugPrint(
+            '[_updateSupabaseTier] Inserted missing subscription record',
+          );
+        } on PostgrestException catch (error) {
+          if (!_isDuplicateSubscriptionError(error)) {
+            rethrow;
+          }
+
+          debugPrint(
+            '[_updateSupabaseTier] Insert raced with an existing row, retrying update',
+          );
+          final retryResult = await SupabaseService.client
+              .from('subscriptions')
+              .update({'tier': tier})
+              .eq('user_id', user.id)
+              .select();
+
+          if (retryResult.isEmpty) {
+            throw StateError(
+              'Subscription tier update could not find a row after duplicate insert race.',
+            );
+          }
+        }
       }
 
       debugPrint(
@@ -380,9 +447,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final limits = _tierLimits[tier] ?? _tierLimits['free']!;
 
       // 主動更新 Supabase
-      if (tier != 'free') {
-        await _updateSupabaseTier(tier);
-      }
+      await _updateSupabaseTier(tier);
 
       state = state.copyWith(
         tier: tier,
