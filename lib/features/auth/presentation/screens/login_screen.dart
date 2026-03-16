@@ -1,16 +1,18 @@
-// lib/features/auth/presentation/screens/login_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../../subscription/data/providers/subscription_providers.dart';
+
+import '../../../../core/services/supabase_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/services/supabase_service.dart';
 import '../../../../core/utils/platform_info.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -20,47 +22,216 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  static final RegExp _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+
+  StreamSubscription<AuthState>? _authSubscription;
+
   bool _isLoading = false;
   bool _isSignUp = false;
-  String? _error;
+  String? _errorMessage;
+  String? _noticeMessage;
+  String? _pendingVerificationEmail;
+
+  bool get _isIOS => isIOSPlatform;
+  bool get _hasPendingVerification =>
+      (_pendingVerificationEmail ?? '').trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = SupabaseService.authStateChanges.listen((_) {
+      if (!mounted) return;
+      ref.invalidate(subscriptionProvider);
+    });
+  }
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  bool get _isIOS => isIOSPlatform;
+  bool _isValidEmail(String value) {
+    return _emailRegex.hasMatch(value.trim());
+  }
+
+  bool _isStrongSignupPassword(String value) {
+    return value.length >= 8 &&
+        RegExp(r'[A-Za-z]').hasMatch(value) &&
+        RegExp(r'\d').hasMatch(value);
+  }
+
+  bool _isCancellationError(Object error) {
+    final normalized = error.toString().toLowerCase();
+    return normalized.contains('cancel') ||
+        normalized.contains('canceled') ||
+        normalized.contains('cancelled');
+  }
+
+  void _setError(String message) {
+    setState(() {
+      _errorMessage = message;
+      _noticeMessage = null;
+    });
+  }
+
+  void _setNotice(String message) {
+    setState(() {
+      _noticeMessage = message;
+      _errorMessage = null;
+    });
+  }
+
+  String? _validateForm({
+    required String email,
+    required String password,
+    required bool isSignUp,
+  }) {
+    if (email.isEmpty || password.isEmpty) {
+      return 'Email and password are required.';
+    }
+
+    if (!_isValidEmail(email)) {
+      return 'Please enter a valid email address.';
+    }
+
+    if (isSignUp && !_isStrongSignupPassword(password)) {
+      return 'Use at least 8 characters with both letters and numbers.';
+    }
+
+    return null;
+  }
+
+  String _mapAuthError(
+    AuthException error, {
+    required bool isSignUp,
+    String? providerLabel,
+  }) {
+    final message = error.message.toLowerCase();
+    final email = _emailController.text.trim();
+
+    if (message.contains('invalid login credentials')) {
+      return 'Invalid email or password.';
+    }
+
+    if (message.contains('email not confirmed') ||
+        message.contains('email_not_confirmed')) {
+      if (_isValidEmail(email)) {
+        _pendingVerificationEmail = email;
+      }
+      return 'Please verify your email before signing in.';
+    }
+
+    if (message.contains('user already registered')) {
+      if (_isValidEmail(email)) {
+        _pendingVerificationEmail = email;
+      }
+      return isSignUp
+          ? 'This email is already registered. Try signing in or resend verification email.'
+          : 'This email is already registered.';
+    }
+
+    if (message.contains('weak password')) {
+      return 'Password must be at least 8 characters and include letters and numbers.';
+    }
+
+    if (message.contains('rate limit') || error.statusCode == '429') {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
+
+    if (message.contains('invalid callback url')) {
+      return 'Sign-in callback failed. Please try again.';
+    }
+
+    if (providerLabel != null) {
+      return '$providerLabel sign-in failed. Please try again.';
+    }
+
+    return isSignUp
+        ? 'Could not create your account. Please try again.'
+        : 'Sign-in failed. Please try again.';
+  }
+
+  Future<void> _handleSuccessfulLogin(User user) async {
+    await SupabaseService.ensureSubscriptionExists(user.id);
+    if (!mounted) return;
+
+    setState(() {
+      _pendingVerificationEmail = null;
+    });
+    ref.invalidate(subscriptionProvider);
+    context.go('/');
+  }
+
+  Future<void> _resendVerificationEmail() async {
+    final email = (_pendingVerificationEmail ?? _emailController.text).trim();
+
+    if (!_isValidEmail(email)) {
+      _setError('Enter a valid email before resending verification.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _noticeMessage = null;
+    });
+
+    try {
+      await SupabaseService.resendSignUpConfirmation(email: email);
+      if (!mounted) return;
+      setState(() {
+        _pendingVerificationEmail = email;
+      });
+      _setNotice('Verification email sent again. Please check your inbox.');
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _setError(_mapAuthError(e, isSignUp: true));
+    } catch (_) {
+      if (!mounted) return;
+      _setError('Could not resend verification email. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   Future<void> _signInWithGoogle() async {
     setState(() {
       _isLoading = true;
-      _error = null;
+      _errorMessage = null;
+      _noticeMessage = null;
     });
 
     try {
       final response = await SupabaseService.signInWithGoogle();
-
       if (response.user != null) {
-        // Ensure subscription exists for new users
-        await SupabaseService.ensureSubscriptionExists(response.user!.id);
-        ref.invalidate(subscriptionProvider);
-
-        if (mounted) {
-          context.go('/');
-        }
+        await _handleSuccessfulLogin(response.user!);
       }
     } on AuthException catch (e) {
-      if (e.message.contains('cancel')) {
-        // User cancelled, don't show error
+      if (_isCancellationError(e)) {
         return;
       }
-      setState(() => _error = 'Google 登入失敗：${e.message}');
+      if (!mounted) return;
+      _setError(
+        _mapAuthError(
+          e,
+          isSignUp: false,
+          providerLabel: 'Google',
+        ),
+      );
     } catch (e) {
-      setState(() => _error = 'Google 登入失敗，請稍後再試');
+      if (_isCancellationError(e)) {
+        return;
+      }
+      if (!mounted) return;
+      _setError('Google sign-in failed. Please try again.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -71,29 +242,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _signInWithApple() async {
     setState(() {
       _isLoading = true;
-      _error = null;
+      _errorMessage = null;
+      _noticeMessage = null;
     });
 
     try {
       final response = await SupabaseService.signInWithApple();
-
       if (response.user != null) {
-        // Ensure subscription exists for new users
-        await SupabaseService.ensureSubscriptionExists(response.user!.id);
-        ref.invalidate(subscriptionProvider);
-
-        if (mounted) {
-          context.go('/');
-        }
+        await _handleSuccessfulLogin(response.user!);
       }
     } on AuthException catch (e) {
-      if (e.message.contains('canceled') || e.message.contains('cancelled')) {
-        // User cancelled, don't show error
+      if (_isCancellationError(e)) {
         return;
       }
-      setState(() => _error = 'Apple 登入失敗：${e.message}');
+      if (!mounted) return;
+      _setError(
+        _mapAuthError(
+          e,
+          isSignUp: false,
+          providerLabel: 'Apple',
+        ),
+      );
     } catch (e) {
-      setState(() => _error = '登入失敗，請稍後再試');
+      if (_isCancellationError(e)) {
+        return;
+      }
+      if (!mounted) return;
+      _setError('Apple sign-in failed. Please try again.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -104,42 +279,62 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
+    final validationError = _validateForm(
+      email: email,
+      password: password,
+      isSignUp: _isSignUp,
+    );
 
-    if (email.isEmpty || password.isEmpty) {
-      setState(() => _error = '請填寫 Email 和密碼');
+    if (validationError != null) {
+      _setError(validationError);
       return;
     }
 
     setState(() {
       _isLoading = true;
-      _error = null;
+      _errorMessage = null;
+      _noticeMessage = null;
     });
 
     try {
       if (_isSignUp) {
-        await SupabaseService.signUpWithEmail(
+        final response = await SupabaseService.signUpWithEmail(
           email: email,
           password: password,
         );
+
+        if (response.user != null && response.session != null) {
+          await _handleSuccessfulLogin(response.user!);
+          return;
+        }
+
+        if (!mounted) return;
         setState(() {
-          _error = '註冊成功！請查收驗證郵件後登入';
+          _pendingVerificationEmail = email;
           _isSignUp = false;
         });
-      } else {
-        final response = await SupabaseService.signInWithEmail(
-          email: email,
-          password: password,
-        );
-        if (response.user != null) {
-          await SupabaseService.ensureSubscriptionExists(response.user!.id);
-        }
-        ref.invalidate(subscriptionProvider);
-        if (mounted) {
-          context.go('/');
-        }
+        _setNotice('Verification email sent. Please check your inbox.');
+        return;
       }
-    } catch (e) {
-      setState(() => _error = e.toString());
+
+      final response = await SupabaseService.signInWithEmail(
+        email: email,
+        password: password,
+      );
+
+      if (response.user != null) {
+        await _handleSuccessfulLogin(response.user!);
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      _setError(_mapAuthError(e, isSignUp: _isSignUp));
+    } catch (_) {
+      if (!mounted) return;
+      _setError(
+        _isSignUp
+            ? 'Could not create your account. Please try again.'
+            : 'Sign-in failed. Please try again.',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -178,15 +373,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '提升你的社交對話技巧',
+                      'Sharpen every conversation with more confidence.',
                       style: AppTypography.bodyLarge.copyWith(
                         color: AppColors.onBackgroundSecondary,
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
-
-                    // Third-party Sign In Buttons (iOS only, login mode)
                     if (_isIOS && !_isSignUp) ...[
                       _buildGoogleSignInButton(),
                       const SizedBox(height: 12),
@@ -195,66 +388,85 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       _buildDivider(),
                       const SizedBox(height: 24),
                     ],
-
                     Text(
-                      _isSignUp
-                          ? '建立帳號'
-                          : '使用 Email ${_isSignUp ? '註冊' : '登入'}',
+                      _isSignUp ? 'Create account' : 'Sign in with email',
                       style: AppTypography.titleLarge.copyWith(
                         color: AppColors.onBackgroundPrimary,
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Email 輸入框
                     _buildLabeledTextField(
                       label: 'Email',
                       controller: _emailController,
-                      hintText: 'your@email.com',
+                      hintText: 'you@example.com',
                       keyboardType: TextInputType.emailAddress,
                     ),
                     const SizedBox(height: 16),
-
-                    // 密碼輸入框
                     _buildLabeledTextField(
-                      label: '密碼',
+                      label: 'Password',
                       controller: _passwordController,
-                      hintText: '至少 6 個字元',
+                      hintText: _isSignUp
+                          ? 'At least 8 characters with letters and numbers'
+                          : 'Enter your password',
                       obscureText: true,
                     ),
-                    const SizedBox(height: 24),
-
-                    if (_error != null) ...[
-                      GlassmorphicContainer(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          _error!,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: _error!.contains('成功')
-                                ? AppColors.success
-                                : AppColors.error,
-                          ),
+                    if (_isSignUp) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'We support email verification links, so use an inbox you can access on this device.',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.onBackgroundSecondary,
                         ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    if (_errorMessage != null) ...[
+                      _buildMessageCard(
+                        message: _errorMessage!,
+                        color: AppColors.error,
                       ),
                       const SizedBox(height: 16),
                     ],
-
+                    if (_noticeMessage != null) ...[
+                      _buildMessageCard(
+                        message: _noticeMessage!,
+                        color: AppColors.success,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (_hasPendingVerification && !_isSignUp) ...[
+                      TextButton(
+                        onPressed: _isLoading ? null : _resendVerificationEmail,
+                        child: const Text('Resend verification email'),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     GradientButton(
-                      text: _isSignUp ? '註冊' : '登入',
+                      text: _isSignUp ? 'Create account' : 'Sign in',
                       onPressed: _isLoading ? null : _submit,
                       isLoading: _isLoading,
                     ),
-                    const SizedBox(height: 16),
-
+                    const SizedBox(height: 12),
+                    if (!_isSignUp)
+                      TextButton(
+                        onPressed: _isLoading ? null : _resendVerificationEmail,
+                        child: const Text('Need a new verification email?'),
+                      ),
                     TextButton(
                       onPressed: () {
                         setState(() {
                           _isSignUp = !_isSignUp;
-                          _error = null;
+                          _errorMessage = null;
+                          _noticeMessage = null;
+                          if (_isSignUp) {
+                            _pendingVerificationEmail = null;
+                          }
                         });
                       },
                       child: Text(
-                        _isSignUp ? '已有帳號？登入' : '沒有帳號？註冊',
+                        _isSignUp
+                            ? 'Already have an account? Sign in'
+                            : 'Need an account? Create one',
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.onBackgroundSecondary,
                         ),
@@ -272,6 +484,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  Widget _buildMessageCard({
+    required String message,
+    required Color color,
+  }) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(12),
+      child: Text(
+        message,
+        style: AppTypography.bodyMedium.copyWith(color: color),
+      ),
+    );
+  }
+
   Widget _buildLabeledTextField({
     required String label,
     required TextEditingController controller,
@@ -282,9 +507,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: AppTypography.bodyMedium
-                .copyWith(color: AppColors.onBackgroundPrimary)),
+        Text(
+          label,
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.onBackgroundPrimary,
+          ),
+        ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
@@ -297,15 +525,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             keyboardType: keyboardType,
             obscureText: obscureText,
             autocorrect: false,
-            style: AppTypography.bodyMedium
-                .copyWith(color: AppColors.glassTextPrimary),
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
             decoration: InputDecoration(
               hintText: hintText,
               hintStyle: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextHint,
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
               filled: true,
               fillColor: Colors.transparent,
               border: InputBorder.none,
@@ -339,7 +570,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             const Icon(Icons.apple, size: 24),
             const SizedBox(width: 12),
             Text(
-              '使用 Apple 登入',
+              'Continue with Apple',
               style: AppTypography.bodyLarge.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
@@ -369,7 +600,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Official Google logo (multicolored)
             SvgPicture.asset(
               'assets/images/google_logo.svg',
               width: 20,
@@ -377,7 +607,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-              '使用 Google 登入',
+              'Continue with Google',
               style: AppTypography.bodyLarge.copyWith(
                 color: Colors.black87,
                 fontWeight: FontWeight.w600,
@@ -401,7 +631,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            '或',
+            'or',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),
@@ -426,14 +656,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             color: AppColors.onBackgroundSecondary,
           ),
           children: [
-            const TextSpan(text: '繼續即表示您同意 '),
+            const TextSpan(text: 'By continuing, you agree to the '),
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
               child: GestureDetector(
                 onTap: () => _launchUrl('https://vibesyncai.app/terms'),
                 child: Text(
-                  '使用條款',
+                  'Terms of Service',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     decoration: TextDecoration.underline,
@@ -441,14 +671,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
             ),
-            const TextSpan(text: ' 並確認已閱讀 '),
+            const TextSpan(text: ' and '),
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
               child: GestureDetector(
                 onTap: () => _launchUrl('https://vibesyncai.app/privacy'),
                 child: Text(
-                  '隱私權政策',
+                  'Privacy Policy',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     decoration: TextDecoration.underline,
@@ -456,6 +686,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
             ),
+            const TextSpan(text: '.'),
           ],
         ),
         textAlign: TextAlign.center,

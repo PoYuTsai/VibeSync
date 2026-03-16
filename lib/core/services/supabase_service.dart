@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/environment.dart';
 import 'revenuecat_service.dart';
 import 'social_auth/social_auth_service.dart';
 
@@ -21,7 +22,7 @@ class SupabaseService {
       url: url,
       anonKey: anonKey,
       authOptions: const FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.implicit,
+        authFlowType: AuthFlowType.pkce,
       ),
       debug: kDebugMode,
     );
@@ -69,6 +70,17 @@ class SupabaseService {
     return await client.auth.signUp(
       email: email,
       password: password,
+      emailRedirectTo: AppConfig.authRedirectUri,
+    );
+  }
+
+  static Future<void> resendSignUpConfirmation({
+    required String email,
+  }) async {
+    await client.auth.resend(
+      email: email,
+      type: OtpType.signup,
+      emailRedirectTo: AppConfig.authRedirectUri,
     );
   }
 

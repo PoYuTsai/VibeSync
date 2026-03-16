@@ -86,5 +86,9 @@ Private - All Rights Reserved
 - `submit-feedback` now rejects malformed JSON, non-object payloads, and malformed bearer headers before touching the database.
 - `revenuecat-webhook` now validates event shape and `app_user_id`, rejects unknown product IDs instead of silently mapping them to `free`, and records `status` / `expires_at` when tier-changing events arrive.
 - Verification after this pass: `flutter analyze` passes, and `deno check` passes for `submit-feedback` and `revenuecat-webhook`.
+- Supabase auth now initializes with PKCE instead of the legacy implicit flow, which hardens email-link and OAuth callback handling.
+- Native Google Sign-In still uses the iOS web-auth session UX, but the OAuth URL now comes from Supabase SDK PKCE generation instead of a hand-built `/authorize` link.
+- Email sign-up now uses an auth redirect URI, surfaces friendlier auth errors, enforces stronger client-side password rules for new accounts, and supports resending verification emails from the login screen.
+- Local `supabase/config.toml` auth defaults are now stricter: 8-character passwords with letters+digits, email confirmations on, secure password change on, and redirect allow-lists include the mobile callback URI.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

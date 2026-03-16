@@ -1,5 +1,7 @@
 // lib/core/config/environment.dart
 
+import 'package:flutter/foundation.dart';
+
 /// 應用程式執行環境
 enum Environment { dev, staging, prod }
 
@@ -69,7 +71,8 @@ class AppConfig {
       case Environment.prod:
         return const String.fromEnvironment(
           'SUPABASE_PROD_ANON_KEY',
-          defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg',
+          defaultValue:
+              'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg',
         );
     }
   }
@@ -81,6 +84,23 @@ class AppConfig {
       'REVENUECAT_API_KEY',
       defaultValue: 'appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY',
     );
+  }
+
+  static const String _nativeAuthRedirectUri =
+      'com.poyutsai.vibesync://login-callback';
+
+  static String get authRedirectUri {
+    if (kIsWeb) {
+      return Uri.base
+          .replace(
+            path: '/login',
+            queryParameters: null,
+            fragment: null,
+          )
+          .toString();
+    }
+
+    return _nativeAuthRedirectUri;
   }
 
   /// 顯示環境名稱

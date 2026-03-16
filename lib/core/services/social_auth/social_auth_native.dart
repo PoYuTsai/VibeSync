@@ -16,6 +16,7 @@ import 'social_auth_interface.dart';
 class SocialAuthServiceImpl implements SocialAuthService {
   // Callback scheme for OAuth
   static const String _callbackScheme = 'com.poyutsai.vibesync';
+  static const String _callbackHost = 'login-callback';
 
   @override
   bool get isAvailable => true;
@@ -50,22 +51,15 @@ class SocialAuthServiceImpl implements SocialAuthService {
 
   @override
   Future<AuthResponse> signInWithGoogle() async {
-    // Get the Supabase URL from config
-    final supabaseUrl = AppConfig.supabaseUrl;
-    final redirectUri = '$_callbackScheme://login-callback';
-
-    // Construct the OAuth URL for Google via Supabase
-    final authUrl = Uri.parse('$supabaseUrl/auth/v1/authorize').replace(
-      queryParameters: {
-        'provider': 'google',
-        'redirect_to': redirectUri,
-      },
+    final authUrl = await Supabase.instance.client.auth.getOAuthSignInUrl(
+      provider: OAuthProvider.google,
+      redirectTo: AppConfig.authRedirectUri,
     );
 
     // Use flutter_web_auth_2 for ASWebAuthenticationSession on iOS
     // This provides the smooth native OAuth experience like Claude app
     final result = await FlutterWebAuth2.authenticate(
-      url: authUrl.toString(),
+      url: authUrl.url,
       callbackUrlScheme: _callbackScheme,
       options: const FlutterWebAuth2Options(
         preferEphemeral: false, // Use shared Safari cookies
@@ -73,7 +67,8 @@ class SocialAuthServiceImpl implements SocialAuthService {
     );
 
     final callbackUri = Uri.parse(result);
-    if (callbackUri.scheme != _callbackScheme) {
+    if (callbackUri.scheme != _callbackScheme ||
+        callbackUri.host != _callbackHost) {
       throw const AuthException('Google Sign In failed: Invalid callback URL');
     }
 
