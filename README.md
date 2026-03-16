@@ -107,5 +107,7 @@ Private - All Rights Reserved
 - The latest completed analysis is now persisted with each conversation locally, so reopening a thread restores the previous score, strategy, replies, and recommendation instead of showing a blank analysis screen until the user reruns it.
 - `docs/app-store-strategy.md` was rewritten into a clean, current review guide that no longer claims "all data stays on device only" and now matches the shipped local-first + user-triggered AI processing flow.
 - `docs/website-landing-page-handoff.md` now captures the exact homepage privacy copy and footer CTA rules for the partner-managed marketing site, including the instruction to stop using a fake `href=\"#\"` App Store button before the public listing exists.
+- Account deletion is now a real end-to-end flow instead of a local-only reset: settings now requires an explicit `DELETE` confirmation, calls a new `delete-account` Edge Function, removes server-side account data, and then clears the local session/device state.
+- RevenueCat webhook handling now acknowledges events for already-deleted users as ignored instead of failing when a subscription event arrives after the account is gone.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

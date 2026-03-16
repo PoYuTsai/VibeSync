@@ -152,6 +152,27 @@ class SupabaseService {
     );
   }
 
+  static Future<void> deleteAccount({
+    required String confirmation,
+  }) async {
+    final response = await invokeFunction(
+      'delete-account',
+      body: {'confirmation': confirmation},
+      timeout: const Duration(seconds: 60),
+    );
+
+    if (response.status >= 200 && response.status < 300) {
+      return;
+    }
+
+    final data = response.data;
+    if (data is Map && data['error'] is String) {
+      throw Exception(data['error'] as String);
+    }
+
+    throw Exception('Delete account failed');
+  }
+
   static void clearPasswordRecoveryState() {
     _passwordRecoveryInProgress = false;
   }
@@ -184,6 +205,22 @@ class SupabaseService {
     }
 
     throw Exception(signOutError.toString());
+  }
+
+  static Future<void> clearLocalSessionAfterDeletion() async {
+    try {
+      await client.auth.signOut();
+    } catch (error) {
+      debugPrint('Auth sign-out cleanup after deletion: $error');
+    }
+
+    try {
+      await RevenueCatService.logout();
+    } catch (error) {
+      debugPrint('RevenueCat logout cleanup after deletion: $error');
+    }
+
+    _passwordRecoveryInProgress = false;
   }
 
   // 社群登入服務實例 (平台相容)

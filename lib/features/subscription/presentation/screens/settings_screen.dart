@@ -99,7 +99,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       icon: Icons.delete_forever,
                       title: '清除所有對話資料',
                       titleColor: AppColors.error,
-                      onTap: () => _showDeleteDialog(context),
+                      onTap: () => _confirmDeleteAccount(context, ref),
                     ),
                     _buildTile(
                       context: context,
@@ -301,6 +301,120 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _confirmDeleteAccount(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final controller = TextEditingController();
+    final confirmation = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.glassWhite,
+          title: Text(
+            '刪除帳號',
+            style: TextStyle(color: AppColors.glassTextPrimary),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '這會永久刪除你的帳號與雲端資料。若你仍有 App Store 訂閱，仍需到 Apple 的訂閱管理頁另外取消續訂。',
+                style: TextStyle(
+                  color: AppColors.glassTextPrimary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '請輸入 DELETE 以確認',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                onChanged: (_) => setDialogState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'DELETE',
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.45),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                '取消',
+                style: TextStyle(color: AppColors.unselectedText),
+              ),
+            ),
+            TextButton(
+              onPressed: controller.text.trim().toUpperCase() == 'DELETE'
+                  ? () => Navigator.pop(dialogContext, controller.text.trim())
+                  : null,
+              child: Text(
+                '永久刪除',
+                style: TextStyle(color: AppColors.error),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+
+    if (confirmation == null || !context.mounted) {
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await SupabaseService.deleteAccount(confirmation: confirmation);
+      await StorageService.clearAll();
+      await SupabaseService.clearLocalSessionAfterDeletion();
+      ref.invalidate(subscriptionProvider);
+
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        context.go('/login');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('帳號已刪除'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('刪除帳號失敗: $error'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  // ignore: unused_element
   void _showDeleteDialog(BuildContext context) {
     showDialog(
       context: context,

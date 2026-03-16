@@ -173,6 +173,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - A new partner handoff doc now captures the exact homepage privacy copy, legal-link requirements, and footer download-button rule for the marketing site.
    - Because the public App Store listing is not live yet, the handoff explicitly tells the partner to stop using a fake `href="#"` download CTA and switch either to a real store URL or a non-clickable "coming soon / TestFlight" state.
 
+36. `lib/core/services/supabase_service.dart`, `lib/features/subscription/presentation/screens/settings_screen.dart`, `supabase/functions/delete-account/index.ts`, `supabase/functions/revenuecat-webhook/index.ts`
+   - The settings-screen account-deletion action is no longer a misleading local-only wipe; it now runs a real end-to-end delete flow.
+   - The client requires an explicit `DELETE` confirmation, calls the new `delete-account` Edge Function, clears local storage, and cleans up the local auth / RevenueCat session after the server-side account is removed.
+   - The new Edge Function deletes dependent records that do not cascade cleanly (`revenue_events`, `feedback`, `webhook_logs`) before removing the auth user, which lets the existing cascade take care of the rest of the user-owned data.
+   - RevenueCat webhook handling now treats events for deleted users as ignorable and returns `200` instead of trying to recreate broken subscription state for a missing account.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -275,6 +281,12 @@ After deploy, verify:
 18. Analysis persistence:
    - analyze a conversation, back out to the list, and reopen it; the previous analysis should still be visible without rerunning
    - append one or more new messages after that reopen and confirm the existing "new messages since last analysis" prompt still appears off the restored baseline
+
+19. Account deletion:
+   - from settings, open account deletion and confirm the `DELETE` gate blocks accidental taps
+   - complete a real deletion once on a disposable test account and confirm the app returns to `/login`
+   - retry login with that deleted account and confirm it no longer succeeds without a fresh sign-up
+   - if that account had historical RevenueCat events, confirm later webhook deliveries are logged as ignored instead of failing
 
 ## Notes for Claude Code
 

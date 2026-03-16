@@ -176,6 +176,42 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: existingUser, error: userLookupError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", app_user_id)
+      .maybeSingle();
+
+    if (userLookupError) {
+      console.error("Failed to verify webhook user:", userLookupError);
+      return jsonResponse({ error: "Database error" }, 500);
+    }
+
+    if (!existingUser) {
+      console.log(`Ignoring RevenueCat event for deleted user ${app_user_id}`);
+
+      const { error: ignoredLogError } = await supabase.from("webhook_logs")
+        .insert({
+          source: "revenuecat",
+          event_type: type,
+          user_id: app_user_id,
+          payload: {
+            ...body,
+            ignored_reason: "user_not_found",
+          },
+          created_at: new Date().toISOString(),
+        });
+
+      if (ignoredLogError) {
+        console.error("Failed to log ignored webhook:", ignoredLogError);
+      }
+
+      return jsonResponse({
+        success: true,
+        ignored: true,
+        reason: "user_not_found",
+      });
+    }
 
     let newTier = "free";
     let shouldUpdate = false;
