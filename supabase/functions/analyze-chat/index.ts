@@ -594,13 +594,16 @@ function normalizeRecognizedConversation(result: Record<string, unknown>): Recor
   return normalizedResult;
 }
 
-function sanitizeMessages(input: unknown): { messages?: AnalyzeMessage[]; error?: string } {
+function sanitizeMessages(
+  input: unknown,
+  options: { allowEmpty?: boolean } = {},
+): { messages?: AnalyzeMessage[]; error?: string } {
   if (!Array.isArray(input)) {
     return { error: "Invalid messages" };
   }
 
   if (input.length === 0) {
-    return { error: "Messages cannot be empty" };
+    return options.allowEmpty ? { messages: [] } : { error: "Messages cannot be empty" };
   }
 
   if (input.length > MAX_MESSAGES) {
@@ -766,6 +769,38 @@ serve(async (req) => {
     // 測試帳號：不檢查額度、不扣額度
     const isTestAccount = TEST_EMAILS.includes(user.email || "");
 
+    const isTestAccount = TEST_EMAILS.includes(user.email || "");
+
+    // Parse request early so recognizeOnly can bypass quota checks.
+    console.log(`[DEBUG] Parsing request body...`);
+    let requestBody;
+    try {
+      requestBody = await req.json();
+      console.log(`[DEBUG] Request body parsed successfully`);
+    } catch (parseError) {
+      console.error(`[ERROR] Failed to parse request body:`, parseError);
+      return jsonResponse({ error: "Invalid request body" }, 400);
+    }
+
+    if (!requestBody || typeof requestBody !== "object" || Array.isArray(requestBody)) {
+      return jsonResponse({ error: "Invalid request body" }, 400);
+    }
+
+    const {
+      messages: rawMessages,
+      images,
+      sessionContext: rawSessionContext,
+      userDraft: rawUserDraft,
+      forceModel: rawForceModel,
+      analyzeMode: rawAnalyzeMode,
+      recognizeOnly: rawRecognizeOnly,
+    } = requestBody;
+
+    if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
+      return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
+    }
+    const recognizeOnly = rawRecognizeOnly === true;
+
     // Check subscription
     const { data: sub, error: subError } = await supabase
       .from("subscriptions")
@@ -821,7 +856,7 @@ serve(async (req) => {
     // Check monthly limit (測試帳號跳過)
     const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] || TIER_MONTHLY_LIMITS.free;
     console.log(`[DEBUG] Monthly limit check: tier=${sub.tier}, limit=${monthlyLimit}, used=${sub.monthly_messages_used}, isTestAccount=${isTestAccount}`);
-    if (!isTestAccount && sub.monthly_messages_used >= monthlyLimit) {
+    if (!recognizeOnly && !isTestAccount && sub.monthly_messages_used >= monthlyLimit) {
       console.log(`[DEBUG] Monthly limit exceeded, returning 429`);
       return jsonResponse({
         error: "Monthly limit exceeded",
@@ -833,7 +868,7 @@ serve(async (req) => {
     // Check daily limit (測試帳號跳過)
     const dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
     console.log(`[DEBUG] Daily limit check: tier=${sub.tier}, limit=${dailyLimit}, used=${sub.daily_messages_used}, isTestAccount=${isTestAccount}`);
-    if (!isTestAccount && sub.daily_messages_used >= dailyLimit) {
+    if (!recognizeOnly && !isTestAccount && sub.daily_messages_used >= dailyLimit) {
       console.log(`[DEBUG] Daily limit exceeded, returning 429`);
       return jsonResponse({
         error: "Daily limit exceeded",
@@ -843,47 +878,24 @@ serve(async (req) => {
       }, 429);
     }
 
-    console.log(`[DEBUG] Limit checks passed, proceeding to parse request body`);
-
-    // Parse request
-    console.log(`[DEBUG] Parsing request body...`);
-    let requestBody;
-    try {
-      requestBody = await req.json();
-      console.log(`[DEBUG] Request body parsed successfully`);
-    } catch (parseError) {
-      console.error(`[ERROR] Failed to parse request body:`, parseError);
-      return jsonResponse({ error: "Invalid request body" }, 400);
-    }
-
-    if (!requestBody || typeof requestBody !== "object" || Array.isArray(requestBody)) {
-      return jsonResponse({ error: "Invalid request body" }, 400);
-    }
-
-    const {
-      messages: rawMessages,
-      images,
-      sessionContext: rawSessionContext,
-      userDraft: rawUserDraft,
-      forceModel: rawForceModel,
-      analyzeMode: rawAnalyzeMode,
-      recognizeOnly: rawRecognizeOnly,
-    } = requestBody;
+    console.log(
+      recognizeOnly
+        ? `[DEBUG] Skipping quota checks for recognizeOnly request`
+        : `[DEBUG] Limit checks passed, proceeding to validate request body`,
+    );
     console.log(`[DEBUG] Request params: messages=${rawMessages?.length}, images=${images?.length || 0}, recognizeOnly=${rawRecognizeOnly}, analyzeMode=${rawAnalyzeMode}`);
 
     // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
     // images: optional array of ImageData for screenshot analysis
     // recognizeOnly: boolean - 只識別截圖，不做完整分析（節省時間和 tokens）
-    const messageValidation = sanitizeMessages(rawMessages);
+    const messageValidation = sanitizeMessages(rawMessages, {
+    const messageValidation = sanitizeMessages(rawMessages ?? [], {
+      allowEmpty: recognizeOnly,
+    });
     if (messageValidation.error || !messageValidation.messages) {
       return jsonResponse({ error: messageValidation.error || "Invalid messages" }, 400);
     }
     const messages = messageValidation.messages;
-
-    if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
-      return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
-    }
-    const recognizeOnly = rawRecognizeOnly === true;
 
     if (rawAnalyzeMode != null && (typeof rawAnalyzeMode !== "string" || !VALID_ANALYZE_MODES.has(rawAnalyzeMode))) {
       return jsonResponse({ error: "Invalid analyzeMode" }, 400);
@@ -951,20 +963,22 @@ serve(async (req) => {
     }
 
     // Check input for safety (AI 護欄)
-    const inputCheck = checkInput(messages);
-    if (!inputCheck.safe) {
-      return jsonResponse({
-        error: inputCheck.reason,
-        code: "UNSAFE_INPUT",
-      }, 400);
-    }
+    if (!recognizeOnly) {
+      const inputCheck = checkInput(messages);
+      if (!inputCheck.safe) {
+        return jsonResponse({
+          error: inputCheck.reason,
+          code: "UNSAFE_INPUT",
+        }, 400);
+      }
 
-    if (analyzeMode === "my_message" && !messages[messages.length - 1]?.isFromMe) {
-      return jsonResponse({ error: "my_message mode requires the latest message to be from the user" }, 400);
-    }
+      if (analyzeMode === "my_message" && !messages[messages.length - 1]?.isFromMe) {
+        return jsonResponse({ error: "my_message mode requires the latest message to be from the user" }, 400);
+      }
 
-    if (analyzeMode === "normal" && !messages.some((message) => !message.isFromMe)) {
-      return jsonResponse({ error: "At least one incoming message is required for analysis" }, 400);
+      if (analyzeMode === "normal" && !messages.some((message) => !message.isFromMe)) {
+        return jsonResponse({ error: "At least one incoming message is required for analysis" }, 400);
+      }
     }
 
     // Format session context for Claude
@@ -1326,10 +1340,10 @@ ${conversationText ? `## 用戶手動輸入的對話（作為參考）\n${conver
     }
 
     // Calculate message count
-    const messageCount = countMessages(messages);
+    const messageCount = recognizeOnly ? 0 : countMessages(messages);
 
     // Update usage count (測試帳號、純識別模式不扣額度)
-    if (!isTestAccount) {
+    if (!isTestAccount && !recognizeOnly) {
       // Single source of truth for usage accounting (avoid double counting).
       const { error: usageError } = await supabase.rpc("increment_usage", {
         p_user_id: user.id,

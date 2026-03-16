@@ -69,6 +69,10 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Cleaned up the booster package labels.
    - Removed the fake-success purchase flow; the sheet is now explicitly "coming soon" until booster IAP is actually wired to RevenueCat.
 
+18. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/data/services/analysis_service.dart`
+   - `recognizeOnly` now accepts empty message history instead of being forced through normal conversation validation.
+   - OCR/import requests no longer consume quota or get blocked by monthly/daily limits like a normal analysis call.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -123,6 +127,10 @@ After deploy, verify:
    - retry a real purchase or `PRODUCT_CHANGE` event
    - confirm missing `subscriptions` rows are inserted instead of silently skipped
    - confirm new rows carry `daily_reset_at` / `monthly_reset_at`
+
+7. Screenshot OCR only flow:
+   - empty or brand-new conversations should still complete OCR/import
+   - successful `recognizeOnly` requests should not increment usage
 
 ## Notes for Claude Code
 

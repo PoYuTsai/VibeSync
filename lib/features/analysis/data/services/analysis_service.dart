@@ -45,7 +45,7 @@ class AnalysisService {
     String? analyzeMode, // "normal" | "my_message"
     bool recognizeOnly = false, // 純識別模式：只識別截圖，不做完整分析
   }) async {
-    if (messages.isEmpty) {
+    if (messages.isEmpty && !recognizeOnly) {
       throw AnalysisException('Messages cannot be empty');
     }
 
