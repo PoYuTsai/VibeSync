@@ -1,5 +1,3 @@
-// supabase/functions/analyze-chat/fallback.ts
-
 interface CallOptions {
   timeout: number;
   maxRetries: number;
@@ -20,7 +18,6 @@ interface ClaudeRequest {
   messages: Array<{ role: string; content: ClaudeMessageContent }>;
 }
 
-// 將 system prompt 轉換為支援 cache 的格式
 function buildCachedSystemPrompt(systemPrompt: string) {
   return [
     {
@@ -32,15 +29,31 @@ function buildCachedSystemPrompt(systemPrompt: string) {
 }
 
 const DEFAULT_OPTIONS: CallOptions = {
-  timeout: 30000, // 30 秒
+  timeout: 30000,
   maxRetries: 2,
 };
 
-// 模型降級鏈
 const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
   "claude-sonnet-4-20250514": "claude-haiku-4-5-20251001",
-  "claude-haiku-4-5-20251001": null, // Haiku 是最後一層
+  "claude-haiku-4-5-20251001": null,
 };
+
+const LOG_PREFIX = "[analyze-chat:fallback]";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function logInfo(event: string, metadata?: Record<string, unknown>) {
+  console.log(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}
+
+function logWarn(event: string, metadata?: Record<string, unknown>) {
+  console.warn(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}
 
 export interface FallbackResult {
   data: unknown;
@@ -72,11 +85,10 @@ export async function callClaudeWithFallback(
 
   while (currentModel) {
     for (let attempt = 1; attempt <= opts.maxRetries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), opts.timeout);
 
-        // 建立支援 Prompt Caching 的請求
+      try {
         const cachedRequest = {
           model: currentModel,
           max_tokens: request.max_tokens,
@@ -96,38 +108,34 @@ export async function callClaudeWithFallback(
           signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
-
         if (!response.ok) {
           const errorText = await response.text();
-          let error;
+          let errorMessage = errorText;
           try {
-            error = JSON.parse(errorText);
+            const parsed = JSON.parse(errorText) as { message?: string };
+            errorMessage = parsed.message || errorText;
           } catch {
-            error = { message: errorText };
+            // Keep the original text when JSON parsing fails.
           }
 
-          // 429 Too Many Requests - 可重試
           if (response.status === 429) {
             throw new AiServiceError(
-              "AI 服務繁忙，請稍後再試",
+              "AI rate limited the request. Please try again shortly.",
               "RATE_LIMITED",
               true,
             );
           }
 
-          // 500+ Server Error - 可重試
           if (response.status >= 500) {
             throw new AiServiceError(
-              "AI 服務暫時無法使用",
+              "AI service is temporarily unavailable.",
               "SERVER_ERROR",
               true,
             );
           }
 
-          // 其他錯誤
           throw new AiServiceError(
-            `API Error: ${response.status} - ${error.message}`,
+            `API Error: ${response.status} - ${errorMessage}`,
             "API_ERROR",
             false,
           );
@@ -138,16 +146,18 @@ export async function callClaudeWithFallback(
         try {
           data = JSON.parse(responseText);
         } catch (parseError) {
-          console.error(
-            "Failed to parse Claude response:",
-            responseText.substring(0, 200),
-          );
+          logWarn("claude_response_parse_failed", {
+            model: currentModel,
+            responseLength: responseText.length,
+            error: getErrorMessage(parseError),
+          });
           throw new AiServiceError(
-            `Failed to parse Claude response: ${(parseError as Error).message}`,
+            `Failed to parse Claude response: ${getErrorMessage(parseError)}`,
             "PARSE_ERROR",
             false,
           );
         }
+
         return {
           data,
           model: currentModel,
@@ -157,50 +167,59 @@ export async function callClaudeWithFallback(
       } catch (error) {
         totalRetries++;
 
-        // Timeout 錯誤
         if (error instanceof Error && error.name === "AbortError") {
-          console.log(
-            `${currentModel} attempt ${attempt} timeout after ${opts.timeout}ms`,
-          );
+          logWarn("attempt_timeout", {
+            model: currentModel,
+            attempt,
+            timeoutMs: opts.timeout,
+          });
         } else if (error instanceof AiServiceError) {
-          console.log(`${currentModel} attempt ${attempt}: ${error.message}`);
+          logWarn("attempt_failed", {
+            model: currentModel,
+            attempt,
+            code: error.code,
+            retryable: error.retryable,
+            error: error.message,
+          });
           if (!error.retryable) {
             throw error;
           }
         } else {
-          console.log(
-            `${currentModel} attempt ${attempt} failed:`,
-            (error as Error).message,
-          );
+          logWarn("attempt_failed", {
+            model: currentModel,
+            attempt,
+            error: getErrorMessage(error),
+          });
         }
 
         if (attempt === opts.maxRetries) {
-          // 嘗試降級到下一個模型
           const nextModel = MODEL_FALLBACK_CHAIN[currentModel];
           if (nextModel) {
-            console.log(`Falling back from ${currentModel} to ${nextModel}`);
+            logInfo("falling_back_model", {
+              from: currentModel,
+              to: nextModel,
+            });
             currentModel = nextModel;
             break;
-          } else {
-            // 沒有更多模型可以降級
-            throw new AiServiceError(
-              "AI 服務暫時無法使用，請稍後再試",
-              "ALL_MODELS_FAILED",
-              false,
-            );
           }
+
+          throw new AiServiceError(
+            "AI service is temporarily unavailable. Please try again later.",
+            "ALL_MODELS_FAILED",
+            false,
+          );
         }
 
-        // 等待後重試 (exponential backoff)
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         await new Promise((resolve) => setTimeout(resolve, delay));
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
   }
 
-  // 不應該到這裡
   throw new AiServiceError(
-    "AI 服務無法回應",
+    "AI service returned an unexpected error.",
     "UNEXPECTED_ERROR",
     false,
   );

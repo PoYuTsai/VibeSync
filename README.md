@@ -121,5 +121,8 @@ Private - All Rights Reserved
 - Subscription tier/product-id mapping and tier limits are now centralized in a shared helper used by RevenueCat, usage fallback, and subscription state updates, which reduces the chance of `starter/essential/free` drift across login, purchase, restore, and sync flows.
 - The paywall screen is now rebuilt into a clean launch-facing version with real privacy / terms links, safer purchase / restore messaging, and no raw RevenueCat success dump shown to testers after checkout.
 - `docs/testflight-regression-checklist.md` is now a readable master TestFlight runbook that covers auth recovery, subscription, OCR import modes, analysis persistence, account deletion, and OCR telemetry sign-off in one place.
+- `analyze-chat` now rejects oversized request bodies earlier, which reduces the chance of paying the JSON/base64 parse cost for obviously too-large payloads.
+- Edge-function logging around `analyze-chat` is now safer and quieter: subscription/request logs no longer print raw user email or AI response snippets, and failed `ai_logs` payloads are sanitized before storage.
+- Claude fallback requests now always clear timeout timers in a `finally` block, and parse-failure logs record only metadata instead of dumping raw AI output.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

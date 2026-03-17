@@ -224,6 +224,13 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The TestFlight regression checklist was rewritten into a readable master runbook that now covers auth recovery, paywall verification, OCR import modes, analysis persistence, account deletion, and OCR telemetry sign-off in one place.
    - README hotfix notes now document the paywall cleanup and the new master QA checklist so the next reviewer can see the latest launch-facing changes at a glance.
 
+46. `supabase/functions/analyze-chat/index.ts`, `supabase/functions/analyze-chat/fallback.ts`, `supabase/functions/analyze-chat/logger.ts`
+   - `analyze-chat` now rejects oversized request bodies up front using the incoming `content-length`, which avoids paying the JSON/base64 parse cost for obviously too-large requests.
+   - Edge-function logging was tightened so request/subscription logs no longer print raw user email addresses or raw AI response snippets into function logs.
+   - Claude JSON-parse failures now log only metadata like model, response length, and error type instead of dumping the first part of the generated output.
+   - `ai_logs` failure payload storage is now sanitized and redacted before insert, so future error logging cannot accidentally persist full conversations, screenshots, or prompt bodies.
+   - The fallback client now clears abort timers in a `finally` block, which avoids leaking timeout timers when fetch fails or retries.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

@@ -1,11 +1,29 @@
-// supabase/functions/analyze-chat/logger.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-// Token 成本 (USD per 1K tokens) - 根據 Anthropic 定價
 const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
   "claude-haiku-4-5-20251001": { input: 0.0008, output: 0.004 },
 };
+
+const MAX_STORED_TEXT_LENGTH = 500;
+const MAX_STORED_OBJECT_KEYS = 12;
+const SENSITIVE_KEYS = new Set([
+  "messages",
+  "message",
+  "content",
+  "conversation",
+  "conversationText",
+  "conversationSummary",
+  "userDraft",
+  "sessionContext",
+  "images",
+  "image",
+  "data",
+  "source",
+  "system",
+  "request",
+  "response",
+]);
 
 export interface LogEntry {
   userId: string;
@@ -19,29 +37,100 @@ export interface LogEntry {
   errorMessage?: string;
   fallbackUsed?: boolean;
   retryCount?: number;
-  // 只在失敗時記錄
   requestBody?: unknown;
   responseBody?: unknown;
 }
 
-// 計算成本
 function calculateCost(
   model: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
 ): number {
   const costs = TOKEN_COSTS[model] || TOKEN_COSTS["claude-haiku-4-5-20251001"];
-  return (inputTokens / 1000) * costs.input + (outputTokens / 1000) * costs.output;
+  return (inputTokens / 1000) * costs.input +
+    (outputTokens / 1000) * costs.output;
+}
+
+function truncateText(value: string, maxLength = MAX_STORED_TEXT_LENGTH): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength)}…`;
+}
+
+function sanitizeLogPayload(value: unknown): unknown {
+  if (value == null) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return truncateText(value);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return { type: "array", length: value.length };
+  }
+
+  if (typeof value !== "object") {
+    return String(value);
+  }
+
+  const record = value as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
+  let storedKeys = 0;
+
+  for (const [key, rawValue] of Object.entries(record)) {
+    if (storedKeys >= MAX_STORED_OBJECT_KEYS) {
+      sanitized._truncated = true;
+      break;
+    }
+
+    if (SENSITIVE_KEYS.has(key)) {
+      sanitized[key] = "[redacted]";
+      storedKeys++;
+      continue;
+    }
+
+    if (rawValue == null || typeof rawValue === "number" ||
+        typeof rawValue === "boolean") {
+      sanitized[key] = rawValue;
+    } else if (typeof rawValue === "string") {
+      sanitized[key] = truncateText(rawValue);
+    } else if (Array.isArray(rawValue)) {
+      sanitized[key] = { type: "array", length: rawValue.length };
+    } else if (typeof rawValue === "object") {
+      sanitized[key] = {
+        type: "object",
+        keys: Object.keys(rawValue as Record<string, unknown>).slice(0, 8),
+      };
+    } else {
+      sanitized[key] = String(rawValue);
+    }
+
+    storedKeys++;
+  }
+
+  return sanitized;
+}
+
+function sanitizeErrorMessage(errorMessage?: string): string | null {
+  if (!errorMessage) {
+    return null;
+  }
+  return truncateText(errorMessage, 300);
 }
 
 export async function logAiCall(
   supabaseUrl: string,
   serviceKey: string,
-  entry: LogEntry
+  entry: LogEntry,
 ): Promise<void> {
   try {
     const supabase = createClient(supabaseUrl, serviceKey);
-
     const costUsd = calculateCost(entry.model, entry.inputTokens, entry.outputTokens);
 
     const { error } = await supabase.from("ai_logs").insert({
@@ -54,24 +143,25 @@ export async function logAiCall(
       latency_ms: entry.latencyMs,
       status: entry.status,
       error_code: entry.errorCode,
-      error_message: entry.errorMessage,
+      error_message: sanitizeErrorMessage(entry.errorMessage),
       fallback_used: entry.fallbackUsed || false,
       retry_count: entry.retryCount || 0,
-      // 只在失敗時記錄完整內容
-      request_body: entry.status === "failed" ? entry.requestBody : null,
-      response_body: entry.status === "failed" ? entry.responseBody : null,
+      request_body: entry.status === "failed"
+        ? sanitizeLogPayload(entry.requestBody)
+        : null,
+      response_body: entry.status === "failed"
+        ? sanitizeLogPayload(entry.responseBody)
+        : null,
     });
 
     if (error) {
       console.error("Failed to log AI call:", error);
     }
   } catch (error) {
-    // 日誌失敗不應影響主要請求
     console.error("Failed to log AI call:", error);
   }
 }
 
-// 從 Claude 回應中提取 token 使用量 (含 cache 資訊)
 export function extractTokenUsage(claudeResponse: unknown): {
   inputTokens: number;
   outputTokens: number;
@@ -95,7 +185,6 @@ export function extractTokenUsage(claudeResponse: unknown): {
   };
 }
 
-// Token 精確追蹤 (用於計費和用量分析)
 export interface TokenUsageEntry {
   userId: string;
   model: string;
@@ -107,7 +196,7 @@ export interface TokenUsageEntry {
 export async function trackTokenUsage(
   supabaseUrl: string,
   serviceKey: string,
-  entry: TokenUsageEntry
+  entry: TokenUsageEntry,
 ): Promise<void> {
   try {
     const supabase = createClient(supabaseUrl, serviceKey);
@@ -126,10 +215,8 @@ export async function trackTokenUsage(
       console.error("Failed to track token usage:", error);
     }
   } catch (error) {
-    // Token 追蹤失敗不應影響主要請求
     console.error("Failed to track token usage:", error);
   }
 }
 
-// 導出 calculateCost 供外部使用
 export { calculateCost };

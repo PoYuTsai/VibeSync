@@ -90,6 +90,7 @@ const VALID_IMAGE_MEDIA_TYPES = new Set([
 ]);
 const MAX_IMAGE_BYTES = 600 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 1500 * 1024;
+const MAX_REQUEST_BODY_BYTES = 3 * 1024 * 1024;
 const VALID_SCREENSHOT_CLASSIFICATIONS = new Set([
   "valid_chat",
   "low_confidence",
@@ -97,6 +98,30 @@ const VALID_SCREENSHOT_CLASSIFICATIONS = new Set([
   "unsupported",
 ]);
 const VALID_IMPORT_POLICIES = new Set(["allow", "confirm", "reject"]);
+const LOG_PREFIX = "[analyze-chat]";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function summarizeUser(userId: string): string {
+  return userId.length <= 8 ? userId : `${userId.slice(0, 8)}...`;
+}
+
+function logInfo(event: string, metadata?: Record<string, unknown>) {
+  console.log(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}
+
+function logWarn(event: string, metadata?: Record<string, unknown>) {
+  console.warn(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}
+
+function logError(event: string, metadata?: Record<string, unknown>) {
+  console.error(`${LOG_PREFIX} ${event}`, metadata ?? {});
+}
 
 // 建構 Vision API 內容格式
 function buildVisionContent(
@@ -973,13 +998,25 @@ serve(async (req) => {
     const accountIsTest = TEST_EMAILS.includes(user.email || "");
 
     // Parse request early so recognizeOnly can bypass quota checks.
-    console.log(`[DEBUG] Parsing request body...`);
+    const contentLengthHeader = req.headers.get("content-length");
+    const contentLength = contentLengthHeader ? Number(contentLengthHeader) : NaN;
+    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+      logWarn("request_body_too_large", {
+        user: summarizeUser(user.id),
+        contentLength,
+        maxAllowed: MAX_REQUEST_BODY_BYTES,
+      });
+      return jsonResponse({ error: "Request body too large" }, 413);
+    }
+
     let requestBody;
     try {
       requestBody = await req.json();
-      console.log(`[DEBUG] Request body parsed successfully`);
     } catch (parseError) {
-      console.error(`[ERROR] Failed to parse request body:`, parseError);
+      logWarn("request_body_parse_failed", {
+        user: summarizeUser(user.id),
+        error: getErrorMessage(parseError),
+      });
       return jsonResponse({ error: "Invalid request body" }, 400);
     }
 
@@ -1015,19 +1052,18 @@ serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    console.log(`[DEBUG] User: ${user.email}, Subscription query result:`, {
-      hasSub: !!sub,
-      error: subError?.message,
-      tier: sub?.tier,
-      daily_reset_at: sub?.daily_reset_at,
-      monthly_reset_at: sub?.monthly_reset_at,
+    logInfo("subscription_lookup", {
+      user: summarizeUser(user.id),
+      hasSubscription: !!sub,
+      tier: sub?.tier ?? null,
+      subscriptionErrorCode: subError?.code ?? null,
     });
 
     if (!sub) {
-      console.warn(
-        `[WARN] No subscription for user ${user.email}, creating free-tier fallback`,
-        subError,
-      );
+      logWarn("subscription_missing_self_heal", {
+        user: summarizeUser(user.id),
+        error: subError?.message ?? null,
+      });
 
       const nowIso = new Date().toISOString();
       const { data: insertedSub, error: insertSubError } = await supabase
@@ -1047,10 +1083,10 @@ serve(async (req) => {
         .single();
 
       if (insertSubError || !insertedSub) {
-        console.error(
-          `[ERROR] Failed to self-heal subscription for user ${user.email}:`,
-          insertSubError,
-        );
+        logError("subscription_self_heal_failed", {
+          user: summarizeUser(user.id),
+          error: insertSubError?.message ?? null,
+        });
         return jsonResponse({ error: "No subscription found" }, 403);
       }
 
@@ -1063,24 +1099,19 @@ serve(async (req) => {
     const dailyResetAt = sub.daily_reset_at
       ? new Date(sub.daily_reset_at)
       : new Date(0);
-    console.log(
-      `[DEBUG] Daily reset check: now=${now.toDateString()}, resetAt=${dailyResetAt.toDateString()}`,
-    );
     if (now.toDateString() !== dailyResetAt.toDateString()) {
       await supabase
         .from("subscriptions")
         .update({ daily_messages_used: 0, daily_reset_at: now.toISOString() })
         .eq("user_id", user.id);
       sub.daily_messages_used = 0;
+      logInfo("daily_quota_reset", { user: summarizeUser(user.id) });
     }
 
     // Check monthly reset needed
     const monthlyResetAt = sub.monthly_reset_at
       ? new Date(sub.monthly_reset_at)
       : new Date(0);
-    console.log(
-      `[DEBUG] Monthly reset check: now=${now.getMonth()}/${now.getFullYear()}, resetAt=${monthlyResetAt.getMonth()}/${monthlyResetAt.getFullYear()}`,
-    );
     if (
       now.getMonth() !== monthlyResetAt.getMonth() ||
       now.getFullYear() !== monthlyResetAt.getFullYear()
@@ -1093,19 +1124,22 @@ serve(async (req) => {
         })
         .eq("user_id", user.id);
       sub.monthly_messages_used = 0;
+      logInfo("monthly_quota_reset", { user: summarizeUser(user.id) });
     }
 
     // Check monthly limit (測試帳號跳過)
     const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
       TIER_MONTHLY_LIMITS.free;
-    console.log(
-      `[DEBUG] Monthly limit check: tier=${sub.tier}, limit=${monthlyLimit}, used=${sub.monthly_messages_used}, isTestAccount=${accountIsTest}`,
-    );
     if (
       !recognizeOnly && !accountIsTest &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
-      console.log(`[DEBUG] Monthly limit exceeded, returning 429`);
+      logWarn("monthly_limit_exceeded", {
+        user: summarizeUser(user.id),
+        tier: sub.tier,
+        used: sub.monthly_messages_used,
+        limit: monthlyLimit,
+      });
       return jsonResponse({
         error: "Monthly limit exceeded",
         monthlyLimit,
@@ -1115,14 +1149,16 @@ serve(async (req) => {
 
     // Check daily limit (測試帳號跳過)
     const dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
-    console.log(
-      `[DEBUG] Daily limit check: tier=${sub.tier}, limit=${dailyLimit}, used=${sub.daily_messages_used}, isTestAccount=${accountIsTest}`,
-    );
     if (
       !recognizeOnly && !accountIsTest &&
       sub.daily_messages_used >= dailyLimit
     ) {
-      console.log(`[DEBUG] Daily limit exceeded, returning 429`);
+      logWarn("daily_limit_exceeded", {
+        user: summarizeUser(user.id),
+        tier: sub.tier,
+        used: sub.daily_messages_used,
+        limit: dailyLimit,
+      });
       return jsonResponse({
         error: "Daily limit exceeded",
         dailyLimit,
@@ -1131,16 +1167,14 @@ serve(async (req) => {
       }, 429);
     }
 
-    console.log(
-      recognizeOnly
-        ? `[DEBUG] Skipping quota checks for recognizeOnly request`
-        : `[DEBUG] Limit checks passed, proceeding to validate request body`,
-    );
-    console.log(
-      `[DEBUG] Request params: messages=${rawMessages?.length}, images=${
-        images?.length || 0
-      }, recognizeOnly=${rawRecognizeOnly}, analyzeMode=${rawAnalyzeMode}`,
-    );
+    logInfo("request_received", {
+      user: summarizeUser(user.id),
+      messageCount: Array.isArray(rawMessages) ? rawMessages.length : 0,
+      imageCount: Array.isArray(images) ? images.length : 0,
+      recognizeOnly,
+      analyzeMode: rawAnalyzeMode ?? "normal",
+      quotaBypassed: recognizeOnly,
+    });
 
     // analyzeMode: "normal" (default) | "my_message" (用戶剛說完，給話題延續建議)
     // images: optional array of ImageData for screenshot analysis
@@ -1610,9 +1644,13 @@ ${
     try {
       // Vision API 需要更長的 timeout（120 秒），純文字用預設 30 秒
       const timeoutMs = hasImages ? 120000 : 30000;
-      console.log(
-        `[DEBUG] Calling Claude API: model=${selectedModel}, hasImages=${hasImages}, timeout=${timeoutMs}ms`,
-      );
+      logInfo("claude_request_started", {
+        user: summarizeUser(user.id),
+        model: selectedModel,
+        hasImages,
+        recognizeOnly,
+        timeoutMs,
+      });
 
       claudeResult = await callClaudeWithFallback(
         {
@@ -1638,7 +1676,10 @@ ${
         // Log failed request
         await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
           userId: user.id,
-          model,
+          model: selectedModel,
+          requestType: recognizeOnly
+            ? "recognize_only"
+            : (hasImages ? "analyze_with_images" : "analyze"),
           inputTokens: 0,
           outputTokens: 0,
           latencyMs,
@@ -1656,7 +1697,6 @@ ${
       throw error;
     }
 
-    console.log(`[DEBUG] Claude API returned successfully`);
     const claudeData = claudeResult.data as {
       content?: Array<{ text?: string }>;
       [key: string]: unknown;
@@ -1665,11 +1705,15 @@ ${
     const actualModel = claudeResult.model;
     const latencyMs = Date.now() - startTime;
     const tokenUsage = extractTokenUsage(claudeData);
-    console.log(
-      `[DEBUG] Claude response: model=${actualModel}, latency=${latencyMs}ms, tokens=${
-        JSON.stringify(tokenUsage)
-      }`,
-    );
+    logInfo("claude_request_succeeded", {
+      user: summarizeUser(user.id),
+      model: actualModel,
+      latencyMs,
+      inputTokens: tokenUsage.inputTokens,
+      outputTokens: tokenUsage.outputTokens,
+      fallbackUsed: claudeResult.fallbackUsed,
+      retries: claudeResult.retries,
+    });
 
     // Parse Claude's response
     let result;
@@ -1677,20 +1721,23 @@ ${
       const aiText = content ?? "";
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        console.error(
-          "No JSON found in AI response:",
-          aiText.substring(0, 500),
-        );
+        logWarn("ai_response_missing_json", {
+          user: summarizeUser(user.id),
+          model: actualModel,
+          textLength: aiText.length,
+          recognizeOnly,
+          hasImages,
+        });
         throw new Error("No JSON in response");
       }
       result = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-      console.error(
-        "JSON parse error:",
-        parseError,
-        "Content:",
-        (content ?? "").substring(0, 500),
-      );
+      logWarn("ai_response_parse_failed", {
+        user: summarizeUser(user.id),
+        model: actualModel,
+        textLength: (content ?? "").length,
+        error: getErrorMessage(parseError),
+      });
       result = {
         enthusiasm: { score: 50, level: "warm" },
         replies: {
@@ -1789,6 +1836,9 @@ ${
     await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       userId: user.id,
       model: actualModel,
+      requestType: recognizeOnly
+        ? "recognize_only"
+        : (hasImages ? "analyze_with_images" : "analyze"),
       inputTokens: tokenUsage.inputTokens,
       outputTokens: tokenUsage.outputTokens,
       latencyMs,
@@ -1856,7 +1906,7 @@ ${
 
     return jsonResponse(result);
   } catch (error) {
-    console.error("Error:", error);
+    logError("unhandled_error", { error: getErrorMessage(error) });
     return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
