@@ -1,10 +1,10 @@
-// lib/features/subscription/presentation/screens/settings_screen.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -30,11 +30,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _loadVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    if (mounted) {
-      setState(() {
-        _versionString = '${packageInfo.version} (${packageInfo.buildNumber})';
-      });
+    if (!mounted) {
+      return;
     }
+
+    setState(() {
+      _versionString = '${packageInfo.version} (${packageInfo.buildNumber})';
+    });
   }
 
   @override
@@ -60,12 +62,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
                 _buildSection(
-                  title: '帳戶',
+                  title: '帳號與方案',
                   children: [
                     _buildTile(
                       context: context,
                       icon: Icons.workspace_premium,
-                      title: '訂閱方案',
+                      title: '目前方案',
                       trailing: _getTierDisplayName(subscription.tier),
                       onTap: () => context.push('/paywall'),
                     ),
@@ -74,7 +76,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       icon: Icons.analytics,
                       title: '本月用量',
                       trailing:
-                          '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit} 則',
+                          '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit}',
                     ),
                     _buildTile(
                       context: context,
@@ -82,7 +84,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       title: '帳號',
                       trailing: _getAccountDisplay(),
                     ),
-                    if (!kIsWeb) // 只在 App 顯示恢復購買
+                    if (!kIsWeb)
                       _buildTile(
                         context: context,
                         icon: Icons.restore,
@@ -92,12 +94,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
                 _buildSection(
-                  title: '隱私與安全',
+                  title: '安全與隱私',
                   children: [
                     _buildTile(
                       context: context,
                       icon: Icons.delete_forever,
-                      title: '清除所有對話資料',
+                      title: '刪除帳號',
                       titleColor: AppColors.error,
                       onTap: () => _confirmDeleteAccount(context, ref),
                     ),
@@ -110,19 +112,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
                 _buildSection(
-                  title: '關於',
+                  title: '其他',
                   children: [
                     _buildTile(
                       context: context,
                       icon: Icons.info,
                       title: '版本',
                       trailing:
-                          _versionString.isNotEmpty ? _versionString : '載入中...',
+                          _versionString.isNotEmpty ? _versionString : '讀取中...',
                     ),
                     _buildTile(
                       context: context,
                       icon: Icons.description,
-                      title: '使用條款',
+                      title: '服務條款',
                       onTap: () => _launchUrl('https://vibesyncai.app/terms'),
                     ),
                     _buildTile(
@@ -163,20 +165,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _getAccountDisplay() {
     final user = SupabaseService.currentUser;
-    if (user == null) return '未登入';
+    if (user == null) {
+      return '未登入';
+    }
 
-    // Check login provider from app_metadata
     final provider = user.appMetadata['provider'] as String?;
 
     if (provider == 'apple') {
-      // Apple user: prefer name, fallback to "Apple 帳號"
       final fullName = user.userMetadata?['full_name'] as String?;
       final name = user.userMetadata?['name'] as String?;
       return fullName ?? name ?? 'Apple 帳號';
     }
 
-    // Google / Email user: show email
-    return user.email ?? '未知帳號';
+    return user.email ?? '未提供 email';
   }
 
   Widget _buildSection({
@@ -232,40 +233,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
-    // 顯示 loading
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
       final restored =
           await ref.read(subscriptionProvider.notifier).restorePurchases();
 
-      if (context.mounted) {
-        Navigator.pop(context); // 關閉 loading
+      if (!context.mounted) {
+        return;
+      }
 
-        if (restored) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('購買已恢復！'),
-              backgroundColor: AppColors.success,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('沒有找到可恢復的購買')),
-          );
-        }
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(restored ? '恢復購買成功' : '目前沒有可恢復的購買'),
+          backgroundColor: restored ? AppColors.success : null,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
       }
-    } catch (e) {
-      if (context.mounted) {
-        Navigator.pop(context); // 關閉 loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('恢復失敗: $e')),
-        );
-      }
+
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('恢復購買失敗: $error')),
+      );
     }
   }
 
@@ -275,29 +272,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
         title: Text(
-          '確定要登出？',
+          '確認登出',
           style: TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child:
-                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            child: Text(
+              '取消',
+              style: TextStyle(color: AppColors.unselectedText),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text('登出', style: TextStyle(color: AppColors.error)),
+            child: Text(
+              '登出',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),
     );
 
-    if (confirmed == true && context.mounted) {
-      await SupabaseService.signOut();
-      ref.invalidate(subscriptionProvider);
-      if (context.mounted) {
-        context.go('/login');
-      }
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    await SupabaseService.signOut();
+    ref.invalidate(subscriptionProvider);
+
+    if (context.mounted) {
+      context.go('/login');
     }
   }
 
@@ -379,6 +384,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
+    final messenger = ScaffoldMessenger.of(context);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -391,72 +398,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await SupabaseService.clearLocalSessionAfterDeletion();
       ref.invalidate(subscriptionProvider);
 
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        context.go('/login');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('帳號已刪除'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+      if (!context.mounted) {
+        return;
       }
-    } catch (error) {
-      if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('刪除帳號失敗: $error'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
 
-  // ignore: unused_element
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.glassWhite,
-        title: Text(
-          '確定要刪除所有對話？',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+      Navigator.of(context, rootNavigator: true).pop();
+      context.go('/login');
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('帳號已刪除'),
+          backgroundColor: AppColors.success,
         ),
-        content: Text(
-          '此操作無法復原。您所有的對話紀錄都會被永久刪除。',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('刪除帳號失敗: $error'),
+          backgroundColor: AppColors.error,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child:
-                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
-          ),
-          TextButton(
-            onPressed: () async {
-              await StorageService.clearAll();
-              if (dialogContext.mounted) {
-                Navigator.pop(dialogContext);
-              }
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('所有對話資料已清除'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              }
-            },
-            child: Text(
-              '刪除',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
+      );
+    }
   }
 
   Future<void> _launchUrl(String url) async {

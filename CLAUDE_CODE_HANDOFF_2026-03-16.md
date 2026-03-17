@@ -179,6 +179,10 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The new Edge Function deletes dependent records that do not cascade cleanly (`revenue_events`, `feedback`, `webhook_logs`) before removing the auth user, which lets the existing cascade take care of the rest of the user-owned data.
    - RevenueCat webhook handling now treats events for deleted users as ignorable and returns `200` instead of trying to recreate broken subscription state for a missing account.
 
+37. `lib/features/subscription/presentation/screens/settings_screen.dart`
+   - The settings screen was rewritten into a clean Traditional Chinese version so the account-management path no longer shows mojibake-era labels during TestFlight review.
+   - The rebuilt screen keeps the same paywall / restore / legal / feedback / logout actions, but now surfaces the new real account-deletion flow in a cleaner and more review-friendly UI.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

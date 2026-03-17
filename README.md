@@ -109,5 +109,6 @@ Private - All Rights Reserved
 - `docs/website-landing-page-handoff.md` now captures the exact homepage privacy copy and footer CTA rules for the partner-managed marketing site, including the instruction to stop using a fake `href=\"#\"` App Store button before the public listing exists.
 - Account deletion is now a real end-to-end flow instead of a local-only reset: settings now requires an explicit `DELETE` confirmation, calls a new `delete-account` Edge Function, removes server-side account data, and then clears the local session/device state.
 - RevenueCat webhook handling now acknowledges events for already-deleted users as ignored instead of failing when a subscription event arrives after the account is gone.
+- The settings screen itself was also rebuilt into a clean Traditional Chinese version, removing the remaining mojibake-era labels around account, privacy, restore purchases, logout, and account deletion.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
