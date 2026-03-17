@@ -124,5 +124,7 @@ Private - All Rights Reserved
 - `analyze-chat` now rejects oversized request bodies earlier, which reduces the chance of paying the JSON/base64 parse cost for obviously too-large payloads.
 - Edge-function logging around `analyze-chat` is now safer and quieter: subscription/request logs no longer print raw user email or AI response snippets, and failed `ai_logs` payloads are sanitized before storage.
 - Claude fallback requests now always clear timeout timers in a `finally` block, and parse-failure logs record only metadata instead of dumping raw AI output.
+- Screenshot / OCR requests now stay on Sonnet end-to-end and no longer silently downgrade to Haiku during fallback retries, which keeps the Vision path aligned with the original design and avoids lower-quality image recognition on retry.
+- Request timeouts are now tuned by request type: OCR-only images fail faster than full image analysis, and text-only `my_message` requests use a shorter timeout than full normal analysis.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

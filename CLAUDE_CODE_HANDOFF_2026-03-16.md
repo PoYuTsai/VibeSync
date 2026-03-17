@@ -231,10 +231,15 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `ai_logs` failure payload storage is now sanitized and redacted before insert, so future error logging cannot accidentally persist full conversations, screenshots, or prompt bodies.
    - The fallback client now clears abort timers in a `finally` block, which avoids leaking timeout timers when fetch fails or retries.
 
+47. `supabase/functions/analyze-chat/index.ts`, `supabase/functions/analyze-chat/fallback.ts`
+   - Image-based requests now keep `allowModelFallback = false`, so screenshot OCR / image analysis no longer silently downgrades from Sonnet to Haiku on retry.
+   - This brings the runtime behavior back in line with the original screenshot-upload design, which assumed Vision requests should stay on Sonnet.
+   - Request timeouts are now split by path: OCR-only image requests fail faster than full image analysis, and text-only `my_message` requests use a shorter timeout than the heavier normal-analysis path.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
-- Image analysis still uses Sonnet. `my_message` remains Essential-only, and current model selection still routes Essential requests to Sonnet.
+- Image analysis still uses Sonnet, and image retries no longer cross-downgrade to Haiku. `my_message` remains Essential-only and still uses the lighter text-only path.
 - If the user wants analysis of **their own latest message**, the existing Essential-only `my_message` flow is still the right path.
 
 ## High-Priority Review Findings Still Open
@@ -353,7 +358,8 @@ After deploy, verify:
 - When touching screenshot analysis again, preserve the current token-control approach:
   - `recognizeOnly` for OCR/import
   - Sonnet only when images are present
-  - do not assume `my_message` uses Haiku; current Essential path selects Sonnet
+  - image retries should stay on Sonnet; do not reintroduce cross-model fallback on Vision requests
+  - `my_message` is still Essential-only but currently uses the lighter text-only path
 - `flutter analyze` passes after this auth/webhook pass. Targeted `flutter test` runs were attempted again for `environment_test.dart` and `supabase_service_test.dart`, and they still timed out in this desktop environment without producing useful output; earlier `settings_screen_test.dart` attempts also timed out, so those tests still need a clean rerun outside this session timeout.
 - The auth pass now includes in-app password reset completion, but it still needs a real-device regression pass for both warm-start and cold-start recovery links.
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:

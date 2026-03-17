@@ -1642,14 +1642,19 @@ ${
     const startTime = Date.now();
     let claudeResult;
     try {
-      // Vision API 需要更長的 timeout（120 秒），純文字用預設 30 秒
-      const timeoutMs = hasImages ? 120000 : 30000;
+      // OCR-only image requests can fail faster than full image analysis,
+      // while text-only "my_message" can use a shorter timeout.
+      const timeoutMs = hasImages
+        ? (recognizeOnly ? 90000 : 120000)
+        : (isMyMessageMode ? 20000 : 30000);
+      const allowModelFallback = !hasImages;
       logInfo("claude_request_started", {
         user: summarizeUser(user.id),
         model: selectedModel,
         hasImages,
         recognizeOnly,
         timeoutMs,
+        allowModelFallback,
       });
 
       claudeResult = await callClaudeWithFallback(
@@ -1667,7 +1672,7 @@ ${
           ],
         },
         CLAUDE_API_KEY,
-        { timeout: timeoutMs },
+        { timeout: timeoutMs, allowModelFallback },
       );
     } catch (error) {
       const latencyMs = Date.now() - startTime;

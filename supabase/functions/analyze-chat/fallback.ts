@@ -1,6 +1,7 @@
 interface CallOptions {
   timeout: number;
   maxRetries: number;
+  allowModelFallback: boolean;
 }
 
 type ClaudeMessageContent =
@@ -31,6 +32,7 @@ function buildCachedSystemPrompt(systemPrompt: string) {
 const DEFAULT_OPTIONS: CallOptions = {
   timeout: 30000,
   maxRetries: 2,
+  allowModelFallback: true,
 };
 
 const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
@@ -193,7 +195,9 @@ export async function callClaudeWithFallback(
         }
 
         if (attempt === opts.maxRetries) {
-          const nextModel = MODEL_FALLBACK_CHAIN[currentModel];
+          const nextModel = opts.allowModelFallback
+            ? MODEL_FALLBACK_CHAIN[currentModel]
+            : null;
           if (nextModel) {
             logInfo("falling_back_model", {
               from: currentModel,
@@ -205,7 +209,7 @@ export async function callClaudeWithFallback(
 
           throw new AiServiceError(
             "AI service is temporarily unavailable. Please try again later.",
-            "ALL_MODELS_FAILED",
+            opts.allowModelFallback ? "ALL_MODELS_FAILED" : "MODEL_RETRY_EXHAUSTED",
             false,
           );
         }
