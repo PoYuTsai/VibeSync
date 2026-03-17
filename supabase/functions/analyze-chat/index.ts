@@ -164,6 +164,102 @@ function buildVisionContent(
   return content;
 }
 
+const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT = `You are an OCR + chat-structure extraction assistant.
+Return valid JSON only.
+Only extract what is visible in the screenshots.
+Do not invent missing text, names, or message order.
+If the screenshots are not a normal one-to-one chat UI, classify them conservatively and reject import.`;
+
+const SCREENSHOT_OCR_ACCURACY_RULES = [
+  "### OCR Accuracy Rules",
+  "- Preserve Traditional Chinese exactly; do not guess unreadable characters.",
+  "- Read screenshots from top to bottom and keep message order stable across multiple images.",
+  "- Treat LINE or Messenger quoted-reply previews as context, not as separate new messages.",
+  "- Infer sides from layout when possible: left is usually the other person, right is usually the user.",
+  "- If the screenshot looks like a social feed, comment thread, profile page, album, or non-chat UI, classify it as `social_feed` or `unsupported`.",
+  "- If text is blurry, cropped, or incomplete, lower confidence and use `importPolicy: confirm` instead of guessing.",
+  "- If the contact name is unclear, return `contactName: null`.",
+].join("\n");
+
+const RECOGNIZED_CONVERSATION_SCHEMA = `{
+  "recognizedConversation": {
+    "contactName": "Alex",
+    "classification": "valid_chat",
+    "importPolicy": "allow",
+    "confidence": "high",
+    "warning": null,
+    "messageCount": 4,
+    "summary": "A short summary of the visible exchange.",
+    "messages": [
+      { "isFromMe": false, "content": "Visible message from the other person" },
+      { "isFromMe": true, "content": "Visible message from me" }
+    ]
+  }
+}`;
+
+function joinPromptSections(
+  ...sections: Array<string | undefined | null>
+): string {
+  return sections
+    .map((section) => section?.trim())
+    .filter((section): section is string => !!section)
+    .join("\n\n");
+}
+
+function buildRecognizeOnlyImagePrompt(options: {
+  imageCount: number;
+  contextInfo: string;
+  historicalContextInfo: string;
+  compiledConversationText: string;
+}): string {
+  const {
+    imageCount,
+    contextInfo,
+    historicalContextInfo,
+    compiledConversationText,
+  } = options;
+
+  return joinPromptSections(
+    `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
+    SCREENSHOT_OCR_ACCURACY_RULES,
+    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.",
+    "### JSON Schema",
+    RECOGNIZED_CONVERSATION_SCHEMA,
+    contextInfo
+      ? `${contextInfo}\n- Use this only as weak context for mismatch detection.`
+      : "",
+    historicalContextInfo,
+    compiledConversationText
+      ? `## Existing Thread Context\n${compiledConversationText}\nUse this only to judge whether the screenshot likely belongs to the same thread.`
+      : "",
+  );
+}
+
+function buildImageAnalysisPrompt(options: {
+  imageCount: number;
+  contextInfo: string;
+  historicalContextInfo: string;
+  compiledConversationText: string;
+}): string {
+  const {
+    imageCount,
+    contextInfo,
+    historicalContextInfo,
+    compiledConversationText,
+  } = options;
+
+  return joinPromptSections(
+    `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response.`,
+    SCREENSHOT_OCR_ACCURACY_RULES,
+    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.",
+    "### recognizedConversation Schema",
+    RECOGNIZED_CONVERSATION_SCHEMA,
+    contextInfo,
+    historicalContextInfo,
+    compiledConversationText ? `## Existing Thread Context\n${compiledConversationText}` : "",
+  );
+}
+
 const SYSTEM_PROMPT =
   `你是一位專業的社交溝通教練，幫助用戶提升對話技巧，最終目標是幫助用戶成功邀約。
 
@@ -1427,13 +1523,8 @@ ${recentText}`;
       }, 403);
     }
 
-    // 選擇 System Prompt
-    // 純識別模式用極簡 prompt，節省 tokens
-    const RECOGNIZE_ONLY_PROMPT =
-      `你是一個聊天截圖識別助手。你的任務是準確識別聊天截圖中的對話內容，區分「我」和「她」的訊息，並按時間順序整理。`;
-
     const systemPrompt = recognizeOnly
-      ? RECOGNIZE_ONLY_PROMPT
+      ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT
       : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT);
 
     // 組合用戶訊息
@@ -1473,149 +1564,20 @@ ${recentText}`;
         "## Recent Conversation",
         compiledConversationText,
       ].join("\n");
-    /*
-    let userPrompt = isMyMessageMode
-      ? `${contextInfo}\n\n## 對話紀錄\n${compiledConversationText}\n\n請根據用戶剛發送的最後一則訊息，提供話題延續建議。`
-      : `${contextInfo}\n分析以下對話並提供建議：\n\n${compiledConversationText}`;
-
-    // 如果有截圖，加入截圖識別指示
-    */
     if (hasImages) {
-      const imageCount = images.length;
-      const SCREENSHOT_OCR_ACCURACY_RULES = `
-### OCR 精準度補充規則（重要）：
-- LINE / Messenger / Instagram 等聊天 App 可能在目前訊息泡泡中顯示「回覆某則訊息」的小預覽。不要把這個引用預覽當成新的獨立訊息。
-- 以泡泡中的主要正文作為這一則真正送出的訊息內容。
-- 只有在引用內容對理解當前正文不可或缺，且原文沒有在其他地方出現時，才把它合併寫成：回覆「引用內容」：主要正文。
-- 長截圖請由上到下、逐行閱讀；同一個泡泡內的多行文字要合併成同一則訊息。
-- 保留繁體中文原文，不要轉成簡體，不要自行摘要、改寫或補字。
-- 如果局部文字真的看不清楚，寧可將 classification 降為 low_confidence、讓 importPolicy = confirm，或把 contactName 設為 null，也不要猜測。`;
-
-      // 純識別模式：只識別，不分析
-      if (recognizeOnly) {
-        userPrompt = `## 截圖識別任務（純識別模式）
-
-你收到了 ${imageCount} 張聊天截圖，請識別截圖中的對話內容。
-
-### 識別規則：
-1. **判斷訊息發送者（重要）**：
-   - 「我」的訊息：靠**右側**，通常有顏色背景（LINE綠色、iMessage藍色、WhatsApp淺綠色）
-   - 「她」的訊息：靠**左側**，通常是灰色或白色背景
-   - 這個規則適用於 LINE、iMessage、WhatsApp、Messenger、Instagram 等所有主流聊天 App
-2. **通話記錄處理（重要）**：
-   - 「未接來電」= 對方打給我，我沒接 → 標記為「她」發起的通話
-   - 「已接來電」= 對方打給我，我接了 → 標記為「她」發起的通話
-   - 「撥出電話」= 我打給對方 → 標記為「我」發起的通話
-   - 通話記錄通常顯示在對話中間，但要根據**誰發起**來判斷
-3. 按照截圖順序（1, 2, 3...）和訊息時間順序整理
-4. 如果截圖有重疊的訊息，請去重
-5. 忽略純系統訊息（時間戳記、未讀標記），但**保留通話記錄**
-
-### 名字識別規則（重要）：
-- 從聊天視窗**最頂部標題列**抓取對方的名字
-- LINE: 名字在頂部中央，可能有綠色背景
-- iMessage: 名字在頂部中央，灰色文字
-- WhatsApp: 名字在頂部，綠色背景
-- **繁體中文名字請仔細辨識每個字，不要猜測**
-- 如果名字模糊或不確定，請設為 null（讓用戶手動輸入）
-- 不要把英文暱稱誤認為中文名字
-
-${SCREENSHOT_OCR_ACCURACY_RULES}
-
-### 輸出格式（只需要這個 JSON）：
-{
-  "recognizedConversation": {
-    "contactName": "小美",
-    "classification": "valid_chat",
-    "importPolicy": "allow",
-    "confidence": "high",
-    "warning": null,
-    "messageCount": 10,
-    "summary": "識別到 10 則訊息（我: 4, 她: 6）",
-    "messages": [
-      { "isFromMe": true, "content": "訊息內容" },
-      { "isFromMe": false, "content": "訊息內容" }
-    ]
-  }
-}
-
-注意：
-- contactName 是從聊天視窗標題識別的對方名字
-- classification 必須是 valid_chat / low_confidence / social_feed / unsupported 其中之一
-- importPolicy 必須是 allow / confirm / reject 其中之一
-- confidence 必須是 high / medium / low 其中之一
-- 如果圖片像社群貼文、留言串、非聊天介面、色情暴力畫面、或根本看不清楚，請用 social_feed 或 unsupported，並把 importPolicy 設為 reject
-- 如果勉強看起來像聊天，但左右方向、人物、順序或內容不夠確定，請用 low_confidence，並把 importPolicy 設為 confirm
-- 如果無法確定正確的繁體中文字，請設為 null
-- 不需要提供其他分析欄位，只需要 recognizedConversation`;
-      } else {
-        // 完整分析模式：識別 + 分析
-        userPrompt = `## 截圖分析任務
-
-你收到了 ${imageCount} 張聊天截圖，請先識別截圖中的對話內容，然後進行分析。
-
-### 截圖識別規則：
-1. **判斷訊息發送者（重要）**：
-   - 「我」的訊息：靠**右側**，通常有顏色背景（LINE綠色、iMessage藍色、WhatsApp淺綠色）
-   - 「她」的訊息：靠**左側**，通常是灰色或白色背景
-   - 這個規則適用於 LINE、iMessage、WhatsApp、Messenger、Instagram 等所有主流聊天 App
-2. **通話記錄處理（重要）**：
-   - 「未接來電」= 對方打給我，我沒接 → 標記為「她」發起的通話
-   - 「已接來電」= 對方打給我，我接了 → 標記為「她」發起的通話
-   - 「撥出電話」= 我打給對方 → 標記為「我」發起的通話
-   - 通話記錄通常顯示在對話中間，但要根據**誰發起**來判斷
-3. 按照截圖順序（1, 2, 3...）和訊息時間順序整理
-4. 如果截圖有重疊的訊息，請去重
-5. 忽略純系統訊息（時間戳記、未讀標記），但**保留通話記錄**
-
-### 名字識別規則（重要）：
-- 從聊天視窗**最頂部標題列**抓取對方的名字
-- LINE: 名字在頂部中央，可能有綠色背景
-- iMessage: 名字在頂部中央，灰色文字
-- WhatsApp: 名字在頂部，綠色背景
-- **繁體中文名字請仔細辨識每個字，不要猜測**
-- 如果名字模糊或不確定，請設為 null（讓用戶手動輸入）
-
-${SCREENSHOT_OCR_ACCURACY_RULES}
-
-### 輸出格式（在原本的 JSON 中增加）：
-{
-  "recognizedConversation": {
-    "contactName": "小美",
-    "classification": "valid_chat",
-    "importPolicy": "allow",
-    "confidence": "high",
-    "warning": null,
-    "messageCount": 10,
-    "summary": "識別到 10 則訊息（我: 4, 她: 6）",
-    "messages": [
-      { "isFromMe": true, "content": "訊息內容" },
-      { "isFromMe": false, "content": "訊息內容" }
-    ]
-  },
-  // ...其他原有欄位
-}
-
-注意：contactName 如果無法確定正確的繁體中文字，請設為 null。
-另外請務必補上 classification / importPolicy / confidence / warning：
-- 正常雙人聊天截圖：valid_chat + allow
-- 低信心或可能有誤：low_confidence + confirm
-- 社群貼文、留言串、非聊天畫面或不支援內容：social_feed 或 unsupported + reject
-
-${contextInfo}
-
-${
-          conversationSummary
-            ? `## Older Context Summary\n${conversationSummary}\n\n`
-            : ""
-        }
-
-${
-          compiledConversationText
-            ? `## 用戶手動輸入的對話（作為參考）\n${compiledConversationText}\n\n`
-            : ""
-        }請識別截圖中的對話，並提供分析建議。`;
-      }
+      userPrompt = recognizeOnly
+        ? buildRecognizeOnlyImagePrompt({
+            imageCount: images.length,
+            contextInfo,
+            historicalContextInfo,
+            compiledConversationText,
+          })
+        : buildImageAnalysisPrompt({
+            imageCount: images.length,
+            contextInfo,
+            historicalContextInfo,
+            compiledConversationText,
+          });
     }
 
     // 如果有用戶草稿，加入優化請求（只在 normal 模式）
@@ -1623,8 +1585,13 @@ ${
       !isMyMessageMode && userDraft && typeof userDraft === "string" &&
       userDraft.trim()
     ) {
-      userPrompt +=
-        `\n\n## 用戶想說的內容（請優化）\n「${userDraft.trim()}」\n請在 optimizedMessage 欄位提供優化版本。`;
+      userPrompt = joinPromptSections(
+        userPrompt,
+        `## User Draft To Optimize
+"${userDraft.trim()}"
+
+Return \`optimizedMessage\` in the structured JSON response.`,
+      );
     }
 
     // 「我說」模式用 Haiku 省成本（但有圖片時強制 Sonnet）

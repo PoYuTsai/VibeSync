@@ -236,6 +236,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - This brings the runtime behavior back in line with the original screenshot-upload design, which assumed Vision requests should stay on Sonnet.
    - Request timeouts are now split by path: OCR-only image requests fail faster than full image analysis, and text-only `my_message` requests use a shorter timeout than the heavier normal-analysis path.
 
+48. `supabase/functions/analyze-chat/index.ts`
+   - Screenshot prompting is now centralized into shared builders for `recognizeOnly` and full image analysis, instead of maintaining a second inline OCR prompt block deeper in the request handler.
+   - This removes duplicated OCR instructions, keeps LINE quoted-reply / Traditional Chinese handling aligned across both image paths, and avoids future drift between the screenshot import flow and full screenshot analysis flow.
+   - The `optimizedMessage` draft-injection path now also uses the same prompt-section joiner, so user drafts are appended through one consistent formatting path instead of ad-hoc string concatenation.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
