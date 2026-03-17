@@ -1,6 +1,7 @@
 // lib/core/services/usage_service.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
+import '../../features/subscription/domain/services/subscription_tier_helper.dart';
 import 'storage_service.dart';
 
 /// User's current usage data
@@ -99,27 +100,11 @@ class UsageService {
   }
 
   static int _defaultMonthlyLimitForTier(String tier) {
-    switch (tier) {
-      case 'starter':
-        return AppConstants.starterMonthlyLimit;
-      case 'essential':
-        return AppConstants.essentialMonthlyLimit;
-      case 'free':
-      default:
-        return AppConstants.freeMonthlyLimit;
-    }
+    return SubscriptionTierHelper.limitsFor(tier).monthly;
   }
 
   static int _defaultDailyLimitForTier(String tier) {
-    switch (tier) {
-      case 'starter':
-        return AppConstants.starterDailyLimit;
-      case 'essential':
-        return AppConstants.essentialDailyLimit;
-      case 'free':
-      default:
-        return AppConstants.freeDailyLimit;
-    }
+    return SubscriptionTierHelper.limitsFor(tier).daily;
   }
 
   /// Get current usage data (local cache)

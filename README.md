@@ -117,5 +117,7 @@ Private - All Rights Reserved
 - `docs/testflight-regression-checklist.md` now gives a concrete TestFlight smoke/regression runbook for auth, subscription, OCR import, LINE reply screenshots, dense Traditional Chinese screenshots, and telemetry capture.
 - The OCR import confirmation UI is now extracted into a dedicated widget, which makes the `加入目前對話 / 另存成新對話 / 取消 / 低信心提示` path much easier to regression-test and evolve without digging through `analysis_screen.dart`.
 - A new widget test file now targets that import dialog flow directly, even though `flutter test` still times out in this desktop session and needs a clean rerun elsewhere.
+- Password-recovery callback parsing and auth-state transitions are now extracted into a dedicated helper, so hash-fragment recovery links and `passwordRecovery -> signedIn/signedOut` state changes no longer depend on ad-hoc inline logic inside `SupabaseService`.
+- Subscription tier/product-id mapping and tier limits are now centralized in a shared helper used by RevenueCat, usage fallback, and subscription state updates, which reduces the chance of `starter/essential/free` drift across login, purchase, restore, and sync flows.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

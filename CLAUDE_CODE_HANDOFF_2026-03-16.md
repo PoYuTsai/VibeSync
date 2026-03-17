@@ -204,6 +204,16 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - This keeps the production behavior the same, but it isolates the most fragile OCR UI path: low-confidence warnings, import-mode switching, preview rendering, and optional session-context capture.
    - A new widget-test file now targets that dialog directly so the `加入目前對話 / 另存成新對話 / 取消 / 低信心提示` interaction can be regression-tested independently, although `flutter test` still times out in this desktop session and should be rerun in a clean environment.
 
+42. `lib/core/services/auth_recovery_helper.dart`, `lib/features/subscription/domain/services/subscription_tier_helper.dart`, `lib/core/services/supabase_service.dart`, `lib/core/services/revenuecat_service.dart`, `lib/core/services/usage_service.dart`, `lib/features/subscription/data/providers/subscription_providers.dart`
+   - Password-recovery callback normalization and auth-event state transitions are now extracted into a pure helper instead of being buried as private inline logic inside `SupabaseService`.
+   - Subscription tier normalization, product-id inference, and monthly/daily limits are now centralized in a shared helper that is reused by RevenueCat entitlement parsing, usage fallback defaults, and subscription state updates.
+   - This reduces the risk that `free / starter / essential` rules drift apart between login, purchase, restore, force-sync, and cached usage paths.
+
+43. `test/unit/services/auth_recovery_helper_test.dart`, `test/unit/services/subscription_tier_helper_test.dart`
+   - Added focused unit tests for auth recovery callback parsing, password-recovery state transitions, tier-limit lookup, and product-id-to-tier inference.
+   - `flutter analyze` passes after this refactor.
+   - `flutter test` for these new unit tests still times out in this desktop session with no useful output, so they need a clean rerun on a less sticky local environment before treating them as verified.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

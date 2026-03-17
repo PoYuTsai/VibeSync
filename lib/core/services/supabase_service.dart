@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/environment.dart';
+import 'auth_recovery_helper.dart';
 import 'revenuecat_service.dart';
 import 'social_auth/social_auth_service.dart';
 
@@ -43,40 +44,18 @@ class SupabaseService {
     try {
       final initialLink = await _appLinks.getInitialLink();
       _passwordRecoveryInProgress =
-          currentUser != null && _isPasswordRecoveryLink(initialLink);
+          currentUser != null &&
+          AuthRecoveryHelper.isPasswordRecoveryLink(initialLink);
     } catch (error) {
       debugPrint('Password recovery link sync skipped: $error');
     }
   }
 
-  static bool _isPasswordRecoveryLink(Uri? uri) {
-    if (uri == null) {
-      return false;
-    }
-
-    final normalizedUri = _normalizeAuthCallbackUri(uri);
-    return normalizedUri.queryParameters['type'] == 'recovery';
-  }
-
-  static Uri _normalizeAuthCallbackUri(Uri uri) {
-    final normalizedRaw = uri.hasQuery
-        ? uri.toString().replaceAll('#', '&')
-        : uri.toString().replaceAll('#', '?');
-    return Uri.parse(normalizedRaw);
-  }
-
   static void _handleAuthStateChange(AuthState authState) {
-    switch (authState.event) {
-      case AuthChangeEvent.passwordRecovery:
-        _passwordRecoveryInProgress = true;
-        break;
-      case AuthChangeEvent.signedIn:
-      case AuthChangeEvent.signedOut:
-        _passwordRecoveryInProgress = false;
-        break;
-      default:
-        break;
-    }
+    _passwordRecoveryInProgress = AuthRecoveryHelper.nextPasswordRecoveryState(
+      event: authState.event,
+      currentState: _passwordRecoveryInProgress,
+    );
   }
 
   static SupabaseClient get client {

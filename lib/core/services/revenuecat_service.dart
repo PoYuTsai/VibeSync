@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../config/environment.dart';
+import '../../features/subscription/domain/services/subscription_tier_helper.dart';
 import '../utils/platform_info.dart';
 
 /// RevenueCat 服務封裝
@@ -145,7 +146,7 @@ class RevenueCatService {
   static String getTierFromCustomerInfo(CustomerInfo? customerInfo) {
     if (customerInfo == null) {
       debugPrint('RevenueCat: customerInfo is null');
-      return 'free';
+      return SubscriptionTierHelper.free;
     }
 
     // 印出所有 entitlements（包括 inactive）
@@ -164,17 +165,18 @@ class RevenueCatService {
       // 直接從 activeSubscriptions 判斷
       for (final productId in customerInfo.activeSubscriptions) {
         debugPrint('RevenueCat: Checking activeSubscription: $productId');
-        if (productId.contains('essential')) {
-          debugPrint('RevenueCat: Detected tier from activeSubscriptions: essential');
-          return 'essential';
-        }
-        if (productId.contains('starter')) {
-          debugPrint('RevenueCat: Detected tier from activeSubscriptions: starter');
-          return 'starter';
-        }
+      }
+      final activeSubscriptionTier = SubscriptionTierHelper.tierFromProductIds(
+        customerInfo.activeSubscriptions,
+      );
+      if (activeSubscriptionTier != SubscriptionTierHelper.free) {
+        debugPrint(
+          'RevenueCat: Detected tier from activeSubscriptions: $activeSubscriptionTier',
+        );
+        return activeSubscriptionTier;
       }
 
-      return 'free';
+      return SubscriptionTierHelper.free;
     }
 
     // 檢查所有 active entitlements
@@ -185,18 +187,14 @@ class RevenueCatService {
 
       debugPrint('RevenueCat: Entitlement "$entitlementId" -> Product "$productId"');
 
-      // 從 product_id 判斷 tier
-      if (productId.contains('essential')) {
-        debugPrint('RevenueCat: Detected tier: essential');
-        return 'essential';
-      }
-      if (productId.contains('starter')) {
-        debugPrint('RevenueCat: Detected tier: starter');
-        return 'starter';
+      final tier = SubscriptionTierHelper.tierFromProductId(productId);
+      if (tier != SubscriptionTierHelper.free) {
+        debugPrint('RevenueCat: Detected tier: $tier');
+        return tier;
       }
     }
 
     debugPrint('RevenueCat: No matching tier found, returning free');
-    return 'free';
+    return SubscriptionTierHelper.free;
   }
 }

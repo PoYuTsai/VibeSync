@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
+import '../../domain/services/subscription_tier_helper.dart';
 
 /// 訂閱狀態
 class SubscriptionState {
@@ -88,17 +89,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     _initialize();
   }
 
-  static const _tierLimits = {
-    'free': {'monthly': 30, 'daily': 15},
-    'starter': {'monthly': 300, 'daily': 50},
-    'essential': {'monthly': 1000, 'daily': 150},
-  };
-
-  void _syncUsageCache(String tier, Map<String, int> limits) {
+  void _syncUsageCache(String tier, SubscriptionTierLimits limits) {
     UsageService.syncSubscriptionSnapshot(
       tier: tier,
-      monthlyLimit: limits['monthly']!,
-      dailyLimit: limits['daily']!,
+      monthlyLimit: limits.monthly,
+      dailyLimit: limits.daily,
     );
   }
 
@@ -184,18 +179,20 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       final response = await _loadOrCreateSubscriptionRecord(
         userId: user.id,
-        tier: 'free',
+        tier: SubscriptionTierHelper.free,
       );
 
-      final tier = response['tier'] as String? ?? 'free';
-      final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+      final tier = SubscriptionTierHelper.normalizeTier(
+        response['tier'] as String?,
+      );
+      final limits = SubscriptionTierHelper.limitsFor(tier);
 
       state = state.copyWith(
         tier: tier,
         monthlyMessagesUsed: response['monthly_messages_used'] as int? ?? 0,
         dailyMessagesUsed: response['daily_messages_used'] as int? ?? 0,
-        monthlyLimit: limits['monthly']!,
-        dailyLimit: limits['daily']!,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
         isLoading: false,
       );
       _syncUsageCache(tier, limits);
@@ -251,20 +248,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       String tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
 
       // 如果 RevenueCat 返回 free 但有購買紀錄，從 product ID 推測 tier
-      if (tier == 'free' &&
+      if (tier == SubscriptionTierHelper.free &&
           customerInfo.allPurchasedProductIdentifiers.isNotEmpty) {
         debugPrint(
             '[purchase] WARNING: tier is free but has purchases, inferring from product ID');
-        final productId = package.storeProduct.identifier;
-        if (productId.contains('essential')) {
-          tier = 'essential';
-        } else if (productId.contains('starter')) {
-          tier = 'starter';
-        }
+        tier = SubscriptionTierHelper.tierFromProductId(
+          package.storeProduct.identifier,
+        );
         debugPrint('[purchase] Inferred tier from product ID: $tier');
       }
 
-      final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+      final limits = SubscriptionTierHelper.limitsFor(tier);
 
       debugPrint('Detected tier: $tier, limits: $limits');
 
@@ -285,8 +279,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       state = state.copyWith(
         tier: tier,
-        monthlyLimit: limits['monthly']!,
-        dailyLimit: limits['daily']!,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
         isLoading: false,
       );
       _syncUsageCache(tier, limits);
@@ -314,7 +308,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       debugPrint('[forceSyncTier] Starting sync: tier=$tier, user=${user.id}');
 
-      final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+      final limits = SubscriptionTierHelper.limitsFor(tier);
 
       // 先檢查是否有 subscription record
       final existing = await SupabaseService.client
@@ -360,8 +354,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       // 更新本地 state
       state = state.copyWith(
         tier: tier,
-        monthlyLimit: limits['monthly']!,
-        dailyLimit: limits['daily']!,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
         dailyMessagesUsed: 0,
       );
       _syncUsageCache(tier, limits);
@@ -444,20 +438,20 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       final customerInfo = await RevenueCatService.restorePurchases();
       final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
-      final limits = _tierLimits[tier] ?? _tierLimits['free']!;
+      final limits = SubscriptionTierHelper.limitsFor(tier);
 
       // 主動更新 Supabase
       await _updateSupabaseTier(tier);
 
       state = state.copyWith(
         tier: tier,
-        monthlyLimit: limits['monthly']!,
-        dailyLimit: limits['daily']!,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
         isLoading: false,
       );
       _syncUsageCache(tier, limits);
 
-      return tier != 'free';
+      return tier != SubscriptionTierHelper.free;
     } catch (e) {
       debugPrint('Restore error: $e');
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -478,7 +472,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       if (rcTier != state.tier) {
         debugPrint('Tier mismatch: local=${state.tier}, RevenueCat=$rcTier');
 
-        final limits = _tierLimits[rcTier] ?? _tierLimits['free']!;
+        final limits = SubscriptionTierHelper.limitsFor(rcTier);
 
         // 更新 Supabase
         await _updateSupabaseTier(rcTier);
@@ -486,8 +480,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         // 更新本地 state
         state = state.copyWith(
           tier: rcTier,
-          monthlyLimit: limits['monthly']!,
-          dailyLimit: limits['daily']!,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
         );
         _syncUsageCache(rcTier, limits);
       }
