@@ -194,6 +194,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Low-confidence screenshots now tell the user more clearly when they should re-screenshot, preserve the full bubble, or switch to `另存成新對話`.
    - The image picker now adds capture tips before upload, including guidance for long Traditional Chinese screenshots and LINE's quoted-reply UI so testers can improve recognition quality without guessing.
 
+40. `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`, `test/unit/services/screenshot_recognition_helper_test.dart`, `docs/testflight-regression-checklist.md`
+   - The screenshot import decision copy and boundary logic is now extracted into a pure helper instead of living only inside `analysis_screen.dart`, which makes the default import-mode choice, mismatch warning, naming fallback, and guidance strings unit-testable.
+   - A new unit test file now locks in the highest-value OCR edge cases: empty-thread append, low-confidence new-thread default, name mismatch detection, social-feed rejection guidance, and LINE quoted-reply / blurry-screenshot guidance copy.
+   - A dedicated TestFlight regression checklist now exists for auth, subscription, OCR import modes, LINE reply screenshots, dense Traditional Chinese screenshots, and telemetry capture, so manual partner QA can follow a consistent script instead of reconstructing scenarios from chat history.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

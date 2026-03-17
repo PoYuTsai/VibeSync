@@ -113,5 +113,7 @@ Private - All Rights Reserved
 - OCR prompting now explicitly handles LINE-style quoted replies and dense Traditional Chinese screenshots more carefully, and the `recognizeOnly` output budget was raised to improve long-text recognition accuracy.
 - OCR confirmation and result cards now surface clearer `分類 / 信心` badges plus actionable guidance, so users can tell whether to import, re-screenshot, or save into a new thread instead of only seeing a generic warning.
 - The screenshot picker now teaches better capture habits up front, including keeping the title bar / full message bubbles visible and capturing LINE reply previews together with the main bubble.
+- Screenshot recognition decision copy is now also extracted into a pure helper with unit tests, so key OCR boundary rules like `append vs new conversation`, mismatch warnings, and low-confidence guidance are no longer only protected by manual QA.
+- `docs/testflight-regression-checklist.md` now gives a concrete TestFlight smoke/regression runbook for auth, subscription, OCR import, LINE reply screenshots, dense Traditional Chinese screenshots, and telemetry capture.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

@@ -26,6 +26,7 @@ import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../data/services/analysis_service.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
+import '../../domain/services/screenshot_recognition_helper.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 
 class AnalysisScreen extends ConsumerStatefulWidget {
@@ -93,8 +94,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   AnalysisProgressStage _recognizeStage =
       AnalysisProgressStage.preparingPayload;
   AnalysisTelemetry? _lastRecognizeTelemetry;
-  static const String _importModeAppendCurrent = 'append_current';
-  static const String _importModeNewConversation = 'new_conversation';
+  static const String _importModeAppendCurrent =
+      ScreenshotRecognitionHelper.importModeAppendCurrent;
+  static const String _importModeNewConversation =
+      ScreenshotRecognitionHelper.importModeNewConversation;
 
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
@@ -446,64 +449,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String? _buildRecognitionWarning({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
-  }) {
-    final warnings = <String>[];
-    final serverWarning = recognized.warning?.trim();
-    if (serverWarning != null && serverWarning.isNotEmpty) {
-      warnings.add(serverWarning);
-    }
-
-    final recognizedName = recognized.contactName?.trim();
-    final currentName = currentConversation.name.trim();
-    final hasExistingThread = currentConversation.messages.isNotEmpty;
-    final hasNamedThread = currentName.isNotEmpty && currentName != '新對話';
-
-    if (
-        hasExistingThread &&
-        hasNamedThread &&
-        recognizedName != null &&
-        recognizedName.isNotEmpty &&
-        recognizedName != currentName) {
-      warnings.add(
-        '這張截圖辨識到的對方名字是「$recognizedName」，和目前對話名稱不同，請先確認沒有選錯截圖。',
+  }) => ScreenshotRecognitionHelper.buildWarning(
+        recognized: recognized,
+        currentConversation: currentConversation,
       );
-    }
-
-    if (recognized.importPolicy == 'confirm' && warnings.isEmpty) {
-      warnings.add('這張截圖辨識信心較低，匯入前請先確認預覽內容是否正確。');
-    }
-
-    if (warnings.isEmpty) {
-      return null;
-    }
-
-    return warnings.join('\n');
-  }
 
   String _defaultRecognitionImportMode({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
-  }) {
-    final hasExistingThread = currentConversation.messages.isNotEmpty;
-    if (!hasExistingThread) {
-      return _importModeAppendCurrent;
-    }
-
-    final recognizedName = recognized.contactName?.trim();
-    final currentName = currentConversation.name.trim();
-    final hasNamedThread = currentName.isNotEmpty && currentName != '新對話';
-    final nameMismatch =
-        hasNamedThread &&
-        recognizedName != null &&
-        recognizedName.isNotEmpty &&
-        recognizedName != currentName;
-
-    if (recognized.importPolicy == 'confirm' || nameMismatch) {
-      return _importModeNewConversation;
-    }
-
-    return _importModeAppendCurrent;
-  }
+  }) => ScreenshotRecognitionHelper.defaultImportMode(
+        recognized: recognized,
+        currentConversation: currentConversation,
+      );
 
   List<Message> _buildImportedMessages(List<RecognizedMessage> recognized) {
     final baseTimestamp = DateTime.now();
@@ -521,45 +478,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String _resolveImportedConversationName({
     required String? enteredName,
     required String? recognizedName,
-  }) {
-    final normalizedEntered = enteredName?.trim();
-    if (normalizedEntered != null && normalizedEntered.isNotEmpty) {
-      return normalizedEntered;
-    }
+  }) => ScreenshotRecognitionHelper.resolveImportedConversationName(
+        enteredName: enteredName,
+        recognizedName: recognizedName,
+      );
 
-    final normalizedRecognized = recognizedName?.trim();
-    if (normalizedRecognized != null && normalizedRecognized.isNotEmpty) {
-      return normalizedRecognized;
-    }
+  String _recognitionClassificationLabel(String classification) =>
+      ScreenshotRecognitionHelper.classificationLabel(classification);
 
-    return '新對話';
-  }
-
-  String _recognitionClassificationLabel(String classification) {
-    switch (classification) {
-      case 'low_confidence':
-        return '低信心';
-      case 'social_feed':
-        return '社群內容';
-      case 'unsupported':
-        return '不支援';
-      case 'valid_chat':
-      default:
-        return '聊天截圖';
-    }
-  }
-
-  String _recognitionConfidenceLabel(String confidence) {
-    switch (confidence) {
-      case 'low':
-        return '信心偏低';
-      case 'medium':
-        return '信心中等';
-      case 'high':
-      default:
-        return '信心高';
-    }
-  }
+  String _recognitionConfidenceLabel(String confidence) =>
+      ScreenshotRecognitionHelper.confidenceLabel(confidence);
 
   Color _recognitionConfidenceColor(RecognizedConversation recognized) {
     if (recognized.importPolicy == 'reject') {
@@ -576,20 +504,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
   }
 
-  String _recognitionActionGuidance(RecognizedConversation recognized) {
-    if (recognized.importPolicy == 'reject') {
-      if (recognized.classification == 'social_feed') {
-        return '這看起來比較像社群貼文或留言串，建議改截雙人聊天畫面再試。';
-      }
-      return '這張圖目前不適合匯入，建議重截更清楚的聊天畫面，保留完整對話泡泡與標題列。';
-    }
-
-    if (recognized.importPolicy == 'confirm' || recognized.confidence != 'high') {
-      return '這張圖可以先確認再匯入。若有模糊、截到一半，或是 LINE 的回覆引用框，建議保留完整泡泡後重截一次。';
-    }
-
-    return '這看起來是正常聊天截圖。如果不是最新續聊，建議改用「另存成新對話」避免污染目前 thread。';
-  }
+  String _recognitionActionGuidance(RecognizedConversation recognized) =>
+      ScreenshotRecognitionHelper.actionGuidance(recognized);
 
   Widget _buildRecognitionStatusChip({
     required IconData icon,
