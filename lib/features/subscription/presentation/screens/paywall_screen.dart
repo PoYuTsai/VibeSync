@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -540,16 +540,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (!await canLaunchUrl(uri)) {
+    final launched = await LinkLaunchService.open(url);
+    if (!launched) {
       if (!mounted) {
         return;
       }
       _showSnackBar('目前無法開啟連結，請稍後再試。');
-      return;
     }
-
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   void _showSnackBar(String message, {Color? backgroundColor}) {

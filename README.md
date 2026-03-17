@@ -130,5 +130,7 @@ Private - All Rights Reserved
 - The image-analysis path and `optimizedMessage` draft path now both use shared prompt-section builders, so OCR context injection and user-draft interpolation are easier to reason about and less likely to regress into broken prompt formatting later.
 - Analysis-screen and analysis-service debug logs are now gated behind `kDebugMode`, so screenshot recognition metadata, conversation IDs, and detailed OCR failure traces no longer spill into device logs during TestFlight / release usage.
 - The stale paywall TODO on `analysis_screen.dart` is also removed; the method now directly routes to `/paywall` without pretending there is still a missing implementation.
+- URL launching is now centralized in a shared helper that prefers `LaunchMode.inAppBrowserView` for normal website/legal pages while keeping Telegram-style external destinations on `externalApplication`.
+- Login, settings, and paywall now all use that helper and show a consistent failure snackbar, so privacy/terms links feel more native instead of always bouncing users out to Safari.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

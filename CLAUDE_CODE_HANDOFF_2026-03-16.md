@@ -246,6 +246,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - This keeps the existing developer-facing diagnostics intact in debug sessions, but it better matches the app's privacy posture during partner testing and release usage.
    - The stale `// TODO: Navigate to paywall screen` comment in `analysis_screen.dart` was also removed because the route is already implemented and should not keep showing up as a fake unfinished task.
 
+50. `lib/shared/services/link_launch_service.dart`, `lib/features/auth/presentation/screens/login_screen.dart`, `lib/features/subscription/presentation/screens/settings_screen.dart`, `lib/features/subscription/presentation/screens/paywall_screen.dart`
+   - Website/legal link launching is now centralized in a shared helper that prefers `LaunchMode.inAppBrowserView` for normal `http/https` pages, which makes privacy / terms / website links feel embedded instead of always bouncing users into Safari.
+   - Telegram-style external destinations are still kept on `LaunchMode.externalApplication`, so support/deep-link style URLs do not regress into an awkward in-app webview.
+   - Login, settings, and paywall now all use the same launcher and show a consistent failure snackbar when the URL cannot be opened.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
