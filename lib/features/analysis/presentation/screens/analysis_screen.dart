@@ -535,6 +535,91 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return '新對話';
   }
 
+  String _recognitionClassificationLabel(String classification) {
+    switch (classification) {
+      case 'low_confidence':
+        return '低信心';
+      case 'social_feed':
+        return '社群內容';
+      case 'unsupported':
+        return '不支援';
+      case 'valid_chat':
+      default:
+        return '聊天截圖';
+    }
+  }
+
+  String _recognitionConfidenceLabel(String confidence) {
+    switch (confidence) {
+      case 'low':
+        return '信心偏低';
+      case 'medium':
+        return '信心中等';
+      case 'high':
+      default:
+        return '信心高';
+    }
+  }
+
+  Color _recognitionConfidenceColor(RecognizedConversation recognized) {
+    if (recognized.importPolicy == 'reject') {
+      return AppColors.error;
+    }
+    switch (recognized.confidence) {
+      case 'low':
+        return AppColors.warning;
+      case 'medium':
+        return AppColors.info;
+      case 'high':
+      default:
+        return AppColors.success;
+    }
+  }
+
+  String _recognitionActionGuidance(RecognizedConversation recognized) {
+    if (recognized.importPolicy == 'reject') {
+      if (recognized.classification == 'social_feed') {
+        return '這看起來比較像社群貼文或留言串，建議改截雙人聊天畫面再試。';
+      }
+      return '這張圖目前不適合匯入，建議重截更清楚的聊天畫面，保留完整對話泡泡與標題列。';
+    }
+
+    if (recognized.importPolicy == 'confirm' || recognized.confidence != 'high') {
+      return '這張圖可以先確認再匯入。若有模糊、截到一半，或是 LINE 的回覆引用框，建議保留完整泡泡後重截一次。';
+    }
+
+    return '這看起來是正常聊天截圖。如果不是最新續聊，建議改用「另存成新對話」避免污染目前 thread。';
+  }
+
+  Widget _buildRecognitionStatusChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: AppTypography.bodySmall.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 顯示識別確認對話框，讓用戶設定對方名字和情境
   Future<Map<String, dynamic>?> _showRecognitionConfirmDialog({
     required RecognizedConversation recognized,
@@ -616,6 +701,46 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       ),
                     ),
                   ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildRecognitionStatusChip(
+                      icon: Icons.chat_bubble_outline,
+                      label: _recognitionClassificationLabel(
+                        recognized.classification,
+                      ),
+                      color: recognized.importPolicy == 'reject'
+                          ? AppColors.error
+                          : AppColors.primary,
+                    ),
+                    _buildRecognitionStatusChip(
+                      icon: Icons.auto_awesome,
+                      label: _recognitionConfidenceLabel(recognized.confidence),
+                      color: _recognitionConfidenceColor(recognized),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: AppColors.info.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: Text(
+                    _recognitionActionGuidance(recognized),
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.glassTextPrimary,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   '匯入方式',
@@ -1641,6 +1766,46 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildRecognitionStatusChip(
+                icon: Icons.chat_bubble_outline,
+                label: _recognitionClassificationLabel(
+                  recognized.classification,
+                ),
+                color: recognized.importPolicy == 'reject'
+                    ? AppColors.error
+                    : AppColors.primary,
+              ),
+              _buildRecognitionStatusChip(
+                icon: Icons.auto_awesome,
+                label: _recognitionConfidenceLabel(recognized.confidence),
+                color: _recognitionConfidenceColor(recognized),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.info.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppColors.info.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Text(
+              _recognitionActionGuidance(recognized),
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextPrimary,
+                height: 1.45,
+              ),
+            ),
           ),
           if (recognized.warning != null && recognized.warning!.trim().isNotEmpty)
             Padding(

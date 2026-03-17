@@ -111,5 +111,7 @@ Private - All Rights Reserved
 - The settings screen itself was also rebuilt into a clean Traditional Chinese version, removing the remaining mojibake-era labels around account, privacy, restore purchases, logout, and account deletion.
 - Screenshot import confirmation now lets users choose between `加入目前對話` and `另存成新對話`, so low-confidence or wrong-thread captures no longer have to be appended into the active thread by default.
 - OCR prompting now explicitly handles LINE-style quoted replies and dense Traditional Chinese screenshots more carefully, and the `recognizeOnly` output budget was raised to improve long-text recognition accuracy.
+- OCR confirmation and result cards now surface clearer `分類 / 信心` badges plus actionable guidance, so users can tell whether to import, re-screenshot, or save into a new thread instead of only seeing a generic warning.
+- The screenshot picker now teaches better capture habits up front, including keeping the title bar / full message bubbles visible and capturing LINE reply previews together with the main bubble.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

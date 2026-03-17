@@ -166,8 +166,32 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         if (_images.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '建議每張截圖小於 15 則訊息，辨識會更穩定也更快。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.unselectedText,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '如果是 LINE 的「回覆」功能，請把引用框和主訊息泡泡一起截進來，避免內容被拆錯。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.unselectedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (_images.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              '建議每張截圖小於 15 則訊息，辨識會更穩定也更快。',
+              '建議保留聊天標題列、完整泡泡與上下文，繁中長截圖會更容易辨識。',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.unselectedText,

@@ -189,6 +189,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - OCR prompting now explicitly tells Claude how to treat LINE-style quoted-reply bubbles: the quote preview is not a standalone new message, and should only be merged into the actual bubble content when needed for meaning.
    - The screenshot prompt also now emphasizes preserving Traditional Chinese exactly, reading long dense screenshots top-to-bottom, and avoiding guessed characters; `recognizeOnly` output budget was raised from `1200` to `1600` to support denser OCR payloads.
 
+39. `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/shared/widgets/image_picker_widget.dart`
+   - OCR confirmation and recognized-result cards now surface explicit `分類 / 信心` chips plus a short "what to do next" guidance block instead of only dumping a warning string.
+   - Low-confidence screenshots now tell the user more clearly when they should re-screenshot, preserve the full bubble, or switch to `另存成新對話`.
+   - The image picker now adds capture tips before upload, including guidance for long Traditional Chinese screenshots and LINE's quoted-reply UI so testers can improve recognition quality without guessing.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
