@@ -199,6 +199,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - A new unit test file now locks in the highest-value OCR edge cases: empty-thread append, low-confidence new-thread default, name mismatch detection, social-feed rejection guidance, and LINE quoted-reply / blurry-screenshot guidance copy.
    - A dedicated TestFlight regression checklist now exists for auth, subscription, OCR import modes, LINE reply screenshots, dense Traditional Chinese screenshots, and telemetry capture, so manual partner QA can follow a consistent script instead of reconstructing scenarios from chat history.
 
+41. `lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart`, `test/widget/widgets/screenshot_recognition_dialog_test.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - The screenshot import confirmation dialog is now extracted into its own widget instead of being an inline `StatefulBuilder` buried inside `analysis_screen.dart`.
+   - This keeps the production behavior the same, but it isolates the most fragile OCR UI path: low-confidence warnings, import-mode switching, preview rendering, and optional session-context capture.
+   - A new widget-test file now targets that dialog directly so the `加入目前對話 / 另存成新對話 / 取消 / 低信心提示` interaction can be regression-tested independently, although `flutter test` still times out in this desktop session and should be rerun in a clean environment.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

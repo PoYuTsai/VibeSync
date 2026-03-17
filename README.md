@@ -115,5 +115,7 @@ Private - All Rights Reserved
 - The screenshot picker now teaches better capture habits up front, including keeping the title bar / full message bubbles visible and capturing LINE reply previews together with the main bubble.
 - Screenshot recognition decision copy is now also extracted into a pure helper with unit tests, so key OCR boundary rules like `append vs new conversation`, mismatch warnings, and low-confidence guidance are no longer only protected by manual QA.
 - `docs/testflight-regression-checklist.md` now gives a concrete TestFlight smoke/regression runbook for auth, subscription, OCR import, LINE reply screenshots, dense Traditional Chinese screenshots, and telemetry capture.
+- The OCR import confirmation UI is now extracted into a dedicated widget, which makes the `加入目前對話 / 另存成新對話 / 取消 / 低信心提示` path much easier to regression-test and evolve without digging through `analysis_screen.dart`.
+- A new widget test file now targets that import dialog flow directly, even though `flutter test` still times out in this desktop session and needs a clean rerun elsewhere.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
