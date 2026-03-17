@@ -132,5 +132,7 @@ Private - All Rights Reserved
 - The stale paywall TODO on `analysis_screen.dart` is also removed; the method now directly routes to `/paywall` without pretending there is still a missing implementation.
 - URL launching is now centralized in a shared helper that prefers `LaunchMode.inAppBrowserView` for normal website/legal pages while keeping Telegram-style external destinations on `externalApplication`.
 - Login, settings, and paywall now all use that helper and show a consistent failure snackbar, so privacy/terms links feel more native instead of always bouncing users out to Safari.
+- Screenshot OCR now treats in-thread missed-call / call-record entries more carefully: chat screenshots dominated by `未接來電` or similar call events are no longer supposed to be rejected as a standalone call-log screen by default.
+- If the model still hesitates on an all-call-record chat screenshot, the server now downgrades it to a confirmable import with Chinese guidance instead of hard-rejecting it with an English `call log / system notification` warning.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

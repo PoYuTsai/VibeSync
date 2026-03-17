@@ -110,11 +110,19 @@ class ScreenshotRecognitionHelper {
   }
 
   static String actionGuidance(RecognizedConversation recognized) {
+    final warning = recognized.warning?.trim() ?? '';
+    final looksLikeCallRecord =
+        warning.contains('通話紀錄') || warning.contains('未接來電');
+
     if (recognized.importPolicy == 'reject') {
       if (recognized.classification == 'social_feed') {
         return '這看起來比較像社群貼文或留言串，建議改截雙人聊天畫面再試。';
       }
       return '這張圖目前不適合匯入，建議重截更清楚的聊天畫面，保留完整對話泡泡與標題列。';
+    }
+
+    if (looksLikeCallRecord) {
+      return '這張圖像是聊天視窗裡的未接來電或通話紀錄。若確認是同一段對話，先檢查方向與順序，再決定是否匯入。';
     }
 
     if (recognized.importPolicy == 'confirm' ||

@@ -98,6 +98,20 @@ const VALID_SCREENSHOT_CLASSIFICATIONS = new Set([
   "unsupported",
 ]);
 const VALID_IMPORT_POLICIES = new Set(["allow", "confirm", "reject"]);
+const CALL_EVENT_KEYWORDS = [
+  "未接來電",
+  "已接來電",
+  "撥出電話",
+  "語音通話",
+  "視訊通話",
+  "missed call",
+  "incoming call",
+  "outgoing call",
+  "voice call",
+  "video call",
+  "missed a call",
+  "called you",
+];
 const LOG_PREFIX = "[analyze-chat]";
 
 function getErrorMessage(error: unknown): string {
@@ -176,6 +190,9 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- Read screenshots from top to bottom and keep message order stable across multiple images.",
   "- Treat LINE or Messenger quoted-reply previews as context, not as separate new messages.",
   "- Infer sides from layout when possible: left is usually the other person, right is usually the user.",
+  "- Distinguish between a standalone phone call log screen and a one-to-one chat thread that contains missed-call or call-record entries.",
+  "- If missed calls, outgoing calls, or answered-call records appear inside a normal chat thread with the contact header, treat them as valid conversation events instead of rejecting the screenshot outright.",
+  "- Convert in-thread call records into messages while preserving direction: the other person's missed/incoming call is usually `isFromMe: false`, while my outgoing call is usually `isFromMe: true`.",
   "- If the screenshot looks like a social feed, comment thread, profile page, album, or non-chat UI, classify it as `social_feed` or `unsupported`.",
   "- If text is blurry, cropped, or incomplete, lower confidence and use `importPolicy: confirm` instead of guessing.",
   "- If the contact name is unclear, return `contactName: null`.",
@@ -222,7 +239,7 @@ function buildRecognizeOnlyImagePrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.",
+    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.",
     "### JSON Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo
@@ -251,7 +268,7 @@ function buildImageAnalysisPrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.",
+    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.",
     "### recognizedConversation Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo,
@@ -741,12 +758,40 @@ function normalizeConfidenceLabel(
   return "medium";
 }
 
+function isCallEventLikeMessage(content: string): boolean {
+  const normalized = content.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return CALL_EVENT_KEYWORDS.some((keyword) =>
+    normalized.includes(keyword.toLowerCase())
+  );
+}
+
+function isLikelyChatThreadCallEventScreenshot(
+  messages: Array<{ isFromMe: boolean; content: string }>,
+): boolean {
+  return messages.length > 0 &&
+    messages.every((message) => isCallEventLikeMessage(message.content));
+}
+
 function normalizeWarningMessage(
   value: unknown,
   classification: string,
 ): string | undefined {
   if (typeof value === "string" && value.trim()) {
-    return value.trim();
+    const normalized = value.trim();
+    const lower = normalized.toLowerCase();
+
+    if (
+      lower.includes("call log") ||
+      lower.includes("system notification interface")
+    ) {
+      return "這張圖看起來像聊天視窗裡的通話紀錄或來電事件，不是一般文字聊天。若確認是同一段對話中的未接來電，可先確認預覽後再匯入。";
+    }
+
+    return normalized;
   }
 
   switch (classification) {
@@ -848,23 +893,35 @@ function normalizeRecognizedConversation(
       : Number(recognizedRaw.messageCount) > 0
       ? Number(recognizedRaw.messageCount)
       : normalizedMessages.length;
-  const classification = normalizeScreenshotClassification(
+  let classification = normalizeScreenshotClassification(
     recognizedRaw.classification,
     normalizedMessages.length,
   );
-  const importPolicy = normalizeImportPolicy(
+  let importPolicy = normalizeImportPolicy(
     recognizedRaw.importPolicy,
     classification,
   );
-  const confidence = normalizeConfidenceLabel(
+  let confidence = normalizeConfidenceLabel(
     recognizedRaw.confidence,
     classification,
     normalizedMessages.length,
   );
-  const warning = normalizeWarningMessage(
+  let warning = normalizeWarningMessage(
     recognizedRaw.warning,
     classification,
   );
+  const callEventOnly = isLikelyChatThreadCallEventScreenshot(normalizedMessages);
+
+  if (
+    callEventOnly &&
+    (classification === "unsupported" || classification === "social_feed")
+  ) {
+    classification = "low_confidence";
+    importPolicy = "confirm";
+    confidence = confidence === "low" ? "low" : "medium";
+    warning =
+      "這張圖看起來是聊天視窗裡的通話紀錄或未接來電列表，雖然不是一般文字泡泡，但仍可先確認預覽後再匯入。";
+  }
 
   normalizedResult.recognizedConversation = {
     ...recognizedRaw,

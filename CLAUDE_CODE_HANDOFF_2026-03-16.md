@@ -251,6 +251,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Telegram-style external destinations are still kept on `LaunchMode.externalApplication`, so support/deep-link style URLs do not regress into an awkward in-app webview.
    - Login, settings, and paywall now all use the same launcher and show a consistent failure snackbar when the URL cannot be opened.
 
+51. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`
+   - Screenshot OCR now distinguishes more explicitly between a standalone phone call log screen and a real one-to-one chat thread that happens to contain missed-call / call-record entries.
+   - Prompting now tells Claude not to reject an otherwise-valid chat thread just because the visible content is mostly `未接來電` / call records, and to convert those in-thread call records into directional conversation events.
+   - Server-side normalization also now catches the common false-negative shape where OCR extracts only call events but still labels the screenshot `unsupported`; that case is downgraded to `low_confidence + confirm` with Chinese guidance instead of a hard English rejection banner.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
