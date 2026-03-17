@@ -386,6 +386,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
+  void _showFloatingSnackBar(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   List<Message>? _buildMessagesForReplyAnalysis(List<Message> messages) {
     if (messages.isEmpty) return null;
 
@@ -836,7 +847,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _debugLog('錯誤詳情: $e');
       setState(() {
         _isRecognizing = false;
-        _errorMessage = '識別失敗: $e';
+        _errorMessage = '截圖辨識暫時失敗，請稍後再試。';
       });
     }
   }
@@ -942,7 +953,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     } catch (e) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '分析失敗: $e';
+        _errorMessage = '分析暫時失敗，請稍後再試。';
       });
     }
   }
@@ -982,20 +993,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       setState(() {
         _isAnalyzingMyMessage = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('分析失敗: ${e.message}')),
-        );
-      }
+      _showFloatingSnackBar(e.message);
     } catch (e) {
       setState(() {
         _isAnalyzingMyMessage = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('分析失敗: $e')),
-        );
-      }
+      _showFloatingSnackBar('分析暫時失敗，請稍後再試。');
     }
   }
 
@@ -1003,7 +1006,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _optimizeMessage() async {
     final draft = _optimizeController.text.trim();
     if (draft.isEmpty) return;
-    final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
       _isOptimizing = true;
@@ -1034,37 +1036,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       setState(() {
         _isOptimizing = false;
         _optimizedMessage = result.optimizedMessage;
-        // 只更新優化結果，不覆蓋其他分析
-        _optimizedMessage = result.optimizedMessage;
-
-        // 檢查優化是否成功
-        if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
-          messenger.showSnackBar(
-            const SnackBar(content: Text('?芸?憭望?嚗??岫')),
-          );
-          return;
-          // 優化失敗，顯示錯誤但保留原本的分析結果
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('優化失敗，請重試')),
-          );
-        }
       });
+
+      if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
+        _showFloatingSnackBar('這次沒有產生可用的優化結果，請稍後再試。');
+      }
     } on AnalysisException catch (e) {
       if (!mounted) return;
       setState(() {
         _isOptimizing = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('優化失敗: ${e.message}')),
-      );
+      _showFloatingSnackBar(e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isOptimizing = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('優化失敗: $e')),
-      );
+      _showFloatingSnackBar('訊息優化暫時失敗，請稍後再試。');
     }
   }
 

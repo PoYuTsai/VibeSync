@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -84,10 +83,280 @@ typedef AnalysisTelemetryCallback = void Function(
   AnalysisTelemetry telemetry,
 );
 
+enum AnalysisErrorAction {
+  retry,
+  relogin,
+  rescreenshot,
+  shortenInput,
+  upgrade,
+  wait,
+  addIncomingMessage,
+}
+
 void _debugLog(String message) {
   if (kDebugMode) {
     debugPrint(message);
   }
+}
+
+bool _isReadableUserMessage(String message) {
+  return message.contains(RegExp(r'[\u4e00-\u9fff]'));
+}
+
+AnalysisException _mapAnalysisHttpError({
+  required int statusCode,
+  required String? errorCode,
+  required String rawMessage,
+  required bool hasImages,
+  required bool recognizeOnly,
+  required bool hasUserDraft,
+}) {
+  final normalizedMessage = rawMessage.trim();
+  final lowerMessage = normalizedMessage.toLowerCase();
+
+  String recognitionUnsupportedMessage() {
+    if (normalizedMessage.isEmpty) {
+      return '這張圖目前不像可匯入的聊天截圖，請改傳完整聊天視窗後再試。';
+    }
+
+    if (_isReadableUserMessage(normalizedMessage)) {
+      return normalizedMessage;
+    }
+
+    if (lowerMessage.contains('call log') ||
+        lowerMessage.contains('system notification')) {
+      return '這張圖看起來比較像通話紀錄或系統通知畫面。若這其實是聊天視窗，請保留標題列與完整訊息泡泡後再試。';
+    }
+
+    if (lowerMessage.contains('social feed') ||
+        lowerMessage.contains('comment thread')) {
+      return '這張圖看起來比較像社群貼文或留言串，不是一般雙人聊天截圖。請改傳聊天視窗後再試。';
+    }
+
+    return '這張圖目前不像可匯入的聊天截圖，請改傳完整聊天視窗後再試。';
+  }
+
+  switch (statusCode) {
+    case 400:
+      switch (errorCode) {
+        case 'RECOGNITION_UNSUPPORTED':
+          return AnalysisException(
+            recognitionUnsupportedMessage(),
+            code: errorCode,
+            suggestedAction: AnalysisErrorAction.rescreenshot,
+          );
+        case 'RECOGNITION_FAILED':
+          return AnalysisException(
+            _isReadableUserMessage(normalizedMessage) &&
+                    normalizedMessage.isNotEmpty
+                ? normalizedMessage
+                : '這張圖暫時辨識不穩，請換一張更清楚的截圖再試。',
+            code: errorCode,
+            suggestedAction: AnalysisErrorAction.rescreenshot,
+          );
+      }
+
+      if (normalizedMessage == 'Messages cannot be empty') {
+        return AnalysisException(
+          '請先加入對話內容再分析。',
+          code: 'EMPTY_MESSAGES',
+          suggestedAction: AnalysisErrorAction.addIncomingMessage,
+        );
+      }
+
+      if (normalizedMessage == 'Request body too large' ||
+          normalizedMessage == 'Total image payload too large') {
+        return AnalysisException(
+          '這次上傳的內容太多或圖片太大，請減少張數或重新截圖後再試。',
+          code: 'REQUEST_TOO_LARGE',
+          suggestedAction: AnalysisErrorAction.shortenInput,
+        );
+      }
+
+      if (normalizedMessage == 'Unsupported image type' ||
+          lowerMessage.contains('unsupported image type')) {
+        return AnalysisException(
+          '目前不支援這種圖片格式，請改用一般截圖後再試。',
+          code: 'UNSUPPORTED_IMAGE_TYPE',
+          suggestedAction: AnalysisErrorAction.rescreenshot,
+        );
+      }
+
+      if (normalizedMessage.contains('圖片格式錯誤') ||
+          lowerMessage.contains('invalid image format')) {
+        return AnalysisException(
+          '圖片格式有誤，請重新截圖後再試。',
+          code: 'INVALID_IMAGE_FORMAT',
+          suggestedAction: AnalysisErrorAction.rescreenshot,
+        );
+      }
+
+      if (normalizedMessage.contains('圖片順序錯誤') ||
+          normalizedMessage.contains('圖片排序重複') ||
+          lowerMessage.contains('invalid image order')) {
+        return AnalysisException(
+          '截圖順序有誤，請重新選擇圖片後再試。',
+          code: 'INVALID_IMAGE_ORDER',
+          suggestedAction: AnalysisErrorAction.rescreenshot,
+        );
+      }
+
+      if (normalizedMessage.startsWith('userDraft too long')) {
+        return AnalysisException(
+          '你輸入的草稿太長了，請精簡後再試。',
+          code: 'USER_DRAFT_TOO_LONG',
+          suggestedAction: AnalysisErrorAction.shortenInput,
+        );
+      }
+
+      if (normalizedMessage.startsWith('conversationSummary too long')) {
+        return AnalysisException(
+          '這段對話的上下文太長了，請精簡後再試。',
+          code: 'CONTEXT_TOO_LONG',
+          suggestedAction: AnalysisErrorAction.shortenInput,
+        );
+      }
+
+      if (normalizedMessage ==
+          'At least one incoming message is required for analysis') {
+        return AnalysisException(
+          '至少要有一則對方訊息才能開始分析。',
+          code: 'NO_INCOMING_MESSAGE',
+          suggestedAction: AnalysisErrorAction.addIncomingMessage,
+        );
+      }
+
+      if (normalizedMessage ==
+          'my_message mode requires the latest message to be from the user') {
+        return AnalysisException(
+          '「優化我說」需要最新一則是你自己發出的訊息。',
+          code: 'INVALID_MY_MESSAGE_CONTEXT',
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
+
+      if (normalizedMessage == 'recognizeOnly requires images') {
+        return AnalysisException(
+          '請先選擇截圖再開始辨識。',
+          code: 'IMAGES_REQUIRED',
+          suggestedAction: AnalysisErrorAction.rescreenshot,
+        );
+      }
+
+      return AnalysisException(
+        hasImages
+            ? '這次上傳的截圖內容有誤，請重新截圖後再試。'
+            : hasUserDraft
+                ? '這次送出的草稿內容有誤，請修改後再試。'
+                : '這次送出的對話內容有誤，請檢查後再試。',
+        code: errorCode ?? 'BAD_REQUEST',
+        suggestedAction:
+            hasImages ? AnalysisErrorAction.rescreenshot : AnalysisErrorAction.retry,
+      );
+    case 401:
+      return AnalysisException(
+        '登入狀態已失效，請重新登入後再試。',
+        code: errorCode ?? 'UNAUTHORIZED',
+        suggestedAction: AnalysisErrorAction.relogin,
+      );
+    case 403:
+      if (errorCode == 'FEATURE_NOT_AVAILABLE') {
+        return AnalysisException(
+          '這個功能需要 Essential 方案才能使用。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.upgrade,
+        );
+      }
+      return AnalysisException(
+        '你目前沒有權限使用這個功能。',
+        code: errorCode ?? 'FORBIDDEN',
+        suggestedAction: AnalysisErrorAction.wait,
+      );
+    case 413:
+      return AnalysisException(
+        '這次上傳的內容太大，請減少張數或重新截圖後再試。',
+        code: errorCode ?? 'PAYLOAD_TOO_LARGE',
+        suggestedAction: AnalysisErrorAction.shortenInput,
+      );
+    case 502:
+    case 503:
+    case 504:
+      return AnalysisException(
+        hasImages
+            ? recognizeOnly
+                ? '截圖辨識服務目前較忙，請稍後再試。'
+                : '圖片分析服務目前較忙，請稍後再試。'
+            : hasUserDraft
+                ? '訊息優化服務目前較忙，請稍後再試。'
+                : '分析服務目前較忙，請稍後再試。',
+        code: errorCode ?? 'UPSTREAM_UNAVAILABLE',
+        suggestedAction: AnalysisErrorAction.wait,
+      );
+    default:
+      return AnalysisException(
+        hasImages
+            ? recognizeOnly
+                ? '截圖辨識暫時失敗，請稍後再試。'
+                : '圖片分析暫時失敗，請稍後再試。'
+            : hasUserDraft
+                ? '訊息優化暫時失敗，請稍後再試。'
+                : '分析暫時失敗，請稍後再試。',
+        code: errorCode ?? 'UNKNOWN_HTTP_ERROR',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+  }
+}
+
+AnalysisException _mapUnexpectedAnalysisError(
+  Object error, {
+  required bool hasImages,
+  required bool recognizeOnly,
+  required bool hasUserDraft,
+}) {
+  final errorMessage = error.toString();
+
+  if (errorMessage.contains('Unauthorized') || errorMessage.contains('401')) {
+    return AnalysisException(
+      '登入狀態已失效，請重新登入後再試。',
+      code: 'UNAUTHORIZED',
+      suggestedAction: AnalysisErrorAction.relogin,
+    );
+  }
+
+  if (errorMessage.contains('SocketException') ||
+      errorMessage.contains('Connection refused')) {
+    return AnalysisException(
+      '網路連線不穩，請確認網路後再試。',
+      code: 'NETWORK_ERROR',
+      suggestedAction: AnalysisErrorAction.retry,
+    );
+  }
+
+  if (errorMessage.contains('timeout') || errorMessage.contains('Timeout')) {
+    return AnalysisException(
+      hasImages
+          ? recognizeOnly
+              ? '截圖辨識花太久了，請稍後再試。'
+              : '圖片分析花太久了，請稍後再試。'
+          : hasUserDraft
+              ? '訊息優化花太久了，請稍後再試。'
+              : '分析花太久了，請稍後再試。',
+      code: 'TIMEOUT',
+      suggestedAction: AnalysisErrorAction.wait,
+    );
+  }
+
+  return AnalysisException(
+    hasImages
+        ? recognizeOnly
+            ? '截圖辨識暫時失敗，請稍後再試。'
+            : '圖片分析暫時失敗，請稍後再試。'
+        : hasUserDraft
+            ? '訊息優化暫時失敗，請稍後再試。'
+            : '分析暫時失敗，請稍後再試。',
+    code: 'UNEXPECTED_ERROR',
+    suggestedAction: AnalysisErrorAction.retry,
+  );
 }
 
 class AnalysisService {
@@ -107,10 +376,21 @@ class AnalysisService {
         : messages;
 
     if (sanitizedMessages.isEmpty && !recognizeOnly) {
-      throw AnalysisException('Messages cannot be empty');
+      throw AnalysisException(
+        '請先加入對話內容再分析。',
+        code: 'EMPTY_MESSAGES',
+        suggestedAction: AnalysisErrorAction.addIncomingMessage,
+      );
     }
 
     const maxRetries = 2;
+    const retriableCodes = <String>{
+      'NETWORK_ERROR',
+      'TIMEOUT',
+      'UNEXPECTED_ERROR',
+      'UPSTREAM_UNAVAILABLE',
+    };
+
     Exception? lastError;
 
     _debugLog('[AnalysisService] analyzeConversation start');
@@ -141,9 +421,7 @@ class AnalysisService {
         lastError = error is Exception ? error : Exception(error.toString());
 
         if (error is AnalysisException &&
-            !error.message.contains('Failed to fetch') &&
-            !error.message.contains('timeout') &&
-            !error.message.contains('逾時')) {
+            !retriableCodes.contains(error.code)) {
           rethrow;
         }
 
@@ -153,7 +431,7 @@ class AnalysisService {
       }
     }
 
-    throw lastError ?? AnalysisException('分析失敗');
+    throw lastError ?? AnalysisException('分析暫時失敗，請稍後再試。');
   }
 
   Map<String, dynamic> _decodeResponseBody(http.Response response) {
@@ -212,6 +490,9 @@ class AnalysisService {
     AnalysisProgressCallback? onProgress,
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
+    final hasUserDraft = userDraft != null && userDraft.trim().isNotEmpty;
+    final hasImages = images != null && images.isNotEmpty;
+
     try {
       final overallStartTime = DateTime.now();
       final imageCount = images?.length ?? 0;
@@ -225,7 +506,7 @@ class AnalysisService {
       );
 
       List<Map<String, dynamic>>? imageDataList;
-      if (images != null && images.isNotEmpty) {
+      if (hasImages) {
         imageDataList = images.asMap().entries.map((entry) {
           final base64Data = base64Encode(entry.value);
           return ImageData(
@@ -236,14 +517,17 @@ class AnalysisService {
         }).toList();
       }
 
-      final hasImages = imageDataList != null && imageDataList.isNotEmpty;
       final timeout = hasImages
           ? const Duration(seconds: 120)
           : const Duration(seconds: 60);
 
       final accessToken = SupabaseService.accessToken;
       if (accessToken == null) {
-        throw AnalysisException('請先重新登入後再試');
+        throw AnalysisException(
+          '請先重新登入後再試。',
+          code: 'UNAUTHORIZED',
+          suggestedAction: AnalysisErrorAction.relogin,
+        );
       }
 
       final requestBody = {
@@ -264,14 +548,13 @@ class AnalysisService {
           },
         if (conversationSummary != null && conversationSummary.trim().isNotEmpty)
           'conversationSummary': conversationSummary.trim(),
-        if (userDraft != null && userDraft.trim().isNotEmpty)
-          'userDraft': userDraft.trim(),
+        if (hasUserDraft) 'userDraft': userDraft.trim(),
         if (analyzeMode != null) 'analyzeMode': analyzeMode,
         if (recognizeOnly) 'recognizeOnly': true,
       };
 
       final encodedRequestBody = jsonEncode(requestBody);
-      final requestBodyBytes = encodedRequestBody.length;
+      final requestBodyBytes = utf8.encode(encodedRequestBody).length;
       final payloadPreparationDuration =
           DateTime.now().difference(overallStartTime);
 
@@ -335,7 +618,11 @@ class AnalysisService {
 
           final status = httpResponse.statusCode;
           if (responseData['_nonJson'] == true && status == 200) {
-            throw AnalysisException('伺服器回傳了非 JSON 內容，請稍後再試');
+            throw AnalysisException(
+              '伺服器回傳格式異常，請稍後再試。',
+              code: 'INVALID_RESPONSE_FORMAT',
+              suggestedAction: AnalysisErrorAction.retry,
+            );
           }
 
           if (status != 200) {
@@ -343,7 +630,7 @@ class AnalysisService {
             final errorMessage = responseData['message'] as String? ??
                 responseData['error'] as String? ??
                 (responseData['_nonJson'] == true
-                    ? '伺服器回傳了無法解析的內容'
+                    ? '伺服器暫時無法正確回應，請稍後再試。'
                     : 'Analysis failed');
 
             if (status == 429) {
@@ -365,11 +652,14 @@ class AnalysisService {
               }
             }
 
-            if (errorCode == 'RECOGNITION_FAILED') {
-              throw AnalysisException(errorMessage);
-            }
-
-            throw AnalysisException(errorMessage);
+            throw _mapAnalysisHttpError(
+              statusCode: status,
+              errorCode: errorCode,
+              rawMessage: errorMessage,
+              hasImages: hasImages,
+              recognizeOnly: recognizeOnly,
+              hasUserDraft: hasUserDraft,
+            );
           }
 
           return AnalysisResult.fromJson(responseData);
@@ -380,31 +670,27 @@ class AnalysisService {
         httpClient.close();
       }
     } on TimeoutException {
-      throw AnalysisException('分析逾時，請稍後再試');
+      throw AnalysisException(
+        hasImages
+            ? recognizeOnly
+                ? '截圖辨識花太久了，請稍後再試。'
+                : '圖片分析花太久了，請稍後再試。'
+            : hasUserDraft
+                ? '訊息優化花太久了，請稍後再試。'
+                : '分析花太久了，請稍後再試。',
+        code: 'TIMEOUT',
+        suggestedAction: AnalysisErrorAction.wait,
+      );
     } catch (error) {
-      final errorMessage = error.toString();
-
-      if (errorMessage.contains('Unauthorized') ||
-          errorMessage.contains('401')) {
-        throw AnalysisException('登入狀態已失效，請重新登入後再試');
-      }
-
-      if (errorMessage.contains('SocketException') ||
-          errorMessage.contains('Connection refused')) {
-        throw AnalysisException('網路連線失敗，請檢查網路後重試');
-      }
-
-      if (errorMessage.contains('timeout') ||
-          errorMessage.contains('Timeout')) {
-        throw AnalysisException('分析逾時，請稍後再試');
-      }
-
       if (error is AnalysisException) {
         rethrow;
       }
 
-      throw AnalysisException(
-        '分析失敗 (${error.runtimeType}): $errorMessage',
+      throw _mapUnexpectedAnalysisError(
+        error,
+        hasImages: hasImages,
+        recognizeOnly: recognizeOnly,
+        hasUserDraft: hasUserDraft,
       );
     }
   }
@@ -412,8 +698,14 @@ class AnalysisService {
 
 class AnalysisException implements Exception {
   final String message;
+  final String? code;
+  final AnalysisErrorAction? suggestedAction;
 
-  AnalysisException(this.message);
+  AnalysisException(
+    this.message, {
+    this.code,
+    this.suggestedAction,
+  });
 
   @override
   String toString() => 'AnalysisException: $message';
@@ -426,7 +718,11 @@ class DailyLimitExceededException extends AnalysisException {
   DailyLimitExceededException({
     required this.dailyLimit,
     required this.used,
-  }) : super('Daily limit exceeded');
+  }) : super(
+          'Daily limit exceeded',
+          code: 'DAILY_LIMIT_EXCEEDED',
+          suggestedAction: AnalysisErrorAction.wait,
+        );
 }
 
 class MonthlyLimitExceededException extends AnalysisException {
@@ -436,5 +732,9 @@ class MonthlyLimitExceededException extends AnalysisException {
   MonthlyLimitExceededException({
     required this.monthlyLimit,
     required this.used,
-  }) : super('Monthly limit exceeded');
+  }) : super(
+          'Monthly limit exceeded',
+          code: 'MONTHLY_LIMIT_EXCEEDED',
+          suggestedAction: AnalysisErrorAction.upgrade,
+        );
 }

@@ -256,6 +256,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Prompting now tells Claude not to reject an otherwise-valid chat thread just because the visible content is mostly `未接來電` / call records, and to convert those in-thread call records into directional conversation events.
    - Server-side normalization also now catches the common false-negative shape where OCR extracts only call events but still labels the screenshot `unsupported`; that case is downgraded to `low_confidence + confirm` with Chinese guidance instead of a hard English rejection banner.
 
+52. `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - Analysis/OCR error handling is now mapped through a dedicated user-facing error taxonomy instead of leaking raw backend strings like `Analysis failed`, `timeout`, or exception dumps into the UI.
+   - The service now normalizes oversized payloads, unsupported image types, no-incoming-message analysis attempts, auth expiry, upstream busy states, and generic network/timeout failures into clear Traditional Chinese messages plus suggested recovery actions.
+   - The screen layer now uses those friendly messages directly and falls back to generic Chinese copy for unknown OCR / analysis / optimize failures, so TestFlight users should no longer see technical prefixes like `識別失敗: ...` or `優化失敗: ...`.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
