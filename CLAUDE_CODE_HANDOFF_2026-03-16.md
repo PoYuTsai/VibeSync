@@ -214,6 +214,16 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `flutter analyze` passes after this refactor.
    - `flutter test` for these new unit tests still times out in this desktop session with no useful output, so they need a clean rerun on a less sticky local environment before treating them as verified.
 
+44. `lib/features/subscription/presentation/screens/paywall_screen.dart`
+   - The paywall screen was rebuilt into a clean Traditional Chinese version so TestFlight users no longer see mojibake-era copy on the purchase path.
+   - Privacy / Terms buttons now open the real live legal pages instead of being no-op placeholders.
+   - Purchase success now surfaces a simple launch-facing success message instead of an internal RevenueCat entitlement dump, while debug-only force-sync and diagnostics remain gated behind `kDebugMode`.
+   - Restore-purchases and generic purchase-error messaging were also tightened so release builds do not leak raw exception strings to users.
+
+45. `docs/testflight-regression-checklist.md`, `README.md`
+   - The TestFlight regression checklist was rewritten into a readable master runbook that now covers auth recovery, paywall verification, OCR import modes, analysis persistence, account deletion, and OCR telemetry sign-off in one place.
+   - README hotfix notes now document the paywall cleanup and the new master QA checklist so the next reviewer can see the latest launch-facing changes at a glance.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

@@ -119,5 +119,7 @@ Private - All Rights Reserved
 - A new widget test file now targets that import dialog flow directly, even though `flutter test` still times out in this desktop session and needs a clean rerun elsewhere.
 - Password-recovery callback parsing and auth-state transitions are now extracted into a dedicated helper, so hash-fragment recovery links and `passwordRecovery -> signedIn/signedOut` state changes no longer depend on ad-hoc inline logic inside `SupabaseService`.
 - Subscription tier/product-id mapping and tier limits are now centralized in a shared helper used by RevenueCat, usage fallback, and subscription state updates, which reduces the chance of `starter/essential/free` drift across login, purchase, restore, and sync flows.
+- The paywall screen is now rebuilt into a clean launch-facing version with real privacy / terms links, safer purchase / restore messaging, and no raw RevenueCat success dump shown to testers after checkout.
+- `docs/testflight-regression-checklist.md` is now a readable master TestFlight runbook that covers auth recovery, subscription, OCR import modes, analysis persistence, account deletion, and OCR telemetry sign-off in one place.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
