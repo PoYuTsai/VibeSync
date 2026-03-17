@@ -93,6 +93,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   AnalysisProgressStage _recognizeStage =
       AnalysisProgressStage.preparingPayload;
   AnalysisTelemetry? _lastRecognizeTelemetry;
+  static const String _importModeAppendCurrent = 'append_current';
+  static const String _importModeNewConversation = 'new_conversation';
 
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
@@ -478,23 +480,87 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return warnings.join('\n');
   }
 
+  String _defaultRecognitionImportMode({
+    required RecognizedConversation recognized,
+    required Conversation currentConversation,
+  }) {
+    final hasExistingThread = currentConversation.messages.isNotEmpty;
+    if (!hasExistingThread) {
+      return _importModeAppendCurrent;
+    }
+
+    final recognizedName = recognized.contactName?.trim();
+    final currentName = currentConversation.name.trim();
+    final hasNamedThread = currentName.isNotEmpty && currentName != '新對話';
+    final nameMismatch =
+        hasNamedThread &&
+        recognizedName != null &&
+        recognizedName.isNotEmpty &&
+        recognizedName != currentName;
+
+    if (recognized.importPolicy == 'confirm' || nameMismatch) {
+      return _importModeNewConversation;
+    }
+
+    return _importModeAppendCurrent;
+  }
+
+  List<Message> _buildImportedMessages(List<RecognizedMessage> recognized) {
+    final baseTimestamp = DateTime.now();
+    return List.generate(recognized.length, (index) {
+      final message = recognized[index];
+      return Message(
+        id: '${baseTimestamp.microsecondsSinceEpoch}_$index',
+        content: message.content,
+        isFromMe: message.isFromMe,
+        timestamp: baseTimestamp.add(Duration(milliseconds: index)),
+      );
+    });
+  }
+
+  String _resolveImportedConversationName({
+    required String? enteredName,
+    required String? recognizedName,
+  }) {
+    final normalizedEntered = enteredName?.trim();
+    if (normalizedEntered != null && normalizedEntered.isNotEmpty) {
+      return normalizedEntered;
+    }
+
+    final normalizedRecognized = recognizedName?.trim();
+    if (normalizedRecognized != null && normalizedRecognized.isNotEmpty) {
+      return normalizedRecognized;
+    }
+
+    return '新對話';
+  }
+
   /// 顯示識別確認對話框，讓用戶設定對方名字和情境
   Future<Map<String, dynamic>?> _showRecognitionConfirmDialog({
-    required String? recognizedName,
-    required int messageCount,
-    required List<RecognizedMessage> messages,
+    required RecognizedConversation recognized,
     required Conversation currentConversation,
     String? warningMessage,
   }) async {
-    final nameController = TextEditingController(text: recognizedName ?? '');
+    final defaultImportMode = _defaultRecognitionImportMode(
+      recognized: recognized,
+      currentConversation: currentConversation,
+    );
+    var selectedImportMode = defaultImportMode;
+    final nameController = TextEditingController(
+      text: recognized.contactName?.trim() ?? '',
+    );
     MeetingContext? selectedMeeting =
-        currentConversation.sessionContext?.meetingContext;
+        defaultImportMode == _importModeAppendCurrent
+            ? currentConversation.sessionContext?.meetingContext
+            : null;
     AcquaintanceDuration? selectedDuration =
-        currentConversation.sessionContext?.duration;
+        defaultImportMode == _importModeAppendCurrent
+            ? currentConversation.sessionContext?.duration
+            : null;
 
-    // 預覽前 5 則訊息
-    final previewMessages = messages.take(5).toList();
-    final remainingCount = messages.length - previewMessages.length;
+    final recognizedMessages = recognized.messages ?? const <RecognizedMessage>[];
+    final previewMessages = recognizedMessages.take(5).toList();
+    final remainingCount = recognizedMessages.length - previewMessages.length;
 
     return showDialog<Map<String, dynamic>>(
       context: context,
@@ -512,7 +578,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '識別到 $messageCount 則訊息',
+                  '識別到 ${recognized.messageCount} 則訊息',
                   style: TextStyle(color: AppColors.glassTextPrimary),
                 ),
                 if (warningMessage != null && warningMessage.trim().isNotEmpty)
@@ -550,6 +616,63 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       ),
                     ),
                   ),
+                const SizedBox(height: 16),
+                Text(
+                  '匯入方式',
+                  style: TextStyle(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('加入目前對話'),
+                      selected: selectedImportMode == _importModeAppendCurrent,
+                      onSelected: (selected) {
+                        if (!selected) return;
+                        setDialogState(() {
+                          selectedImportMode = _importModeAppendCurrent;
+                        });
+                      },
+                      selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                      labelStyle: TextStyle(
+                        color: selectedImportMode == _importModeAppendCurrent
+                            ? AppColors.primary
+                            : AppColors.glassTextPrimary,
+                      ),
+                    ),
+                    ChoiceChip(
+                      label: const Text('另存成新對話'),
+                      selected: selectedImportMode == _importModeNewConversation,
+                      onSelected: (selected) {
+                        if (!selected) return;
+                        setDialogState(() {
+                          selectedImportMode = _importModeNewConversation;
+                        });
+                      },
+                      selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                      labelStyle: TextStyle(
+                        color: selectedImportMode == _importModeNewConversation
+                            ? AppColors.primary
+                            : AppColors.glassTextPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  selectedImportMode == _importModeAppendCurrent
+                      ? '會把這批訊息接到目前對話尾端，適合剛截到最新續聊。'
+                      : '會建立新的對話，不會污染目前這段聊天紀錄。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.unselectedText,
+                    height: 1.45,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 // 訊息預覽
                 Container(
@@ -619,7 +742,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
                 const SizedBox(height: 16),
                 // 認識場景（如果尚未設定）
-                if (currentConversation.sessionContext == null) ...[
+                if (currentConversation.sessionContext == null ||
+                    selectedImportMode == _importModeNewConversation) ...[
                   Text(
                     '認識場景（選填）',
                     style: TextStyle(
@@ -697,12 +821,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   'name': nameController.text.trim(),
                   'meetingContext': selectedMeeting,
                   'duration': selectedDuration,
+                  'importMode': selectedImportMode,
                 });
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
               ),
-              child: const Text('確認加入'),
+              child: const Text('確認匯入'),
             ),
           ],
         ),
@@ -816,9 +941,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         // 顯示確認對話框
         if (!mounted) return;
         final dialogResult = await _showRecognitionConfirmDialog(
-          recognizedName: recognized.contactName,
-          messageCount: recognized.messages!.length,
-          messages: recognized.messages!,
+          recognized: recognized,
           currentConversation: conversation,
           warningMessage: warningMessage,
         );
@@ -834,76 +957,120 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         }
 
         final repository = ref.read(conversationRepositoryProvider);
-        final conv = repository.getConversation(widget.conversationId);
-        if (conv != null) {
-          final recognizedMessages = recognized.messages ??
-              const <RecognizedMessage>[];
-          // 更新對話名稱（如果用戶有輸入）
-          final newName = dialogResult['name'] as String?;
-          if (newName != null && newName.isNotEmpty && conv.name == '新對話') {
-            conv.name = newName;
-          }
+        final recognizedMessages =
+            recognized.messages ?? const <RecognizedMessage>[];
+        final importedMessages = _buildImportedMessages(recognizedMessages);
+        final newName = dialogResult['name'] as String?;
+        final meeting = dialogResult['meetingContext'] as MeetingContext?;
+        final duration = dialogResult['duration'] as AcquaintanceDuration?;
+        final importMode = dialogResult['importMode'] as String? ??
+            _importModeAppendCurrent;
 
-          // 更新情境設定（如果用戶有選擇且尚未設定）
-          if (conv.sessionContext == null) {
-            final meeting = dialogResult['meetingContext'] as MeetingContext?;
-            final duration = dialogResult['duration'] as AcquaintanceDuration?;
-            if (meeting != null && duration != null) {
-              conv.sessionContext = SessionContext(
-                meetingContext: meeting,
-                duration: duration,
-              );
-            }
-          }
+        if (importMode == _importModeNewConversation) {
+          final createdConversation = await repository.createConversation(
+            name: _resolveImportedConversationName(
+              enteredName: newName,
+              recognizedName: recognized.contactName,
+            ),
+            messages: importedMessages,
+          );
 
-          // 加入識別的訊息
-          final baseTimestamp = DateTime.now();
-          for (var i = 0; i < recognizedMessages.length; i++) {
-            final rm = recognizedMessages[i];
-            final newMessage = Message(
-              id: '${DateTime.now().millisecondsSinceEpoch}_$i',
-              content: rm.content,
-              isFromMe: rm.isFromMe,
-              timestamp: baseTimestamp.add(Duration(milliseconds: i)),
+          if (meeting != null && duration != null) {
+            createdConversation.sessionContext = SessionContext(
+              meetingContext: meeting,
+              duration: duration,
             );
-            conv.messages.add(newMessage);
           }
-          await repository.updateConversation(conv);
+          await repository.updateConversation(createdConversation);
           ref.invalidate(conversationsProvider);
           ref.invalidate(conversationProvider(widget.conversationId));
 
-          final messageCount = recognizedMessages.length;
+          final messageCount = importedMessages.length;
           if (!mounted || _recognizeCancelled) {
             debugPrint(
                 '[Recognize] Ignore post-save UI update after cancel/dispose');
             return;
           }
+
           setState(() {
             _selectedImages = [];
             _selectedImageMetrics = [];
             _recognizedConversation = recognized;
           });
 
-          // 顯示成功訊息
-          if (mounted) {
-            final canAnalyzeImportedConversation =
-                _buildMessagesForReplyAnalysis(conv.messages) != null;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('已加入 $messageCount 則訊息'),
-                backgroundColor: Colors.green,
-                action: canAnalyzeImportedConversation
-                    ? SnackBarAction(
-                        label: '立即分析',
-                        textColor: Colors.white,
-                        onPressed: _runAnalysis,
-                      )
-                    : null,
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已建立新對話並匯入 $messageCount 則訊息'),
+              backgroundColor: Colors.green,
+              action: SnackBarAction(
+                label: '前往新對話',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  context.push('/conversation/${createdConversation.id}');
+                },
               ),
-            );
-          }
+            ),
+          );
           return;
         }
+
+        final conv = repository.getConversation(widget.conversationId);
+        if (conv == null) {
+          if (!mounted || _recognizeCancelled) {
+            return;
+          }
+          setState(() {
+            _isRecognizing = false;
+            _errorMessage = '目前對話不存在，請重新進入後再試一次';
+          });
+          return;
+        }
+
+        if (newName != null && newName.isNotEmpty && conv.name == '新對話') {
+          conv.name = newName;
+        }
+
+        if (conv.sessionContext == null && meeting != null && duration != null) {
+          conv.sessionContext = SessionContext(
+            meetingContext: meeting,
+            duration: duration,
+          );
+        }
+
+        conv.messages.addAll(importedMessages);
+        await repository.updateConversation(conv);
+        ref.invalidate(conversationsProvider);
+        ref.invalidate(conversationProvider(widget.conversationId));
+
+        final messageCount = importedMessages.length;
+        if (!mounted || _recognizeCancelled) {
+          debugPrint(
+              '[Recognize] Ignore post-save UI update after cancel/dispose');
+          return;
+        }
+        setState(() {
+          _selectedImages = [];
+          _selectedImageMetrics = [];
+          _recognizedConversation = recognized;
+        });
+
+        final canAnalyzeImportedConversation =
+            _buildMessagesForReplyAnalysis(conv.messages) != null;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已加入目前對話，共 $messageCount 則訊息'),
+            backgroundColor: Colors.green,
+            action: canAnalyzeImportedConversation
+                ? SnackBarAction(
+                    label: '立即分析',
+                    textColor: Colors.white,
+                    onPressed: _runAnalysis,
+                  )
+                : null,
+          ),
+        );
+        return;
       }
 
       // 識別失敗或沒有識別到訊息

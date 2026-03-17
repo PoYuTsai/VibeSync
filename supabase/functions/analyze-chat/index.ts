@@ -1448,6 +1448,14 @@ ${recentText}`;
     */
     if (hasImages) {
       const imageCount = images.length;
+      const SCREENSHOT_OCR_ACCURACY_RULES = `
+### OCR 精準度補充規則（重要）：
+- LINE / Messenger / Instagram 等聊天 App 可能在目前訊息泡泡中顯示「回覆某則訊息」的小預覽。不要把這個引用預覽當成新的獨立訊息。
+- 以泡泡中的主要正文作為這一則真正送出的訊息內容。
+- 只有在引用內容對理解當前正文不可或缺，且原文沒有在其他地方出現時，才把它合併寫成：回覆「引用內容」：主要正文。
+- 長截圖請由上到下、逐行閱讀；同一個泡泡內的多行文字要合併成同一則訊息。
+- 保留繁體中文原文，不要轉成簡體，不要自行摘要、改寫或補字。
+- 如果局部文字真的看不清楚，寧可將 classification 降為 low_confidence、讓 importPolicy = confirm，或把 contactName 設為 null，也不要猜測。`;
 
       // 純識別模式：只識別，不分析
       if (recognizeOnly) {
@@ -1477,6 +1485,8 @@ ${recentText}`;
 - **繁體中文名字請仔細辨識每個字，不要猜測**
 - 如果名字模糊或不確定，請設為 null（讓用戶手動輸入）
 - 不要把英文暱稱誤認為中文名字
+
+${SCREENSHOT_OCR_ACCURACY_RULES}
 
 ### 輸出格式（只需要這個 JSON）：
 {
@@ -1531,6 +1541,8 @@ ${recentText}`;
 - WhatsApp: 名字在頂部，綠色背景
 - **繁體中文名字請仔細辨識每個字，不要猜測**
 - 如果名字模糊或不確定，請設為 null（讓用戶手動輸入）
+
+${SCREENSHOT_OCR_ACCURACY_RULES}
 
 ### 輸出格式（在原本的 JSON 中增加）：
 {
@@ -1606,7 +1618,7 @@ ${
         {
           model: selectedModel,
           max_tokens: recognizeOnly
-            ? 1200
+            ? 1600
             : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1024)), // 截圖分析需要更多 tokens
           system: systemPrompt,
           messages: [

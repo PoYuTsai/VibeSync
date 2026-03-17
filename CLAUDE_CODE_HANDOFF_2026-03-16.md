@@ -183,6 +183,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The settings screen was rewritten into a clean Traditional Chinese version so the account-management path no longer shows mojibake-era labels during TestFlight review.
    - The rebuilt screen keeps the same paywall / restore / legal / feedback / logout actions, but now surfaces the new real account-deletion flow in a cleaner and more review-friendly UI.
 
+38. `lib/features/analysis/presentation/screens/analysis_screen.dart`, `supabase/functions/analyze-chat/index.ts`
+   - Screenshot import confirmation now exposes two explicit import modes: append into the current thread or create a brand-new conversation, instead of always appending OCR output to the active tail.
+   - When Claude marks the screenshot as `confirm` / low-confidence, or when the recognized contact name disagrees with the current thread name, the client now defaults the dialog to `另存成新對話` to reduce cross-thread pollution.
+   - OCR prompting now explicitly tells Claude how to treat LINE-style quoted-reply bubbles: the quote preview is not a standalone new message, and should only be merged into the actual bubble content when needed for meaning.
+   - The screenshot prompt also now emphasizes preserving Traditional Chinese exactly, reading long dense screenshots top-to-bottom, and avoiding guessed characters; `recognizeOnly` output budget was raised from `1200` to `1600` to support denser OCR payloads.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -257,6 +263,14 @@ After deploy, verify:
 12. Screenshot cancel / retry behavior:
    - start OCR, then cancel before the request returns; no late dialog or stale error should reappear
    - cancel the import confirmation dialog; the screen should clear selected images and avoid a null-crash
+
+13. Screenshot import mode:
+   - import a valid latest-chat screenshot into the current thread and confirm it still offers `立即分析`
+   - import a screenshot from another person or older thread and confirm `另存成新對話` is the safer default path
+
+14. Traditional Chinese / LINE reply OCR:
+   - test a LINE screenshot that uses the built-in "回覆" quoted-message UI and confirm the quoted preview is not duplicated as a separate new message
+   - test a long dense Traditional Chinese screenshot and compare recognition quality / latency against the previous TestFlight build
 
 13. Auth / subscription boundary behavior:
    - Google Sign-In should complete without `Refresh token cannot be empty` or stale-session issues
