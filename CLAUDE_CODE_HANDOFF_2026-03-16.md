@@ -241,6 +241,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - This removes duplicated OCR instructions, keeps LINE quoted-reply / Traditional Chinese handling aligned across both image paths, and avoids future drift between the screenshot import flow and full screenshot analysis flow.
    - The `optimizedMessage` draft-injection path now also uses the same prompt-section joiner, so user drafts are appended through one consistent formatting path instead of ad-hoc string concatenation.
 
+49. `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - Analysis-service retry logs and screenshot-recognition debug logs are now gated behind `kDebugMode`, so TestFlight / release builds no longer emit OCR flow metadata, conversation IDs, or detailed recognition failures into normal device logs.
+   - This keeps the existing developer-facing diagnostics intact in debug sessions, but it better matches the app's privacy posture during partner testing and release usage.
+   - The stale `// TODO: Navigate to paywall screen` comment in `analysis_screen.dart` was also removed because the route is already implemented and should not keep showing up as a fake unfinished task.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

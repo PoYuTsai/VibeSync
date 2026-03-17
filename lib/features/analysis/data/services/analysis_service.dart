@@ -84,6 +84,12 @@ typedef AnalysisTelemetryCallback = void Function(
   AnalysisTelemetry telemetry,
 );
 
+void _debugLog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
+
 class AnalysisService {
   Future<AnalysisResult> analyzeConversation(
     List<Message> messages, {
@@ -107,15 +113,16 @@ class AnalysisService {
     const maxRetries = 2;
     Exception? lastError;
 
-    debugPrint('[AnalysisService] analyzeConversation start');
-    debugPrint(
+    _debugLog('[AnalysisService] analyzeConversation start');
+    _debugLog(
       '[AnalysisService] messages: ${sanitizedMessages.length}, images: ${images?.length ?? 0}, recognizeOnly: $recognizeOnly',
     );
 
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        debugPrint(
-            '[AnalysisService] attempt ${attempt + 1}/${maxRetries + 1}');
+        _debugLog(
+          '[AnalysisService] attempt ${attempt + 1}/${maxRetries + 1}',
+        );
         return await _doAnalyze(
           sanitizedMessages,
           images: images,
@@ -128,7 +135,7 @@ class AnalysisService {
           onTelemetry: onTelemetry,
         );
       } catch (error) {
-        debugPrint(
+        _debugLog(
           '[AnalysisService] attempt ${attempt + 1} failed: ${error.runtimeType} - $error',
         );
         lastError = error is Exception ? error : Exception(error.toString());

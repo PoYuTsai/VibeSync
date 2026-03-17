@@ -104,8 +104,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   bool _showContinueConversation = false;
 
   void _showPaywall(BuildContext context) {
-    // TODO: Navigate to paywall screen
     context.push('/paywall');
+  }
+
+  void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint(message);
+    }
   }
 
   // 記錄已分析的訊息數量，用於判斷是否需要重新分析
@@ -141,7 +146,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
       _applyAnalysisResult(AnalysisResult.fromJson(snapshot));
     } catch (error) {
-      debugPrint(
+      _debugLog(
         '[AnalysisScreen] Failed to restore persisted analysis for '
         '${widget.conversationId}: $error',
       );
@@ -225,14 +230,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       setState(() {
         _recognizeElapsedSeconds++;
       });
-      debugPrint('[Timer] $_recognizeElapsedSeconds 秒');
+      _debugLog('[Timer] $_recognizeElapsedSeconds 秒');
       return true;
     });
   }
 
   /// 取消識別
   void _cancelRecognize() {
-    debugPrint('用戶取消識別');
+    _debugLog('用戶取消識別');
     _recognizeCancelled = true;
     setState(() {
       _isRecognizing = false;
@@ -575,9 +580,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _recognizeAndAddToConversation() async {
     if (_selectedImages.isEmpty) return;
 
-    debugPrint('=== 開始截圖識別 ===');
-    debugPrint('圖片數量: ${_selectedImages.length}');
-    debugPrint(
+    _debugLog('=== 開始截圖識別 ===');
+    _debugLog('圖片數量: ${_selectedImages.length}');
+    _debugLog(
         '圖片大小: ${_selectedImages.map((i) => '${(i.length / 1024).toStringAsFixed(1)}KB').join(', ')}');
 
     // 重置計時器狀態
@@ -597,7 +602,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) {
-      debugPrint('錯誤: 找不到對話');
+      _debugLog('錯誤: 找不到對話');
       setState(() {
         _isRecognizing = false;
         _errorMessage = '找不到對話';
@@ -605,17 +610,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
-    debugPrint('對話 ID: ${conversation.id}');
-    debugPrint('現有訊息數: ${conversation.messages.length}');
+    _debugLog('對話 ID: ${conversation.id}');
+    _debugLog('現有訊息數: ${conversation.messages.length}');
     final startTime = DateTime.now();
 
     // 複製圖片列表，避免狀態問題
     final imagesToProcess = List<Uint8List>.from(_selectedImages);
-    debugPrint('複製圖片列表完成，數量: ${imagesToProcess.length}');
+    _debugLog('複製圖片列表完成，數量: ${imagesToProcess.length}');
 
     try {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
-      debugPrint('呼叫 API... (timeout: 120s)');
+      _debugLog('呼叫 API... (timeout: 120s)');
       final analysisService = AnalysisService();
 
       // 使用 Future.any 來實現強制 timeout
@@ -641,12 +646,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           throw TimeoutException('識別超時 (130秒)');
         }),
       ]);
-      debugPrint(
+      _debugLog(
           'API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
 
       // 把識別結果存入對話
       if (!mounted || _recognizeCancelled) {
-        debugPrint('[Recognize] Ignore result after cancel/dispose');
+        _debugLog('[Recognize] Ignore result after cancel/dispose');
         return;
       }
 
@@ -718,7 +723,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
           final messageCount = importedMessages.length;
           if (!mounted || _recognizeCancelled) {
-            debugPrint(
+            _debugLog(
                 '[Recognize] Ignore post-save UI update after cancel/dispose');
             return;
           }
@@ -776,7 +781,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
         final messageCount = importedMessages.length;
         if (!mounted || _recognizeCancelled) {
-          debugPrint(
+          _debugLog(
               '[Recognize] Ignore post-save UI update after cancel/dispose');
           return;
         }
@@ -806,18 +811,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
       // 識別失敗或沒有識別到訊息
       final elapsed = DateTime.now().difference(startTime).inSeconds;
-      debugPrint('識別失敗 (無訊息)，耗時: ${elapsed}s');
-      debugPrint('recognizedConversation: ${result.recognizedConversation}');
+      _debugLog('識別失敗 (無訊息)，耗時: ${elapsed}s');
+      _debugLog('recognizedConversation: ${result.recognizedConversation}');
       setState(() {
         _isRecognizing = false;
         _errorMessage = result.recognizedConversation?.summary ?? '無法識別截圖中的對話';
       });
     } on AnalysisException catch (e) {
       final elapsed = DateTime.now().difference(startTime).inSeconds;
-      debugPrint('AnalysisException，耗時: ${elapsed}s');
-      debugPrint('錯誤訊息: ${e.message}');
+      _debugLog('AnalysisException，耗時: ${elapsed}s');
+      _debugLog('錯誤訊息: ${e.message}');
       if (!mounted || _recognizeCancelled) {
-        debugPrint('[Recognize] Ignore AnalysisException after cancel/dispose');
+        _debugLog('[Recognize] Ignore AnalysisException after cancel/dispose');
         return;
       }
       setState(() {
@@ -826,9 +831,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       });
     } catch (e) {
       final elapsed = DateTime.now().difference(startTime).inSeconds;
-      debugPrint('未知錯誤，耗時: ${elapsed}s');
-      debugPrint('錯誤類型: ${e.runtimeType}');
-      debugPrint('錯誤詳情: $e');
+      _debugLog('未知錯誤，耗時: ${elapsed}s');
+      _debugLog('錯誤類型: ${e.runtimeType}');
+      _debugLog('錯誤詳情: $e');
       setState(() {
         _isRecognizing = false;
         _errorMessage = '識別失敗: $e';
