@@ -133,6 +133,7 @@ void main() {
         meetingContext: null,
         duration: null,
         importMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
+        messages: [],
       );
 
       await tester.pumpWidget(
@@ -151,6 +152,43 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(dialogResult, isNull);
+    });
+
+    testWidgets('allows editing speaker and content before import',
+        (tester) async {
+      ScreenshotRecognitionDialogResult? dialogResult;
+
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+          onResult: (result) => dialogResult = result,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('可直接修正錯字'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '我說').first);
+      await tester.pumpAndSettle();
+
+      final textFields = find.byType(TextField);
+      expect(textFields, findsNWidgets(4));
+
+      await tester.enterText(textFields.at(0), '其實剛好忙完，晚點可以聊');
+      await tester.tap(find.byTooltip('刪除這則訊息').at(1));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('確認匯入'));
+      await tester.pumpAndSettle();
+
+      expect(dialogResult, isNotNull);
+      expect(dialogResult!.messages, hasLength(2));
+      expect(dialogResult!.messages.first.isFromMe, isTrue);
+      expect(dialogResult!.messages.first.content, '其實剛好忙完，晚點可以聊');
     });
   });
 }

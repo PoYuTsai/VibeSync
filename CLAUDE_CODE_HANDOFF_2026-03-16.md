@@ -261,6 +261,16 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The service now normalizes oversized payloads, unsupported image types, no-incoming-message analysis attempts, auth expiry, upstream busy states, and generic network/timeout failures into clear Traditional Chinese messages plus suggested recovery actions.
    - The screen layer now uses those friendly messages directly and falls back to generic Chinese copy for unknown OCR / analysis / optimize failures, so TestFlight users should no longer see technical prefixes like `識別失敗: ...` or `優化失敗: ...`.
 
+53. `lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/features/analysis/domain/entities/analysis_models.dart`
+   - Screenshot import now supports an editable OCR preview instead of a read-only top-5 preview. Before confirming import, users can fix text, switch each row between `我說 / 她說`, and delete obviously wrong messages.
+   - The dialog now returns the edited recognized-message list, and the import path uses those corrected messages for both `加入目前對話` and `另存成新對話`, so small OCR mistakes no longer force the user to throw away the whole recognition result.
+   - `RecognizedMessage` / `RecognizedConversation` now expose `copyWith`, which keeps the temporary in-screen recognized state aligned with the user-edited import result instead of the original raw OCR payload.
+
+54. `test/widget/widgets/screenshot_recognition_dialog_test.dart`
+   - The dialog widget test now also covers the new editable-preview flow: changing `我 / 她`, editing message text, deleting one recognized row, and confirming import.
+   - `flutter analyze` passes after this pass.
+   - The targeted widget test still timed out in this desktop session without useful output, so it needs a clean rerun before being treated as fully verified.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

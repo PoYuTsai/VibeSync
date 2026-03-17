@@ -11,12 +11,14 @@ class ScreenshotRecognitionDialogResult {
   final MeetingContext? meetingContext;
   final AcquaintanceDuration? duration;
   final String importMode;
+  final List<RecognizedMessage> messages;
 
   const ScreenshotRecognitionDialogResult({
     required this.name,
     required this.meetingContext,
     required this.duration,
     required this.importMode,
+    required this.messages,
   });
 }
 
@@ -51,6 +53,8 @@ class _ScreenshotRecognitionDialogState
   late MeetingContext? _selectedMeeting;
   late AcquaintanceDuration? _selectedDuration;
   late String _selectedImportMode;
+  late final List<_EditableRecognizedMessage> _editableMessages;
+  String? _editValidationMessage;
 
   @override
   void initState() {
@@ -59,12 +63,55 @@ class _ScreenshotRecognitionDialogState
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
     _selectedImportMode = widget.initialImportMode;
+    _editableMessages = (widget.recognized.messages ?? const <RecognizedMessage>[])
+        .map(_EditableRecognizedMessage.fromRecognizedMessage)
+        .toList();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    for (final message in _editableMessages) {
+      message.dispose();
+    }
     super.dispose();
+  }
+
+  List<RecognizedMessage> _sanitizedMessages() {
+    return _editableMessages
+        .map(
+          (message) => message.toRecognizedMessage(),
+        )
+        .where((message) => message.content.trim().isNotEmpty)
+        .toList();
+  }
+
+  void _removeMessage(int index) {
+    final removed = _editableMessages.removeAt(index);
+    removed.dispose();
+    setState(() {
+      _editValidationMessage = null;
+    });
+  }
+
+  void _submit() {
+    final sanitizedMessages = _sanitizedMessages();
+    if (sanitizedMessages.isEmpty) {
+      setState(() {
+        _editValidationMessage = '至少要保留一則可匯入的訊息。';
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(
+      ScreenshotRecognitionDialogResult(
+        name: _nameController.text.trim(),
+        meetingContext: _selectedMeeting,
+        duration: _selectedDuration,
+        importMode: _selectedImportMode,
+        messages: sanitizedMessages,
+      ),
+    );
   }
 
   Color _confidenceColor(RecognizedConversation recognized) {
@@ -111,12 +158,123 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
+  Widget _buildSpeakerChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      selectedColor: AppColors.primary.withValues(alpha: 0.3),
+      labelStyle: TextStyle(
+        color: selected ? AppColors.primary : AppColors.glassTextPrimary,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+
+  Widget _buildEditableMessageCard(
+    _EditableRecognizedMessage message,
+    int index,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '第 ${index + 1} 則',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.unselectedText,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: _editableMessages.length <= 1
+                    ? null
+                    : () => _removeMessage(index),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 20,
+                ),
+                color: _editableMessages.length <= 1
+                    ? AppColors.unselectedText
+                    : AppColors.error,
+                tooltip: '刪除這則訊息',
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildSpeakerChip(
+                label: '她說',
+                selected: !message.isFromMe,
+                onTap: () {
+                  setState(() {
+                    message.isFromMe = false;
+                    _editValidationMessage = null;
+                  });
+                },
+              ),
+              _buildSpeakerChip(
+                label: '我說',
+                selected: message.isFromMe,
+                onTap: () {
+                  setState(() {
+                    message.isFromMe = true;
+                    _editValidationMessage = null;
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: message.controller,
+            minLines: 1,
+            maxLines: 4,
+            onChanged: (_) {
+              if (_editValidationMessage != null) {
+                setState(() {
+                  _editValidationMessage = null;
+                });
+              }
+            },
+            decoration: InputDecoration(
+              hintText: '修正這則訊息內容',
+              hintStyle: const TextStyle(color: AppColors.unselectedText),
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            style: const TextStyle(color: AppColors.glassTextPrimary),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final recognizedMessages =
-        widget.recognized.messages ?? const <RecognizedMessage>[];
-    final previewMessages = recognizedMessages.take(5).toList();
-    final remainingCount = recognizedMessages.length - previewMessages.length;
+    final currentMessages = _sanitizedMessages();
     final shouldShowSessionContextFields =
         widget.forceShowSessionContextFields ||
             _selectedImportMode ==
@@ -134,7 +292,7 @@ class _ScreenshotRecognitionDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '識別到 ${widget.recognized.messageCount} 則訊息',
+              '識別到 ${widget.recognized.messageCount} 則訊息，可在下方修正後再匯入。',
               style: const TextStyle(color: AppColors.glassTextPrimary),
             ),
             if (widget.warningMessage != null &&
@@ -289,35 +447,35 @@ class _ScreenshotRecognitionDialogState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '📋 預覽：',
+                  Text(
+                    '編修識別內容 (${currentMessages.length} 則會被匯入)',
                     style: TextStyle(
                       color: AppColors.glassTextPrimary,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ...previewMessages.map(
-                    (message) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '${message.isFromMe ? "我" : "她"}：${message.content.length > 20 ? "${message.content.substring(0, 20)}..." : message.content}',
-                        style: const TextStyle(
-                          color: AppColors.glassTextPrimary,
-                          fontSize: 13,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                  Text(
+                    '可直接修正錯字、切換左右方，或刪掉誤辨識訊息。這一步不會重新呼叫 OCR。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.unselectedText,
+                      height: 1.45,
                     ),
                   ),
-                  if (remainingCount > 0)
+                  const SizedBox(height: 10),
+                  ..._editableMessages.asMap().entries.map(
+                    (entry) => _buildEditableMessageCard(
+                      entry.value,
+                      entry.key,
+                    ),
+                  ),
+                  if (_editValidationMessage != null)
                     Text(
-                      '...還有 $remainingCount 則',
-                      style: const TextStyle(
-                        color: AppColors.unselectedText,
-                        fontSize: 12,
+                      _editValidationMessage!,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.error,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                 ],
@@ -422,16 +580,7 @@ class _ScreenshotRecognitionDialogState
           ),
         ),
         ElevatedButton(
-          onPressed: () {
-            Navigator.of(context).pop(
-              ScreenshotRecognitionDialogResult(
-                name: _nameController.text.trim(),
-                meetingContext: _selectedMeeting,
-                duration: _selectedDuration,
-                importMode: _selectedImportMode,
-              ),
-            );
-          },
+          onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
           ),
@@ -439,5 +588,35 @@ class _ScreenshotRecognitionDialogState
         ),
       ],
     );
+  }
+}
+
+class _EditableRecognizedMessage {
+  bool isFromMe;
+  final TextEditingController controller;
+
+  _EditableRecognizedMessage({
+    required this.isFromMe,
+    required this.controller,
+  });
+
+  factory _EditableRecognizedMessage.fromRecognizedMessage(
+    RecognizedMessage message,
+  ) {
+    return _EditableRecognizedMessage(
+      isFromMe: message.isFromMe,
+      controller: TextEditingController(text: message.content),
+    );
+  }
+
+  RecognizedMessage toRecognizedMessage() {
+    return RecognizedMessage(
+      isFromMe: isFromMe,
+      content: controller.text.trim(),
+    );
+  }
+
+  void dispose() {
+    controller.dispose();
   }
 }

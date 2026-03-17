@@ -256,6 +256,16 @@ class RecognizedMessage {
       content: json['content'] as String? ?? '',
     );
   }
+
+  RecognizedMessage copyWith({
+    bool? isFromMe,
+    String? content,
+  }) {
+    return RecognizedMessage(
+      isFromMe: isFromMe ?? this.isFromMe,
+      content: content ?? this.content,
+    );
+  }
 }
 
 /// 截圖識別結果
@@ -297,6 +307,28 @@ class RecognizedConversation {
       importPolicy: json['importPolicy'] as String? ?? 'allow',
       confidence: json['confidence'] as String? ?? 'high',
       warning: json['warning'] as String?,
+    );
+  }
+
+  RecognizedConversation copyWith({
+    String? contactName,
+    int? messageCount,
+    String? summary,
+    List<RecognizedMessage>? messages,
+    String? classification,
+    String? importPolicy,
+    String? confidence,
+    String? warning,
+  }) {
+    return RecognizedConversation(
+      contactName: contactName ?? this.contactName,
+      messageCount: messageCount ?? this.messageCount,
+      summary: summary ?? this.summary,
+      messages: messages ?? this.messages,
+      classification: classification ?? this.classification,
+      importPolicy: importPolicy ?? this.importPolicy,
+      confidence: confidence ?? this.confidence,
+      warning: warning ?? this.warning,
     );
   }
 }

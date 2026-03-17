@@ -705,13 +705,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         }
 
         final repository = ref.read(conversationRepositoryProvider);
-        final recognizedMessages =
-            recognized.messages ?? const <RecognizedMessage>[];
-        final importedMessages = _buildImportedMessages(recognizedMessages);
+        final editedRecognizedMessages = dialogResult.messages;
+        final importedMessages = _buildImportedMessages(editedRecognizedMessages);
         final newName = dialogResult.name;
         final meeting = dialogResult.meetingContext;
         final duration = dialogResult.duration;
         final importMode = dialogResult.importMode;
+        final updatedRecognized = recognized.copyWith(
+          contactName: newName.isNotEmpty ? newName : recognized.contactName,
+          messageCount: editedRecognizedMessages.length,
+          messages: editedRecognizedMessages,
+        );
 
         if (importMode == _importModeNewConversation) {
           final createdConversation = await repository.createConversation(
@@ -742,7 +746,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           setState(() {
             _selectedImages = [];
             _selectedImageMetrics = [];
-            _recognizedConversation = recognized;
+            _recognizedConversation = updatedRecognized;
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -799,7 +803,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         setState(() {
           _selectedImages = [];
           _selectedImageMetrics = [];
-          _recognizedConversation = recognized;
+          _recognizedConversation = updatedRecognized;
         });
 
         final canAnalyzeImportedConversation =
