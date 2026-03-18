@@ -1,11 +1,12 @@
 // lib/shared/widgets/analysis_preview_dialog.dart
 import 'package:flutter/material.dart';
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_typography.dart';
+
 import '../../core/services/message_calculator.dart';
 import '../../core/services/usage_service.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
 
-/// Dialog shown before analysis to preview message count and usage
+/// Dialog shown before analysis to preview billed usage.
 class AnalysisPreviewDialog extends StatelessWidget {
   final MessagePreview preview;
   final UsageData usage;
@@ -30,62 +31,57 @@ class AnalysisPreviewDialog extends StatelessWidget {
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('確認分析', style: AppTypography.titleLarge),
+      title: Text('開始分析前確認', style: AppTypography.titleLarge),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Message count
-          _buildRow('本次分析', '${preview.messageCount} 則訊息'),
+          _buildRow('本次預估扣點', '${preview.messageCount} 則'),
           const SizedBox(height: 12),
-
-          // Monthly usage
+          _buildRow('本次分析字數', '${preview.charCount} 字'),
+          const SizedBox(height: 12),
           _buildRow(
-            '月額度',
-            '剩餘 ${usage.monthlyRemaining} / ${usage.monthlyLimit} 則',
+            '本月剩餘額度',
+            '${usage.monthlyRemaining} / ${usage.monthlyLimit} 則',
           ),
           const SizedBox(height: 4),
           LinearProgressIndicator(
             value: usage.monthlyPercentage,
             backgroundColor: AppColors.surfaceVariant,
-            valueColor: AlwaysStoppedAnimation(
+            valueColor: AlwaysStoppedAnimation<Color>(
               usage.monthlyPercentage > 0.8
                   ? AppColors.warning
                   : AppColors.primary,
             ),
           ),
           const SizedBox(height: 12),
-
-          // Daily usage
           _buildRow(
-            '今日額度',
-            '剩餘 ${usage.dailyRemaining} / ${usage.dailyLimit} 則',
+            '今日剩餘額度',
+            '${usage.dailyRemaining} / ${usage.dailyLimit} 則',
           ),
           const SizedBox(height: 4),
           LinearProgressIndicator(
             value: usage.dailyPercentage,
             backgroundColor: AppColors.surfaceVariant,
-            valueColor: AlwaysStoppedAnimation(
+            valueColor: AlwaysStoppedAnimation<Color>(
               usage.dailyPercentage > 0.8
                   ? AppColors.warning
                   : AppColors.primary,
             ),
           ),
           const SizedBox(height: 16),
-
-          // Warnings
           if (preview.exceedsLimit)
-            _buildWarning('內容過長，請分批分析 (上限 5,000 字)')
+            _buildWarning('這次分析內容太長，請縮短到 5,000 字內後再試。')
           else if (usage.monthlyRemaining < preview.messageCount)
-            _buildWarning('月額度不足，請升級方案')
+            _buildWarning('本月剩餘額度不足，請升級方案後再分析。')
           else if (usage.dailyRemaining < preview.messageCount)
-            _buildWarning('今日額度已用完，明天再試'),
-
-          // After analysis preview
+            _buildWarning('今日剩餘額度不足，明天再來或先升級方案。'),
           if (canProceed) ...[
             const SizedBox(height: 8),
             Text(
-              '分析後剩餘: 月 ${usage.monthlyRemaining - preview.messageCount} 則 / 日 ${usage.dailyRemaining - preview.messageCount} 則',
+              '分析後預估剩餘：本月 '
+              '${usage.monthlyRemaining - preview.messageCount} 則 / 今日 '
+              '${usage.dailyRemaining - preview.messageCount} 則',
               style: AppTypography.caption,
             ),
           ],
@@ -96,11 +92,11 @@ class AnalysisPreviewDialog extends StatelessWidget {
           onPressed: onCancel,
           child: const Text('取消'),
         ),
-        if (!canProceed && onUpgrade != null)
+        if (!preview.exceedsLimit && !canProceed && onUpgrade != null)
           TextButton(
             onPressed: onUpgrade,
             child: Text(
-              '升級方案',
+              '查看升級方案',
               style: TextStyle(color: AppColors.primary),
             ),
           ),
@@ -110,7 +106,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
           ),
-          child: const Text('確認分析'),
+          child: const Text('確認開始分析'),
         ),
       ],
     );
@@ -135,9 +131,9 @@ class AnalysisPreviewDialog extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.warning.withAlpha(25), // ~0.1 opacity
+        color: AppColors.warning.withAlpha(25),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.warning.withAlpha(77)), // ~0.3 opacity
+        border: Border.all(color: AppColors.warning.withAlpha(77)),
       ),
       child: Row(
         children: [
@@ -157,7 +153,6 @@ class AnalysisPreviewDialog extends StatelessWidget {
   }
 }
 
-/// Helper function to show the analysis preview dialog
 Future<bool> showAnalysisPreviewDialog({
   required BuildContext context,
   required MessagePreview preview,
@@ -166,11 +161,11 @@ Future<bool> showAnalysisPreviewDialog({
 }) async {
   final result = await showDialog<bool>(
     context: context,
-    builder: (context) => AnalysisPreviewDialog(
+    builder: (dialogContext) => AnalysisPreviewDialog(
       preview: preview,
       usage: usage,
-      onConfirm: () => Navigator.of(context).pop(true),
-      onCancel: () => Navigator.of(context).pop(false),
+      onConfirm: () => Navigator.of(dialogContext).pop(true),
+      onCancel: () => Navigator.of(dialogContext).pop(false),
       onUpgrade: onUpgrade,
     ),
   );

@@ -140,5 +140,6 @@ Private - All Rights Reserved
 - `docs/website-landing-page-handoff.md` is now synced to the current partner status: live `/privacy` and `/terms` are done, while the footer App Store CTA is intentionally deferred until the final pre-launch pass.
 - Business-logic consistency is tighter now: server-side test-account Essential gating uses the same effective tier across feature access and model selection, and the Flutter subscription state now syncs remaining quota from successful analysis responses instead of leaving stale local counters on screen.
 - RevenueCat `CANCELLATION` webhooks now persist `status: canceled` while preserving the current tier until expiry, so the backend can distinguish "cancelled but still active this period" from a truly active auto-renewing subscription.
+- The dormant pre-analysis usage preview is now wired into the real manual-analysis flow, and its billed-message estimate now mirrors the backend's per-message character counting on the exact summary-aware payload that will be sent.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

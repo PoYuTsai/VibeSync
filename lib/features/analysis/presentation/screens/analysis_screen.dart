@@ -10,8 +10,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/message_calculator.dart';
+import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/enthusiasm_gauge.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
@@ -394,6 +397,40 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         content: Text(message),
         behavior: SnackBarBehavior.floating,
       ),
+    );
+  }
+
+  UsageData _buildPreviewUsageData() {
+    final subscription = ref.read(subscriptionProvider);
+    final localUsage = ref.read(usageDataProvider);
+
+    if (subscription.isLoading) {
+      return localUsage;
+    }
+
+    return UsageData(
+      monthlyUsed: subscription.monthlyMessagesUsed,
+      monthlyLimit: subscription.monthlyLimit,
+      dailyUsed: subscription.dailyMessagesUsed,
+      dailyLimit: subscription.dailyLimit,
+      dailyResetAt: localUsage.dailyResetAt,
+      tier: subscription.tier,
+    );
+  }
+
+  Future<bool> _confirmAnalysisPreview(List<Message> requestMessages) async {
+    if (!mounted) {
+      return false;
+    }
+
+    return showAnalysisPreviewDialog(
+      context: context,
+      preview: MessageCalculator.previewConversation(requestMessages),
+      usage: _buildPreviewUsageData(),
+      onUpgrade: () {
+        Navigator.of(context, rootNavigator: true).pop(false);
+        _showPaywall(context);
+      },
     );
   }
 
@@ -880,7 +917,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     setState(() {
-      _isAnalyzing = true;
       _errorMessage = null;
     });
 
@@ -924,6 +960,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       );
 
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
+      final confirmed = await _confirmAnalysisPreview(
+        analysisContext.requestMessages,
+      );
+      if (!confirmed || !mounted) {
+        return;
+      }
+
+      setState(() {
+        _isAnalyzing = true;
+      });
+
       final analysisService = AnalysisService();
       final result = await analysisService.analyzeConversation(
         analysisContext.requestMessages,

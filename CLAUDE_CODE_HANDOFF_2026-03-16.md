@@ -296,6 +296,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The webhook now loads the current subscription row, preserves the current tier (or derives it from the product id), and writes `status: "canceled"` plus `expires_at` on `CANCELLATION` events instead of doing nothing.
    - `deno check supabase/functions/revenuecat-webhook/index.ts` passes after this patch.
 
+59. `lib/core/services/message_calculator.dart`, `lib/shared/widgets/analysis_preview_dialog.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - The previously orphaned pre-analysis usage preview is now connected to the real manual-analysis flow instead of sitting unused in the widget library.
+   - Billed-message preview now mirrors the backend's per-message `200 chars = 1 billed message` rule on the exact summary-aware request payload that will be sent, rather than guessing from the raw thread text.
+   - The dialog also now uses cleaned-up Traditional Chinese copy, shows projected monthly/daily remaining quota after the run, and routes over-quota users toward the paywall without pretending an upgrade can fix an oversized payload.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
