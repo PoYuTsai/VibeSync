@@ -278,6 +278,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `flutter analyze` and `deno check supabase/functions/analyze-chat/index.ts` pass after this pass.
    - The targeted helper unit test still timed out in this desktop session, so it needs a clean rerun before counting as fully verified.
 
+56. `docs/website-landing-page-handoff.md`
+   - The landing-page handoff doc is now updated to match the latest partner status instead of still reading like an open TODO list.
+   - As of 2026-03-18, the repo assumes live `/privacy` and `/terms` are done, while the footer App Store CTA is intentionally deferred until the final pre-launch / post-approval pass.
+   - Live `privacy` and `terms` were reachable from this desktop session during the check; the homepage root itself returned a transient remote-server connection failure twice, so the handoff keeps one final homepage/footer QA pass on the pre-launch checklist instead of claiming full homepage verification.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

@@ -137,5 +137,6 @@ Private - All Rights Reserved
 - Analysis/OCR error handling is now centralized into a real user-facing error taxonomy, so the app shows human Traditional Chinese guidance for timeout, oversized payload, unsupported screenshots, auth expiry, and no-incoming-message cases instead of leaking raw backend/debug strings.
 - Screenshot import now supports editable OCR preview: before confirming import, users can fix text, flip `我 / 她`, or delete misrecognized messages so minor OCR mistakes do not force a full re-screenshot.
 - Screenshot preflight classification is now more specific: group chats, album/gallery screens, phone call-log pages, generic system UI, social feeds, and sensitive-content screenshots each map to clearer reject reasons instead of being lumped into one generic `unsupported` state.
+- `docs/website-landing-page-handoff.md` is now synced to the current partner status: live `/privacy` and `/terms` are done, while the footer App Store CTA is intentionally deferred until the final pre-launch pass.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
