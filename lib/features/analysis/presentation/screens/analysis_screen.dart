@@ -1787,7 +1787,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    '我會分析熱度、對話進度、心理解讀，\n並給你最適合的回覆建議',
+                                    '我會分析熱度、對話進度、心理解讀，\n並給你最適合的回覆建議。',
                                     style: AppTypography.bodyMedium.copyWith(
                                       color: AppColors.textSecondary,
                                     ),
@@ -1824,7 +1824,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
                                   // 對話長度提示
                                   Text(
-                                    '建議每張截圖小於 15 則訊息，過長可能導致識別超時',
+                                    '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
                                     style: AppTypography.bodySmall.copyWith(
                                       color: AppColors.unselectedText,
                                     ),
@@ -1984,7 +1984,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       ),
                                     if (!_isRecognizing)
                                       Text(
-                                        '先識別截圖並加入對話，再決定要不要開始分析。',
+                                        '截圖會先辨識成對話文字並加入目前草稿，確認沒問題後再開始分析。',
                                         style: AppTypography.bodySmall.copyWith(
                                           color: AppColors.warning,
                                         ),

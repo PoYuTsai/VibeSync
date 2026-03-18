@@ -5,6 +5,7 @@ import 'package:pasteboard/pasteboard.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../services/image_compress_service.dart';
+import '../services/screenshot_preflight_service.dart';
 import 'glassmorphic_container.dart';
 
 class SelectedImageMetrics {
@@ -59,7 +60,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   Future<void> _pickImage() async {
     if (_images.length >= widget.maxImages) {
-      _showError('最多只能選擇 ${widget.maxImages} 張截圖');
+      _showError('最多只能上傳 ${widget.maxImages} 張截圖。');
       return;
     }
 
@@ -71,38 +72,48 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
       await _processImage(await file.readAsBytes(), file.mimeType);
     } catch (_) {
-      _showError('選取圖片失敗，請稍後再試');
+      _showError('選取圖片失敗，請稍後再試。');
     }
   }
 
   Future<void> _pasteFromClipboard() async {
     if (!kIsWeb) {
-      _showError('只有網頁版支援從剪貼簿貼上圖片');
+      _showError('目前只有網頁版支援從剪貼簿貼上圖片。');
       return;
     }
 
     if (_images.length >= widget.maxImages) {
-      _showError('最多只能選擇 ${widget.maxImages} 張截圖');
+      _showError('最多只能上傳 ${widget.maxImages} 張截圖。');
       return;
     }
 
     try {
       final imageBytes = await Pasteboard.image;
       if (imageBytes == null) {
-        _showError('剪貼簿裡沒有圖片');
+        _showError('剪貼簿裡目前沒有圖片。');
         return;
       }
 
       await _processImage(imageBytes, 'image/png');
     } catch (_) {
-      _showError('貼上圖片失敗，請稍後再試');
+      _showError('貼上圖片失敗，請稍後再試。');
     }
   }
 
   Future<void> _processImage(Uint8List bytes, String? mimeType) async {
     if (!ImageCompressService.isSupportedFormat(mimeType)) {
-      _showError('目前只支援 JPEG、PNG、WebP 或 HEIC 截圖');
+      _showError('目前只支援 JPEG、PNG、WebP、HEIC 截圖。');
       return;
+    }
+
+    final preflight = ScreenshotPreflightService.inspect(bytes);
+    if (preflight.isRejected) {
+      _showError(preflight.message ?? '這張圖片暫時不適合做聊天截圖辨識。');
+      return;
+    }
+
+    if (preflight.isWarning) {
+      _showInfo(preflight.message ?? '這張截圖可能辨識較不穩，請先確認內容。');
     }
 
     setState(() => _isProcessing = true);
@@ -112,12 +123,12 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     }
 
     if (compressed == null) {
-      _showError('圖片壓縮失敗，請換一張截圖再試');
+      _showError('圖片壓縮失敗，請換一張截圖再試。');
       return;
     }
 
     if (compressed.length > ImageCompressService.maxSizeBytes) {
-      _showError('圖片壓縮後仍然偏大，請換一張內容更少的截圖');
+      _showError('壓縮後圖片仍然太大，請裁小一點再試。');
       return;
     }
 
@@ -145,8 +156,9 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   void _emitChanges() {
     widget.onImagesChanged(List<Uint8List>.from(_images));
-    widget.onMetricsChanged
-        ?.call(List<SelectedImageMetrics>.from(_imageMetrics));
+    widget.onMetricsChanged?.call(
+      List<SelectedImageMetrics>.from(_imageMetrics),
+    );
   }
 
   void _showError(String message) {
@@ -154,6 +166,15 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  void _showInfo(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.orange.shade700,
       ),
     );
   }
@@ -170,7 +191,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '建議每張截圖小於 15 則訊息，辨識會更穩定也更快。',
+                  '建議每張截圖保留 15 則內的完整對話，辨識和排序會更穩。',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.unselectedText,
@@ -178,7 +199,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '如果是 LINE 的「回覆」功能，請把引用框和主訊息泡泡一起截進來，避免內容被拆錯。',
+                  '如果是 LINE 回覆框，請把引用框和實際訊息一起截進來。',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.unselectedText,
@@ -191,7 +212,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              '建議保留聊天標題列、完整泡泡與上下文，繁中長截圖會更容易辨識。',
+              '請上傳直式聊天截圖，盡量保留標題列、完整訊息泡泡與上下文。',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.unselectedText,
@@ -319,7 +340,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             ),
             const SizedBox(height: 2),
             Text(
-              '新增',
+              '選圖',
               style: TextStyle(
                 fontSize: 10,
                 color: AppColors.unselectedText,

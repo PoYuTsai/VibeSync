@@ -142,5 +142,8 @@ Private - All Rights Reserved
 - RevenueCat `CANCELLATION` webhooks now persist `status: canceled` while preserving the current tier until expiry, so the backend can distinguish "cancelled but still active this period" from a truly active auto-renewing subscription.
 - The dormant pre-analysis usage preview is now wired into the real manual-analysis flow, and its billed-message estimate now mirrors the backend's per-message character counting on the exact summary-aware payload that will be sent.
 - OCR screenshot recognition now uses a short-lived per-user local cache for identical image batches, so repeated retries of the same screenshots can return instantly without re-uploading to Claude every time.
+- Screenshot selection now runs a cheap local preflight before upload, so obviously non-chat images can be rejected before they pay the full OCR cost.
+- OCR entry copy on the analysis screen is now cleaner and more product-facing, especially around screenshot length guidance and the "recognize first, analyze second" flow.
+- `docs/testflight-regression-checklist.md` now includes an explicit pause point for this stage, so the next build can stop at a clearer TestFlight handoff instead of becoming an endless moving target.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

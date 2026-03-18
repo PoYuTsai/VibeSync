@@ -306,6 +306,19 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Cache entries are versioned, encrypted through the existing Hive settings box, and pruned by age/count to reduce stale-result risk and unbounded growth.
    - OCR telemetry now exposes cache hits in the UI, so a near-instant recognition result reads as an intentional cache reuse rather than a broken latency card.
 
+61. `lib/shared/services/screenshot_preflight_service.dart`, `lib/shared/widgets/image_picker_widget.dart`
+   - Screenshot selection now runs a cheap local preflight before any upload or Claude call.
+   - Landscape images, near-square images, and very low-resolution captures are rejected immediately with human Traditional Chinese guidance instead of spending OCR cost on obviously bad inputs.
+   - Very long or lower-resolution portrait screenshots are still allowed, but now surface a warning first so testers can split or re-crop the capture before paying the full OCR cost.
+
+62. `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - The OCR entry flow copy was polished again so the screenshot-analysis path reads more like a shipped product and less like internal tooling.
+   - The analysis intro, screenshot-length guidance, and "recognize first, analyze second" explanation are now cleaner and more explicit about what the app is doing.
+
+63. `docs/testflight-regression-checklist.md`, `README.md`
+   - The TestFlight checklist now includes an explicit stop point for this stage: once OCR preflight, user-facing OCR copy, and the core A/B/C smoke checks are stable, the team can pause coding and move into partner validation.
+   - README now also reflects that this build is intended to be a reasonable pause point for the next TestFlight round, rather than an endlessly moving target.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
