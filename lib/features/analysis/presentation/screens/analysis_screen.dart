@@ -26,6 +26,7 @@ import '../../../conversation/domain/entities/conversation_summary.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
+import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
@@ -688,10 +689,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     try {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
       _debugLog('呼叫 API... (timeout: 120s)');
-      final analysisService = AnalysisService();
+      final cachedRecognition = await OcrRecognitionCacheService.read(
+        imagesToProcess,
+      );
+      AnalysisResult result;
+      if (cachedRecognition != null) {
+        _debugLog('[Recognize] OCR cache hit');
+        _handleRecognizeTelemetry(
+          AnalysisTelemetry(
+            imageCount: imagesToProcess.length,
+            requestBodyBytes: 0,
+            payloadPreparationDuration: Duration.zero,
+            roundTripDuration: Duration.zero,
+            edgeAiDuration: Duration.zero,
+            totalCompressedImageBytes: _totalCompressedImageBytes,
+            cacheHit: true,
+          ),
+        );
+        result = AnalysisResult.fromJson(
+          {
+            'recognizedConversation':
+                cachedRecognition.recognizedConversation.toJson(),
+          },
+        );
+      } else {
+        final analysisService = AnalysisService();
 
       // 使用 Future.any 來實現強制 timeout
-      final result = await Future.any([
+      result = await Future.any([
         analysisService.analyzeConversation(
           conversation.messages.isEmpty
               ? [
@@ -716,7 +741,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _debugLog(
           'API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
 
-      // 把識別結果存入對話
+        // 把識別結果存入對話
+        if (result.recognizedConversation != null) {
+          await OcrRecognitionCacheService.write(
+            images: imagesToProcess,
+            recognizedConversation: result.recognizedConversation!,
+          );
+        }
+      }
+
       if (!mounted || _recognizeCancelled) {
         _debugLog('[Recognize] Ignore result after cancel/dispose');
         return;
@@ -741,6 +774,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         }
 
         setState(() => _isRecognizing = false);
+        if (cachedRecognition != null) {
+          _showFloatingSnackBar('已使用最近一次相同截圖的識別結果');
+        }
 
         // 顯示確認對話框
         if (!mounted) return;
@@ -1864,7 +1900,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                             ),
                                             if (_lastRecognizeTelemetry != null)
                                               Text(
-                                                '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                                _lastRecognizeTelemetry!.cacheHit
+                                                    ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
+                                                    : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
                                                 style: AppTypography.caption
                                                     .copyWith(
                                                   color: Colors.orange
@@ -1874,7 +1912,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                               ),
                                             if (_lastRecognizeTelemetry != null)
                                               Text(
-                                                'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
+                                                _lastRecognizeTelemetry!.cacheHit
+                                                    ? '本次使用本機快取，未重新上傳或呼叫 AI'
+                                                    : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
                                                 style: AppTypography.caption
                                                     .copyWith(
                                                   color: Colors.orange
@@ -2012,13 +2052,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
+                                    _lastRecognizeTelemetry!.cacheHit
+                                        ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
+                                        : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
                                     style: AppTypography.caption.copyWith(
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
                                   Text(
-                                    'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
+                                    _lastRecognizeTelemetry!.cacheHit
+                                        ? '本次使用本機快取，未重新上傳或呼叫 AI'
+                                        : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
                                     style: AppTypography.caption.copyWith(
                                       color: AppColors.textSecondary,
                                     ),

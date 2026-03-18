@@ -54,6 +54,7 @@ class AnalysisTelemetry {
   final Duration roundTripDuration;
   final Duration? edgeAiDuration;
   final int? totalCompressedImageBytes;
+  final bool cacheHit;
 
   const AnalysisTelemetry({
     required this.imageCount,
@@ -62,6 +63,7 @@ class AnalysisTelemetry {
     required this.roundTripDuration,
     this.edgeAiDuration,
     this.totalCompressedImageBytes,
+    this.cacheHit = false,
   });
 
   Duration? get estimatedTransferDuration {
@@ -613,6 +615,7 @@ class AnalysisService {
                   telemetryData?['totalImageBytes'] is num
                       ? (telemetryData?['totalImageBytes'] as num).round()
                       : null,
+              cacheHit: false,
             ),
           );
 

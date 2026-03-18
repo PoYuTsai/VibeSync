@@ -257,6 +257,11 @@ class RecognizedMessage {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'isFromMe': isFromMe,
+        'content': content,
+      };
+
   RecognizedMessage copyWith({
     bool? isFromMe,
     String? content,
@@ -309,6 +314,17 @@ class RecognizedConversation {
       warning: json['warning'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'contactName': contactName,
+        'messageCount': messageCount,
+        'summary': summary,
+        'messages': messages?.map((message) => message.toJson()).toList(),
+        'classification': classification,
+        'importPolicy': importPolicy,
+        'confidence': confidence,
+        'warning': warning,
+      };
 
   RecognizedConversation copyWith({
     String? contactName,

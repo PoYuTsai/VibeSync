@@ -301,6 +301,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Billed-message preview now mirrors the backend's per-message `200 chars = 1 billed message` rule on the exact summary-aware request payload that will be sent, rather than guessing from the raw thread text.
    - The dialog also now uses cleaned-up Traditional Chinese copy, shows projected monthly/daily remaining quota after the run, and routes over-quota users toward the paywall without pretending an upgrade can fix an oversized payload.
 
+60. `lib/features/analysis/data/services/ocr_recognition_cache_service.dart`, `lib/features/analysis/domain/entities/analysis_models.dart`, `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - Screenshot OCR now uses a short-lived per-user local cache keyed by the exact compressed image batch, so retrying the same screenshots can reuse the previous recognition result instead of re-uploading to Claude every time.
+   - Cache entries are versioned, encrypted through the existing Hive settings box, and pruned by age/count to reduce stale-result risk and unbounded growth.
+   - OCR telemetry now exposes cache hits in the UI, so a near-instant recognition result reads as an intentional cache reuse rather than a broken latency card.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
