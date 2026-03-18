@@ -213,6 +213,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    const { data: existingSubscription, error: subscriptionLookupError } =
+      await supabase
+        .from("subscriptions")
+        .select("tier")
+        .eq("user_id", app_user_id)
+        .maybeSingle();
+
+    if (subscriptionLookupError) {
+      console.error(
+        "Failed to verify webhook subscription row:",
+        subscriptionLookupError,
+      );
+      return jsonResponse({ error: "Database error" }, 500);
+    }
+
     let newTier = "free";
     let shouldUpdate = false;
     let subscriptionUpdate: Record<string, unknown> | null = null;
@@ -255,10 +270,19 @@ Deno.serve(async (req) => {
         break;
 
       case "CANCELLATION":
+        newTier = getTierFromProductId(effectiveProductId) ??
+          (typeof existingSubscription?.tier === "string"
+            ? existingSubscription.tier
+            : "free");
         console.log(
           `User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`,
         );
-        shouldUpdate = false;
+        shouldUpdate = true;
+        subscriptionUpdate = {
+          tier: newTier,
+          status: "canceled",
+          expires_at: expiresAt,
+        };
         break;
 
       case "NON_RENEWING_PURCHASE":

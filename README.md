@@ -139,5 +139,6 @@ Private - All Rights Reserved
 - Screenshot preflight classification is now more specific: group chats, album/gallery screens, phone call-log pages, generic system UI, social feeds, and sensitive-content screenshots each map to clearer reject reasons instead of being lumped into one generic `unsupported` state.
 - `docs/website-landing-page-handoff.md` is now synced to the current partner status: live `/privacy` and `/terms` are done, while the footer App Store CTA is intentionally deferred until the final pre-launch pass.
 - Business-logic consistency is tighter now: server-side test-account Essential gating uses the same effective tier across feature access and model selection, and the Flutter subscription state now syncs remaining quota from successful analysis responses instead of leaving stale local counters on screen.
+- RevenueCat `CANCELLATION` webhooks now persist `status: canceled` while preserving the current tier until expiry, so the backend can distinguish "cancelled but still active this period" from a truly active auto-renewing subscription.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

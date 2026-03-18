@@ -291,6 +291,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The Flutter side now syncs daily/monthly remaining quota from successful analysis responses into both `subscriptionProvider` state and the local usage cache, and `monthlyRemaining` / `dailyRemaining` are clamped to avoid negative UI values.
    - `flutter analyze` and `deno check supabase/functions/analyze-chat/index.ts` pass after this pass.
 
+58. `supabase/functions/revenuecat-webhook/index.ts`
+   - Business-logic review also found that RevenueCat `CANCELLATION` events were only being logged and not persisted into the subscription row, so the backend could not distinguish `active auto-renewing` from `cancelled but still active until expiry`.
+   - The webhook now loads the current subscription row, preserves the current tier (or derives it from the product id), and writes `status: "canceled"` plus `expires_at` on `CANCELLATION` events instead of doing nothing.
+   - `deno check supabase/functions/revenuecat-webhook/index.ts` passes after this patch.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
