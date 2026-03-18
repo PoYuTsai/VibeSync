@@ -169,6 +169,14 @@ void main() {
         '社群內容',
       );
       expect(
+        ScreenshotRecognitionHelper.classificationLabel('group_chat'),
+        '群組聊天',
+      );
+      expect(
+        ScreenshotRecognitionHelper.classificationLabel('gallery_album'),
+        '相簿畫面',
+      );
+      expect(
         ScreenshotRecognitionHelper.confidenceLabel('medium'),
         '信心中等',
       );
@@ -201,6 +209,38 @@ void main() {
 
       expect(result, contains('LINE 的回覆引用框'));
       expect(result, contains('重截'));
+    });
+
+    test('returns group chat guidance for rejected group screenshots', () {
+      const recognized = RecognizedConversation(
+        messageCount: 5,
+        summary: '像是群組聊天',
+        classification: 'group_chat',
+        importPolicy: 'reject',
+      );
+
+      final result = ScreenshotRecognitionHelper.actionGuidance(recognized);
+
+      expect(result, contains('群組聊天'));
+      expect(result, contains('一對一'));
+    });
+
+    test('supplies fallback warning for reject classifications', () {
+      const recognized = RecognizedConversation(
+        messageCount: 0,
+        summary: '相簿畫面',
+        classification: 'gallery_album',
+        importPolicy: 'reject',
+      );
+      final conversation = buildConversation(name: '新對話');
+
+      final result = ScreenshotRecognitionHelper.buildWarning(
+        recognized: recognized,
+        currentConversation: conversation,
+      );
+
+      expect(result, isNotNull);
+      expect(result, contains('相簿'));
     });
   });
 }

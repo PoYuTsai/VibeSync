@@ -95,6 +95,11 @@ const VALID_SCREENSHOT_CLASSIFICATIONS = new Set([
   "valid_chat",
   "low_confidence",
   "social_feed",
+  "group_chat",
+  "gallery_album",
+  "call_log_screen",
+  "system_ui",
+  "sensitive_content",
   "unsupported",
 ]);
 const VALID_IMPORT_POLICIES = new Set(["allow", "confirm", "reject"]);
@@ -182,7 +187,7 @@ const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT = `You are an OCR + chat-structure extrac
 Return valid JSON only.
 Only extract what is visible in the screenshots.
 Do not invent missing text, names, or message order.
-If the screenshots are not a normal one-to-one chat UI, classify them conservatively and reject import.`;
+If the screenshots are not a normal one-to-one chat UI, classify them conservatively using one of: social_feed, group_chat, gallery_album, call_log_screen, system_ui, sensitive_content, unsupported.`;
 
 const SCREENSHOT_OCR_ACCURACY_RULES = [
   "### OCR Accuracy Rules",
@@ -193,7 +198,7 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- Distinguish between a standalone phone call log screen and a one-to-one chat thread that contains missed-call or call-record entries.",
   "- If missed calls, outgoing calls, or answered-call records appear inside a normal chat thread with the contact header, treat them as valid conversation events instead of rejecting the screenshot outright.",
   "- Convert in-thread call records into messages while preserving direction: the other person's missed/incoming call is usually `isFromMe: false`, while my outgoing call is usually `isFromMe: true`.",
-  "- If the screenshot looks like a social feed, comment thread, profile page, album, or non-chat UI, classify it as `social_feed` or `unsupported`.",
+  "- If the screenshot looks like a social feed, comment thread, profile page, group chat, album, call-log page, sensitive media, or other non-chat UI, classify it with the most specific label: `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, or `unsupported`.",
   "- If text is blurry, cropped, or incomplete, lower confidence and use `importPolicy: confirm` instead of guessing.",
   "- If the contact name is unclear, return `contactName: null`.",
 ].join("\n");
@@ -239,7 +244,7 @@ function buildRecognizeOnlyImagePrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.",
+    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.",
     "### JSON Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo
@@ -268,7 +273,7 @@ function buildImageAnalysisPrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.",
+    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.",
     "### recognizedConversation Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo,
@@ -698,12 +703,21 @@ function countMessages(messages: Array<{ content: string }>): number {
 function normalizeScreenshotClassification(
   value: unknown,
   messageCount: number,
+  ...hints: Array<unknown>
 ): string {
   if (
     typeof value === "string" &&
     VALID_SCREENSHOT_CLASSIFICATIONS.has(value)
   ) {
     return value;
+  }
+
+  const inferredClassification = inferScreenshotClassificationHint(
+    value,
+    ...hints,
+  );
+  if (inferredClassification) {
+    return inferredClassification;
   }
 
   if (messageCount <= 0) {
@@ -717,6 +731,92 @@ function normalizeScreenshotClassification(
   return "valid_chat";
 }
 
+function inferScreenshotClassificationHint(
+  ...values: Array<unknown>
+): string | undefined {
+  for (const value of values) {
+    if (typeof value !== "string" || !value.trim()) {
+      continue;
+    }
+
+    const lower = value.trim().toLowerCase();
+
+    if (
+      lower.includes("group chat") ||
+      lower.includes("group conversation") ||
+      lower.includes("multiple participants") ||
+      lower.includes("多人聊天") ||
+      lower.includes("群組聊天") ||
+      lower.includes("群聊")
+    ) {
+      return "group_chat";
+    }
+
+    if (
+      lower.includes("gallery") ||
+      lower.includes("album") ||
+      lower.includes("camera roll") ||
+      lower.includes("photo picker") ||
+      lower.includes("相簿") ||
+      lower.includes("照片庫") ||
+      lower.includes("選圖畫面")
+    ) {
+      return "gallery_album";
+    }
+
+    if (
+      lower.includes("call log") ||
+      lower.includes("recent calls") ||
+      lower.includes("phone app") ||
+      lower.includes("通話紀錄") ||
+      lower.includes("最近通話")
+    ) {
+      return "call_log_screen";
+    }
+
+    if (
+      lower.includes("notification center") ||
+      lower.includes("control center") ||
+      lower.includes("system notification") ||
+      lower.includes("settings page") ||
+      lower.includes("通知中心") ||
+      lower.includes("控制中心") ||
+      lower.includes("設定頁面") ||
+      lower.includes("系統畫面")
+    ) {
+      return "system_ui";
+    }
+
+    if (
+      lower.includes("adult") ||
+      lower.includes("nudity") ||
+      lower.includes("sexual") ||
+      lower.includes("explicit") ||
+      lower.includes("violent") ||
+      lower.includes("gore") ||
+      lower.includes("色情") ||
+      lower.includes("裸露") ||
+      lower.includes("暴力") ||
+      lower.includes("血腥")
+    ) {
+      return "sensitive_content";
+    }
+
+    if (
+      lower.includes("social feed") ||
+      lower.includes("comment thread") ||
+      lower.includes("profile page") ||
+      lower.includes("社群") ||
+      lower.includes("貼文") ||
+      lower.includes("留言串")
+    ) {
+      return "social_feed";
+    }
+  }
+
+  return undefined;
+}
+
 function normalizeImportPolicy(
   value: unknown,
   classification: string,
@@ -727,6 +827,11 @@ function normalizeImportPolicy(
 
   switch (classification) {
     case "social_feed":
+    case "group_chat":
+    case "gallery_album":
+    case "call_log_screen":
+    case "system_ui":
+    case "sensitive_content":
     case "unsupported":
       return "reject";
     case "low_confidence":
@@ -780,6 +885,8 @@ function normalizeWarningMessage(
   value: unknown,
   classification: string,
 ): string | undefined {
+  const inferredClassification = inferScreenshotClassificationHint(value);
+
   if (typeof value === "string" && value.trim()) {
     const normalized = value.trim();
     const lower = normalized.toLowerCase();
@@ -791,12 +898,27 @@ function normalizeWarningMessage(
       return "這張圖看起來像聊天視窗裡的通話紀錄或來電事件，不是一般文字聊天。若確認是同一段對話中的未接來電，可先確認預覽後再匯入。";
     }
 
-    return normalized;
+    if (
+      _isLikelyUserFacingChinese(normalized) &&
+      inferredClassification === undefined
+    ) {
+      return normalized;
+    }
   }
 
-  switch (classification) {
+  switch (inferredClassification ?? classification) {
     case "social_feed":
       return "這張圖片看起來比較像社群貼文或留言串，不像雙人聊天視窗，建議改傳聊天截圖。";
+    case "group_chat":
+      return "這張圖片看起來像群組聊天，目前只支援一對一聊天截圖，建議改傳和單一對象的聊天畫面。";
+    case "gallery_album":
+      return "這張圖片看起來像相簿或選圖畫面，不是聊天視窗，請改傳實際聊天截圖。";
+    case "call_log_screen":
+      return "這張圖片比較像手機的通話紀錄頁，不是聊天視窗。若這其實是聊天 thread 裡的通話事件，請保留聊天標題列後再截一次。";
+    case "system_ui":
+      return "這張圖片看起來像系統畫面或通知頁，不是可匯入的聊天截圖。";
+    case "sensitive_content":
+      return "這張圖片包含不適合辨識的敏感內容，請改傳純聊天截圖。";
     case "unsupported":
       return "這張圖片不像可辨識的聊天截圖，請改傳包含聊天泡泡與標題列的畫面。";
     case "low_confidence":
@@ -828,6 +950,8 @@ function normalizeRecognizedConversation(
       const classification = normalizeScreenshotClassification(
         recognizedRaw.classification,
         0,
+        recognizedRaw.warning,
+        recognizedRaw.summary,
       );
       normalizedResult.recognizedConversation = {
         ...recognizedRaw,
@@ -896,6 +1020,8 @@ function normalizeRecognizedConversation(
   let classification = normalizeScreenshotClassification(
     recognizedRaw.classification,
     normalizedMessages.length,
+    recognizedRaw.warning,
+    recognizedRaw.summary,
   );
   let importPolicy = normalizeImportPolicy(
     recognizedRaw.importPolicy,
@@ -914,7 +1040,12 @@ function normalizeRecognizedConversation(
 
   if (
     callEventOnly &&
-    (classification === "unsupported" || classification === "social_feed")
+    (
+      classification === "unsupported" ||
+      classification === "social_feed" ||
+      classification === "call_log_screen" ||
+      classification === "system_ui"
+    )
   ) {
     classification = "low_confidence";
     importPolicy = "confirm";
@@ -938,6 +1069,10 @@ function normalizeRecognizedConversation(
   };
 
   return normalizedResult;
+}
+
+function _isLikelyUserFacingChinese(value: string): boolean {
+  return /[\u4e00-\u9fff]/.test(value);
 }
 
 function sanitizeMessages(

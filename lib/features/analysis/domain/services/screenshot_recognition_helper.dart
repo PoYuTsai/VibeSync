@@ -5,6 +5,27 @@ class ScreenshotRecognitionHelper {
   static const String importModeAppendCurrent = 'append_current';
   static const String importModeNewConversation = 'new_conversation';
 
+  static String? fallbackWarningForClassification(String classification) {
+    switch (classification) {
+      case 'group_chat':
+        return '這張圖看起來像群組聊天，目前只支援一對一聊天截圖。';
+      case 'gallery_album':
+        return '這張圖看起來像相簿或選圖畫面，不是聊天視窗。';
+      case 'call_log_screen':
+        return '這張圖比較像通話紀錄頁，不是可直接匯入的聊天畫面。';
+      case 'system_ui':
+        return '這張圖看起來像系統畫面或通知頁，不是聊天視窗。';
+      case 'sensitive_content':
+        return '這張圖包含不適合辨識的敏感內容，請改傳聊天截圖。';
+      case 'social_feed':
+        return '這張圖看起來比較像社群貼文或留言串，不像雙人聊天視窗。';
+      case 'unsupported':
+        return '這張圖目前不像可匯入的聊天截圖，請改傳完整聊天視窗後再試。';
+      default:
+        return null;
+    }
+  }
+
   static String? buildWarning({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
@@ -32,6 +53,13 @@ class ScreenshotRecognitionHelper {
 
     if (recognized.importPolicy == 'confirm' && warnings.isEmpty) {
       warnings.add('這張截圖辨識信心較低，匯入前請先確認預覽內容是否正確。');
+    }
+
+    if (recognized.importPolicy == 'reject' && warnings.isEmpty) {
+      final fallback = fallbackWarningForClassification(recognized.classification);
+      if (fallback != null) {
+        warnings.add(fallback);
+      }
     }
 
     if (warnings.isEmpty) {
@@ -89,6 +117,16 @@ class ScreenshotRecognitionHelper {
         return '低信心';
       case 'social_feed':
         return '社群內容';
+      case 'group_chat':
+        return '群組聊天';
+      case 'gallery_album':
+        return '相簿畫面';
+      case 'call_log_screen':
+        return '通話紀錄';
+      case 'system_ui':
+        return '系統畫面';
+      case 'sensitive_content':
+        return '敏感內容';
       case 'unsupported':
         return '不支援';
       case 'valid_chat':
@@ -115,8 +153,19 @@ class ScreenshotRecognitionHelper {
         warning.contains('通話紀錄') || warning.contains('未接來電');
 
     if (recognized.importPolicy == 'reject') {
-      if (recognized.classification == 'social_feed') {
-        return '這看起來比較像社群貼文或留言串，建議改截雙人聊天畫面再試。';
+      switch (recognized.classification) {
+        case 'social_feed':
+          return '這看起來比較像社群貼文或留言串，建議改截雙人聊天畫面再試。';
+        case 'group_chat':
+          return '這看起來像群組聊天，目前產品只支援一對一對話分析，建議改截和單一對象的聊天視窗。';
+        case 'gallery_album':
+          return '這看起來像相簿或選圖畫面，建議回到聊天 App 內重新截圖。';
+        case 'call_log_screen':
+          return '這看起來像手機的通話紀錄頁。若你想匯入聊天 thread 裡的來電事件，請保留聊天標題列與上下文後再重截。';
+        case 'system_ui':
+          return '這看起來像系統畫面或通知頁，不是可分析的聊天截圖。請改傳聊天視窗。';
+        case 'sensitive_content':
+          return '這張圖包含不適合辨識的敏感內容，請改傳純聊天截圖。';
       }
       return '這張圖目前不適合匯入，建議重截更清楚的聊天畫面，保留完整對話泡泡與標題列。';
     }

@@ -271,6 +271,13 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - `flutter analyze` passes after this pass.
    - The targeted widget test still timed out in this desktop session without useful output, so it needs a clean rerun before being treated as fully verified.
 
+55. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`, `test/unit/services/screenshot_recognition_helper_test.dart`
+   - Screenshot preflight classification is now more product-specific instead of collapsing almost everything into `unsupported`: the OCR path now recognizes `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, and `sensitive_content` alongside the existing `valid_chat / low_confidence / social_feed / unsupported`.
+   - Server-side normalization can now infer these categories from model warning/summary text even if the model forgets to emit the exact enum, and each reject-type category now gets a clearer Traditional Chinese explanation instead of one generic unsupported warning.
+   - Chat-thread-only call-record screenshots still keep the special downgrade path: if OCR extracted only call events but the image still looks like an in-thread call-event list, the server demotes `call_log_screen/system_ui/unsupported` into `low_confidence + confirm` instead of hard reject.
+   - `flutter analyze` and `deno check supabase/functions/analyze-chat/index.ts` pass after this pass.
+   - The targeted helper unit test still timed out in this desktop session, so it needs a clean rerun before counting as fully verified.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

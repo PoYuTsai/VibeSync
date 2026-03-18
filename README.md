@@ -136,5 +136,6 @@ Private - All Rights Reserved
 - If the model still hesitates on an all-call-record chat screenshot, the server now downgrades it to a confirmable import with Chinese guidance instead of hard-rejecting it with an English `call log / system notification` warning.
 - Analysis/OCR error handling is now centralized into a real user-facing error taxonomy, so the app shows human Traditional Chinese guidance for timeout, oversized payload, unsupported screenshots, auth expiry, and no-incoming-message cases instead of leaking raw backend/debug strings.
 - Screenshot import now supports editable OCR preview: before confirming import, users can fix text, flip `我 / 她`, or delete misrecognized messages so minor OCR mistakes do not force a full re-screenshot.
+- Screenshot preflight classification is now more specific: group chats, album/gallery screens, phone call-log pages, generic system UI, social feeds, and sensitive-content screenshots each map to clearer reject reasons instead of being lumped into one generic `unsupported` state.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
