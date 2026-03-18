@@ -35,8 +35,10 @@ class SubscriptionState {
   bool get isEssential => tier == 'essential';
   bool get isPremium => tier == 'starter' || tier == 'essential';
 
-  int get monthlyRemaining => monthlyLimit - monthlyMessagesUsed;
-  int get dailyRemaining => dailyLimit - dailyMessagesUsed;
+  int get monthlyRemaining =>
+      (monthlyLimit - monthlyMessagesUsed).clamp(0, monthlyLimit);
+  int get dailyRemaining =>
+      (dailyLimit - dailyMessagesUsed).clamp(0, dailyLimit);
 
   /// 取得 Starter 的 Package
   Package? get starterPackage {
@@ -94,6 +96,43 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       tier: tier,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
+    );
+  }
+
+  void syncUsageFromServer({
+    required int monthlyRemaining,
+    required int dailyRemaining,
+    bool isTestAccount = false,
+  }) {
+    if (state.isLoading) {
+      return;
+    }
+
+    if (isTestAccount) {
+      final limits = SubscriptionTierHelper.limitsFor(state.tier);
+      _syncUsageCache(state.tier, limits);
+      return;
+    }
+
+    final normalizedMonthlyRemaining =
+        monthlyRemaining.clamp(0, state.monthlyLimit);
+    final normalizedDailyRemaining = dailyRemaining.clamp(0, state.dailyLimit);
+    final monthlyUsed = (state.monthlyLimit - normalizedMonthlyRemaining)
+        .clamp(0, state.monthlyLimit);
+    final dailyUsed =
+        (state.dailyLimit - normalizedDailyRemaining).clamp(0, state.dailyLimit);
+
+    final limits = SubscriptionTierHelper.limitsFor(state.tier);
+    state = state.copyWith(
+      monthlyMessagesUsed: monthlyUsed,
+      dailyMessagesUsed: dailyUsed,
+    );
+    UsageService.syncSubscriptionSnapshot(
+      tier: state.tier,
+      monthlyLimit: limits.monthly,
+      dailyLimit: limits.daily,
+      monthlyUsed: monthlyUsed,
+      dailyUsed: dailyUsed,
     );
   }
 

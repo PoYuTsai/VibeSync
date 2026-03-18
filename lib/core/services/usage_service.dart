@@ -92,11 +92,19 @@ class UsageService {
     required String tier,
     required int monthlyLimit,
     required int dailyLimit,
+    int? monthlyUsed,
+    int? dailyUsed,
   }) {
     final box = StorageService.usageBox;
     box.put(_tierKey, tier);
     box.put(_monthlyLimitKey, monthlyLimit);
     box.put(_dailyLimitKey, dailyLimit);
+    if (monthlyUsed != null) {
+      box.put(_monthlyUsedKey, monthlyUsed);
+    }
+    if (dailyUsed != null) {
+      box.put(_dailyUsedKey, dailyUsed);
+    }
   }
 
   static int _defaultMonthlyLimitForTier(String tier) {

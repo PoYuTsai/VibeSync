@@ -138,5 +138,6 @@ Private - All Rights Reserved
 - Screenshot import now supports editable OCR preview: before confirming import, users can fix text, flip `我 / 她`, or delete misrecognized messages so minor OCR mistakes do not force a full re-screenshot.
 - Screenshot preflight classification is now more specific: group chats, album/gallery screens, phone call-log pages, generic system UI, social feeds, and sensitive-content screenshots each map to clearer reject reasons instead of being lumped into one generic `unsupported` state.
 - `docs/website-landing-page-handoff.md` is now synced to the current partner status: live `/privacy` and `/terms` are done, while the footer App Store CTA is intentionally deferred until the final pre-launch pass.
+- Business-logic consistency is tighter now: server-side test-account Essential gating uses the same effective tier across feature access and model selection, and the Flutter subscription state now syncs remaining quota from successful analysis responses instead of leaving stale local counters on screen.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

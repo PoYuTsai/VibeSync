@@ -397,6 +397,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
+  void _syncSubscriptionUsageFromResult(AnalysisResult result) {
+    final usage = result.rawResponse?['usage'];
+    if (usage is! Map) {
+      return;
+    }
+
+    final monthlyRemaining = usage['monthlyRemaining'];
+    final dailyRemaining = usage['dailyRemaining'];
+    if (monthlyRemaining is! num || dailyRemaining is! num) {
+      return;
+    }
+
+    ref.read(subscriptionProvider.notifier).syncUsageFromServer(
+          monthlyRemaining: monthlyRemaining.round(),
+          dailyRemaining: dailyRemaining.round(),
+          isTestAccount: usage['isTestAccount'] == true,
+        );
+  }
+
   List<Message>? _buildMessagesForReplyAnalysis(List<Message> messages) {
     if (messages.isEmpty) return null;
 
@@ -939,6 +958,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       } catch (_) {
         // Ignore errors in test environment
       }
+
+      _syncSubscriptionUsageFromResult(result);
     } on DailyLimitExceededException catch (e) {
       setState(() {
         _isAnalyzing = false;
@@ -993,6 +1014,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _isAnalyzingMyMessage = false;
         _myMessageAnalysis = result.myMessageAnalysis;
       });
+      _syncSubscriptionUsageFromResult(result);
     } on AnalysisException catch (e) {
       setState(() {
         _isAnalyzingMyMessage = false;
@@ -1045,6 +1067,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
         _showFloatingSnackBar('這次沒有產生可用的優化結果，請稍後再試。');
       }
+      _syncSubscriptionUsageFromResult(result);
     } on AnalysisException catch (e) {
       if (!mounted) return;
       setState(() {

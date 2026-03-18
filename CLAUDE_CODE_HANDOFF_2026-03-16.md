@@ -283,6 +283,14 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - As of 2026-03-18, the repo assumes live `/privacy` and `/terms` are done, while the footer App Store CTA is intentionally deferred until the final pre-launch / post-approval pass.
    - Live `privacy` and `terms` were reachable from this desktop session during the check; the homepage root itself returned a transient remote-server connection failure twice, so the handoff keeps one final homepage/footer QA pass on the pre-launch checklist instead of claiming full homepage verification.
 
+57. `supabase/functions/analyze-chat/index.ts`, `lib/features/subscription/data/providers/subscription_providers.dart`, `lib/core/services/usage_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - Business-logic review found two real consistency gaps and patched both:
+     1. the server claimed test accounts should behave like Essential, but `my_message` gating and text-model selection were still checking the raw stored tier instead of the effective test tier;
+     2. successful analyses were deducting quota on the server, but Flutter's in-memory subscription state was not being updated from the returned usage snapshot, so users could keep seeing stale remaining quota until the next full refresh.
+   - `analyze-chat` now uses the effective tier consistently for test-account feature gating and model selection.
+   - The Flutter side now syncs daily/monthly remaining quota from successful analysis responses into both `subscriptionProvider` state and the local usage cache, and `monthlyRemaining` / `dailyRemaining` are clamped to avoid negative UI values.
+   - `flutter analyze` and `deno check supabase/functions/analyze-chat/index.ts` pass after this pass.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

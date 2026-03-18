@@ -1697,7 +1697,7 @@ ${recentText}`;
         enthusiasmLevel: null, // 首次分析前不知道
         hasComplexEmotions: false,
         isFirstAnalysis: messages.length <= 5,
-        tier: sub.tier,
+        tier: accountIsTest ? "essential" : sub.tier,
       });
 
     // Get available features for this tier
@@ -1707,7 +1707,7 @@ ${recentText}`;
 
     // 檢查「我說」模式權限（只限 Essential）
     const isMyMessageMode = analyzeMode === "my_message";
-    if (isMyMessageMode && sub.tier !== "essential") {
+    if (isMyMessageMode && effectiveTier !== "essential") {
       return jsonResponse({
         error: "「我說」分析功能僅限 Essential 方案",
         code: "FEATURE_NOT_AVAILABLE",
