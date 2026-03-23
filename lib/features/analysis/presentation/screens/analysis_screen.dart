@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/message_calculator.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -44,6 +45,11 @@ class AnalysisScreen extends ConsumerStatefulWidget {
   ConsumerState<AnalysisScreen> createState() => _AnalysisScreenState();
 }
 
+enum _AnalysisErrorOrigin {
+  analysis,
+  recognition,
+}
+
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   final MemoryService _memoryService = MemoryService();
   bool _isAnalyzing = false;
@@ -53,6 +59,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   TopicDepth? _topicDepth;
   HealthCheck? _healthCheck;
   String? _errorMessage;
+  AnalysisErrorAction? _errorAction;
+  _AnalysisErrorOrigin? _errorOrigin;
+  String? _errorGuidance;
 
   // GAME 階段分析
   GameStageInfo? _gameStage;
@@ -157,6 +166,169 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   void _debugLog(String message) {
     if (kDebugMode) {
       debugPrint(message);
+    }
+  }
+
+  void _resetErrorState() {
+    _errorMessage = null;
+    _errorAction = null;
+    _errorOrigin = null;
+    _errorGuidance = null;
+  }
+
+  void _applyErrorState({
+    required String message,
+    AnalysisErrorAction? action,
+    _AnalysisErrorOrigin? origin,
+    String? guidance,
+  }) {
+    _errorMessage = message;
+    _errorAction = action;
+    _errorOrigin = origin;
+    _errorGuidance = guidance ?? _defaultErrorGuidance(action);
+  }
+
+  String? _defaultErrorGuidance(AnalysisErrorAction? action) {
+    switch (action) {
+      case AnalysisErrorAction.retry:
+        return _errorOrigin == _AnalysisErrorOrigin.recognition
+            ? '先確認網路穩定；如果同一批截圖持續失敗，建議改成分段截圖後再試。'
+            : '保留目前對話內容即可，我會重新送出這次分析。';
+      case AnalysisErrorAction.relogin:
+        return '登入狀態可能已過期，重新登入後即可恢復分析與訂閱資料。';
+      case AnalysisErrorAction.rescreenshot:
+        return '保留標題列、左右對話氣泡與外層主訊息；長截圖可拆成 2-3 張分段匯入。';
+      case AnalysisErrorAction.shortenInput:
+        return _selectedImages.isNotEmpty
+            ? '每張截圖建議少於 15 則訊息；若內容太長，請拆成多張後再匯入。'
+            : '可先刪減較舊訊息、縮短草稿，或分成兩次分析。';
+      case AnalysisErrorAction.upgrade:
+        return '升級後可解鎖更完整的分析能力與較高額度。';
+      case AnalysisErrorAction.wait:
+        return '這通常是暫時性的服務忙碌或逾時問題，稍後再試即可。';
+      case AnalysisErrorAction.addIncomingMessage:
+        return _selectedImages.isNotEmpty
+            ? '先把截圖識別進目前對話，或在下方補上一則她的回覆後再分析。'
+            : '一般分析至少需要一則對方訊息；你也可以先存著，等她回覆後再回來分析。';
+      case null:
+        return null;
+    }
+  }
+
+  String _primaryErrorActionLabel(AnalysisErrorAction action) {
+    switch (action) {
+      case AnalysisErrorAction.retry:
+        return _errorOrigin == _AnalysisErrorOrigin.recognition
+            ? '重新識別'
+            : '重新分析';
+      case AnalysisErrorAction.relogin:
+        return '重新登入';
+      case AnalysisErrorAction.rescreenshot:
+        return _selectedImages.isNotEmpty ? '調整截圖' : '上傳截圖';
+      case AnalysisErrorAction.shortenInput:
+        return '調整內容';
+      case AnalysisErrorAction.upgrade:
+        return '查看方案';
+      case AnalysisErrorAction.wait:
+        return '稍後再試';
+      case AnalysisErrorAction.addIncomingMessage:
+        return _selectedImages.isNotEmpty ? '先識別截圖' : '補上對方訊息';
+    }
+  }
+
+  String _secondaryErrorActionLabel() {
+    if (_errorAction == null || _errorAction == AnalysisErrorAction.wait) {
+      return '知道了';
+    }
+    return '稍後處理';
+  }
+
+  bool _shouldShowSecondaryErrorAction() {
+    if (_errorAction == null) {
+      return true;
+    }
+    return _errorAction != AnalysisErrorAction.wait;
+  }
+
+  Future<void> _scrollToBottom({Duration delay = Duration.zero}) async {
+    if (delay > Duration.zero) {
+      await Future.delayed(delay);
+    }
+    if (!mounted || !_scrollController.hasClients) {
+      return;
+    }
+    await _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Future<void> _openContinueComposer() async {
+    if (!mounted) {
+      return;
+    }
+
+    if (_enthusiasmScore != null && !_showContinueConversation) {
+      setState(() {
+        _showContinueConversation = true;
+      });
+      await _scrollToBottom(delay: const Duration(milliseconds: 120));
+      return;
+    }
+
+    await _scrollToBottom();
+  }
+
+  Future<void> _handleErrorAction(AnalysisErrorAction action) async {
+    switch (action) {
+      case AnalysisErrorAction.retry:
+        setState(_resetErrorState);
+        if (_errorOrigin == _AnalysisErrorOrigin.recognition) {
+          await _recognizeAndAddToConversation();
+        } else {
+          await _runAnalysis();
+        }
+        return;
+      case AnalysisErrorAction.relogin:
+        setState(_resetErrorState);
+        try {
+          await SupabaseService.signOut();
+        } catch (_) {
+          // Ignore sign-out cleanup errors and still route back to login.
+        }
+        if (!mounted) {
+          return;
+        }
+        context.go('/login');
+        return;
+      case AnalysisErrorAction.rescreenshot:
+        setState(_resetErrorState);
+        if (_enthusiasmScore != null) {
+          await _openContinueComposer();
+        }
+        return;
+      case AnalysisErrorAction.shortenInput:
+        setState(_resetErrorState);
+        if (_selectedImages.isNotEmpty || _enthusiasmScore != null) {
+          await _openContinueComposer();
+        }
+        return;
+      case AnalysisErrorAction.upgrade:
+        setState(_resetErrorState);
+        await _showPaywall(context);
+        return;
+      case AnalysisErrorAction.wait:
+        setState(_resetErrorState);
+        return;
+      case AnalysisErrorAction.addIncomingMessage:
+        setState(_resetErrorState);
+        if (_selectedImages.isNotEmpty && !_isRecognizing) {
+          await _recognizeAndAddToConversation();
+          return;
+        }
+        await _openContinueComposer();
+        return;
     }
   }
 
@@ -288,7 +460,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     _recognizeCancelled = true;
     setState(() {
       _isRecognizing = false;
-      _errorMessage = '已取消識別';
+      _applyErrorState(message: '已取消識別');
       _selectedImages = [];
       _selectedImageMetrics = [];
       _recognizedConversation = null;
@@ -375,7 +547,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _hasPendingRecognitionImport = false;
       _lastRecognizeTelemetry = null;
       if (_selectedImages.isNotEmpty) {
-        _errorMessage = null;
+        _resetErrorState();
       }
     });
   }
@@ -526,7 +698,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       }
       setState(() {
         _isRecognizing = false;
-        _errorMessage = '目前對話不存在，請重新進入後再試一次';
+        _applyErrorState(
+          message: '目前對話不存在，請重新進入後再試一次',
+          action: AnalysisErrorAction.retry,
+          origin: _AnalysisErrorOrigin.recognition,
+        );
       });
       return;
     }
@@ -1027,7 +1203,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     setState(() {
       _isRecognizing = true;
-      _errorMessage = null;
+      _resetErrorState();
       _recognizedConversation = null;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
@@ -1043,7 +1219,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _debugLog('錯誤: 找不到對話');
       setState(() {
         _isRecognizing = false;
-        _errorMessage = '找不到對話';
+        _applyErrorState(
+          message: '找不到對話',
+          action: AnalysisErrorAction.retry,
+          origin: _AnalysisErrorOrigin.recognition,
+        );
       });
       return;
     }
@@ -1147,7 +1327,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         if (recognized.importPolicy == 'reject') {
           setState(() {
             _isRecognizing = false;
-            _errorMessage = warningMessage ?? recognized.summary;
+            _applyErrorState(
+              message: warningMessage ?? recognized.summary,
+              action: AnalysisErrorAction.rescreenshot,
+              origin: _AnalysisErrorOrigin.recognition,
+            );
             _recognizedConversation = recognized;
             _recognizedWarningMessage = warningMessage;
             _hasPendingRecognitionImport = false;
@@ -1196,7 +1380,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _debugLog('recognizedConversation: ${result.recognizedConversation}');
       setState(() {
         _isRecognizing = false;
-        _errorMessage = result.recognizedConversation?.summary ?? '無法識別截圖中的對話';
+        _applyErrorState(
+          message: result.recognizedConversation?.summary ?? '無法識別截圖中的對話',
+          action: AnalysisErrorAction.rescreenshot,
+          origin: _AnalysisErrorOrigin.recognition,
+        );
       });
     } on AnalysisException catch (e) {
       final elapsed = DateTime.now().difference(startTime).inSeconds;
@@ -1208,7 +1396,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       }
       setState(() {
         _isRecognizing = false;
-        _errorMessage = e.message;
+        _applyErrorState(
+          message: e.message,
+          action: e.suggestedAction,
+          origin: _AnalysisErrorOrigin.recognition,
+        );
       });
     } catch (e) {
       final elapsed = DateTime.now().difference(startTime).inSeconds;
@@ -1217,7 +1409,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _debugLog('錯誤詳情: $e');
       setState(() {
         _isRecognizing = false;
-        _errorMessage = '截圖辨識暫時失敗，請稍後再試。';
+        _applyErrorState(
+          message: '截圖辨識暫時失敗，請稍後再試。',
+          action: AnalysisErrorAction.retry,
+          origin: _AnalysisErrorOrigin.recognition,
+        );
       });
     }
   }
@@ -1227,14 +1423,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     setState(() {
-      _errorMessage = null;
+      _resetErrorState();
     });
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '找不到對話';
+        _applyErrorState(
+          message: '找不到對話',
+          action: AnalysisErrorAction.retry,
+          origin: _AnalysisErrorOrigin.analysis,
+        );
       });
       return;
     }
@@ -1243,7 +1443,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     if (conversation.messages.isEmpty) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '請先輸入對話內容或上傳截圖';
+        _applyErrorState(
+          message: '請先輸入對話內容或上傳截圖',
+          action: AnalysisErrorAction.addIncomingMessage,
+          origin: _AnalysisErrorOrigin.analysis,
+          guidance: '你可以先在下方補上一則她的回覆，或先上傳截圖做識別再分析。',
+        );
       });
       return;
     }
@@ -1258,7 +1463,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           : '目前還沒有她的回覆，暫時無法分析。你可以先把對話存著，等她回訊後再回來分析。';
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = errorMessage;
+        _applyErrorState(
+          message: errorMessage,
+          action: AnalysisErrorAction.addIncomingMessage,
+          origin: _AnalysisErrorOrigin.analysis,
+        );
       });
       return;
     }
@@ -1320,22 +1529,38 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     } on DailyLimitExceededException catch (e) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '今日額度已用完 (${e.used}/${e.dailyLimit})，明天再來！';
+        _applyErrorState(
+          message: '今日額度已用完 (${e.used}/${e.dailyLimit})，明天再來！',
+          action: AnalysisErrorAction.wait,
+          origin: _AnalysisErrorOrigin.analysis,
+        );
       });
     } on MonthlyLimitExceededException catch (e) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '本月額度已用完 (${e.used}/${e.monthlyLimit})，升級方案獲得更多！';
+        _applyErrorState(
+          message: '本月額度已用完 (${e.used}/${e.monthlyLimit})，升級方案獲得更多！',
+          action: AnalysisErrorAction.upgrade,
+          origin: _AnalysisErrorOrigin.analysis,
+        );
       });
     } on AnalysisException catch (e) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = e.message;
+        _applyErrorState(
+          message: e.message,
+          action: e.suggestedAction,
+          origin: _AnalysisErrorOrigin.analysis,
+        );
       });
     } catch (e) {
       setState(() {
         _isAnalyzing = false;
-        _errorMessage = '分析暫時失敗，請稍後再試。';
+        _applyErrorState(
+          message: '分析暫時失敗，請稍後再試。',
+          action: AnalysisErrorAction.retry,
+          origin: _AnalysisErrorOrigin.analysis,
+        );
       });
     }
   }
@@ -2049,27 +2274,47 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 12),
-                                  // 如果是「沒有內容」錯誤，顯示引導而非重試
-                                  if (_errorMessage!.contains('請先輸入對話內容')) ...[
+                                  if (_errorGuidance != null) ...[
+                                    const SizedBox(height: 10),
                                     Text(
-                                      '請在下方輸入對話，或上傳截圖後點「識別並加入對話」',
+                                      _errorGuidance!,
                                       style: AppTypography.bodySmall.copyWith(
                                           color: AppColors.textSecondary),
                                       textAlign: TextAlign.center,
                                     ),
-                                    const SizedBox(height: 8),
-                                    OutlinedButton(
-                                      onPressed: () =>
-                                          setState(() => _errorMessage = null),
-                                      child: const Text('知道了'),
-                                    ),
-                                  ] else ...[
-                                    ElevatedButton(
-                                      onPressed: _runAnalysis,
-                                      child: const Text('重試'),
-                                    ),
                                   ],
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      if (_errorAction != null)
+                                        ElevatedButton(
+                                          onPressed: _isAnalyzing ||
+                                                  _isRecognizing
+                                              ? null
+                                              : () => _handleErrorAction(
+                                                  _errorAction!),
+                                          child: Text(
+                                            _primaryErrorActionLabel(
+                                              _errorAction!,
+                                            ),
+                                          ),
+                                        ),
+                                      if (_shouldShowSecondaryErrorAction())
+                                        OutlinedButton(
+                                          onPressed:
+                                              _isAnalyzing || _isRecognizing
+                                                  ? null
+                                                  : () => setState(
+                                                      _resetErrorState),
+                                          child: Text(
+                                            _secondaryErrorActionLabel(),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),

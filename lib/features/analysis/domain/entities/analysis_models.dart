@@ -400,8 +400,9 @@ class OptimizedMessage {
   });
 
   factory OptimizedMessage.fromJson(Map<String, dynamic>? json) {
-    if (json == null)
+    if (json == null) {
       return const OptimizedMessage(original: '', optimized: '', reason: '');
+    }
     return OptimizedMessage(
       original: json['original'] as String? ?? '',
       optimized: json['optimized'] as String? ?? '',

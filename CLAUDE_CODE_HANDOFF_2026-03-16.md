@@ -356,6 +356,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The backend computes `sideConfidence` and `uncertainSideCount` from the returned bubble-side data and continuity corrections, so the app can distinguish "content mostly read fine" from "left/right assignment is still shaky".
    - The result card now shows a dedicated direction-confidence chip, helper copy escalates when speaker direction is uncertain, and the import dialog surfaces both the original detected side (`左側 / 右側 / 方向待確認`) and a warning when some rows need manual `我說 / 她說` review.
 
+71. `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/features/analysis/domain/entities/analysis_models.dart`
+   - The main analysis screen now treats failures as a structured product state instead of a raw string: inline errors now track `message + suggested action + error origin + guidance`, so OCR and normal analysis can surface different recovery paths without brittle `contains(...)` matching.
+   - The inline error card now offers action-aware CTAs such as `重新識別`, `補上對方訊息`, `查看方案`, `重新登入`, or `調整截圖`, and those CTAs now actually route into the correct path (`recognize`, `analyze`, paywall, logout/login, or reopening the follow-up composer).
+   - A small lingering analyzer lint in `analysis_models.dart` was also cleaned up during this pass, and `flutter analyze` now passes clean again in this desktop session.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
