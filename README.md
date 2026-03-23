@@ -153,6 +153,7 @@ Private - All Rights Reserved
 - Mixed-thread screenshot batches now downgrade to `low_confidence + confirm` with stronger user-facing warnings, so captures from different contacts or unrelated conversation segments are less likely to silently pollute the current thread.
 - Canceling the screenshot import dialog no longer throws away finished OCR work: the recognized result is kept as a resumable draft with a `繼續匯入設定` path, and the dialog's secondary action is now framed as `稍後再匯入`.
 - Screenshot OCR now also applies a deterministic continuity fix for media placeholders: if a photo/image bubble is the only speaker-direction outlier between two same-side messages, the backend snaps it back to that surrounding side instead of trusting the raw model label.
+- Screenshot OCR now follows a more explicit layout-first contract: the model is instructed to decide each bubble's `side` from the outer bubble position before reading text, image-in-image content cannot override that side, and the client now preserves the returned `side` field for later debugging/refinement.
 - Verification note for this pass: `deno check supabase/functions/analyze-chat/index.ts` passed, while full Dart/Flutter analyzer runs in this desktop session were blocked by local toolchain issues (`flutter analyze` hanging and direct `dart analyze` failing before diagnostics). See the handoff doc for the exact details.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

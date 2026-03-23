@@ -341,6 +341,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - If a photo/image placeholder is the only opposite-side outlier between two same-side messages, the backend now snaps that placeholder back to the surrounding side instead of trusting the raw model label.
    - This specifically targets cases like `右側文字 -> 右側圖片泡泡 -> 右側補一句 -> 左側回覆`, where the image placeholder used to get mislabeled as `她說` even though the visual bubble was on the right.
 
+68. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/domain/entities/analysis_models.dart`
+   - Screenshot OCR is now documented and normalized as a layout-first pipeline instead of a text-first guess: the model is instructed to identify each bubble's `side` from the outer bubble position before reading content.
+   - Image-in-image content, photo previews, and screenshots inside a bubble are now explicitly forbidden from overriding the outer bubble side.
+   - The app-side `RecognizedMessage` model now preserves the returned `side` field (`left/right/unknown`) so future debugging and post-processing no longer has to rely only on `isFromMe`.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

@@ -242,31 +242,41 @@ class ResponsePrediction {
 
 /// 截圖識別結果中的單則訊息
 class RecognizedMessage {
+  final String side;
   final bool isFromMe;
   final String content;
 
   const RecognizedMessage({
+    this.side = 'unknown',
     required this.isFromMe,
     required this.content,
   });
 
   factory RecognizedMessage.fromJson(Map<String, dynamic> json) {
+    final rawSide = (json['side'] as String? ?? '').trim().toLowerCase();
+    final normalizedSide =
+        rawSide == 'left' || rawSide == 'right' ? rawSide : 'unknown';
+
     return RecognizedMessage(
+      side: normalizedSide,
       isFromMe: json['isFromMe'] as bool? ?? false,
       content: json['content'] as String? ?? '',
     );
   }
 
   Map<String, dynamic> toJson() => {
+        'side': side,
         'isFromMe': isFromMe,
         'content': content,
       };
 
   RecognizedMessage copyWith({
+    String? side,
     bool? isFromMe,
     String? content,
   }) {
     return RecognizedMessage(
+      side: side ?? this.side,
       isFromMe: isFromMe ?? this.isFromMe,
       content: content ?? this.content,
     );
