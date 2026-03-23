@@ -478,6 +478,11 @@ After deploy, verify:
    - intentionally mix screenshots from two different contacts and confirm the app warns clearly and defaults toward `另存成新對話`
    - open the import dialog, choose `稍後再匯入`, and confirm the recognized result remains resumable from the analysis screen without rerunning OCR
 
+21. Post-upgrade reply unlock:
+   - reproduce the `free -> Essential` flow from an existing analysis that only shows `extend`
+   - confirm paywall purchase/restore now returns success to the analysis screen and triggers the upgraded-state snackbar
+   - confirm the reply section no longer claims `AI 已判斷最適合` for an old free-tier snapshot; it should show `重新分析完整回覆` until the user reruns analysis
+
 ## Notes for Claude Code
 
 - When touching screenshot analysis again, preserve the current token-control approach:
@@ -488,6 +493,7 @@ After deploy, verify:
 - For the latest OCR boundary / resumable-import pass, `deno check supabase/functions/analyze-chat/index.ts` passed and the touched Dart files were successfully parsed/formatted with the local Dart SDK.
 - Full Dart/Flutter analyzer runs in this desktop session were not trustworthy: `flutter analyze` hung repeatedly, and direct `dart analyze` failed with a local `CreateFile failed 5 / Access is denied` process-spawn error before returning code diagnostics.
 - `flutter analyze` passes after this auth/webhook pass. Targeted `flutter test` runs were attempted again for `environment_test.dart` and `supabase_service_test.dart`, and they still timed out in this desktop environment without producing useful output; earlier `settings_screen_test.dart` attempts also timed out, so those tests still need a clean rerun outside this session timeout.
+- The latest paywall/analysis unlock fix also adds `usage.tierUsed` to analysis responses, so if partner feedback says "I already upgraded but still only see one reply", inspect whether the screen is showing a stale free-tier analysis snapshot versus a genuinely fresh Essential-tier rerun.
 - The auth pass now includes in-app password reset completion, but it still needs a real-device regression pass for both warm-start and cold-start recovery links.
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:
   - OCR/import success

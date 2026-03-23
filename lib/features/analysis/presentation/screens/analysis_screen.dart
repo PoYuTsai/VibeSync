@@ -33,6 +33,7 @@ import '../../domain/entities/game_stage.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../subscription/domain/services/subscription_tier_helper.dart';
 
 class AnalysisScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -109,8 +110,48 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
 
-  void _showPaywall(BuildContext context) {
-    context.push('/paywall');
+  Future<void> _showPaywall(BuildContext context) async {
+    final unlocked = await context.push<bool>('/paywall');
+    if (!mounted) {
+      return;
+    }
+
+    await ref.read(subscriptionProvider.notifier).refresh();
+    if (!mounted || unlocked != true) {
+      return;
+    }
+
+    final subscription = ref.read(subscriptionProvider);
+    if (_analysisNeedsReplyRefresh(subscription)) {
+      _showFloatingSnackBar('已升級完整版，重新分析後就能解鎖完整回覆選項。');
+    }
+  }
+
+  String? _analysisTierUsed() {
+    final usage = _lastAiResponse?['usage'];
+    if (usage is Map) {
+      final tierUsed = usage['tierUsed'];
+      if (tierUsed is String && tierUsed.trim().isNotEmpty) {
+        return tierUsed.trim();
+      }
+    }
+    return null;
+  }
+
+  bool _analysisNeedsReplyRefresh(SubscriptionState subscription) {
+    if (!subscription.isPremium ||
+        _replies == null ||
+        _replies!.length != 1 ||
+        !_replies!.containsKey('extend')) {
+      return false;
+    }
+
+    final tierUsed = _analysisTierUsed();
+    if (tierUsed == null) {
+      return false;
+    }
+
+    return tierUsed == SubscriptionTierHelper.free;
   }
 
   void _debugLog(String message) {
@@ -448,7 +489,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
       final messageCount = importedMessages.length;
       if (!mounted || _recognizeCancelled) {
-        _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
+        _debugLog(
+            '[Recognize] Ignore post-save UI update after cancel/dispose');
         return;
       }
 
@@ -489,10 +531,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
-    if (
-      newName.isNotEmpty &&
-      ScreenshotRecognitionHelper.isPlaceholderConversationName(conv.name)
-    ) {
+    if (newName.isNotEmpty &&
+        ScreenshotRecognitionHelper.isPlaceholderConversationName(conv.name)) {
       conv.name = newName;
     }
 
@@ -728,12 +768,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<String?> _buildHistoricalContextSummary(
     Conversation conversation,
   ) async {
-    final persistedSummary = _memoryService.buildHistoricalSummary(conversation);
+    final persistedSummary =
+        _memoryService.buildHistoricalSummary(conversation);
     if (persistedSummary != null && persistedSummary.isNotEmpty) {
       return persistedSummary;
     }
 
-    final olderRounds = conversation.currentRound - MemoryService.maxRecentRounds;
+    final olderRounds =
+        conversation.currentRound - MemoryService.maxRecentRounds;
     if (olderRounds < MemoryService.minRoundsPerSummary) {
       return null;
     }
@@ -773,8 +815,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
 
     return (
-      requestMessages:
-          requestMessages.isEmpty ? baseMessages : requestMessages,
+      requestMessages: requestMessages.isEmpty ? baseMessages : requestMessages,
       conversationSummary: conversationSummary,
     );
   }
@@ -782,7 +823,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String? _buildRecognitionWarning({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
-  }) => ScreenshotRecognitionHelper.buildWarning(
+  }) =>
+      ScreenshotRecognitionHelper.buildWarning(
         recognized: recognized,
         currentConversation: currentConversation,
       );
@@ -790,7 +832,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String _defaultRecognitionImportMode({
     required RecognizedConversation recognized,
     required Conversation currentConversation,
-  }) => ScreenshotRecognitionHelper.defaultImportMode(
+  }) =>
+      ScreenshotRecognitionHelper.defaultImportMode(
         recognized: recognized,
         currentConversation: currentConversation,
       );
@@ -811,7 +854,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String _resolveImportedConversationName({
     required String? enteredName,
     required String? recognizedName,
-  }) => ScreenshotRecognitionHelper.resolveImportedConversationName(
+  }) =>
+      ScreenshotRecognitionHelper.resolveImportedConversationName(
         enteredName: enteredName,
         recognizedName: recognizedName,
       );
@@ -979,31 +1023,31 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       } else {
         final analysisService = AnalysisService();
 
-      // 使用 Future.any 來實現強制 timeout
-      result = await Future.any([
-        analysisService.analyzeConversation(
-          conversation.messages.isEmpty
-              ? [
-                  Message(
-                      id: 'placeholder',
-                      content: '請識別截圖內容',
-                      isFromMe: true,
-                      timestamp: DateTime.now())
-                ]
-              : conversation.messages,
-          images: imagesToProcess,
-          sessionContext: conversation.sessionContext,
-          onProgress: _handleRecognizeProgress,
-          onTelemetry: _handleRecognizeTelemetry,
-          recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
-        ),
-        // 強制 130 秒 timeout (比 API 的 120 秒稍長)
-        Future.delayed(const Duration(seconds: 130), () {
-          throw TimeoutException('識別超時 (130秒)');
-        }),
-      ]);
-      _debugLog(
-          'API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
+        // 使用 Future.any 來實現強制 timeout
+        result = await Future.any([
+          analysisService.analyzeConversation(
+            conversation.messages.isEmpty
+                ? [
+                    Message(
+                        id: 'placeholder',
+                        content: '請識別截圖內容',
+                        isFromMe: true,
+                        timestamp: DateTime.now())
+                  ]
+                : conversation.messages,
+            images: imagesToProcess,
+            sessionContext: conversation.sessionContext,
+            onProgress: _handleRecognizeProgress,
+            onTelemetry: _handleRecognizeTelemetry,
+            recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
+          ),
+          // 強制 130 秒 timeout (比 API 的 120 秒稍長)
+          Future.delayed(const Duration(seconds: 130), () {
+            throw TimeoutException('識別超時 (130秒)');
+          }),
+        ]);
+        _debugLog(
+            'API 回應成功，耗時: ${DateTime.now().difference(startTime).inSeconds}s');
 
         // 把識別結果存入對話
         if (result.recognizedConversation != null) {
@@ -1652,7 +1696,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
               _buildRecognitionStatusChip(
                 icon: Icons.auto_awesome,
-                label: _recognitionConfidenceLabel(displayRecognized.confidence),
+                label:
+                    _recognitionConfidenceLabel(displayRecognized.confidence),
                 color: _recognitionConfidenceColor(displayRecognized),
               ),
               _buildRecognitionStatusChip(
@@ -1795,6 +1840,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     final conversation = ref.watch(conversationProvider(widget.conversationId));
+    final subscription = ref.watch(subscriptionProvider);
 
     if (conversation == null) {
       return GradientBackground(
@@ -1996,7 +2042,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   ImagePickerWidget(
                                     maxImages: 3,
                                     externalImages: _selectedImages, // 同步外部狀態
-                                    onImagesChanged: _handleSelectedImagesChanged,
+                                    onImagesChanged:
+                                        _handleSelectedImagesChanged,
                                     onMetricsChanged:
                                         _handleSelectedImageMetricsChanged,
                                   ),
@@ -2080,7 +2127,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                             ),
                                             if (_lastRecognizeTelemetry != null)
                                               Text(
-                                                _lastRecognizeTelemetry!.cacheHit
+                                                _lastRecognizeTelemetry!
+                                                        .cacheHit
                                                     ? '本次直接使用本機快取結果，未重新送出 OCR 請求'
                                                     : '請求 ${_formatBytes(_lastRecognizeTelemetry!.requestBodyBytes)}｜本機準備 ${_formatDuration(_lastRecognizeTelemetry!.payloadPreparationDuration)}｜往返 ${_formatDuration(_lastRecognizeTelemetry!.roundTripDuration)}',
                                                 style: AppTypography.caption
@@ -2092,7 +2140,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                               ),
                                             if (_lastRecognizeTelemetry != null)
                                               Text(
-                                                _lastRecognizeTelemetry!.cacheHit
+                                                _lastRecognizeTelemetry!
+                                                        .cacheHit
                                                     ? '本次使用本機快取，未重新上傳或呼叫 AI'
                                                     : 'AI ${_formatDuration(_lastRecognizeTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastRecognizeTelemetry!.estimatedTransferDuration)}',
                                                 style: AppTypography.caption
@@ -2560,12 +2609,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                               const SizedBox(height: 12),
                               Builder(
                                 builder: (context) {
-                                  final subscription =
-                                      ref.read(subscriptionProvider);
                                   // Free 用戶：顯示升級提示
                                   if (subscription.isFreeUser) {
                                     return GestureDetector(
-                                      onTap: () => _showPaywall(context),
+                                      onTap: () async => _showPaywall(context),
                                       child: Container(
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
@@ -2596,6 +2643,69 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                                 color: AppColors.primary),
                                           ],
                                         ),
+                                      ),
+                                    );
+                                  }
+                                  if (_analysisNeedsReplyRefresh(
+                                    subscription,
+                                  )) {
+                                    return Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary
+                                            .withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: AppColors.primary
+                                              .withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.auto_awesome,
+                                                color: AppColors.primary,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  '你已升級完整版，這份分析仍是免費版結果。',
+                                                  style: AppTypography
+                                                      .bodyMedium
+                                                      .copyWith(
+                                                    color: AppColors.primary,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            '重新分析一次，就能拿到完整回覆選項。',
+                                            style:
+                                                AppTypography.caption.copyWith(
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: OutlinedButton.icon(
+                                              onPressed: _isAnalyzing
+                                                  ? null
+                                                  : _runAnalysis,
+                                              icon: const Icon(
+                                                Icons.refresh_rounded,
+                                              ),
+                                              label: const Text('重新分析完整回覆'),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     );
                                   }
@@ -2818,8 +2928,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         const SizedBox(width: 8),
                                         Text(
                                           '優化後的訊息',
-                                          style:
-                                              AppTypography.titleMedium.copyWith(
+                                          style: AppTypography.titleMedium
+                                              .copyWith(
                                             color: AppColors.glassTextPrimary,
                                           ),
                                         ),
@@ -3501,8 +3611,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   child: SizedBox(
                     height: 48,
                     child: OutlinedButton.icon(
-                      onPressed:
-                          canAddManualMessage ? () => _addMessage(isFromMe: false) : null,
+                      onPressed: canAddManualMessage
+                          ? () => _addMessage(isFromMe: false)
+                          : null,
                       icon: const Text('👩', style: TextStyle(fontSize: 18)),
                       label: Text('她說...',
                           style: TextStyle(color: AppColors.glassTextPrimary)),
@@ -3534,8 +3645,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.ctaStart
-                              .withValues(alpha: canAddManualMessage ? 0.3 : 0.12),
+                          color: AppColors.ctaStart.withValues(
+                              alpha: canAddManualMessage ? 0.3 : 0.12),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -3544,8 +3655,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap:
-                            canAddManualMessage ? () => _addMessage(isFromMe: true) : null,
+                        onTap: canAddManualMessage
+                            ? () => _addMessage(isFromMe: true)
+                            : null,
                         borderRadius: BorderRadius.circular(12),
                         child: Center(
                           child: Row(

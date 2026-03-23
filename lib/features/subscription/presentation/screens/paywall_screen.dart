@@ -73,8 +73,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
     final selectedPackage = _selectedPackageFor(subscription);
-    final offeringsReady =
-        subscription.starterPackage != null || subscription.essentialPackage != null;
+    final offeringsReady = subscription.starterPackage != null ||
+        subscription.essentialPackage != null;
     final isCurrentPlan = subscription.tier == _selectedTier;
 
     return GradientBackground(
@@ -162,7 +162,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       selectedPackage: selectedPackage,
                       isCurrentPlan: isCurrentPlan,
                     ),
-                    onPressed: _isPurchasing || isCurrentPlan || selectedPackage == null
+                    onPressed: _isPurchasing ||
+                            isCurrentPlan ||
+                            selectedPackage == null
                         ? null
                         : _subscribe,
                     isLoading: _isPurchasing,
@@ -478,7 +480,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         '訂閱成功，已切換為 $purchasedTier 方案。',
         backgroundColor: AppColors.success,
       );
-      context.pop();
+      context.pop(true);
     } on PurchasesErrorCode catch (errorCode) {
       _showSnackBar(_messageForPurchaseError(errorCode));
     } catch (error) {
@@ -525,7 +527,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           '已成功恢復購買，方案狀態已更新。',
           backgroundColor: AppColors.success,
         );
-        context.pop();
+        context.pop(true);
       } else {
         _showSnackBar('目前找不到可恢復的有效訂閱。');
       }
@@ -648,7 +650,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, SubscriptionTierHelper.free),
+            onPressed: () =>
+                Navigator.pop(dialogContext, SubscriptionTierHelper.free),
             child: const Text('Free'),
           ),
           TextButton(
@@ -692,7 +695,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       final customerInfo = await RevenueCatService.getCustomerInfo();
 
       if (customerInfo == null) {
-        debugInfo = 'CustomerInfo is null.\n\nRevenueCat may not be initialized yet.';
+        debugInfo =
+            'CustomerInfo is null.\n\nRevenueCat may not be initialized yet.';
       } else {
         final allEntitlements = customerInfo.entitlements.all.keys.toList();
         final activeEntitlements = customerInfo.entitlements.active;

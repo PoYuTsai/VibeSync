@@ -2289,6 +2289,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
       imagesUsed: hasImages ? images.length : 0,
+      tierUsed: effectiveTier,
       isTestAccount: accountIsTest, // 標記是否為測試帳號
     };
 
