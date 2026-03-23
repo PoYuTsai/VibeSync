@@ -63,9 +63,10 @@ class _ScreenshotRecognitionDialogState
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
     _selectedImportMode = widget.initialImportMode;
-    _editableMessages = (widget.recognized.messages ?? const <RecognizedMessage>[])
-        .map(_EditableRecognizedMessage.fromRecognizedMessage)
-        .toList();
+    _editableMessages =
+        (widget.recognized.messages ?? const <RecognizedMessage>[])
+            .map(_EditableRecognizedMessage.fromRecognizedMessage)
+            .toList();
   }
 
   @override
@@ -277,6 +278,43 @@ class _ScreenshotRecognitionDialogState
                   message.side == 'unknown' ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
+          if (message.quotedReplyController != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              '引用的上一則',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextHint,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: message.quotedReplyController,
+              minLines: 1,
+              maxLines: 3,
+              onChanged: (_) {
+                if (_editValidationMessage != null) {
+                  setState(() {
+                    _editValidationMessage = null;
+                  });
+                }
+              },
+              decoration: InputDecoration(
+                hintText: '可選：補上她這句正在回哪個舊訊息',
+                hintStyle: const TextStyle(color: AppColors.unselectedText),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.35),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextPrimary,
+                height: 1.35,
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           TextField(
             controller: message.controller,
@@ -460,7 +498,8 @@ class _ScreenshotRecognitionDialogState
                   selectedColor: AppColors.primary.withValues(alpha: 0.3),
                   labelStyle: TextStyle(
                     color: _selectedImportMode ==
-                            ScreenshotRecognitionHelper.importModeNewConversation
+                            ScreenshotRecognitionHelper
+                                .importModeNewConversation
                         ? AppColors.primary
                         : AppColors.glassTextPrimary,
                   ),
@@ -517,11 +556,11 @@ class _ScreenshotRecognitionDialogState
                   ],
                   const SizedBox(height: 10),
                   ..._editableMessages.asMap().entries.map(
-                    (entry) => _buildEditableMessageCard(
-                      entry.value,
-                      entry.key,
-                    ),
-                  ),
+                        (entry) => _buildEditableMessageCard(
+                          entry.value,
+                          entry.key,
+                        ),
+                      ),
                   if (_editValidationMessage != null)
                     Text(
                       _editValidationMessage!,
@@ -647,11 +686,13 @@ class _EditableRecognizedMessage {
   final String side;
   bool isFromMe;
   final TextEditingController controller;
+  final TextEditingController? quotedReplyController;
 
   _EditableRecognizedMessage({
     required this.side,
     required this.isFromMe,
     required this.controller,
+    required this.quotedReplyController,
   });
 
   factory _EditableRecognizedMessage.fromRecognizedMessage(
@@ -661,6 +702,10 @@ class _EditableRecognizedMessage {
       side: message.side,
       isFromMe: message.isFromMe,
       controller: TextEditingController(text: message.content),
+      quotedReplyController:
+          (message.quotedReplyPreview?.trim().isNotEmpty ?? false)
+              ? TextEditingController(text: message.quotedReplyPreview)
+              : null,
     );
   }
 
@@ -669,10 +714,14 @@ class _EditableRecognizedMessage {
       side: side,
       isFromMe: isFromMe,
       content: controller.text.trim(),
+      quotedReplyPreview: quotedReplyController?.text.trim().isEmpty ?? true
+          ? null
+          : quotedReplyController!.text.trim(),
     );
   }
 
   void dispose() {
     controller.dispose();
+    quotedReplyController?.dispose();
   }
 }

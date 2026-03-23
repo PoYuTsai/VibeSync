@@ -847,6 +847,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         content: message.content,
         isFromMe: message.isFromMe,
         timestamp: baseTimestamp.add(Duration(milliseconds: index)),
+        quotedReplyPreview: message.quotedReplyPreview,
       );
     });
   }

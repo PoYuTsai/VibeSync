@@ -61,6 +61,16 @@ interface ImageData {
 interface AnalyzeMessage {
   isFromMe: boolean;
   content: string;
+  quotedReplyPreview?: string;
+}
+
+type RecognizedBubbleSide = "left" | "right" | "unknown";
+
+interface NormalizedRecognizedMessage {
+  side: RecognizedBubbleSide;
+  isFromMe: boolean;
+  content: string;
+  quotedReplyPreview?: string;
 }
 
 interface SessionContextInput {
@@ -75,6 +85,7 @@ interface SessionContextInput {
 const MAX_MESSAGES = 120;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TOTAL_MESSAGE_CHARS = 20000;
+const MAX_QUOTED_REPLY_PREVIEW_LENGTH = 300;
 const MAX_USER_DRAFT_LENGTH = 1500;
 const MAX_SESSION_FIELD_LENGTH = 300;
 const MAX_CONVERSATION_SUMMARY_LENGTH = 5000;
@@ -196,6 +207,8 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- Treat LINE or Messenger quoted-reply previews as context, not as separate new messages.",
   "- In LINE reply UI, the smaller embedded card with avatar/name/light-gray text is usually quoted history. Do not output that embedded quoted card as its own message row.",
   "- If one outer bubble contains both an embedded quoted-reply card and a larger main reply text below it, keep only the larger main reply text as the current message.",
+  "- If the quoted preview text is readable, attach it to the outer message as `quotedReplyPreview` instead of turning it into a standalone message row.",
+  "- If the quoted preview text is too small or unreadable, omit `quotedReplyPreview` and still keep the outer main reply.",
   "- Do not split one outer bubble into two messages just because it contains a quoted preview plus the real reply.",
   "- This rule applies on both left-side and right-side bubbles. The quoted preview may refer to either speaker's old message, but the current speaker is still decided by the outer bubble side.",
   "- Never use the quoted preview avatar, name, or quoted-text author to override the speaker of the outer reply bubble.",
@@ -233,7 +246,7 @@ const RECOGNIZED_CONVERSATION_SCHEMA = `{
     "messageCount": 4,
     "summary": "A short summary of the visible exchange.",
     "messages": [
-      { "side": "left", "isFromMe": false, "content": "Visible message from the other person" },
+      { "side": "left", "isFromMe": false, "content": "Visible message from the other person", "quotedReplyPreview": "Optional quoted old message if readable" },
       { "side": "right", "isFromMe": true, "content": "Visible message from me" }
     ]
   }
@@ -264,7 +277,7 @@ function buildRecognizeOnlyImagePrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- Determine each bubble's `side` from the outer chat layout first, before reading the text inside that bubble.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders and image-in-image content: a right-side photo bubble must not be flipped to `她說` just because the OCR text or the inner image content is generic.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `side` is clear, keep `isFromMe` consistent with it.",
+    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- Determine each bubble's `side` from the outer chat layout first, before reading the text inside that bubble.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders and image-in-image content: a right-side photo bubble must not be flipped to `她說` just because the OCR text or the inner image content is generic.\n- If a quoted-reply preview is readable, keep it on the same outer message as `quotedReplyPreview`; do not emit it as a separate row.\n- If the quoted preview is unreadable, leave `quotedReplyPreview` empty instead of guessing.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `side` is clear, keep `isFromMe` consistent with it.",
     "### JSON Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo
@@ -293,7 +306,7 @@ function buildImageAnalysisPrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- Build `recognizedConversation.messages` with a layout-first pass: identify bubble side from the screen position first, then transcribe content.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- If a LINE-style bubble contains a quoted-reply preview card plus a larger main reply, only keep the larger main reply in `recognizedConversation.messages`; the quoted preview is context, not a new message row.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.\n- If a bubble contains a screenshot/photo/video preview, use the outer bubble container to decide side; ignore the inner image contents for speaker assignment.\n- If the screenshots seem to mix two different contacts or unrelated thread segments, do not silently merge them into a clean conversation. Mark it low-confidence and explain the mismatch in `warning`.",
+    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- Build `recognizedConversation.messages` with a layout-first pass: identify bubble side from the screen position first, then transcribe content.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- If a LINE-style bubble contains a quoted-reply preview card plus a larger main reply, only keep the larger main reply in `recognizedConversation.messages`; store the readable quoted text in `quotedReplyPreview` instead of emitting a separate message row.\n- If the quoted preview is too small or unclear, omit `quotedReplyPreview` rather than guessing.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.\n- If a bubble contains a screenshot/photo/video preview, use the outer bubble container to decide side; ignore the inner image contents for speaker assignment.\n- If the screenshots seem to mix two different contacts or unrelated thread segments, do not silently merge them into a clean conversation. Mark it low-confidence and explain the mismatch in `warning`.",
     "### recognizedConversation Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo,
@@ -918,7 +931,38 @@ function isLikelyMediaPlaceholderContent(content: string): boolean {
     normalized.includes("uploaded a photo");
 }
 
-function normalizeBubbleSide(record: Record<string, unknown>): "left" | "right" | "unknown" {
+function sanitizeQuotedReplyPreviewValue(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.slice(0, MAX_QUOTED_REPLY_PREVIEW_LENGTH);
+}
+
+function extractQuotedReplyPreviewContent(content: string): string | undefined {
+  const lines = content
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  if (lines.length >= 2 && isLikelyQuotedReplyPreviewNameLine(lines[0])) {
+    const previewBody = lines.slice(1).join(" ").trim();
+    return previewBody || undefined;
+  }
+
+  return content.trim() || undefined;
+}
+
+function normalizeBubbleSide(record: Record<string, unknown>): RecognizedBubbleSide {
   const rawSide = typeof record.side === "string"
     ? record.side.trim().toLowerCase()
     : "";
@@ -950,17 +994,9 @@ function sideToIsFromMe(
 }
 
 function applySpeakerContinuityHeuristics(
-  messages: Array<{
-    side: "left" | "right" | "unknown";
-    isFromMe: boolean;
-    content: string;
-  }>,
+  messages: NormalizedRecognizedMessage[],
 ): {
-  messages: Array<{
-    side: "left" | "right" | "unknown";
-    isFromMe: boolean;
-    content: string;
-  }>;
+  messages: NormalizedRecognizedMessage[];
   adjustedCount: number;
 } {
   if (messages.length < 3) {
@@ -1046,36 +1082,28 @@ function isLikelyQuotedReplyPreviewContent(content: string): boolean {
 }
 
 function stripQuotedReplyPreviewMessages(
-  messages: Array<{
-    side: "left" | "right" | "unknown";
-    isFromMe: boolean;
-    content: string;
-  }>,
+  messages: NormalizedRecognizedMessage[],
 ): {
-  messages: Array<{
-    side: "left" | "right" | "unknown";
-    isFromMe: boolean;
-    content: string;
-  }>;
+  messages: NormalizedRecognizedMessage[];
   removedCount: number;
+  attachedCount: number;
 } {
   if (messages.length < 2) {
     return {
       messages,
       removedCount: 0,
+      attachedCount: 0,
     };
   }
 
-  const filtered: Array<{
-    side: "left" | "right" | "unknown";
-    isFromMe: boolean;
-    content: string;
-  }> = [];
+  const adjusted = messages.map((message) => ({ ...message }));
+  const filtered: NormalizedRecognizedMessage[] = [];
   let removedCount = 0;
+  let attachedCount = 0;
 
-  for (let index = 0; index < messages.length; index += 1) {
-    const current = messages[index];
-    const next = messages[index + 1];
+  for (let index = 0; index < adjusted.length; index += 1) {
+    const current = adjusted[index];
+    const next = adjusted[index + 1];
 
     const shouldStripQuotedPreview = !!next &&
       current.side !== "unknown" &&
@@ -1085,6 +1113,11 @@ function stripQuotedReplyPreviewMessages(
       !isLikelyQuotedReplyPreviewContent(next.content);
 
     if (shouldStripQuotedPreview) {
+      const derivedPreview = extractQuotedReplyPreviewContent(current.content);
+      if (derivedPreview && !next.quotedReplyPreview) {
+        next.quotedReplyPreview = derivedPreview;
+        attachedCount += 1;
+      }
       removedCount += 1;
       continue;
     }
@@ -1095,6 +1128,7 @@ function stripQuotedReplyPreviewMessages(
   return {
     messages: filtered,
     removedCount,
+    attachedCount,
   };
 }
 
@@ -1348,18 +1382,18 @@ function normalizeRecognizedConversation(
       }
 
       const side = normalizeBubbleSide(record);
+      const quotedReplyPreview = sanitizeQuotedReplyPreviewValue(
+        record.quotedReplyPreview,
+      );
 
       return {
         side,
         isFromMe: sideToIsFromMe(side, record.isFromMe),
         content,
+        ...(quotedReplyPreview ? { quotedReplyPreview } : {}),
       };
     })
-    .filter((message): message is {
-      side: "left" | "right" | "unknown";
-      isFromMe: boolean;
-      content: string;
-    } =>
+    .filter((message): message is NormalizedRecognizedMessage =>
       message !== null
     );
 
@@ -1397,7 +1431,9 @@ function normalizeRecognizedConversation(
     sideConfidence,
     uncertainSideCount,
     warning: quotedPreviewAdjustment.removedCount > 0 && !warning
-      ? "已自動忽略引用回覆的小型預覽框，只保留外層真正的新訊息。"
+      ? quotedPreviewAdjustment.attachedCount > 0
+        ? "已自動把引用回覆的小卡片併回主訊息，保留它正在回覆的舊內容。"
+        : "已自動忽略引用回覆的小卡片，只保留外層真正的新訊息。"
       : warning,
   };
 
@@ -1452,7 +1488,28 @@ function sanitizeMessages(
       return { error: `Message too long (max ${MAX_MESSAGE_LENGTH} chars)` };
     }
 
+    let quotedReplyPreview: string | undefined;
+    if (record.quotedReplyPreview != null) {
+      if (typeof record.quotedReplyPreview !== "string") {
+        return { error: "Invalid message quotedReplyPreview" };
+      }
+
+      const trimmedQuotedReplyPreview = record.quotedReplyPreview.trim();
+      if (trimmedQuotedReplyPreview) {
+        if (trimmedQuotedReplyPreview.length > MAX_QUOTED_REPLY_PREVIEW_LENGTH) {
+          return {
+            error:
+              `quotedReplyPreview too long (max ${MAX_QUOTED_REPLY_PREVIEW_LENGTH} chars)`,
+          };
+        }
+        quotedReplyPreview = trimmedQuotedReplyPreview;
+      }
+    }
+
     totalChars += content.length;
+    if (quotedReplyPreview) {
+      totalChars += quotedReplyPreview.length;
+    }
     if (totalChars > MAX_TOTAL_MESSAGE_CHARS) {
       return {
         error: `Messages too long (max ${MAX_TOTAL_MESSAGE_CHARS} chars)`,
@@ -1462,6 +1519,7 @@ function sanitizeMessages(
     sanitizedMessages.push({
       isFromMe: record.isFromMe,
       content,
+      ...(quotedReplyPreview ? { quotedReplyPreview } : {}),
     });
   }
 
@@ -1959,8 +2017,22 @@ serve(async (req) => {
     let compiledConversationText = "";
 
     const formatConversationLine = (
-      message: { isFromMe: boolean; content: string },
-    ) => `${message.isFromMe ? "Me" : "Her"}: ${message.content}`;
+      message: AnalyzeMessage,
+    ) => {
+      const quotedReplyPreview = message.quotedReplyPreview?.trim()
+        ? message.quotedReplyPreview.trim().replace(/\s+/g, " ").replace(
+          /"/g,
+          "'",
+        )
+        : "";
+      const replyPrefix = quotedReplyPreview
+        ? ` (replying to: "${quotedReplyPreview}")`
+        : "";
+
+      return `${message.isFromMe ? "Me" : "Her"}${replyPrefix}: ${
+        message.content
+      }`;
+    };
     let conversationText = "";
 
     if (messages.length > MAX_RECENT_MESSAGES + OPENING_MESSAGES) {

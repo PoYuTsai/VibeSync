@@ -3,7 +3,7 @@ import 'game_stage.dart';
 
 /// Topic depth levels (話題深度)
 enum TopicDepthLevel {
-  event,    // 事件層 (表面話題)
+  event, // 事件層 (表面話題)
   personal, // 個人層 (深入了解)
   intimate, // 曖昧層 (情感連結)
 }
@@ -61,7 +61,8 @@ class TopicDepth {
       return const TopicDepth(current: TopicDepthLevel.event, suggestion: '');
     }
     return TopicDepth(
-      current: TopicDepthLevelX.fromString(json['current'] as String? ?? 'event'),
+      current:
+          TopicDepthLevelX.fromString(json['current'] as String? ?? 'event'),
       suggestion: json['suggestion'] as String? ?? '',
     );
   }
@@ -123,8 +124,8 @@ class GameStageInfo {
 
 /// Psychology analysis (淺溝通解讀)
 class PsychologyAnalysis {
-  final String subtext;           // 她真正想說的
-  final String? shitTest;         // 偵測到的廢測 (null = 無)
+  final String subtext; // 她真正想說的
+  final String? shitTest; // 偵測到的廢測 (null = 無)
   final bool qualificationSignal; // 她是否在向你證明自己
 
   const PsychologyAnalysis({
@@ -153,9 +154,9 @@ class PsychologyAnalysis {
 
 /// Final AI recommendation
 class FinalRecommendation {
-  final String pick;       // 推薦的回覆類型 (extend/resonate/tease/humor/coldRead)
-  final String content;    // 推薦的回覆內容
-  final String reason;     // 推薦理由
+  final String pick; // 推薦的回覆類型 (extend/resonate/tease/humor/coldRead)
+  final String content; // 推薦的回覆內容
+  final String reason; // 推薦理由
   final String psychology; // 心理學依據
 
   const FinalRecommendation({
@@ -211,8 +212,10 @@ class MyMessageAnalysis {
     }
     return MyMessageAnalysis(
       sentMessage: json['sentMessage'] as String? ?? '',
-      ifColdResponse: ResponsePrediction.fromJson(json['ifColdResponse'] as Map<String, dynamic>?),
-      ifWarmResponse: ResponsePrediction.fromJson(json['ifWarmResponse'] as Map<String, dynamic>?),
+      ifColdResponse: ResponsePrediction.fromJson(
+          json['ifColdResponse'] as Map<String, dynamic>?),
+      ifWarmResponse: ResponsePrediction.fromJson(
+          json['ifWarmResponse'] as Map<String, dynamic>?),
       backupTopics: (json['backupTopics'] as List?)?.cast<String>() ?? [],
       warnings: (json['warnings'] as List?)?.cast<String>() ?? [],
     );
@@ -229,7 +232,8 @@ class ResponsePrediction {
     required this.suggestion,
   });
 
-  factory ResponsePrediction.empty() => const ResponsePrediction(prediction: '', suggestion: '');
+  factory ResponsePrediction.empty() =>
+      const ResponsePrediction(prediction: '', suggestion: '');
 
   factory ResponsePrediction.fromJson(Map<String, dynamic>? json) {
     if (json == null) return ResponsePrediction.empty();
@@ -245,22 +249,30 @@ class RecognizedMessage {
   final String side;
   final bool isFromMe;
   final String content;
+  final String? quotedReplyPreview;
 
   const RecognizedMessage({
     this.side = 'unknown',
     required this.isFromMe,
     required this.content,
+    this.quotedReplyPreview,
   });
 
   factory RecognizedMessage.fromJson(Map<String, dynamic> json) {
     final rawSide = (json['side'] as String? ?? '').trim().toLowerCase();
     final normalizedSide =
         rawSide == 'left' || rawSide == 'right' ? rawSide : 'unknown';
+    final rawQuotedReplyPreview =
+        (json['quotedReplyPreview'] as String?)?.trim();
 
     return RecognizedMessage(
       side: normalizedSide,
       isFromMe: json['isFromMe'] as bool? ?? false,
       content: json['content'] as String? ?? '',
+      quotedReplyPreview:
+          rawQuotedReplyPreview == null || rawQuotedReplyPreview.isEmpty
+              ? null
+              : rawQuotedReplyPreview,
     );
   }
 
@@ -268,17 +280,21 @@ class RecognizedMessage {
         'side': side,
         'isFromMe': isFromMe,
         'content': content,
+        if (quotedReplyPreview != null && quotedReplyPreview!.trim().isNotEmpty)
+          'quotedReplyPreview': quotedReplyPreview!.trim(),
       };
 
   RecognizedMessage copyWith({
     String? side,
     bool? isFromMe,
     String? content,
+    String? quotedReplyPreview,
   }) {
     return RecognizedMessage(
       side: side ?? this.side,
       isFromMe: isFromMe ?? this.isFromMe,
       content: content ?? this.content,
+      quotedReplyPreview: quotedReplyPreview ?? this.quotedReplyPreview,
     );
   }
 }
@@ -373,9 +389,9 @@ class RecognizedConversation {
 
 /// Optimized user message result
 class OptimizedMessage {
-  final String original;   // 用戶原本的訊息
-  final String optimized;  // AI 優化後的訊息
-  final String reason;     // 優化理由
+  final String original; // 用戶原本的訊息
+  final String optimized; // AI 優化後的訊息
+  final String reason; // 優化理由
 
   const OptimizedMessage({
     required this.original,
@@ -384,7 +400,8 @@ class OptimizedMessage {
   });
 
   factory OptimizedMessage.fromJson(Map<String, dynamic>? json) {
-    if (json == null) return const OptimizedMessage(original: '', optimized: '', reason: '');
+    if (json == null)
+      return const OptimizedMessage(original: '', optimized: '', reason: '');
     return OptimizedMessage(
       original: json['original'] as String? ?? '',
       optimized: json['optimized'] as String? ?? '',
@@ -436,33 +453,38 @@ class AnalysisResult {
     // Parse healthCheck only if present (Essential tier only)
     HealthCheck? healthCheck;
     if (json['healthCheck'] != null) {
-      healthCheck = HealthCheck.fromJson(json['healthCheck'] as Map<String, dynamic>?);
+      healthCheck =
+          HealthCheck.fromJson(json['healthCheck'] as Map<String, dynamic>?);
     }
 
     // Determine if should give up (cold enthusiasm + specific signals)
     final enthusiasmLevel = enthusiasm?['level'] as String?;
     // warnings 可能是 String 或 Object 陣列，安全處理
     final rawWarnings = json['warnings'] as List? ?? [];
-    final warnings = rawWarnings.map((w) => w is String ? w : w.toString()).toList();
+    final warnings =
+        rawWarnings.map((w) => w is String ? w : w.toString()).toList();
     final shouldGiveUp = enthusiasmLevel == 'cold' &&
         (warnings.any((w) => w.contains('建議放棄') || w.contains('開新對話')));
 
     // Parse optimizedMessage if present (when user provided draft)
     OptimizedMessage? optimizedMessage;
     if (json['optimizedMessage'] != null) {
-      optimizedMessage = OptimizedMessage.fromJson(json['optimizedMessage'] as Map<String, dynamic>?);
+      optimizedMessage = OptimizedMessage.fromJson(
+          json['optimizedMessage'] as Map<String, dynamic>?);
     }
 
     // Parse myMessageAnalysis if present (「我說」模式)
     MyMessageAnalysis? myMessageAnalysis;
     if (json['myMessageAnalysis'] != null) {
-      myMessageAnalysis = MyMessageAnalysis.fromJson(json['myMessageAnalysis'] as Map<String, dynamic>?);
+      myMessageAnalysis = MyMessageAnalysis.fromJson(
+          json['myMessageAnalysis'] as Map<String, dynamic>?);
     }
 
     // Parse recognizedConversation if present (截圖識別結果)
     RecognizedConversation? recognizedConversation;
     if (json['recognizedConversation'] != null) {
-      recognizedConversation = RecognizedConversation.fromJson(json['recognizedConversation'] as Map<String, dynamic>?);
+      recognizedConversation = RecognizedConversation.fromJson(
+          json['recognizedConversation'] as Map<String, dynamic>?);
     }
 
     // Parse imagesUsed from usage
@@ -472,12 +494,16 @@ class AnalysisResult {
     return AnalysisResult(
       enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
       strategy: json['strategy'] as String? ?? '',
-      gameStage: GameStageInfo.fromJson(json['gameStage'] as Map<String, dynamic>?),
-      psychology: PsychologyAnalysis.fromJson(json['psychology'] as Map<String, dynamic>?),
-      topicDepth: TopicDepth.fromJson(json['topicDepth'] as Map<String, dynamic>?),
+      gameStage:
+          GameStageInfo.fromJson(json['gameStage'] as Map<String, dynamic>?),
+      psychology: PsychologyAnalysis.fromJson(
+          json['psychology'] as Map<String, dynamic>?),
+      topicDepth:
+          TopicDepth.fromJson(json['topicDepth'] as Map<String, dynamic>?),
       healthCheck: healthCheck,
       replies: repliesData?.map((k, v) => MapEntry(k, v.toString())) ?? {},
-      recommendation: FinalRecommendation.fromJson(json['finalRecommendation'] as Map<String, dynamic>?),
+      recommendation: FinalRecommendation.fromJson(
+          json['finalRecommendation'] as Map<String, dynamic>?),
       reminder: json['reminder'] as String?,
       shouldGiveUp: shouldGiveUp,
       rawResponse: json, // 保存原始回應

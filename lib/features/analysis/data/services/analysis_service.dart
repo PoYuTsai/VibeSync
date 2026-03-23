@@ -252,8 +252,9 @@ AnalysisException _mapAnalysisHttpError({
                 ? '這次送出的草稿內容有誤，請修改後再試。'
                 : '這次送出的對話內容有誤，請檢查後再試。',
         code: errorCode ?? 'BAD_REQUEST',
-        suggestedAction:
-            hasImages ? AnalysisErrorAction.rescreenshot : AnalysisErrorAction.retry,
+        suggestedAction: hasImages
+            ? AnalysisErrorAction.rescreenshot
+            : AnalysisErrorAction.retry,
       );
     case 401:
       return AnalysisException(
@@ -538,6 +539,9 @@ class AnalysisService {
               (message) => {
                 'isFromMe': message.isFromMe,
                 'content': message.content,
+                if (message.quotedReplyPreview != null &&
+                    message.quotedReplyPreview!.trim().isNotEmpty)
+                  'quotedReplyPreview': message.quotedReplyPreview!.trim(),
               },
             )
             .toList(),
@@ -548,7 +552,8 @@ class AnalysisService {
             'duration': sessionContext.duration.label,
             'goal': sessionContext.goal.label,
           },
-        if (conversationSummary != null && conversationSummary.trim().isNotEmpty)
+        if (conversationSummary != null &&
+            conversationSummary.trim().isNotEmpty)
           'conversationSummary': conversationSummary.trim(),
         if (hasUserDraft) 'userDraft': userDraft.trim(),
         if (analyzeMode != null) 'analyzeMode': analyzeMode,

@@ -501,6 +501,7 @@ After deploy, verify:
 - The latest paywall/analysis unlock fix also adds `usage.tierUsed` to analysis responses, so if partner feedback says "I already upgraded but still only see one reply", inspect whether the screen is showing a stale free-tier analysis snapshot versus a genuinely fresh Essential-tier rerun.
 - The latest LINE reply-preview fix is intentionally two-layered: the OCR prompt is stricter about treating quoted cards as context only, and backend normalization now removes likely same-side quoted-preview rows when the model still splits them out.
 - Quoted-reply handling is now explicitly symmetric too: left/right outer bubble side remains the source of truth even when the quoted card shows the other speaker's avatar/name, so the quoted preview author should not flip the current speaker.
+- Readable quoted-reply previews are now preserved as structured `quotedReplyPreview` metadata from OCR into imported messages, and later analysis requests send that metadata back so the model can understand what a visible bubble is replying to without treating the quote preview as a standalone row.
 - The auth pass now includes in-app password reset completion, but it still needs a real-device regression pass for both warm-start and cold-start recovery links.
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:
   - OCR/import success
