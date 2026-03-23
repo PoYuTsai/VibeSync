@@ -870,6 +870,67 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String _recognitionSideConfidenceLabel(String confidence) =>
       ScreenshotRecognitionHelper.sideConfidenceLabel(confidence);
 
+  String? _recognizeTelemetryRecognitionSummary(AnalysisTelemetry telemetry) {
+    if (telemetry.recognizedClassification == null &&
+        telemetry.recognizedSideConfidence == null &&
+        telemetry.recognizedMessageCount == null) {
+      return null;
+    }
+
+    final parts = <String>[
+      if (telemetry.recognizedClassification != null)
+        '分類 ${_recognitionClassificationLabel(telemetry.recognizedClassification!)}',
+      if (telemetry.recognizedSideConfidence != null)
+        '方向 ${_recognitionSideConfidenceLabel(telemetry.recognizedSideConfidence!)}',
+      if (telemetry.recognizedMessageCount != null)
+        '訊息 ${telemetry.recognizedMessageCount} 則',
+      if ((telemetry.uncertainSideCount ?? 0) > 0)
+        '待確認 ${telemetry.uncertainSideCount} 則',
+    ];
+
+    return parts.isEmpty ? null : parts.join('｜');
+  }
+
+  String? _recognizeTelemetryNormalizationSummary(AnalysisTelemetry telemetry) {
+    final parts = <String>[
+      if ((telemetry.quotedPreviewAttachedCount ?? 0) > 0)
+        '引用併回 ${telemetry.quotedPreviewAttachedCount} 次',
+      if ((telemetry.quotedPreviewRemovedCount ?? 0) > 0 &&
+          (telemetry.quotedPreviewAttachedCount ?? 0) == 0)
+        '引用忽略 ${telemetry.quotedPreviewRemovedCount} 次',
+      if ((telemetry.continuityAdjustedCount ?? 0) > 0)
+        '方向校正 ${telemetry.continuityAdjustedCount} 次',
+    ];
+
+    return parts.isEmpty ? null : parts.join('｜');
+  }
+
+  String? _recognizeTelemetryContextSummary(AnalysisTelemetry telemetry) {
+    if (telemetry.contextMode == null &&
+        telemetry.truncatedMessageCount == null &&
+        telemetry.conversationSummaryUsed == false) {
+      return null;
+    }
+
+    final modeLabel = telemetry.contextMode == 'opening_plus_recent'
+        ? '上下文 開頭+最近'
+        : telemetry.contextMode == 'full'
+            ? '上下文 全量'
+            : null;
+
+    final parts = <String>[
+      if (modeLabel != null) modeLabel,
+      if ((telemetry.inputMessageCount ?? 0) > 0 &&
+          (telemetry.compiledMessageCount ?? 0) > 0)
+        '送出 ${telemetry.compiledMessageCount}/${telemetry.inputMessageCount} 則',
+      if ((telemetry.truncatedMessageCount ?? 0) > 0)
+        '省略 ${telemetry.truncatedMessageCount} 則',
+      if (telemetry.conversationSummaryUsed) '含舊摘要',
+    ];
+
+    return parts.isEmpty ? null : parts.join('｜');
+  }
+
   Color _recognitionConfidenceColor(RecognizedConversation recognized) {
     if (recognized.importPolicy == 'reject') {
       return AppColors.error;
@@ -1013,6 +1074,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             edgeAiDuration: Duration.zero,
             totalCompressedImageBytes: _totalCompressedImageBytes,
             cacheHit: true,
+            recognizedClassification:
+                cachedRecognition.recognizedConversation.classification,
+            recognizedConfidence:
+                cachedRecognition.recognizedConversation.confidence,
+            recognizedSideConfidence:
+                cachedRecognition.recognizedConversation.sideConfidence,
+            recognizedMessageCount:
+                cachedRecognition.recognizedConversation.messageCount,
+            uncertainSideCount:
+                cachedRecognition.recognizedConversation.uncertainSideCount,
           ),
         );
         result = AnalysisResult.fromJson(
@@ -2152,6 +2223,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                                   fontSize: 10,
                                                 ),
                                               ),
+                                            if (_lastRecognizeTelemetry !=
+                                                    null &&
+                                                _recognizeTelemetryRecognitionSummary(
+                                                        _lastRecognizeTelemetry!) !=
+                                                    null)
+                                              Text(
+                                                _recognizeTelemetryRecognitionSummary(
+                                                    _lastRecognizeTelemetry!)!,
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            if (_lastRecognizeTelemetry !=
+                                                    null &&
+                                                _recognizeTelemetryNormalizationSummary(
+                                                        _lastRecognizeTelemetry!) !=
+                                                    null)
+                                              Text(
+                                                _recognizeTelemetryNormalizationSummary(
+                                                    _lastRecognizeTelemetry!)!,
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: Colors.orange
+                                                      .withValues(alpha: 0.8),
+                                                  fontSize: 10,
+                                                ),
+                                              ),
                                             Text(
                                               '若超過 130 秒仍無結果，建議換更少訊息的截圖再試。',
                                               style: AppTypography.caption
@@ -2297,6 +2398,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
+                                  if (_recognizeTelemetryRecognitionSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryRecognitionSummary(
+                                          _lastRecognizeTelemetry!)!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  if (_recognizeTelemetryNormalizationSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryNormalizationSummary(
+                                          _lastRecognizeTelemetry!)!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  if (_recognizeTelemetryContextSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryContextSummary(
+                                          _lastRecognizeTelemetry!)!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),

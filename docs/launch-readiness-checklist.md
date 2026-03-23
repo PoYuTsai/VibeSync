@@ -19,6 +19,7 @@
 - [App Store 審核策略](./app-store-strategy.md)
 - [隱私權政策](./legal/privacy-policy.md)
 - [服務條款](./legal/terms-of-service.md)
+- [OCR / 分析成熟度 Benchmark](./ocr-analysis-maturity-benchmark.md)
 - [Claude Code handoff](../CLAUDE_CODE_HANDOFF_2026-03-16.md)
 
 ---

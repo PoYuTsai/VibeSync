@@ -1273,6 +1273,11 @@ function normalizeRecognizedConversation(
         ),
         sideConfidence: "low",
         uncertainSideCount: 0,
+        normalizationTelemetry: {
+          continuityAdjustedCount: 0,
+          quotedPreviewRemovedCount: 0,
+          quotedPreviewAttachedCount: 0,
+        },
         warning: normalizeWarningMessage(
           recognizedRaw.warning,
           classification,
@@ -1430,6 +1435,11 @@ function normalizeRecognizedConversation(
     confidence,
     sideConfidence,
     uncertainSideCount,
+    normalizationTelemetry: {
+      continuityAdjustedCount: continuityAdjustment.adjustedCount,
+      quotedPreviewRemovedCount: quotedPreviewAdjustment.removedCount,
+      quotedPreviewAttachedCount: quotedPreviewAdjustment.attachedCount,
+    },
     warning: quotedPreviewAdjustment.removedCount > 0 && !warning
       ? quotedPreviewAdjustment.attachedCount > 0
         ? "已自動把引用回覆的小卡片併回主訊息，保留它正在回覆的舊內容。"
@@ -2015,6 +2025,11 @@ serve(async (req) => {
     const MAX_RECENT_MESSAGES = 30;
     const OPENING_MESSAGES = 4; // 保留最初的 4 則（破冰階段）
     let compiledConversationText = "";
+    let compiledContextMode = "full";
+    let compiledMessageCount = messages.length;
+    let truncatedMessageCount = 0;
+    let openingMessagesUsed = 0;
+    let recentMessagesUsed = messages.length;
 
     const formatConversationLine = (
       message: AnalyzeMessage,
@@ -2041,6 +2056,11 @@ serve(async (req) => {
       const recentMessages = messages.slice(-MAX_RECENT_MESSAGES);
       const skippedCount = messages.length - OPENING_MESSAGES -
         MAX_RECENT_MESSAGES;
+      compiledContextMode = "opening_plus_recent";
+      compiledMessageCount = openingMessages.length + recentMessages.length;
+      truncatedMessageCount = skippedCount;
+      openingMessagesUsed = openingMessages.length;
+      recentMessagesUsed = recentMessages.length;
 
       const openingText = openingMessages.map(formatConversationLine).join(
         "\n",
@@ -2076,6 +2096,8 @@ ${recentText}`;
       compiledConversationText = messages.map(formatConversationLine).join(
         "\n",
       );
+      compiledMessageCount = messages.length;
+      recentMessagesUsed = messages.length;
       /*
       conversationText = messages
         .map(
@@ -2331,7 +2353,21 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
     // 檢查截圖識別是否失敗
     const recognizedConversation = result.recognizedConversation as
-      | { messageCount?: number; importPolicy?: string; warning?: string; summary?: string }
+      | {
+        messageCount?: number;
+        importPolicy?: string;
+        warning?: string;
+        summary?: string;
+        classification?: string;
+        confidence?: string;
+        sideConfidence?: string;
+        uncertainSideCount?: number;
+        normalizationTelemetry?: {
+          continuityAdjustedCount?: number;
+          quotedPreviewRemovedCount?: number;
+          quotedPreviewAttachedCount?: number;
+        };
+      }
       | undefined;
     if (
       hasImages &&
@@ -2472,6 +2508,27 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       serverAiLatencyMs: latencyMs,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
+      contextMode: compiledContextMode,
+      inputMessageCount: messages.length,
+      compiledMessageCount,
+      truncatedMessageCount,
+      openingMessagesUsed,
+      recentMessagesUsed,
+      conversationSummaryUsed: !!conversationSummary,
+      recognizedClassification: recognizedConversation?.classification ?? null,
+      recognizedConfidence: recognizedConversation?.confidence ?? null,
+      recognizedSideConfidence: recognizedConversation?.sideConfidence ?? null,
+      recognizedMessageCount: recognizedConversation?.messageCount ?? null,
+      uncertainSideCount: recognizedConversation?.uncertainSideCount ?? null,
+      continuityAdjustedCount:
+        recognizedConversation?.normalizationTelemetry
+          ?.continuityAdjustedCount ?? 0,
+      quotedPreviewRemovedCount:
+        recognizedConversation?.normalizationTelemetry
+          ?.quotedPreviewRemovedCount ?? 0,
+      quotedPreviewAttachedCount:
+        recognizedConversation?.normalizationTelemetry
+          ?.quotedPreviewAttachedCount ?? 0,
     };
 
     return jsonResponse(result);

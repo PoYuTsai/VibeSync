@@ -55,6 +55,21 @@ class AnalysisTelemetry {
   final Duration? edgeAiDuration;
   final int? totalCompressedImageBytes;
   final bool cacheHit;
+  final String? contextMode;
+  final int? inputMessageCount;
+  final int? compiledMessageCount;
+  final int? truncatedMessageCount;
+  final int? openingMessagesUsed;
+  final int? recentMessagesUsed;
+  final bool conversationSummaryUsed;
+  final String? recognizedClassification;
+  final String? recognizedConfidence;
+  final String? recognizedSideConfidence;
+  final int? recognizedMessageCount;
+  final int? uncertainSideCount;
+  final int? continuityAdjustedCount;
+  final int? quotedPreviewRemovedCount;
+  final int? quotedPreviewAttachedCount;
 
   const AnalysisTelemetry({
     required this.imageCount,
@@ -64,6 +79,21 @@ class AnalysisTelemetry {
     this.edgeAiDuration,
     this.totalCompressedImageBytes,
     this.cacheHit = false,
+    this.contextMode,
+    this.inputMessageCount,
+    this.compiledMessageCount,
+    this.truncatedMessageCount,
+    this.openingMessagesUsed,
+    this.recentMessagesUsed,
+    this.conversationSummaryUsed = false,
+    this.recognizedClassification,
+    this.recognizedConfidence,
+    this.recognizedSideConfidence,
+    this.recognizedMessageCount,
+    this.uncertainSideCount,
+    this.continuityAdjustedCount,
+    this.quotedPreviewRemovedCount,
+    this.quotedPreviewAttachedCount,
   });
 
   Duration? get estimatedTransferDuration {
@@ -621,6 +651,53 @@ class AnalysisService {
                       ? (telemetryData?['totalImageBytes'] as num).round()
                       : null,
               cacheHit: false,
+              contextMode: telemetryData?['contextMode'] as String?,
+              inputMessageCount: telemetryData?['inputMessageCount'] is num
+                  ? (telemetryData?['inputMessageCount'] as num).round()
+                  : null,
+              compiledMessageCount:
+                  telemetryData?['compiledMessageCount'] is num
+                      ? (telemetryData?['compiledMessageCount'] as num).round()
+                      : null,
+              truncatedMessageCount:
+                  telemetryData?['truncatedMessageCount'] is num
+                      ? (telemetryData?['truncatedMessageCount'] as num).round()
+                      : null,
+              openingMessagesUsed: telemetryData?['openingMessagesUsed'] is num
+                  ? (telemetryData?['openingMessagesUsed'] as num).round()
+                  : null,
+              recentMessagesUsed: telemetryData?['recentMessagesUsed'] is num
+                  ? (telemetryData?['recentMessagesUsed'] as num).round()
+                  : null,
+              conversationSummaryUsed:
+                  telemetryData?['conversationSummaryUsed'] == true,
+              recognizedClassification:
+                  telemetryData?['recognizedClassification'] as String?,
+              recognizedConfidence:
+                  telemetryData?['recognizedConfidence'] as String?,
+              recognizedSideConfidence:
+                  telemetryData?['recognizedSideConfidence'] as String?,
+              recognizedMessageCount: telemetryData?['recognizedMessageCount']
+                      is num
+                  ? (telemetryData?['recognizedMessageCount'] as num).round()
+                  : null,
+              uncertainSideCount: telemetryData?['uncertainSideCount'] is num
+                  ? (telemetryData?['uncertainSideCount'] as num).round()
+                  : null,
+              continuityAdjustedCount: telemetryData?['continuityAdjustedCount']
+                      is num
+                  ? (telemetryData?['continuityAdjustedCount'] as num).round()
+                  : null,
+              quotedPreviewRemovedCount:
+                  telemetryData?['quotedPreviewRemovedCount'] is num
+                      ? (telemetryData?['quotedPreviewRemovedCount'] as num)
+                          .round()
+                      : null,
+              quotedPreviewAttachedCount:
+                  telemetryData?['quotedPreviewAttachedCount'] is num
+                      ? (telemetryData?['quotedPreviewAttachedCount'] as num)
+                          .round()
+                      : null,
             ),
           );
 

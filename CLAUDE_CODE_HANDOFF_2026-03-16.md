@@ -502,6 +502,8 @@ After deploy, verify:
 - The latest LINE reply-preview fix is intentionally two-layered: the OCR prompt is stricter about treating quoted cards as context only, and backend normalization now removes likely same-side quoted-preview rows when the model still splits them out.
 - Quoted-reply handling is now explicitly symmetric too: left/right outer bubble side remains the source of truth even when the quoted card shows the other speaker's avatar/name, so the quoted preview author should not flip the current speaker.
 - Readable quoted-reply previews are now preserved as structured `quotedReplyPreview` metadata from OCR into imported messages, and later analysis requests send that metadata back so the model can understand what a visible bubble is replying to without treating the quote preview as a standalone row.
+- OCR telemetry is now more benchmark-friendly too: the server returns recognized classification/confidence, direction-confidence signals, uncertain-side count, quoted-preview attach/remove counts, continuity-fix count, and summary-aware context compaction stats so partner QA can tell whether a failure came from OCR structure, thread heuristics, or context trimming.
+- A dedicated benchmark doc now exists at `docs/ocr-analysis-maturity-benchmark.md`, with launch-threshold targets for OCR accuracy, latency, stability, UX maturity, and go/no-go launch criteria.
 - The auth pass now includes in-app password reset completion, but it still needs a real-device regression pass for both warm-start and cold-start recovery links.
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:
   - OCR/import success
