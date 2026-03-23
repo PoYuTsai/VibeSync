@@ -201,6 +201,7 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- Even for very short replies, stickers, image placeholders, or one-word bubbles like '超爽', follow the bubble side rather than guessing from meaning.",
   "- A photo, sticker, or image placeholder inside a clearly right-side bubble is still `isFromMe: true`; inside a clearly left-side bubble it is `isFromMe: false`.",
   "- If an image bubble and the next text bubble appear on the same side, keep them on the same speaker unless the layout clearly switches sides.",
+  "- If a media/image bubble is visually sandwiched between two bubbles on the same side, keep the media bubble on that same side too.",
   "- Consecutive bubbles on the same side are common. Do not force alternating speakers if the layout still shows the same side.",
   "- If multiple screenshots appear to come from different contacts or different chat threads, do not merge them as one clean thread. Lower confidence, set `importPolicy: confirm`, and explain that the screenshots may belong to different conversations.",
   "- Before returning JSON, double-check that no clearly right-aligned bubble is labeled `isFromMe: false` and no clearly left-aligned bubble is labeled `isFromMe: true`.",
@@ -891,6 +892,58 @@ function isLikelyChatThreadCallEventScreenshot(
     messages.every((message) => isCallEventLikeMessage(message.content));
 }
 
+function isLikelyMediaPlaceholderContent(content: string): boolean {
+  const normalized = content.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized.startsWith("[photo") ||
+    normalized.startsWith("[image") ||
+    normalized.startsWith("[sticker") ||
+    normalized.startsWith("[video") ||
+    normalized.includes("photo of ") ||
+    normalized.includes("image of ") ||
+    normalized.includes("shared a photo") ||
+    normalized.includes("sent a photo") ||
+    normalized.includes("uploaded a photo");
+}
+
+function applySpeakerContinuityHeuristics(
+  messages: Array<{ isFromMe: boolean; content: string }>,
+): Array<{ isFromMe: boolean; content: string }> {
+  if (messages.length < 3) {
+    return messages;
+  }
+
+  const adjusted = messages.map((message) => ({ ...message }));
+
+  for (let index = 1; index < adjusted.length - 1; index += 1) {
+    const previous = adjusted[index - 1];
+    const current = adjusted[index];
+    const next = adjusted[index + 1];
+
+    if (previous.isFromMe !== next.isFromMe) {
+      continue;
+    }
+
+    if (current.isFromMe === previous.isFromMe) {
+      continue;
+    }
+
+    if (!isLikelyMediaPlaceholderContent(current.content)) {
+      continue;
+    }
+
+    adjusted[index] = {
+      ...current,
+      isFromMe: previous.isFromMe,
+    };
+  }
+
+  return adjusted;
+}
+
 function isLikelyMixedThreadWarning(value: unknown): boolean {
   if (typeof value !== "string" || !value.trim()) {
     return false;
@@ -1139,6 +1192,10 @@ function normalizeRecognizedConversation(
       message !== null
     );
 
+  const continuityAdjustedMessages = applySpeakerContinuityHeuristics(
+    normalizedMessagesWithSidePriority,
+  );
+
   normalizedResult.recognizedConversation = {
     ...recognizedRaw,
     messageCount: normalizedMessageCount,
@@ -1146,7 +1203,7 @@ function normalizeRecognizedConversation(
       typeof recognizedRaw.summary === "string" && recognizedRaw.summary.trim()
         ? recognizedRaw.summary
         : `已識別 ${normalizedMessages.length} 則訊息`,
-    messages: normalizedMessagesWithSidePriority,
+    messages: continuityAdjustedMessages,
     classification,
     importPolicy,
     confidence,

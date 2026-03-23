@@ -336,6 +336,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Mixed-thread screenshot batches now downgrade to `low_confidence + confirm` with stronger Chinese warnings when the images appear to come from different contacts or unrelated thread segments.
    - Canceling the import dialog no longer discards finished OCR work: the recognized result is preserved as a resumable draft with `繼續匯入設定`, and the dialog's secondary action is now framed as `稍後再匯入`.
 
+67. `supabase/functions/analyze-chat/index.ts`
+   - The screenshot OCR path now adds a deterministic post-processing fix for isolated media-bubble speaker flips.
+   - If a photo/image placeholder is the only opposite-side outlier between two same-side messages, the backend now snaps that placeholder back to the surrounding side instead of trusting the raw model label.
+   - This specifically targets cases like `右側文字 -> 右側圖片泡泡 -> 右側補一句 -> 左側回覆`, where the image placeholder used to get mislabeled as `她說` even though the visual bubble was on the right.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
