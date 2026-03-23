@@ -1087,6 +1087,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         '引用忽略 ${telemetry.quotedPreviewRemovedCount} 次',
       if ((telemetry.continuityAdjustedCount ?? 0) > 0)
         '方向校正 ${telemetry.continuityAdjustedCount} 次',
+      if ((telemetry.groupedAdjustedCount ?? 0) > 0)
+        '群組校正 ${telemetry.groupedAdjustedCount} 次',
     ];
 
     return parts.isEmpty ? null : parts.join('｜');

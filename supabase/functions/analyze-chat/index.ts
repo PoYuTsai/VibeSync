@@ -190,6 +190,7 @@ function buildRecognitionObservability(
       uncertainSideCount?: number;
       normalizationTelemetry?: {
         continuityAdjustedCount?: number;
+        groupedAdjustedCount?: number;
         quotedPreviewRemovedCount?: number;
         quotedPreviewAttachedCount?: number;
       };
@@ -206,6 +207,9 @@ function buildRecognitionObservability(
     continuityAdjustedCount:
       recognizedConversation?.normalizationTelemetry
         ?.continuityAdjustedCount ?? 0,
+    groupedAdjustedCount:
+      recognizedConversation?.normalizationTelemetry
+        ?.groupedAdjustedCount ?? 0,
     quotedPreviewRemovedCount:
       recognizedConversation?.normalizationTelemetry
         ?.quotedPreviewRemovedCount ?? 0,
@@ -993,6 +997,21 @@ function isLikelyMediaPlaceholderContent(content: string): boolean {
     normalized.includes("uploaded a photo");
 }
 
+function isLikelyShortContinuationContent(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (isLikelyMediaPlaceholderContent(trimmed) ||
+      isLikelyQuotedReplyPreviewContent(trimmed)) {
+    return false;
+  }
+
+  const compact = trimmed.replace(/\s+/g, "");
+  return compact.length <= 24;
+}
+
 function sanitizeQuotedReplyPreviewValue(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -1168,10 +1187,13 @@ function stripQuotedReplyPreviewMessages(
     const next = adjusted[index + 1];
 
     const shouldStripQuotedPreview = !!next &&
-      current.side !== "unknown" &&
-      current.side === next.side &&
-      current.isFromMe === next.isFromMe &&
       isLikelyQuotedReplyPreviewContent(current.content) &&
+      (
+        current.side === next.side ||
+        current.side === "unknown" ||
+        next.side === "unknown" ||
+        current.isFromMe === next.isFromMe
+      ) &&
       !isLikelyQuotedReplyPreviewContent(next.content);
 
     if (shouldStripQuotedPreview) {
@@ -1191,6 +1213,63 @@ function stripQuotedReplyPreviewMessages(
     messages: filtered,
     removedCount,
     attachedCount,
+  };
+}
+
+function applyGroupedSpeakerHeuristics(
+  messages: NormalizedRecognizedMessage[],
+): {
+  messages: NormalizedRecognizedMessage[];
+  adjustedCount: number;
+} {
+  if (messages.length < 4) {
+    return {
+      messages,
+      adjustedCount: 0,
+    };
+  }
+
+  const adjusted = messages.map((message) => ({ ...message }));
+  let adjustedCount = 0;
+
+  for (let index = 2; index < adjusted.length - 1; index += 1) {
+    const anchor = adjusted[index - 2];
+    const bridge = adjusted[index - 1];
+    const current = adjusted[index];
+    const next = adjusted[index + 1];
+
+    if (
+      anchor.side === "unknown" ||
+      bridge.side !== anchor.side ||
+      next.side !== anchor.side
+    ) {
+      continue;
+    }
+
+    if (current.side === anchor.side && current.isFromMe === anchor.isFromMe) {
+      continue;
+    }
+
+    const bridgeLooksGrouped = isLikelyMediaPlaceholderContent(bridge.content) ||
+      !!bridge.quotedReplyPreview;
+    const currentLooksGrouped = isLikelyShortContinuationContent(current.content) ||
+      !!current.quotedReplyPreview;
+
+    if (!bridgeLooksGrouped || !currentLooksGrouped) {
+      continue;
+    }
+
+    adjusted[index] = {
+      ...current,
+      side: anchor.side,
+      isFromMe: anchor.isFromMe,
+    };
+    adjustedCount += 1;
+  }
+
+  return {
+    messages: adjusted,
+    adjustedCount,
   };
 }
 
@@ -1337,6 +1416,7 @@ function normalizeRecognizedConversation(
         uncertainSideCount: 0,
         normalizationTelemetry: {
           continuityAdjustedCount: 0,
+          groupedAdjustedCount: 0,
           quotedPreviewRemovedCount: 0,
           quotedPreviewAttachedCount: 0,
         },
@@ -1470,15 +1550,18 @@ function normalizeRecognizedConversation(
   const continuityAdjustment = applySpeakerContinuityHeuristics(
     normalizedMessagesWithSidePriority,
   );
-  const quotedPreviewAdjustment = stripQuotedReplyPreviewMessages(
+  const groupedAdjustment = applyGroupedSpeakerHeuristics(
     continuityAdjustment.messages,
+  );
+  const quotedPreviewAdjustment = stripQuotedReplyPreviewMessages(
+    groupedAdjustment.messages,
   );
   const finalMessages = quotedPreviewAdjustment.messages;
   const finalMessageCount = finalMessages.length;
   const sideConfidence = normalizeSideConfidenceLabel(
     finalMessageCount,
     uncertainSideCount,
-    continuityAdjustment.adjustedCount,
+    continuityAdjustment.adjustedCount + groupedAdjustment.adjustedCount,
     classification,
   );
 
@@ -1499,6 +1582,7 @@ function normalizeRecognizedConversation(
     uncertainSideCount,
     normalizationTelemetry: {
       continuityAdjustedCount: continuityAdjustment.adjustedCount,
+      groupedAdjustedCount: groupedAdjustment.adjustedCount,
       quotedPreviewRemovedCount: quotedPreviewAdjustment.removedCount,
       quotedPreviewAttachedCount: quotedPreviewAdjustment.attachedCount,
     },
@@ -2457,6 +2541,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         uncertainSideCount?: number;
         normalizationTelemetry?: {
           continuityAdjustedCount?: number;
+          groupedAdjustedCount?: number;
           quotedPreviewRemovedCount?: number;
           quotedPreviewAttachedCount?: number;
         };
@@ -2632,6 +2717,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       continuityAdjustedCount:
         recognizedConversation?.normalizationTelemetry
           ?.continuityAdjustedCount ?? 0,
+      groupedAdjustedCount:
+        recognizedConversation?.normalizationTelemetry
+          ?.groupedAdjustedCount ?? 0,
       quotedPreviewRemovedCount:
         recognizedConversation?.normalizationTelemetry
           ?.quotedPreviewRemovedCount ?? 0,

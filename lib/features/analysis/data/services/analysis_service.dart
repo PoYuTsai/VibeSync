@@ -73,6 +73,7 @@ class AnalysisTelemetry {
   final int? recognizedMessageCount;
   final int? uncertainSideCount;
   final int? continuityAdjustedCount;
+  final int? groupedAdjustedCount;
   final int? quotedPreviewRemovedCount;
   final int? quotedPreviewAttachedCount;
 
@@ -102,6 +103,7 @@ class AnalysisTelemetry {
     this.recognizedMessageCount,
     this.uncertainSideCount,
     this.continuityAdjustedCount,
+    this.groupedAdjustedCount,
     this.quotedPreviewRemovedCount,
     this.quotedPreviewAttachedCount,
   });
@@ -706,6 +708,9 @@ class AnalysisService {
               continuityAdjustedCount: telemetryData?['continuityAdjustedCount']
                       is num
                   ? (telemetryData?['continuityAdjustedCount'] as num).round()
+                  : null,
+              groupedAdjustedCount: telemetryData?['groupedAdjustedCount'] is num
+                  ? (telemetryData?['groupedAdjustedCount'] as num).round()
                   : null,
               quotedPreviewRemovedCount:
                   telemetryData?['quotedPreviewRemovedCount'] is num

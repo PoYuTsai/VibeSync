@@ -372,6 +372,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Flutter now parses that richer telemetry and shows a separate `上次分析量測` card for non-OCR runs, including request size, local prep time, round-trip, retry/fallback signals, timeout lane, and context-compaction summary, so partner QA can tell whether a slowdown came from OCR, text analysis, retries, or long-context trimming.
    - Verification after this pass: `deno check supabase/functions/analyze-chat/index.ts` passed and `flutter analyze` passed.
 
+74. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - OCR normalization now has a second grouped-structure heuristic beyond the old single media-placeholder fix: when the sequence looks like `same-side -> media/reply bridge -> short continuation -> same-side`, the short continuation can now be pulled back onto the same speaker instead of drifting to the wrong side.
+   - Quoted-preview rows are also stripped more robustly now: if the tiny `名字 + 淡字` preview row drifts to `unknown` or keeps the same inferred speaker as the outer reply, it can still be attached back to the next real message as `quotedReplyPreview` instead of polluting the message list.
+   - The OCR telemetry path now exposes this additional repair as `groupedAdjustedCount`, and the Flutter OCR telemetry card surfaces it as `群組校正 N 次`.
+   - Verification after this pass: `deno check supabase/functions/analyze-chat/index.ts` passed and `flutter analyze` passed.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
