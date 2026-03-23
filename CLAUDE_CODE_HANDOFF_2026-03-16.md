@@ -390,6 +390,13 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The benchmark doc now records the current in-app threshold values (single-image OCR > 7s, multi-image OCR > 15s, analysis > 12s, near-timeout > 80%, etc.) so launch-readiness conversations have a fixed reference instead of fuzzy expectations.
    - A dedicated unit test now locks the guardrail evaluation logic for OCR and normal analysis telemetry.
 
+77. `supabase/functions/analyze-chat/server_guardrails.ts`, `supabase/functions/analyze-chat/index.ts`, `supabase/functions/analyze-chat/fallback.ts`, `supabase/functions/analyze-chat/logger.ts`, `supabase/functions/analyze-chat/server_guardrails_test.ts`
+   - `analyze-chat` now computes flat server-side guardrail flags for every logged run, including `slow_request`, `near_timeout`, `unstable_upstream`, `heavy_image_payload`, `compressed_context`, `nonstandard_screenshot`, `uncertain_speaker_side`, `structure_repaired`, `high_token_usage`, and `safety_filtered`.
+   - These guardrails are attached to the safe `ai_logs.response_body` observability payload as top-level scalar fields, which makes Supabase-side triage/querying much easier than relying on nested JSON or screenshot-only QA notes.
+   - Upstream Claude failures now carry retry/fallback metadata through `AiServiceError`, so even failed requests can record whether they exhausted retries, timed out, or died after a fallback path.
+   - The logger's safe object-key budget was also raised so these observability fields are less likely to be truncated out of `ai_logs`, and a dedicated Deno test now locks the server guardrail thresholds.
+   - Verification after this pass: `deno check supabase/functions/analyze-chat/index.ts` passed. `deno test supabase/functions/analyze-chat/server_guardrails_test.ts` hit a Windows-only Deno 2.7.5 pipe panic in this desktop session instead of a normal test failure, so that test should be rerun in a cleaner environment or after a Deno upgrade.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

@@ -64,11 +64,20 @@ export interface FallbackResult {
   fallbackUsed: boolean;
 }
 
+export interface AiServiceErrorMetadata {
+  retries?: number;
+  fallbackUsed?: boolean;
+  lastModel?: string;
+  lastFailureCode?: string;
+  timeoutMs?: number;
+}
+
 export class AiServiceError extends Error {
   constructor(
     message: string,
     public readonly code: string,
     public readonly retryable: boolean = false,
+    public readonly metadata: AiServiceErrorMetadata = {},
   ) {
     super(message);
     this.name = "AiServiceError";
@@ -84,6 +93,7 @@ export async function callClaudeWithFallback(
   let currentModel = request.model;
   let totalRetries = 0;
   const originalModel = request.model;
+  let lastFailureCode = "UNEXPECTED_ERROR";
 
   while (currentModel) {
     for (let attempt = 1; attempt <= opts.maxRetries; attempt++) {
@@ -170,12 +180,14 @@ export async function callClaudeWithFallback(
         totalRetries++;
 
         if (error instanceof Error && error.name === "AbortError") {
+          lastFailureCode = "TIMEOUT";
           logWarn("attempt_timeout", {
             model: currentModel,
             attempt,
             timeoutMs: opts.timeout,
           });
         } else if (error instanceof AiServiceError) {
+          lastFailureCode = error.code;
           logWarn("attempt_failed", {
             model: currentModel,
             attempt,
@@ -184,9 +196,22 @@ export async function callClaudeWithFallback(
             error: error.message,
           });
           if (!error.retryable) {
-            throw error;
+            throw new AiServiceError(
+              error.message,
+              error.code,
+              false,
+              {
+                ...error.metadata,
+                retries: totalRetries,
+                fallbackUsed: currentModel !== originalModel,
+                lastModel: currentModel,
+                lastFailureCode: error.code,
+                timeoutMs: opts.timeout,
+              },
+            );
           }
         } else {
+          lastFailureCode = "UNKNOWN_ERROR";
           logWarn("attempt_failed", {
             model: currentModel,
             attempt,
@@ -209,8 +234,17 @@ export async function callClaudeWithFallback(
 
           throw new AiServiceError(
             "AI service is temporarily unavailable. Please try again later.",
-            opts.allowModelFallback ? "ALL_MODELS_FAILED" : "MODEL_RETRY_EXHAUSTED",
+            opts.allowModelFallback
+              ? "ALL_MODELS_FAILED"
+              : "MODEL_RETRY_EXHAUSTED",
             false,
+            {
+              retries: totalRetries,
+              fallbackUsed: currentModel !== originalModel,
+              lastModel: currentModel,
+              lastFailureCode,
+              timeoutMs: opts.timeout,
+            },
           );
         }
 
@@ -226,5 +260,12 @@ export async function callClaudeWithFallback(
     "AI service returned an unexpected error.",
     "UNEXPECTED_ERROR",
     false,
+    {
+      retries: totalRetries,
+      fallbackUsed: currentModel !== originalModel,
+      lastModel: currentModel ?? undefined,
+      lastFailureCode,
+      timeoutMs: opts.timeout,
+    },
   );
 }

@@ -154,6 +154,23 @@
 - `groupedAdjustedCount`
 - `quotedPreviewRemovedCount`
 - `quotedPreviewAttachedCount`
+- `guardrailSeverity`
+- `guardrailCount`
+- `guardrailFlags`
+- `totalTokens`
+
+## 後端 guardrail 旗標（目前實作）
+
+- `slow_request`
+- `near_timeout`
+- `unstable_upstream`
+- `heavy_image_payload`
+- `compressed_context`
+- `nonstandard_screenshot`
+- `uncertain_speaker_side`
+- `structure_repaired`
+- `high_token_usage`
+- `safety_filtered`
 
 ## 目前最該關注的 5 種高風險情境
 

@@ -9,6 +9,7 @@ import {
 } from "./guardrails.ts";
 import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
 import { extractTokenUsage, logAiCall } from "./logger.ts";
+import { buildServerGuardrails } from "./server_guardrails.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -204,19 +205,59 @@ function buildRecognitionObservability(
     recognizedSideConfidence: recognizedConversation?.sideConfidence ?? null,
     recognizedMessageCount: recognizedConversation?.messageCount ?? null,
     uncertainSideCount: recognizedConversation?.uncertainSideCount ?? null,
-    continuityAdjustedCount:
-      recognizedConversation?.normalizationTelemetry
-        ?.continuityAdjustedCount ?? 0,
-    groupedAdjustedCount:
-      recognizedConversation?.normalizationTelemetry
-        ?.groupedAdjustedCount ?? 0,
-    quotedPreviewRemovedCount:
-      recognizedConversation?.normalizationTelemetry
-        ?.quotedPreviewRemovedCount ?? 0,
-    quotedPreviewAttachedCount:
-      recognizedConversation?.normalizationTelemetry
-        ?.quotedPreviewAttachedCount ?? 0,
+    continuityAdjustedCount: recognizedConversation?.normalizationTelemetry
+      ?.continuityAdjustedCount ?? 0,
+    groupedAdjustedCount: recognizedConversation?.normalizationTelemetry
+      ?.groupedAdjustedCount ?? 0,
+    quotedPreviewRemovedCount: recognizedConversation?.normalizationTelemetry
+      ?.quotedPreviewRemovedCount ?? 0,
+    quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry
+      ?.quotedPreviewAttachedCount ?? 0,
   };
+}
+
+function buildServerGuardrailObservability(input: {
+  requestType: string;
+  imageCount: number;
+  latencyMs: number;
+  timeoutMs?: number | null;
+  fallbackUsed?: boolean;
+  retryCount?: number;
+  totalImageBytes?: number;
+  truncatedMessageCount?: number;
+  conversationSummaryUsed?: boolean;
+  contextMode?: string | null;
+  recognizedClassification?: string | null;
+  recognizedSideConfidence?: string | null;
+  uncertainSideCount?: number | null;
+  continuityAdjustedCount?: number | null;
+  groupedAdjustedCount?: number | null;
+  quotedPreviewAttachedCount?: number | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  safetyFiltered?: boolean;
+}) {
+  return buildServerGuardrails({
+    requestType: input.requestType,
+    imageCount: input.imageCount,
+    latencyMs: input.latencyMs,
+    timeoutMs: input.timeoutMs,
+    fallbackUsed: input.fallbackUsed,
+    retryCount: input.retryCount,
+    totalImageBytes: input.totalImageBytes,
+    truncatedMessageCount: input.truncatedMessageCount,
+    conversationSummaryUsed: input.conversationSummaryUsed,
+    contextMode: input.contextMode,
+    recognizedClassification: input.recognizedClassification,
+    recognizedSideConfidence: input.recognizedSideConfidence,
+    uncertainSideCount: input.uncertainSideCount,
+    continuityAdjustedCount: input.continuityAdjustedCount,
+    groupedAdjustedCount: input.groupedAdjustedCount,
+    quotedPreviewAttachedCount: input.quotedPreviewAttachedCount,
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+    safetyFiltered: input.safetyFiltered,
+  });
 }
 
 // 建構 Vision API 內容格式
@@ -260,7 +301,8 @@ function buildVisionContent(
   return content;
 }
 
-const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT = `You are an OCR + chat-structure extraction assistant.
+const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT =
+  `You are an OCR + chat-structure extraction assistant.
 Return valid JSON only.
 Only extract what is visible in the screenshots.
 Do not invent missing text, names, or message order.
@@ -278,7 +320,7 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- Do not split one outer bubble into two messages just because it contains a quoted preview plus the real reply.",
   "- This rule applies on both left-side and right-side bubbles. The quoted preview may refer to either speaker's old message, but the current speaker is still decided by the outer bubble side.",
   "- Never use the quoted preview avatar, name, or quoted-text author to override the speaker of the outer reply bubble.",
-  "- Ignore LINE announcement banners, pinned-message jump banners, date separators, read receipts, timestamps, \"回到最新訊息\" style system hints, and other non-message UI. Do not turn them into chat messages.",
+  '- Ignore LINE announcement banners, pinned-message jump banners, date separators, read receipts, timestamps, "回到最新訊息" style system hints, and other non-message UI. Do not turn them into chat messages.',
   "- If the screenshot was opened from a pinned announcement and starts in older history, only extract the visible real chat bubbles. Do not invent or summarize missing messages above the visible area.",
   "- Use a layout-first process: first identify each visible message bubble's horizontal side from the outer bubble/container position, then transcribe its content.",
   "- If a bubble contains an embedded photo, screenshot, video preview, or sticker, determine `side` from the outer bubble frame on the main chat layout, never from the inner image content.",
@@ -377,7 +419,9 @@ function buildImageAnalysisPrompt(options: {
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo,
     historicalContextInfo,
-    compiledConversationText ? `## Existing Thread Context\n${compiledConversationText}` : "",
+    compiledConversationText
+      ? `## Existing Thread Context\n${compiledConversationText}`
+      : "",
   );
 }
 
@@ -1003,8 +1047,10 @@ function isLikelyShortContinuationContent(content: string): boolean {
     return false;
   }
 
-  if (isLikelyMediaPlaceholderContent(trimmed) ||
-      isLikelyQuotedReplyPreviewContent(trimmed)) {
+  if (
+    isLikelyMediaPlaceholderContent(trimmed) ||
+    isLikelyQuotedReplyPreviewContent(trimmed)
+  ) {
     return false;
   }
 
@@ -1043,7 +1089,9 @@ function extractQuotedReplyPreviewContent(content: string): string | undefined {
   return content.trim() || undefined;
 }
 
-function normalizeBubbleSide(record: Record<string, unknown>): RecognizedBubbleSide {
+function normalizeBubbleSide(
+  record: Record<string, unknown>,
+): RecognizedBubbleSide {
   const rawSide = typeof record.side === "string"
     ? record.side.trim().toLowerCase()
     : "";
@@ -1107,7 +1155,9 @@ function applySpeakerContinuityHeuristics(
       continue;
     }
 
-    if (currentSide === previousSide && current.isFromMe === previous.isFromMe) {
+    if (
+      currentSide === previousSide && current.isFromMe === previous.isFromMe
+    ) {
       continue;
     }
 
@@ -1250,9 +1300,11 @@ function applyGroupedSpeakerHeuristics(
       continue;
     }
 
-    const bridgeLooksGrouped = isLikelyMediaPlaceholderContent(bridge.content) ||
+    const bridgeLooksGrouped =
+      isLikelyMediaPlaceholderContent(bridge.content) ||
       !!bridge.quotedReplyPreview;
-    const currentLooksGrouped = isLikelyShortContinuationContent(current.content) ||
+    const currentLooksGrouped =
+      isLikelyShortContinuationContent(current.content) ||
       !!current.quotedReplyPreview;
 
     if (!bridgeLooksGrouped || !currentLooksGrouped) {
@@ -1397,10 +1449,10 @@ function normalizeRecognizedConversation(
       normalizedResult.recognizedConversation = {
         ...recognizedRaw,
         messageCount: 0,
-        summary:
-          typeof recognizedRaw.summary === "string" && recognizedRaw.summary.trim()
-            ? recognizedRaw.summary
-            : "無法從這張圖片穩定辨識出可匯入的聊天內容",
+        summary: typeof recognizedRaw.summary === "string" &&
+            recognizedRaw.summary.trim()
+          ? recognizedRaw.summary
+          : "無法從這張圖片穩定辨識出可匯入的聊天內容",
         messages: [],
         classification,
         importPolicy: normalizeImportPolicy(
@@ -1485,8 +1537,11 @@ function normalizeRecognizedConversation(
     recognizedRaw.warning,
     classification,
   );
-  const callEventOnly = isLikelyChatThreadCallEventScreenshot(normalizedMessages);
-  const mixedThreadDetected = isLikelyMixedThreadWarning(recognizedRaw.warning) ||
+  const callEventOnly = isLikelyChatThreadCallEventScreenshot(
+    normalizedMessages,
+  );
+  const mixedThreadDetected =
+    isLikelyMixedThreadWarning(recognizedRaw.warning) ||
     isLikelyMixedThreadWarning(recognizedRaw.summary);
 
   if (
@@ -1544,9 +1599,10 @@ function normalizeRecognizedConversation(
       message !== null
     );
 
-  const uncertainSideCount = normalizedMessagesWithSidePriority.filter((message) =>
-    message.side === "unknown"
-  ).length;
+  const uncertainSideCount =
+    normalizedMessagesWithSidePriority.filter((message) =>
+      message.side === "unknown"
+    ).length;
   const continuityAdjustment = applySpeakerContinuityHeuristics(
     normalizedMessagesWithSidePriority,
   );
@@ -1652,7 +1708,9 @@ function sanitizeMessages(
 
       const trimmedQuotedReplyPreview = record.quotedReplyPreview.trim();
       if (trimmedQuotedReplyPreview) {
-        if (trimmedQuotedReplyPreview.length > MAX_QUOTED_REPLY_PREVIEW_LENGTH) {
+        if (
+          trimmedQuotedReplyPreview.length > MAX_QUOTED_REPLY_PREVIEW_LENGTH
+        ) {
           return {
             error:
               `quotedReplyPreview too long (max ${MAX_QUOTED_REPLY_PREVIEW_LENGTH} chars)`,
@@ -1834,8 +1892,12 @@ serve(async (req) => {
 
     // Parse request early so recognizeOnly can bypass quota checks.
     const contentLengthHeader = req.headers.get("content-length");
-    const contentLength = contentLengthHeader ? Number(contentLengthHeader) : NaN;
-    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+    const contentLength = contentLengthHeader
+      ? Number(contentLengthHeader)
+      : NaN;
+    if (
+      Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES
+    ) {
       logWarn("request_body_too_large", {
         user: summarizeUser(user.id),
         contentLength,
@@ -2190,9 +2252,9 @@ serve(async (req) => {
         ? ` (replying to: "${quotedReplyPreview}")`
         : "";
 
-      return `${message.isFromMe ? "Me" : "Her"}${replyPrefix}: ${
-        message.content
-      }`;
+      return `${
+        message.isFromMe ? "Me" : "Her"
+      }${replyPrefix}: ${message.content}`;
     };
     let conversationText = "";
 
@@ -2284,7 +2346,8 @@ ${recentText}`;
       recognizeOnly,
       hasImages,
       isMyMessageMode,
-      hasUserDraft: !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
+      hasUserDraft:
+        !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
     });
     if (isMyMessageMode && effectiveTier !== "essential") {
       return jsonResponse({
@@ -2338,17 +2401,17 @@ ${recentText}`;
     if (hasImages) {
       userPrompt = recognizeOnly
         ? buildRecognizeOnlyImagePrompt({
-            imageCount: images.length,
-            contextInfo,
-            historicalContextInfo,
-            compiledConversationText,
-          })
+          imageCount: images.length,
+          contextInfo,
+          historicalContextInfo,
+          compiledConversationText,
+        })
         : buildImageAnalysisPrompt({
-            imageCount: images.length,
-            contextInfo,
-            historicalContextInfo,
-            compiledConversationText,
-          });
+          imageCount: images.length,
+          contextInfo,
+          historicalContextInfo,
+          compiledConversationText,
+        });
     }
 
     // 如果有用戶草稿，加入優化請求（只在 normal 模式）
@@ -2387,7 +2450,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       analyzeMode,
       hasImages,
       recognizeOnly,
-      hasUserDraft: !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
+      hasUserDraft:
+        !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
       imageCount: hasImages ? images.length : 0,
       totalImageBytes: Math.round(totalImageBytes),
       timeoutMs,
@@ -2437,6 +2501,19 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const latencyMs = Date.now() - startTime;
 
       if (error instanceof AiServiceError) {
+        const upstreamGuardrails = buildServerGuardrailObservability({
+          requestType,
+          imageCount: hasImages ? images.length : 0,
+          latencyMs,
+          timeoutMs,
+          fallbackUsed: error.metadata.fallbackUsed ?? false,
+          retryCount: error.metadata.retries ?? 0,
+          totalImageBytes: Math.round(totalImageBytes),
+          truncatedMessageCount,
+          conversationSummaryUsed: !!conversationSummary,
+          contextMode: compiledContextMode,
+        });
+
         // Log failed request
         await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
           userId: user.id,
@@ -2452,6 +2529,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           responseBody: {
             failureStage: "upstream_request",
             retryable: error.retryable,
+            lastFailureCode: error.metadata.lastFailureCode ?? error.code,
+            retries: error.metadata.retries ?? 0,
+            fallbackUsed: error.metadata.fallbackUsed ?? false,
+            lastModel: error.metadata.lastModel ?? selectedModel,
+            ...upstreamGuardrails,
           },
         });
 
@@ -2547,6 +2629,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         };
       }
       | undefined;
+    const recognitionObservability = buildRecognitionObservability(
+      recognizedConversation,
+    );
     if (
       hasImages &&
       recognizedConversation?.importPolicy === "reject"
@@ -2554,6 +2639,30 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const rejectMessage = recognizedConversation.warning ||
         recognizedConversation.summary ||
         "這張圖片不像可支援的聊天截圖，請換一張再試。";
+      const rejectGuardrails = buildServerGuardrailObservability({
+        requestType,
+        imageCount: hasImages ? images.length : 0,
+        latencyMs,
+        timeoutMs,
+        fallbackUsed: claudeResult.fallbackUsed,
+        retryCount: claudeResult.retries,
+        totalImageBytes: Math.round(totalImageBytes),
+        truncatedMessageCount,
+        conversationSummaryUsed: !!conversationSummary,
+        contextMode: compiledContextMode,
+        recognizedClassification:
+          recognitionObservability.recognizedClassification,
+        recognizedSideConfidence:
+          recognitionObservability.recognizedSideConfidence,
+        uncertainSideCount: recognitionObservability.uncertainSideCount,
+        continuityAdjustedCount:
+          recognitionObservability.continuityAdjustedCount,
+        groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
+        quotedPreviewAttachedCount:
+          recognitionObservability.quotedPreviewAttachedCount,
+        inputTokens: tokenUsage.inputTokens,
+        outputTokens: tokenUsage.outputTokens,
+      });
 
       await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
         userId: user.id,
@@ -2568,7 +2677,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         requestBody: requestObservability,
         responseBody: {
           failureStage: "recognition_gate",
-          ...buildRecognitionObservability(recognizedConversation),
+          ...recognitionObservability,
+          ...rejectGuardrails,
         },
       });
 
@@ -2583,6 +2693,21 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       hasImages &&
       (!recognizedConversation || recognizedConversation.messageCount === 0)
     ) {
+      const recognitionFailedGuardrails = buildServerGuardrailObservability({
+        requestType,
+        imageCount: hasImages ? images.length : 0,
+        latencyMs,
+        timeoutMs,
+        fallbackUsed: claudeResult.fallbackUsed,
+        retryCount: claudeResult.retries,
+        totalImageBytes: Math.round(totalImageBytes),
+        truncatedMessageCount,
+        conversationSummaryUsed: !!conversationSummary,
+        contextMode: compiledContextMode,
+        inputTokens: tokenUsage.inputTokens,
+        outputTokens: tokenUsage.outputTokens,
+      });
+
       // Log failed recognition
       await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
         userId: user.id,
@@ -2597,6 +2722,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         requestBody: requestObservability,
         responseBody: {
           failureStage: "recognition_missing_output",
+          ...recognitionFailedGuardrails,
         },
       });
 
@@ -2623,6 +2749,30 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const wasFiltered = warnings.some((warning) =>
       warning.type === "safety_filter"
     );
+    const successGuardrails = buildServerGuardrailObservability({
+      requestType,
+      imageCount: hasImages ? images.length : 0,
+      latencyMs,
+      timeoutMs,
+      fallbackUsed: claudeResult.fallbackUsed,
+      retryCount: claudeResult.retries,
+      totalImageBytes: Math.round(totalImageBytes),
+      truncatedMessageCount,
+      conversationSummaryUsed: !!conversationSummary,
+      contextMode: compiledContextMode,
+      recognizedClassification:
+        recognitionObservability.recognizedClassification,
+      recognizedSideConfidence:
+        recognitionObservability.recognizedSideConfidence,
+      uncertainSideCount: recognitionObservability.uncertainSideCount,
+      continuityAdjustedCount: recognitionObservability.continuityAdjustedCount,
+      groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
+      quotedPreviewAttachedCount:
+        recognitionObservability.quotedPreviewAttachedCount,
+      inputTokens: tokenUsage.inputTokens,
+      outputTokens: tokenUsage.outputTokens,
+      safetyFiltered: wasFiltered,
+    });
 
     // Log successful request
     await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -2640,7 +2790,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         filtered: wasFiltered,
         retries: claudeResult.retries,
         fallbackUsed: claudeResult.fallbackUsed,
-        ...buildRecognitionObservability(recognizedConversation),
+        ...recognitionObservability,
+        ...successGuardrails,
       },
     });
 
@@ -2714,18 +2865,18 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       recognizedSideConfidence: recognizedConversation?.sideConfidence ?? null,
       recognizedMessageCount: recognizedConversation?.messageCount ?? null,
       uncertainSideCount: recognizedConversation?.uncertainSideCount ?? null,
-      continuityAdjustedCount:
-        recognizedConversation?.normalizationTelemetry
-          ?.continuityAdjustedCount ?? 0,
-      groupedAdjustedCount:
-        recognizedConversation?.normalizationTelemetry
-          ?.groupedAdjustedCount ?? 0,
-      quotedPreviewRemovedCount:
-        recognizedConversation?.normalizationTelemetry
-          ?.quotedPreviewRemovedCount ?? 0,
-      quotedPreviewAttachedCount:
-        recognizedConversation?.normalizationTelemetry
-          ?.quotedPreviewAttachedCount ?? 0,
+      continuityAdjustedCount: recognizedConversation?.normalizationTelemetry
+        ?.continuityAdjustedCount ?? 0,
+      groupedAdjustedCount: recognizedConversation?.normalizationTelemetry
+        ?.groupedAdjustedCount ?? 0,
+      quotedPreviewRemovedCount: recognizedConversation?.normalizationTelemetry
+        ?.quotedPreviewRemovedCount ?? 0,
+      quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry
+        ?.quotedPreviewAttachedCount ?? 0,
+      guardrailSeverity: successGuardrails.guardrailSeverity,
+      guardrailCount: successGuardrails.guardrailCount,
+      guardrailFlags: successGuardrails.guardrailFlags,
+      totalTokens: successGuardrails.totalTokens,
     };
 
     return jsonResponse(result);

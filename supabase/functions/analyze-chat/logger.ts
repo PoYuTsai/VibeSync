@@ -6,7 +6,7 @@ const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
 };
 
 const MAX_STORED_TEXT_LENGTH = 500;
-const MAX_STORED_OBJECT_KEYS = 12;
+const MAX_STORED_OBJECT_KEYS = 32;
 const SENSITIVE_KEYS = new Set([
   "messages",
   "message",
@@ -51,7 +51,10 @@ function calculateCost(
     (outputTokens / 1000) * costs.output;
 }
 
-function truncateText(value: string, maxLength = MAX_STORED_TEXT_LENGTH): string {
+function truncateText(
+  value: string,
+  maxLength = MAX_STORED_TEXT_LENGTH,
+): string {
   if (value.length <= maxLength) {
     return value;
   }
@@ -95,8 +98,10 @@ function sanitizeLogPayload(value: unknown): unknown {
       continue;
     }
 
-    if (rawValue == null || typeof rawValue === "number" ||
-        typeof rawValue === "boolean") {
+    if (
+      rawValue == null || typeof rawValue === "number" ||
+      typeof rawValue === "boolean"
+    ) {
       sanitized[key] = rawValue;
     } else if (typeof rawValue === "string") {
       sanitized[key] = truncateText(rawValue);
@@ -131,7 +136,11 @@ export async function logAiCall(
 ): Promise<void> {
   try {
     const supabase = createClient(supabaseUrl, serviceKey);
-    const costUsd = calculateCost(entry.model, entry.inputTokens, entry.outputTokens);
+    const costUsd = calculateCost(
+      entry.model,
+      entry.inputTokens,
+      entry.outputTokens,
+    );
 
     const { error } = await supabase.from("ai_logs").insert({
       user_id: entry.userId,
@@ -200,7 +209,11 @@ export async function trackTokenUsage(
 ): Promise<void> {
   try {
     const supabase = createClient(supabaseUrl, serviceKey);
-    const costUsd = calculateCost(entry.model, entry.inputTokens, entry.outputTokens);
+    const costUsd = calculateCost(
+      entry.model,
+      entry.inputTokens,
+      entry.outputTokens,
+    );
 
     const { error } = await supabase.from("token_usage").insert({
       user_id: entry.userId,
