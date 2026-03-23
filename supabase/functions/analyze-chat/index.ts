@@ -197,6 +197,8 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- In LINE reply UI, the smaller embedded card with avatar/name/light-gray text is usually quoted history. Do not output that embedded quoted card as its own message row.",
   "- If one outer bubble contains both an embedded quoted-reply card and a larger main reply text below it, keep only the larger main reply text as the current message.",
   "- Do not split one outer bubble into two messages just because it contains a quoted preview plus the real reply.",
+  "- This rule applies on both left-side and right-side bubbles. The quoted preview may refer to either speaker's old message, but the current speaker is still decided by the outer bubble side.",
+  "- Never use the quoted preview avatar, name, or quoted-text author to override the speaker of the outer reply bubble.",
   "- Ignore LINE announcement banners, pinned-message jump banners, date separators, read receipts, timestamps, \"回到最新訊息\" style system hints, and other non-message UI. Do not turn them into chat messages.",
   "- If the screenshot was opened from a pinned announcement and starts in older history, only extract the visible real chat bubbles. Do not invent or summarize missing messages above the visible area.",
   "- Use a layout-first process: first identify each visible message bubble's horizontal side from the outer bubble/container position, then transcribe its content.",
