@@ -5,6 +5,24 @@ class ScreenshotRecognitionHelper {
   static const String importModeAppendCurrent = 'append_current';
   static const String importModeNewConversation = 'new_conversation';
 
+  static bool _looksLikeMixedThreadWarning(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return false;
+    }
+
+    return normalized.contains('不同聯絡人') ||
+        normalized.contains('不同對話') ||
+        normalized.contains('不同聊天') ||
+        normalized.contains('不同 chat') ||
+        normalized.contains('混入') ||
+        normalized.contains('混合') ||
+        normalized.contains('different contact') ||
+        normalized.contains('different thread') ||
+        normalized.contains('multiple threads') ||
+        normalized.contains('mixed thread');
+  }
+
   static String? fallbackWarningForClassification(String classification) {
     switch (classification) {
       case 'group_chat':
@@ -53,6 +71,10 @@ class ScreenshotRecognitionHelper {
 
     if (recognized.importPolicy == 'confirm' && warnings.isEmpty) {
       warnings.add('這張截圖辨識信心較低，匯入前請先確認預覽內容是否正確。');
+    }
+
+    if (serverWarning != null && _looksLikeMixedThreadWarning(serverWarning)) {
+      warnings.add('若這批截圖不是同一個人的同一段對話，建議改用「另存成新對話」避免污染目前 thread。');
     }
 
     if (recognized.importPolicy == 'reject' && warnings.isEmpty) {
@@ -151,6 +173,7 @@ class ScreenshotRecognitionHelper {
     final warning = recognized.warning?.trim() ?? '';
     final looksLikeCallRecord =
         warning.contains('通話紀錄') || warning.contains('未接來電');
+    final looksLikeMixedThread = _looksLikeMixedThreadWarning(warning);
 
     if (recognized.importPolicy == 'reject') {
       switch (recognized.classification) {
@@ -172,6 +195,10 @@ class ScreenshotRecognitionHelper {
 
     if (looksLikeCallRecord) {
       return '這張圖像是聊天視窗裡的未接來電或通話紀錄。若確認是同一段對話，先檢查方向與順序，再決定是否匯入。';
+    }
+
+    if (looksLikeMixedThread) {
+      return '這批截圖可能混入了不同人的對話，建議先逐則檢查預覽；如果不是同一段續聊，請改用「另存成新對話」。';
     }
 
     if (recognized.importPolicy == 'confirm' ||

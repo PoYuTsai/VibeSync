@@ -575,7 +575,7 @@ class _ScreenshotRecognitionDialogState
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text(
-            '取消',
+            '稍後再匯入',
             style: TextStyle(color: AppColors.unselectedText),
           ),
         ),

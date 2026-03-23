@@ -194,12 +194,15 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- Preserve Traditional Chinese exactly; do not guess unreadable characters.",
   "- Read screenshots from top to bottom and keep message order stable across multiple images.",
   "- Treat LINE or Messenger quoted-reply previews as context, not as separate new messages.",
+  "- Ignore LINE announcement banners, pinned-message jump banners, date separators, read receipts, timestamps, \"回到最新訊息\" style system hints, and other non-message UI. Do not turn them into chat messages.",
+  "- If the screenshot was opened from a pinned announcement and starts in older history, only extract the visible real chat bubbles. Do not invent or summarize missing messages above the visible area.",
   "- Determine `isFromMe` from bubble alignment first, not from wording, tone, or whose message would 'make sense' semantically.",
   "- In a normal one-to-one chat UI, left-side bubbles are usually the other person (`isFromMe: false`) and right-side bubbles are usually me (`isFromMe: true`).",
   "- Even for very short replies, stickers, image placeholders, or one-word bubbles like '超爽', follow the bubble side rather than guessing from meaning.",
   "- A photo, sticker, or image placeholder inside a clearly right-side bubble is still `isFromMe: true`; inside a clearly left-side bubble it is `isFromMe: false`.",
   "- If an image bubble and the next text bubble appear on the same side, keep them on the same speaker unless the layout clearly switches sides.",
   "- Consecutive bubbles on the same side are common. Do not force alternating speakers if the layout still shows the same side.",
+  "- If multiple screenshots appear to come from different contacts or different chat threads, do not merge them as one clean thread. Lower confidence, set `importPolicy: confirm`, and explain that the screenshots may belong to different conversations.",
   "- Before returning JSON, double-check that no clearly right-aligned bubble is labeled `isFromMe: false` and no clearly left-aligned bubble is labeled `isFromMe: true`.",
   "- If a bubble side is genuinely ambiguous, keep the message but lower confidence and use `importPolicy: confirm` instead of making a confident guess.",
   "- Distinguish between a standalone phone call log screen and a one-to-one chat thread that contains missed-call or call-record entries.",
@@ -220,8 +223,8 @@ const RECOGNIZED_CONVERSATION_SCHEMA = `{
     "messageCount": 4,
     "summary": "A short summary of the visible exchange.",
     "messages": [
-      { "isFromMe": false, "content": "Visible message from the other person" },
-      { "isFromMe": true, "content": "Visible message from me" }
+      { "side": "left", "isFromMe": false, "content": "Visible message from the other person" },
+      { "side": "right", "isFromMe": true, "content": "Visible message from me" }
     ]
   }
 }`;
@@ -251,7 +254,7 @@ function buildRecognizeOnlyImagePrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders: a right-side photo bubble must not be flipped to `她說` just because the OCR text is generic.",
+    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders: a right-side photo bubble must not be flipped to `她說` just because the OCR text is generic.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `side` is clear, keep `isFromMe` consistent with it.",
     "### JSON Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo
@@ -280,7 +283,7 @@ function buildImageAnalysisPrompt(options: {
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response.`,
     SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.",
+    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.\n- If the screenshots seem to mix two different contacts or unrelated thread segments, do not silently merge them into a clean conversation. Mark it low-confidence and explain the mismatch in `warning`.",
     "### recognizedConversation Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo,
@@ -888,6 +891,26 @@ function isLikelyChatThreadCallEventScreenshot(
     messages.every((message) => isCallEventLikeMessage(message.content));
 }
 
+function isLikelyMixedThreadWarning(value: unknown): boolean {
+  if (typeof value !== "string" || !value.trim()) {
+    return false;
+  }
+
+  const lower = value.trim().toLowerCase();
+  return lower.includes("different contact") ||
+    lower.includes("different contacts") ||
+    lower.includes("different thread") ||
+    lower.includes("multiple threads") ||
+    lower.includes("mixed thread") ||
+    lower.includes("mixed screenshots") ||
+    lower.includes("不同聯絡人") ||
+    lower.includes("不同联系人") ||
+    lower.includes("不同對話") ||
+    lower.includes("不同会话") ||
+    lower.includes("混合了不同") ||
+    lower.includes("不同聊天");
+}
+
 function normalizeWarningMessage(
   value: unknown,
   classification: string,
@@ -903,6 +926,10 @@ function normalizeWarningMessage(
       lower.includes("system notification interface")
     ) {
       return "這張圖看起來像聊天視窗裡的通話紀錄或來電事件，不是一般文字聊天。若確認是同一段對話中的未接來電，可先確認預覽後再匯入。";
+    }
+
+    if (isLikelyMixedThreadWarning(normalized)) {
+      return "這批截圖看起來可能混入了不同聯絡人或不同聊天段落，請先確認是不是同一段對話，再決定要不要匯入。";
     }
 
     if (
@@ -1044,6 +1071,8 @@ function normalizeRecognizedConversation(
     classification,
   );
   const callEventOnly = isLikelyChatThreadCallEventScreenshot(normalizedMessages);
+  const mixedThreadDetected = isLikelyMixedThreadWarning(recognizedRaw.warning) ||
+    isLikelyMixedThreadWarning(recognizedRaw.summary);
 
   if (
     callEventOnly &&
@@ -1061,6 +1090,55 @@ function normalizeRecognizedConversation(
       "這張圖看起來是聊天視窗裡的通話紀錄或未接來電列表，雖然不是一般文字泡泡，但仍可先確認預覽後再匯入。";
   }
 
+  if (mixedThreadDetected) {
+    classification = "low_confidence";
+    importPolicy = "confirm";
+    confidence = "low";
+    warning =
+      "這批截圖看起來可能混入了不同聯絡人或不同聊天段落，請先確認是不是同一段對話，再決定要不要匯入。";
+  }
+
+  const normalizeMessageSide = (record: Record<string, unknown>): boolean => {
+    const rawSide = typeof record.side === "string"
+      ? record.side.trim().toLowerCase()
+      : "";
+
+    if (rawSide == "right") {
+      return true;
+    }
+
+    if (rawSide == "left") {
+      return false;
+    }
+
+    return record.isFromMe === true ||
+      record.isFromMe === "true";
+  };
+
+  const normalizedMessagesWithSidePriority = rawMessages
+    .map((message) => {
+      if (!message || typeof message !== "object") {
+        return null;
+      }
+
+      const record = message as Record<string, unknown>;
+      const content = typeof record.content === "string"
+        ? record.content.trim()
+        : "";
+
+      if (!content) {
+        return null;
+      }
+
+      return {
+        isFromMe: normalizeMessageSide(record),
+        content,
+      };
+    })
+    .filter((message): message is { isFromMe: boolean; content: string } =>
+      message !== null
+    );
+
   normalizedResult.recognizedConversation = {
     ...recognizedRaw,
     messageCount: normalizedMessageCount,
@@ -1068,7 +1146,7 @@ function normalizeRecognizedConversation(
       typeof recognizedRaw.summary === "string" && recognizedRaw.summary.trim()
         ? recognizedRaw.summary
         : `已識別 ${normalizedMessages.length} 則訊息`,
-    messages: normalizedMessages,
+    messages: normalizedMessagesWithSidePriority,
     classification,
     importPolicy,
     confidence,

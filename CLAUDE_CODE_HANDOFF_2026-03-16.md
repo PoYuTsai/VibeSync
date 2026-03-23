@@ -330,6 +330,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Both recognize-only and full image-analysis prompts now ask for a final side-check before returning JSON, so clearly right-aligned bubbles should be less likely to come back as `她說`.
    - The media-bubble case is now called out more explicitly too: a right-side image/photo placeholder and its same-side follow-up text should stay `我說` unless the layout clearly switches sides.
 
+66. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart`
+   - Screenshot OCR now explicitly ignores LINE announcement banners, pinned-message jumps, and `回到最新訊息`-style system hints instead of turning them into fake messages.
+   - If a screenshot starts from older history after tapping a LINE announcement/pinned item, the OCR instructions now tell the model to extract only the visible bubbles and not invent missing context above the capture.
+   - Mixed-thread screenshot batches now downgrade to `low_confidence + confirm` with stronger Chinese warnings when the images appear to come from different contacts or unrelated thread segments.
+   - Canceling the import dialog no longer discards finished OCR work: the recognized result is preserved as a resumable draft with `繼續匯入設定`, and the dialog's secondary action is now framed as `稍後再匯入`.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
@@ -447,6 +453,11 @@ After deploy, verify:
    - retry login with that deleted account and confirm it no longer succeeds without a fresh sign-up
    - if that account had historical RevenueCat events, confirm later webhook deliveries are logged as ignored instead of failing
 
+20. Screenshot OCR boundary behavior:
+   - test a LINE screenshot that was opened from an announcement / pinned-message jump and confirm only the visible bubbles are extracted, without turning the banner or missing history into fake messages
+   - intentionally mix screenshots from two different contacts and confirm the app warns clearly and defaults toward `另存成新對話`
+   - open the import dialog, choose `稍後再匯入`, and confirm the recognized result remains resumable from the analysis screen without rerunning OCR
+
 ## Notes for Claude Code
 
 - When touching screenshot analysis again, preserve the current token-control approach:
@@ -454,6 +465,8 @@ After deploy, verify:
   - Sonnet only when images are present
   - image retries should stay on Sonnet; do not reintroduce cross-model fallback on Vision requests
   - `my_message` is still Essential-only but currently uses the lighter text-only path
+- For the latest OCR boundary / resumable-import pass, `deno check supabase/functions/analyze-chat/index.ts` passed and the touched Dart files were successfully parsed/formatted with the local Dart SDK.
+- Full Dart/Flutter analyzer runs in this desktop session were not trustworthy: `flutter analyze` hung repeatedly, and direct `dart analyze` failed with a local `CreateFile failed 5 / Access is denied` process-spawn error before returning code diagnostics.
 - `flutter analyze` passes after this auth/webhook pass. Targeted `flutter test` runs were attempted again for `environment_test.dart` and `supabase_service_test.dart`, and they still timed out in this desktop environment without producing useful output; earlier `settings_screen_test.dart` attempts also timed out, so those tests still need a clean rerun outside this session timeout.
 - The auth pass now includes in-app password reset completion, but it still needs a real-device regression pass for both warm-start and cold-start recovery links.
 - If users report "uploaded screenshot but no AI suggestion", check two stages separately:

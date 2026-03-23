@@ -95,6 +95,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   List<Uint8List> _selectedImages = [];
   List<SelectedImageMetrics> _selectedImageMetrics = [];
   RecognizedConversation? _recognizedConversation;
+  String? _recognizedWarningMessage;
+  bool _hasPendingRecognitionImport = false;
   bool _isRecognizing = false;
   AnalysisProgressStage _recognizeStage =
       AnalysisProgressStage.preparingPayload;
@@ -249,6 +251,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _selectedImages = [];
       _selectedImageMetrics = [];
       _recognizedConversation = null;
+      _recognizedWarningMessage = null;
+      _hasPendingRecognitionImport = false;
     });
   }
 
@@ -326,6 +330,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _selectedImages = List<Uint8List>.from(images);
       _selectedImageMetrics = [];
       _recognizedConversation = null;
+      _recognizedWarningMessage = null;
+      _hasPendingRecognitionImport = false;
       _lastRecognizeTelemetry = null;
       if (_selectedImages.isNotEmpty) {
         _errorMessage = null;
@@ -336,6 +342,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   void _handleSelectedImageMetricsChanged(List<SelectedImageMetrics> metrics) {
     setState(() {
       _selectedImageMetrics = List<SelectedImageMetrics>.from(metrics);
+    });
+  }
+
+  void _discardPendingRecognitionDraft() {
+    setState(() {
+      _recognizedConversation = null;
+      _recognizedWarningMessage = null;
+      _hasPendingRecognitionImport = false;
     });
   }
 
@@ -394,6 +408,173 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         ],
       ],
     );
+  }
+
+  Future<void> _applyRecognitionImport({
+    required ScreenshotRecognitionDialogResult dialogResult,
+    required RecognizedConversation recognized,
+  }) async {
+    final repository = ref.read(conversationRepositoryProvider);
+    final editedRecognizedMessages = dialogResult.messages;
+    final importedMessages = _buildImportedMessages(editedRecognizedMessages);
+    final newName = dialogResult.name;
+    final meeting = dialogResult.meetingContext;
+    final duration = dialogResult.duration;
+    final importMode = dialogResult.importMode;
+    final updatedRecognized = recognized.copyWith(
+      contactName: newName.isNotEmpty ? newName : recognized.contactName,
+      messageCount: editedRecognizedMessages.length,
+      messages: editedRecognizedMessages,
+    );
+
+    if (importMode == _importModeNewConversation) {
+      final createdConversation = await repository.createConversation(
+        name: _resolveImportedConversationName(
+          enteredName: newName,
+          recognizedName: recognized.contactName,
+        ),
+        messages: importedMessages,
+      );
+
+      if (meeting != null && duration != null) {
+        createdConversation.sessionContext = SessionContext(
+          meetingContext: meeting,
+          duration: duration,
+        );
+      }
+      await repository.updateConversation(createdConversation);
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(conversationProvider(widget.conversationId));
+
+      final messageCount = importedMessages.length;
+      if (!mounted || _recognizeCancelled) {
+        _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
+        return;
+      }
+
+      setState(() {
+        _selectedImages = [];
+        _selectedImageMetrics = [];
+        _recognizedConversation = updatedRecognized;
+        _recognizedWarningMessage = null;
+        _hasPendingRecognitionImport = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已建立新對話並匯入 $messageCount 則訊息'),
+          backgroundColor: Colors.green,
+          action: SnackBarAction(
+            label: '前往新對話',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              context.push('/conversation/${createdConversation.id}');
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    final conv = repository.getConversation(widget.conversationId);
+    if (conv == null) {
+      if (!mounted || _recognizeCancelled) {
+        return;
+      }
+      setState(() {
+        _isRecognizing = false;
+        _errorMessage = '目前對話不存在，請重新進入後再試一次';
+      });
+      return;
+    }
+
+    if (newName.isNotEmpty && conv.name == '新對話') {
+      conv.name = newName;
+    }
+
+    if (conv.sessionContext == null && meeting != null && duration != null) {
+      conv.sessionContext = SessionContext(
+        meetingContext: meeting,
+        duration: duration,
+      );
+    }
+
+    conv.messages.addAll(importedMessages);
+    await repository.updateConversation(conv);
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(conversationProvider(widget.conversationId));
+
+    final messageCount = importedMessages.length;
+    if (!mounted || _recognizeCancelled) {
+      _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
+      return;
+    }
+    setState(() {
+      _selectedImages = [];
+      _selectedImageMetrics = [];
+      _recognizedConversation = updatedRecognized;
+      _recognizedWarningMessage = null;
+      _hasPendingRecognitionImport = false;
+    });
+
+    final canAnalyzeImportedConversation =
+        _buildMessagesForReplyAnalysis(conv.messages) != null;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已加入目前對話，共 $messageCount 則訊息'),
+        backgroundColor: Colors.green,
+        action: canAnalyzeImportedConversation
+            ? SnackBarAction(
+                label: '立即分析',
+                textColor: Colors.white,
+                onPressed: _runAnalysis,
+              )
+            : null,
+      ),
+    );
+  }
+
+  Future<void> _resumeRecognitionImport() async {
+    final recognized = _recognizedConversation;
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (recognized == null || conversation == null) {
+      return;
+    }
+
+    final dialogResult = await _showRecognitionConfirmDialog(
+      recognized: recognized,
+      currentConversation: conversation,
+      warningMessage: _recognizedWarningMessage,
+    );
+
+    if (dialogResult == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已保留這次識別結果，你可以稍後再繼續匯入。'),
+        ),
+      );
+      return;
+    }
+
+    await _applyRecognitionImport(
+      dialogResult: dialogResult,
+      recognized: recognized,
+    );
+  }
+
+  void _preserveRecognitionDraft({
+    required RecognizedConversation recognized,
+    required String? warningMessage,
+  }) {
+    setState(() {
+      _selectedImages = [];
+      _selectedImageMetrics = [];
+      _recognizedConversation = recognized;
+      _recognizedWarningMessage = warningMessage;
+      _hasPendingRecognitionImport = true;
+    });
   }
 
   Future<void> _addMessage({required bool isFromMe}) async {
@@ -736,6 +917,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _isRecognizing = true;
       _errorMessage = null;
       _recognizedConversation = null;
+      _recognizedWarningMessage = null;
+      _hasPendingRecognitionImport = false;
       _recognizeStage = AnalysisProgressStage.preparingPayload;
       _lastRecognizeTelemetry = null;
     });
@@ -844,6 +1027,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             _isRecognizing = false;
             _errorMessage = warningMessage ?? recognized.summary;
             _recognizedConversation = recognized;
+            _recognizedWarningMessage = warningMessage;
+            _hasPendingRecognitionImport = false;
           });
           return;
         }
@@ -863,130 +1048,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
         // 用戶取消
         if (dialogResult == null) {
-          setState(() {
-            _selectedImages = [];
-            _selectedImageMetrics = [];
-            _recognizedConversation = null;
-          });
-          return;
-        }
-
-        final repository = ref.read(conversationRepositoryProvider);
-        final editedRecognizedMessages = dialogResult.messages;
-        final importedMessages = _buildImportedMessages(editedRecognizedMessages);
-        final newName = dialogResult.name;
-        final meeting = dialogResult.meetingContext;
-        final duration = dialogResult.duration;
-        final importMode = dialogResult.importMode;
-        final updatedRecognized = recognized.copyWith(
-          contactName: newName.isNotEmpty ? newName : recognized.contactName,
-          messageCount: editedRecognizedMessages.length,
-          messages: editedRecognizedMessages,
-        );
-
-        if (importMode == _importModeNewConversation) {
-          final createdConversation = await repository.createConversation(
-            name: _resolveImportedConversationName(
-              enteredName: newName,
-              recognizedName: recognized.contactName,
-            ),
-            messages: importedMessages,
+          _preserveRecognitionDraft(
+            recognized: recognized,
+            warningMessage: warningMessage,
           );
-
-          if (meeting != null && duration != null) {
-            createdConversation.sessionContext = SessionContext(
-              meetingContext: meeting,
-              duration: duration,
-            );
-          }
-          await repository.updateConversation(createdConversation);
-          ref.invalidate(conversationsProvider);
-          ref.invalidate(conversationProvider(widget.conversationId));
-
-          final messageCount = importedMessages.length;
-          if (!mounted || _recognizeCancelled) {
-            _debugLog(
-                '[Recognize] Ignore post-save UI update after cancel/dispose');
-            return;
-          }
-
-          setState(() {
-            _selectedImages = [];
-            _selectedImageMetrics = [];
-            _recognizedConversation = updatedRecognized;
-          });
-
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('已建立新對話並匯入 $messageCount 則訊息'),
-              backgroundColor: Colors.green,
-              action: SnackBarAction(
-                label: '前往新對話',
-                textColor: Colors.white,
-                onPressed: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  context.push('/conversation/${createdConversation.id}');
-                },
-              ),
+            const SnackBar(
+              content: Text('已保留這次識別結果，你可以稍後再繼續匯入。'),
             ),
           );
           return;
         }
 
-        final conv = repository.getConversation(widget.conversationId);
-        if (conv == null) {
-          if (!mounted || _recognizeCancelled) {
-            return;
-          }
-          setState(() {
-            _isRecognizing = false;
-            _errorMessage = '目前對話不存在，請重新進入後再試一次';
-          });
-          return;
-        }
-
-        if (newName.isNotEmpty && conv.name == '新對話') {
-          conv.name = newName;
-        }
-
-        if (conv.sessionContext == null && meeting != null && duration != null) {
-          conv.sessionContext = SessionContext(
-            meetingContext: meeting,
-            duration: duration,
-          );
-        }
-
-        conv.messages.addAll(importedMessages);
-        await repository.updateConversation(conv);
-        ref.invalidate(conversationsProvider);
-        ref.invalidate(conversationProvider(widget.conversationId));
-
-        final messageCount = importedMessages.length;
-        if (!mounted || _recognizeCancelled) {
-          _debugLog(
-              '[Recognize] Ignore post-save UI update after cancel/dispose');
-          return;
-        }
-        setState(() {
-          _selectedImages = [];
-          _selectedImageMetrics = [];
-          _recognizedConversation = updatedRecognized;
-        });
-
-        final canAnalyzeImportedConversation =
-            _buildMessagesForReplyAnalysis(conv.messages) != null;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已加入目前對話，共 $messageCount 則訊息'),
-            backgroundColor: Colors.green,
-            action: canAnalyzeImportedConversation
-                ? SnackBarAction(
-                    label: '立即分析',
-                    textColor: Colors.white,
-                    onPressed: _runAnalysis,
-                  )
-                : null,
-          ),
+        await _applyRecognitionImport(
+          dialogResult: dialogResult,
+          recognized: recognized,
         );
         return;
       }
@@ -1530,6 +1607,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   /// 截圖識別結果卡片
   Widget _buildRecognizedConversationCard() {
     final recognized = _recognizedConversation!;
+    final displayWarning = _recognizedWarningMessage ?? recognized.warning;
+    final displayRecognized = recognized.copyWith(warning: displayWarning);
     return GlassmorphicContainer(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1559,16 +1638,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               _buildRecognitionStatusChip(
                 icon: Icons.chat_bubble_outline,
                 label: _recognitionClassificationLabel(
-                  recognized.classification,
+                  displayRecognized.classification,
                 ),
-                color: recognized.importPolicy == 'reject'
+                color: displayRecognized.importPolicy == 'reject'
                     ? AppColors.error
                     : AppColors.primary,
               ),
               _buildRecognitionStatusChip(
                 icon: Icons.auto_awesome,
-                label: _recognitionConfidenceLabel(recognized.confidence),
-                color: _recognitionConfidenceColor(recognized),
+                label: _recognitionConfidenceLabel(displayRecognized.confidence),
+                color: _recognitionConfidenceColor(displayRecognized),
               ),
             ],
           ),
@@ -1584,14 +1663,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ),
             child: Text(
-              _recognitionActionGuidance(recognized),
+              _recognitionActionGuidance(displayRecognized),
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.glassTextPrimary,
                 height: 1.45,
               ),
             ),
           ),
-          if (recognized.warning != null && recognized.warning!.trim().isNotEmpty)
+          if (displayWarning != null && displayWarning.trim().isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Container(
@@ -1605,7 +1684,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   ),
                 ),
                 child: Text(
-                  recognized.warning!,
+                  displayWarning,
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.glassTextPrimary,
                     height: 1.45,
@@ -1652,6 +1731,32 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                         ),
                       ))
                   .toList(),
+            ),
+          ],
+          if (_hasPendingRecognitionImport) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _resumeRecognitionImport,
+                    icon: const Icon(Icons.edit_note_rounded),
+                    label: const Text('繼續匯入設定'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _discardPendingRecognitionDraft,
+                  child: const Text('清除草稿'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '剛剛的識別結果已暫存在這裡，不用重新跑 OCR。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.unselectedText,
+              ),
             ),
           ],
         ],
