@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/services/screenshot_recognition_helper.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 
 void main() {
@@ -14,6 +16,7 @@ void main() {
     String initialName = '',
     MeetingContext? initialMeetingContext,
     AcquaintanceDuration? initialDuration,
+    Conversation? currentConversation,
     ValueChanged<ScreenshotRecognitionDialogResult?>? onResult,
   }) {
     return MaterialApp(
@@ -32,6 +35,21 @@ void main() {
                   initialDuration: initialDuration,
                   initialImportMode: initialImportMode,
                   forceShowSessionContextFields: forceShowSessionContextFields,
+                  currentConversation: currentConversation ??
+                      Conversation(
+                        id: 'conversation-1',
+                        name: '小美',
+                        messages: [
+                          Message(
+                            id: 'her-1',
+                            content: '哈囉',
+                            isFromMe: false,
+                            timestamp: DateTime(2026, 3, 24),
+                          ),
+                        ],
+                        createdAt: DateTime(2026, 3, 24),
+                        updatedAt: DateTime(2026, 3, 24),
+                      ),
                 ),
               );
               onResult?.call(result);
@@ -75,6 +93,7 @@ void main() {
       expect(find.text('識別成功'), findsOneWidget);
       expect(find.text('低信心'), findsOneWidget);
       expect(find.text('信心偏低'), findsOneWidget);
+      expect(find.text('建議先確認再匯入'), findsOneWidget);
       expect(find.textContaining('LINE 的回覆引用框'), findsOneWidget);
       expect(find.text('另存成新對話'), findsOneWidget);
     });

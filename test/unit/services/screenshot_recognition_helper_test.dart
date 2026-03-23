@@ -71,7 +71,8 @@ void main() {
       );
     });
 
-    test('uses new conversation when recognized name mismatches thread name', () {
+    test('uses new conversation when recognized name mismatches thread name',
+        () {
       final recognized = const RecognizedConversation(
         contactName: 'Amber',
         messageCount: 2,
@@ -152,7 +153,8 @@ void main() {
 
   group('ScreenshotRecognitionHelper.resolveImportedConversationName', () {
     test('prefers entered name over recognized name', () {
-      final result = ScreenshotRecognitionHelper.resolveImportedConversationName(
+      final result =
+          ScreenshotRecognitionHelper.resolveImportedConversationName(
         enteredName: '  新名字  ',
         recognizedName: '小美',
       );
@@ -208,12 +210,17 @@ void main() {
       );
 
       final result = ScreenshotRecognitionHelper.actionGuidance(recognized);
+      final guidance = ScreenshotRecognitionHelper.guidance(recognized);
 
       expect(result, contains('社群貼文'));
       expect(result, contains('雙人聊天畫面'));
+      expect(guidance.title, '建議改傳雙人聊天截圖');
+      expect(guidance.tone, ScreenshotRecognitionGuidanceTone.reject);
     });
 
-    test('returns low-confidence guidance for quoted reply or blurry screenshots', () {
+    test(
+        'returns low-confidence guidance for quoted reply or blurry screenshots',
+        () {
       const recognized = RecognizedConversation(
         messageCount: 6,
         summary: '識別到 6 則訊息',
@@ -223,9 +230,12 @@ void main() {
       );
 
       final result = ScreenshotRecognitionHelper.actionGuidance(recognized);
+      final guidance = ScreenshotRecognitionHelper.guidance(recognized);
 
       expect(result, contains('LINE 的回覆引用框'));
       expect(result, contains('重截'));
+      expect(guidance.title, '建議先確認再匯入');
+      expect(guidance.tone, ScreenshotRecognitionGuidanceTone.review);
     });
 
     test('returns group chat guidance for rejected group screenshots', () {
@@ -237,9 +247,11 @@ void main() {
       );
 
       final result = ScreenshotRecognitionHelper.actionGuidance(recognized);
+      final guidance = ScreenshotRecognitionHelper.guidance(recognized);
 
       expect(result, contains('群組聊天'));
       expect(result, contains('一對一'));
+      expect(guidance.title, '請改傳一對一聊天視窗');
     });
 
     test('supplies fallback warning for reject classifications', () {
@@ -258,6 +270,51 @@ void main() {
 
       expect(result, isNotNull);
       expect(result, contains('相簿'));
+    });
+
+    test('prefers new conversation copy for mixed-thread append mode', () {
+      const recognized = RecognizedConversation(
+        contactName: 'Amy',
+        messageCount: 4,
+        summary: '識別到 4 則訊息',
+        importPolicy: 'confirm',
+        warning: '這批截圖可能混入不同聯絡人的聊天段落',
+      );
+      final conversation = buildConversation(
+        name: 'Amy',
+        messages: [buildMessage(isFromMe: false, content: '嗨')],
+      );
+
+      final result = ScreenshotRecognitionHelper.importModeDescription(
+        recognized: recognized,
+        currentConversation: conversation,
+        selectedImportMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
+      );
+
+      expect(result, contains('只有在你確定'));
+      expect(result, contains('另存成新對話'));
+    });
+
+    test('warns to fix direction before appending when side confidence is low',
+        () {
+      const recognized = RecognizedConversation(
+        messageCount: 4,
+        summary: '識別到 4 則訊息',
+        sideConfidence: 'low',
+      );
+      final conversation = buildConversation(
+        name: 'Amy',
+        messages: [buildMessage(isFromMe: false, content: '嗨')],
+      );
+
+      final result = ScreenshotRecognitionHelper.importModeDescription(
+        recognized: recognized,
+        currentConversation: conversation,
+        selectedImportMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
+      );
+
+      expect(result, contains('我說 / 她說'));
+      expect(result, contains('加入目前對話前'));
     });
   });
 }

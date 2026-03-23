@@ -378,6 +378,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The OCR telemetry path now exposes this additional repair as `groupedAdjustedCount`, and the Flutter OCR telemetry card surfaces it as `群組校正 N 次`.
    - Verification after this pass: `deno check supabase/functions/analyze-chat/index.ts` passed and `flutter analyze` passed.
 
+75. `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart`, `test/unit/services/screenshot_recognition_helper_test.dart`, `test/widget/widgets/screenshot_recognition_dialog_test.dart`
+   - Screenshot recognition now uses a shared guardrail guidance model instead of scattering low-confidence / mixed-thread / unsupported copy across multiple widgets.
+   - The recognized-result card and the import dialog now show the same recommendation title + body (for example `建議另存成新對話`, `建議先檢查我說 / 她說`, `建議改傳雙人聊天截圖`) and color them by severity.
+   - Import-mode helper text is now state-aware too: `加入目前對話 / 另存成新對話` descriptions change based on mixed-thread risk, side-confidence risk, and current-thread mismatch instead of always showing a generic static sentence.
+   - Targeted helper/widget tests were updated to lock these copy decisions, though the desktop session still treats Flutter widget-test execution as flaky and should be rerun in a cleaner environment.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

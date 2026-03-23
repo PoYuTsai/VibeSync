@@ -1134,9 +1134,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   String _analysisTelemetryTransportSummary(AnalysisTelemetry telemetry) {
-    final retrySummary = telemetry.retryCount > 0
-        ? '重試 ${telemetry.retryCount} 次'
-        : null;
+    final retrySummary =
+        telemetry.retryCount > 0 ? '重試 ${telemetry.retryCount} 次' : null;
     final fallbackSummary = telemetry.fallbackUsed ? '有 fallback' : null;
     final timeoutSummary = telemetry.timeoutDuration != null
         ? '逾時上限 ${_formatDuration(telemetry.timeoutDuration)}'
@@ -1171,6 +1170,37 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   String _recognitionActionGuidance(RecognizedConversation recognized) =>
       ScreenshotRecognitionHelper.actionGuidance(recognized);
+
+  ScreenshotRecognitionGuidance _recognitionGuidance(
+    RecognizedConversation recognized,
+  ) =>
+      ScreenshotRecognitionHelper.guidance(recognized);
+
+  Color _recognitionGuidanceColor(RecognizedConversation recognized) {
+    switch (_recognitionGuidance(recognized).tone) {
+      case ScreenshotRecognitionGuidanceTone.reject:
+        return AppColors.error;
+      case ScreenshotRecognitionGuidanceTone.caution:
+        return AppColors.warning;
+      case ScreenshotRecognitionGuidanceTone.review:
+        return AppColors.info;
+      case ScreenshotRecognitionGuidanceTone.stable:
+        return AppColors.success;
+    }
+  }
+
+  IconData _recognitionGuidanceIcon(RecognizedConversation recognized) {
+    switch (_recognitionGuidance(recognized).tone) {
+      case ScreenshotRecognitionGuidanceTone.reject:
+        return Icons.block_rounded;
+      case ScreenshotRecognitionGuidanceTone.caution:
+        return Icons.call_split_rounded;
+      case ScreenshotRecognitionGuidanceTone.review:
+        return Icons.fact_check_rounded;
+      case ScreenshotRecognitionGuidanceTone.stable:
+        return Icons.check_circle_outline_rounded;
+    }
+  }
 
   Widget _buildRecognitionStatusChip({
     required IconData icon,
@@ -1227,6 +1257,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         initialImportMode: defaultImportMode,
         forceShowSessionContextFields:
             currentConversation.sessionContext == null,
+        currentConversation: currentConversation,
       ),
     );
   }
@@ -2010,6 +2041,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     final recognized = _recognizedConversation!;
     final displayWarning = _recognizedWarningMessage ?? recognized.warning;
     final displayRecognized = recognized.copyWith(warning: displayWarning);
+    final guidance = _recognitionGuidance(displayRecognized);
+    final guidanceColor = _recognitionGuidanceColor(displayRecognized);
     return GlassmorphicContainer(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -2069,18 +2102,44 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.info.withValues(alpha: 0.08),
+              color: guidanceColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: AppColors.info.withValues(alpha: 0.18),
+                color: guidanceColor.withValues(alpha: 0.18),
               ),
             ),
-            child: Text(
-              _recognitionActionGuidance(displayRecognized),
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextPrimary,
-                height: 1.45,
-              ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  _recognitionGuidanceIcon(displayRecognized),
+                  size: 18,
+                  color: guidanceColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        guidance.title,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: guidanceColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _recognitionActionGuidance(displayRecognized),
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.glassTextPrimary,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           if (displayWarning != null && displayWarning.trim().isNotEmpty)
@@ -2345,11 +2404,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                     children: [
                                       if (_errorAction != null)
                                         ElevatedButton(
-                                          onPressed: _isAnalyzing ||
-                                                  _isRecognizing
-                                              ? null
-                                              : () => _handleErrorAction(
-                                                  _errorAction!),
+                                          onPressed:
+                                              _isAnalyzing || _isRecognizing
+                                                  ? null
+                                                  : () => _handleErrorAction(
+                                                      _errorAction!),
                                           child: Text(
                                             _primaryErrorActionLabel(
                                               _errorAction!,
@@ -2358,11 +2417,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         ),
                                       if (_shouldShowSecondaryErrorAction())
                                         OutlinedButton(
-                                          onPressed:
-                                              _isAnalyzing || _isRecognizing
-                                                  ? null
-                                                  : () => setState(
-                                                      _resetErrorState),
+                                          onPressed: _isAnalyzing ||
+                                                  _isRecognizing
+                                              ? null
+                                              : () =>
+                                                  setState(_resetErrorState),
                                           child: Text(
                                             _secondaryErrorActionLabel(),
                                           ),

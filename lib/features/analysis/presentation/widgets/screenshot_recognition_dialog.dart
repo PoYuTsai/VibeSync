@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
@@ -30,6 +31,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final AcquaintanceDuration? initialDuration;
   final String initialImportMode;
   final bool forceShowSessionContextFields;
+  final Conversation currentConversation;
 
   const ScreenshotRecognitionDialog({
     super.key,
@@ -40,6 +42,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
     required this.initialDuration,
     required this.initialImportMode,
     required this.forceShowSessionContextFields,
+    required this.currentConversation,
   });
 
   @override
@@ -204,6 +207,32 @@ class _ScreenshotRecognitionDialogState
       case 'high':
       default:
         return AppColors.success;
+    }
+  }
+
+  Color _guidanceColor(ScreenshotRecognitionGuidanceTone tone) {
+    switch (tone) {
+      case ScreenshotRecognitionGuidanceTone.reject:
+        return AppColors.error;
+      case ScreenshotRecognitionGuidanceTone.caution:
+        return AppColors.warning;
+      case ScreenshotRecognitionGuidanceTone.review:
+        return AppColors.info;
+      case ScreenshotRecognitionGuidanceTone.stable:
+        return AppColors.success;
+    }
+  }
+
+  IconData _guidanceIcon(ScreenshotRecognitionGuidanceTone tone) {
+    switch (tone) {
+      case ScreenshotRecognitionGuidanceTone.reject:
+        return Icons.block_rounded;
+      case ScreenshotRecognitionGuidanceTone.caution:
+        return Icons.call_split_rounded;
+      case ScreenshotRecognitionGuidanceTone.review:
+        return Icons.fact_check_rounded;
+      case ScreenshotRecognitionGuidanceTone.stable:
+        return Icons.check_circle_outline_rounded;
     }
   }
 
@@ -448,6 +477,8 @@ class _ScreenshotRecognitionDialogState
   @override
   Widget build(BuildContext context) {
     final currentMessages = _sanitizedMessages();
+    final guidance = ScreenshotRecognitionHelper.guidance(widget.recognized);
+    final guidanceColor = _guidanceColor(guidance.tone);
     final shouldShowSessionContextFields =
         widget.forceShowSessionContextFields ||
             _selectedImportMode ==
@@ -539,18 +570,44 @@ class _ScreenshotRecognitionDialogState
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.info.withValues(alpha: 0.08),
+                color: guidanceColor.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: AppColors.info.withValues(alpha: 0.18),
+                  color: guidanceColor.withValues(alpha: 0.18),
                 ),
               ),
-              child: Text(
-                ScreenshotRecognitionHelper.actionGuidance(widget.recognized),
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextPrimary,
-                  height: 1.45,
-                ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    _guidanceIcon(guidance.tone),
+                    size: 18,
+                    color: guidanceColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          guidance.title,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: guidanceColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          guidance.body,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.glassTextPrimary,
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -609,10 +666,11 @@ class _ScreenshotRecognitionDialogState
             ),
             const SizedBox(height: 8),
             Text(
-              _selectedImportMode ==
-                      ScreenshotRecognitionHelper.importModeAppendCurrent
-                  ? '會把這批訊息接到目前對話尾端，適合剛截到最新續聊。'
-                  : '會建立新的對話，不會污染目前這段聊天紀錄。',
+              ScreenshotRecognitionHelper.importModeDescription(
+                recognized: widget.recognized,
+                currentConversation: widget.currentConversation,
+                selectedImportMode: _selectedImportMode,
+              ),
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.unselectedText,
                 height: 1.45,
