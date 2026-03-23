@@ -148,5 +148,6 @@ Private - All Rights Reserved
 - The "optimize my message" result block now uses a darker, higher-contrast visual treatment so the generated text remains readable inside the white glass card on mobile.
 - Continuing a conversation after analysis now supports screenshot upload too, so testers can import fresh chat screenshots from the collapsed follow-up composer instead of being forced back to manual typing only.
 - Screenshot OCR speaker-direction rules are now stricter: bubble side now explicitly outranks semantics, so short right-aligned replies should be less likely to be mislabeled as incoming messages.
+- OCR speaker-direction rules now also call out media bubbles explicitly, so right-side image placeholders should be less likely to flip into `她說` just because the extracted text is generic.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

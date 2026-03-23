@@ -328,6 +328,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Screenshot OCR speaker-direction rules are now stricter: bubble alignment explicitly overrides semantic guessing when deciding `isFromMe`.
    - The prompt now warns against forcing alternating speakers and calls out short right-side bubbles like `超爽` as cases that must still follow layout rather than wording.
    - Both recognize-only and full image-analysis prompts now ask for a final side-check before returning JSON, so clearly right-aligned bubbles should be less likely to come back as `她說`.
+   - The media-bubble case is now called out more explicitly too: a right-side image/photo placeholder and its same-side follow-up text should stay `我說` unless the layout clearly switches sides.
 
 ## Product / Logic Notes
 
