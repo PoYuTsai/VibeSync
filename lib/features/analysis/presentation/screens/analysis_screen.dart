@@ -29,6 +29,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_service.dart';
+import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
@@ -1151,6 +1152,100 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     ];
 
     return parts.join('｜');
+  }
+
+  List<AnalysisTelemetryGuardrail> _telemetryGuardrails(
+    AnalysisTelemetry telemetry,
+  ) =>
+      AnalysisTelemetryGuardrailHelper.evaluate(telemetry);
+
+  Color _telemetryGuardrailColor(AnalysisTelemetryGuardrail guardrail) {
+    switch (guardrail.severity) {
+      case AnalysisTelemetryGuardrailSeverity.critical:
+        return AppColors.error;
+      case AnalysisTelemetryGuardrailSeverity.warning:
+        return AppColors.warning;
+      case AnalysisTelemetryGuardrailSeverity.info:
+        return AppColors.info;
+    }
+  }
+
+  IconData _telemetryGuardrailIcon(AnalysisTelemetryGuardrail guardrail) {
+    switch (guardrail.severity) {
+      case AnalysisTelemetryGuardrailSeverity.critical:
+        return Icons.error_outline_rounded;
+      case AnalysisTelemetryGuardrailSeverity.warning:
+        return Icons.warning_amber_rounded;
+      case AnalysisTelemetryGuardrailSeverity.info:
+        return Icons.insights_rounded;
+    }
+  }
+
+  Widget _buildTelemetryGuardrailSection(AnalysisTelemetry telemetry) {
+    final guardrails = _telemetryGuardrails(telemetry);
+    if (guardrails.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: guardrails.map((guardrail) {
+              final color = _telemetryGuardrailColor(guardrail);
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.20),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _telemetryGuardrailIcon(guardrail),
+                      size: 14,
+                      color: color,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      guardrail.label,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          ...guardrails.map(
+            (guardrail) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '${guardrail.label}：${guardrail.detail}',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.45,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Color _recognitionConfidenceColor(RecognizedConversation recognized) {
@@ -2786,6 +2881,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         color: AppColors.textSecondary,
                                       ),
                                     ),
+                                  _buildTelemetryGuardrailSection(
+                                    _lastRecognizeTelemetry!,
+                                  ),
                                 ],
                               ),
                             ),
@@ -2842,6 +2940,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         color: AppColors.textSecondary,
                                       ),
                                     ),
+                                  _buildTelemetryGuardrailSection(
+                                    _lastAnalysisTelemetry!,
+                                  ),
                                 ],
                               ),
                             ),

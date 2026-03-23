@@ -384,6 +384,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Import-mode helper text is now state-aware too: `加入目前對話 / 另存成新對話` descriptions change based on mixed-thread risk, side-confidence risk, and current-thread mismatch instead of always showing a generic static sentence.
    - Targeted helper/widget tests were updated to lock these copy decisions, though the desktop session still treats Flutter widget-test execution as flaky and should be rerun in a cleaner environment.
 
+76. `lib/features/analysis/data/services/analysis_telemetry_guardrail_helper.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `test/unit/services/analysis_telemetry_guardrail_helper_test.dart`, `docs/ocr-analysis-maturity-benchmark.md`
+   - OCR / analysis telemetry now derives explicit benchmark guardrails instead of leaving partner QA to interpret raw milliseconds manually.
+   - The app now surfaces labels like `OCR 偏慢`, `分析偏慢`, `方向待確認`, `非標準截圖`, `上下文已壓縮`, `接近逾時`, and `服務不穩定` directly on the telemetry cards, each with a short explanation tied to the current request.
+   - The benchmark doc now records the current in-app threshold values (single-image OCR > 7s, multi-image OCR > 15s, analysis > 12s, near-timeout > 80%, etc.) so launch-readiness conversations have a fixed reference instead of fuzzy expectations.
+   - A dedicated unit test now locks the guardrail evaluation logic for OCR and normal analysis telemetry.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

@@ -108,6 +108,27 @@
 - speaker continuity 校正次數
 - 群組校正次數（圖片泡泡 / 同側短回覆修正）
 - 一般分析 request size / round-trip / retries / fallback / context trim
+- benchmark guardrails：
+  - `OCR 偏慢`
+  - `分析偏慢`
+  - `方向待確認`
+  - `非標準截圖`
+  - `上下文已壓縮`
+  - `接近逾時`
+  - `服務不穩定`
+
+## App 內警戒值（目前實作）
+
+- 單張 OCR 往返超過 `7 秒` → `OCR 偏慢`
+- 多張 OCR 往返超過 `15 秒` → `OCR 偏慢`
+- 一般分析往返超過 `12 秒` → `分析偏慢`
+- `我說分析 / 訊息優化` 超過 `6 秒` → `分析偏慢`
+- OCR 請求大於約 `700KB` → `請求偏大`
+- `uncertainSideCount > 0` 或 `sideConfidence = low` → `方向待確認`
+- `recognizedClassification != valid_chat` → `非標準截圖`
+- `truncatedMessageCount > 0` 或 `conversationSummaryUsed = true` → `上下文已壓縮`
+- round-trip 超過 timeout 上限的 `80%` → `接近逾時`
+- `retryCount > 0` 或 `fallbackUsed = true` → `服務不穩定`
 
 ### Server telemetry 已回傳
 
