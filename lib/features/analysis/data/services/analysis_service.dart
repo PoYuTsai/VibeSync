@@ -76,6 +76,7 @@ class AnalysisTelemetry {
   final int? groupedAdjustedCount;
   final int? quotedPreviewRemovedCount;
   final int? quotedPreviewAttachedCount;
+  final int? overlapRemovedCount;
 
   const AnalysisTelemetry({
     this.requestType,
@@ -106,6 +107,7 @@ class AnalysisTelemetry {
     this.groupedAdjustedCount,
     this.quotedPreviewRemovedCount,
     this.quotedPreviewAttachedCount,
+    this.overlapRemovedCount,
   });
 
   Duration? get estimatedTransferDuration {
@@ -722,6 +724,9 @@ class AnalysisService {
                       ? (telemetryData?['quotedPreviewAttachedCount'] as num)
                           .round()
                       : null,
+              overlapRemovedCount: telemetryData?['overlapRemovedCount'] is num
+                  ? (telemetryData?['overlapRemovedCount'] as num).round()
+                  : null,
             ),
           );
 

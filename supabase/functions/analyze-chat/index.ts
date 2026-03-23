@@ -194,6 +194,7 @@ function buildRecognitionObservability(
         groupedAdjustedCount?: number;
         quotedPreviewRemovedCount?: number;
         quotedPreviewAttachedCount?: number;
+        overlapRemovedCount?: number;
       };
     }
     | undefined,
@@ -213,6 +214,8 @@ function buildRecognitionObservability(
       ?.quotedPreviewRemovedCount ?? 0,
     quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry
       ?.quotedPreviewAttachedCount ?? 0,
+    overlapRemovedCount: recognizedConversation?.normalizationTelemetry
+      ?.overlapRemovedCount ?? 0,
   };
 }
 
@@ -233,6 +236,7 @@ function buildServerGuardrailObservability(input: {
   continuityAdjustedCount?: number | null;
   groupedAdjustedCount?: number | null;
   quotedPreviewAttachedCount?: number | null;
+  overlapRemovedCount?: number | null;
   inputTokens?: number;
   outputTokens?: number;
   safetyFiltered?: boolean;
@@ -254,6 +258,7 @@ function buildServerGuardrailObservability(input: {
     continuityAdjustedCount: input.continuityAdjustedCount,
     groupedAdjustedCount: input.groupedAdjustedCount,
     quotedPreviewAttachedCount: input.quotedPreviewAttachedCount,
+    overlapRemovedCount: input.overlapRemovedCount,
     inputTokens: input.inputTokens,
     outputTokens: input.outputTokens,
     safetyFiltered: input.safetyFiltered,
@@ -1072,14 +1077,19 @@ function sanitizeQuotedReplyPreviewValue(value: unknown): string | undefined {
 }
 
 function extractQuotedReplyPreviewContent(content: string): string | undefined {
-  const lines = content
+  const originalLines = content
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
 
-  if (lines.length === 0) {
+  if (originalLines.length === 0) {
     return undefined;
   }
+
+  const lines = originalLines.length > 0 &&
+      isLikelyQuotedReplyPreviewLabelLine(originalLines[0])
+    ? originalLines.slice(1)
+    : originalLines;
 
   if (lines.length >= 2 && isLikelyQuotedReplyPreviewNameLine(lines[0])) {
     const previewBody = lines.slice(1).join(" ").trim();
@@ -1087,6 +1097,91 @@ function extractQuotedReplyPreviewContent(content: string): string | undefined {
   }
 
   return content.trim() || undefined;
+}
+
+function normalizeComparableMessageText(content: string): string {
+  return content
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[“”"]/g, "'")
+    .replace(/[，、]/g, ",")
+    .replace(/[。]/g, ".")
+    .replace(/[！]/g, "!")
+    .replace(/[？]/g, "?");
+}
+
+function shouldDeduplicateSequentialMessage(
+  previous: NormalizedRecognizedMessage,
+  current: NormalizedRecognizedMessage,
+): boolean {
+  const sideMatches = previous.side !== "unknown" && current.side !== "unknown"
+    ? previous.side === current.side
+    : previous.isFromMe === current.isFromMe;
+
+  if (!sideMatches) {
+    return false;
+  }
+
+  return normalizeComparableMessageText(previous.content) ===
+    normalizeComparableMessageText(current.content);
+}
+
+function choosePreferredQuotedReplyPreview(
+  previous: string | undefined,
+  current: string | undefined,
+): string | undefined {
+  const previousValue = previous?.trim();
+  const currentValue = current?.trim();
+
+  if (!previousValue) {
+    return currentValue || undefined;
+  }
+
+  if (!currentValue) {
+    return previousValue;
+  }
+
+  return currentValue.length > previousValue.length
+    ? currentValue
+    : previousValue;
+}
+
+function deduplicateSequentialMessages(
+  messages: NormalizedRecognizedMessage[],
+): {
+  messages: NormalizedRecognizedMessage[];
+  removedCount: number;
+} {
+  if (messages.length < 2) {
+    return {
+      messages,
+      removedCount: 0,
+    };
+  }
+
+  const deduplicated: NormalizedRecognizedMessage[] = [];
+  let removedCount = 0;
+
+  for (const message of messages) {
+    const previous = deduplicated[deduplicated.length - 1];
+
+    if (previous && shouldDeduplicateSequentialMessage(previous, message)) {
+      previous.quotedReplyPreview = choosePreferredQuotedReplyPreview(
+        previous.quotedReplyPreview,
+        message.quotedReplyPreview,
+      );
+      removedCount += 1;
+      continue;
+    }
+
+    deduplicated.push({ ...message });
+  }
+
+  return {
+    messages: deduplicated,
+    removedCount,
+  };
 }
 
 function normalizeBubbleSide(
@@ -1193,11 +1288,30 @@ function isLikelyQuotedReplyPreviewNameLine(value: string): boolean {
     .test(trimmed);
 }
 
+function isLikelyQuotedReplyPreviewLabelLine(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized.length > 24) {
+    return false;
+  }
+
+  return normalized === "回覆" ||
+    normalized === "引用回覆" ||
+    normalized === "回覆訊息" ||
+    normalized === "reply" ||
+    normalized === "replying to" ||
+    normalized === "replied to";
+}
+
 function isLikelyQuotedReplyPreviewContent(content: string): boolean {
-  const lines = content
+  const originalLines = content
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
+
+  const lines = originalLines.length > 0 &&
+      isLikelyQuotedReplyPreviewLabelLine(originalLines[0])
+    ? originalLines.slice(1)
+    : originalLines;
 
   if (lines.length < 2 || lines.length > 3) {
     return false;
@@ -1208,8 +1322,8 @@ function isLikelyQuotedReplyPreviewContent(content: string): boolean {
   }
 
   const previewBody = lines.slice(1).join(" ");
-  return previewBody.length > 0 && previewBody.length <= 80 &&
-    content.length <= 140;
+  return previewBody.length > 0 && previewBody.length <= 120 &&
+    content.length <= 180;
 }
 
 function stripQuotedReplyPreviewMessages(
@@ -1471,6 +1585,7 @@ function normalizeRecognizedConversation(
           groupedAdjustedCount: 0,
           quotedPreviewRemovedCount: 0,
           quotedPreviewAttachedCount: 0,
+          overlapRemovedCount: 0,
         },
         warning: normalizeWarningMessage(
           recognizedRaw.warning,
@@ -1612,7 +1727,10 @@ function normalizeRecognizedConversation(
   const quotedPreviewAdjustment = stripQuotedReplyPreviewMessages(
     groupedAdjustment.messages,
   );
-  const finalMessages = quotedPreviewAdjustment.messages;
+  const overlapAdjustment = deduplicateSequentialMessages(
+    quotedPreviewAdjustment.messages,
+  );
+  const finalMessages = overlapAdjustment.messages;
   const finalMessageCount = finalMessages.length;
   const sideConfidence = normalizeSideConfidenceLabel(
     finalMessageCount,
@@ -1641,10 +1759,14 @@ function normalizeRecognizedConversation(
       groupedAdjustedCount: groupedAdjustment.adjustedCount,
       quotedPreviewRemovedCount: quotedPreviewAdjustment.removedCount,
       quotedPreviewAttachedCount: quotedPreviewAdjustment.attachedCount,
+      overlapRemovedCount: overlapAdjustment.removedCount,
     },
-    warning: quotedPreviewAdjustment.removedCount > 0 && !warning
+    warning: (quotedPreviewAdjustment.removedCount > 0 ||
+        overlapAdjustment.removedCount > 0) && !warning
       ? quotedPreviewAdjustment.attachedCount > 0
         ? "已自動把引用回覆的小卡片併回主訊息，保留它正在回覆的舊內容。"
+        : overlapAdjustment.removedCount > 0
+        ? `已自動略過 ${overlapAdjustment.removedCount} 則和前後截圖重疊的重複訊息。`
         : "已自動忽略引用回覆的小卡片，只保留外層真正的新訊息。"
       : warning,
   };
@@ -2626,6 +2748,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           groupedAdjustedCount?: number;
           quotedPreviewRemovedCount?: number;
           quotedPreviewAttachedCount?: number;
+          overlapRemovedCount?: number;
         };
       }
       | undefined;
@@ -2660,6 +2783,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
         quotedPreviewAttachedCount:
           recognitionObservability.quotedPreviewAttachedCount,
+        overlapRemovedCount: recognitionObservability.overlapRemovedCount,
         inputTokens: tokenUsage.inputTokens,
         outputTokens: tokenUsage.outputTokens,
       });
@@ -2769,6 +2893,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
       quotedPreviewAttachedCount:
         recognitionObservability.quotedPreviewAttachedCount,
+      overlapRemovedCount: recognitionObservability.overlapRemovedCount,
       inputTokens: tokenUsage.inputTokens,
       outputTokens: tokenUsage.outputTokens,
       safetyFiltered: wasFiltered,
@@ -2873,6 +2998,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         ?.quotedPreviewRemovedCount ?? 0,
       quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry
         ?.quotedPreviewAttachedCount ?? 0,
+      overlapRemovedCount: recognizedConversation?.normalizationTelemetry
+        ?.overlapRemovedCount ?? 0,
       guardrailSeverity: successGuardrails.guardrailSeverity,
       guardrailCount: successGuardrails.guardrailCount,
       guardrailFlags: successGuardrails.guardrailFlags,

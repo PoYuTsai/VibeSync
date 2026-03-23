@@ -154,6 +154,7 @@
 - `groupedAdjustedCount`
 - `quotedPreviewRemovedCount`
 - `quotedPreviewAttachedCount`
+- `overlapRemovedCount`
 - `guardrailSeverity`
 - `guardrailCount`
 - `guardrailFlags`

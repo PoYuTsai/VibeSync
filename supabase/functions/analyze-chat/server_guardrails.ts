@@ -26,6 +26,7 @@ export interface ServerGuardrailInput {
   continuityAdjustedCount?: number | null;
   groupedAdjustedCount?: number | null;
   quotedPreviewAttachedCount?: number | null;
+  overlapRemovedCount?: number | null;
   inputTokens?: number;
   outputTokens?: number;
   safetyFiltered?: boolean;
@@ -86,7 +87,8 @@ export function buildServerGuardrails(
 
   const hasStructureRepairs = (input.continuityAdjustedCount ?? 0) > 0 ||
     (input.groupedAdjustedCount ?? 0) > 0 ||
-    (input.quotedPreviewAttachedCount ?? 0) > 0;
+    (input.quotedPreviewAttachedCount ?? 0) > 0 ||
+    (input.overlapRemovedCount ?? 0) > 0;
   if (hasStructureRepairs) flags.push("structure_repaired");
 
   const hasHighTokenUsage = totalTokens >= HIGH_TOKEN_USAGE_TOTAL;
