@@ -318,7 +318,82 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return _recognizeStageLabel(_recognizeStage);
     }
 
-    return '識別並加入對話 (${_selectedImages.length} 張)';
+    return '識別並加入目前對話 (${_selectedImages.length} 張)';
+  }
+
+  void _handleSelectedImagesChanged(List<Uint8List> images) {
+    setState(() {
+      _selectedImages = List<Uint8List>.from(images);
+      _selectedImageMetrics = [];
+      _recognizedConversation = null;
+      _lastRecognizeTelemetry = null;
+      if (_selectedImages.isNotEmpty) {
+        _errorMessage = null;
+      }
+    });
+  }
+
+  void _handleSelectedImageMetricsChanged(List<SelectedImageMetrics> metrics) {
+    setState(() {
+      _selectedImageMetrics = List<SelectedImageMetrics>.from(metrics);
+    });
+  }
+
+  Widget _buildConversationScreenshotSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '也可以直接上傳新的聊天截圖，先識別進這段對話，再接著分析。',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.glassTextHint,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ImagePickerWidget(
+          maxImages: 3,
+          externalImages: _selectedImages,
+          onImagesChanged: _handleSelectedImagesChanged,
+          onMetricsChanged: _handleSelectedImageMetricsChanged,
+        ),
+        if (_selectedImages.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: (_isRecognizing || _isAnalyzing)
+                  ? null
+                  : _recognizeAndAddToConversation,
+              icon: _isRecognizing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.add_photo_alternate),
+              label: Text(_recognizeButtonLabel),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _isRecognizing
+                ? '識別中：${_recognizeStageLabel(_recognizeStage)}'
+                : '先把截圖識別進目前對話，再選「她說 / 我說」補上新的訊息。',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.unselectedText,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ],
+    );
   }
 
   Future<void> _addMessage({required bool isFromMe}) async {
@@ -1799,26 +1874,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   ImagePickerWidget(
                                     maxImages: 3,
                                     externalImages: _selectedImages, // 同步外部狀態
-                                    onImagesChanged: (images) {
-                                      setState(() {
-                                        _selectedImages =
-                                            List<Uint8List>.from(images);
-                                        _selectedImageMetrics = [];
-                                        _recognizedConversation = null;
-                                        _lastRecognizeTelemetry = null;
-                                        if (_selectedImages.isNotEmpty) {
-                                          _errorMessage = null;
-                                        }
-                                      });
-                                    },
-                                    onMetricsChanged: (metrics) {
-                                      setState(() {
-                                        _selectedImageMetrics =
-                                            List<SelectedImageMetrics>.from(
-                                          metrics,
-                                        );
-                                      });
-                                    },
+                                    onImagesChanged: _handleSelectedImagesChanged,
+                                    onMetricsChanged:
+                                        _handleSelectedImageMetricsChanged,
                                   ),
                                   const SizedBox(height: 8),
 
@@ -2636,8 +2694,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         const Text('✨',
                                             style: TextStyle(fontSize: 18)),
                                         const SizedBox(width: 8),
-                                        Text('優化後的訊息',
-                                            style: AppTypography.titleMedium),
+                                        Text(
+                                          '優化後的訊息',
+                                          style:
+                                              AppTypography.titleMedium.copyWith(
+                                            color: AppColors.glassTextPrimary,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 8),
@@ -2645,16 +2708,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       width: double.infinity,
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: AppColors.primary
-                                            .withValues(alpha: 0.1),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppColors.primaryDark
+                                                .withValues(alpha: 0.94),
+                                            AppColors.primary
+                                                .withValues(alpha: 0.88),
+                                          ],
+                                        ),
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                            color: AppColors.primary
-                                                .withValues(alpha: 0.3)),
+                                          color: AppColors.primaryLight
+                                              .withValues(alpha: 0.55),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.primaryDark
+                                                .withValues(alpha: 0.22),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
                                       ),
                                       child: Text(
                                         _optimizedMessage!.optimized,
-                                        style: AppTypography.bodyLarge,
+                                        style: AppTypography.bodyLarge.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
                                     if (_optimizedMessage!
@@ -2662,7 +2743,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       const SizedBox(height: 8),
                                       Text(
                                         '💡 ${_optimizedMessage!.reason}',
-                                        style: AppTypography.caption,
+                                        style: AppTypography.caption.copyWith(
+                                          color: AppColors.glassTextPrimary,
+                                        ),
                                       ),
                                     ],
                                     const SizedBox(height: 12),
@@ -3131,7 +3214,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Widget _buildCollapsibleMessageInput() {
     // 沒有分析結果時，直接顯示輸入區
     if (_enthusiasmScore == null) {
-      return _buildMessageInput();
+      return _buildMessageInput(showScreenshotUpload: false);
     }
 
     // 有分析結果時，顯示可展開的「繼續對話」區塊
@@ -3203,7 +3286,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     ),
                   ),
                 ),
-                _buildMessageInput(),
+                _buildMessageInput(showScreenshotUpload: true),
               ],
             ),
         ],
@@ -3212,7 +3295,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   /// 建立訊息輸入區
-  Widget _buildMessageInput() {
+  Widget _buildMessageInput({required bool showScreenshotUpload}) {
+    final canAddManualMessage =
+        !_isAnalyzing && !_isRecognizing && _selectedImages.isEmpty;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -3226,6 +3312,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (showScreenshotUpload) ...[
+              _buildConversationScreenshotSection(),
+              const SizedBox(height: 12),
+            ],
             // 輸入框 + 貼上按鈕
             TextField(
               controller: _messageController,
@@ -3289,9 +3379,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   child: SizedBox(
                     height: 48,
                     child: OutlinedButton.icon(
-                      onPressed: _isAnalyzing
-                          ? null
-                          : () => _addMessage(isFromMe: false),
+                      onPressed:
+                          canAddManualMessage ? () => _addMessage(isFromMe: false) : null,
                       icon: const Text('👩', style: TextStyle(fontSize: 18)),
                       label: Text('她說...',
                           style: TextStyle(color: AppColors.glassTextPrimary)),
@@ -3312,13 +3401,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   child: Container(
                     height: 48,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      gradient: LinearGradient(
+                        colors: canAddManualMessage
+                            ? const [AppColors.ctaStart, AppColors.ctaEnd]
+                            : [
+                                AppColors.ctaStart.withValues(alpha: 0.35),
+                                AppColors.ctaEnd.withValues(alpha: 0.35),
+                              ],
                       ),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.ctaStart.withValues(alpha: 0.3),
+                          color: AppColors.ctaStart
+                              .withValues(alpha: canAddManualMessage ? 0.3 : 0.12),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -3327,11 +3422,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: _isAnalyzing
-                            ? null
-                            : () => _addMessage(isFromMe: true),
+                        onTap:
+                            canAddManualMessage ? () => _addMessage(isFromMe: true) : null,
                         borderRadius: BorderRadius.circular(12),
-                        child: const Center(
+                        child: Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -3339,7 +3433,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                               SizedBox(width: 8),
                               Text('我說...',
                                   style: TextStyle(
-                                      color: Colors.white,
+                                      color: canAddManualMessage
+                                          ? Colors.white
+                                          : Colors.white70,
                                       fontWeight: FontWeight.w600)),
                             ],
                           ),

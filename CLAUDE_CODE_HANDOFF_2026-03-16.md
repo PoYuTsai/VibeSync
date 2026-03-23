@@ -319,6 +319,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The TestFlight checklist now includes an explicit stop point for this stage: once OCR preflight, user-facing OCR copy, and the core A/B/C smoke checks are stable, the team can pause coding and move into partner validation.
    - README now also reflects that this build is intended to be a reasonable pause point for the next TestFlight round, rather than an endlessly moving target.
 
+64. `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - The "optimize my message" result block now uses a darker, higher-contrast treatment so the generated text is readable inside the white glass container on mobile.
+   - The post-analysis "continue conversation" composer now supports screenshot upload as well as manual typing, so users can import new chat screenshots without leaving the follow-up flow.
+   - While screenshots are pending recognition, the bottom `她說 / 我說` actions now disable visually instead of letting users accidentally bypass the OCR step and create a confusing mixed flow.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
