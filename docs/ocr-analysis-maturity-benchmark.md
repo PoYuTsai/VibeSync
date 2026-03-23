@@ -106,6 +106,8 @@
 - uncertain side count
 - 引用回覆併回次數
 - speaker continuity 校正次數
+- 群組校正次數（圖片泡泡 / 同側短回覆修正）
+- 一般分析 request size / round-trip / retries / fallback / context trim
 
 ### Server telemetry 已回傳
 
@@ -128,6 +130,7 @@
 - `recognizedMessageCount`
 - `uncertainSideCount`
 - `continuityAdjustedCount`
+- `groupedAdjustedCount`
 - `quotedPreviewRemovedCount`
 - `quotedPreviewAttachedCount`
 
