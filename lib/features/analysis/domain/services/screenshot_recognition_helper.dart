@@ -4,6 +4,7 @@ import '../entities/analysis_models.dart';
 class ScreenshotRecognitionHelper {
   static const String importModeAppendCurrent = 'append_current';
   static const String importModeNewConversation = 'new_conversation';
+  static const String untitledConversationName = '新對話';
 
   static bool _looksLikeMixedThreadWarning(String value) {
     final normalized = value.trim().toLowerCase();
@@ -21,6 +22,13 @@ class ScreenshotRecognitionHelper {
         normalized.contains('different thread') ||
         normalized.contains('multiple threads') ||
         normalized.contains('mixed thread');
+  }
+
+  static bool isPlaceholderConversationName(String name) {
+    final normalized = name.trim();
+    return normalized.isEmpty ||
+        normalized == untitledConversationName ||
+        normalized == '新的對話';
   }
 
   static String? fallbackWarningForClassification(String classification) {
@@ -57,7 +65,7 @@ class ScreenshotRecognitionHelper {
     final recognizedName = recognized.contactName?.trim();
     final currentName = currentConversation.name.trim();
     final hasExistingThread = currentConversation.messages.isNotEmpty;
-    final hasNamedThread = currentName.isNotEmpty && currentName != '新對話';
+    final hasNamedThread = !isPlaceholderConversationName(currentName);
 
     if (hasExistingThread &&
         hasNamedThread &&
@@ -102,7 +110,7 @@ class ScreenshotRecognitionHelper {
 
     final recognizedName = recognized.contactName?.trim();
     final currentName = currentConversation.name.trim();
-    final hasNamedThread = currentName.isNotEmpty && currentName != '新對話';
+    final hasNamedThread = !isPlaceholderConversationName(currentName);
     final nameMismatch =
         hasNamedThread &&
         recognizedName != null &&
@@ -130,7 +138,7 @@ class ScreenshotRecognitionHelper {
       return normalizedRecognized;
     }
 
-    return '新對話';
+    return untitledConversationName;
   }
 
   static String classificationLabel(String classification) {

@@ -166,7 +166,7 @@ class HomeScreen extends ConsumerWidget {
     final repository = ref.read(conversationRepositoryProvider);
 
     final conversation = await repository.createConversation(
-      name: '新的對話',
+      name: '新對話',
       messages: [],
     );
 

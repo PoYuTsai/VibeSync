@@ -94,6 +94,23 @@ void main() {
     });
   });
 
+  group('ScreenshotRecognitionHelper.isPlaceholderConversationName', () {
+    test('treats both 新對話 and 新的對話 as placeholder titles', () {
+      expect(
+        ScreenshotRecognitionHelper.isPlaceholderConversationName('新對話'),
+        isTrue,
+      );
+      expect(
+        ScreenshotRecognitionHelper.isPlaceholderConversationName('新的對話'),
+        isTrue,
+      );
+      expect(
+        ScreenshotRecognitionHelper.isPlaceholderConversationName('Amy'),
+        isFalse,
+      );
+    });
+  });
+
   group('ScreenshotRecognitionHelper.buildWarning', () {
     test('includes mismatch warning when recognized name differs', () {
       final recognized = const RecognizedConversation(

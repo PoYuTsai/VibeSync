@@ -346,6 +346,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - Image-in-image content, photo previews, and screenshots inside a bubble are now explicitly forbidden from overriding the outer bubble side.
    - The app-side `RecognizedMessage` model now preserves the returned `side` field (`left/right/unknown`) so future debugging and post-processing no longer has to rely only on `isFromMe`.
 
+69. `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/features/conversation/presentation/screens/home_screen.dart`
+   - Screenshot import naming had a real business-logic bug: some flows created placeholder threads as `新的對話`, while the rename path only recognized `新對話`.
+   - The helper now treats both `新對話` and `新的對話` as untitled placeholder names, so when OCR has already recognized a contact name like `Amy`, importing into an untitled thread now correctly promotes the title instead of leaving the app bar stuck on the placeholder text.
+   - The screenshot-start flow on the home screen is also normalized to create `新對話` going forward, reducing future drift.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

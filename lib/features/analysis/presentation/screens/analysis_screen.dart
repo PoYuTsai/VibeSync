@@ -489,7 +489,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
-    if (newName.isNotEmpty && conv.name == '新對話') {
+    if (
+      newName.isNotEmpty &&
+      ScreenshotRecognitionHelper.isPlaceholderConversationName(conv.name)
+    ) {
       conv.name = newName;
     }
 
