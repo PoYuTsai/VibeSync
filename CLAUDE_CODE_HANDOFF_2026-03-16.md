@@ -361,6 +361,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The inline error card now offers action-aware CTAs such as `重新識別`, `補上對方訊息`, `查看方案`, `重新登入`, or `調整截圖`, and those CTAs now actually route into the correct path (`recognize`, `analyze`, paywall, logout/login, or reopening the follow-up composer).
    - A small lingering analyzer lint in `analysis_models.dart` was also cleaned up during this pass, and `flutter analyze` now passes clean again in this desktop session.
 
+72. `lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart`, `test/widget/widgets/screenshot_recognition_dialog_test.dart`
+   - The screenshot import dialog now supports faster batch speaker correction instead of only per-row edits: users can reapply `左 / 右` bubble direction to all known rows in one tap, and each contiguous same-side bubble block now exposes `這組改成她說 / 我說` actions.
+   - This is meant to reduce the real-world OCR cleanup cost when a screenshot has a short run of right-side image/text bubbles that all drifted to the wrong speaker together.
+   - `flutter analyze` passed after this pass. The targeted widget test was updated for the new batch actions and the current `稍後再匯入` button label, but `flutter test test/widget/widgets/screenshot_recognition_dialog_test.dart` still timed out in this desktop session and needs a clean rerun elsewhere.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

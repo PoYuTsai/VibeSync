@@ -51,9 +51,9 @@ void main() {
     importPolicy: 'confirm',
     confidence: 'low',
     messages: [
-      RecognizedMessage(isFromMe: false, content: '你今天在忙嗎'),
-      RecognizedMessage(isFromMe: true, content: '剛忙完'),
-      RecognizedMessage(isFromMe: false, content: '那晚點聊'),
+      RecognizedMessage(side: 'left', isFromMe: false, content: '你今天在忙嗎'),
+      RecognizedMessage(side: 'right', isFromMe: true, content: '剛忙完'),
+      RecognizedMessage(side: 'right', isFromMe: false, content: '那晚點聊'),
     ],
   );
 
@@ -148,7 +148,7 @@ void main() {
 
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('取消'));
+      await tester.tap(find.text('稍後再匯入'));
       await tester.pumpAndSettle();
 
       expect(dialogResult, isNull);
@@ -172,6 +172,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('可直接修正錯字'), findsOneWidget);
+      expect(find.text('依左 / 右重新套用'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(ChoiceChip, '我說').first);
       await tester.pumpAndSettle();
@@ -189,6 +190,38 @@ void main() {
       expect(dialogResult!.messages, hasLength(2));
       expect(dialogResult!.messages.first.isFromMe, isTrue);
       expect(dialogResult!.messages.first.content, '其實剛好忙完，晚點可以聊');
+    });
+
+    testWidgets('supports batch speaker correction from bubble sides',
+        (tester) async {
+      ScreenshotRecognitionDialogResult? dialogResult;
+
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+          onResult: (result) => dialogResult = result,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('依左 / 右重新套用'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('這組改成我說'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('確認匯入'));
+      await tester.pumpAndSettle();
+
+      expect(dialogResult, isNotNull);
+      expect(dialogResult!.messages[0].isFromMe, isFalse);
+      expect(dialogResult!.messages[1].isFromMe, isTrue);
+      expect(dialogResult!.messages[2].isFromMe, isTrue);
     });
   });
 }

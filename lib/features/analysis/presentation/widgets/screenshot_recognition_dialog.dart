@@ -115,6 +115,71 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
+  void _applySpeakerSelection(int index, bool isFromMe) {
+    setState(() {
+      _editableMessages[index].isFromMe = isFromMe;
+      _editValidationMessage = null;
+    });
+  }
+
+  void _applySpeakerToKnownSides() {
+    setState(() {
+      for (final message in _editableMessages) {
+        if (message.side == 'left') {
+          message.isFromMe = false;
+        } else if (message.side == 'right') {
+          message.isFromMe = true;
+        }
+      }
+      _editValidationMessage = null;
+    });
+  }
+
+  bool _hasKnownSideMessages() {
+    return _editableMessages.any(
+      (message) => message.side == 'left' || message.side == 'right',
+    );
+  }
+
+  List<int> _contiguousSideIndexes(int index) {
+    if (index < 0 || index >= _editableMessages.length) {
+      return const <int>[];
+    }
+
+    final side = _editableMessages[index].side;
+    if (side != 'left' && side != 'right') {
+      return <int>[index];
+    }
+
+    var start = index;
+    while (start > 0 && _editableMessages[start - 1].side == side) {
+      start--;
+    }
+
+    var end = index;
+    while (end + 1 < _editableMessages.length &&
+        _editableMessages[end + 1].side == side) {
+      end++;
+    }
+
+    return List<int>.generate(end - start + 1, (offset) => start + offset);
+  }
+
+  bool _shouldShowBatchCard(int index) {
+    final groupIndexes = _contiguousSideIndexes(index);
+    return groupIndexes.length > 1 && groupIndexes.first == index;
+  }
+
+  void _applySpeakerToGroup(int index, bool isFromMe) {
+    final groupIndexes = _contiguousSideIndexes(index);
+    setState(() {
+      for (final groupIndex in groupIndexes) {
+        _editableMessages[groupIndex].isFromMe = isFromMe;
+      }
+      _editValidationMessage = null;
+    });
+  }
+
   Color _confidenceColor(RecognizedConversation recognized) {
     if (recognized.importPolicy == 'reject') {
       return AppColors.error;
@@ -203,6 +268,10 @@ class _ScreenshotRecognitionDialogState
     _EditableRecognizedMessage message,
     int index,
   ) {
+    final batchIndexes = _contiguousSideIndexes(index);
+    final showBatchCard = _shouldShowBatchCard(index);
+    final sideGroupLabel = message.side == 'left' ? '左側' : '右側';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -248,22 +317,12 @@ class _ScreenshotRecognitionDialogState
               _buildSpeakerChip(
                 label: '她說',
                 selected: !message.isFromMe,
-                onTap: () {
-                  setState(() {
-                    message.isFromMe = false;
-                    _editValidationMessage = null;
-                  });
-                },
+                onTap: () => _applySpeakerSelection(index, false),
               ),
               _buildSpeakerChip(
                 label: '我說',
                 selected: message.isFromMe,
-                onTap: () {
-                  setState(() {
-                    message.isFromMe = true;
-                    _editValidationMessage = null;
-                  });
-                },
+                onTap: () => _applySpeakerSelection(index, true),
               ),
             ],
           ),
@@ -278,6 +337,48 @@ class _ScreenshotRecognitionDialogState
                   message.side == 'unknown' ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
+          if (showBatchCard) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.14),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '這組連續 $sideGroupLabel 泡泡共有 ${batchIndexes.length} 則，可一起校正。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.glassTextPrimary,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => _applySpeakerToGroup(index, false),
+                        child: const Text('這組改成她說'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () => _applySpeakerToGroup(index, true),
+                        child: const Text('這組改成我說'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (message.quotedReplyController != null) ...[
             const SizedBox(height: 10),
             Text(
@@ -543,6 +644,28 @@ class _ScreenshotRecognitionDialogState
                       height: 1.45,
                     ),
                   ),
+                  if (_hasKnownSideMessages()) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _applySpeakerToKnownSides,
+                          icon: const Icon(Icons.compare_arrows_rounded),
+                          label: const Text('依左 / 右重新套用'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '先依原本的左 / 右泡泡方向快速套用，再逐則微調會更快。',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.unselectedText,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
                   if (widget.recognized.uncertainSideCount > 0) ...[
                     const SizedBox(height: 8),
                     Text(
