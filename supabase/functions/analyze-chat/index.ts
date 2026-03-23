@@ -153,6 +153,68 @@ function logError(event: string, metadata?: Record<string, unknown>) {
   console.error(`${LOG_PREFIX} ${event}`, metadata ?? {});
 }
 
+function deriveRequestType({
+  recognizeOnly,
+  hasImages,
+  isMyMessageMode,
+  hasUserDraft,
+}: {
+  recognizeOnly: boolean;
+  hasImages: boolean;
+  isMyMessageMode: boolean;
+  hasUserDraft: boolean;
+}): string {
+  if (recognizeOnly) {
+    return "recognize_only";
+  }
+  if (hasImages) {
+    return "analyze_with_images";
+  }
+  if (isMyMessageMode) {
+    return "my_message";
+  }
+  if (hasUserDraft) {
+    return "optimize_message";
+  }
+  return "analyze";
+}
+
+function buildRecognitionObservability(
+  recognizedConversation:
+    | {
+      classification?: string;
+      importPolicy?: string;
+      confidence?: string;
+      sideConfidence?: string;
+      messageCount?: number;
+      uncertainSideCount?: number;
+      normalizationTelemetry?: {
+        continuityAdjustedCount?: number;
+        quotedPreviewRemovedCount?: number;
+        quotedPreviewAttachedCount?: number;
+      };
+    }
+    | undefined,
+) {
+  return {
+    recognizedClassification: recognizedConversation?.classification ?? null,
+    recognizedImportPolicy: recognizedConversation?.importPolicy ?? null,
+    recognizedConfidence: recognizedConversation?.confidence ?? null,
+    recognizedSideConfidence: recognizedConversation?.sideConfidence ?? null,
+    recognizedMessageCount: recognizedConversation?.messageCount ?? null,
+    uncertainSideCount: recognizedConversation?.uncertainSideCount ?? null,
+    continuityAdjustedCount:
+      recognizedConversation?.normalizationTelemetry
+        ?.continuityAdjustedCount ?? 0,
+    quotedPreviewRemovedCount:
+      recognizedConversation?.normalizationTelemetry
+        ?.quotedPreviewRemovedCount ?? 0,
+    quotedPreviewAttachedCount:
+      recognizedConversation?.normalizationTelemetry
+        ?.quotedPreviewAttachedCount ?? 0,
+  };
+}
+
 // 建構 Vision API 內容格式
 function buildVisionContent(
   textContent: string,
@@ -2134,6 +2196,12 @@ ${recentText}`;
 
     // 檢查「我說」模式權限（只限 Essential）
     const isMyMessageMode = analyzeMode === "my_message";
+    const requestType = deriveRequestType({
+      recognizeOnly,
+      hasImages,
+      isMyMessageMode,
+      hasUserDraft: !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
+    });
     if (isMyMessageMode && effectiveTier !== "essential") {
       return jsonResponse({
         error: "「我說」分析功能僅限 Essential 方案",
@@ -2226,19 +2294,40 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       : userPrompt;
 
     const startTime = Date.now();
+    const timeoutMs = hasImages
+      ? (recognizeOnly ? 90000 : 120000)
+      : (isMyMessageMode ? 20000 : 30000);
+    const allowModelFallback = !hasImages;
+    const requestObservability = {
+      requestType,
+      analyzeMode,
+      hasImages,
+      recognizeOnly,
+      hasUserDraft: !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
+      imageCount: hasImages ? images.length : 0,
+      totalImageBytes: Math.round(totalImageBytes),
+      timeoutMs,
+      allowModelFallback,
+      effectiveTier,
+      isTestAccount: accountIsTest,
+      inputMessageCount: messages.length,
+      compiledMessageCount,
+      truncatedMessageCount,
+      openingMessagesUsed,
+      recentMessagesUsed,
+      conversationSummaryUsed: !!conversationSummary,
+      contextMode: compiledContextMode,
+    };
     let claudeResult;
     try {
       // OCR-only image requests can fail faster than full image analysis,
       // while text-only "my_message" can use a shorter timeout.
-      const timeoutMs = hasImages
-        ? (recognizeOnly ? 90000 : 120000)
-        : (isMyMessageMode ? 20000 : 30000);
-      const allowModelFallback = !hasImages;
       logInfo("claude_request_started", {
         user: summarizeUser(user.id),
         model: selectedModel,
         hasImages,
         recognizeOnly,
+        requestType,
         timeoutMs,
         allowModelFallback,
       });
@@ -2268,15 +2357,18 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
           userId: user.id,
           model: selectedModel,
-          requestType: recognizeOnly
-            ? "recognize_only"
-            : (hasImages ? "analyze_with_images" : "analyze"),
+          requestType,
           inputTokens: 0,
           outputTokens: 0,
           latencyMs,
           status: "failed",
           errorCode: error.code,
           errorMessage: error.message,
+          requestBody: requestObservability,
+          responseBody: {
+            failureStage: "upstream_request",
+            retryable: error.retryable,
+          },
         });
 
         return jsonResponse({
@@ -2304,6 +2396,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       outputTokens: tokenUsage.outputTokens,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
+      requestType,
     });
 
     // Parse Claude's response
@@ -2380,13 +2473,18 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
         userId: user.id,
         model: actualModel,
-        requestType: recognizeOnly ? "recognize_only" : "analyze_with_images",
+        requestType,
         inputTokens: tokenUsage.inputTokens,
         outputTokens: tokenUsage.outputTokens,
         latencyMs,
         status: "failed",
         errorCode: "RECOGNITION_UNSUPPORTED",
         errorMessage: rejectMessage,
+        requestBody: requestObservability,
+        responseBody: {
+          failureStage: "recognition_gate",
+          ...buildRecognitionObservability(recognizedConversation),
+        },
       });
 
       return jsonResponse({
@@ -2404,13 +2502,17 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
         userId: user.id,
         model: actualModel,
-        requestType: recognizeOnly ? "recognize_only" : "analyze_with_images",
+        requestType,
         inputTokens: tokenUsage.inputTokens,
         outputTokens: tokenUsage.outputTokens,
         latencyMs,
         status: "failed",
         errorCode: "RECOGNITION_FAILED",
         errorMessage: "No recognizedConversation in response",
+        requestBody: requestObservability,
+        responseBody: {
+          failureStage: "recognition_missing_output",
+        },
       });
 
       return jsonResponse({
@@ -2441,15 +2543,20 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       userId: user.id,
       model: actualModel,
-      requestType: recognizeOnly
-        ? "recognize_only"
-        : (hasImages ? "analyze_with_images" : "analyze"),
+      requestType,
       inputTokens: tokenUsage.inputTokens,
       outputTokens: tokenUsage.outputTokens,
       latencyMs,
       status: wasFiltered ? "filtered" : "success",
       fallbackUsed: claudeResult.fallbackUsed,
       retryCount: claudeResult.retries,
+      requestBody: requestObservability,
+      responseBody: {
+        filtered: wasFiltered,
+        retries: claudeResult.retries,
+        fallbackUsed: claudeResult.fallbackUsed,
+        ...buildRecognitionObservability(recognizedConversation),
+      },
     });
 
     // Filter replies based on tier
@@ -2502,12 +2609,14 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     };
 
     result.telemetry = {
-      requestType: recognizeOnly ? "recognize_only" : "analyze",
+      requestType,
       imageCount: hasImages ? images.length : 0,
       totalImageBytes: Math.round(totalImageBytes),
       serverAiLatencyMs: latencyMs,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
+      timeoutMs,
+      allowModelFallback,
       contextMode: compiledContextMode,
       inputMessageCount: messages.length,
       compiledMessageCount,

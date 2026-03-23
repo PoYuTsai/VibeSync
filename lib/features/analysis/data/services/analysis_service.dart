@@ -48,6 +48,7 @@ class AnalysisProgressUpdate {
 }
 
 class AnalysisTelemetry {
+  final String? requestType;
   final int imageCount;
   final int requestBodyBytes;
   final Duration payloadPreparationDuration;
@@ -55,6 +56,10 @@ class AnalysisTelemetry {
   final Duration? edgeAiDuration;
   final int? totalCompressedImageBytes;
   final bool cacheHit;
+  final bool fallbackUsed;
+  final int retryCount;
+  final Duration? timeoutDuration;
+  final bool? allowModelFallback;
   final String? contextMode;
   final int? inputMessageCount;
   final int? compiledMessageCount;
@@ -72,6 +77,7 @@ class AnalysisTelemetry {
   final int? quotedPreviewAttachedCount;
 
   const AnalysisTelemetry({
+    this.requestType,
     required this.imageCount,
     required this.requestBodyBytes,
     required this.payloadPreparationDuration,
@@ -79,6 +85,10 @@ class AnalysisTelemetry {
     this.edgeAiDuration,
     this.totalCompressedImageBytes,
     this.cacheHit = false,
+    this.fallbackUsed = false,
+    this.retryCount = 0,
+    this.timeoutDuration,
+    this.allowModelFallback,
     this.contextMode,
     this.inputMessageCount,
     this.compiledMessageCount,
@@ -638,10 +648,11 @@ class AnalysisService {
           final telemetryData = _normalizeObject(responseData['telemetry']);
 
           onTelemetry?.call(
-            AnalysisTelemetry(
-              imageCount: imageCount,
-              requestBodyBytes: requestBodyBytes,
-              payloadPreparationDuration: payloadPreparationDuration,
+          AnalysisTelemetry(
+            requestType: telemetryData?['requestType'] as String?,
+            imageCount: imageCount,
+            requestBodyBytes: requestBodyBytes,
+            payloadPreparationDuration: payloadPreparationDuration,
               roundTripDuration: roundTripDuration,
               edgeAiDuration: _durationFromMilliseconds(
                 telemetryData?['serverAiLatencyMs'],
@@ -651,6 +662,14 @@ class AnalysisService {
                       ? (telemetryData?['totalImageBytes'] as num).round()
                       : null,
               cacheHit: false,
+              fallbackUsed: telemetryData?['fallbackUsed'] == true,
+              retryCount: telemetryData?['retries'] is num
+                  ? (telemetryData?['retries'] as num).round()
+                  : 0,
+              timeoutDuration: _durationFromMilliseconds(
+                telemetryData?['timeoutMs'],
+              ),
+              allowModelFallback: telemetryData?['allowModelFallback'] as bool?,
               contextMode: telemetryData?['contextMode'] as String?,
               inputMessageCount: telemetryData?['inputMessageCount'] is num
                   ? (telemetryData?['inputMessageCount'] as num).round()

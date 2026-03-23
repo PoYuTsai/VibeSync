@@ -111,6 +111,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   AnalysisProgressStage _recognizeStage =
       AnalysisProgressStage.preparingPayload;
   AnalysisTelemetry? _lastRecognizeTelemetry;
+  AnalysisTelemetry? _lastAnalysisTelemetry;
   static const String _importModeAppendCurrent =
       ScreenshotRecognitionHelper.importModeAppendCurrent;
   static const String _importModeNewConversation =
@@ -487,6 +488,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     setState(() {
       _lastRecognizeTelemetry = telemetry;
+    });
+  }
+
+  void _handleAnalysisTelemetry(AnalysisTelemetry telemetry) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _lastAnalysisTelemetry = telemetry;
     });
   }
 
@@ -1107,6 +1118,40 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return parts.isEmpty ? null : parts.join('｜');
   }
 
+  String _analysisTelemetryRequestLabel(AnalysisTelemetry telemetry) {
+    switch (telemetry.requestType) {
+      case 'my_message':
+        return '上次「我說」量測';
+      case 'optimize_message':
+        return '上次優化量測';
+      case 'analyze_with_images':
+        return '上次帶圖分析量測';
+      default:
+        return '上次分析量測';
+    }
+  }
+
+  String _analysisTelemetryTransportSummary(AnalysisTelemetry telemetry) {
+    final retrySummary = telemetry.retryCount > 0
+        ? '重試 ${telemetry.retryCount} 次'
+        : null;
+    final fallbackSummary = telemetry.fallbackUsed ? '有 fallback' : null;
+    final timeoutSummary = telemetry.timeoutDuration != null
+        ? '逾時上限 ${_formatDuration(telemetry.timeoutDuration)}'
+        : null;
+
+    final parts = <String>[
+      '請求 ${_formatBytes(telemetry.requestBodyBytes)}',
+      '本機準備 ${_formatDuration(telemetry.payloadPreparationDuration)}',
+      '往返 ${_formatDuration(telemetry.roundTripDuration)}',
+      if (retrySummary != null) retrySummary,
+      if (fallbackSummary != null) fallbackSummary,
+      if (timeoutSummary != null) timeoutSummary,
+    ];
+
+    return parts.join('｜');
+  }
+
   Color _recognitionConfidenceColor(RecognizedConversation recognized) {
     if (recognized.importPolicy == 'reject') {
       return AppColors.error;
@@ -1247,6 +1292,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _debugLog('[Recognize] OCR cache hit');
         _handleRecognizeTelemetry(
           AnalysisTelemetry(
+            requestType: 'recognize_only',
             imageCount: imagesToProcess.length,
             requestBodyBytes: 0,
             payloadPreparationDuration: Duration.zero,
@@ -1424,6 +1470,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     setState(() {
       _resetErrorState();
+      _lastAnalysisTelemetry = null;
     });
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
@@ -1495,6 +1542,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
+        onTelemetry: _handleAnalysisTelemetry,
       );
 
       // 記錄已分析的訊息數量
@@ -1570,6 +1618,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     setState(() {
       _isAnalyzingMyMessage = true;
       _myMessageAnalysis = null;
+      _lastAnalysisTelemetry = null;
     });
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
@@ -1590,6 +1639,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
         analyzeMode: 'my_message',
+        onTelemetry: _handleAnalysisTelemetry,
       );
 
       setState(() {
@@ -1618,6 +1668,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     setState(() {
       _isOptimizing = true;
       _optimizedMessage = null;
+      _lastAnalysisTelemetry = null;
     });
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
@@ -1638,6 +1689,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
         userDraft: draft,
+        onTelemetry: _handleAnalysisTelemetry,
       );
       if (!mounted) return;
 
@@ -2669,6 +2721,62 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                     Text(
                                       _recognizeTelemetryContextSummary(
                                           _lastRecognizeTelemetry!)!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_lastAnalysisTelemetry != null &&
+                              !_isAnalyzing) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.info.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppColors.info.withValues(alpha: 0.16),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _analysisTelemetryRequestLabel(
+                                      _lastAnalysisTelemetry!,
+                                    ),
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.onBackgroundPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _analysisTelemetryTransportSummary(
+                                      _lastAnalysisTelemetry!,
+                                    ),
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    'AI ${_formatDuration(_lastAnalysisTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastAnalysisTelemetry!.estimatedTransferDuration)}',
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  if (_recognizeTelemetryContextSummary(
+                                          _lastAnalysisTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _recognizeTelemetryContextSummary(
+                                        _lastAnalysisTelemetry!,
+                                      )!,
                                       style: AppTypography.caption.copyWith(
                                         color: AppColors.textSecondary,
                                       ),

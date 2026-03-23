@@ -146,12 +146,12 @@ export async function logAiCall(
       error_message: sanitizeErrorMessage(entry.errorMessage),
       fallback_used: entry.fallbackUsed || false,
       retry_count: entry.retryCount || 0,
-      request_body: entry.status === "failed"
-        ? sanitizeLogPayload(entry.requestBody)
-        : null,
-      response_body: entry.status === "failed"
-        ? sanitizeLogPayload(entry.responseBody)
-        : null,
+      request_body: entry.requestBody === undefined
+        ? null
+        : sanitizeLogPayload(entry.requestBody),
+      response_body: entry.responseBody === undefined
+        ? null
+        : sanitizeLogPayload(entry.responseBody),
     });
 
     if (error) {

@@ -366,6 +366,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - This is meant to reduce the real-world OCR cleanup cost when a screenshot has a short run of right-side image/text bubbles that all drifted to the wrong speaker together.
    - `flutter analyze` passed after this pass. The targeted widget test was updated for the new batch actions and the current `稍後再匯入` button label, but `flutter test test/widget/widgets/screenshot_recognition_dialog_test.dart` still timed out in this desktop session and needs a clean rerun elsewhere.
 
+73. `supabase/functions/analyze-chat/index.ts`, `supabase/functions/analyze-chat/logger.ts`, `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
+   - `analyze-chat` observability is now one layer richer: request subtype is now explicit (`analyze`, `my_message`, `optimize_message`, `recognize_only`, `analyze_with_images`), and success logs now retain safe structured metadata like timeout lane, context-compaction mode, OCR classification, side-confidence, uncertain-side count, and quoted-preview normalization counts.
+   - `ai_logs.request_body/response_body` now store sanitized observability metadata for successful runs too, not just failures, while still redacting sensitive conversation/image fields.
+   - Flutter now parses that richer telemetry and shows a separate `上次分析量測` card for non-OCR runs, including request size, local prep time, round-trip, retry/fallback signals, timeout lane, and context-compaction summary, so partner QA can tell whether a slowdown came from OCR, text analysis, retries, or long-context trimming.
+   - Verification after this pass: `deno check supabase/functions/analyze-chat/index.ts` passed and `flutter analyze` passed.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
