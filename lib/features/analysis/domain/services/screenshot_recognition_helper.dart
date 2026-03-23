@@ -85,6 +85,11 @@ class ScreenshotRecognitionHelper {
       warnings.add('若這批截圖不是同一個人的同一段對話，建議改用「另存成新對話」避免污染目前 thread。');
     }
 
+    final sideWarning = sideConfidenceWarning(recognized);
+    if (sideWarning != null) {
+      warnings.add(sideWarning);
+    }
+
     if (recognized.importPolicy == 'reject' && warnings.isEmpty) {
       final fallback = fallbackWarningForClassification(recognized.classification);
       if (fallback != null) {
@@ -177,6 +182,34 @@ class ScreenshotRecognitionHelper {
     }
   }
 
+  static String sideConfidenceLabel(String confidence) {
+    switch (confidence) {
+      case 'low':
+        return '方向待確認';
+      case 'medium':
+        return '方向中等';
+      case 'high':
+      default:
+        return '方向穩定';
+    }
+  }
+
+  static String? sideConfidenceWarning(RecognizedConversation recognized) {
+    if (recognized.uncertainSideCount > 0) {
+      return '有 ${recognized.uncertainSideCount} 則訊息的左右方向不夠確定，匯入前請特別檢查「我說 / 她說」是否正確。';
+    }
+
+    if (recognized.sideConfidence == 'medium') {
+      return '這批訊息的左右方向有部分是系統協助校正後得到的，建議匯入前再快速確認一次。';
+    }
+
+    if (recognized.sideConfidence == 'low') {
+      return '這批訊息的左右方向信心偏低，建議逐則檢查後再匯入。';
+    }
+
+    return null;
+  }
+
   static String actionGuidance(RecognizedConversation recognized) {
     final warning = recognized.warning?.trim() ?? '';
     final looksLikeCallRecord =
@@ -207,6 +240,14 @@ class ScreenshotRecognitionHelper {
 
     if (looksLikeMixedThread) {
       return '這批截圖可能混入了不同人的對話，建議先逐則檢查預覽；如果不是同一段續聊，請改用「另存成新對話」。';
+    }
+
+    if (recognized.sideConfidence == 'low') {
+      return '這批訊息的左右方向還不夠穩，建議先檢查每則是「我說」還是「她說」，再決定是否匯入。';
+    }
+
+    if (recognized.uncertainSideCount > 0) {
+      return '大部分內容可用，但有少數訊息的左右方向不夠確定。建議先修正「我說 / 她說」後再匯入。';
     }
 
     if (recognized.importPolicy == 'confirm' ||

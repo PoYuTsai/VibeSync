@@ -292,6 +292,8 @@ class RecognizedConversation {
   final String classification;
   final String importPolicy;
   final String confidence;
+  final String sideConfidence;
+  final int uncertainSideCount;
   final String? warning;
 
   const RecognizedConversation({
@@ -302,6 +304,8 @@ class RecognizedConversation {
     this.classification = 'valid_chat',
     this.importPolicy = 'allow',
     this.confidence = 'high',
+    this.sideConfidence = 'high',
+    this.uncertainSideCount = 0,
     this.warning,
   });
 
@@ -321,6 +325,8 @@ class RecognizedConversation {
       classification: json['classification'] as String? ?? 'valid_chat',
       importPolicy: json['importPolicy'] as String? ?? 'allow',
       confidence: json['confidence'] as String? ?? 'high',
+      sideConfidence: json['sideConfidence'] as String? ?? 'high',
+      uncertainSideCount: json['uncertainSideCount'] as int? ?? 0,
       warning: json['warning'] as String?,
     );
   }
@@ -333,6 +339,8 @@ class RecognizedConversation {
         'classification': classification,
         'importPolicy': importPolicy,
         'confidence': confidence,
+        'sideConfidence': sideConfidence,
+        'uncertainSideCount': uncertainSideCount,
         'warning': warning,
       };
 
@@ -344,6 +352,8 @@ class RecognizedConversation {
     String? classification,
     String? importPolicy,
     String? confidence,
+    String? sideConfidence,
+    int? uncertainSideCount,
     String? warning,
   }) {
     return RecognizedConversation(
@@ -354,6 +364,8 @@ class RecognizedConversation {
       classification: classification ?? this.classification,
       importPolicy: importPolicy ?? this.importPolicy,
       confidence: confidence ?? this.confidence,
+      sideConfidence: sideConfidence ?? this.sideConfidence,
+      uncertainSideCount: uncertainSideCount ?? this.uncertainSideCount,
       warning: warning ?? this.warning,
     );
   }

@@ -222,6 +222,8 @@ const RECOGNIZED_CONVERSATION_SCHEMA = `{
     "classification": "valid_chat",
     "importPolicy": "allow",
     "confidence": "high",
+    "sideConfidence": "high",
+    "uncertainSideCount": 0,
     "warning": null,
     "messageCount": 4,
     "summary": "A short summary of the visible exchange.",
@@ -948,16 +950,23 @@ function applySpeakerContinuityHeuristics(
     isFromMe: boolean;
     content: string;
   }>,
-): Array<{
-  side: "left" | "right" | "unknown";
-  isFromMe: boolean;
-  content: string;
-}> {
+): {
+  messages: Array<{
+    side: "left" | "right" | "unknown";
+    isFromMe: boolean;
+    content: string;
+  }>;
+  adjustedCount: number;
+} {
   if (messages.length < 3) {
-    return messages;
+    return {
+      messages,
+      adjustedCount: 0,
+    };
   }
 
   const adjusted = messages.map((message) => ({ ...message }));
+  let adjustedCount = 0;
 
   for (let index = 1; index < adjusted.length - 1; index += 1) {
     const previous = adjusted[index - 1];
@@ -989,9 +998,38 @@ function applySpeakerContinuityHeuristics(
       side: previousSide,
       isFromMe: previous.isFromMe,
     };
+    adjustedCount += 1;
   }
 
-  return adjusted;
+  return {
+    messages: adjusted,
+    adjustedCount,
+  };
+}
+
+function normalizeSideConfidenceLabel(
+  messageCount: number,
+  uncertainSideCount: number,
+  adjustedSideCount: number,
+  classification: string,
+): "high" | "medium" | "low" {
+  if (messageCount <= 0) {
+    return "low";
+  }
+
+  if (classification === "low_confidence" && uncertainSideCount > 0) {
+    return "low";
+  }
+
+  if (uncertainSideCount === 0 && adjustedSideCount === 0) {
+    return "high";
+  }
+
+  if (uncertainSideCount >= Math.ceil(messageCount / 3)) {
+    return "low";
+  }
+
+  return "medium";
 }
 
 function isLikelyMixedThreadWarning(value: unknown): boolean {
@@ -1108,6 +1146,8 @@ function normalizeRecognizedConversation(
           classification,
           0,
         ),
+        sideConfidence: "low",
+        uncertainSideCount: 0,
         warning: normalizeWarningMessage(
           recognizedRaw.warning,
           classification,
@@ -1232,8 +1272,17 @@ function normalizeRecognizedConversation(
       message !== null
     );
 
-  const continuityAdjustedMessages = applySpeakerContinuityHeuristics(
+  const uncertainSideCount = normalizedMessagesWithSidePriority.filter((message) =>
+    message.side === "unknown"
+  ).length;
+  const continuityAdjustment = applySpeakerContinuityHeuristics(
     normalizedMessagesWithSidePriority,
+  );
+  const sideConfidence = normalizeSideConfidenceLabel(
+    normalizedMessages.length,
+    uncertainSideCount,
+    continuityAdjustment.adjustedCount,
+    classification,
   );
 
   normalizedResult.recognizedConversation = {
@@ -1243,10 +1292,12 @@ function normalizeRecognizedConversation(
       typeof recognizedRaw.summary === "string" && recognizedRaw.summary.trim()
         ? recognizedRaw.summary
         : `已識別 ${normalizedMessages.length} 則訊息`,
-    messages: continuityAdjustedMessages,
+    messages: continuityAdjustment.messages,
     classification,
     importPolicy,
     confidence,
+    sideConfidence,
+    uncertainSideCount,
     warning,
   };
 

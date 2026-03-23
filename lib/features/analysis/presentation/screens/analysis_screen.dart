@@ -822,6 +822,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   String _recognitionConfidenceLabel(String confidence) =>
       ScreenshotRecognitionHelper.confidenceLabel(confidence);
 
+  String _recognitionSideConfidenceLabel(String confidence) =>
+      ScreenshotRecognitionHelper.sideConfidenceLabel(confidence);
+
   Color _recognitionConfidenceColor(RecognizedConversation recognized) {
     if (recognized.importPolicy == 'reject') {
       return AppColors.error;
@@ -1651,6 +1654,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 icon: Icons.auto_awesome,
                 label: _recognitionConfidenceLabel(displayRecognized.confidence),
                 color: _recognitionConfidenceColor(displayRecognized),
+              ),
+              _buildRecognitionStatusChip(
+                icon: Icons.compare_arrows_rounded,
+                label: _recognitionSideConfidenceLabel(
+                  displayRecognized.sideConfidence,
+                ),
+                color: _recognitionConfidenceColor(
+                  displayRecognized.copyWith(
+                    confidence: displayRecognized.sideConfidence,
+                  ),
+                ),
               ),
             ],
           ),

@@ -129,6 +129,29 @@ class _ScreenshotRecognitionDialogState
     }
   }
 
+  Color _sideConfidenceColor(RecognizedConversation recognized) {
+    switch (recognized.sideConfidence) {
+      case 'low':
+        return AppColors.warning;
+      case 'medium':
+        return AppColors.info;
+      case 'high':
+      default:
+        return AppColors.success;
+    }
+  }
+
+  String _sideLabel(String side) {
+    switch (side) {
+      case 'left':
+        return '原判斷：左側';
+      case 'right':
+        return '原判斷：右側';
+      default:
+        return '原判斷：方向待確認';
+    }
+  }
+
   Widget _buildStatusChip({
     required IconData icon,
     required String label,
@@ -243,6 +266,17 @@ class _ScreenshotRecognitionDialogState
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Text(
+            _sideLabel(message.side),
+            style: AppTypography.bodySmall.copyWith(
+              color: message.side == 'unknown'
+                  ? AppColors.warning
+                  : AppColors.unselectedText,
+              fontWeight:
+                  message.side == 'unknown' ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 10),
           TextField(
             controller: message.controller,
@@ -351,6 +385,13 @@ class _ScreenshotRecognitionDialogState
                     widget.recognized.confidence,
                   ),
                   color: _confidenceColor(widget.recognized),
+                ),
+                _buildStatusChip(
+                  icon: Icons.compare_arrows_rounded,
+                  label: ScreenshotRecognitionHelper.sideConfidenceLabel(
+                    widget.recognized.sideConfidence,
+                  ),
+                  color: _sideConfidenceColor(widget.recognized),
                 ),
               ],
             ),
@@ -463,6 +504,17 @@ class _ScreenshotRecognitionDialogState
                       height: 1.45,
                     ),
                   ),
+                  if (widget.recognized.uncertainSideCount > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '這次有 ${widget.recognized.uncertainSideCount} 則訊息的左右方向不夠確定，建議優先檢查這些列。',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.w600,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   ..._editableMessages.asMap().entries.map(
                     (entry) => _buildEditableMessageCard(
@@ -592,10 +644,12 @@ class _ScreenshotRecognitionDialogState
 }
 
 class _EditableRecognizedMessage {
+  final String side;
   bool isFromMe;
   final TextEditingController controller;
 
   _EditableRecognizedMessage({
+    required this.side,
     required this.isFromMe,
     required this.controller,
   });
@@ -604,6 +658,7 @@ class _EditableRecognizedMessage {
     RecognizedMessage message,
   ) {
     return _EditableRecognizedMessage(
+      side: message.side,
       isFromMe: message.isFromMe,
       controller: TextEditingController(text: message.content),
     );
@@ -611,6 +666,7 @@ class _EditableRecognizedMessage {
 
   RecognizedMessage toRecognizedMessage() {
     return RecognizedMessage(
+      side: side,
       isFromMe: isFromMe,
       content: controller.text.trim(),
     );

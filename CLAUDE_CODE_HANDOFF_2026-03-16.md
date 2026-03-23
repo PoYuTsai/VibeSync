@@ -351,6 +351,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The helper now treats both `新對話` and `新的對話` as untitled placeholder names, so when OCR has already recognized a contact name like `Amy`, importing into an untitled thread now correctly promotes the title instead of leaving the app bar stuck on the placeholder text.
    - The screenshot-start flow on the home screen is also normalized to create `新對話` going forward, reducing future drift.
 
+70. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/domain/entities/analysis_models.dart`, `lib/features/analysis/domain/services/screenshot_recognition_helper.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`, `lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart`
+   - Screenshot OCR now exposes a separate structure/speaker-direction confidence layer instead of collapsing everything into one generic recognition confidence.
+   - The backend computes `sideConfidence` and `uncertainSideCount` from the returned bubble-side data and continuity corrections, so the app can distinguish "content mostly read fine" from "left/right assignment is still shaky".
+   - The result card now shows a dedicated direction-confidence chip, helper copy escalates when speaker direction is uncertain, and the import dialog surfaces both the original detected side (`左側 / 右側 / 方向待確認`) and a warning when some rows need manual `我說 / 她說` review.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.
