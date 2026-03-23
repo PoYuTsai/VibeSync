@@ -324,6 +324,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
    - The post-analysis "continue conversation" composer now supports screenshot upload as well as manual typing, so users can import new chat screenshots without leaving the follow-up flow.
    - While screenshots are pending recognition, the bottom `她說 / 我說` actions now disable visually instead of letting users accidentally bypass the OCR step and create a confusing mixed flow.
 
+65. `supabase/functions/analyze-chat/index.ts`
+   - Screenshot OCR speaker-direction rules are now stricter: bubble alignment explicitly overrides semantic guessing when deciding `isFromMe`.
+   - The prompt now warns against forcing alternating speakers and calls out short right-side bubbles like `超爽` as cases that must still follow layout rather than wording.
+   - Both recognize-only and full image-analysis prompts now ask for a final side-check before returning JSON, so clearly right-aligned bubbles should be less likely to come back as `她說`.
+
 ## Product / Logic Notes
 
 - The "last message is me" hotfix does **not** increase token usage. It usually sends the same or fewer messages, because normal analysis is now anchored to the latest incoming message instead of forcing the whole thread to be analyzable.

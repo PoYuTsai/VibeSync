@@ -147,5 +147,6 @@ Private - All Rights Reserved
 - `docs/testflight-regression-checklist.md` now includes an explicit pause point for this stage, so the next build can stop at a clearer TestFlight handoff instead of becoming an endless moving target.
 - The "optimize my message" result block now uses a darker, higher-contrast visual treatment so the generated text remains readable inside the white glass card on mobile.
 - Continuing a conversation after analysis now supports screenshot upload too, so testers can import fresh chat screenshots from the collapsed follow-up composer instead of being forced back to manual typing only.
+- Screenshot OCR speaker-direction rules are now stricter: bubble side now explicitly outranks semantics, so short right-aligned replies should be less likely to be mislabeled as incoming messages.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
