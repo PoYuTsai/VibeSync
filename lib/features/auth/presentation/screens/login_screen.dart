@@ -865,7 +865,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: GestureDetector(
                 onTap: () => _launchUrl('https://vibesyncai.app/privacy'),
                 child: Text(
-                  '隱私政策',
+                  '隱私權政策',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     decoration: TextDecoration.underline,

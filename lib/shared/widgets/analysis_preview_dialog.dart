@@ -31,17 +31,17 @@ class AnalysisPreviewDialog extends StatelessWidget {
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('開始分析前確認', style: AppTypography.titleLarge),
+      title: Text('開始前先看一下', style: AppTypography.titleLarge),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildRow('本次預估扣點', '${preview.messageCount} 則'),
+          _buildRow('這次大約會用掉', '${preview.messageCount} 則'),
           const SizedBox(height: 12),
-          _buildRow('本次分析字數', '${preview.charCount} 字'),
+          _buildRow('這次要分析的內容', '${preview.charCount} 字'),
           const SizedBox(height: 12),
           _buildRow(
-            '本月剩餘額度',
+            '這個月還能分析',
             '${usage.monthlyRemaining} / ${usage.monthlyLimit} 則',
           ),
           const SizedBox(height: 4),
@@ -56,7 +56,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _buildRow(
-            '今日剩餘額度',
+            '今天還能分析',
             '${usage.dailyRemaining} / ${usage.dailyLimit} 則',
           ),
           const SizedBox(height: 4),
@@ -71,14 +71,14 @@ class AnalysisPreviewDialog extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           if (preview.exceedsLimit)
-            _buildWarning('這次分析內容太長，請縮短到 5,000 字內後再試。')
+            _buildWarning('這次內容太長了，請先刪掉一部分對話後再試。')
           else if (usage.monthlyRemaining < preview.messageCount)
-            _buildWarning('本月剩餘額度不足，請升級方案後再分析。')
+            _buildWarning('這個月的分析次數不夠了，升級後再繼續。')
           else if (usage.dailyRemaining < preview.messageCount)
-            _buildWarning('今日剩餘額度不足，明天再來或先升級方案。'),
+            _buildWarning('今天的分析次數不夠了，明天再來或先升級方案。'),
           const SizedBox(height: 12),
           Text(
-            '計費規則：完整分析會依實際送出的對話內容按訊息數扣點；純截圖識別不扣額度。若是測試白名單帳號，這裡會顯示估算值，但不會真的扣點。',
+            '小提醒：只有真的送去做完整分析的內容，才會依訊息數扣次數。若只是先讀截圖、不做完整分析，這一步不會扣次數。測試帳號看到的是估算值，不會真的扣掉。',
             style: AppTypography.caption.copyWith(
               color: AppColors.textSecondary,
               height: 1.45,
@@ -87,7 +87,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
           if (canProceed) ...[
             const SizedBox(height: 8),
             Text(
-              '分析後預估剩餘：本月 '
+              '分析後大約還剩：本月 '
               '${usage.monthlyRemaining - preview.messageCount} 則 / 今日 '
               '${usage.dailyRemaining - preview.messageCount} 則',
               style: AppTypography.caption,
@@ -114,7 +114,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
           ),
-          child: const Text('確認開始分析'),
+          child: const Text('開始分析'),
         ),
       ],
     );

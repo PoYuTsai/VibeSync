@@ -74,7 +74,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _buildTile(
                       context: context,
                       icon: Icons.analytics,
-                      title: '本月用量',
+                      title: '本月已分析',
                       trailing:
                           '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit}',
                     ),
@@ -180,6 +180,94 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return user.email ?? '未提供 email';
   }
 
+  bool _containsAny(String source, List<String> patterns) {
+    return patterns.any(source.contains);
+  }
+
+  String _mapRestorePurchasesError(Object error) {
+    final normalized = error.toString().toLowerCase();
+
+    if (_containsAny(normalized, [
+      'network',
+      'timeout',
+      'socket',
+      'failed host lookup',
+      'connection',
+    ])) {
+      return '網路不太穩，請稍後再試一次。';
+    }
+
+    if (_containsAny(normalized, [
+      'not logged in',
+      'unauthorized',
+      'auth',
+      'jwt',
+      'session',
+    ])) {
+      return '登入狀態已失效，請重新登入後再試。';
+    }
+
+    if (_containsAny(normalized, [
+      'not initialized',
+      'configured',
+      'configuration',
+      'platform',
+    ])) {
+      return '購買服務還在準備中，請稍後再試。';
+    }
+
+    return '目前無法恢復購買，請稍後再試一次。';
+  }
+
+  String _mapDeleteAccountError(Object error) {
+    final normalized = error.toString().toLowerCase();
+
+    if (_containsAny(normalized, [
+      'confirmation',
+      'mismatch',
+    ])) {
+      return '確認資訊不正確，請重新輸入 DELETE 再試一次。';
+    }
+
+    if (_containsAny(normalized, [
+      'network',
+      'timeout',
+      'socket',
+      'failed host lookup',
+      'connection',
+    ])) {
+      return '網路不太穩，請稍後再試一次。';
+    }
+
+    if (_containsAny(normalized, [
+      'not logged in',
+      'unauthorized',
+      'auth',
+      'jwt',
+      'session',
+    ])) {
+      return '登入狀態已失效，請重新登入後再試。';
+    }
+
+    return '現在還不能刪除帳號，請稍後再試一次。';
+  }
+
+  String _mapLogoutError(Object error) {
+    final normalized = error.toString().toLowerCase();
+
+    if (_containsAny(normalized, [
+      'network',
+      'timeout',
+      'socket',
+      'failed host lookup',
+      'connection',
+    ])) {
+      return '目前無法順利登出，請檢查網路後再試一次。';
+    }
+
+    return '登出時出了點問題，請再試一次。';
+  }
+
   Widget _buildSection({
     required String title,
     required List<Widget> children,
@@ -247,7 +335,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
 
-      Navigator.pop(context);
+      Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(restored ? '恢復購買成功' : '目前沒有可恢復的購買'),
@@ -259,9 +347,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
 
-      Navigator.pop(context);
+      Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('恢復購買失敗: $error')),
+        SnackBar(content: Text(_mapRestorePurchasesError(error))),
       );
     }
   }
@@ -298,7 +386,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    await SupabaseService.signOut();
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await SupabaseService.signOut();
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      if (!SupabaseService.isAuthenticated) {
+        ref.invalidate(subscriptionProvider);
+        context.go('/login');
+        messenger.showSnackBar(
+          const SnackBar(content: Text('你已登出。若畫面還有異常，重新開啟 App 即可。')),
+        );
+        return;
+      }
+
+      messenger.showSnackBar(
+        SnackBar(content: Text(_mapLogoutError(error))),
+      );
+      return;
+    }
+
     ref.invalidate(subscriptionProvider);
 
     if (context.mounted) {
@@ -418,7 +529,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       Navigator.of(context, rootNavigator: true).pop();
       messenger.showSnackBar(
         SnackBar(
-          content: Text('刪除帳號失敗: $error'),
+          content: Text(_mapDeleteAccountError(error)),
           backgroundColor: AppColors.error,
         ),
       );
