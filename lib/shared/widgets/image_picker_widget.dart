@@ -191,7 +191,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '建議每張截圖保留 15 則內的完整對話，辨識和排序會更穩。',
+                  '每張盡量保留 15 則內，辨識會更穩。',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.unselectedText,
@@ -199,7 +199,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '如果是 LINE 回覆框，請把引用框和實際訊息一起截進來。',
+                  '如果有 LINE 回覆框，請把引用和主訊息一起截進來。',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.unselectedText,
@@ -212,7 +212,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              '請上傳直式聊天截圖，盡量保留標題列、完整訊息泡泡與上下文。',
+              '請上傳聊天畫面，盡量保留標題列、訊息泡泡和前後文。',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.unselectedText,

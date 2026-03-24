@@ -75,7 +75,7 @@ class ScreenshotPreflightService {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) {
       return ScreenshotPreflightResult.reject(
-        '這張圖片無法讀取，請重新截圖後再試。',
+        '這張圖打不開，請重新截圖後再試。',
       );
     }
 
@@ -87,7 +87,7 @@ class ScreenshotPreflightService {
 
     if (width < _hardRejectMinEdge || height < _hardRejectMinEdge) {
       return ScreenshotPreflightResult.reject(
-        '這張截圖解析度太低，請上傳更清楚的聊天畫面。',
+        '這張圖太小了，請換更清楚的聊天截圖。',
         width: width,
         height: height,
       );
@@ -95,7 +95,7 @@ class ScreenshotPreflightService {
 
     if (isLandscapeCrop && isLowResolution) {
       return ScreenshotPreflightResult.warn(
-        '這張圖裁得比較橫，解析度也偏低，仍可先試試看；若辨識不穩，建議補上更多上下文或改傳直式截圖。',
+        '這張圖裁得比較橫，也稍微偏小。可以先試試看；若內容抓不準，建議補上更多前後文。',
         width: width,
         height: height,
       );
@@ -103,7 +103,7 @@ class ScreenshotPreflightService {
 
     if (isLandscapeCrop) {
       return ScreenshotPreflightResult.warn(
-        '這張圖裁得比較橫，可能少了上下文；若辨識不穩，建議補上更多聊天內容再試。',
+        '這張圖裁得比較橫，前後文可能不夠。若抓不準，建議多截一點聊天內容。',
         width: width,
         height: height,
       );
@@ -111,7 +111,7 @@ class ScreenshotPreflightService {
 
     if (aspectRatio < 1.2) {
       return ScreenshotPreflightResult.warn(
-        '這張圖上下文偏少，若辨識不穩，建議補上更多前後訊息再試。',
+        '這張圖帶到的前後文比較少。若抓不準，建議補上前後幾則訊息。',
         width: width,
         height: height,
       );
@@ -119,7 +119,7 @@ class ScreenshotPreflightService {
 
     if (aspectRatio > 5.8) {
       return ScreenshotPreflightResult.warn(
-        '這張截圖很長，建議拆成 2-3 張，辨識會更穩。',
+        '這張圖很長，拆成 2 到 3 張通常會更穩。',
         width: width,
         height: height,
       );
@@ -127,7 +127,7 @@ class ScreenshotPreflightService {
 
     if (isLowResolution) {
       return ScreenshotPreflightResult.warn(
-        '這張截圖解析度偏低，但可以先試試看；若辨識不穩，建議裁近一點或換更清楚的截圖。',
+        '這張圖稍微偏糊，可以先試試看；若抓不準，建議截近一點或換更清楚的圖。',
         width: width,
         height: height,
       );
@@ -135,7 +135,7 @@ class ScreenshotPreflightService {
 
     if (width < _comfortableMinWidth || height < _comfortableMinHeight) {
       return ScreenshotPreflightResult.warn(
-        '這張截圖解析度偏低，若辨識不穩建議裁近一點再重試。',
+        '這張圖偏小，若抓不準，建議裁近一點再試。',
         width: width,
         height: height,
       );

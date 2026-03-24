@@ -97,11 +97,11 @@ class ScreenshotRecognitionHelper {
     }
 
     if (recognized.importPolicy == 'confirm' && warnings.isEmpty) {
-      warnings.add('這張截圖辨識信心較低，匯入前請先確認預覽內容是否正確。');
+      warnings.add('這張圖還不太確定，匯入前請先看一下內容有沒有抓對。');
     }
 
     if (serverWarning != null && _looksLikeMixedThreadWarning(serverWarning)) {
-      warnings.add('若這批截圖不是同一個人的同一段對話，建議改用「另存成新對話」避免污染目前對話。');
+      warnings.add('如果這批截圖不是同一個人的同一段對話，建議改用「另存成新對話」，比較不會混在一起。');
     }
 
     final sideWarning = sideConfidenceWarning(recognized);
@@ -168,9 +168,9 @@ class ScreenshotRecognitionHelper {
   static String classificationLabel(String classification) {
     switch (classification) {
       case 'low_confidence':
-        return '低信心';
+        return '需要確認';
       case 'social_feed':
-        return '社群內容';
+        return '社群畫面';
       case 'group_chat':
         return '群組聊天';
       case 'gallery_album':
@@ -182,48 +182,48 @@ class ScreenshotRecognitionHelper {
       case 'sensitive_content':
         return '敏感內容';
       case 'unsupported':
-        return '不支援';
+        return '不適合';
       case 'valid_chat':
       default:
-        return '聊天截圖';
+        return '聊天畫面';
     }
   }
 
   static String confidenceLabel(String confidence) {
     switch (confidence) {
       case 'low':
-        return '信心偏低';
+        return '內容需確認';
       case 'medium':
-        return '信心中等';
+        return '內容大致可用';
       case 'high':
       default:
-        return '信心高';
+        return '內容清楚';
     }
   }
 
   static String sideConfidenceLabel(String confidence) {
     switch (confidence) {
       case 'low':
-        return '方向待確認';
+        return '左右需確認';
       case 'medium':
-        return '方向中等';
+        return '左右大致可用';
       case 'high':
       default:
-        return '方向穩定';
+        return '左右清楚';
     }
   }
 
   static String? sideConfidenceWarning(RecognizedConversation recognized) {
     if (recognized.uncertainSideCount > 0) {
-      return '有 ${recognized.uncertainSideCount} 則訊息的左右方向不夠確定，匯入前請特別檢查「我說 / 她說」是否正確。';
+      return '有 ${recognized.uncertainSideCount} 則訊息的左右還不夠清楚，匯入前請再看一下「我說 / 她說」有沒有判對。';
     }
 
     if (recognized.sideConfidence == 'medium') {
-      return '這批訊息的左右方向有部分是系統協助校正後得到的，建議匯入前再快速確認一次。';
+      return '這批訊息的左右有部分是系統幫你補判的，匯入前建議快速看一下。';
     }
 
     if (recognized.sideConfidence == 'low') {
-      return '這批訊息的左右方向信心偏低，建議逐則檢查後再匯入。';
+      return '這批訊息的左右還不夠穩，建議先檢查後再匯入。';
     }
 
     return null;
@@ -241,13 +241,13 @@ class ScreenshotRecognitionHelper {
       switch (recognized.classification) {
         case 'social_feed':
           return const ScreenshotRecognitionGuidance(
-            title: '建議改傳雙人聊天截圖',
+            title: '請改傳聊天截圖',
             body: '這看起來比較像社群貼文或留言串，建議改截雙人聊天畫面再試。',
             tone: ScreenshotRecognitionGuidanceTone.reject,
           );
         case 'group_chat':
           return const ScreenshotRecognitionGuidance(
-            title: '請改傳一對一聊天視窗',
+            title: '請改傳一對一聊天',
             body: '這看起來像群組聊天，目前產品只支援一對一對話分析，建議改截和單一對象的聊天視窗。',
             tone: ScreenshotRecognitionGuidanceTone.reject,
           );
@@ -259,7 +259,7 @@ class ScreenshotRecognitionHelper {
           );
         case 'call_log_screen':
           return const ScreenshotRecognitionGuidance(
-            title: '請保留聊天標題列後重截',
+            title: '請回到聊天畫面再截',
             body: '這看起來像手機的通話紀錄頁。若你想匯入聊天對話裡的來電事件，請保留聊天標題列與上下文後再重截。',
             tone: ScreenshotRecognitionGuidanceTone.reject,
           );
@@ -277,7 +277,7 @@ class ScreenshotRecognitionHelper {
           );
       }
       return const ScreenshotRecognitionGuidance(
-        title: '建議重截更清楚的聊天畫面',
+        title: '建議換一張更清楚的圖',
         body: '這張圖目前不適合匯入，建議重截更清楚的聊天畫面，保留完整對話泡泡與標題列。',
         tone: ScreenshotRecognitionGuidanceTone.reject,
       );
@@ -285,32 +285,32 @@ class ScreenshotRecognitionHelper {
 
     if (looksLikeCallRecord) {
       return const ScreenshotRecognitionGuidance(
-        title: '建議先確認再匯入',
+        title: '先確認再匯入',
         body: '這張圖像是聊天視窗裡的未接來電或通話紀錄。若確認是同一段對話，先檢查方向與順序，再決定是否匯入。',
         tone: ScreenshotRecognitionGuidanceTone.review,
       );
     }
 
     if (looksLikeMixedThread) {
-      return const ScreenshotRecognitionGuidance(
-        title: '建議另存成新對話',
-        body: '這批截圖可能混入了不同人的對話，建議先逐則檢查預覽；如果不是同一段續聊，請改用「另存成新對話」。',
-        tone: ScreenshotRecognitionGuidanceTone.caution,
-      );
+        return const ScreenshotRecognitionGuidance(
+          title: '建議另存成新對話',
+          body: '這批截圖可能混到不同人的內容。先看一下預覽；如果不是同一段續聊，請改用「另存成新對話」。',
+          tone: ScreenshotRecognitionGuidanceTone.caution,
+        );
     }
 
     if (recognized.sideConfidence == 'low') {
       return const ScreenshotRecognitionGuidance(
-        title: '建議先檢查我說 / 她說',
-        body: '這批訊息的左右方向還不夠穩，建議先檢查每則是「我說」還是「她說」，再決定是否匯入。',
+        title: '先確認我說 / 她說',
+        body: '這批訊息的左右還不夠穩，建議先檢查每則是「我說」還是「她說」，再決定是否匯入。',
         tone: ScreenshotRecognitionGuidanceTone.review,
       );
     }
 
     if (recognized.uncertainSideCount > 0) {
       return const ScreenshotRecognitionGuidance(
-        title: '建議先修正方向再匯入',
-        body: '大部分內容可用，但有少數訊息的左右方向不夠確定。建議先修正「我說 / 她說」後再匯入。',
+        title: '先修正幾則再匯入',
+        body: '大部分內容可用，但有少數訊息的左右還不夠清楚。建議先修正「我說 / 她說」後再匯入。',
         tone: ScreenshotRecognitionGuidanceTone.review,
       );
     }
@@ -318,7 +318,7 @@ class ScreenshotRecognitionHelper {
     if (recognized.importPolicy == 'confirm' ||
         recognized.confidence != 'high') {
       return const ScreenshotRecognitionGuidance(
-        title: '建議先確認再匯入',
+        title: '先看一下再匯入',
         body: '這張圖可以先確認再匯入。若有模糊、截到一半，或是 LINE 的回覆引用框，建議保留完整泡泡後重截一次。',
         tone: ScreenshotRecognitionGuidanceTone.review,
       );
@@ -361,11 +361,11 @@ class ScreenshotRecognitionHelper {
 
       if (recognized.sideConfidence == 'low' ||
           recognized.uncertainSideCount > 0) {
-        return '加入目前對話前，建議先把「我說 / 她說」修正好，避免把方向錯的訊息接進目前對話。';
+        return '加入目前對話前，建議先把「我說 / 她說」看清楚，避免接錯。';
       }
 
       if (shouldPreferNewConversation) {
-        return '只有在你確定這批截圖就是目前這段續聊時，才建議加入目前對話；不確定時改用「另存成新對話」較安全。';
+        return '只有在你確定這批截圖就是目前這段續聊時，才建議加入目前對話；不確定時改用「另存成新對話」會更安全。';
       }
 
       return '會把這批訊息接到目前對話尾端，適合剛截到最新續聊。';

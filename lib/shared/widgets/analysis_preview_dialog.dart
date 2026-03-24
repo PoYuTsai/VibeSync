@@ -31,17 +31,17 @@ class AnalysisPreviewDialog extends StatelessWidget {
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('開始前先看一下', style: AppTypography.titleLarge),
+      title: Text('開始分析前', style: AppTypography.titleLarge),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildRow('這次大約會用掉', '${preview.messageCount} 則'),
+          _buildRow('這次會用掉', '${preview.messageCount} 則'),
           const SizedBox(height: 12),
-          _buildRow('這次要分析的內容', '${preview.charCount} 字'),
+          _buildRow('內容長度', '${preview.charCount} 字'),
           const SizedBox(height: 12),
           _buildRow(
-            '這個月還能分析',
+            '本月剩餘',
             '${usage.monthlyRemaining} / ${usage.monthlyLimit} 則',
           ),
           const SizedBox(height: 4),
@@ -56,7 +56,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _buildRow(
-            '今天還能分析',
+            '今日剩餘',
             '${usage.dailyRemaining} / ${usage.dailyLimit} 則',
           ),
           const SizedBox(height: 4),
@@ -78,7 +78,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
             _buildWarning('今天的分析次數不夠了，明天再來或先升級方案。'),
           const SizedBox(height: 12),
           Text(
-            '小提醒：只有真的送去做完整分析的內容，才會依訊息數扣次數。若只是先讀截圖、不做完整分析，這一步不會扣次數。測試帳號看到的是估算值，不會真的扣掉。',
+            '只有送出完整分析才會扣次數。先讀截圖、不做完整分析，不會扣次數。',
             style: AppTypography.caption.copyWith(
               color: AppColors.textSecondary,
               height: 1.45,

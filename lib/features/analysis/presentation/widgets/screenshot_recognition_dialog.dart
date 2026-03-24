@@ -276,11 +276,11 @@ class _ScreenshotRecognitionDialogState
   String _sideLabel(String side) {
     switch (side) {
       case 'left':
-        return '原判斷：左側';
+        return '原本看起來在左邊';
       case 'right':
-        return '原判斷：右側';
+        return '原本看起來在右邊';
       default:
-        return '原判斷：方向待確認';
+        return '左右還不夠清楚';
     }
   }
 
@@ -523,6 +523,10 @@ class _ScreenshotRecognitionDialogState
     final currentMessages = _sanitizedMessages();
     final guidance = ScreenshotRecognitionHelper.guidance(widget.recognized);
     final guidanceColor = _guidanceColor(guidance.tone);
+    final showStatusChips =
+        widget.recognized.classification != 'valid_chat' ||
+        widget.recognized.confidence != 'high' ||
+        widget.recognized.sideConfidence != 'high';
     final shouldShowSessionContextFields =
         widget.forceShowSessionContextFields ||
             _selectedImportMode ==
@@ -531,7 +535,7 @@ class _ScreenshotRecognitionDialogState
     return AlertDialog(
       backgroundColor: AppColors.glassWhite,
       title: const Text(
-        '識別成功',
+        '先確認內容',
         style: TextStyle(color: AppColors.glassTextPrimary),
       ),
       content: SingleChildScrollView(
@@ -540,7 +544,7 @@ class _ScreenshotRecognitionDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '識別到 ${widget.recognized.messageCount} 則訊息，可在下方修正後再匯入。',
+              '共抓到 ${widget.recognized.messageCount} 則訊息，確認後就能匯入。',
               style: const TextStyle(color: AppColors.glassTextPrimary),
             ),
             if (widget.warningMessage != null &&
@@ -579,36 +583,41 @@ class _ScreenshotRecognitionDialogState
                   ),
                 ),
               ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildStatusChip(
-                  icon: Icons.chat_bubble_outline,
-                  label: ScreenshotRecognitionHelper.classificationLabel(
-                    widget.recognized.classification,
-                  ),
-                  color: widget.recognized.importPolicy == 'reject'
-                      ? AppColors.error
-                      : AppColors.primary,
-                ),
-                _buildStatusChip(
-                  icon: Icons.auto_awesome,
-                  label: ScreenshotRecognitionHelper.confidenceLabel(
-                    widget.recognized.confidence,
-                  ),
-                  color: _confidenceColor(widget.recognized),
-                ),
-                _buildStatusChip(
-                  icon: Icons.compare_arrows_rounded,
-                  label: ScreenshotRecognitionHelper.sideConfidenceLabel(
-                    widget.recognized.sideConfidence,
-                  ),
-                  color: _sideConfidenceColor(widget.recognized),
-                ),
-              ],
-            ),
+            if (showStatusChips) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (widget.recognized.classification != 'valid_chat')
+                    _buildStatusChip(
+                      icon: Icons.chat_bubble_outline,
+                      label: ScreenshotRecognitionHelper.classificationLabel(
+                        widget.recognized.classification,
+                      ),
+                      color: widget.recognized.importPolicy == 'reject'
+                          ? AppColors.error
+                          : AppColors.primary,
+                    ),
+                  if (widget.recognized.confidence != 'high')
+                    _buildStatusChip(
+                      icon: Icons.auto_awesome,
+                      label: ScreenshotRecognitionHelper.confidenceLabel(
+                        widget.recognized.confidence,
+                      ),
+                      color: _confidenceColor(widget.recognized),
+                    ),
+                  if (widget.recognized.sideConfidence != 'high')
+                    _buildStatusChip(
+                      icon: Icons.compare_arrows_rounded,
+                      label: ScreenshotRecognitionHelper.sideConfidenceLabel(
+                        widget.recognized.sideConfidence,
+                      ),
+                      color: _sideConfidenceColor(widget.recognized),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
@@ -753,7 +762,7 @@ class _ScreenshotRecognitionDialogState
                               : Icons.edit_note_rounded,
                         ),
                         label: Text(
-                          _showDetailedEditor ? '收起修正區' : '檢查／修改',
+                          _showDetailedEditor ? '先收起來' : '查看內容',
                         ),
                       ),
                     ],
@@ -769,7 +778,7 @@ class _ScreenshotRecognitionDialogState
                   if (!_showDetailedEditor) ...[
                     const SizedBox(height: 8),
                     Text(
-                      '如果你只是想快速匯入，這裡可以先略過；真的有判錯，再展開修改就好。',
+                      '如果看起來都對，直接匯入就好；真的有哪則怪怪的，再展開修改。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.unselectedText,
                         height: 1.4,
@@ -778,7 +787,7 @@ class _ScreenshotRecognitionDialogState
                   ] else ...[
                     const SizedBox(height: 8),
                     Text(
-                      '逐則檢查識別結果 (${currentMessages.length} 則會被匯入)',
+                      '逐則確認內容 (${currentMessages.length} 則會被匯入)',
                       style: const TextStyle(
                         color: AppColors.glassTextPrimary,
                         fontWeight: FontWeight.w700,
@@ -787,7 +796,7 @@ class _ScreenshotRecognitionDialogState
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '只有判錯時才需要改。你可以在這裡調整內容、她說／我說，或補上引用的上一則。',
+                      '只有判錯時才需要改。你可以在這裡改內容、調整她說／我說，或補上這句正在回什麼。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.unselectedText,
                         height: 1.45,
@@ -808,7 +817,7 @@ class _ScreenshotRecognitionDialogState
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '這顆按鈕只會把看得出左／右的位置重新套成她說或我說；如果目前都判對了，可以直接略過。',
+                        '這顆按鈕會依畫面左右重新判斷她說或我說。如果目前都判對了，可以直接略過。',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.unselectedText,
                           height: 1.45,
@@ -818,7 +827,7 @@ class _ScreenshotRecognitionDialogState
                     if (widget.recognized.uncertainSideCount > 0) ...[
                       const SizedBox(height: 8),
                       Text(
-                        '這次有 ${widget.recognized.uncertainSideCount} 則訊息方向待確認，建議優先檢查這些列。',
+                        '這次有 ${widget.recognized.uncertainSideCount} 則左右還不夠清楚，建議先檢查這些列。',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.warning,
                           fontWeight: FontWeight.w600,
@@ -856,14 +865,6 @@ class _ScreenshotRecognitionDialogState
                             index,
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '提示：這個編修區可以單獨上下滑動；對話很長時，不用整個視窗一起拖。',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.unselectedText,
-                        height: 1.4,
                       ),
                     ),
                     if (_editValidationMessage != null)
