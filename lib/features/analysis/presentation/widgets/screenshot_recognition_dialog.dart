@@ -53,6 +53,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
 class _ScreenshotRecognitionDialogState
     extends State<ScreenshotRecognitionDialog> {
   late final TextEditingController _nameController;
+  late final ScrollController _messageScrollController;
   late MeetingContext? _selectedMeeting;
   late AcquaintanceDuration? _selectedDuration;
   late String _selectedImportMode;
@@ -63,6 +64,7 @@ class _ScreenshotRecognitionDialogState
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
+    _messageScrollController = ScrollController();
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
     _selectedImportMode = widget.initialImportMode;
@@ -75,6 +77,7 @@ class _ScreenshotRecognitionDialogState
   @override
   void dispose() {
     _nameController.dispose();
+    _messageScrollController.dispose();
     for (final message in _editableMessages) {
       message.dispose();
     }
@@ -210,6 +213,18 @@ class _ScreenshotRecognitionDialogState
     }
   }
 
+  double _messageEditorHeight(BuildContext context, int messageCount) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final estimatedHeight = switch (messageCount) {
+      <= 2 => 220.0,
+      <= 4 => 300.0,
+      <= 6 => 360.0,
+      _ => screenHeight * 0.42,
+    };
+
+    return estimatedHeight.clamp(220.0, screenHeight * 0.5).toDouble();
+  }
+
   Color _guidanceColor(ScreenshotRecognitionGuidanceTone tone) {
     switch (tone) {
       case ScreenshotRecognitionGuidanceTone.reject:
@@ -297,7 +312,6 @@ class _ScreenshotRecognitionDialogState
     _EditableRecognizedMessage message,
     int index,
   ) {
-    final batchIndexes = _contiguousSideIndexes(index);
     final showBatchCard = _shouldShowBatchCard(index);
     final sideGroupLabel = message.side == 'left' ? '左側' : '右側';
 
@@ -382,7 +396,7 @@ class _ScreenshotRecognitionDialogState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '這組連續 $sideGroupLabel 泡泡共有 ${batchIndexes.length} 則，可一起校正。',
+                    '這幾則都是連在一起的 $sideGroupLabel 泡泡。如果整串都被判反，可以一次改掉。',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.glassTextPrimary,
                       fontWeight: FontWeight.w600,
@@ -396,13 +410,21 @@ class _ScreenshotRecognitionDialogState
                     children: [
                       OutlinedButton(
                         onPressed: () => _applySpeakerToGroup(index, false),
-                        child: const Text('這組改成她說'),
+                        child: const Text('這幾則都改成她說'),
                       ),
                       OutlinedButton(
                         onPressed: () => _applySpeakerToGroup(index, true),
-                        child: const Text('這組改成我說'),
+                        child: const Text('這幾則都改成我說'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '如果每則都判對了，這區可以直接略過。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.unselectedText,
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ),
@@ -696,7 +718,7 @@ class _ScreenshotRecognitionDialogState
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '可直接修正錯字、切換左右方，或刪掉誤辨識訊息。這一步不會重新呼叫 OCR。',
+                    '可直接修正錯字、切換左右方，或刪掉誤辨識訊息。只有判錯時才需要改，正常可直接匯入。',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.unselectedText,
                       height: 1.45,
@@ -717,7 +739,7 @@ class _ScreenshotRecognitionDialogState
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '先依原本的左 / 右泡泡方向快速套用，再逐則微調會更快。',
+                      '這是快速修正工具：先依原本的左 / 右泡泡方向套用，再逐則微調會更快。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.unselectedText,
                         height: 1.45,
@@ -736,12 +758,45 @@ class _ScreenshotRecognitionDialogState
                     ),
                   ],
                   const SizedBox(height: 10),
-                  ..._editableMessages.asMap().entries.map(
-                        (entry) => _buildEditableMessageCard(
-                          entry.value,
-                          entry.key,
+                  Container(
+                    constraints: BoxConstraints(
+                      maxHeight: _messageEditorHeight(
+                        context,
+                        _editableMessages.length,
+                      ),
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      color: Colors.white.withValues(alpha: 0.04),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Scrollbar(
+                      controller: _messageScrollController,
+                      thumbVisibility: _editableMessages.length > 3,
+                      child: ListView.builder(
+                        controller: _messageScrollController,
+                        padding: const EdgeInsets.all(8),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        itemCount: _editableMessages.length,
+                        itemBuilder: (context, index) =>
+                            _buildEditableMessageCard(
+                          _editableMessages[index],
+                          index,
                         ),
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '提示：這個編修區可以單獨上下滑動；對話很長時，不用整個視窗一起拖。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.unselectedText,
+                      height: 1.4,
+                    ),
+                  ),
                   if (_editValidationMessage != null)
                     Text(
                       _editValidationMessage!,

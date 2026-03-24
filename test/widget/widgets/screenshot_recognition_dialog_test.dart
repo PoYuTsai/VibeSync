@@ -231,7 +231,7 @@ void main() {
       await tester.tap(find.text('依左 / 右重新套用'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('這組改成我說'));
+      await tester.tap(find.text('這幾則都改成我說'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('確認匯入'));
@@ -241,6 +241,25 @@ void main() {
       expect(dialogResult!.messages[0].isFromMe, isFalse);
       expect(dialogResult!.messages[1].isFromMe, isTrue);
       expect(dialogResult!.messages[2].isFromMe, isTrue);
+    });
+
+    testWidgets('shows batch correction as optional quick fix copy',
+        (tester) async {
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('這幾則都改成我說'), findsOneWidget);
+      expect(find.textContaining('如果每則都判對了'), findsOneWidget);
+      expect(find.textContaining('這個編修區可以單獨上下滑動'), findsOneWidget);
     });
   });
 }
