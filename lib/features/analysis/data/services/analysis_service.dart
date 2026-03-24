@@ -77,6 +77,10 @@ class AnalysisTelemetry {
   final int? quotedPreviewRemovedCount;
   final int? quotedPreviewAttachedCount;
   final int? overlapRemovedCount;
+  final bool? shouldChargeQuota;
+  final int? chargedMessageCount;
+  final int? estimatedMessageCount;
+  final String? quotaReason;
 
   const AnalysisTelemetry({
     this.requestType,
@@ -108,6 +112,10 @@ class AnalysisTelemetry {
     this.quotedPreviewRemovedCount,
     this.quotedPreviewAttachedCount,
     this.overlapRemovedCount,
+    this.shouldChargeQuota,
+    this.chargedMessageCount,
+    this.estimatedMessageCount,
+    this.quotaReason,
   });
 
   Duration? get estimatedTransferDuration {
@@ -727,6 +735,16 @@ class AnalysisService {
               overlapRemovedCount: telemetryData?['overlapRemovedCount'] is num
                   ? (telemetryData?['overlapRemovedCount'] as num).round()
                   : null,
+              shouldChargeQuota: telemetryData?['shouldChargeQuota'] as bool?,
+              chargedMessageCount: telemetryData?['chargedMessageCount'] is num
+                  ? (telemetryData?['chargedMessageCount'] as num).round()
+                  : null,
+              estimatedMessageCount:
+                  telemetryData?['estimatedMessageCount'] is num
+                      ? (telemetryData?['estimatedMessageCount'] as num)
+                          .round()
+                      : null,
+              quotaReason: telemetryData?['quotaReason'] as String?,
             ),
           );
 

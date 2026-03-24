@@ -180,6 +180,59 @@ function deriveRequestType({
   return "analyze";
 }
 
+function buildQuotaUsageMetadata({
+  requestType,
+  recognizeOnly,
+  accountIsTest,
+  estimatedMessageCount,
+}: {
+  requestType: string;
+  recognizeOnly: boolean;
+  accountIsTest: boolean;
+  estimatedMessageCount: number;
+}) {
+  if (recognizeOnly) {
+    return {
+      shouldChargeQuota: false,
+      quotaReason: "recognize_only_free",
+      quotaUnit: "messages",
+      chargedMessageCount: 0,
+      estimatedMessageCount: 0,
+    };
+  }
+
+  if (accountIsTest) {
+    return {
+      shouldChargeQuota: false,
+      quotaReason: "test_account_waived",
+      quotaUnit: "messages",
+      chargedMessageCount: 0,
+      estimatedMessageCount,
+    };
+  }
+
+  let quotaReason = "analyze_message_based";
+  switch (requestType) {
+    case "analyze_with_images":
+      quotaReason = "analyze_with_images_message_based";
+      break;
+    case "my_message":
+      quotaReason = "my_message_message_based";
+      break;
+    case "optimize_message":
+      quotaReason = "optimize_message_message_based";
+      break;
+  }
+
+  return {
+    shouldChargeQuota: estimatedMessageCount > 0,
+    quotaReason,
+    quotaUnit: "messages",
+    chargedMessageCount: estimatedMessageCount,
+    estimatedMessageCount,
+  };
+}
+
 function buildRecognitionObservability(
   recognizedConversation:
     | {
@@ -2471,6 +2524,13 @@ ${recentText}`;
       hasUserDraft:
         !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
     });
+    const estimatedMessageCount = recognizeOnly ? 0 : countMessages(messages);
+    const quotaUsage = buildQuotaUsageMetadata({
+      requestType,
+      recognizeOnly,
+      accountIsTest,
+      estimatedMessageCount,
+    });
     if (isMyMessageMode && effectiveTier !== "essential") {
       return jsonResponse({
         error: "「我說」分析功能僅限 Essential 方案",
@@ -2580,6 +2640,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       allowModelFallback,
       effectiveTier,
       isTestAccount: accountIsTest,
+      shouldChargeQuota: quotaUsage.shouldChargeQuota,
+      quotaReason: quotaUsage.quotaReason,
+      quotaUnit: quotaUsage.quotaUnit,
+      chargedMessageCount: quotaUsage.chargedMessageCount,
+      estimatedMessageCount: quotaUsage.estimatedMessageCount,
       inputMessageCount: messages.length,
       compiledMessageCount,
       truncatedMessageCount,
@@ -2936,15 +3001,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       delete result.healthCheck;
     }
 
-    // Calculate message count
-    const messageCount = recognizeOnly ? 0 : countMessages(messages);
-
     // Update usage count (測試帳號、純識別模式不扣額度)
-    if (!accountIsTest && !recognizeOnly) {
+    if (quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0) {
       // Single source of truth for usage accounting (avoid double counting).
       const { error: usageError } = await supabase.rpc("increment_usage", {
         p_user_id: user.id,
-        p_messages: messageCount,
+        p_messages: quotaUsage.chargedMessageCount,
       });
 
       if (usageError) {
@@ -2954,19 +3016,25 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
     // Add usage info to response
     result.usage = {
-      messagesUsed: messageCount,
+      messagesUsed: quotaUsage.chargedMessageCount,
+      estimatedMessages: quotaUsage.estimatedMessageCount,
       monthlyRemaining: accountIsTest
         ? 999999
-        : monthlyLimit - sub.monthly_messages_used - messageCount,
+        : monthlyLimit - sub.monthly_messages_used -
+          quotaUsage.chargedMessageCount,
       dailyRemaining: accountIsTest
         ? 999999
-        : dailyLimit - sub.daily_messages_used - messageCount,
+        : dailyLimit - sub.daily_messages_used - quotaUsage.chargedMessageCount,
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,
       imagesUsed: hasImages ? images.length : 0,
       tierUsed: effectiveTier,
-      isTestAccount: accountIsTest, // 標記是否為測試帳號
+      isTestAccount: accountIsTest,
+      requestType,
+      shouldChargeQuota: quotaUsage.shouldChargeQuota,
+      quotaReason: quotaUsage.quotaReason,
+      quotaUnit: quotaUsage.quotaUnit,
     };
 
     result.telemetry = {
@@ -3004,6 +3072,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       guardrailCount: successGuardrails.guardrailCount,
       guardrailFlags: successGuardrails.guardrailFlags,
       totalTokens: successGuardrails.totalTokens,
+      shouldChargeQuota: quotaUsage.shouldChargeQuota,
+      chargedMessageCount: quotaUsage.chargedMessageCount,
+      estimatedMessageCount: quotaUsage.estimatedMessageCount,
+      quotaReason: quotaUsage.quotaReason,
     };
 
     return jsonResponse(result);

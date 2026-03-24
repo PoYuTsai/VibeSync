@@ -1,137 +1,98 @@
 # VibeSync 上線前缺口清單
 
-**版本日期：2026 年 3 月 16 日**  
-**目前狀態：TestFlight v41 伙伴測試中**
+最後更新：2026-03-24
+目前狀態：TestFlight 伙伴測試中
 
----
+這份清單把目前的上線風險分成：
+- 必修
+- 應修
+- 可延後
+- 伙伴待辦
 
-## 1. 這份文件的用途
+## 1. 必修
 
-這份清單是把目前 code review、TestFlight 測試、法律文件調整與上線風險，整理成可直接執行的待辦。  
-原則很簡單：
-
-- `必修` 全綠，才建議送 App Store 審核
-- `應修` 至少完成大半，才建議正式公開上線
-- `可延後` 不要擋住現在的核心驗證節奏
-
-相關參考文件：
-
-- [App Store 審核策略](./app-store-strategy.md)
-- [隱私權政策](./legal/privacy-policy.md)
-- [服務條款](./legal/terms-of-service.md)
-- [OCR / 分析成熟度 Benchmark](./ocr-analysis-maturity-benchmark.md)
-- [Claude Code handoff](../CLAUDE_CODE_HANDOFF_2026-03-16.md)
-
----
-
-## 2. 必修
-
-### 2.1 法務與對外一致性
-
-- [ ] 官網 [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 已同步為 [privacy-policy.md](./legal/privacy-policy.md) 的最新內容
-- [ ] 官網 [https://vibesyncai.app/terms](https://vibesyncai.app/terms) 已同步為 [terms-of-service.md](./legal/terms-of-service.md) 的最新內容
-- [ ] 首頁 footer 連結統一使用 `/privacy` 與 `/terms`
-- [ ] `support@vibesync.app` 與 `privacy@vibesync.app` 皆可正常收信
-- [ ] App Store Connect 的 privacy disclosure 與實際資料流一致
-
-### 2.2 真機登入回歸
-
-- [ ] Apple Sign In 成功登入與再次登入正常
+### Auth / Session
+- [ ] Apple Sign In 在 TestFlight / 真機可正常 round-trip
 - [ ] Google Sign In 在 TestFlight / 真機可正常 round-trip
-- [ ] Email 註冊後可正常收驗證信並回到 app
-- [ ] Resend verification 可正常寄送
-- [ ] Forgot password 在 warm start 與 cold start 都能完成
-- [ ] 登出後換另一個帳號登入，不會殘留前一個帳號的 tier / session 狀態
+- [ ] Email sign up / verify / resend / forgot password 全流程可正常完成
+- [ ] 登出後換帳號登入，不會殘留前一個 tier / session 狀態
 
-### 2.3 訂閱與權限回歸
-
-- [ ] Starter 購買成功，額度與功能正確切換
-- [ ] Essential 購買成功，額度與功能正確切換
+### 訂閱 / 額度
+- [ ] Starter 購買成功後，功能與額度正確切換
+- [ ] Essential 購買成功後，功能與額度正確切換
 - [ ] Restore Purchases 正常
-- [ ] entitlement 消失或過期時，可正確回到 free
-- [ ] RevenueCat webhook 有寫入正確 tier / status / expires_at
-- [ ] 同裝置換帳號後不會串帳或殘留舊 tier
+- [ ] 購買 / 恢復後首頁、設定頁、分析頁的 tier 顯示一致
+- [ ] `recognize_only` 明確不扣額度
+- [ ] 完整分析的扣點與預覽一致
+- [ ] 測試白名單帳號只顯示估算值，不真的扣點
 
-### 2.4 OCR / 手動輸入主流程
+### OCR / 分析核心
+- [ ] 正常雙人聊天截圖可成功識別、匯入、再分析
+- [ ] LINE 引用回覆不會被拆成獨立新訊息
+- [ ] 左右方判斷穩定
+- [ ] 錯圖 / 社群圖 / 群組圖不會污染目前對話
+- [ ] 多張截圖有輕微重疊時，不會重複匯入同一則訊息
+- [ ] OCR 失敗 / 低信心時有明確人話與下一步
 
-- [ ] 單張正常聊天截圖可辨識並分析
-- [ ] 單張內容較多的長圖可辨識並分析
-- [ ] 2-3 張連續截圖可依序匯入
-- [ ] 手動輸入：最後一則是她，分析正常
-- [ ] 手動輸入：最後一則是我，仍可分析她上一則回覆
-- [ ] 手動輸入：只有我說，會存成草稿且不誤導為可立即一般分析
-- [ ] 截圖匯入後，使用者能清楚知道下一步是「立即分析」
+### Legal / 對外一致性
+- [ ] [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 內容與 app 流程一致
+- [ ] [https://vibesyncai.app/terms](https://vibesyncai.app/terms) 內容與目前方案一致
+- [ ] `support@vibesync.app` / `privacy@vibesync.app` 可收信
+- [ ] App Store Connect privacy disclosure 與實際資料流一致
 
-### 2.5 邊界情況與拒絕策略
+## 2. 應修
 
-- [ ] 社群平台留言截圖不會默默污染現有對話脈絡
-- [ ] 與目前對話無關的截圖會有清楚提示，而不是直接 append 到尾端
-- [ ] 色情、暴力、非聊天畫面會回傳明確的「不支援」或拒絕處理訊息
-- [ ] OCR 低信心或高噪音時，會提示重試或更換截圖
-- [ ] OCR 取消 / 重試流程不會留下 stale state 或晚到結果覆蓋畫面
+### OCR / 結構成熟度
+- [ ] 再累積 30-50 組真實截圖 benchmark
+- [ ] OCR 方向低信心情境再收斂
+- [ ] 多張截圖跨圖順序與重疊案例再多測幾輪
+- [ ] 引用回覆 + 圖片泡泡混合情境再穩定一些
 
-### 2.6 穩定性與資料風險
+### 長上下文 / 分析
+- [ ] 持續驗 summary-aware context 是否穩定
+- [ ] 重新打開既有對話時，分析結果與新訊息狀態一致
+- [ ] 混入舊對話或不同 thread 時，警告文案和另存路徑持續優化
 
-- [ ] `flutter analyze` 保持全綠
-- [ ] 主要 Edge Functions 至少通過 `deno check`
-- [ ] AI / feedback / webhook 日誌不會過度暴露敏感內容
-- [ ] 沒有已知未處理的 P1 auth / security 問題
-- [ ] OCR telemetry 已至少收集 3 組真實測試數據，能判斷延遲主要卡在哪一段
+### 觀測與營運
+- [ ] 定期看 `ai_logs` 的 slow / timeout / structure_repaired 分布
+- [ ] 定期看 `quotaReason / chargedMessageCount / estimatedMessageCount`
+- [ ] 根據 TestFlight telemetry 找出最慢的 OCR 類型
 
----
+## 3. 可延後
 
-## 3. 應修
+- [ ] Booster
+- [ ] 年訂閱 / 季訂閱 / 試用
+- [ ] Admin Dashboard polish
+- [ ] 更重的自動化測試建設
 
-這些項目不是今天一定要擋版，但越早補，產品品質會越穩。
+## 4. 伙伴待辦
 
-- [ ] 截圖 preflight classifier：先判斷是不是正常聊天截圖，再決定要不要進 OCR
-- [ ] 長上下文 summary 真正接進 live analysis，而不是只在本地生成
-- [ ] 分析結果持久化，避免使用者下次打開像沒分析過
-- [ ] 截圖匯入模式不只 append 尾端，至少支援「另存新對話」或「不是這段對話」提示
-- [ ] 建立固定 QA 測試集，讓 prompt / OCR 改動後能回歸比對
-- [ ] 補 auth / session switching / OCR import / password recovery 的回歸測試
-- [ ] 再做一次 logging redaction review，確認不會把原始敏感內容寫進不必要的 log
+- [ ] 官網首頁最後一輪 QA
+- [ ] App Store 連結在正式上線前最後掛上
+- [ ] 伙伴持續收集真實截圖測例，回報：
+  - speaker 判錯
+  - 引用回覆誤拆
+  - 社群圖誤放行
+  - OCR 太慢
+  - 分析理解歪掉
 
----
+## 5. Go / No-Go
 
-## 4. 可延後
+### 可以先停手 build TestFlight
+- [ ] 沒有新的 P1 auth / subscription / OCR 問題
+- [ ] 正常聊天圖、錯圖、LINE 引用圖、長繁中圖都至少測過一輪
+- [ ] app 內沒有 raw error 或技術術語直接漏給用戶
 
-這些項目目前不建議當作送審 blocker：
+### 可以準備送審
+- [ ] 必修全部完成
+- [ ] 伙伴測試沒有新的審核 blocker
+- [ ] 最近 telemetry 沒有明顯惡化
+- [ ] legal / privacy / support email / App Store disclosure 全部一致
 
-- [ ] Booster 一次性購買
-- [ ] 年訂閱 / 季訂閱 / 試用期
-- [ ] 法律頁改成 app 內瀏覽器，而非外部瀏覽器
-- [ ] Admin Dashboard 的進一步 polish
+## 6. 參考文件
 
----
-
-## 5. 伙伴待辦
-
-這些適合由夥伴或網站端同步處理：
-
-- [ ] 把 [privacy-policy.md](./legal/privacy-policy.md) 的最新內容同步到 `vibesyncai.app/privacy`
-- [ ] 把 [terms-of-service.md](./legal/terms-of-service.md) 的最新內容同步到 `vibesyncai.app/terms`
-- [ ] 首頁 footer 連結統一成 `/privacy` 與 `/terms`
-- [ ] 確認兩個 legal 頁在手機與桌機上都可正常開啟
-- [ ] 確認客服 / 隱私聯絡信箱真能收信
-
----
-
-## 6. 品質門檻
-
-如果要避免產品變成「只是套一層 LLM 的半成品」，至少要達到以下標準：
-
-- [ ] 建議內容能明確對應最新有效上下文，而不是 generic 廢話
-- [ ] 不支援的輸入會被清楚拒絕，而不是硬分析亂答
-- [ ] 使用者能看懂目前系統在做什麼，例如壓縮中 / 上傳中 / AI 辨識中
-- [ ] 長對話不會越用越亂，歷史脈絡有穩定摘要策略
-- [ ] 同一類輸入，輸出結構與品質要有基本一致性
-
----
-
-## 7. 建議執行順序
-
-1. 先完成 legal live sync 與對外一致性檢查  
-2. 再做 auth + 訂閱真機回歸  
-3. 接著跑 OCR 主流程與邊界情況  
-4. 根據 TestFlight 回饋，決定哪些 `應修` 要升級成送審 blocker
+- [OCR / 分析成熟度 Benchmark](./ocr-analysis-maturity-benchmark.md)
+- [TestFlight 回歸與簽核清單](./testflight-regression-checklist.md)
+- [App Store 審核策略](./app-store-strategy.md)
+- [Privacy Policy](./legal/privacy-policy.md)
+- [Terms of Service](./legal/terms-of-service.md)

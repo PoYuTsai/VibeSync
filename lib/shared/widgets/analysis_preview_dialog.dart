@@ -76,6 +76,14 @@ class AnalysisPreviewDialog extends StatelessWidget {
             _buildWarning('本月剩餘額度不足，請升級方案後再分析。')
           else if (usage.dailyRemaining < preview.messageCount)
             _buildWarning('今日剩餘額度不足，明天再來或先升級方案。'),
+          const SizedBox(height: 12),
+          Text(
+            '計費規則：完整分析會依實際送出的對話內容按訊息數扣點；純截圖識別不扣額度。若是測試白名單帳號，這裡會顯示估算值，但不會真的扣點。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
           if (canProceed) ...[
             const SizedBox(height: 8),
             Text(

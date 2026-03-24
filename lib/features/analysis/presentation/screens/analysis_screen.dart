@@ -1156,6 +1156,37 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return parts.join('｜');
   }
 
+  String? _analysisTelemetryQuotaSummary(AnalysisTelemetry telemetry) {
+    final estimatedCount =
+        telemetry.estimatedMessageCount ?? telemetry.chargedMessageCount;
+
+    if (telemetry.shouldChargeQuota == true) {
+      final chargedCount = telemetry.chargedMessageCount ?? estimatedCount;
+      if ((chargedCount ?? 0) > 0) {
+        return '本次扣 $chargedCount 則訊息額度';
+      }
+      return '本次會扣訊息額度';
+    }
+
+    if (telemetry.requestType == 'recognize_only' ||
+        telemetry.quotaReason == 'recognize_only_free') {
+      return '本次純識別，不扣額度';
+    }
+
+    if (telemetry.quotaReason == 'test_account_waived') {
+      if ((estimatedCount ?? 0) > 0) {
+        return '測試帳號，本次未扣額度（原本會扣 $estimatedCount 則）';
+      }
+      return '測試帳號，本次未扣額度';
+    }
+
+    if (telemetry.shouldChargeQuota == false && (estimatedCount ?? 0) > 0) {
+      return '本次未扣額度';
+    }
+
+    return null;
+  }
+
   List<AnalysisTelemetryGuardrail> _telemetryGuardrails(
     AnalysisTelemetry telemetry,
   ) =>
@@ -2845,6 +2876,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
+                                  if (_analysisTelemetryQuotaSummary(
+                                          _lastRecognizeTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _analysisTelemetryQuotaSummary(
+                                        _lastRecognizeTelemetry!,
+                                      )!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
                                   Text(
                                     _lastRecognizeTelemetry!.cacheHit
                                         ? '本次使用本機快取，未重新上傳或呼叫 AI'
@@ -2925,6 +2967,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
+                                  if (_analysisTelemetryQuotaSummary(
+                                          _lastAnalysisTelemetry!) !=
+                                      null)
+                                    Text(
+                                      _analysisTelemetryQuotaSummary(
+                                        _lastAnalysisTelemetry!,
+                                      )!,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
                                   Text(
                                     'AI ${_formatDuration(_lastAnalysisTelemetry!.edgeAiDuration)}｜估計傳輸/排隊 ${_formatDuration(_lastAnalysisTelemetry!.estimatedTransferDuration)}',
                                     style: AppTypography.caption.copyWith(
