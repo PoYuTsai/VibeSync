@@ -58,6 +58,7 @@ class _ScreenshotRecognitionDialogState
   late AcquaintanceDuration? _selectedDuration;
   late String _selectedImportMode;
   late final List<_EditableRecognizedMessage> _editableMessages;
+  late bool _showDetailedEditor;
   String? _editValidationMessage;
 
   @override
@@ -72,6 +73,7 @@ class _ScreenshotRecognitionDialogState
         (widget.recognized.messages ?? const <RecognizedMessage>[])
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
             .toList();
+    _showDetailedEditor = _shouldExpandEditorByDefault;
   }
 
   @override
@@ -174,6 +176,26 @@ class _ScreenshotRecognitionDialogState
   bool _shouldShowBatchCard(int index) {
     final groupIndexes = _contiguousSideIndexes(index);
     return groupIndexes.length > 1 && groupIndexes.first == index;
+  }
+
+  bool get _shouldExpandEditorByDefault =>
+      widget.recognized.sideConfidence == 'low' ||
+      widget.recognized.confidence == 'low' ||
+      widget.recognized.uncertainSideCount > 0;
+
+  int get _priorityMessageCount =>
+      _editableMessages.where((message) => message.side == 'unknown').length;
+
+  String _editorSummaryCopy() {
+    if (_priorityMessageCount > 0) {
+      return '這次有 $_priorityMessageCount 則訊息的左右方向還不夠穩，建議先展開檢查這幾列。';
+    }
+
+    if (_shouldExpandEditorByDefault) {
+      return '這次識別有些地方需要你快速確認；如果內容都正確，改完就能直接匯入。';
+    }
+
+    return '這次看起來大致穩定，可以直接匯入；只有覺得哪則怪怪的，再展開修改就好。';
   }
 
   void _applySpeakerToGroup(int index, bool isFromMe) {
@@ -708,103 +730,151 @@ class _ScreenshotRecognitionDialogState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '編修識別內容 (${currentMessages.length} 則會被匯入)',
-                    style: TextStyle(
-                      color: AppColors.glassTextPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '手動修正（選填）',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.glassTextPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _showDetailedEditor = !_showDetailedEditor;
+                          });
+                        },
+                        icon: Icon(
+                          _showDetailedEditor
+                              ? Icons.expand_less_rounded
+                              : Icons.edit_note_rounded,
+                        ),
+                        label: Text(
+                          _showDetailedEditor ? '收起修正區' : '檢查／修改',
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '可直接修正錯字、切換左右方，或刪掉誤辨識訊息。只有判錯時才需要改，正常可直接匯入。',
+                    _editorSummaryCopy(),
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.unselectedText,
                       height: 1.45,
                     ),
                   ),
-                  if (_hasKnownSideMessages()) ...[
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _applySpeakerToKnownSides,
-                          icon: const Icon(Icons.compare_arrows_rounded),
-                          label: const Text('依左 / 右重新套用'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
+                  if (!_showDetailedEditor) ...[
+                    const SizedBox(height: 8),
                     Text(
-                      '這是快速修正工具：先依原本的左 / 右泡泡方向套用，再逐則微調會更快。',
+                      '如果你只是想快速匯入，這裡可以先略過；真的有判錯，再展開修改就好。',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.unselectedText,
+                        height: 1.4,
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '逐則檢查識別結果 (${currentMessages.length} 則會被匯入)',
+                      style: const TextStyle(
+                        color: AppColors.glassTextPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '只有判錯時才需要改。你可以在這裡調整內容、她說／我說，或補上引用的上一則。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.unselectedText,
                         height: 1.45,
                       ),
                     ),
-                  ],
-                  if (widget.recognized.uncertainSideCount > 0) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '這次有 ${widget.recognized.uncertainSideCount} 則訊息的左右方向不夠確定，建議優先檢查這些列。',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w600,
-                        height: 1.45,
+                    if (_hasKnownSideMessages()) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: _applySpeakerToKnownSides,
+                            icon: const Icon(Icons.compare_arrows_rounded),
+                            label: const Text('依左／右重新套用'),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  Container(
-                    constraints: BoxConstraints(
-                      maxHeight: _messageEditorHeight(
-                        context,
-                        _editableMessages.length,
+                      const SizedBox(height: 6),
+                      Text(
+                        '這顆按鈕只會把看得出左／右的位置重新套成她說或我說；如果目前都判對了，可以直接略過。',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.unselectedText,
+                          height: 1.45,
+                        ),
                       ),
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      color: Colors.white.withValues(alpha: 0.04),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
+                    ],
+                    if (widget.recognized.uncertainSideCount > 0) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '這次有 ${widget.recognized.uncertainSideCount} 則訊息方向待確認，建議優先檢查這些列。',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w600,
+                          height: 1.45,
+                        ),
                       ),
-                    ),
-                    child: Scrollbar(
-                      controller: _messageScrollController,
-                      thumbVisibility: _editableMessages.length > 3,
-                      child: ListView.builder(
+                    ],
+                    const SizedBox(height: 10),
+                    Container(
+                      constraints: BoxConstraints(
+                        maxHeight: _messageEditorHeight(
+                          context,
+                          _editableMessages.length,
+                        ),
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.white.withValues(alpha: 0.04),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: Scrollbar(
                         controller: _messageScrollController,
-                        padding: const EdgeInsets.all(8),
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        itemCount: _editableMessages.length,
-                        itemBuilder: (context, index) =>
-                            _buildEditableMessageCard(
-                          _editableMessages[index],
-                          index,
+                        thumbVisibility: _editableMessages.length > 3,
+                        child: ListView.builder(
+                          controller: _messageScrollController,
+                          padding: const EdgeInsets.all(8),
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          itemCount: _editableMessages.length,
+                          itemBuilder: (context, index) =>
+                              _buildEditableMessageCard(
+                            _editableMessages[index],
+                            index,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '提示：這個編修區可以單獨上下滑動；對話很長時，不用整個視窗一起拖。',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.unselectedText,
-                      height: 1.4,
-                    ),
-                  ),
-                  if (_editValidationMessage != null)
+                    const SizedBox(height: 8),
                     Text(
-                      _editValidationMessage!,
+                      '提示：這個編修區可以單獨上下滑動；對話很長時，不用整個視窗一起拖。',
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.error,
-                        fontWeight: FontWeight.w600,
+                        color: AppColors.unselectedText,
+                        height: 1.4,
                       ),
                     ),
+                    if (_editValidationMessage != null)
+                      Text(
+                        _editValidationMessage!,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),

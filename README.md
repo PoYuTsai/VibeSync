@@ -187,5 +187,7 @@ Private - All Rights Reserved
 - Latest verification note: `flutter analyze` and `deno check supabase/functions/analyze-chat/index.ts` both passed after the quota/benchmark pass. `dart format` for the touched Dart files still timed out in this Windows desktop session, so formatting should be rerun in a cleaner environment if whitespace consistency becomes important.
 
 - User-facing telemetry cards are now hidden from normal builds: `上次分析量測`, `上次 OCR 量測`, and `分析偏慢`-style guardrails stay available only in debug mode, so TestFlight and release users no longer see internal timing jargon on the analysis screen.
+- Screenshot speaker repair is now more run-aware too: the server applies an extra left/right run-grouping pass for quote/media bridge cases, so short continuation bubbles are less likely to flip speakers when the surrounding outer bubbles clearly stay on the same side.
+- The OCR edit dialog is now lighter for normal usage: manual correction stays available, but the whole editor defaults to a collapsed `檢查／修改` section unless the result already looks low-confidence enough to warrant immediate review.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

@@ -389,6 +389,8 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- If an image bubble and the next text bubble appear on the same side, keep them on the same speaker unless the layout clearly switches sides.",
   "- If a media/image bubble is visually sandwiched between two bubbles on the same side, keep the media bubble on that same side too.",
   "- Consecutive bubbles on the same side are common. Do not force alternating speakers if the layout still shows the same side.",
+  "- Build a left/right side sequence for all visible outer bubbles in top-to-bottom order before deciding speakers. Preserve same-side runs exactly as they appear on screen.",
+  "- Speaker changes should happen only when the visible outer bubble column actually switches sides. A pattern like left, left, left, right, right, left is normal and should stay that way.",
   "- In many chat apps, only the first bubble in a same-side run shows the avatar. Do not flip the last bubble in a left-side run to `isFromMe: true` just because the avatar disappears.",
   "- If multiple screenshots appear to come from different contacts or different chat threads, do not merge them as one clean thread. Lower confidence, set `importPolicy: confirm`, and explain that the screenshots may belong to different conversations.",
   "- Before returning JSON, double-check that no clearly right-aligned bubble is labeled `isFromMe: false` and no clearly left-aligned bubble is labeled `isFromMe: true`.",
@@ -1493,6 +1495,106 @@ function applyGroupedSpeakerHeuristics(
   };
 }
 
+function contiguousSideRunLength(
+  messages: NormalizedRecognizedMessage[],
+  index: number,
+  direction: -1 | 1,
+): number {
+  if (index < 0 || index >= messages.length) {
+    return 0;
+  }
+
+  const anchorSide = messages[index].side;
+  if (anchorSide === "unknown") {
+    return 0;
+  }
+
+  let count = 0;
+  for (
+    let cursor = index;
+    cursor >= 0 && cursor < messages.length;
+    cursor += direction
+  ) {
+    if (messages[cursor].side !== anchorSide) {
+      break;
+    }
+    count += 1;
+  }
+
+  return count;
+}
+
+function applySideRunGroupingHeuristics(
+  messages: NormalizedRecognizedMessage[],
+): {
+  messages: NormalizedRecognizedMessage[];
+  adjustedCount: number;
+} {
+  if (messages.length < 3) {
+    return {
+      messages,
+      adjustedCount: 0,
+    };
+  }
+
+  const adjusted = messages.map((message) => ({ ...message }));
+  let adjustedCount = 0;
+
+  for (let index = 1; index < adjusted.length - 1; index += 1) {
+    const previous = adjusted[index - 1];
+    const current = adjusted[index];
+    const next = adjusted[index + 1];
+
+    if (
+      previous.side === "unknown" ||
+      next.side === "unknown" ||
+      previous.side !== next.side
+    ) {
+      continue;
+    }
+
+    if (current.side === previous.side && current.isFromMe === previous.isFromMe) {
+      continue;
+    }
+
+    const previousRunLength = contiguousSideRunLength(adjusted, index - 1, -1);
+    const nextRunLength = contiguousSideRunLength(adjusted, index + 1, 1);
+
+    if (previousRunLength <= 0 || nextRunLength <= 0) {
+      continue;
+    }
+
+    const neighborLooksStructured =
+      isLikelyMediaPlaceholderContent(previous.content) ||
+      isLikelyMediaPlaceholderContent(next.content) ||
+      !!previous.quotedReplyPreview ||
+      !!next.quotedReplyPreview;
+
+    const currentLooksBridge =
+      current.side === "unknown" ||
+      isLikelyMediaPlaceholderContent(current.content) ||
+      !!current.quotedReplyPreview ||
+      (neighborLooksStructured &&
+        isLikelyShortContinuationContent(current.content));
+
+    if (!currentLooksBridge) {
+      continue;
+    }
+
+    adjusted[index] = {
+      ...current,
+      side: previous.side,
+      isFromMe: previous.isFromMe,
+    };
+    adjustedCount += 1;
+  }
+
+  return {
+    messages: adjusted,
+    adjustedCount,
+  };
+}
+
 function applyTrailingSpeakerHeuristics(
   messages: NormalizedRecognizedMessage[],
 ): {
@@ -1835,10 +1937,6 @@ function normalizeRecognizedConversation(
       message !== null
     );
 
-  const uncertainSideCount =
-    normalizedMessagesWithSidePriority.filter((message) =>
-      message.side === "unknown"
-    ).length;
   const continuityAdjustment = applySpeakerContinuityHeuristics(
     normalizedMessagesWithSidePriority,
   );
@@ -1848,19 +1946,26 @@ function normalizeRecognizedConversation(
   const quotedPreviewAdjustment = stripQuotedReplyPreviewMessages(
     groupedAdjustment.messages,
   );
-  const trailingAdjustment = applyTrailingSpeakerHeuristics(
+  const sideRunAdjustment = applySideRunGroupingHeuristics(
     quotedPreviewAdjustment.messages,
+  );
+  const trailingAdjustment = applyTrailingSpeakerHeuristics(
+    sideRunAdjustment.messages,
   );
   const overlapAdjustment = deduplicateSequentialMessages(
     trailingAdjustment.messages,
   );
   const finalMessages = overlapAdjustment.messages;
   const finalMessageCount = finalMessages.length;
+  const finalUncertainSideCount = finalMessages.filter((message) =>
+    message.side === "unknown"
+  ).length;
   const sideConfidence = normalizeSideConfidenceLabel(
     finalMessageCount,
-    uncertainSideCount,
+    finalUncertainSideCount,
     continuityAdjustment.adjustedCount +
       groupedAdjustment.adjustedCount +
+      sideRunAdjustment.adjustedCount +
       trailingAdjustment.adjustedCount,
     classification,
   );
@@ -1879,11 +1984,13 @@ function normalizeRecognizedConversation(
     importPolicy,
     confidence,
     sideConfidence,
-    uncertainSideCount,
+    uncertainSideCount: finalUncertainSideCount,
     normalizationTelemetry: {
       continuityAdjustedCount: continuityAdjustment.adjustedCount,
       groupedAdjustedCount:
-        groupedAdjustment.adjustedCount + trailingAdjustment.adjustedCount,
+        groupedAdjustment.adjustedCount +
+        sideRunAdjustment.adjustedCount +
+        trailingAdjustment.adjustedCount,
       quotedPreviewRemovedCount: quotedPreviewAdjustment.removedCount,
       quotedPreviewAttachedCount: quotedPreviewAdjustment.attachedCount,
       overlapRemovedCount: overlapAdjustment.removedCount,
