@@ -21,7 +21,9 @@ class OcrRecognitionCacheEntry {
 
 class OcrRecognitionCacheService {
   static const _cachePrefix = 'ocr_recognition_cache';
-  static const _cacheVersion = 1;
+  // Bump this whenever OCR structure/speaker heuristics change so the app
+  // does not keep replaying stale local recognition results for the same image.
+  static const _cacheVersion = 2;
   static const _maxEntriesPerUser = 20;
   static const _maxAge = Duration(hours: 24);
 
