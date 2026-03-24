@@ -53,6 +53,7 @@ enum _AnalysisErrorOrigin {
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   final MemoryService _memoryService = MemoryService();
+  bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
   int? _enthusiasmScore;
   String? _strategy;
@@ -2650,7 +2651,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                     ),
                                     const SizedBox(height: 8),
                                     // Debug 狀態顯示
-                                    if (_isRecognizing)
+                                    if (_showTelemetryDiagnostics &&
+                                        _isRecognizing)
                                       Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
@@ -2843,7 +2845,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ],
 
                           // 截圖識別結果
-                          if (_lastRecognizeTelemetry != null &&
+                          if (_showTelemetryDiagnostics &&
+                              _lastRecognizeTelemetry != null &&
                               !_isRecognizing) ...[
                             Container(
                               width: double.infinity,
@@ -2934,7 +2937,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             const SizedBox(height: 16),
                           ],
 
-                          if (_lastAnalysisTelemetry != null &&
+                          if (_showTelemetryDiagnostics &&
+                              _lastAnalysisTelemetry != null &&
                               !_isAnalyzing) ...[
                             Container(
                               width: double.infinity,

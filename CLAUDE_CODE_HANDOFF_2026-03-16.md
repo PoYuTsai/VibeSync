@@ -561,3 +561,4 @@ After deploy, verify:
   - OCR/import success
   - post-import analysis trigger / reply-analysis anchor
 - `lib/features/analysis/presentation/screens/analysis_screen.dart` deserves a dedicated cleanup/refactor pass before large new feature work there; the file still has mojibake-era comment damage even though runtime logic is currently stable and `flutter analyze` is clean.
+- The analysis screen's telemetry cards are now debug-only. Timing / guardrail UI like `上次分析量測`, `上次 OCR 量測`, and `分析偏慢` no longer appears in TestFlight or release builds, while the telemetry payloads are still collected for internal debugging.

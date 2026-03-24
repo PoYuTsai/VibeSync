@@ -186,4 +186,6 @@ Private - All Rights Reserved
 - Verification note for this pass: `deno check supabase/functions/analyze-chat/index.ts` passed, while full Dart/Flutter analyzer runs in this desktop session were blocked by local toolchain issues (`flutter analyze` hanging and direct `dart analyze` failing before diagnostics). See the handoff doc for the exact details.
 - Latest verification note: `flutter analyze` and `deno check supabase/functions/analyze-chat/index.ts` both passed after the quota/benchmark pass. `dart format` for the touched Dart files still timed out in this Windows desktop session, so formatting should be rerun in a cleaner environment if whitespace consistency becomes important.
 
+- User-facing telemetry cards are now hidden from normal builds: `上次分析量測`, `上次 OCR 量測`, and `分析偏慢`-style guardrails stay available only in debug mode, so TestFlight and release users no longer see internal timing jargon on the analysis screen.
+
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
