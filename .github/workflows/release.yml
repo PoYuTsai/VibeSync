@@ -202,7 +202,55 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: cd ios && fastlane beta
+        shell: bash
+        run: |
+          set +e
+
+          is_transient_asc_failure() {
+            local log_path="$1"
+            grep -Eq "The network connection was lost|The Internet connection appears to be offline|The HTTP request did not return a response|This resource is currently being updating \\(409\\)" "$log_path"
+          }
+
+          has_successful_transporter_upload() {
+            local log_path="$1"
+            grep -q "UPLOAD SUCCEEDED" "$log_path" && grep -q "No errors uploading" "$log_path"
+          }
+
+          attempt=1
+          max_attempts=2
+
+          while [ "$attempt" -le "$max_attempts" ]; do
+            log_path="$RUNNER_TEMP/fastlane_beta_attempt_${attempt}.log"
+            echo "=== TestFlight upload attempt ${attempt}/${max_attempts} ==="
+
+            (
+              cd ios
+              fastlane beta
+            ) 2>&1 | tee "$log_path"
+            status=${PIPESTATUS[0]}
+
+            if [ "$status" -eq 0 ]; then
+              echo "Fastlane upload finished successfully."
+              exit 0
+            fi
+
+            if has_successful_transporter_upload "$log_path" && is_transient_asc_failure "$log_path"; then
+              echo "Detected successful IPA upload followed by a transient App Store Connect network/SPI error."
+              echo "Treating this run as success because Transporter already reported UPLOAD SUCCEEDED."
+              exit 0
+            fi
+
+            if is_transient_asc_failure "$log_path" && [ "$attempt" -lt "$max_attempts" ]; then
+              backoff_seconds=$((attempt * 60))
+              echo "Transient App Store Connect upload failure detected. Retrying in ${backoff_seconds}s..."
+              sleep "$backoff_seconds"
+              attempt=$((attempt + 1))
+              continue
+            fi
+
+            echo "Fastlane upload failed without matching the known transient-success pattern."
+            exit "$status"
+          done
 
   release-android:
     if: inputs.platform == 'android' || inputs.platform == 'both'
