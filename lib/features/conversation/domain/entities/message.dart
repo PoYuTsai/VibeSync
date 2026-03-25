@@ -23,6 +23,9 @@ class Message extends HiveObject {
   @HiveField(5)
   final String? quotedReplyPreview;
 
+  @HiveField(6)
+  final bool? quotedReplyPreviewIsFromMe;
+
   Message({
     required this.id,
     required this.content,
@@ -30,6 +33,7 @@ class Message extends HiveObject {
     required this.timestamp,
     this.enthusiasmScore,
     this.quotedReplyPreview,
+    this.quotedReplyPreviewIsFromMe,
   });
 
   int get wordCount => content.length;

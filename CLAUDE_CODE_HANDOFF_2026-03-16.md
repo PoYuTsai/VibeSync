@@ -258,6 +258,11 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 
 52. `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/screens/analysis_screen.dart`
    - Analysis/OCR error handling is now mapped through a dedicated user-facing error taxonomy instead of leaking raw backend strings like `Analysis failed`, `timeout`, or exception dumps into the UI.
+
+53. `supabase/functions/analyze-chat/index.ts`, `lib/features/analysis/domain/entities/analysis_models.dart`, `lib/features/analysis/data/services/analysis_service.dart`, `lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart`, `lib/features/conversation/domain/entities/message.dart`, `lib/features/conversation/presentation/widgets/message_bubble.dart`
+   - LINE-style quoted replies now preserve two layers of ownership instead of collapsing everything into one speaker guess.
+   - The outer bubble still decides the real `我說 / 她說`, but readable quote cards can now carry `quotedReplyPreviewIsFromMe`, so a left-side Candy reply can correctly keep a nested quoted Bruce snippet as right-side historical context without emitting it as a new standalone row.
+   - Imported messages, later analysis requests, the OCR edit dialog, and the in-thread message bubble UI now all preserve and display that quoted-preview speaker metadata end to end.
    - The service now normalizes oversized payloads, unsupported image types, no-incoming-message analysis attempts, auth expiry, upstream busy states, and generic network/timeout failures into clear Traditional Chinese messages plus suggested recovery actions.
    - The screen layer now uses those friendly messages directly and falls back to generic Chinese copy for unknown OCR / analysis / optimize failures, so TestFlight users should no longer see technical prefixes like `識別失敗: ...` or `優化失敗: ...`.
 

@@ -1,5 +1,6 @@
 // lib/features/conversation/presentation/widgets/message_bubble.dart
 import 'package:flutter/material.dart';
+
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/message.dart';
@@ -9,8 +10,19 @@ class MessageBubble extends StatelessWidget {
 
   const MessageBubble({super.key, required this.message});
 
+  String? _quotedReplyLabel() {
+    final quotedIsFromMe = message.quotedReplyPreviewIsFromMe;
+    if (quotedIsFromMe == null) {
+      return null;
+    }
+
+    return quotedIsFromMe ? '引用我剛剛說的' : '引用對方剛剛說的';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final quotedReplyLabel = _quotedReplyLabel();
+
     return Align(
       alignment:
           message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -59,14 +71,31 @@ class MessageBubble extends StatelessWidget {
                         : AppColors.glassBorder.withValues(alpha: 0.7),
                   ),
                 ),
-                child: Text(
-                  message.quotedReplyPreview!,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: message.isFromMe
-                        ? Colors.white.withValues(alpha: 0.85)
-                        : AppColors.glassTextHint,
-                    height: 1.35,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (quotedReplyLabel != null) ...[
+                      Text(
+                        quotedReplyLabel,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: message.isFromMe
+                              ? Colors.white.withValues(alpha: 0.72)
+                              : AppColors.glassTextHint,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                    Text(
+                      message.quotedReplyPreview!,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: message.isFromMe
+                            ? Colors.white.withValues(alpha: 0.85)
+                            : AppColors.glassTextHint,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

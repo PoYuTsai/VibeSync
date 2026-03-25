@@ -130,6 +130,13 @@ class _ScreenshotRecognitionDialogState
     });
   }
 
+  void _applyQuotedReplySpeakerSelection(int index, bool isFromMe) {
+    setState(() {
+      _editableMessages[index].quotedReplyPreviewIsFromMe = isFromMe;
+      _editValidationMessage = null;
+    });
+  }
+
   void _applySpeakerToKnownSides() {
     setState(() {
       for (final message in _editableMessages) {
@@ -472,6 +479,23 @@ class _ScreenshotRecognitionDialogState
               ),
             ),
             const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildSpeakerChip(
+                  label: '引用對方',
+                  selected: message.quotedReplyPreviewIsFromMe == false,
+                  onTap: () => _applyQuotedReplySpeakerSelection(index, false),
+                ),
+                _buildSpeakerChip(
+                  label: '引用我方',
+                  selected: message.quotedReplyPreviewIsFromMe == true,
+                  onTap: () => _applyQuotedReplySpeakerSelection(index, true),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: message.quotedReplyController,
               minLines: 1,
@@ -1023,12 +1047,14 @@ class _ScreenshotRecognitionDialogState
 class _EditableRecognizedMessage {
   final String side;
   bool isFromMe;
+  bool? quotedReplyPreviewIsFromMe;
   final TextEditingController controller;
   final TextEditingController? quotedReplyController;
 
   _EditableRecognizedMessage({
     required this.side,
     required this.isFromMe,
+    required this.quotedReplyPreviewIsFromMe,
     required this.controller,
     required this.quotedReplyController,
   });
@@ -1039,6 +1065,7 @@ class _EditableRecognizedMessage {
     return _EditableRecognizedMessage(
       side: message.side,
       isFromMe: message.isFromMe,
+      quotedReplyPreviewIsFromMe: message.quotedReplyPreviewIsFromMe,
       controller: TextEditingController(text: message.content),
       quotedReplyController:
           (message.quotedReplyPreview?.trim().isNotEmpty ?? false)
@@ -1052,6 +1079,8 @@ class _EditableRecognizedMessage {
       side: side,
       isFromMe: isFromMe,
       content: controller.text.trim(),
+      quotedReplyPreviewIsFromMe:
+          quotedReplyController == null ? null : quotedReplyPreviewIsFromMe,
       quotedReplyPreview: quotedReplyController?.text.trim().isEmpty ?? true
           ? null
           : quotedReplyController!.text.trim(),

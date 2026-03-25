@@ -250,12 +250,14 @@ class RecognizedMessage {
   final bool isFromMe;
   final String content;
   final String? quotedReplyPreview;
+  final bool? quotedReplyPreviewIsFromMe;
 
   const RecognizedMessage({
     this.side = 'unknown',
     required this.isFromMe,
     required this.content,
     this.quotedReplyPreview,
+    this.quotedReplyPreviewIsFromMe,
   });
 
   factory RecognizedMessage.fromJson(Map<String, dynamic> json) {
@@ -264,6 +266,8 @@ class RecognizedMessage {
         rawSide == 'left' || rawSide == 'right' ? rawSide : 'unknown';
     final rawQuotedReplyPreview =
         (json['quotedReplyPreview'] as String?)?.trim();
+    final rawQuotedReplyPreviewIsFromMe =
+        json['quotedReplyPreviewIsFromMe'] as bool?;
 
     return RecognizedMessage(
       side: normalizedSide,
@@ -273,6 +277,10 @@ class RecognizedMessage {
           rawQuotedReplyPreview == null || rawQuotedReplyPreview.isEmpty
               ? null
               : rawQuotedReplyPreview,
+      quotedReplyPreviewIsFromMe: rawQuotedReplyPreview == null ||
+              rawQuotedReplyPreview.isEmpty
+          ? null
+          : rawQuotedReplyPreviewIsFromMe,
     );
   }
 
@@ -282,6 +290,10 @@ class RecognizedMessage {
         'content': content,
         if (quotedReplyPreview != null && quotedReplyPreview!.trim().isNotEmpty)
           'quotedReplyPreview': quotedReplyPreview!.trim(),
+        if (quotedReplyPreview != null &&
+            quotedReplyPreview!.trim().isNotEmpty &&
+            quotedReplyPreviewIsFromMe != null)
+          'quotedReplyPreviewIsFromMe': quotedReplyPreviewIsFromMe,
       };
 
   RecognizedMessage copyWith({
@@ -289,12 +301,15 @@ class RecognizedMessage {
     bool? isFromMe,
     String? content,
     String? quotedReplyPreview,
+    bool? quotedReplyPreviewIsFromMe,
   }) {
     return RecognizedMessage(
       side: side ?? this.side,
       isFromMe: isFromMe ?? this.isFromMe,
       content: content ?? this.content,
       quotedReplyPreview: quotedReplyPreview ?? this.quotedReplyPreview,
+      quotedReplyPreviewIsFromMe:
+          quotedReplyPreviewIsFromMe ?? this.quotedReplyPreviewIsFromMe,
     );
   }
 }

@@ -598,6 +598,11 @@ class AnalysisService {
                 if (message.quotedReplyPreview != null &&
                     message.quotedReplyPreview!.trim().isNotEmpty)
                   'quotedReplyPreview': message.quotedReplyPreview!.trim(),
+                if (message.quotedReplyPreview != null &&
+                    message.quotedReplyPreview!.trim().isNotEmpty &&
+                    message.quotedReplyPreviewIsFromMe != null)
+                  'quotedReplyPreviewIsFromMe':
+                      message.quotedReplyPreviewIsFromMe,
               },
             )
             .toList(),
