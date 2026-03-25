@@ -185,10 +185,8 @@ class _ScreenshotRecognitionDialogState
     return groupIndexes.length > 1 && groupIndexes.first == index;
   }
 
-  bool get _shouldExpandEditorByDefault =>
-      widget.recognized.sideConfidence == 'low' ||
-      widget.recognized.confidence == 'low' ||
-      widget.recognized.uncertainSideCount > 0;
+  // Always expand editor by default to encourage users to verify OCR text accuracy
+  bool get _shouldExpandEditorByDefault => true;
 
   bool get _isCompactHighConfidenceFlow =>
       widget.recognized.importPolicy == 'allow' &&
@@ -200,19 +198,15 @@ class _ScreenshotRecognitionDialogState
       _editableMessages.where((message) => message.side == 'unknown').length;
 
   String _editorSummaryCopy() {
-    if (_isCompactHighConfidenceFlow) {
-      return '這次看起來沒什麼問題，直接匯入就好；只有你覺得哪一則怪怪的，再展開檢查。';
-    }
-
     if (_priorityMessageCount > 0) {
-      return '這次有 $_priorityMessageCount 則訊息的左右方向還不夠穩，建議先展開檢查這幾列。';
+      return '這次有 $_priorityMessageCount 則訊息的左右方向還不夠穩，建議先檢查這幾列。AI 識別小字可能會有誤，請順便確認文字內容是否正確。';
     }
 
-    if (_shouldExpandEditorByDefault) {
-      return '這次識別有些地方需要你快速確認；如果內容都正確，改完就能直接匯入。';
+    if (_isCompactHighConfidenceFlow) {
+      return 'AI 識別小字可能會有誤（如「佳評如潮」變成「住評如潮」），建議快速掃一下內容是否正確。';
     }
 
-    return '這次看起來大致穩定，可以直接匯入；只有覺得哪則怪怪的，再展開修改就好。';
+    return 'AI 識別截圖文字可能會有小誤差，建議快速確認內容是否正確，有問題可以直接修改。';
   }
 
   void _applySpeakerToGroup(int index, bool isFromMe) {
@@ -623,14 +617,14 @@ class _ScreenshotRecognitionDialogState
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.08),
+                  color: AppColors.info.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.18),
+                    color: AppColors.info.withValues(alpha: 0.18),
                   ),
                 ),
                 child: Text(
-                  '這批截圖看起來很穩，通常直接匯入就可以。只有你覺得哪一則不對，再往下展開檢查。',
+                  '這批截圖方向看起來很穩，但建議快速確認文字內容是否正確（AI 識別小字可能有誤）。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.glassTextPrimary,
                     height: 1.45,
@@ -833,9 +827,10 @@ class _ScreenshotRecognitionDialogState
                   if (!_showDetailedEditor) ...[
                     const SizedBox(height: 8),
                     Text(
-                      '如果看起來都對，直接匯入就好；真的有哪則怪怪的，再展開修改。',
+                      '建議展開確認 AI 識別的文字是否正確，小字容易辨識錯誤。',
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.unselectedText,
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.w500,
                         height: 1.4,
                       ),
                     ),
@@ -851,7 +846,7 @@ class _ScreenshotRecognitionDialogState
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '只有判錯時才需要改。你可以在這裡改內容、調整她說／我說，或補上這句正在回什麼。',
+                      '請確認文字內容是否正確（AI 識別小字可能有誤），也可以調整她說／我說。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.unselectedText,
                         height: 1.45,
