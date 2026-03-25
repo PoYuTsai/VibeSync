@@ -77,6 +77,8 @@ interface NormalizedRecognizedMessage {
   quotedReplyPreviewIsFromMe?: boolean;
 }
 
+type VisibleSpeakerPattern = "mixed" | "only_left" | "only_right" | "unknown";
+
 interface SessionContextInput {
   meetingContext?: string;
   duration?: string;
@@ -384,6 +386,9 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "### OCR Accuracy Rules",
   "- Preserve Traditional Chinese exactly; do not guess unreadable characters.",
   "- Read screenshots from top to bottom and keep message order stable across multiple images.",
+  "- Before deciding each row, first judge the whole screenshot's visible outer-bubble pattern as `mixed`, `only_left`, or `only_right`, ignoring quoted-reply inset cards.",
+  "- If every visible outer bubble on the screen belongs to the left gutter and only the smaller quoted cards mention the other person, return `screenSpeakerPattern: only_left`.",
+  "- If every visible outer bubble on the screen belongs to the right gutter and only the smaller quoted cards mention the other person, return `screenSpeakerPattern: only_right`.",
   "- Treat LINE or Messenger quoted-reply previews as context, not as separate new messages.",
   "- In LINE reply UI, the smaller embedded card with avatar/name/light-gray text is usually quoted history. Do not output that embedded quoted card as its own message row.",
   "- If one outer bubble contains both an embedded quoted-reply card and a larger main reply text below it, keep only the larger main reply text as the current message.",
@@ -426,6 +431,7 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
 const RECOGNIZED_CONVERSATION_SCHEMA = `{
   "recognizedConversation": {
     "contactName": "Alex",
+    "screenSpeakerPattern": "mixed",
     "classification": "valid_chat",
     "importPolicy": "allow",
     "confidence": "high",
@@ -1181,6 +1187,33 @@ function sanitizeContactNameValue(value: unknown): string | undefined {
   return trimmed;
 }
 
+function normalizeVisibleSpeakerPattern(value: unknown): VisibleSpeakerPattern {
+  if (typeof value !== "string") {
+    return "unknown";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "mixed") {
+    return "mixed";
+  }
+  if (
+    normalized === "only_left" ||
+    normalized === "left_only" ||
+    normalized === "single_left"
+  ) {
+    return "only_left";
+  }
+  if (
+    normalized === "only_right" ||
+    normalized === "right_only" ||
+    normalized === "single_right"
+  ) {
+    return "only_right";
+  }
+
+  return "unknown";
+}
+
 function normalizeContactNameForComparison(value: string): string {
   return value.replace(/\s+/g, "").toLowerCase();
 }
@@ -1252,6 +1285,46 @@ function stabilizeRecognizedContactName({
   }
 
   return sanitizedRecognized;
+}
+
+function applySingleVisibleSpeakerPattern(
+  messages: NormalizedRecognizedMessage[],
+  pattern: VisibleSpeakerPattern,
+): {
+  messages: NormalizedRecognizedMessage[];
+  adjustedCount: number;
+} {
+  if (pattern !== "only_left" && pattern !== "only_right") {
+    return {
+      messages,
+      adjustedCount: 0,
+    };
+  }
+
+  const targetSide: RecognizedBubbleSide =
+    pattern === "only_left" ? "left" : "right";
+  const targetIsFromMe = targetSide === "right";
+  const adjusted = messages.map((message) => ({ ...message }));
+  let adjustedCount = 0;
+
+  for (let index = 0; index < adjusted.length; index += 1) {
+    if (
+      adjusted[index].side !== targetSide ||
+      adjusted[index].isFromMe !== targetIsFromMe
+    ) {
+      adjusted[index] = {
+        ...adjusted[index],
+        side: targetSide,
+        isFromMe: targetIsFromMe,
+      };
+      adjustedCount += 1;
+    }
+  }
+
+  return {
+    messages: adjusted,
+    adjustedCount,
+  };
 }
 
 function normalizeQuotedReplyPreviewIsFromMe(
@@ -2145,6 +2218,9 @@ function normalizeRecognizedConversation(
     recognizedRaw.warning,
     recognizedRaw.summary,
   );
+  const visibleSpeakerPattern = normalizeVisibleSpeakerPattern(
+    recognizedRaw.screenSpeakerPattern,
+  );
   let importPolicy = normalizeImportPolicy(
     recognizedRaw.importPolicy,
     classification,
@@ -2229,8 +2305,12 @@ function normalizeRecognizedConversation(
   const continuityAdjustment = applySpeakerContinuityHeuristics(
     normalizedMessagesWithSidePriority,
   );
-  const groupedAdjustment = applyGroupedSpeakerHeuristics(
+  const singleVisibleSideAdjustment = applySingleVisibleSpeakerPattern(
     continuityAdjustment.messages,
+    visibleSpeakerPattern,
+  );
+  const groupedAdjustment = applyGroupedSpeakerHeuristics(
+    singleVisibleSideAdjustment.messages,
   );
   const quotedPreviewAdjustment = stripQuotedReplyPreviewMessages(
     groupedAdjustment.messages,
@@ -2268,6 +2348,7 @@ function normalizeRecognizedConversation(
     finalMessageCount,
     finalUncertainSideCount,
     continuityAdjustment.adjustedCount +
+      singleVisibleSideAdjustment.adjustedCount +
       groupedAdjustment.adjustedCount +
       sideRunAdjustment.adjustedCount +
       layoutFirstAdjustment.adjustedCount +
@@ -2296,7 +2377,8 @@ function normalizeRecognizedConversation(
     uncertainSideCount: finalUncertainSideCount,
     normalizationTelemetry: {
       continuityAdjustedCount: continuityAdjustment.adjustedCount,
-      groupedAdjustedCount: groupedAdjustment.adjustedCount +
+      groupedAdjustedCount: singleVisibleSideAdjustment.adjustedCount +
+        groupedAdjustment.adjustedCount +
         sideRunAdjustment.adjustedCount +
         trailingAdjustment.adjustedCount,
       layoutFirstAdjustedCount: layoutFirstAdjustment.adjustedCount,
