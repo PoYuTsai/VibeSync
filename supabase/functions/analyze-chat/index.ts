@@ -2370,7 +2370,40 @@ function normalizeRecognizedConversation(
     importPolicy = "confirm";
     confidence = "low";
     warning =
-      "這批截圖看起來可能混入了不同聯絡人或不同聊天段落，請先確認是不是同一段對話，再決定要不要匯入。";
+      "這批截圖看起來可能混入了不同聯絡人或不同聯絡人或不同聊天段落，請先確認是不是同一段對話，再決定要不要匯入。";
+  }
+
+  // Check for only_right pattern (all messages from me)
+  const hasQuotedReplyFromOther = rawMessages.some((message) => {
+    if (!message || typeof message !== "object") {
+      return false;
+    }
+    const record = message as Record<string, unknown>;
+    const quotedReplyPreview = sanitizeQuotedReplyPreviewValue(
+      record.quotedReplyPreview,
+    );
+    if (!quotedReplyPreview) {
+      return false;
+    }
+    // quotedReplyPreviewIsFromMe: false means the quoted content is from the other person
+    return record.quotedReplyPreviewIsFromMe === false;
+  });
+
+  if (visibleSpeakerPattern === "only_right" && importPolicy !== "reject") {
+    if (!hasQuotedReplyFromOther) {
+      // All messages are from me, no quoted replies from other person
+      classification = "low_confidence";
+      importPolicy = "confirm";
+      confidence = "low";
+      warning =
+        "截圖只有你自己發的訊息，沒有對方的回覆。如果要分析對話，建議加入包含對方訊息的截圖。";
+    } else {
+      // All messages are from me, but has quoted replies from other person
+      if (!warning) {
+        warning =
+          "截圖主要是你的訊息，對方的回覆只出現在引用中。加入對方的完整訊息可以讓分析更準確。";
+      }
+    }
   }
 
   const normalizedMessagesWithSidePriority = rawMessages
