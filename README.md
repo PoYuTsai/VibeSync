@@ -199,5 +199,6 @@ Private - All Rights Reserved
 - The server-side layout parser now strips likely centered system rows before rebuilding speaker runs, which should make LINE-style date separators, match banners, pinned-message notices, and similar mid-column UI rows less likely to break `我 / 她` grouping across LINE and other chat-style apps.
 - OCR guardrails / telemetry now also expose `systemRowsRemovedCount` and a `system_rows_removed` server flag, so QA can tell when the parser had to ignore centered UI noise rather than assuming every speaker repair came from the same heuristic path.
 - Follow-up hotfix: the new centered-row stripping is now intentionally conservative. The layout parser file was rewritten into a clean ASCII-safe version, and system-row removal now only applies to very obvious standalone date/time separators or simple system banners when at least two known-side chat bubbles still remain afterward.
+- OCR normalization now also fails open if the layout-first parser itself throws at runtime: the server logs the parser failure and falls back to the pre-parser grouped rows instead of returning a generic OCR failure to the app.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

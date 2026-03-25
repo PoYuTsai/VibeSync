@@ -1977,9 +1977,22 @@ function normalizeRecognizedConversation(
   const sideRunAdjustment = applySideRunGroupingHeuristics(
     quotedPreviewAdjustment.messages,
   );
-  const layoutFirstAdjustment = applyLayoutFirstParser(
-    sideRunAdjustment.messages,
-  );
+  let layoutFirstAdjustment;
+  try {
+    layoutFirstAdjustment = applyLayoutFirstParser(
+      sideRunAdjustment.messages,
+    );
+  } catch (error) {
+    console.warn("layout_first_parser_failed", {
+      error: getErrorMessage(error),
+      messageCount: sideRunAdjustment.messages.length,
+    });
+    layoutFirstAdjustment = {
+      messages: sideRunAdjustment.messages,
+      adjustedCount: 0,
+      systemRowsRemovedCount: 0,
+    };
+  }
   const trailingAdjustment = applyTrailingSpeakerHeuristics(
     layoutFirstAdjustment.messages,
   );
