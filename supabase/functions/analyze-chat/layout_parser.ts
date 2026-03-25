@@ -194,6 +194,9 @@ function runLooksFlexible(
 
   if (run.length === 1) {
     const [message] = runMessages;
+    if (!message) {
+      return true; // Treat missing message as flexible
+    }
     return !!message.quotedReplyPreview ||
       isLikelyMediaPlaceholderContent(message.content) ||
       isLikelyShortContinuationContent(message.content);
@@ -226,12 +229,16 @@ function applyRunSide<TMessage extends LayoutFirstMessage>(
   let adjustedCount = 0;
 
   for (let index = run.start; index <= run.end; index += 1) {
+    const message = adjusted[index];
+    if (!message) {
+      continue; // Skip undefined elements
+    }
     if (
-      adjusted[index].side !== side ||
-      adjusted[index].isFromMe !== (side === "right")
+      message.side !== side ||
+      message.isFromMe !== (side === "right")
     ) {
       adjusted[index] = {
-        ...adjusted[index],
+        ...message,
         side,
         isFromMe: side === "right",
       };
@@ -245,7 +252,12 @@ function applyRunSide<TMessage extends LayoutFirstMessage>(
 export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
   messages: TMessage[],
 ): LayoutFirstParseResult<TMessage> {
-  const stripped = stripLikelySystemRows(messages);
+  // Filter out any null/undefined messages to prevent runtime errors
+  const validMessages = messages.filter(
+    (m): m is TMessage => m != null && typeof m.side === "string"
+  );
+
+  const stripped = stripLikelySystemRows(validMessages);
 
   if (stripped.messages.length < 2) {
     return {
