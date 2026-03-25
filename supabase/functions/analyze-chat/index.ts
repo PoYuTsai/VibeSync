@@ -16,6 +16,53 @@ const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// JSON 修復函數 - 處理 Claude 有時輸出不完整的 JSON
+function repairJson(jsonString: string): string {
+  let repaired = jsonString.trim();
+
+  // 移除 trailing commas before } or ]
+  repaired = repaired.replace(/,(\s*[}\]])/g, "$1");
+
+  // 計算未閉合的括號
+  let braceCount = 0;
+  let bracketCount = 0;
+  let inString = false;
+  let escape = false;
+
+  for (const char of repaired) {
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (char === "{") braceCount++;
+    if (char === "}") braceCount--;
+    if (char === "[") bracketCount++;
+    if (char === "]") bracketCount--;
+  }
+
+  // 補上缺少的閉合括號
+  while (bracketCount > 0) {
+    repaired += "]";
+    bracketCount--;
+  }
+  while (braceCount > 0) {
+    repaired += "}";
+    braceCount--;
+  }
+
+  return repaired;
+}
+
 // 訊息制額度
 const TIER_MONTHLY_LIMITS: Record<string, number> = {
   free: 30,
@@ -3429,7 +3476,26 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         });
         throw new Error("No JSON in response");
       }
-      result = JSON.parse(jsonMatch[0]);
+
+      // 嘗試直接解析
+      let jsonToParse = jsonMatch[0];
+      try {
+        result = JSON.parse(jsonToParse);
+      } catch (firstParseError) {
+        // 嘗試修復 JSON
+        logInfo("ai_response_json_repair_attempt", {
+          user: summarizeUser(user.id),
+          model: actualModel,
+          originalLength: jsonToParse.length,
+        });
+        const repairedJson = repairJson(jsonToParse);
+        result = JSON.parse(repairedJson);
+        logInfo("ai_response_json_repair_succeeded", {
+          user: summarizeUser(user.id),
+          model: actualModel,
+          repairedLength: repairedJson.length,
+        });
+      }
     } catch (parseError) {
       logWarn("ai_response_parse_failed", {
         user: summarizeUser(user.id),
