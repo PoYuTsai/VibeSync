@@ -2282,27 +2282,6 @@ function normalizeRecognizedConversation(
     recognizedRaw.screenSpeakerPattern,
   );
 
-  // Debug logging for OCR output
-  console.log("OCR_DEBUG_screenSpeakerPattern", {
-    raw: recognizedRaw.screenSpeakerPattern,
-    normalized: visibleSpeakerPattern,
-  });
-  console.log("OCR_DEBUG_rawMessages_first5", JSON.stringify(
-    rawMessages.slice(0, 5).map((m: unknown) => {
-      if (!m || typeof m !== "object") return m;
-      const r = m as Record<string, unknown>;
-      return {
-        side: r.side,
-        isFromMe: r.isFromMe,
-        outerColumn: r.outerColumn,
-        horizontalPosition: r.horizontalPosition,
-        content: typeof r.content === "string" ? r.content.slice(0, 30) : r.content,
-      };
-    }),
-    null,
-    2
-  ));
-
   let importPolicy = normalizeImportPolicy(
     recognizedRaw.importPolicy,
     classification,
