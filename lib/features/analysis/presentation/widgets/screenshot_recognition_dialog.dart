@@ -183,10 +183,20 @@ class _ScreenshotRecognitionDialogState
       widget.recognized.confidence == 'low' ||
       widget.recognized.uncertainSideCount > 0;
 
+  bool get _isCompactHighConfidenceFlow =>
+      widget.recognized.importPolicy == 'allow' &&
+      widget.recognized.confidence == 'high' &&
+      widget.recognized.sideConfidence == 'high' &&
+      (widget.warningMessage?.trim().isEmpty ?? true);
+
   int get _priorityMessageCount =>
       _editableMessages.where((message) => message.side == 'unknown').length;
 
   String _editorSummaryCopy() {
+    if (_isCompactHighConfidenceFlow) {
+      return '這次看起來沒什麼問題，直接匯入就好；只有你覺得哪一則怪怪的，再展開檢查。';
+    }
+
     if (_priorityMessageCount > 0) {
       return '這次有 $_priorityMessageCount 則訊息的左右方向還不夠穩，建議先展開檢查這幾列。';
     }
@@ -523,10 +533,10 @@ class _ScreenshotRecognitionDialogState
     final currentMessages = _sanitizedMessages();
     final guidance = ScreenshotRecognitionHelper.guidance(widget.recognized);
     final guidanceColor = _guidanceColor(guidance.tone);
-    final showStatusChips =
-        widget.recognized.classification != 'valid_chat' ||
-        widget.recognized.confidence != 'high' ||
-        widget.recognized.sideConfidence != 'high';
+    final showStatusChips = !_isCompactHighConfidenceFlow &&
+        (widget.recognized.classification != 'valid_chat' ||
+            widget.recognized.confidence != 'high' ||
+            widget.recognized.sideConfidence != 'high');
     final shouldShowSessionContextFields =
         widget.forceShowSessionContextFields ||
             _selectedImportMode ==
@@ -583,6 +593,27 @@ class _ScreenshotRecognitionDialogState
                   ),
                 ),
               ),
+            if (_isCompactHighConfidenceFlow) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.success.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Text(
+                  '這批截圖看起來很穩，通常直接匯入就可以。只有你覺得哪一則不對，再往下展開檢查。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ],
             if (showStatusChips) ...[
               const SizedBox(height: 12),
               Wrap(

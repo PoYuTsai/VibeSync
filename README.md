@@ -194,5 +194,9 @@ Private - All Rights Reserved
 
 - Screenshot OCR now also runs through a reusable `layout-first parser v1` on the server side: after Claude returns tentative rows, the backend rebuilds visible left/right runs, repairs isolated drifted runs before import, and records `layoutFirstAdjustedCount` in telemetry so QA can tell when layout repair was needed.
 - A dedicated `layout_parser_test.ts` now locks in the core speaker-direction repair cases for that parser layer, including same-side quoted tails, media bridges, and unknown rows sitting between matching speaker columns.
+- Screenshot OCR now supports a user-facing `重新讀圖` path that bypasses the local OCR cache for the same image batch, so partner QA can retest a fixed server-side speaker rule without being trapped by an older on-device recognition result.
+- The OCR confirmation dialog is also lighter for high-confidence results now: when classification, structure confidence, and side confidence all look stable, the editor stays in a compact flow and only expands into full manual correction when the user actually needs it.
+- The server-side layout parser now strips likely centered system rows before rebuilding speaker runs, which should make LINE-style date separators, match banners, pinned-message notices, and similar mid-column UI rows less likely to break `我 / 她` grouping across LINE and other chat-style apps.
+- OCR guardrails / telemetry now also expose `systemRowsRemovedCount` and a `system_rows_removed` server flag, so QA can tell when the parser had to ignore centered UI noise rather than assuming every speaker repair came from the same heuristic path.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

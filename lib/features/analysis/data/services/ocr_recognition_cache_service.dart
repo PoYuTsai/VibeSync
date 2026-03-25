@@ -199,4 +199,14 @@ class OcrRecognitionCacheService {
     );
     await _pruneEntries();
   }
+
+  static Future<void> invalidate(List<Uint8List> images) async {
+    if (images.isEmpty) {
+      return;
+    }
+
+    final userKey = _currentUserKey();
+    final fingerprint = _fingerprintImages(images);
+    await StorageService.settingsBox.delete(_cacheKey(fingerprint, userKey));
+  }
 }

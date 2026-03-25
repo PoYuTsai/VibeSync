@@ -106,6 +106,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // 截圖上傳功能
   List<Uint8List> _selectedImages = [];
   List<SelectedImageMetrics> _selectedImageMetrics = [];
+  List<Uint8List> _lastRecognitionImages = [];
+  List<SelectedImageMetrics> _lastRecognitionImageMetrics = [];
   RecognizedConversation? _recognizedConversation;
   String? _recognizedWarningMessage;
   bool _hasPendingRecognitionImport = false;
@@ -555,6 +557,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     setState(() {
       _selectedImages = List<Uint8List>.from(images);
       _selectedImageMetrics = [];
+      _lastRecognitionImages = List<Uint8List>.from(images);
+      _lastRecognitionImageMetrics = [];
       _recognizedConversation = null;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
@@ -568,6 +572,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   void _handleSelectedImageMetricsChanged(List<SelectedImageMetrics> metrics) {
     setState(() {
       _selectedImageMetrics = List<SelectedImageMetrics>.from(metrics);
+      if (_selectedImages.isNotEmpty) {
+        _lastRecognitionImageMetrics = List<SelectedImageMetrics>.from(metrics);
+      }
     });
   }
 
@@ -577,6 +584,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
     });
+  }
+
+  void _rememberRecognitionReplay({
+    required List<Uint8List> images,
+    required List<SelectedImageMetrics> metrics,
+  }) {
+    _lastRecognitionImages = List<Uint8List>.from(images);
+    _lastRecognitionImageMetrics = List<SelectedImageMetrics>.from(metrics);
+  }
+
+  bool get _canForceReRecognize =>
+      !_isRecognizing && _lastRecognitionImages.isNotEmpty;
+
+  Future<void> _forceReRecognizeLastBatch() async {
+    if (!_canForceReRecognize) {
+      return;
+    }
+
+    await _recognizeAndAddToConversation(
+      forceRefresh: true,
+      overrideImages: _lastRecognitionImages,
+      overrideMetrics: _lastRecognitionImageMetrics,
+    );
   }
 
   Widget _buildConversationScreenshotSection() {
@@ -1398,8 +1428,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   bool _recognizeCancelled = false;
 
   /// 識別截圖並加入對話（不進行完整分析）
-  Future<void> _recognizeAndAddToConversation() async {
-    if (_selectedImages.isEmpty) return;
+  Future<void> _recognizeAndAddToConversation({
+    bool forceRefresh = false,
+    List<Uint8List>? overrideImages,
+    List<SelectedImageMetrics>? overrideMetrics,
+  }) async {
+    final sourceImages = overrideImages ?? _selectedImages;
+    final sourceMetrics = overrideMetrics ?? _selectedImageMetrics;
+    if (sourceImages.isEmpty) return;
+    _selectedImages = List<Uint8List>.from(sourceImages);
+    _selectedImageMetrics = List<SelectedImageMetrics>.from(sourceMetrics);
 
     _debugLog('=== 開始截圖識別 ===');
     _debugLog('圖片數量: ${_selectedImages.length}');
@@ -1440,6 +1478,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     _debugLog('對話 ID: ${conversation.id}');
     _debugLog('現有訊息數: ${conversation.messages.length}');
     final startTime = DateTime.now();
+    final metricsToProcess = List<SelectedImageMetrics>.from(sourceMetrics);
 
     // 複製圖片列表，避免狀態問題
     final imagesToProcess = List<Uint8List>.from(_selectedImages);
@@ -1448,9 +1487,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     try {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
       _debugLog('呼叫 API... (timeout: 120s)');
-      final cachedRecognition = await OcrRecognitionCacheService.read(
-        imagesToProcess,
-      );
+      if (forceRefresh) {
+        await OcrRecognitionCacheService.invalidate(imagesToProcess);
+      }
+      final cachedRecognition = forceRefresh
+          ? null
+          : await OcrRecognitionCacheService.read(
+              imagesToProcess,
+            );
       AnalysisResult result;
       if (cachedRecognition != null) {
         _debugLog('[Recognize] OCR cache hit');
@@ -1481,6 +1525,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             'recognizedConversation':
                 cachedRecognition.recognizedConversation.toJson(),
           },
+        );
+        _rememberRecognitionReplay(
+          images: imagesToProcess,
+          metrics: metricsToProcess,
         );
       } else {
         final analysisService = AnalysisService();
@@ -1516,6 +1564,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           await OcrRecognitionCacheService.write(
             images: imagesToProcess,
             recognizedConversation: result.recognizedConversation!,
+          );
+          _rememberRecognitionReplay(
+            images: imagesToProcess,
+            metrics: metricsToProcess,
           );
         }
       }
@@ -2336,6 +2388,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   .toList(),
             ),
           ],
+          if (_canForceReRecognize) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _forceReRecognizeLastBatch,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('重新讀圖'),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '如果剛剛的我說 / 她說不太對，可以直接重讀同一批截圖，不會沿用上次的快取結果。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.unselectedText,
+                height: 1.4,
+              ),
+            ),
+          ],
           if (_hasPendingRecognitionImport) ...[
             const SizedBox(height: 12),
             Row(
@@ -2348,6 +2419,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (_canForceReRecognize)
+                  TextButton(
+                    onPressed: _forceReRecognizeLastBatch,
+                    child: const Text('重讀這批圖'),
+                  ),
+                if (_canForceReRecognize) const SizedBox(width: 4),
                 TextButton(
                   onPressed: _discardPendingRecognitionDraft,
                   child: const Text('清除草稿'),

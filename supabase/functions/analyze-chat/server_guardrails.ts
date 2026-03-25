@@ -26,6 +26,7 @@ export interface ServerGuardrailInput {
   continuityAdjustedCount?: number | null;
   groupedAdjustedCount?: number | null;
   layoutFirstAdjustedCount?: number | null;
+  systemRowsRemovedCount?: number | null;
   quotedPreviewAttachedCount?: number | null;
   overlapRemovedCount?: number | null;
   inputTokens?: number;
@@ -45,6 +46,7 @@ export interface ServerGuardrailSnapshot {
   hasNonstandardScreenshot: boolean;
   hasUncertainSide: boolean;
   hasStructureRepairs: boolean;
+  hasSystemRowsRemoved: boolean;
   hasHighTokenUsage: boolean;
   hasSafetyFilter: boolean;
   totalTokens: number;
@@ -93,6 +95,9 @@ export function buildServerGuardrails(
     (input.overlapRemovedCount ?? 0) > 0;
   if (hasStructureRepairs) flags.push("structure_repaired");
 
+  const hasSystemRowsRemoved = (input.systemRowsRemovedCount ?? 0) > 0;
+  if (hasSystemRowsRemoved) flags.push("system_rows_removed");
+
   const hasHighTokenUsage = totalTokens >= HIGH_TOKEN_USAGE_TOTAL;
   if (hasHighTokenUsage) flags.push("high_token_usage");
 
@@ -109,6 +114,7 @@ export function buildServerGuardrails(
       hasNonstandardScreenshot,
       hasUncertainSide,
       hasStructureRepairs,
+      hasSystemRowsRemoved,
       hasHighTokenUsage,
       hasSafetyFilter,
     }),
@@ -122,6 +128,7 @@ export function buildServerGuardrails(
     hasNonstandardScreenshot,
     hasUncertainSide,
     hasStructureRepairs,
+    hasSystemRowsRemoved,
     hasHighTokenUsage,
     hasSafetyFilter,
     totalTokens,
@@ -162,7 +169,8 @@ function deriveSeverity(
     input.hasSlowRequest ||
     input.hasUnstableUpstream ||
     input.hasHeavyImagePayload ||
-    input.hasUncertainSide
+    input.hasUncertainSide ||
+    input.hasSystemRowsRemoved
   ) {
     return "warning";
   }

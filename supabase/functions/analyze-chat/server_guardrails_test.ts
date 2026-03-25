@@ -63,3 +63,25 @@ Deno.test("buildServerGuardrails flags compressed analysis context", () => {
     throw new Error("expected compressed_context guardrail flag");
   }
 });
+
+Deno.test("buildServerGuardrails surfaces stripped system rows as warning", () => {
+  const result = buildServerGuardrails({
+    requestType: "recognize_only",
+    imageCount: 1,
+    latencyMs: 4200,
+    timeoutMs: 15000,
+    systemRowsRemovedCount: 2,
+    inputTokens: 1200,
+    outputTokens: 600,
+  });
+
+  if (result.guardrailSeverity !== "warning") {
+    throw new Error(
+      `expected warning severity, got ${result.guardrailSeverity}`,
+    );
+  }
+
+  if (!result.guardrailFlags.includes("system_rows_removed")) {
+    throw new Error("expected system_rows_removed guardrail flag");
+  }
+});

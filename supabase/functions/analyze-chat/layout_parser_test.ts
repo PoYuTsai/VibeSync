@@ -30,6 +30,22 @@ Deno.test("fills an unknown run sandwiched by the same side", () => {
   }
 });
 
+Deno.test("drops centered system rows before grouping speakers", () => {
+  const result = applyLayoutFirstParser([
+    buildMessage("left", "See you soon"),
+    buildMessage("unknown", "Today"),
+    buildMessage("right", "Sounds good"),
+  ]);
+
+  if (result.systemRowsRemovedCount !== 1) {
+    throw new Error("Expected one centered system row to be removed");
+  }
+
+  if (result.messages.length !== 2) {
+    throw new Error("Expected only actual chat bubbles to remain");
+  }
+});
+
 Deno.test("keeps a quoted left-side tail on the same speaker run", () => {
   const result = applyLayoutFirstParser([
     buildMessage("left", "教小孩真不容易", {

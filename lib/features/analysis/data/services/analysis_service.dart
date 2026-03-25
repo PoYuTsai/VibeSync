@@ -75,6 +75,7 @@ class AnalysisTelemetry {
   final int? continuityAdjustedCount;
   final int? groupedAdjustedCount;
   final int? layoutFirstAdjustedCount;
+  final int? systemRowsRemovedCount;
   final int? quotedPreviewRemovedCount;
   final int? quotedPreviewAttachedCount;
   final int? overlapRemovedCount;
@@ -111,6 +112,7 @@ class AnalysisTelemetry {
     this.continuityAdjustedCount,
     this.groupedAdjustedCount,
     this.layoutFirstAdjustedCount,
+    this.systemRowsRemovedCount,
     this.quotedPreviewRemovedCount,
     this.quotedPreviewAttachedCount,
     this.overlapRemovedCount,
@@ -727,6 +729,11 @@ class AnalysisService {
               layoutFirstAdjustedCount:
                   telemetryData?['layoutFirstAdjustedCount'] is num
                       ? (telemetryData?['layoutFirstAdjustedCount'] as num)
+                          .round()
+                      : null,
+              systemRowsRemovedCount:
+                  telemetryData?['systemRowsRemovedCount'] is num
+                      ? (telemetryData?['systemRowsRemovedCount'] as num)
                           .round()
                       : null,
               quotedPreviewRemovedCount:

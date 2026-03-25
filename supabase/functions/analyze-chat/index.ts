@@ -247,6 +247,7 @@ function buildRecognitionObservability(
         continuityAdjustedCount?: number;
         groupedAdjustedCount?: number;
         layoutFirstAdjustedCount?: number;
+        systemRowsRemovedCount?: number;
         quotedPreviewRemovedCount?: number;
         quotedPreviewAttachedCount?: number;
         overlapRemovedCount?: number;
@@ -267,6 +268,8 @@ function buildRecognitionObservability(
       ?.groupedAdjustedCount ?? 0,
     layoutFirstAdjustedCount: recognizedConversation?.normalizationTelemetry
       ?.layoutFirstAdjustedCount ?? 0,
+    systemRowsRemovedCount: recognizedConversation?.normalizationTelemetry
+      ?.systemRowsRemovedCount ?? 0,
     quotedPreviewRemovedCount: recognizedConversation?.normalizationTelemetry
       ?.quotedPreviewRemovedCount ?? 0,
     quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry
@@ -293,6 +296,7 @@ function buildServerGuardrailObservability(input: {
   continuityAdjustedCount?: number | null;
   groupedAdjustedCount?: number | null;
   layoutFirstAdjustedCount?: number | null;
+  systemRowsRemovedCount?: number | null;
   quotedPreviewAttachedCount?: number | null;
   overlapRemovedCount?: number | null;
   inputTokens?: number;
@@ -316,6 +320,7 @@ function buildServerGuardrailObservability(input: {
     continuityAdjustedCount: input.continuityAdjustedCount,
     groupedAdjustedCount: input.groupedAdjustedCount,
     layoutFirstAdjustedCount: input.layoutFirstAdjustedCount,
+    systemRowsRemovedCount: input.systemRowsRemovedCount,
     quotedPreviewAttachedCount: input.quotedPreviewAttachedCount,
     overlapRemovedCount: input.overlapRemovedCount,
     inputTokens: input.inputTokens,
@@ -1828,6 +1833,7 @@ function normalizeRecognizedConversation(
           continuityAdjustedCount: 0,
           groupedAdjustedCount: 0,
           layoutFirstAdjustedCount: 0,
+          systemRowsRemovedCount: 0,
           quotedPreviewRemovedCount: 0,
           quotedPreviewAttachedCount: 0,
           overlapRemovedCount: 0,
@@ -2016,6 +2022,7 @@ function normalizeRecognizedConversation(
         sideRunAdjustment.adjustedCount +
         trailingAdjustment.adjustedCount,
       layoutFirstAdjustedCount: layoutFirstAdjustment.adjustedCount,
+      systemRowsRemovedCount: layoutFirstAdjustment.systemRowsRemovedCount,
       quotedPreviewRemovedCount: quotedPreviewAdjustment.removedCount,
       quotedPreviewAttachedCount: quotedPreviewAdjustment.attachedCount,
       overlapRemovedCount: overlapAdjustment.removedCount,
@@ -3018,6 +3025,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           continuityAdjustedCount?: number;
           groupedAdjustedCount?: number;
           layoutFirstAdjustedCount?: number;
+          systemRowsRemovedCount?: number;
           quotedPreviewRemovedCount?: number;
           quotedPreviewAttachedCount?: number;
           overlapRemovedCount?: number;
@@ -3167,6 +3175,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
       layoutFirstAdjustedCount:
         recognitionObservability.layoutFirstAdjustedCount,
+      systemRowsRemovedCount: recognitionObservability.systemRowsRemovedCount,
       quotedPreviewAttachedCount:
         recognitionObservability.quotedPreviewAttachedCount,
       overlapRemovedCount: recognitionObservability.overlapRemovedCount,
@@ -3275,6 +3284,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         ?.groupedAdjustedCount ?? 0,
       layoutFirstAdjustedCount: recognizedConversation?.normalizationTelemetry
         ?.layoutFirstAdjustedCount ?? 0,
+      systemRowsRemovedCount: recognizedConversation?.normalizationTelemetry
+        ?.systemRowsRemovedCount ?? 0,
       quotedPreviewRemovedCount: recognizedConversation?.normalizationTelemetry
         ?.quotedPreviewRemovedCount ?? 0,
       quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry

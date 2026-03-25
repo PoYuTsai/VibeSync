@@ -139,6 +139,7 @@
 - `continuityAdjustedCount`
 - `groupedAdjustedCount`
 - `layoutFirstAdjustedCount`
+- `systemRowsRemovedCount`
 - `quotedPreviewRemovedCount`
 - `quotedPreviewAttachedCount`
 - `overlapRemovedCount`
@@ -163,6 +164,7 @@
 - `nonstandard_screenshot`
 - `uncertain_speaker_side`
 - `structure_repaired`
+- `system_rows_removed`
 - `high_token_usage`
 - `safety_filtered`
 
