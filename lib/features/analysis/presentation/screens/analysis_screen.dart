@@ -631,34 +631,52 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         ),
         if (_selectedImages.isNotEmpty) ...[
           const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: (_isRecognizing || _isAnalyzing)
-                  ? null
-                  : _recognizeAndAddToConversation,
-              icon: _isRecognizing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.add_photo_alternate),
-              label: Text(_recognizeButtonLabel),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 13),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: (_isRecognizing || _isAnalyzing)
+                      ? null
+                      : _recognizeAndAddToConversation,
+                  icon: _isRecognizing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.add_photo_alternate),
+                  label: Text(_recognizeButtonLabel),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              // 強制重新識別按鈕（忽略快取）
+              Tooltip(
+                message: '忽略快取，重新跑 OCR',
+                child: OutlinedButton(
+                  onPressed: (_isRecognizing || _isAnalyzing)
+                      ? null
+                      : () => _recognizeAndAddToConversation(forceRefresh: true),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 13, horizontal: 12),
+                  ),
+                  child: const Icon(Icons.refresh_rounded),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
             _isRecognizing
                 ? '識別中：${_recognizeStageLabel(_recognizeStage)}'
-                : '先把截圖識別進目前對話，再選「她說 / 我說」補上新的訊息。',
+                : '先把截圖識別進目前對話；右邊按鈕可忽略快取重新識別。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.unselectedText,
             ),
