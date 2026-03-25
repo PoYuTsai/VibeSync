@@ -379,6 +379,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         final isFromMe = msg['isFromMe'] as bool;
                         return ListTile(
                           dense: true,
+                          textColor: AppColors.glassTextPrimary,
+                          iconColor: AppColors.glassTextHint,
                           leading: BubbleAvatar(
                             label: isFromMe ? '我' : '她',
                             isMe: isFromMe,
@@ -386,7 +388,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                           ),
                           title: Text(
                             msg['content'] as String,
-                            style: AppTypography.bodyMedium,
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.glassTextPrimary,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           trailing: IconButton(
                             icon: Icon(
