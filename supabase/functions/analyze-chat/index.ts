@@ -2370,7 +2370,7 @@ function normalizeRecognizedConversation(
     importPolicy = "confirm";
     confidence = "low";
     warning =
-      "這批截圖看起來可能混入了不同聯絡人或不同聯絡人或不同聊天段落，請先確認是不是同一段對話，再決定要不要匯入。";
+      "這批截圖看起來可能混入了不同聯絡人或不同聊天段落，請先確認是不是同一段對話，再決定要不要匯入。";
   }
 
   // Check for only_right pattern (all messages from me)

@@ -2689,6 +2689,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                             ),
                                           ),
                                         ),
+                                      // 強制重新識別按鈕（當有之前的圖片可以重試時）
+                                      if (_canForceReRecognize &&
+                                          _errorOrigin ==
+                                              _AnalysisErrorOrigin.recognition)
+                                        OutlinedButton.icon(
+                                          onPressed:
+                                              _isAnalyzing || _isRecognizing
+                                                  ? null
+                                                  : _forceReRecognizeLastBatch,
+                                          icon:
+                                              const Icon(Icons.refresh_rounded),
+                                          label: const Text('強制重新識別'),
+                                        ),
                                       if (_shouldShowSecondaryErrorAction())
                                         OutlinedButton(
                                           onPressed: _isAnalyzing ||
