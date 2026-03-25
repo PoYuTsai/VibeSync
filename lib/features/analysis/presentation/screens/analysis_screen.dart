@@ -1091,6 +1091,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         '方向校正 ${telemetry.continuityAdjustedCount} 次',
       if ((telemetry.groupedAdjustedCount ?? 0) > 0)
         '群組校正 ${telemetry.groupedAdjustedCount} 次',
+      if ((telemetry.layoutFirstAdjustedCount ?? 0) > 0)
+        '版面分群 ${telemetry.layoutFirstAdjustedCount} 次',
       if ((telemetry.overlapRemovedCount ?? 0) > 0)
         '重疊去重 ${telemetry.overlapRemovedCount} 次',
     ];

@@ -25,6 +25,7 @@ export interface ServerGuardrailInput {
   uncertainSideCount?: number | null;
   continuityAdjustedCount?: number | null;
   groupedAdjustedCount?: number | null;
+  layoutFirstAdjustedCount?: number | null;
   quotedPreviewAttachedCount?: number | null;
   overlapRemovedCount?: number | null;
   inputTokens?: number;
@@ -87,6 +88,7 @@ export function buildServerGuardrails(
 
   const hasStructureRepairs = (input.continuityAdjustedCount ?? 0) > 0 ||
     (input.groupedAdjustedCount ?? 0) > 0 ||
+    (input.layoutFirstAdjustedCount ?? 0) > 0 ||
     (input.quotedPreviewAttachedCount ?? 0) > 0 ||
     (input.overlapRemovedCount ?? 0) > 0;
   if (hasStructureRepairs) flags.push("structure_repaired");

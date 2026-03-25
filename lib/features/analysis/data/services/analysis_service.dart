@@ -74,6 +74,7 @@ class AnalysisTelemetry {
   final int? uncertainSideCount;
   final int? continuityAdjustedCount;
   final int? groupedAdjustedCount;
+  final int? layoutFirstAdjustedCount;
   final int? quotedPreviewRemovedCount;
   final int? quotedPreviewAttachedCount;
   final int? overlapRemovedCount;
@@ -109,6 +110,7 @@ class AnalysisTelemetry {
     this.uncertainSideCount,
     this.continuityAdjustedCount,
     this.groupedAdjustedCount,
+    this.layoutFirstAdjustedCount,
     this.quotedPreviewRemovedCount,
     this.quotedPreviewAttachedCount,
     this.overlapRemovedCount,
@@ -722,6 +724,11 @@ class AnalysisService {
               groupedAdjustedCount: telemetryData?['groupedAdjustedCount'] is num
                   ? (telemetryData?['groupedAdjustedCount'] as num).round()
                   : null,
+              layoutFirstAdjustedCount:
+                  telemetryData?['layoutFirstAdjustedCount'] is num
+                      ? (telemetryData?['layoutFirstAdjustedCount'] as num)
+                          .round()
+                      : null,
               quotedPreviewRemovedCount:
                   telemetryData?['quotedPreviewRemovedCount'] is num
                       ? (telemetryData?['quotedPreviewRemovedCount'] as num)

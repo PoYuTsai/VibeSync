@@ -97,6 +97,7 @@ class AnalysisTelemetryGuardrailHelper {
 
     final totalRepairs = (telemetry.continuityAdjustedCount ?? 0) +
         (telemetry.groupedAdjustedCount ?? 0) +
+        (telemetry.layoutFirstAdjustedCount ?? 0) +
         (telemetry.quotedPreviewAttachedCount ?? 0);
     if (totalRepairs > 0) {
       guardrails.add(

@@ -138,6 +138,7 @@
 - `uncertainSideCount`
 - `continuityAdjustedCount`
 - `groupedAdjustedCount`
+- `layoutFirstAdjustedCount`
 - `quotedPreviewRemovedCount`
 - `quotedPreviewAttachedCount`
 - `overlapRemovedCount`

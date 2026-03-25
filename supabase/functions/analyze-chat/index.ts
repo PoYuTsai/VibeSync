@@ -8,6 +8,7 @@ import {
   SAFETY_RULES,
 } from "./guardrails.ts";
 import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
+import { applyLayoutFirstParser } from "./layout_parser.ts";
 import { extractTokenUsage, logAiCall } from "./logger.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
 
@@ -245,6 +246,7 @@ function buildRecognitionObservability(
       normalizationTelemetry?: {
         continuityAdjustedCount?: number;
         groupedAdjustedCount?: number;
+        layoutFirstAdjustedCount?: number;
         quotedPreviewRemovedCount?: number;
         quotedPreviewAttachedCount?: number;
         overlapRemovedCount?: number;
@@ -263,6 +265,8 @@ function buildRecognitionObservability(
       ?.continuityAdjustedCount ?? 0,
     groupedAdjustedCount: recognizedConversation?.normalizationTelemetry
       ?.groupedAdjustedCount ?? 0,
+    layoutFirstAdjustedCount: recognizedConversation?.normalizationTelemetry
+      ?.layoutFirstAdjustedCount ?? 0,
     quotedPreviewRemovedCount: recognizedConversation?.normalizationTelemetry
       ?.quotedPreviewRemovedCount ?? 0,
     quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry
@@ -288,6 +292,7 @@ function buildServerGuardrailObservability(input: {
   uncertainSideCount?: number | null;
   continuityAdjustedCount?: number | null;
   groupedAdjustedCount?: number | null;
+  layoutFirstAdjustedCount?: number | null;
   quotedPreviewAttachedCount?: number | null;
   overlapRemovedCount?: number | null;
   inputTokens?: number;
@@ -310,6 +315,7 @@ function buildServerGuardrailObservability(input: {
     uncertainSideCount: input.uncertainSideCount,
     continuityAdjustedCount: input.continuityAdjustedCount,
     groupedAdjustedCount: input.groupedAdjustedCount,
+    layoutFirstAdjustedCount: input.layoutFirstAdjustedCount,
     quotedPreviewAttachedCount: input.quotedPreviewAttachedCount,
     overlapRemovedCount: input.overlapRemovedCount,
     inputTokens: input.inputTokens,
@@ -391,6 +397,8 @@ const SCREENSHOT_OCR_ACCURACY_RULES = [
   "- Consecutive bubbles on the same side are common. Do not force alternating speakers if the layout still shows the same side.",
   "- Build a left/right side sequence for all visible outer bubbles in top-to-bottom order before deciding speakers. Preserve same-side runs exactly as they appear on screen.",
   "- Speaker changes should happen only when the visible outer bubble column actually switches sides. A pattern like left, left, left, right, right, left is normal and should stay that way.",
+  "- Imagine a vertical midline through the screenshot first. Judge each outer bubble by whether the bubble body sits mostly left or mostly right of that midline before you read the text.",
+  "- The outer bubble column is the source of truth across chat apps. Ignore quoted preview cards, inner screenshots, photo/video thumbnails, and avatar/no-avatar differences when deciding left vs right.",
   "- In many chat apps, only the first bubble in a same-side run shows the avatar. Do not flip the last bubble in a left-side run to `isFromMe: true` just because the avatar disappears.",
   "- If multiple screenshots appear to come from different contacts or different chat threads, do not merge them as one clean thread. Lower confidence, set `importPolicy: confirm`, and explain that the screenshots may belong to different conversations.",
   "- Before returning JSON, double-check that no clearly right-aligned bubble is labeled `isFromMe: false` and no clearly left-aligned bubble is labeled `isFromMe: true`.",
@@ -1553,7 +1561,9 @@ function applySideRunGroupingHeuristics(
       continue;
     }
 
-    if (current.side === previous.side && current.isFromMe === previous.isFromMe) {
+    if (
+      current.side === previous.side && current.isFromMe === previous.isFromMe
+    ) {
       continue;
     }
 
@@ -1570,8 +1580,7 @@ function applySideRunGroupingHeuristics(
       !!previous.quotedReplyPreview ||
       !!next.quotedReplyPreview;
 
-    const currentLooksBridge =
-      current.side === "unknown" ||
+    const currentLooksBridge = current.side === "unknown" ||
       isLikelyMediaPlaceholderContent(current.content) ||
       !!current.quotedReplyPreview ||
       (neighborLooksStructured &&
@@ -1636,22 +1645,22 @@ function applyTrailingSpeakerHeuristics(
     };
   }
 
-  const previousLooksQuotedRun =
-    !!anchor.quotedReplyPreview || !!previous.quotedReplyPreview;
+  const previousLooksQuotedRun = !!anchor.quotedReplyPreview ||
+    !!previous.quotedReplyPreview;
   const currentSideSeenEarlier = current.side !== "unknown" &&
-    adjusted.slice(0, currentIndex).some((message) => message.side === current.side);
+    adjusted.slice(0, currentIndex).some((message) =>
+      message.side === current.side
+    );
   const previousRunLength = contiguousSideRunLength(
     adjusted,
     currentIndex - 1,
     -1,
   );
-  const currentLooksFlexible =
-    current.side === "unknown" ||
+  const currentLooksFlexible = current.side === "unknown" ||
     isLikelyShortContinuationContent(current.content) ||
     !!current.quotedReplyPreview;
 
-  const canRepairQuotedTail =
-    previousLooksQuotedRun &&
+  const canRepairQuotedTail = previousLooksQuotedRun &&
     previousRunLength >= 2 &&
     (!currentSideSeenEarlier || currentLooksFlexible);
 
@@ -1818,6 +1827,7 @@ function normalizeRecognizedConversation(
         normalizationTelemetry: {
           continuityAdjustedCount: 0,
           groupedAdjustedCount: 0,
+          layoutFirstAdjustedCount: 0,
           quotedPreviewRemovedCount: 0,
           quotedPreviewAttachedCount: 0,
           overlapRemovedCount: 0,
@@ -1961,23 +1971,26 @@ function normalizeRecognizedConversation(
   const sideRunAdjustment = applySideRunGroupingHeuristics(
     quotedPreviewAdjustment.messages,
   );
-  const trailingAdjustment = applyTrailingSpeakerHeuristics(
+  const layoutFirstAdjustment = applyLayoutFirstParser(
     sideRunAdjustment.messages,
+  );
+  const trailingAdjustment = applyTrailingSpeakerHeuristics(
+    layoutFirstAdjustment.messages,
   );
   const overlapAdjustment = deduplicateSequentialMessages(
     trailingAdjustment.messages,
   );
   const finalMessages = overlapAdjustment.messages;
   const finalMessageCount = finalMessages.length;
-  const finalUncertainSideCount = finalMessages.filter((message) =>
-    message.side === "unknown"
-  ).length;
+  const finalUncertainSideCount =
+    finalMessages.filter((message) => message.side === "unknown").length;
   const sideConfidence = normalizeSideConfidenceLabel(
     finalMessageCount,
     finalUncertainSideCount,
     continuityAdjustment.adjustedCount +
       groupedAdjustment.adjustedCount +
       sideRunAdjustment.adjustedCount +
+      layoutFirstAdjustment.adjustedCount +
       trailingAdjustment.adjustedCount,
     classification,
   );
@@ -1999,10 +2012,10 @@ function normalizeRecognizedConversation(
     uncertainSideCount: finalUncertainSideCount,
     normalizationTelemetry: {
       continuityAdjustedCount: continuityAdjustment.adjustedCount,
-      groupedAdjustedCount:
-        groupedAdjustment.adjustedCount +
+      groupedAdjustedCount: groupedAdjustment.adjustedCount +
         sideRunAdjustment.adjustedCount +
         trailingAdjustment.adjustedCount,
+      layoutFirstAdjustedCount: layoutFirstAdjustment.adjustedCount,
       quotedPreviewRemovedCount: quotedPreviewAdjustment.removedCount,
       quotedPreviewAttachedCount: quotedPreviewAdjustment.attachedCount,
       overlapRemovedCount: overlapAdjustment.removedCount,
@@ -3004,6 +3017,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         normalizationTelemetry?: {
           continuityAdjustedCount?: number;
           groupedAdjustedCount?: number;
+          layoutFirstAdjustedCount?: number;
           quotedPreviewRemovedCount?: number;
           quotedPreviewAttachedCount?: number;
           overlapRemovedCount?: number;
@@ -3039,6 +3053,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         continuityAdjustedCount:
           recognitionObservability.continuityAdjustedCount,
         groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
+        layoutFirstAdjustedCount:
+          recognitionObservability.layoutFirstAdjustedCount,
         quotedPreviewAttachedCount:
           recognitionObservability.quotedPreviewAttachedCount,
         overlapRemovedCount: recognitionObservability.overlapRemovedCount,
@@ -3149,6 +3165,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       uncertainSideCount: recognitionObservability.uncertainSideCount,
       continuityAdjustedCount: recognitionObservability.continuityAdjustedCount,
       groupedAdjustedCount: recognitionObservability.groupedAdjustedCount,
+      layoutFirstAdjustedCount:
+        recognitionObservability.layoutFirstAdjustedCount,
       quotedPreviewAttachedCount:
         recognitionObservability.quotedPreviewAttachedCount,
       overlapRemovedCount: recognitionObservability.overlapRemovedCount,
@@ -3255,6 +3273,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         ?.continuityAdjustedCount ?? 0,
       groupedAdjustedCount: recognizedConversation?.normalizationTelemetry
         ?.groupedAdjustedCount ?? 0,
+      layoutFirstAdjustedCount: recognizedConversation?.normalizationTelemetry
+        ?.layoutFirstAdjustedCount ?? 0,
       quotedPreviewRemovedCount: recognizedConversation?.normalizationTelemetry
         ?.quotedPreviewRemovedCount ?? 0,
       quotedPreviewAttachedCount: recognizedConversation?.normalizationTelemetry

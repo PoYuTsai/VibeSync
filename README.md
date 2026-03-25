@@ -192,4 +192,7 @@ Private - All Rights Reserved
 - User-facing screenshot/import copy was also simplified: preflight warnings, OCR confirmation copy, and analysis-preview language now avoid internal/QA jargon and favor shorter Traditional Chinese guidance that is easier to understand in TestFlight.
 - OCR speaker repair now also catches the common LINE case where two quoted-reply bubbles on the same side are followed by one more same-side tail bubble: if that last bubble drifts to the opposite side without any earlier support for that side, the backend snaps it back to the quoted run. The local OCR cache version was bumped too, and the cache now only stores high-confidence imports, so repeated tests are less likely to keep replaying a bad first-pass recognition result.
 
+- Screenshot OCR now also runs through a reusable `layout-first parser v1` on the server side: after Claude returns tentative rows, the backend rebuilds visible left/right runs, repairs isolated drifted runs before import, and records `layoutFirstAdjustedCount` in telemetry so QA can tell when layout repair was needed.
+- A dedicated `layout_parser_test.ts` now locks in the core speaker-direction repair cases for that parser layer, including same-side quoted tails, media bridges, and unknown rows sitting between matching speaker columns.
+
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
