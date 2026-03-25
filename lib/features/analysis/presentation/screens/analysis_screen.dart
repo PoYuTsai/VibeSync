@@ -111,6 +111,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   RecognizedConversation? _recognizedConversation;
   String? _recognizedWarningMessage;
   bool _hasPendingRecognitionImport = false;
+  bool _recognitionFromCache = false;
   bool _isRecognizing = false;
   AnalysisProgressStage _recognizeStage =
       AnalysisProgressStage.preparingPayload;
@@ -471,6 +472,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _recognizedConversation = null;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
+      _recognitionFromCache = false;
     });
   }
 
@@ -583,6 +585,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _recognizedConversation = null;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
+      _recognitionFromCache = false;
     });
   }
 
@@ -1455,6 +1458,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _recognizedConversation = null;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
+      _recognitionFromCache = false;
       _recognizeStage = AnalysisProgressStage.preparingPayload;
       _lastRecognizeTelemetry = null;
     });
@@ -1593,6 +1597,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           currentConversation: conversation,
         );
 
+        final isFromCache = cachedRecognition != null;
         if (recognized.importPolicy == 'reject') {
           setState(() {
             _isRecognizing = false;
@@ -1604,14 +1609,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             _recognizedConversation = recognized;
             _recognizedWarningMessage = warningMessage;
             _hasPendingRecognitionImport = false;
+            _recognitionFromCache = isFromCache;
           });
           return;
         }
 
-        setState(() => _isRecognizing = false);
-        if (cachedRecognition != null) {
-          _showFloatingSnackBar('已使用最近一次相同截圖的識別結果');
-        }
+        setState(() {
+          _isRecognizing = false;
+          _recognitionFromCache = isFromCache;
+        });
 
         // 顯示確認對話框
         if (!mounted) return;
@@ -2415,17 +2421,52 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           ],
           if (_canForceReRecognize) ...[
             const SizedBox(height: 12),
+            if (_recognitionFromCache) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.info.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.cached_rounded,
+                      size: 18,
+                      color: AppColors.info,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '這是上次相同截圖的快取結果',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.glassTextPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
                 onPressed: _forceReRecognizeLastBatch,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('重新讀圖'),
+                label: Text(_recognitionFromCache ? '強制重新識別' : '重新讀圖'),
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              '如果剛剛的我說 / 她說不太對，可以直接重讀同一批截圖，不會沿用上次的快取結果。',
+              _recognitionFromCache
+                  ? '如果結果有誤，點「強制重新識別」會忽略快取，重新跑 OCR。'
+                  : '如果剛剛的我說 / 她說不太對，可以直接重讀同一批截圖，不會沿用上次的快取結果。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.unselectedText,
                 height: 1.4,
