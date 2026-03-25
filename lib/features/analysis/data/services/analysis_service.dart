@@ -424,6 +424,7 @@ class AnalysisService {
     List<Uint8List>? images,
     SessionContext? sessionContext,
     String? conversationSummary,
+    String? knownContactName,
     String? userDraft,
     String? analyzeMode,
     bool recognizeOnly = false,
@@ -467,6 +468,7 @@ class AnalysisService {
           images: images,
           sessionContext: sessionContext,
           conversationSummary: conversationSummary,
+          knownContactName: knownContactName,
           userDraft: userDraft,
           analyzeMode: analyzeMode,
           recognizeOnly: recognizeOnly,
@@ -543,6 +545,7 @@ class AnalysisService {
     List<Uint8List>? images,
     SessionContext? sessionContext,
     String? conversationSummary,
+    String? knownContactName,
     String? userDraft,
     String? analyzeMode,
     required bool recognizeOnly,
@@ -616,6 +619,8 @@ class AnalysisService {
         if (conversationSummary != null &&
             conversationSummary.trim().isNotEmpty)
           'conversationSummary': conversationSummary.trim(),
+        if (knownContactName != null && knownContactName.trim().isNotEmpty)
+          'knownContactName': knownContactName.trim(),
         if (hasUserDraft) 'userDraft': userDraft.trim(),
         if (analyzeMode != null) 'analyzeMode': analyzeMode,
         if (recognizeOnly) 'recognizeOnly': true,

@@ -1548,6 +1548,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 : conversation.messages,
             images: imagesToProcess,
             sessionContext: conversation.sessionContext,
+            knownContactName:
+                ScreenshotRecognitionHelper.isPlaceholderConversationName(
+                  conversation.name,
+                )
+                ? null
+                : conversation.name.trim(),
             onProgress: _handleRecognizeProgress,
             onTelemetry: _handleRecognizeTelemetry,
             recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
@@ -1759,6 +1765,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
+        knownContactName:
+            ScreenshotRecognitionHelper.isPlaceholderConversationName(
+              conversation.name,
+            )
+            ? null
+            : conversation.name.trim(),
         onTelemetry: _handleAnalysisTelemetry,
       );
 
@@ -1855,6 +1867,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
+        knownContactName:
+            ScreenshotRecognitionHelper.isPlaceholderConversationName(
+              conversation.name,
+            )
+            ? null
+            : conversation.name.trim(),
         analyzeMode: 'my_message',
         onTelemetry: _handleAnalysisTelemetry,
       );
@@ -1905,6 +1923,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
+        knownContactName:
+            ScreenshotRecognitionHelper.isPlaceholderConversationName(
+              conversation.name,
+            )
+            ? null
+            : conversation.name.trim(),
         userDraft: draft,
         onTelemetry: _handleAnalysisTelemetry,
       );

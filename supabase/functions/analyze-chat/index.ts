@@ -90,6 +90,7 @@ const MAX_MESSAGES = 120;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TOTAL_MESSAGE_CHARS = 20000;
 const MAX_QUOTED_REPLY_PREVIEW_LENGTH = 300;
+const MAX_CONTACT_NAME_LENGTH = 40;
 const MAX_USER_DRAFT_LENGTH = 1500;
 const MAX_SESSION_FIELD_LENGTH = 300;
 const MAX_CONVERSATION_SUMMARY_LENGTH = 5000;
@@ -454,12 +455,14 @@ function buildRecognizeOnlyImagePrompt(options: {
   contextInfo: string;
   historicalContextInfo: string;
   compiledConversationText: string;
+  knownContactName?: string;
 }): string {
   const {
     imageCount,
     contextInfo,
     historicalContextInfo,
     compiledConversationText,
+    knownContactName,
   } = options;
 
   return joinPromptSections(
@@ -471,6 +474,9 @@ function buildRecognizeOnlyImagePrompt(options: {
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo
       ? `${contextInfo}\n- Use this only as weak context for mismatch detection.`
+      : "",
+    knownContactName
+      ? `## Known Contact Name\n- Existing thread contact name: ${knownContactName}\n- Use this only as a tie-breaker when the visible header or nickname is almost the same and OCR is uncertain by one similar-looking character.`
       : "",
     historicalContextInfo,
     compiledConversationText
@@ -484,12 +490,14 @@ function buildImageAnalysisPrompt(options: {
   contextInfo: string;
   historicalContextInfo: string;
   compiledConversationText: string;
+  knownContactName?: string;
 }): string {
   const {
     imageCount,
     contextInfo,
     historicalContextInfo,
     compiledConversationText,
+    knownContactName,
   } = options;
 
   return joinPromptSections(
@@ -500,6 +508,9 @@ function buildImageAnalysisPrompt(options: {
     "### recognizedConversation Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
     contextInfo,
+    knownContactName
+      ? `## Known Contact Name\n- Existing thread contact name: ${knownContactName}\n- Use this only as a tie-breaker when the visible header or nickname is almost the same and OCR is uncertain by one similar-looking character.`
+      : "",
     historicalContextInfo,
     compiledConversationText
       ? `## Existing Thread Context\n${compiledConversationText}`
@@ -1151,6 +1162,96 @@ function sanitizeQuotedReplyPreviewValue(value: unknown): string | undefined {
   }
 
   return trimmed.slice(0, MAX_QUOTED_REPLY_PREVIEW_LENGTH);
+}
+
+function sanitizeContactNameValue(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (!trimmed || trimmed.length > MAX_CONTACT_NAME_LENGTH) {
+    return undefined;
+  }
+
+  if (/[\r\n\t]/.test(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+function normalizeContactNameForComparison(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+function countSingleCharacterDifferences(a: string, b: string): number | null {
+  const left = Array.from(a);
+  const right = Array.from(b);
+  if (left.length !== right.length) {
+    return null;
+  }
+
+  let differences = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      differences += 1;
+      if (differences > 1) {
+        return differences;
+      }
+    }
+  }
+
+  return differences;
+}
+
+function shouldPreferKnownContactName(
+  recognizedContactName: string,
+  knownContactName: string | undefined,
+): boolean {
+  if (!knownContactName) {
+    return false;
+  }
+
+  const normalizedRecognized = normalizeContactNameForComparison(
+    recognizedContactName,
+  );
+  const normalizedKnown = normalizeContactNameForComparison(knownContactName);
+
+  if (!normalizedRecognized || !normalizedKnown) {
+    return false;
+  }
+
+  if (normalizedRecognized === normalizedKnown) {
+    return true;
+  }
+
+  const singleCharacterDifference = countSingleCharacterDifferences(
+    normalizedRecognized,
+    normalizedKnown,
+  );
+  return singleCharacterDifference === 1;
+}
+
+function stabilizeRecognizedContactName({
+  recognizedContactName,
+  knownContactName,
+}: {
+  recognizedContactName: unknown;
+  knownContactName?: string;
+}): string | null {
+  const sanitizedRecognized = sanitizeContactNameValue(recognizedContactName);
+  const sanitizedKnown = sanitizeContactNameValue(knownContactName);
+
+  if (!sanitizedRecognized) {
+    return null;
+  }
+
+  if (shouldPreferKnownContactName(sanitizedRecognized, sanitizedKnown)) {
+    return sanitizedKnown!;
+  }
+
+  return sanitizedRecognized;
 }
 
 function normalizeQuotedReplyPreviewIsFromMe(
@@ -1932,7 +2033,11 @@ function normalizeWarningMessage(
 
 function normalizeRecognizedConversation(
   result: Record<string, unknown>,
+  options: {
+    knownContactName?: string;
+  } = {},
 ): Record<string, unknown> {
+  const { knownContactName } = options;
   const normalizedResult = { ...result };
   const recognizedRaw = normalizedResult.recognizedConversation &&
       typeof normalizedResult.recognizedConversation === "object"
@@ -1957,6 +2062,10 @@ function normalizeRecognizedConversation(
       );
       normalizedResult.recognizedConversation = {
         ...recognizedRaw,
+        contactName: stabilizeRecognizedContactName({
+          recognizedContactName: recognizedRaw.contactName,
+          knownContactName,
+        }),
         messageCount: 0,
         summary: typeof recognizedRaw.summary === "string" &&
             recognizedRaw.summary.trim()
@@ -2168,6 +2277,10 @@ function normalizeRecognizedConversation(
 
   normalizedResult.recognizedConversation = {
     ...recognizedRaw,
+    contactName: stabilizeRecognizedContactName({
+      recognizedContactName: recognizedRaw.contactName,
+      knownContactName,
+    }),
     messageCount: finalMessageCount > 0
       ? finalMessageCount
       : normalizedMessageCount,
@@ -2495,6 +2608,7 @@ serve(async (req) => {
       images,
       sessionContext: rawSessionContext,
       conversationSummary: rawConversationSummary,
+      knownContactName: rawKnownContactName,
       userDraft: rawUserDraft,
       forceModel: rawForceModel,
       analyzeMode: rawAnalyzeMode,
@@ -2704,6 +2818,11 @@ serve(async (req) => {
     }
     const conversationSummary =
       conversationSummaryValidation.conversationSummary;
+
+    const knownContactName = sanitizeContactNameValue(rawKnownContactName);
+    if (rawKnownContactName != null && !knownContactName) {
+      return jsonResponse({ error: "Invalid knownContactName" }, 400);
+    }
 
     // Validate images if provided
     if (images != null && !Array.isArray(images)) {
@@ -2983,12 +3102,14 @@ ${recentText}`;
         ? buildRecognizeOnlyImagePrompt({
           imageCount: images.length,
           contextInfo,
+          knownContactName,
           historicalContextInfo,
           compiledConversationText,
         })
         : buildImageAnalysisPrompt({
           imageCount: images.length,
           contextInfo,
+          knownContactName,
           historicalContextInfo,
           compiledConversationText,
         });
@@ -3193,7 +3314,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       };
     }
 
-    result = normalizeRecognizedConversation(result);
+    result = normalizeRecognizedConversation(result, {
+      knownContactName,
+    });
 
     // 檢查截圖識別是否失敗
     const recognizedConversation = result.recognizedConversation as
