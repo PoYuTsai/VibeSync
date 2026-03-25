@@ -2465,10 +2465,6 @@ function normalizeRecognizedConversation(
       sideRunAdjustment.messages,
     );
   } catch (error) {
-    console.warn("layout_first_parser_failed", {
-      error: getErrorMessage(error),
-      messageCount: sideRunAdjustment.messages.length,
-    });
     layoutFirstAdjustment = {
       messages: sideRunAdjustment.messages,
       adjustedCount: 0,
