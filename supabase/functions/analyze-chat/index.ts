@@ -3497,30 +3497,94 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         });
       }
     } catch (parseError) {
-      logWarn("ai_response_parse_failed", {
+      // 記錄解析失敗但先不返回 fallback，嘗試重試
+      logWarn("ai_response_parse_failed_will_retry", {
         user: summarizeUser(user.id),
         model: actualModel,
         textLength: (content ?? "").length,
         error: getErrorMessage(parseError),
+        attempt: 1,
       });
-      result = {
-        enthusiasm: { score: 50, level: "warm" },
-        replies: {
-          extend: "無法生成建議，請重試",
-        },
-        warnings: [],
-        strategy: "分析失敗，請重試",
-        // 如果有 userDraft，也返回 fallback
-        ...(userDraft
-          ? {
-            optimizedMessage: {
-              original: userDraft,
-              optimized: "優化失敗，請重試",
-              reason: "AI 回應解析錯誤",
-            },
+
+      // 重試一次 Claude API 呼叫
+      let retrySucceeded = false;
+      try {
+        logInfo("claude_retry_after_parse_failure", {
+          user: summarizeUser(user.id),
+          model: selectedModel,
+        });
+
+        const retryResult = await callClaudeWithFallback(
+          {
+            model: selectedModel,
+            max_tokens: recognizeOnly
+              ? 1600
+              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1024)),
+            system: systemPrompt + "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
+            messages: [
+              {
+                role: "user",
+                content: userMessageContent,
+              },
+            ],
+          },
+          CLAUDE_API_KEY,
+          { timeout: timeoutMs, allowModelFallback },
+        );
+
+        const retryData = retryResult.data as {
+          content?: Array<{ text?: string }>;
+        };
+        const retryContent = retryData.content?.[0]?.text ?? "";
+        const retryJsonMatch = retryContent.match(/\{[\s\S]*\}/);
+
+        if (retryJsonMatch) {
+          try {
+            result = JSON.parse(retryJsonMatch[0]);
+            retrySucceeded = true;
+            logInfo("claude_retry_parse_succeeded", {
+              user: summarizeUser(user.id),
+              model: retryResult.model,
+            });
+          } catch {
+            // 嘗試修復
+            const repairedRetry = repairJson(retryJsonMatch[0]);
+            result = JSON.parse(repairedRetry);
+            retrySucceeded = true;
+            logInfo("claude_retry_repair_succeeded", {
+              user: summarizeUser(user.id),
+              model: retryResult.model,
+            });
           }
-          : {}),
-      };
+        }
+      } catch (retryError) {
+        logWarn("claude_retry_also_failed", {
+          user: summarizeUser(user.id),
+          error: getErrorMessage(retryError),
+        });
+      }
+
+      // 如果重試也失敗，返回 fallback
+      if (!retrySucceeded) {
+        result = {
+          enthusiasm: { score: 50, level: "warm" },
+          replies: {
+            extend: "無法生成建議，請重試",
+          },
+          warnings: [],
+          strategy: "分析失敗，請重試",
+          // 如果有 userDraft，也返回 fallback
+          ...(userDraft
+            ? {
+              optimizedMessage: {
+                original: userDraft,
+                optimized: "優化失敗，請重試",
+                reason: "AI 回應解析錯誤",
+              },
+            }
+            : {}),
+        };
+      }
     }
 
     result = normalizeRecognizedConversation(result, {
