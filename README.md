@@ -64,6 +64,8 @@ Private - All Rights Reserved
 - Feedback submission now validates category / payload shape, enforces length limits, and truncates Telegram previews to reduce oversharing.
 - Local usage fallback now syncs tier/limits from the subscription provider instead of always pretending the user is free-tier.
 - `analyze-chat` now validates request shape more strictly: message count/content, analyze mode, draft length, session context, image media types, and recognition-only misuse.
+- OCR quote-preview repair is now less brittle: explicit quote cards no longer need to stay on the same provisional side to be attached back to the next main bubble, and short `body-only` quote snippets can now piggyback through the same-side LINE reply chain instead of being emitted as standalone messages.
+- Screenshot OCR prompts now explicitly say that a smaller inset quote card may show only the old message body, and that visible names/nicknames should be preserved instead of being "corrected" into similar-looking Han characters.
 - `admin-dashboard` dependency audit is now clean (`npm audit` reports 0 vulnerabilities after lockfile-only fixes).
 - RevenueCat webhook now distinguishes "updated 0 rows" from a real update, inserts missing subscription records safely, and initializes reset timestamps on first write.
 - New subscription records now initialize `daily_reset_at` / `monthly_reset_at`, which avoids an unnecessary first-analysis reset write and keeps quota state more consistent.
