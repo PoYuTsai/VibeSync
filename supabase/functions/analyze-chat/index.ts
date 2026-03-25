@@ -1638,12 +1638,24 @@ function applyTrailingSpeakerHeuristics(
 
   const previousLooksQuotedRun =
     !!anchor.quotedReplyPreview || !!previous.quotedReplyPreview;
+  const currentSideSeenEarlier = current.side !== "unknown" &&
+    adjusted.slice(0, currentIndex).some((message) => message.side === current.side);
+  const previousRunLength = contiguousSideRunLength(
+    adjusted,
+    currentIndex - 1,
+    -1,
+  );
   const currentLooksFlexible =
     current.side === "unknown" ||
     isLikelyShortContinuationContent(current.content) ||
     !!current.quotedReplyPreview;
 
-  if (!previousLooksQuotedRun || !currentLooksFlexible) {
+  const canRepairQuotedTail =
+    previousLooksQuotedRun &&
+    previousRunLength >= 2 &&
+    (!currentSideSeenEarlier || currentLooksFlexible);
+
+  if (!canRepairQuotedTail) {
     return {
       messages: adjusted,
       adjustedCount: 0,

@@ -23,7 +23,7 @@ class OcrRecognitionCacheService {
   static const _cachePrefix = 'ocr_recognition_cache';
   // Bump this whenever OCR structure/speaker heuristics change so the app
   // does not keep replaying stale local recognition results for the same image.
-  static const _cacheVersion = 2;
+  static const _cacheVersion = 3;
   static const _maxEntriesPerUser = 20;
   static const _maxAge = Duration(hours: 24);
 
@@ -46,6 +46,21 @@ class OcrRecognitionCacheService {
 
   static bool _isExpired(DateTime cachedAt) {
     return DateTime.now().difference(cachedAt) > _maxAge;
+  }
+
+  static bool _shouldCache(RecognizedConversation recognizedConversation) {
+    final hasMessages = (recognizedConversation.messages ?? const [])
+        .where((message) => message.content.trim().isNotEmpty)
+        .isNotEmpty;
+
+    if (!hasMessages) {
+      return false;
+    }
+
+    return recognizedConversation.importPolicy == 'allow' &&
+        recognizedConversation.confidence == 'high' &&
+        recognizedConversation.sideConfidence == 'high' &&
+        recognizedConversation.uncertainSideCount == 0;
   }
 
   static DateTime? _parseCachedAt(dynamic value) {
@@ -147,10 +162,18 @@ class OcrRecognitionCacheService {
       return null;
     }
 
+    final recognizedConversation = RecognizedConversation.fromJson(
+      recognizedJson,
+    );
+    if (!_shouldCache(recognizedConversation)) {
+      await StorageService.settingsBox.delete(_cacheKey(fingerprint, userKey));
+      return null;
+    }
+
     return OcrRecognitionCacheEntry(
       fingerprint: fingerprint,
       cachedAt: cachedAt,
-      recognizedConversation: RecognizedConversation.fromJson(recognizedJson),
+      recognizedConversation: recognizedConversation,
     );
   }
 
@@ -158,7 +181,7 @@ class OcrRecognitionCacheService {
     required List<Uint8List> images,
     required RecognizedConversation recognizedConversation,
   }) async {
-    if (images.isEmpty) {
+    if (images.isEmpty || !_shouldCache(recognizedConversation)) {
       return;
     }
 
