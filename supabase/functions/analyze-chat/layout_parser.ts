@@ -50,7 +50,7 @@ function isLikelyShortContinuationContent(content: string): boolean {
 
 function isLikelySystemRowContent(content: string): boolean {
   const trimmed = content.trim();
-  if (!trimmed || trimmed.length > 120) {
+  if (!trimmed || trimmed.length > 32) {
     return false;
   }
 
@@ -58,7 +58,7 @@ function isLikelySystemRowContent(content: string): boolean {
   const compact = normalized.replace(/\s+/g, "");
 
   const standaloneDateOrTimePattern =
-    /^(today|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|星期[一二三四五六日天]|週[一二三四五六日天]|今天|昨天|\d{1,2}:\d{2}(am|pm)?|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2})$/i;
+    /^(today|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}:\d{2}(am|pm)?|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2})$/i;
   if (standaloneDateOrTimePattern.test(compact)) {
     return true;
   }
@@ -73,22 +73,6 @@ function isLikelySystemRowContent(content: string): boolean {
     "retracted a message",
     "joined the chat",
     "left the chat",
-    "started a call",
-    "missed voice call",
-    "missed video call",
-    "turned on disappearing",
-    "updated the chat",
-    "set a nickname",
-    "set a chat theme",
-    "你們已配對",
-    "已配對",
-    "收回了一則訊息",
-    "刪除了一則訊息",
-    "加入了聊天室",
-    "離開了聊天室",
-    "釘選了訊息",
-    "變更聊天室",
-    "更改聊天室",
   ];
 
   return systemKeywords.some((keyword) => normalized.includes(keyword));
@@ -110,9 +94,24 @@ function stripLikelySystemRows<TMessage extends LayoutFirstMessage>(
   const filtered = messages.filter((message) =>
     !(message.side === "unknown" && isLikelySystemRowContent(message.content))
   );
+  const knownSideCount =
+    filtered.filter((message) =>
+      message.side === "left" || message.side === "right"
+    ).length;
+
+  if (
+    filtered.length === messages.length ||
+    filtered.length < 2 ||
+    knownSideCount < 2
+  ) {
+    return {
+      messages,
+      removedCount: 0,
+    };
+  }
 
   return {
-    messages: filtered.length == messages.length ? messages : filtered,
+    messages: filtered,
     removedCount: messages.length - filtered.length,
   };
 }
@@ -129,7 +128,7 @@ function buildSideRuns(messages: LayoutFirstMessage[]): SideRun[] {
     const previous = messages[index - 1];
     const current = messages[index];
 
-    if (current && current.side == previous.side) {
+    if (current && current.side === previous.side) {
       continue;
     }
 
@@ -299,11 +298,9 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
       if (
         neighborSide &&
         neighborSide !== run.side &&
-        (
-          !currentHasSupportElsewhere ||
+        (!currentHasSupportElsewhere ||
           isFlexible ||
-          dominantSide === neighborSide
-        )
+          dominantSide === neighborSide)
       ) {
         adjustedCount += applyRunSide(adjusted, run, neighborSide);
         changed = true;
@@ -316,11 +313,9 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
         previous.side !== "unknown" &&
         previous.side !== run.side &&
         previous.length >= 2 &&
-        (
-          previous.quotedCount > 0 ||
+        (previous.quotedCount > 0 ||
           previous.mediaCount > 0 ||
-          dominantSide === previous.side
-        ) &&
+          dominantSide === previous.side) &&
         !currentHasSupportElsewhere &&
         (isFlexible || run.length === 1)
       ) {
