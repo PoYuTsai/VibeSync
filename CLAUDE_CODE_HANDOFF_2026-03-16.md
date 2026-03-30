@@ -4,6 +4,13 @@
 
 This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, subscription-state consistency around RevenueCat + Supabase sync, and the remaining auth / webhook boundary issues that could still leak stale state or mis-handle malformed events.
 
+## 2026-03-30 Discord Runtime Note
+
+- VibeSync Discord bridge troubleshooting is documented in `docs/discord-vibesync-troubleshooting.md`.
+- The real live state for this project is `~/.claude/channels/discord-vibesync/access.json`, not the generic `~/.claude/channels/discord/access.json`.
+- The root cause of the Bruce monitoring issue was the live `discord-vibesync` allowlist missing his user ID.
+- The live WSL plugin was also hardened with `GuildMembers` intent plus polling fallback, but that runtime patch lives outside this repo.
+
 ### Fixed in this batch
 
 1. `lib/features/analysis/presentation/screens/analysis_screen.dart`

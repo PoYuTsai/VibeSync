@@ -9,6 +9,11 @@
 - **1.8x 黃金法則** - 維持健康的對話節奏
 - **隱私優先** - 對話預設保存在本地，分析時才傳送必要內容
 
+## 開發備忘
+
+- Discord 專案專用 channel 的 live state 與排查筆記在 `docs/discord-vibesync-troubleshooting.md`
+- 若遇到 VibeSync Discord Bot 即時監聽異常，先確認 `discord-vibesync` 的 WSL state，而不是 generic `discord`
+
 ## 技術架構
 
 | 層級 | 技術 |
