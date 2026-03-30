@@ -46,8 +46,7 @@
 - [ ] TestFlight build 可在 App Store Connect / TestFlight 正常看到
 - [ ] [privacy](https://vibesyncai.app/privacy) 可開
 - [ ] [terms](https://vibesyncai.app/terms) 可開
-- [ ] `support@vibesync.app` 可收信
-- [ ] `privacy@vibesync.app` 可收信
+- [x] `support@vibesyncai.app` 可收信（統一對外聯絡信箱，2026-03-30 確認）
 - [ ] App Store Connect privacy disclosure 已核對
 
 ## 5. 硬門檻

@@ -37,7 +37,7 @@
 ### Legal / 對外一致性
 - [ ] [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 內容與 app 流程一致
 - [ ] [https://vibesyncai.app/terms](https://vibesyncai.app/terms) 內容與目前方案一致
-- [ ] `support@vibesync.app` / `privacy@vibesync.app` 可收信
+- [x] `support@vibesyncai.app` 可收信（統一對外聯絡信箱，2026-03-30 確認）
 - [ ] App Store Connect privacy disclosure 與實際資料流一致
 
 ## 2. 應修
