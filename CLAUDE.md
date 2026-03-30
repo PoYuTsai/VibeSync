@@ -1,5 +1,40 @@
 # VibeSync Project
 
+## 2026-03-30 Current Snapshot
+
+```
+目前階段：送審前最後穩定化 + TestFlight 邊界驗證
+當前主線：OCR / 引用回覆 / speaker 判斷 / 快取重識別 / 送審 checklist
+主要狀態：Auth、訂閱、RevenueCat、截圖上傳、手動輸入、TestFlight release workflow 都已打通
+目前重點：持續收 OCR 邊界案例，不再做大功能擴張
+```
+
+### 新 Session 先看這些文件
+
+- `docs/app-review-final-checklist.md`
+- `docs/testflight-regression-checklist.md`
+- `docs/launch-readiness-checklist.md`
+- `docs/ocr-analysis-maturity-benchmark.md`
+
+### 最近已完成的重點
+
+- OCR 現在有 `only_left / only_right / mixed` 的整體畫面判斷
+- LINE 引用回覆改成：外層 bubble 決定 speaker，引用卡只作為 quoted context
+- 加入 `強制重新識別`，避免同一張圖一直吃到舊快取
+- TestFlight 上傳 workflow 已補強，Apple 假性 upload failure 不再那麼容易把整條 release 打紅
+- 手動輸入頁上方訊息預覽的字體可讀性已修正
+
+### 送審前剩餘重點
+
+- 真機再跑一輪 auth / restore / 升級後權限刷新
+- 持續驗 OCR 邊界：LINE 引用、長截圖、多張截圖、名字錯字、圖片/貼圖/影片 bubble
+- 核對 privacy / terms / support email / App Store Connect privacy disclosure
+
+### 注意
+
+- 以下較舊段落有部分資訊已過時，且部分內容有 mojibake。
+- 新 session 請優先以這個 snapshot 和上面的 `docs/` 文件為準，不要只看下面舊的 v41 / 2026-03-14 狀態。
+
 > **新 Session 入口文件** - Claude 開始時自動讀取此檔案
 
 ## Quick Start (新 Session 必讀)

@@ -193,6 +193,7 @@ Private - All Rights Reserved
 - A dedicated final App Review checklist now lives at [docs/app-review-final-checklist.md](./docs/app-review-final-checklist.md), giving the team one short go/no-go list for auth, subscription, OCR, release, and legal sign-off before submission.
 - The `layout_first_parser_failed` warning log was removed from the screenshot OCR fallback path. The backend still fails open if the layout parser ever throws, but partner QA no longer has to interpret a noisy internal warning that does not help end-user diagnosis.
 - The manual-input message preview on the new-conversation screen now uses explicit dark glass text instead of inheriting white body copy, so previously added `她說 / 我說` rows stay readable after tapping the `+` buttons.
+- `CLAUDE.md` now has the same 2026-03-30 current snapshot pattern as `AGENTS.md`, so new Claude sessions no longer default to the older v41-era quick start and should instead anchor on the current OCR / TestFlight / app-review docs.
 
 - User-facing telemetry cards are now hidden from normal builds: `上次分析量測`, `上次 OCR 量測`, and `分析偏慢`-style guardrails stay available only in debug mode, so TestFlight and release users no longer see internal timing jargon on the analysis screen.
 - Screenshot speaker repair is now more run-aware too: the server applies an extra left/right run-grouping pass for quote/media bridge cases, so short continuation bubbles are less likely to flip speakers when the surrounding outer bubbles clearly stay on the same side.
