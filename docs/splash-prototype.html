@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VibeSync Splash</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0a0a0f;
+    font-family: 'Outfit', sans-serif;
+  }
+
+  .splash {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── 底層紫色環境光 ── */
+  .ambient {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 60% 50% at 50% 50%,
+      rgba(120, 60, 200, 0.12) 0%,
+      transparent 70%
+    );
+    pointer-events: none;
+  }
+
+  /* ── 浮動光球 ── */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+
+  .orb-1 {
+    width: 280px;
+    height: 280px;
+    background: rgba(138, 60, 220, 0.35);
+    filter: blur(80px);
+    top: 20%;
+    left: 15%;
+    animation:
+      float1 9s ease-in-out infinite,
+      breathe1 6s ease-in-out infinite;
+  }
+
+  .orb-2 {
+    width: 200px;
+    height: 200px;
+    background: rgba(180, 80, 255, 0.3);
+    filter: blur(80px);
+    top: 55%;
+    right: 10%;
+    animation:
+      float2 8s ease-in-out infinite,
+      breathe2 5s ease-in-out infinite;
+  }
+
+  .orb-3 {
+    width: 340px;
+    height: 340px;
+    background: rgba(100, 40, 180, 0.25);
+    filter: blur(80px);
+    bottom: 10%;
+    left: 35%;
+    animation:
+      float3 10s ease-in-out infinite,
+      breathe3 7s ease-in-out infinite;
+  }
+
+  @keyframes float1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(30px, -40px) scale(1.08); }
+    66% { transform: translate(-20px, 20px) scale(0.95); }
+  }
+
+  @keyframes float2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    25% { transform: translate(-35px, 25px) scale(1.1); }
+    50% { transform: translate(15px, -30px) scale(0.92); }
+    75% { transform: translate(-10px, -15px) scale(1.05); }
+  }
+
+  @keyframes float3 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    40% { transform: translate(25px, 35px) scale(1.06); }
+    70% { transform: translate(-30px, -20px) scale(0.94); }
+  }
+
+  @keyframes breathe1 {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+
+  @keyframes breathe2 {
+    0%, 100% { opacity: 0.65; }
+    50% { opacity: 0.95; }
+  }
+
+  @keyframes breathe3 {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+
+  /* ── 暗角 vignette ── */
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 70% 70% at 50% 50%,
+      transparent 40%,
+      rgba(0, 0, 0, 0.6) 100%
+    );
+    pointer-events: none;
+  }
+
+  /* ── 主標題 ── */
+  .title {
+    position: relative;
+    z-index: 10;
+    font-size: clamp(48px, 10vw, 72px);
+    font-weight: 900;
+    color: #fff;
+    text-shadow:
+      0 0 10px rgba(160, 80, 255, 0.8),
+      0 0 30px rgba(140, 60, 240, 0.6),
+      0 0 60px rgba(120, 40, 220, 0.4),
+      0 0 100px rgba(100, 30, 200, 0.25);
+    animation: titleEntry 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    opacity: 0;
+  }
+
+  @keyframes titleEntry {
+    0% {
+      opacity: 0;
+      transform: translateY(30px) scale(0.92);
+      filter: blur(12px);
+    }
+    60% {
+      opacity: 1;
+      filter: blur(0);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  /* ── Shimmer 光澤掃過 ── */
+  .title::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.25) 40%,
+      rgba(255, 255, 255, 0.5) 50%,
+      rgba(255, 255, 255, 0.25) 60%,
+      transparent 100%
+    );
+    animation: shimmer 1s ease-in-out 1.8s forwards;
+    opacity: 0;
+  }
+
+  @keyframes shimmer {
+    0% {
+      left: -60%;
+      opacity: 1;
+    }
+    100% {
+      left: 120%;
+      opacity: 1;
+    }
+  }
+
+  /* ── 副標題 ── */
+  .subtitle {
+    position: relative;
+    z-index: 10;
+    margin-top: 16px;
+    font-size: clamp(12px, 3vw, 16px);
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 12px;
+    opacity: 0;
+    animation: subtitleEntry 1.2s ease-out 1s forwards;
+  }
+
+  @keyframes subtitleEntry {
+    0% {
+      opacity: 0;
+      letter-spacing: 12px;
+    }
+    100% {
+      opacity: 1;
+      letter-spacing: 6px;
+    }
+  }
+
+  /* ── 底部載入指示圓點 ── */
+  .loading-dot {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(160, 80, 255, 0.6);
+    z-index: 10;
+    opacity: 0;
+    animation: dotAppear 0.5s ease-out 2s forwards,
+               dotPulse 2s ease-in-out 2s infinite;
+  }
+
+  @keyframes dotAppear {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  @keyframes dotPulse {
+    0%, 100% {
+      box-shadow: 0 0 6px rgba(160, 80, 255, 0.4),
+                  0 0 16px rgba(160, 80, 255, 0.2);
+      transform: translateX(-50%) scale(1);
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(160, 80, 255, 0.8),
+                  0 0 30px rgba(160, 80, 255, 0.4);
+      transform: translateX(-50%) scale(1.3);
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="splash">
+    <div class="ambient"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="vignette"></div>
+    <div class="title">VibeSync</div>
+    <div class="subtitle">你的AI專屬聊天教練</div>
+    <div class="loading-dot"></div>
+  </div>
+</body>
+</html>
