@@ -2269,6 +2269,105 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   /// 截圖識別結果卡片
+  /// 解析 AI 推薦回覆內容，支援多條分句標註格式
+  /// 格式：① 回「關鍵詞」→ 回覆內容
+  List<Widget> _buildRecommendationContent(String content) {
+    // 偵測是否有分句標註（①②③ 或 💡）
+    final segmentPattern = RegExp(r'[①②③④⑤💡]');
+    if (!segmentPattern.hasMatch(content)) {
+      // 單一回覆：顯示內容 + 複製按鈕
+      return [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(content, style: AppTypography.bodyLarge),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: content));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已複製到剪貼簿')),
+              );
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('複製推薦回覆'),
+          ),
+        ),
+      ];
+    }
+
+    // 多條分句：逐句拆開，每句有自己的複製按鈕
+    final lines = content.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final widgets = <Widget>[];
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+
+      // 提取 → 後面的純回覆文字
+      final arrowIndex = trimmed.indexOf('→');
+      final replyText = arrowIndex >= 0
+          ? trimmed.substring(arrowIndex + 1).trim().replaceAll(RegExp(r'^[「『"]+|[」』"]+$'), '')
+          : null;
+
+      // 💡 提示行（不需要回覆的）
+      final isHint = trimmed.startsWith('💡');
+
+      widgets.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isHint
+                ? AppColors.info.withValues(alpha: 0.08)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: isHint
+                ? Border.all(color: AppColors.info.withValues(alpha: 0.2))
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                trimmed,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: isHint
+                      ? AppColors.textSecondary
+                      : AppColors.textPrimary,
+                ),
+              ),
+              if (!isHint && replyText != null && replyText.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: 36,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: replyText));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('已複製：$replyText')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: const Text('複製這句', style: TextStyle(fontSize: 13)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+
   Widget _buildRecognizedConversationCard() {
     final recognized = _recognizedConversation!;
     final displayWarning = _recognizedWarningMessage ?? recognized.warning;
@@ -3656,17 +3755,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surface,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      _finalRecommendation!.content,
-                                      style: AppTypography.bodyLarge,
-                                    ),
-                                  ),
+                                  ..._buildRecommendationContent(
+                                      _finalRecommendation!.content),
                                   const SizedBox(height: 12),
                                   Text(
                                     '📝 ${_finalRecommendation!.reason}',
@@ -3676,26 +3766,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   Text(
                                     '🧠 ${_finalRecommendation!.psychology}',
                                     style: AppTypography.caption,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () {
-                                        Clipboard.setData(
-                                          ClipboardData(
-                                              text: _finalRecommendation!
-                                                  .content),
-                                        );
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text('已複製到剪貼簿')),
-                                        );
-                                      },
-                                      icon: const Icon(Icons.copy),
-                                      label: const Text('複製推薦回覆'),
-                                    ),
                                   ),
                                 ],
                               ),
