@@ -3318,7 +3318,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ],
 
                           // Strategy
-                          if (_strategy != null) ...[
+                          if (_strategy != null &&
+                              _strategy!.trim().isNotEmpty) ...[
                             const SizedBox(height: 16),
                             GlassmorphicContainer(
                               child: Row(
@@ -3442,7 +3443,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ],
 
                           // Reply suggestions (5 種回覆)
-                          if (_replies != null) ...[
+                          if (_replies != null &&
+                              _replies!.isNotEmpty) ...[
                             const SizedBox(height: 24),
                             Row(
                               children: [
@@ -3623,8 +3625,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             ],
                           ],
 
-                          // 最終建議 (AI 推薦)
-                          if (_finalRecommendation != null) ...[
+                          // 最終建議 (AI 推薦) - 只在有實際內容時顯示
+                          if (_finalRecommendation != null &&
+                              _finalRecommendation!.content.trim().isNotEmpty) ...[
                             const SizedBox(height: 24),
                             Container(
                               padding: const EdgeInsets.all(16),
@@ -3887,7 +3890,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ],
 
                           // 一致性提醒
-                          if (_reminder != null) ...[
+                          if (_reminder != null &&
+                              _reminder!.trim().isNotEmpty) ...[
                             const SizedBox(height: 16),
                             Container(
                               padding: const EdgeInsets.all(12),
