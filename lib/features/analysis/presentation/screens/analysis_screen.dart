@@ -2788,7 +2788,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   Text(
                                     '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
                                     style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.unselectedText,
+                                      color: AppColors.glassTextPrimary
+                                          .withValues(alpha: 0.7),
                                     ),
                                     textAlign: TextAlign.center,
                                   ),

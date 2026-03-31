@@ -895,9 +895,10 @@ class _ScreenshotRecognitionDialogState
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
-                        color: Colors.white.withValues(alpha: 0.04),
+                        color: Colors.white.withValues(alpha: 0.06),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
+                          color: AppColors.primary.withValues(alpha: 0.25),
+                          width: 1.2,
                         ),
                       ),
                       child: Scrollbar(
