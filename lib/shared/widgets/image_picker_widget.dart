@@ -194,7 +194,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                   '每張盡量保留 15 則內，辨識會更穩。',
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.glassTextPrimary.withValues(alpha: 0.7),
+                    color: Colors.white.withValues(alpha: 0.55),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -202,7 +202,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                   '如果有 LINE 回覆框，請把引用和主訊息一起截進來。',
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.glassTextPrimary.withValues(alpha: 0.7),
+                    color: Colors.white.withValues(alpha: 0.55),
                   ),
                 ),
               ],
@@ -215,7 +215,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
               '請上傳聊天畫面，盡量保留標題列、訊息泡泡和前後文。',
               style: TextStyle(
                 fontSize: 12,
-                color: AppColors.glassTextPrimary.withValues(alpha: 0.7),
+                color: Colors.white.withValues(alpha: 0.55),
               ),
             ),
           ),
