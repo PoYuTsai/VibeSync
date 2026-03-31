@@ -11,6 +11,12 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - The root cause of the Bruce monitoring issue was the live `discord-vibesync` allowlist missing his user ID.
 - The live WSL plugin was also hardened with `GuildMembers` intent plus polling fallback, but that runtime patch lives outside this repo.
 
+## 2026-03-31 Analysis Output Guardrail
+
+- `supabase/functions/analyze-chat/index.ts` now guarantees non-empty reply output for normal analysis.
+- If Claude returns blank `replies` or blank `finalRecommendation.content`, the edge function now fills from tier-allowed replies or a safe fallback instead of returning an empty recommendation card.
+- `lib/features/analysis/domain/entities/analysis_models.dart` also adds a client-side fallback, so older or partial responses do not render an empty `AI 推薦回覆` block.
+
 ### Fixed in this batch
 
 1. `lib/features/analysis/presentation/screens/analysis_screen.dart`

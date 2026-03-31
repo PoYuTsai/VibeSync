@@ -13,6 +13,7 @@
 
 - Discord 專案專用 channel 的 live state 與排查筆記在 `docs/discord-vibesync-troubleshooting.md`
 - 若遇到 VibeSync Discord Bot 即時監聽異常，先確認 `discord-vibesync` 的 WSL state，而不是 generic `discord`
+- `analyze-chat` 現在已補上「推薦回覆不准空值」保護，後端會在 AI 回傳空 `replies/finalRecommendation` 時自動補齊 fallback，前端也會再做一次本地 fallback
 
 ## 技術架構
 

@@ -6,6 +6,7 @@ import {
   checkAiOutput,
   checkInput,
   SAFETY_RULES,
+  getSafeReplies,
 } from "./guardrails.ts";
 import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
@@ -231,6 +232,146 @@ function deriveRequestType({
     return "optimize_message";
   }
   return "analyze";
+}
+
+function getSafeReplyLevelFromScore(score: number): string {
+  if (score <= 30) return "cold";
+  if (score <= 60) return "warm";
+  if (score <= 80) return "hot";
+  return "very_hot";
+}
+
+function normalizeAiText(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\u200b/g, "")
+    .trim();
+}
+
+function sanitizeReplies(
+  rawReplies: unknown,
+  allowedFeatures: string[],
+): Record<string, string> {
+  if (!rawReplies || typeof rawReplies !== "object") {
+    return {};
+  }
+
+  const filteredReplies: Record<string, string> = {};
+  for (const feature of allowedFeatures) {
+    const value = normalizeAiText(
+      (rawReplies as Record<string, unknown>)[feature],
+    );
+    if (value.length > 0) {
+      filteredReplies[feature] = value;
+    }
+  }
+
+  return filteredReplies;
+}
+
+function buildFallbackRecommendationText(
+  pick: string,
+): { reason: string; psychology: string } {
+  switch (pick) {
+    case "resonate":
+      return {
+        reason: "這句比較能接住對方當下的情緒，回起來自然也不會太用力。",
+        psychology: "先接住情緒會讓對方感到被理解，降低互動阻力。",
+      };
+    case "tease":
+      return {
+        reason: "這句保留一點輕鬆調情感，能延續曖昧氛圍又不會太衝。",
+        psychology: "適度的 playful tension 有助於維持吸引力與互動感。",
+      };
+    case "humor":
+      return {
+        reason: "這句用比較輕鬆的方式接話，能讓互動繼續往舒服的節奏走。",
+        psychology: "幽默能降低社交壓力，也更容易讓對方願意接著聊。",
+      };
+    case "coldRead":
+      return {
+        reason: "這句能順著對方的狀態往下讀，讓回覆更像真的有在理解她。",
+        psychology: "被理解與被看見的感受，通常會提升互動投入度。",
+      };
+    case "extend":
+    default:
+      return {
+        reason: "這句最自然，能順著目前話題往下聊，不容易讓對方有壓力。",
+        psychology: "低壓力、好接話的回覆更容易維持對話流暢度。",
+      };
+  }
+}
+
+function ensureNonEmptyAnalysisOutput({
+  result,
+  recognizeOnly,
+  isMyMessageMode,
+  allowedFeatures,
+}: {
+  result: Record<string, unknown>;
+  recognizeOnly: boolean;
+  isMyMessageMode: boolean;
+  allowedFeatures: string[];
+}) {
+  if (recognizeOnly || isMyMessageMode) {
+    return result;
+  }
+
+  const enthusiasmScore = Number(
+    (result.enthusiasm as { score?: unknown } | undefined)?.score ?? 50,
+  );
+  let replies = sanitizeReplies(result.replies, allowedFeatures);
+
+  if (Object.keys(replies).length === 0) {
+    const safeReplies = getSafeReplies(getSafeReplyLevelFromScore(enthusiasmScore));
+    replies = sanitizeReplies(safeReplies, allowedFeatures);
+  }
+
+  const preferredPick = normalizeAiText(
+    (result.finalRecommendation as Record<string, unknown> | undefined)?.pick,
+  );
+  const preferredContent = normalizeAiText(
+    (result.finalRecommendation as Record<string, unknown> | undefined)?.content,
+  );
+  const preferredReason = normalizeAiText(
+    (result.finalRecommendation as Record<string, unknown> | undefined)?.reason,
+  );
+  const preferredPsychology = normalizeAiText(
+    (result.finalRecommendation as Record<string, unknown> | undefined)
+      ?.psychology,
+  );
+
+  const fallbackPick = preferredPick.length > 0 &&
+      replies[preferredPick] != null
+    ? preferredPick
+    : (allowedFeatures.find(
+      (feature) => (replies[feature]?.trim().length ?? 0) > 0,
+    ) ?? "extend");
+  const fallbackContent = preferredContent.length > 0
+    ? preferredContent
+    : normalizeAiText(replies[fallbackPick]);
+  const fallbackExplanation = buildFallbackRecommendationText(fallbackPick);
+  const guaranteedContent = fallbackContent.length > 0
+    ? fallbackContent
+    : "先順著她這句往下接，保持自然、好回覆的節奏就好。";
+
+  result.replies = replies;
+  result.finalRecommendation = {
+    pick: fallbackPick,
+    content: guaranteedContent,
+    reason: preferredReason.length > 0
+      ? preferredReason
+      : fallbackExplanation.reason,
+    psychology: preferredPsychology.length > 0
+      ? preferredPsychology
+      : fallbackExplanation.psychology,
+  };
+
+  return result;
 }
 
 function buildQuotaUsageMetadata({
@@ -3865,6 +4006,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       string,
       unknown
     >;
+    result = ensureNonEmptyAnalysisOutput({
+      result,
+      recognizeOnly,
+      isMyMessageMode,
+      allowedFeatures,
+    });
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
       ? ((result as {
         warnings?: Array<{ type?: string }>;

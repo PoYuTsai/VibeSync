@@ -184,6 +184,91 @@ class FinalRecommendation {
   }
 }
 
+String _normalizeRecommendationText(dynamic value) {
+  if (value is! String) {
+    return '';
+  }
+  return value.replaceAll('\r\n', '\n').replaceAll('\u200b', '').trim();
+}
+
+Map<String, String> _normalizeRepliesMap(Map<String, dynamic>? repliesData) {
+  if (repliesData == null) {
+    return {};
+  }
+
+  final normalized = <String, String>{};
+  repliesData.forEach((key, value) {
+    final text = _normalizeRecommendationText(value);
+    if (text.isNotEmpty) {
+      normalized[key] = text;
+    }
+  });
+  return normalized;
+}
+
+FinalRecommendation _ensureRecommendationFallback(
+  FinalRecommendation recommendation,
+  Map<String, String> replies,
+) {
+  if (recommendation.content.trim().isNotEmpty) {
+    return recommendation;
+  }
+
+  const pickPriority = ['extend', 'resonate', 'tease', 'humor', 'coldRead'];
+  final fallbackPick = pickPriority.firstWhere(
+    (pick) => replies[pick]?.trim().isNotEmpty == true,
+    orElse: () => replies.keys.isNotEmpty ? replies.keys.first : 'extend',
+  );
+  final fallbackContent = replies[fallbackPick]?.trim() ?? '';
+
+  if (fallbackContent.isEmpty) {
+    return recommendation;
+  }
+
+  String fallbackReason(String pick) {
+    switch (pick) {
+      case 'resonate':
+        return '這句比較能接住對方情緒，回起來自然也不會太用力。';
+      case 'tease':
+        return '這句能保留一點曖昧感，讓互動繼續有張力。';
+      case 'humor':
+        return '這句比較輕鬆，能讓對話維持舒服節奏。';
+      case 'coldRead':
+        return '這句比較像真的有在理解她，互動感會更強。';
+      case 'extend':
+      default:
+        return '這句最自然，能順著目前話題往下聊。';
+    }
+  }
+
+  String fallbackPsychology(String pick) {
+    switch (pick) {
+      case 'resonate':
+        return '先接住情緒，通常更容易讓對方願意接著聊。';
+      case 'tease':
+        return '適度 playful 的互動，通常更能維持吸引力。';
+      case 'humor':
+        return '幽默能降低社交壓力，也更容易延續對話。';
+      case 'coldRead':
+        return '被理解與被看見的感受，通常會提升投入度。';
+      case 'extend':
+      default:
+        return '低壓力、好接話的回覆通常最穩。';
+    }
+  }
+
+  return FinalRecommendation(
+    pick: fallbackPick,
+    content: fallbackContent,
+    reason: recommendation.reason.trim().isNotEmpty
+        ? recommendation.reason
+        : fallbackReason(fallbackPick),
+    psychology: recommendation.psychology.trim().isNotEmpty
+        ? recommendation.psychology
+        : fallbackPsychology(fallbackPick),
+  );
+}
+
 /// 「我說」話題延續分析結果
 class MyMessageAnalysis {
   final String sentMessage;
@@ -465,6 +550,7 @@ class AnalysisResult {
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
     final enthusiasm = json['enthusiasm'] as Map<String, dynamic>?;
     final repliesData = json['replies'] as Map<String, dynamic>?;
+    final normalizedReplies = _normalizeRepliesMap(repliesData);
 
     // Parse healthCheck only if present (Essential tier only)
     HealthCheck? healthCheck;
@@ -506,6 +592,11 @@ class AnalysisResult {
     // Parse imagesUsed from usage
     final usage = json['usage'] as Map<String, dynamic>?;
     final imagesUsed = usage?['imagesUsed'] as int?;
+    final recommendation = _ensureRecommendationFallback(
+      FinalRecommendation.fromJson(
+          json['finalRecommendation'] as Map<String, dynamic>?),
+      normalizedReplies,
+    );
 
     return AnalysisResult(
       enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
@@ -517,9 +608,8 @@ class AnalysisResult {
       topicDepth:
           TopicDepth.fromJson(json['topicDepth'] as Map<String, dynamic>?),
       healthCheck: healthCheck,
-      replies: repliesData?.map((k, v) => MapEntry(k, v.toString())) ?? {},
-      recommendation: FinalRecommendation.fromJson(
-          json['finalRecommendation'] as Map<String, dynamic>?),
+      replies: normalizedReplies,
+      recommendation: recommendation,
       reminder: json['reminder'] as String?,
       shouldGiveUp: shouldGiveUp,
       rawResponse: json, // 保存原始回應
