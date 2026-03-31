@@ -24,6 +24,7 @@ class _AppState extends ConsumerState<App> {
         theme: AppTheme.darkTheme,
         home: SplashScreen(
           onComplete: () {
+            if (!mounted) return;
             setState(() {
               _splashComplete = true;
             });

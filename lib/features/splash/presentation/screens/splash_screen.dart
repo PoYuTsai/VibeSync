@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -23,8 +22,6 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _titleOpacity;
   late final Animation<double> _titleTranslateY;
   late final Animation<double> _titleScale;
-  late final Animation<double> _titleBlur;
-
   // Shimmer 掃光
   late final AnimationController _shimmerController;
   late final Animation<double> _shimmerPosition;
@@ -86,13 +83,6 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    _titleBlur = Tween<double>(begin: 12, end: 0).animate(
-      CurvedAnimation(
-        parent: _titleController,
-        curve: const Interval(0, 0.6, curve: Curves.easeOut),
-      ),
-    );
-
     // ── Shimmer（1 秒，延遲 1.8 秒）──
     _shimmerController = AnimationController(
       vsync: this,
@@ -149,14 +139,17 @@ class _SplashScreenState extends State<SplashScreen>
 
     // 1 秒後副標題入場
     await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
     _subtitleController.forward();
 
     // 1.8 秒後 shimmer
     await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
     _shimmerController.forward();
 
     // 2 秒後底部圓點
     await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
     _dotController.forward();
     _dotPulseController.repeat(reverse: true);
 

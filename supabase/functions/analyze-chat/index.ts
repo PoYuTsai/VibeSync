@@ -1171,14 +1171,6 @@ const SYSTEM_PROMPT =
     },
     "qualificationSignal": true
   },
-  "conversationNodes": [
-    {
-      "message": "她的原文",
-      "type": "screening | shit_test | real_window | fake_window | topic_shift | self_proof_trap | deep_sharing | banter",
-      "analysis": "一句話解釋她在幹嘛",
-      "powerShift": "to_her | to_me | neutral"
-    }
-  ],
   "herMessages": [
     {
       "content": "她的第一條訊息",
@@ -3659,7 +3651,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           model: selectedModel,
           max_tokens: recognizeOnly
             ? 1600
-            : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1024)), // 截圖分析需要更多 tokens
+            : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1280)), // 正常分析輸出變長，保留較穩定的 JSON 空間
           system: systemPrompt,
           messages: [
             {
@@ -3797,7 +3789,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             model: selectedModel,
             max_tokens: recognizeOnly
               ? 1600
-              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1024)),
+              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1280)),
             system: systemPrompt + "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
             messages: [
               {
