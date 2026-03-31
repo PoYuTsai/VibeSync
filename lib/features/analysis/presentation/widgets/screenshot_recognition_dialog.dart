@@ -333,7 +333,13 @@ class _ScreenshotRecognitionDialogState
       label: Text(label),
       selected: selected,
       onSelected: (_) => onTap(),
-      selectedColor: AppColors.primary.withValues(alpha: 0.3),
+      selectedColor: AppColors.primary.withValues(alpha: 0.2),
+      backgroundColor: Colors.white,
+      side: BorderSide(
+        color: selected
+            ? AppColors.primary.withValues(alpha: 0.4)
+            : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+      ),
       labelStyle: TextStyle(
         color: selected ? AppColors.primary : AppColors.glassTextPrimary,
         fontWeight: FontWeight.w600,
@@ -736,7 +742,14 @@ class _ScreenshotRecognitionDialogState
                           ScreenshotRecognitionHelper.importModeAppendCurrent;
                     });
                   },
-                  selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                  selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                  backgroundColor: Colors.white,
+                  side: BorderSide(
+                    color: _selectedImportMode ==
+                            ScreenshotRecognitionHelper.importModeAppendCurrent
+                        ? AppColors.primary.withValues(alpha: 0.4)
+                        : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                  ),
                   labelStyle: TextStyle(
                     color: _selectedImportMode ==
                             ScreenshotRecognitionHelper.importModeAppendCurrent
@@ -755,7 +768,15 @@ class _ScreenshotRecognitionDialogState
                           ScreenshotRecognitionHelper.importModeNewConversation;
                     });
                   },
-                  selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                  selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                  backgroundColor: Colors.white,
+                  side: BorderSide(
+                    color: _selectedImportMode ==
+                            ScreenshotRecognitionHelper
+                                .importModeNewConversation
+                        ? AppColors.primary.withValues(alpha: 0.4)
+                        : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                  ),
                   labelStyle: TextStyle(
                     color: _selectedImportMode ==
                             ScreenshotRecognitionHelper
@@ -976,7 +997,13 @@ class _ScreenshotRecognitionDialogState
                         _selectedMeeting = selected ? meetingContext : null;
                       });
                     },
-                    selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                    backgroundColor: Colors.white,
+                    side: BorderSide(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.4)
+                          : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                    ),
                     labelStyle: TextStyle(
                       color: isSelected
                           ? AppColors.primary
@@ -1007,7 +1034,13 @@ class _ScreenshotRecognitionDialogState
                         _selectedDuration = selected ? duration : null;
                       });
                     },
-                    selectedColor: AppColors.primary.withValues(alpha: 0.3),
+                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                    backgroundColor: Colors.white,
+                    side: BorderSide(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.4)
+                          : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                    ),
                     labelStyle: TextStyle(
                       color: isSelected
                           ? AppColors.primary
