@@ -7,6 +7,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 ## 2026-03-30 Discord Runtime Note
 
 - VibeSync Discord bridge troubleshooting is documented in `docs/discord-vibesync-troubleshooting.md`.
+- If mobile Discord should deterministically trigger Codex instead of relying on natural-language delegation, see `docs/discord-codex-command-bridge-design.md`.
 - The real live state for this project is `~/.claude/channels/discord-vibesync/access.json`, not the generic `~/.claude/channels/discord/access.json`.
 - The root cause of the Bruce monitoring issue was the live `discord-vibesync` allowlist missing his user ID.
 - The live WSL plugin was also hardened with `GuildMembers` intent plus polling fallback, but that runtime patch lives outside this repo.
