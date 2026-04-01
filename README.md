@@ -217,5 +217,6 @@ Private - All Rights Reserved
 - OCR guardrails / telemetry now also expose `systemRowsRemovedCount` and a `system_rows_removed` server flag, so QA can tell when the parser had to ignore centered UI noise rather than assuming every speaker repair came from the same heuristic path.
 - Follow-up hotfix: the new centered-row stripping is now intentionally conservative. The layout parser file was rewritten into a clean ASCII-safe version, and system-row removal now only applies to very obvious standalone date/time separators or simple system banners when at least two known-side chat bubbles still remain afterward.
 - OCR normalization now also fails open if the layout-first parser itself throws at runtime: the server logs the parser failure and falls back to the pre-parser grouped rows instead of returning a generic OCR failure to the app.
+- Auth callback handling was hardened too: iOS `SceneDelegate` now forwards incoming auth URLs back into `app_links`, Android now declares the `com.poyutsai.vibesync://login-callback` intent filter, password recovery cold-start detection no longer depends on an already-present user session, and signup now best-effort resends the verification email when Supabase responds like an existing-but-unconfirmed account.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

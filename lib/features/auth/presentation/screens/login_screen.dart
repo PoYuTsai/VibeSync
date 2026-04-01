@@ -475,6 +475,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             response.session == null &&
             identities.isEmpty;
 
+        if (looksLikeExistingPendingUser) {
+          try {
+            await SupabaseService.resendSignUpConfirmation(email: email);
+          } catch (_) {
+            // Best effort only. If resend hits rate limit or Supabase declines,
+            // keep the user on the verification flow and let them retry manually.
+          }
+        }
+
         if (response.user != null && response.session != null) {
           await _handleSuccessfulLogin(response.user!);
           return;

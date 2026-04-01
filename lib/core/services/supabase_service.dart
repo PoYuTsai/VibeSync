@@ -44,7 +44,6 @@ class SupabaseService {
     try {
       final initialLink = await _appLinks.getInitialLink();
       _passwordRecoveryInProgress =
-          currentUser != null &&
           AuthRecoveryHelper.isPasswordRecoveryLink(initialLink);
     } catch (error) {
       debugPrint('Password recovery link sync skipped: $error');

@@ -11,6 +11,13 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - Login/logout now invalidate conversation + usage providers, and logout clears the local usage snapshot so a newly signed-in account does not inherit stale quota/tier UI.
 - The email/password login form now has password visibility toggles for both the main password field and the recovery confirmation field.
 
+## 2026-04-01 Auth Deep Link + Verification Mail Hotfix
+
+- iOS `SceneDelegate.swift` now forwards incoming URL contexts / user activities to `app_links`, fixing cases where password-reset or signup-confirmation links opened the app but did not enter the expected auth flow.
+- Android `AndroidManifest.xml` now declares the `com.poyutsai.vibesync://login-callback` intent filter so auth callback links can reopen the app correctly.
+- `SupabaseService` no longer requires an already-active user session when detecting a password-recovery cold start link.
+- Login/signup now best-effort resends the signup confirmation email when Supabase returns the "existing but still unconfirmed" style response, and the UI guidance now explicitly tells the user to open the auth link on the phone with the app installed.
+
 ## 2026-03-30 Discord Runtime Note
 
 - VibeSync Discord bridge troubleshooting is documented in `docs/discord-vibesync-troubleshooting.md`.
