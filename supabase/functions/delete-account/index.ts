@@ -92,6 +92,12 @@ serve(async (req) => {
 
     const cleanupTargets: CleanupTarget[] = [
       { table: "revenue_events", column: "user_id", value: user.id, required: true },
+      { table: "test_users", column: "user_id", value: user.id, required: false },
+      { table: "token_usage", column: "user_id", value: user.id, required: false },
+      { table: "rate_limits", column: "user_id", value: user.id, required: false },
+      { table: "ai_logs", column: "user_id", value: user.id, required: false },
+      { table: "subscriptions", column: "user_id", value: user.id, required: false },
+      { table: "users", column: "id", value: user.id, required: false },
       { table: "feedback", column: "user_id", value: user.id, required: false },
       { table: "webhook_logs", column: "user_id", value: user.id, required: false },
     ];
