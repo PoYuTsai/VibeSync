@@ -7,16 +7,16 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import {
-  LineChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  BarChart,
-  Bar,
 } from "recharts";
 
 interface ActivityData {
@@ -38,36 +38,39 @@ export default function ActivityPage() {
   useEffect(() => {
     async function fetchActivity() {
       try {
-        // 取得每日活躍用戶
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("user_activity")
           .select("*")
           .order("date", { ascending: true })
           .limit(30);
 
+        if (error) {
+          throw error;
+        }
+
         if (data && data.length > 0) {
-          const formattedData = data.map((d) => ({
-            date: new Date(d.date).toLocaleDateString("zh-TW", {
+          const formattedData = data.map((row) => ({
+            date: new Date(row.date).toLocaleDateString("zh-TW", {
               month: "short",
               day: "numeric",
             }),
-            dau: Number(d.dau),
+            dau: Number(row.dau),
           }));
 
           setActivityData(formattedData);
 
           const todayDAU = formattedData[formattedData.length - 1]?.dau || 0;
           const avgDAU =
-            formattedData.reduce((sum, d) => sum + d.dau, 0) /
+            formattedData.reduce((sum, row) => sum + row.dau, 0) /
             formattedData.length;
-          const peakDAU = Math.max(...formattedData.map((d) => d.dau));
+          const peakDAU = Math.max(...formattedData.map((row) => row.dau));
 
           setSummary({
             todayDAU,
             avgDAU: Math.round(avgDAU),
             peakDAU,
-            wau: Math.round(avgDAU * 2.5), // 估算值
-            mau: Math.round(avgDAU * 5), // 估算值
+            wau: Math.round(avgDAU * 2.5),
+            mau: Math.round(avgDAU * 5),
           });
         }
       } catch (error) {
@@ -82,7 +85,7 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">用戶活躍度</h1>
+      <h1 className="text-3xl font-bold">用戶活動</h1>
 
       <div className="grid gap-4 md:grid-cols-5">
         <Card>
@@ -95,6 +98,7 @@ export default function ActivityPage() {
             <div className="text-2xl font-bold">{summary.todayDAU}</div>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
@@ -103,9 +107,10 @@ export default function ActivityPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.avgDAU}</div>
-            <p className="text-xs text-gray-500">近 30 天</p>
+            <p className="text-xs text-gray-500">最近 30 天</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
@@ -118,26 +123,28 @@ export default function ActivityPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              估算 WAU
+              預估 WAU
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.wau}</div>
-            <p className="text-xs text-gray-500">週活躍</p>
+            <p className="text-xs text-gray-500">近似估算</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              估算 MAU
+              預估 MAU
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.mau}</div>
-            <p className="text-xs text-gray-500">月活躍</p>
+            <p className="text-xs text-gray-500">近似估算</p>
           </CardContent>
         </Card>
       </div>
@@ -148,8 +155,8 @@ export default function ActivityPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-80 flex items-center justify-center">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            <div className="flex h-80 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
             </div>
           ) : (
             <div className="h-80">
@@ -177,12 +184,12 @@ export default function ActivityPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>每日活躍用戶</CardTitle>
+          <CardTitle>最近 30 天活躍分佈</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-64 flex items-center justify-center">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            <div className="flex h-64 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
             </div>
           ) : (
             <div className="h-64">

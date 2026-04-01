@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/services/auth_diagnostics_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -148,6 +149,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
   }
 
+  void _logAuthDiagnostic({
+    required String event,
+    String? email,
+    String status = 'info',
+    String? message,
+    String? errorCode,
+    Map<String, dynamic>? metadata,
+  }) {
+    unawaited(
+      AuthDiagnosticsService.log(
+        event: event,
+        email: email,
+        status: status,
+        message: message,
+        errorCode: errorCode,
+        metadata: metadata,
+      ),
+    );
+  }
+
   String? _validateForm({
     required String email,
     required String password,
@@ -251,6 +272,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _errorMessage = null;
       _noticeMessage = null;
     });
+    unawaited(
+      AuthDiagnosticsService.log(
+        event: 'signup_resend_requested',
+        email: email,
+        status: 'info',
+      ),
+    );
 
     try {
       await SupabaseService.resendSignUpConfirmation(email: email);
@@ -261,11 +289,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _setNotice(
         '驗證信已重新寄出，請到信箱查看，並用安裝 App 的手機開啟連結。',
       );
+      unawaited(
+        AuthDiagnosticsService.log(
+          event: 'signup_resend_result',
+          email: email,
+          status: 'success',
+          message: 'Signup confirmation email resend succeeded.',
+        ),
+      );
     } on AuthException catch (e) {
       if (!mounted) return;
+      unawaited(
+        AuthDiagnosticsService.log(
+          event: 'signup_resend_result',
+          email: email,
+          status: 'error',
+          errorCode: e.statusCode,
+          message: e.message,
+        ),
+      );
       _setError(_mapAuthError(e, isSignUp: true));
     } catch (_) {
       if (!mounted) return;
+      _logAuthDiagnostic(
+        event: 'signup_resend_result',
+        email: email,
+        status: 'error',
+        message: 'Signup confirmation email resend failed unexpectedly.',
+      );
       _setError('重新寄送驗證信失敗，請再試一次。');
     } finally {
       if (mounted) {
@@ -287,15 +338,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _errorMessage = null;
       _noticeMessage = null;
     });
+    _logAuthDiagnostic(
+      event: 'password_reset_requested',
+      email: email,
+      status: 'info',
+    );
 
     try {
       await SupabaseService.sendPasswordResetEmail(email: email);
       if (!mounted) return;
+      _logAuthDiagnostic(
+        event: 'password_reset_request_result',
+        email: email,
+        status: 'success',
+        message: 'Password reset email request accepted.',
+      );
       _setNotice(
         '如果這個 Email 已註冊，我們已寄出重設密碼連結；請在這台裝置上開啟。',
       );
     } on AuthException catch (e) {
       if (!mounted) return;
+      _logAuthDiagnostic(
+        event: 'password_reset_request_result',
+        email: email,
+        status: 'error',
+        errorCode: e.statusCode,
+        message: e.message,
+      );
       final message = e.message.toLowerCase();
       if (message.contains('rate limit') || e.statusCode == '429') {
         _setError('重設密碼請求過多，請稍候再試。');
@@ -332,10 +401,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _errorMessage = null;
       _noticeMessage = null;
     });
+    _logAuthDiagnostic(
+      event: 'password_reset_submit',
+      email: SupabaseService.currentUser?.email ?? _emailController.text.trim(),
+      status: 'info',
+    );
 
     try {
       await SupabaseService.updatePassword(password: password);
       final user = SupabaseService.currentUser;
+      _logAuthDiagnostic(
+        event: 'password_reset_submit_result',
+        email: user?.email ?? _emailController.text.trim(),
+        status: 'success',
+        message: 'Password reset submitted successfully.',
+        metadata: {
+          'hasCurrentUser': user != null,
+        },
+      );
 
       if (user != null) {
         await _handleSuccessfulLogin(user);
@@ -347,6 +430,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       context.go('/');
     } on AuthException catch (e) {
       if (!mounted) return;
+      _logAuthDiagnostic(
+        event: 'password_reset_submit_result',
+        email: SupabaseService.currentUser?.email ?? _emailController.text.trim(),
+        status: 'error',
+        errorCode: e.statusCode,
+        message: e.message,
+      );
       _setError(
         _mapAuthError(
           e,
@@ -465,6 +555,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       if (_isSignUp) {
+        _logAuthDiagnostic(
+          event: 'signup_attempt',
+          email: email,
+          status: 'info',
+        );
         final response = await SupabaseService.signUpWithEmail(
           email: email,
           password: password,
@@ -474,11 +569,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             response.user != null &&
             response.session == null &&
             identities.isEmpty;
+        _logAuthDiagnostic(
+          event: 'signup_result',
+          email: email,
+          status: 'success',
+          message: 'Signup response received.',
+          metadata: {
+            'hasUser': response.user != null,
+            'hasSession': response.session != null,
+            'identityCount': identities.length,
+            'looksLikeExistingPendingUser': looksLikeExistingPendingUser,
+          },
+        );
 
         if (looksLikeExistingPendingUser) {
           try {
+            _logAuthDiagnostic(
+              event: 'signup_resend_attempt_auto',
+              email: email,
+              status: 'info',
+            );
             await SupabaseService.resendSignUpConfirmation(email: email);
+            _logAuthDiagnostic(
+              event: 'signup_resend_attempt_auto_result',
+              email: email,
+              status: 'success',
+              message: 'Automatic signup confirmation resend succeeded.',
+            );
           } catch (_) {
+            _logAuthDiagnostic(
+              event: 'signup_resend_attempt_auto_result',
+              email: email,
+              status: 'error',
+              message:
+                  'Automatic signup confirmation resend failed or was rate limited.',
+            );
             // Best effort only. If resend hits rate limit or Supabase declines,
             // keep the user on the verification flow and let them retry manually.
           }
@@ -502,19 +627,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
 
+      _logAuthDiagnostic(
+        event: 'signin_attempt',
+        email: email,
+        status: 'info',
+      );
       final response = await SupabaseService.signInWithEmail(
         email: email,
         password: password,
       );
 
       if (response.user != null) {
+        _logAuthDiagnostic(
+          event: 'signin_result',
+          email: email,
+          status: 'success',
+          message: 'Sign-in succeeded.',
+          metadata: {
+            'hasSession': response.session != null,
+          },
+        );
         await _handleSuccessfulLogin(response.user!);
       }
     } on AuthException catch (e) {
       if (!mounted) return;
+      _logAuthDiagnostic(
+        event: _isSignUp ? 'signup_result' : 'signin_result',
+        email: email,
+        status: 'error',
+        errorCode: e.statusCode,
+        message: e.message,
+      );
       _setError(_mapAuthError(e, isSignUp: _isSignUp));
     } catch (_) {
       if (!mounted) return;
+      _logAuthDiagnostic(
+        event: _isSignUp ? 'signup_result' : 'signin_result',
+        email: email,
+        status: 'error',
+        message: _isSignUp
+            ? 'Signup failed unexpectedly.'
+            : 'Sign-in failed unexpectedly.',
+      );
       _setError(
         _isSignUp ? '建立帳號失敗，請再試一次。' : '登入失敗，請再試一次。',
       );

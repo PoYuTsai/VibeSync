@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/environment.dart';
 import 'auth_recovery_helper.dart';
+import 'auth_diagnostics_service.dart';
 import 'revenuecat_service.dart';
 import 'social_auth/social_auth_service.dart';
 
@@ -45,6 +46,19 @@ class SupabaseService {
       final initialLink = await _appLinks.getInitialLink();
       _passwordRecoveryInProgress =
           AuthRecoveryHelper.isPasswordRecoveryLink(initialLink);
+      if (_passwordRecoveryInProgress) {
+        unawaited(
+          AuthDiagnosticsService.log(
+            event: 'recovery_link_detected',
+            status: 'info',
+            message: 'Password recovery deep link detected on app start.',
+            metadata: {
+              'coldStart': true,
+              'hasCurrentUser': currentUser != null,
+            },
+          ),
+        );
+      }
     } catch (error) {
       debugPrint('Password recovery link sync skipped: $error');
     }
@@ -55,6 +69,16 @@ class SupabaseService {
       event: authState.event,
       currentState: _passwordRecoveryInProgress,
     );
+    if (authState.event == AuthChangeEvent.passwordRecovery) {
+      unawaited(
+        AuthDiagnosticsService.log(
+          event: 'password_recovery_entered',
+          status: 'success',
+          email: authState.session?.user.email,
+          message: 'Supabase auth entered password recovery mode.',
+        ),
+      );
+    }
   }
 
   static SupabaseClient get client {

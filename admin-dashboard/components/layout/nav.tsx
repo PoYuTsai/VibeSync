@@ -5,15 +5,16 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard,
-  Users,
-  CreditCard,
-  TrendingUp,
-  DollarSign,
-  Zap,
-  AlertCircle,
   Activity,
+  AlertCircle,
+  CreditCard,
+  DollarSign,
+  KeyRound,
+  LayoutDashboard,
   LogOut,
+  TrendingUp,
+  Users,
+  Zap,
 } from "lucide-react";
 
 const navItems = [
@@ -22,9 +23,10 @@ const navItems = [
   { href: "/subscriptions", label: "訂閱", icon: CreditCard },
   { href: "/revenue", label: "營收", icon: TrendingUp },
   { href: "/costs", label: "成本", icon: DollarSign },
-  { href: "/ai-health", label: "AI 健康度", icon: Zap },
+  { href: "/ai-health", label: "AI 健康", icon: Zap },
   { href: "/errors", label: "錯誤追蹤", icon: AlertCircle },
-  { href: "/activity", label: "用戶活躍度", icon: Activity },
+  { href: "/activity", label: "用戶活動", icon: Activity },
+  { href: "/auth-diagnostics", label: "Auth 診斷", icon: KeyRound },
 ];
 
 export function Nav() {
@@ -40,12 +42,12 @@ export function Nav() {
   };
 
   return (
-    <nav className="w-64 bg-gray-900 text-white min-h-screen p-4 flex flex-col">
+    <nav className="flex min-h-screen w-64 flex-col bg-gray-900 p-4 text-white">
       <div className="mb-8">
         <h1 className="text-xl font-bold">VibeSync Admin</h1>
       </div>
 
-      <ul className="space-y-2 flex-1">
+      <ul className="flex-1 space-y-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -55,7 +57,7 @@ export function Nav() {
               <Link
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
+                  "flex items-center gap-3 rounded-md px-3 py-2 transition-colors",
                   isActive
                     ? "bg-blue-600 text-white"
                     : "text-gray-300 hover:bg-gray-800"
@@ -69,10 +71,10 @@ export function Nav() {
         })}
       </ul>
 
-      <div className="pt-4 border-t border-gray-800">
+      <div className="border-t border-gray-800 pt-4">
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-gray-300 hover:bg-gray-800 w-full"
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-gray-300 hover:bg-gray-800"
         >
           <LogOut className="h-5 w-5" />
           <span>登出</span>
