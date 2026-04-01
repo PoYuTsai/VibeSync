@@ -2268,14 +2268,50 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
   }
 
+  List<String> _extractRecommendationSegments(String content) {
+    final normalized = content.replaceAll('\r\n', '\n').trim();
+    if (normalized.isEmpty) {
+      return const [];
+    }
+
+    final matches = RegExp(r'[①②③④⑤💡]').allMatches(normalized).toList();
+    if (matches.isEmpty) {
+      return [normalized];
+    }
+
+    final segments = <String>[];
+    for (var i = 0; i < matches.length; i++) {
+      final start = matches[i].start;
+      final end = i + 1 < matches.length ? matches[i + 1].start : normalized.length;
+      final segment = normalized.substring(start, end).trim();
+      if (segment.isNotEmpty) {
+        segments.add(segment);
+      }
+    }
+    return segments;
+  }
+
+  String? _extractRecommendationReplyText(String segment) {
+    final normalized = segment.replaceAll('\r\n', '\n').trim();
+    final match =
+        RegExp(r'^[①②③④⑤]\s*[^→\n]{0,80}\s*→\s*').firstMatch(normalized);
+    if (match == null) {
+      return null;
+    }
+
+    final replyText = normalized
+        .substring(match.end)
+        .trim()
+        .replaceAll(RegExp(r'^[「『"“]+|[」』"”]+$'), '');
+    return replyText.isEmpty ? null : replyText;
+  }
+
   /// 截圖識別結果卡片
   /// 解析 AI 推薦回覆內容，支援多條分句標註格式
   /// 格式：① 回「關鍵詞」→ 回覆內容
   List<Widget> _buildRecommendationContent(String content) {
-    // 偵測是否有分句標註（①②③ 或 💡）
-    final segmentPattern = RegExp(r'[①②③④⑤💡]');
-    if (!segmentPattern.hasMatch(content)) {
-      // 單一回覆：顯示內容 + 複製按鈕
+    final segments = _extractRecommendationSegments(content);
+    if (segments.length <= 1) {
       return [
         Container(
           padding: const EdgeInsets.all(12),
@@ -2302,21 +2338,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       ];
     }
 
-    // 多條分句：逐句拆開，每句有自己的複製按鈕
-    final lines = content.split('\n').where((l) => l.trim().isNotEmpty).toList();
     final widgets = <Widget>[];
-
-    for (final line in lines) {
-      final trimmed = line.trim();
-
-      // 提取 → 後面的純回覆文字
-      final arrowIndex = trimmed.indexOf('→');
-      final replyText = arrowIndex >= 0
-          ? trimmed.substring(arrowIndex + 1).trim().replaceAll(RegExp(r'^[「『"]+|[」』"]+$'), '')
-          : null;
-
-      // 💡 提示行（不需要回覆的）
+    for (final segment in segments) {
+      final trimmed = segment.trim();
       final isHint = trimmed.startsWith('💡');
+      final replyText = isHint ? null : _extractRecommendationReplyText(trimmed);
 
       widgets.add(
         Container(

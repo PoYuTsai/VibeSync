@@ -351,9 +351,10 @@ function ensureNonEmptyAnalysisOutput({
     : (allowedFeatures.find(
       (feature) => (replies[feature]?.trim().length ?? 0) > 0,
     ) ?? "extend");
-  const fallbackContent = preferredContent.length > 0
-    ? preferredContent
-    : normalizeAiText(replies[fallbackPick]);
+  const replyMappedContent = normalizeAiText(replies[fallbackPick]);
+  const fallbackContent = replyMappedContent.length > 0
+    ? replyMappedContent
+    : (preferredPick === fallbackPick ? preferredContent : "");
   const fallbackExplanation = buildFallbackRecommendationText(fallbackPick);
   const guaranteedContent = fallbackContent.length > 0
     ? fallbackContent
@@ -1179,20 +1180,6 @@ const SYSTEM_PROMPT =
     },
     "qualificationSignal": true
   },
-  "herMessages": [
-    {
-      "content": "她的第一條訊息",
-      "type": "question",
-      "shouldReply": true,
-      "replies": {
-        "extend": "...",
-        "resonate": "...",
-        "tease": "...",
-        "humor": "...",
-        "coldRead": "..."
-      }
-    }
-  ],
   "replies": {
     "extend": "針對最後一條訊息的回覆",
     "resonate": "...",
@@ -3659,7 +3646,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           model: selectedModel,
           max_tokens: recognizeOnly
             ? 1600
-            : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1280)), // 正常分析輸出變長，保留較穩定的 JSON 空間
+            : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)), // 多句推薦回覆保留較穩定的 JSON 空間
           system: systemPrompt,
           messages: [
             {
@@ -3797,7 +3784,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             model: selectedModel,
             max_tokens: recognizeOnly
               ? 1600
-              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1280)),
+              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)),
             system: systemPrompt + "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
             messages: [
               {
@@ -4079,6 +4066,44 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         }
       }
       result.replies = filteredReplies;
+    }
+
+    if (result?.finalRecommendation) {
+      const recommendation = result.finalRecommendation as Record<
+        string,
+        unknown
+      >;
+      const normalizedRecommendationPick = normalizeAiText(recommendation.pick);
+      const normalizedRecommendationReason = normalizeAiText(
+        recommendation.reason,
+      );
+      const normalizedRecommendationPsychology = normalizeAiText(
+        recommendation.psychology,
+      );
+      const normalizedReplies = (result.replies ?? {}) as Record<string, string>;
+      const safeRecommendationPick = normalizedRecommendationPick.length > 0 &&
+          normalizedReplies[normalizedRecommendationPick]?.trim().length
+        ? normalizedRecommendationPick
+        : (allowedFeatures.find((feature) =>
+          (normalizedReplies[feature]?.trim().length ?? 0) > 0
+        ) ?? "extend");
+      const safeRecommendationContent = normalizeAiText(
+        normalizedReplies[safeRecommendationPick],
+      );
+      const fallbackExplanation = buildFallbackRecommendationText(
+        safeRecommendationPick,
+      );
+
+      result.finalRecommendation = {
+        pick: safeRecommendationPick,
+        content: safeRecommendationContent,
+        reason: normalizedRecommendationReason.length > 0
+          ? normalizedRecommendationReason
+          : fallbackExplanation.reason,
+        psychology: normalizedRecommendationPsychology.length > 0
+          ? normalizedRecommendationPsychology
+          : fallbackExplanation.psychology,
+      };
     }
 
     // Remove health check if not allowed

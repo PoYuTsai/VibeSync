@@ -210,16 +210,18 @@ FinalRecommendation _ensureRecommendationFallback(
   FinalRecommendation recommendation,
   Map<String, String> replies,
 ) {
-  if (recommendation.content.trim().isNotEmpty) {
-    return recommendation;
-  }
-
   const pickPriority = ['extend', 'resonate', 'tease', 'humor', 'coldRead'];
-  final fallbackPick = pickPriority.firstWhere(
-    (pick) => replies[pick]?.trim().isNotEmpty == true,
-    orElse: () => replies.keys.isNotEmpty ? replies.keys.first : 'extend',
-  );
-  final fallbackContent = replies[fallbackPick]?.trim() ?? '';
+  final requestedPick = recommendation.pick.trim();
+  final fallbackPick = (requestedPick.isNotEmpty &&
+          replies[requestedPick]?.trim().isNotEmpty == true)
+      ? requestedPick
+      : pickPriority.firstWhere(
+          (pick) => replies[pick]?.trim().isNotEmpty == true,
+          orElse: () => replies.keys.isNotEmpty ? replies.keys.first : 'extend',
+        );
+  final fallbackContent =
+      replies[fallbackPick]?.trim() ??
+      (requestedPick == fallbackPick ? recommendation.content.trim() : '');
 
   if (fallbackContent.isEmpty) {
     return recommendation;
