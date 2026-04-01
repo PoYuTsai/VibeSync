@@ -6,10 +6,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -390,13 +392,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       await SupabaseService.signOut();
+      await UsageService.clearSnapshot();
     } catch (error) {
       if (!context.mounted) {
         return;
       }
 
       if (!SupabaseService.isAuthenticated) {
+        await UsageService.clearSnapshot();
         ref.invalidate(subscriptionProvider);
+        ref.invalidate(conversationsProvider);
+        ref.invalidate(usageDataProvider);
         context.go('/login');
         messenger.showSnackBar(
           const SnackBar(content: Text('你已登出。若畫面還有異常，重新開啟 App 即可。')),
@@ -411,6 +417,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     ref.invalidate(subscriptionProvider);
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(usageDataProvider);
 
     if (context.mounted) {
       context.go('/login');
@@ -508,6 +516,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await StorageService.clearAll();
       await SupabaseService.clearLocalSessionAfterDeletion();
       ref.invalidate(subscriptionProvider);
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(usageDataProvider);
 
       if (!context.mounted) {
         return;

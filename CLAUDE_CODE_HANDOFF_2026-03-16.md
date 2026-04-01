@@ -4,6 +4,13 @@
 
 This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, subscription-state consistency around RevenueCat + Supabase sync, and the remaining auth / webhook boundary issues that could still leak stale state or mis-handle malformed events.
 
+## 2026-04-01 Account Isolation Hotfix
+
+- Local conversations are now scoped by signed-in user instead of being read from a global Hive list.
+- Legacy ownerless local conversations created before this hotfix are quarantined instead of being shown to the wrong account.
+- Login/logout now invalidate conversation + usage providers, and logout clears the local usage snapshot so a newly signed-in account does not inherit stale quota/tier UI.
+- The email/password login form now has password visibility toggles for both the main password field and the recovery confirmation field.
+
 ## 2026-03-30 Discord Runtime Note
 
 - VibeSync Discord bridge troubleshooting is documented in `docs/discord-vibesync-troubleshooting.md`.

@@ -7,11 +7,13 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/platform_info.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -33,6 +35,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   bool _isSignUp = false;
   bool _isPasswordRecoveryMode = SupabaseService.isPasswordRecoveryInProgress;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
   String? _errorMessage;
   String? _noticeMessage;
   String? _pendingVerificationEmail;
@@ -40,6 +44,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool get _isIOS => isIOSPlatform;
   bool get _hasPendingVerification =>
       (_pendingVerificationEmail ?? '').trim().isNotEmpty;
+
+  void _invalidateSessionScopedProviders() {
+    ref.invalidate(subscriptionProvider);
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(usageDataProvider);
+  }
 
   @override
   void initState() {
@@ -63,7 +73,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _handleAuthStateChange(AuthState authState) {
     if (!mounted) return;
 
-    ref.invalidate(subscriptionProvider);
+    _invalidateSessionScopedProviders();
 
     if (authState.event == AuthChangeEvent.passwordRecovery) {
       _passwordController.clear();
@@ -224,7 +234,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     _passwordController.clear();
     _confirmPasswordController.clear();
-    ref.invalidate(subscriptionProvider);
+    _invalidateSessionScopedProviders();
     context.go('/');
   }
 
@@ -576,7 +586,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       hintText: _isPasswordRecoveryMode || _isSignUp
                           ? '至少 8 個字元，需包含英文字母與數字'
                           : '請輸入密碼',
-                      obscureText: true,
+                      obscureText: !_isPasswordVisible,
+                      onToggleObscureText: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible;
+                        });
+                      },
                     ),
                     if (_isPasswordRecoveryMode) ...[
                       const SizedBox(height: 16),
@@ -584,7 +599,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         label: '確認新密碼',
                         controller: _confirmPasswordController,
                         hintText: '再次輸入新密碼',
-                        obscureText: true,
+                        obscureText: !_isConfirmPasswordVisible,
+                        onToggleObscureText: () {
+                          setState(() {
+                            _isConfirmPasswordVisible =
+                                !_isConfirmPasswordVisible;
+                          });
+                        },
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -690,6 +711,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     required String hintText,
     TextInputType? keyboardType,
     bool obscureText = false,
+    VoidCallback? onToggleObscureText,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -720,6 +742,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               hintStyle: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextHint,
               ),
+              suffixIcon: onToggleObscureText == null
+                  ? null
+                  : IconButton(
+                      onPressed: onToggleObscureText,
+                      icon: Icon(
+                        obscureText ? Icons.visibility : Icons.visibility_off,
+                        color: AppColors.glassTextHint,
+                      ),
+                    ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 14,

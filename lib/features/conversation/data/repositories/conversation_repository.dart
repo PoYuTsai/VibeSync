@@ -1,6 +1,9 @@
 // lib/features/conversation/data/repositories/conversation_repository.dart
+import 'dart:async';
+
 import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../services/memory_service.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
@@ -11,20 +14,66 @@ class ConversationRepository {
 
   final _uuid = const Uuid();
   final MemoryService _memoryService;
+  static const _legacyConversationMigrationLockedKey =
+      'legacy_conversation_migration_locked';
+
+  String? get _currentUserId => SupabaseService.currentUser?.id;
+
+  void _lockLegacyConversationsIfNeeded() {
+    final settingsBox = StorageService.settingsBox;
+    if (settingsBox.get(_legacyConversationMigrationLockedKey) == true) {
+      return;
+    }
+
+    final hasOwnerlessConversation = StorageService.conversationsBox.values.any(
+      (conversation) => conversation.ownerUserId == null,
+    );
+
+    if (!hasOwnerlessConversation) {
+      return;
+    }
+
+    settingsBox.put(_legacyConversationMigrationLockedKey, true);
+  }
 
   List<Conversation> getAllConversations() {
-    return StorageService.conversationsBox.values.toList()
+    final currentUserId = _currentUserId;
+    if (currentUserId == null) {
+      return const [];
+    }
+
+    _lockLegacyConversationsIfNeeded();
+
+    return StorageService.conversationsBox.values
+        .where((conversation) => conversation.ownerUserId == currentUserId)
+        .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
   Conversation? getConversation(String id) {
-    return StorageService.conversationsBox.get(id);
+    final currentUserId = _currentUserId;
+    if (currentUserId == null) {
+      return null;
+    }
+
+    _lockLegacyConversationsIfNeeded();
+    final conversation = StorageService.conversationsBox.get(id);
+    if (conversation == null || conversation.ownerUserId != currentUserId) {
+      return null;
+    }
+
+    return conversation;
   }
 
   Future<Conversation> createConversation({
     required String name,
     required List<Message> messages,
   }) async {
+    final currentUserId = _currentUserId;
+    if (currentUserId == null) {
+      throw StateError('Cannot create a conversation without an authenticated user.');
+    }
+
     final now = DateTime.now();
     final conversation = Conversation(
       id: _uuid.v4(),
@@ -33,6 +82,7 @@ class ConversationRepository {
       createdAt: now,
       updatedAt: now,
       currentRound: _calculateRoundCount(messages),
+      ownerUserId: currentUserId,
     );
 
     await StorageService.conversationsBox.put(conversation.id, conversation);
@@ -40,6 +90,19 @@ class ConversationRepository {
   }
 
   Future<void> updateConversation(Conversation conversation) async {
+    final currentUserId = _currentUserId;
+    if (currentUserId == null) {
+      throw StateError('Cannot update a conversation without an authenticated user.');
+    }
+
+    if (conversation.ownerUserId == null) {
+      conversation.ownerUserId = currentUserId;
+    }
+
+    if (conversation.ownerUserId != currentUserId) {
+      throw StateError('Conversation does not belong to the current signed-in user.');
+    }
+
     conversation.currentRound = _calculateRoundCount(conversation.messages);
     await _maybeGenerateSummary(conversation);
     conversation.updatedAt = DateTime.now();
@@ -47,11 +110,28 @@ class ConversationRepository {
   }
 
   Future<void> deleteConversation(String id) async {
+    final conversation = getConversation(id);
+    if (conversation == null) {
+      return;
+    }
+
     await StorageService.conversationsBox.delete(id);
   }
 
   Future<void> deleteAll() async {
-    await StorageService.conversationsBox.clear();
+    final currentUserId = _currentUserId;
+    if (currentUserId == null) {
+      return;
+    }
+
+    final conversationIds = StorageService.conversationsBox.values
+        .where((conversation) => conversation.ownerUserId == currentUserId)
+        .map((conversation) => conversation.id)
+        .toList();
+
+    await Future.wait(
+      conversationIds.map(StorageService.conversationsBox.delete),
+    );
   }
 
   List<Message> parseMessages(String rawText) {
@@ -137,5 +217,9 @@ class ConversationRepository {
     }
 
     conversation.addSummary(summary);
+    if (conversation.ownerUserId == null && _currentUserId != null) {
+      conversation.ownerUserId = _currentUserId;
+      unawaited(conversation.save());
+    }
   }
 }

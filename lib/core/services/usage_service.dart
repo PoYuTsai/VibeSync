@@ -107,6 +107,19 @@ class UsageService {
     }
   }
 
+  static Future<void> clearSnapshot() async {
+    final box = StorageService.usageBox;
+    await Future.wait([
+      box.delete(_monthlyUsedKey),
+      box.delete(_dailyUsedKey),
+      box.delete(_dailyResetAtKey),
+      box.delete(_monthlyResetAtKey),
+      box.delete(_tierKey),
+      box.delete(_monthlyLimitKey),
+      box.delete(_dailyLimitKey),
+    ]);
+  }
+
   static int _defaultMonthlyLimitForTier(String tier) {
     return SubscriptionTierHelper.limitsFor(tier).monthly;
   }

@@ -58,6 +58,10 @@ class Conversation extends HiveObject {
   @HiveField(13)
   int? lastAnalyzedMessageCount;
 
+  /// Local owner used to isolate conversations between signed-in accounts
+  @HiveField(14)
+  String? ownerUserId;
+
   Conversation({
     required this.id,
     required this.name,
@@ -73,6 +77,7 @@ class Conversation extends HiveObject {
     this.lastUserChoice,
     this.lastAnalysisSnapshotJson,
     this.lastAnalyzedMessageCount,
+    this.ownerUserId,
   });
 
   Message? get lastMessage => messages.isNotEmpty ? messages.last : null;
