@@ -90,6 +90,7 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
+    // Keep this explicit list in sync with user-scoped tables that may block auth deletion.
     const cleanupTargets: CleanupTarget[] = [
       { table: "revenue_events", column: "user_id", value: user.id, required: true },
       { table: "test_users", column: "user_id", value: user.id, required: false },
