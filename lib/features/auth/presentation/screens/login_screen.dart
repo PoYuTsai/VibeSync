@@ -46,15 +46,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool get _hasPendingVerification =>
       (_pendingVerificationEmail ?? '').trim().isNotEmpty;
   String get _typedEmail => _emailController.text.trim();
-  String? get _validTypedEmail => _isValidEmail(_typedEmail) ? _typedEmail : null;
+  String? get _validTypedEmail =>
+      _isValidEmail(_typedEmail) ? _typedEmail : null;
   String? get _validPendingVerificationEmail {
     final email = (_pendingVerificationEmail ?? '').trim();
     return _isValidEmail(email) ? email : null;
   }
+
   bool get _showPendingVerificationResend {
     final pending = (_pendingVerificationEmail ?? '').trim().toLowerCase();
     final typed = _typedEmail.toLowerCase();
     return _hasPendingVerification && (typed.isEmpty || typed == pending);
+  }
+
+  String? get _pendingVerificationHint {
+    final email = _validPendingVerificationEmail;
+    if (email == null) return null;
+    return '尚未完成驗證：$email';
   }
 
   void _invalidateSessionScopedProviders() {
@@ -222,10 +230,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     if (message.contains('user already registered')) {
-      if (_isValidEmail(email)) {
-        _pendingVerificationEmail = email;
-      }
-      return isSignUp ? '這個 Email 已註冊，請直接登入或重新寄送驗證信。' : '這個 Email 已註冊。';
+      return '這個 Email 已註冊過，請直接登入。';
     }
 
     if (message.contains('weak password')) {
@@ -453,7 +458,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!mounted) return;
       _logAuthDiagnostic(
         event: 'password_reset_submit_result',
-        email: SupabaseService.currentUser?.email ?? _emailController.text.trim(),
+        email:
+            SupabaseService.currentUser?.email ?? _emailController.text.trim(),
         status: 'error',
         errorCode: e.statusCode,
         message: e.message,
@@ -586,8 +592,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           password: password,
         );
         final identities = response.user?.identities ?? const [];
-        final looksLikeExistingPendingUser =
-            response.user != null &&
+        final looksLikeExistingPendingUser = response.user != null &&
             response.session == null &&
             identities.isEmpty;
         _logAuthDiagnostic(
@@ -835,10 +840,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 16),
                     ],
                     if (_showPendingVerificationResend && !_isSignUp) ...[
+                      if (_pendingVerificationHint != null)
+                        Text(
+                          _pendingVerificationHint!,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                          ),
+                        ),
+                      if (_pendingVerificationHint != null)
+                        const SizedBox(height: 8),
                       TextButton(
-                        onPressed: _isLoading || _validPendingVerificationEmail == null
-                            ? null
-                            : () => _resendVerificationEmail(preferPendingEmail: true),
+                        onPressed:
+                            _isLoading || _validPendingVerificationEmail == null
+                                ? null
+                                : () => _resendVerificationEmail(
+                                    preferPendingEmail: true),
                         child: const Text('重新寄送驗證信'),
                       ),
                       const SizedBox(height: 8),
@@ -853,17 +869,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       TextButton(
                         onPressed: _isLoading ? null : _sendPasswordResetEmail,
                         child: const Text('忘記密碼？'),
-                      ),
-                    if (!_isSignUp && !_isPasswordRecoveryMode)
-                      TextButton(
-                        onPressed: _isLoading || _validTypedEmail == null
-                            ? null
-                            : () => _resendVerificationEmail(),
-                        child: Text(
-                          _validTypedEmail == null
-                              ? '先輸入完整 Email'
-                              : '重新寄送驗證信',
-                        ),
                       ),
                     if (!_isPasswordRecoveryMode)
                       TextButton(
