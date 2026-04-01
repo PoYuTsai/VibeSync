@@ -258,7 +258,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() {
         _pendingVerificationEmail = email;
       });
-      _setNotice('驗證信已重新寄出，請到信箱查看。');
+      _setNotice(
+        '驗證信已重新寄出，請到信箱查看，並用安裝 App 的手機開啟連結。',
+      );
     } on AuthException catch (e) {
       if (!mounted) return;
       _setError(_mapAuthError(e, isSignUp: true));
@@ -467,6 +469,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           email: email,
           password: password,
         );
+        final identities = response.user?.identities ?? const [];
+        final looksLikeExistingPendingUser =
+            response.user != null &&
+            response.session == null &&
+            identities.isEmpty;
 
         if (response.user != null && response.session != null) {
           await _handleSuccessfulLogin(response.user!);
@@ -478,7 +485,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _pendingVerificationEmail = email;
           _isSignUp = false;
         });
-        _setNotice('驗證信已寄出，請到信箱查看。');
+        _setNotice(
+          looksLikeExistingPendingUser
+              ? '這個 Email 可能已經註冊，或之前的驗證流程還沒完成。請先到信箱找驗證信；如果沒收到，可以點下方重新寄送。驗證連結請用安裝 App 的手機開啟。'
+              : '驗證信已寄出，請到信箱查看，並用安裝 App 的手機開啟連結。若 1-2 分鐘內沒收到，可以點下方重新寄送驗證信。',
+        );
         return;
       }
 
