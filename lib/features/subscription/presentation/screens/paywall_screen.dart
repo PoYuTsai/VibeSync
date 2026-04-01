@@ -173,7 +173,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   Text(
                     isCurrentPlan
                         ? '你目前已在此方案。如需取消或變更方案，請改用 App Store 訂閱管理。'
-                        : '升級完成後會立即同步方案狀態；若已購買過，請改用下方的恢復購買。',
+                        : '升級完成後會立即同步方案狀態；如果你以前買過、換手機或重裝 App，請改用下方的「同步已買過的訂閱」。',
                     style: AppTypography.caption
                         .copyWith(color: AppColors.onBackgroundSecondary),
                     textAlign: TextAlign.center,
@@ -196,7 +196,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       Text('｜', style: AppTypography.caption),
                       TextButton(
                         onPressed: _restorePurchases,
-                        child: Text('恢復購買', style: AppTypography.caption),
+                        child: Text('同步已買過的訂閱', style: AppTypography.caption),
                       ),
                     ],
                   ),
@@ -508,7 +508,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Future<void> _restorePurchases() async {
     if (kIsWeb) {
-      _showSnackBar('目前請改用 iOS App 恢復購買。');
+      _showSnackBar('目前請改用 iOS App 同步已買過的訂閱。');
       return;
     }
 
@@ -524,7 +524,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       if (restored) {
         _showSnackBar(
-          '已成功恢復購買，方案狀態已更新。',
+          '已同步你先前買過的訂閱，方案狀態已更新。',
           backgroundColor: AppColors.success,
         );
         context.pop(true);
@@ -533,7 +533,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       }
     } catch (error) {
       debugPrint('Paywall restore error: $error');
-      _showSnackBar('恢復購買失敗，請稍後再試一次。');
+      _showSnackBar('同步已買過的訂閱失敗，請稍後再試一次。');
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);

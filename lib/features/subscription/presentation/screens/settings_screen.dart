@@ -90,7 +90,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       _buildTile(
                         context: context,
                         icon: Icons.restore,
-                        title: '恢復購買',
+                        title: '同步已買過的訂閱',
                         onTap: () => _restorePurchases(context, ref),
                       ),
                   ],
@@ -218,7 +218,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return '購買服務還在準備中，請稍後再試。';
     }
 
-    return '目前無法恢復購買，請稍後再試一次。';
+    return '目前無法同步已買過的訂閱，請稍後再試一次。';
   }
 
   String _mapDeleteAccountError(Object error) {
@@ -357,7 +357,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(restored ? '恢復購買成功' : '目前沒有可恢復的購買'),
+          content: Text(
+            restored ? '已同步目前的訂閱狀態' : '目前沒有可同步的舊訂閱',
+          ),
           backgroundColor: restored ? AppColors.success : null,
         ),
       );

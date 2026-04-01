@@ -55,6 +55,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   final MemoryService _memoryService = MemoryService();
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
+  bool _isRefreshingPremiumReplies = false;
   int? _enthusiasmScore;
   String? _strategy;
   Map<String, String>? _replies;
@@ -138,7 +139,50 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     final subscription = ref.read(subscriptionProvider);
     if (_analysisNeedsReplyRefresh(subscription)) {
-      _showFloatingSnackBar('已升級完整版，重新分析後就能解鎖完整回覆選項。');
+      _showFloatingSnackBar('已升級完整版，點一下「重新分析完整回覆」就會刷新完整選項。');
+    }
+  }
+
+  Future<void> _refreshPremiumReplies() async {
+    if (_isAnalyzing || _isRefreshingPremiumReplies) {
+      return;
+    }
+
+    setState(() {
+      _isRefreshingPremiumReplies = true;
+      _resetErrorState();
+    });
+
+    try {
+      await ref.read(subscriptionProvider.notifier).syncWithRevenueCat();
+      await ref.read(subscriptionProvider.notifier).refresh();
+      if (!mounted) {
+        return;
+      }
+
+      await _runAnalysis(skipPreview: true);
+      if (!mounted) {
+        return;
+      }
+
+      final subscription = ref.read(subscriptionProvider);
+      if (_analysisNeedsReplyRefresh(subscription)) {
+        _showFloatingSnackBar('完整回覆還在同步中，請稍後再試一次。');
+      } else {
+        _showFloatingSnackBar('完整回覆已更新。');
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showFloatingSnackBar('完整回覆刷新失敗，請稍後再試。');
+      debugPrint('Premium reply refresh error: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshingPremiumReplies = false;
+        });
+      }
     }
   }
 
@@ -1711,7 +1755,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
   }
 
-  Future<void> _runAnalysis() async {
+  Future<void> _runAnalysis({bool skipPreview = false}) async {
     // 先關閉 SnackBar (如果有的話)
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
@@ -1773,9 +1817,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       );
 
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
-      final confirmed = await _confirmAnalysisPreview(
-        analysisContext.requestMessages,
-      );
+      final confirmed = skipPreview
+          ? true
+          : await _confirmAnalysisPreview(
+              analysisContext.requestMessages,
+            );
       if (!confirmed || !mounted) {
         return;
       }
@@ -2706,7 +2752,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               tooltip: '匯出對話紀錄',
               onPressed: () => _exportConversation(conversation),
             ),
-            if (_isAnalyzing)
+            if (_isAnalyzing || _isRefreshingPremiumReplies)
               const Padding(
                 padding: EdgeInsets.all(16),
                 child: SizedBox(
@@ -2776,6 +2822,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ),
 
                           const SizedBox(height: 24),
+
+                          if (_isRefreshingPremiumReplies) ...[
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppColors.primary.withValues(alpha: 0.28),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      '正在重新分析完整回覆，完成後會更新新版回覆選項。',
+                                      style: AppTypography.bodyMedium.copyWith(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
 
                           // Error message
                           if (_errorMessage != null) ...[
@@ -3705,13 +3786,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                           SizedBox(
                                             width: double.infinity,
                                             child: OutlinedButton.icon(
-                                              onPressed: _isAnalyzing
+                                              onPressed: (_isAnalyzing ||
+                                                      _isRefreshingPremiumReplies)
                                                   ? null
-                                                  : _runAnalysis,
-                                              icon: const Icon(
-                                                Icons.refresh_rounded,
+                                                  : _refreshPremiumReplies,
+                                              icon: (_isAnalyzing ||
+                                                      _isRefreshingPremiumReplies)
+                                                  ? const SizedBox(
+                                                      width: 16,
+                                                      height: 16,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                    )
+                                                  : const Icon(
+                                                      Icons.refresh_rounded,
+                                                    ),
+                                              label: Text(
+                                                (_isAnalyzing ||
+                                                        _isRefreshingPremiumReplies)
+                                                    ? '正在刷新完整回覆...'
+                                                    : '重新分析完整回覆',
                                               ),
-                                              label: const Text('重新分析完整回覆'),
                                             ),
                                           ),
                                         ],
