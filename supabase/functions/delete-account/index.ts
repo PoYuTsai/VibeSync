@@ -26,6 +26,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+type CleanupTarget = {
+  table: string;
+  column: string;
+  value: string;
+  required?: boolean;
+};
+
+function isMissingRelationError(error: {
+  code?: string;
+  message?: string;
+  details?: string;
+}): boolean {
+  const combined = `${error.code ?? ""} ${error.message ?? ""} ${
+    error.details ?? ""
+  }`.toLowerCase();
+
+  return combined.includes("42p01") ||
+    combined.includes("relation") && combined.includes("does not exist");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -70,14 +90,10 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
-    const cleanupTargets: Array<{
-      table: string;
-      column: string;
-      value: string;
-    }> = [
-      { table: "revenue_events", column: "user_id", value: user.id },
-      { table: "feedback", column: "user_id", value: user.id },
-      { table: "webhook_logs", column: "user_id", value: user.id },
+    const cleanupTargets: CleanupTarget[] = [
+      { table: "revenue_events", column: "user_id", value: user.id, required: true },
+      { table: "feedback", column: "user_id", value: user.id, required: false },
+      { table: "webhook_logs", column: "user_id", value: user.id, required: false },
     ];
 
     for (const target of cleanupTargets) {
@@ -87,15 +103,37 @@ serve(async (req) => {
       );
 
       if (error) {
+        if (isMissingRelationError(error)) {
+          console.warn(
+            `Skip cleanup for missing table ${target.table}:`,
+            error.message,
+          );
+          continue;
+        }
+
+        if (!target.required) {
+          console.warn(
+            `Non-blocking cleanup failed for ${target.table}:`,
+            error.message,
+          );
+          continue;
+        }
+
         console.error(`Failed to clean ${target.table}:`, error);
-        return jsonResponse({ error: "Failed to delete account data" }, 500);
+        return jsonResponse({
+          error: "Delete account data cleanup failed",
+          detail: target.table,
+        }, 500);
       }
     }
 
     const { error: deleteError } = await supabase.auth.admin.deleteUser(user.id);
     if (deleteError) {
       console.error("Failed to delete auth user:", deleteError);
-      return jsonResponse({ error: "Failed to delete account" }, 500);
+      return jsonResponse({
+        error: "Delete account failed",
+        detail: deleteError.message,
+      }, 500);
     }
 
     return jsonResponse({

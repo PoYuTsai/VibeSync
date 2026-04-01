@@ -220,4 +220,6 @@ Private - All Rights Reserved
 - Auth callback handling was hardened too: iOS `SceneDelegate` now forwards incoming auth URLs back into `app_links`, Android now declares the `com.poyutsai.vibesync://login-callback` intent filter, password recovery cold-start detection no longer depends on an already-present user session, and signup now best-effort resends the verification email when Supabase responds like an existing-but-unconfirmed account.
 - A lightweight auth diagnostics flow now records signup/signin/resend/reset-password events into a new Supabase `auth_diagnostics` table, and the admin dashboard now has an `Auth 診斷` page for tracing where registration or password-recovery flows are breaking without logging full sensitive data.
 
+- Account deletion and verification-resend UX were tightened again: the delete-account dialog now uses stronger `DELETE` input styling, the server-side delete flow fails less often on non-blocking cleanup tables and returns clearer failure reasons, and the login screen now only enables the generic resend-verification action when the typed email is valid while using more conservative copy for "we tried to resend" cases.
+
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.

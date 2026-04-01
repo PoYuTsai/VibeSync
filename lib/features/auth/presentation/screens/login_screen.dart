@@ -45,6 +45,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool get _isIOS => isIOSPlatform;
   bool get _hasPendingVerification =>
       (_pendingVerificationEmail ?? '').trim().isNotEmpty;
+  String get _typedEmail => _emailController.text.trim();
+  String? get _validTypedEmail => _isValidEmail(_typedEmail) ? _typedEmail : null;
+  String? get _validPendingVerificationEmail {
+    final email = (_pendingVerificationEmail ?? '').trim();
+    return _isValidEmail(email) ? email : null;
+  }
+  bool get _showPendingVerificationResend {
+    final pending = (_pendingVerificationEmail ?? '').trim().toLowerCase();
+    final typed = _typedEmail.toLowerCase();
+    return _hasPendingVerification && (typed.isEmpty || typed == pending);
+  }
 
   void _invalidateSessionScopedProviders() {
     ref.invalidate(subscriptionProvider);
@@ -259,8 +270,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     context.go('/');
   }
 
-  Future<void> _resendVerificationEmail() async {
-    final email = (_pendingVerificationEmail ?? _emailController.text).trim();
+  Future<void> _resendVerificationEmail({
+    bool preferPendingEmail = false,
+  }) async {
+    final typedEmail = _validTypedEmail;
+    final pendingEmail = _validPendingVerificationEmail;
+    final email = preferPendingEmail
+        ? (pendingEmail ?? typedEmail ?? _typedEmail)
+        : (typedEmail ?? pendingEmail ?? _typedEmail);
+    final isKnownPendingEmail = pendingEmail != null &&
+        email.toLowerCase() == pendingEmail.toLowerCase();
 
     if (!_isValidEmail(email)) {
       _setError('請先輸入有效的 Email 再重新寄送驗證信。');
@@ -287,7 +306,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _pendingVerificationEmail = email;
       });
       _setNotice(
-        '驗證信已重新寄出，請到信箱查看，並用安裝 App 的手機開啟連結。',
+        isKnownPendingEmail
+            ? '已重新寄送驗證信到 $email，請查看收件匣和垃圾郵件，並用安裝 App 的手機開啟連結。'
+            : '如果 $email 已註冊且尚未完成驗證，我們已嘗試補寄驗證信。若沒有收到，請先確認 Email 是否輸入正確，再檢查垃圾郵件。',
       );
       unawaited(
         AuthDiagnosticsService.log(
@@ -751,6 +772,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         controller: _emailController,
                         hintText: 'you@example.com',
                         keyboardType: TextInputType.emailAddress,
+                        onChanged: (_) => setState(() {}),
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -812,9 +834,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
                     ],
-                    if (_hasPendingVerification && !_isSignUp) ...[
+                    if (_showPendingVerificationResend && !_isSignUp) ...[
                       TextButton(
-                        onPressed: _isLoading ? null : _resendVerificationEmail,
+                        onPressed: _isLoading || _validPendingVerificationEmail == null
+                            ? null
+                            : () => _resendVerificationEmail(preferPendingEmail: true),
                         child: const Text('重新寄送驗證信'),
                       ),
                       const SizedBox(height: 8),
@@ -832,8 +856,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     if (!_isSignUp && !_isPasswordRecoveryMode)
                       TextButton(
-                        onPressed: _isLoading ? null : _resendVerificationEmail,
-                        child: const Text('需要重新寄送驗證信？'),
+                        onPressed: _isLoading || _validTypedEmail == null
+                            ? null
+                            : () => _resendVerificationEmail(),
+                        child: Text(
+                          _validTypedEmail == null
+                              ? '先輸入完整 Email'
+                              : '重新寄送驗證信',
+                        ),
                       ),
                     if (!_isPasswordRecoveryMode)
                       TextButton(
@@ -886,6 +916,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     TextInputType? keyboardType,
     bool obscureText = false,
     VoidCallback? onToggleObscureText,
+    ValueChanged<String>? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -908,6 +939,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             keyboardType: keyboardType,
             obscureText: obscureText,
             autocorrect: false,
+            onChanged: onChanged,
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextPrimary,
             ),

@@ -169,7 +169,12 @@ class SupabaseService {
 
     final data = response.data;
     if (data is Map && data['error'] is String) {
-      throw Exception(data['error'] as String);
+      final error = data['error'] as String;
+      final detail = data['detail'];
+      if (detail is String && detail.trim().isNotEmpty) {
+        throw Exception('$error: $detail');
+      }
+      throw Exception(error);
     }
 
     throw Exception('Delete account failed');

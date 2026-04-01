@@ -251,6 +251,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return '登入狀態已失效，請重新登入後再試。';
     }
 
+    if (_containsAny(normalized, [
+      'delete account data cleanup failed',
+      'revenue_events',
+      'feedback',
+      'webhook_logs',
+      'cleanup failed',
+    ])) {
+      return '伺服器正在清理帳號資料，請稍後再試一次。';
+    }
+
+    if (_containsAny(normalized, [
+      'delete account failed',
+      'failed to delete account',
+    ])) {
+      return '帳號刪除沒有完成，請稍後再試一次。';
+    }
+
     return '現在還不能刪除帳號，請稍後再試一次。';
   }
 
@@ -464,8 +481,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 autofocus: true,
                 textCapitalization: TextCapitalization.characters,
                 onChanged: (_) => setDialogState(() {}),
+                style: AppTypography.bodyLarge.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
                 decoration: InputDecoration(
                   hintText: 'DELETE',
+                  hintStyle: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.glassTextHint,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
                   filled: true,
                   fillColor: Colors.white.withValues(alpha: 0.45),
                   border: OutlineInputBorder(
@@ -488,9 +515,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onPressed: controller.text.trim().toUpperCase() == 'DELETE'
                   ? () => Navigator.pop(dialogContext, controller.text.trim())
                   : null,
-              child: Text(
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+                disabledForegroundColor: AppColors.error.withValues(alpha: 0.35),
+              ),
+              child: const Text(
                 '永久刪除',
-                style: TextStyle(color: AppColors.error),
               ),
             ),
           ],
