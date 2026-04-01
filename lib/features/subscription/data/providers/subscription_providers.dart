@@ -305,7 +305,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       bool syncSuccess = false;
       for (var attempt = 1; attempt <= 3; attempt++) {
         debugPrint('[purchase] Supabase sync attempt $attempt/3');
-        syncSuccess = await _updateSupabaseTier(tier);
+        syncSuccess = await _updateSupabaseTier(
+          tier,
+          resetDailyUsage: state.tier != tier && tier != SubscriptionTierHelper.free,
+        );
         if (syncSuccess) break;
         await Future.delayed(Duration(seconds: attempt));
       }
@@ -320,6 +323,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        dailyMessagesUsed: state.tier != tier ? 0 : state.dailyMessagesUsed,
         isLoading: false,
       );
       _syncUsageCache(tier, limits);
@@ -408,7 +412,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   /// 主動更新 Supabase tier（作為 webhook 的 backup）
-  Future<bool> _updateSupabaseTier(String tier) async {
+  Future<bool> _updateSupabaseTier(
+    String tier, {
+    bool resetDailyUsage = false,
+  }) async {
     try {
       final user = SupabaseService.currentUser;
       if (user == null) {
@@ -419,9 +426,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       debugPrint(
           '[_updateSupabaseTier] Updating tier to "$tier" for user ${user.id}');
 
+      final updatePayload = <String, dynamic>{'tier': tier};
+      if (resetDailyUsage) {
+        updatePayload['daily_messages_used'] = 0;
+      }
+
       final result = await SupabaseService.client
           .from('subscriptions')
-          .update({'tier': tier})
+          .update(updatePayload)
           .eq('user_id', user.id)
           .select();
 
@@ -448,7 +460,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           );
           final retryResult = await SupabaseService.client
               .from('subscriptions')
-              .update({'tier': tier})
+              .update(updatePayload)
               .eq('user_id', user.id)
               .select();
 
