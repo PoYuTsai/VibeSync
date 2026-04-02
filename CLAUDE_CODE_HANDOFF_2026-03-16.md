@@ -10,6 +10,8 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - Added a new Edge Function `sync-subscription` that authenticates the current user, asks RevenueCat for the latest subscriber state, and writes the resolved tier/usage back with the Supabase service role.
 - `lib/features/subscription/data/providers/subscription_providers.dart` was rewritten so purchase / restore / forced tier sync now go through `sync-subscription` instead of client-side `subscriptions` updates.
 - `.github/workflows/deploy-edge-function.yml` now deploys `sync-subscription` alongside the other Edge Functions.
+- Follow-up hardening (2026-04-03): `sync-subscription` no longer trusts client-supplied `expectedTier` to elevate plan state. The persisted tier now comes only from RevenueCat's server-side subscriber view.
+- Follow-up hardening (2026-04-03): `analyze-chat` now blocks requests whose projected `chargedMessageCount` would push daily/monthly usage over the tier limit, instead of only checking the pre-request counters.
 
 ## 2026-04-01 Account Isolation Hotfix
 

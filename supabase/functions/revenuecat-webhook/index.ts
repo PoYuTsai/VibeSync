@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
         shouldUpdate = true;
         subscriptionUpdate = {
           tier: newTier,
-          status: "canceled",
+          status: "cancelled",
           expires_at: expiresAt,
         };
         break;

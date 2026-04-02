@@ -3503,6 +3503,49 @@ ${recentText}`;
       accountIsTest,
       estimatedMessageCount,
     });
+    const projectedMonthlyUsage = sub.monthly_messages_used +
+      quotaUsage.chargedMessageCount;
+    const projectedDailyUsage = sub.daily_messages_used +
+      quotaUsage.chargedMessageCount;
+
+    if (
+      quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      projectedMonthlyUsage > monthlyLimit
+    ) {
+      logWarn("monthly_limit_projected_exceeded", {
+        user: summarizeUser(user.id),
+        tier: sub.tier,
+        used: sub.monthly_messages_used,
+        requested: quotaUsage.chargedMessageCount,
+        limit: monthlyLimit,
+      });
+      return jsonResponse({
+        error: "Monthly limit exceeded",
+        monthlyLimit,
+        used: sub.monthly_messages_used,
+        requested: quotaUsage.chargedMessageCount,
+      }, 429);
+    }
+
+    if (
+      quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      projectedDailyUsage > dailyLimit
+    ) {
+      logWarn("daily_limit_projected_exceeded", {
+        user: summarizeUser(user.id),
+        tier: sub.tier,
+        used: sub.daily_messages_used,
+        requested: quotaUsage.chargedMessageCount,
+        limit: dailyLimit,
+      });
+      return jsonResponse({
+        error: "Daily limit exceeded",
+        dailyLimit,
+        used: sub.daily_messages_used,
+        requested: quotaUsage.chargedMessageCount,
+        resetAt: "tomorrow",
+      }, 429);
+    }
     if (isMyMessageMode && effectiveTier !== "essential") {
       return jsonResponse({
         error: "「我說」分析功能僅限 Essential 方案",

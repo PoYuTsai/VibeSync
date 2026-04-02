@@ -169,7 +169,10 @@ serve(async (req) => {
     }
 
     const revenueCatTier = collectTiersFromRevenueCatPayload(subscriber);
-    const finalTier = highestTier([revenueCatTier, expectedTier]);
+    // Never trust the client to elevate tier. The caller may hint what it
+    // expects to have purchased, but the persisted tier must come from
+    // RevenueCat's server-side view only.
+    const finalTier = revenueCatTier;
     const limits = TIER_LIMITS[finalTier] ?? TIER_LIMITS.free;
 
     const { data: existingSub, error: existingError } = await supabase
@@ -184,20 +187,14 @@ serve(async (req) => {
     }
 
     const previousTier = normalizeTier(existingSub?.tier);
-    const shouldResetUsage = resetUsage ||
-      (previousTier !== finalTier && finalTier !== "free");
+    // Keep usage counters intact across tier sync / restore. Upgrading should
+    // increase limits, not erase already-consumed usage.
+    const shouldResetUsage = false;
     const nowIso = new Date().toISOString();
     const updatePayload: Record<string, unknown> = {
       tier: finalTier,
       status: finalTier == "free" ? "active" : "active",
     };
-
-    if (shouldResetUsage) {
-      updatePayload.monthly_messages_used = 0;
-      updatePayload.daily_messages_used = 0;
-      updatePayload.monthly_reset_at = nowIso;
-      updatePayload.daily_reset_at = nowIso;
-    }
 
     let syncedRow: Record<string, unknown> | null = null;
 
@@ -205,8 +202,8 @@ serve(async (req) => {
       const { data, error } = await supabase.from("subscriptions").insert({
         user_id: user.id,
         ...updatePayload,
-        monthly_messages_used: shouldResetUsage ? 0 : 0,
-        daily_messages_used: shouldResetUsage ? 0 : 0,
+        monthly_messages_used: 0,
+        daily_messages_used: 0,
         monthly_reset_at: nowIso,
         daily_reset_at: nowIso,
         started_at: nowIso,
@@ -239,6 +236,7 @@ serve(async (req) => {
       previousTier,
       revenueCatTier,
       expectedTier,
+      tierConfirmedByRevenueCat: revenueCatTier === finalTier,
       monthlyMessagesUsed: syncedRow?.monthly_messages_used ?? 0,
       dailyMessagesUsed: syncedRow?.daily_messages_used ?? 0,
       monthlyLimit: limits.monthly,
