@@ -155,10 +155,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     });
 
     try {
-      await ref.read(subscriptionProvider.notifier).syncWithRevenueCat();
       await ref.read(subscriptionProvider.notifier).refresh();
       if (!mounted) {
         return;
+      }
+
+      final refreshedSubscription = ref.read(subscriptionProvider);
+      if (!refreshedSubscription.isPremium) {
+        await ref.read(subscriptionProvider.notifier).syncWithRevenueCat();
+        await ref.read(subscriptionProvider.notifier).refresh();
+        if (!mounted) {
+          return;
+        }
       }
 
       await _runAnalysis(skipPreview: true);

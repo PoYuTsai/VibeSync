@@ -91,6 +91,38 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     _initialize();
   }
 
+  String _highestTier(Iterable<String> tiers) {
+    final normalized =
+        tiers.map(SubscriptionTierHelper.normalizeTier).toList(growable: false);
+
+    if (normalized.contains(SubscriptionTierHelper.essential)) {
+      return SubscriptionTierHelper.essential;
+    }
+    if (normalized.contains(SubscriptionTierHelper.starter)) {
+      return SubscriptionTierHelper.starter;
+    }
+    return SubscriptionTierHelper.free;
+  }
+
+  String _resolvePurchasedTier({
+    required Package package,
+    required CustomerInfo customerInfo,
+  }) {
+    final revenueCatTier = RevenueCatService.getTierFromCustomerInfo(
+      customerInfo,
+    );
+    final packageTier = SubscriptionTierHelper.tierFromProductId(
+      package.storeProduct.identifier,
+    );
+    final resolvedTier = _highestTier([revenueCatTier, packageTier]);
+
+    debugPrint(
+      '[purchase] Resolved tier: revenueCat=$revenueCatTier, package=$packageTier, final=$resolvedTier',
+    );
+
+    return resolvedTier;
+  }
+
   void _syncUsageCache(String tier, SubscriptionTierLimits limits) {
     UsageService.syncSubscriptionSnapshot(
       tier: tier,
@@ -284,19 +316,12 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           'Active Entitlements: ${customerInfo.entitlements.active.keys.toList()}');
 
       // 直接從購買結果取得 tier（不需要再呼叫 getCustomerInfo）
-      String tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      final resolvedTier = _resolvePurchasedTier(
+        package: package,
+        customerInfo: customerInfo,
+      );
 
-      // 如果 RevenueCat 返回 free 但有購買紀錄，從 product ID 推測 tier
-      if (tier == SubscriptionTierHelper.free &&
-          customerInfo.allPurchasedProductIdentifiers.isNotEmpty) {
-        debugPrint(
-            '[purchase] WARNING: tier is free but has purchases, inferring from product ID');
-        tier = SubscriptionTierHelper.tierFromProductId(
-          package.storeProduct.identifier,
-        );
-        debugPrint('[purchase] Inferred tier from product ID: $tier');
-      }
-
+      final tier = resolvedTier;
       final limits = SubscriptionTierHelper.limitsFor(tier);
 
       debugPrint('Detected tier: $tier, limits: $limits');
@@ -307,7 +332,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         debugPrint('[purchase] Supabase sync attempt $attempt/3');
         syncSuccess = await _updateSupabaseTier(
           tier,
-          resetDailyUsage: state.tier != tier && tier != SubscriptionTierHelper.free,
+          resetUsage:
+              state.tier != tier && tier != SubscriptionTierHelper.free,
         );
         if (syncSuccess) break;
         await Future.delayed(Duration(seconds: attempt));
@@ -323,6 +349,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        monthlyMessagesUsed:
+            state.tier != tier ? 0 : state.monthlyMessagesUsed,
         dailyMessagesUsed: state.tier != tier ? 0 : state.dailyMessagesUsed,
         isLoading: false,
       );
@@ -379,6 +407,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           );
           await SupabaseService.client.from('subscriptions').update({
             'tier': tier,
+            'monthly_messages_used': 0,
             'daily_messages_used': 0,
           }).eq('user_id', user.id);
         }
@@ -387,6 +416,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         debugPrint('[forceSyncTier] Updating existing record');
         await SupabaseService.client.from('subscriptions').update({
           'tier': tier,
+          'monthly_messages_used': 0,
           'daily_messages_used': 0, // 重置每日用量
         }).eq('user_id', user.id);
       }
@@ -399,6 +429,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        monthlyMessagesUsed: 0,
         dailyMessagesUsed: 0,
       );
       _syncUsageCache(tier, limits);
@@ -414,7 +445,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// 主動更新 Supabase tier（作為 webhook 的 backup）
   Future<bool> _updateSupabaseTier(
     String tier, {
-    bool resetDailyUsage = false,
+    bool resetUsage = false,
   }) async {
     try {
       final user = SupabaseService.currentUser;
@@ -427,7 +458,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           '[_updateSupabaseTier] Updating tier to "$tier" for user ${user.id}');
 
       final updatePayload = <String, dynamic>{'tier': tier};
-      if (resetDailyUsage) {
+      if (resetUsage) {
+        updatePayload['monthly_messages_used'] = 0;
         updatePayload['daily_messages_used'] = 0;
       }
 
@@ -492,12 +524,19 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final limits = SubscriptionTierHelper.limitsFor(tier);
 
       // 主動更新 Supabase
-      await _updateSupabaseTier(tier);
+      await _updateSupabaseTier(
+        tier,
+        resetUsage:
+            state.tier != tier && tier != SubscriptionTierHelper.free,
+      );
 
       state = state.copyWith(
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        monthlyMessagesUsed:
+            state.tier != tier ? 0 : state.monthlyMessagesUsed,
+        dailyMessagesUsed: state.tier != tier ? 0 : state.dailyMessagesUsed,
         isLoading: false,
       );
       _syncUsageCache(tier, limits);
@@ -519,6 +558,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
 
+      if (state.isPremium && rcTier == SubscriptionTierHelper.free) {
+        debugPrint(
+          'Tier mismatch ignored: local=${state.tier}, RevenueCat=$rcTier (keep premium until sync stabilizes)',
+        );
+        return;
+      }
+
       // 如果 RevenueCat 的 tier 和目前不同，更新
       if (rcTier != state.tier) {
         debugPrint('Tier mismatch: local=${state.tier}, RevenueCat=$rcTier');
@@ -526,13 +572,21 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         final limits = SubscriptionTierHelper.limitsFor(rcTier);
 
         // 更新 Supabase
-        await _updateSupabaseTier(rcTier);
+        await _updateSupabaseTier(
+          rcTier,
+          resetUsage:
+              state.tier != rcTier && rcTier != SubscriptionTierHelper.free,
+        );
 
         // 更新本地 state
         state = state.copyWith(
           tier: rcTier,
           monthlyLimit: limits.monthly,
           dailyLimit: limits.daily,
+          monthlyMessagesUsed:
+              state.tier != rcTier ? 0 : state.monthlyMessagesUsed,
+          dailyMessagesUsed:
+              state.tier != rcTier ? 0 : state.dailyMessagesUsed,
         );
         _syncUsageCache(rcTier, limits);
       }
