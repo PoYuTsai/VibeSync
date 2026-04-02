@@ -465,10 +465,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     setState(() => _isPurchasing = true);
 
     try {
-      final success =
-          await ref.read(subscriptionProvider.notifier).purchase(package);
+      final notifier = ref.read(subscriptionProvider.notifier);
+      final success = await notifier.purchase(package);
 
       if (!mounted || !success) {
+        return;
+      }
+
+      await notifier.forceSyncTier(_selectedTier);
+      await notifier.refresh();
+
+      if (!mounted) {
         return;
       }
 
@@ -480,7 +487,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         '訂閱成功，已切換為 $purchasedTier 方案。',
         backgroundColor: AppColors.success,
       );
-      context.pop(true);
+      context.pop(_selectedTier);
     } on PurchasesErrorCode catch (errorCode) {
       _showSnackBar(_messageForPurchaseError(errorCode));
     } catch (error) {
@@ -515,19 +522,24 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     setState(() => _isPurchasing = true);
 
     try {
-      final restored =
-          await ref.read(subscriptionProvider.notifier).restorePurchases();
+      final notifier = ref.read(subscriptionProvider.notifier);
+      final restored = await notifier.restorePurchases();
 
       if (!mounted) {
         return;
       }
 
       if (restored) {
+        await notifier.refresh();
+        if (!mounted) {
+          return;
+        }
+
         _showSnackBar(
           '已同步你先前買過的訂閱，方案狀態已更新。',
           backgroundColor: AppColors.success,
         );
-        context.pop(true);
+        context.pop(ref.read(subscriptionProvider).tier);
       } else {
         _showSnackBar('目前找不到可恢復的有效訂閱。');
       }

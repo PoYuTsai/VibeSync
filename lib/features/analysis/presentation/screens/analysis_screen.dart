@@ -127,13 +127,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   bool _showContinueConversation = false;
 
   Future<void> _showPaywall(BuildContext context) async {
-    final unlocked = await context.push<bool>('/paywall');
+    final unlockedTier = await context.push<String>('/paywall');
     if (!mounted) {
       return;
     }
 
+    if (unlockedTier != null && unlockedTier.isNotEmpty) {
+      await ref.read(subscriptionProvider.notifier).forceSyncTier(unlockedTier);
+    }
+
     await ref.read(subscriptionProvider.notifier).refresh();
-    if (!mounted || unlocked != true) {
+    if (!mounted || unlockedTier == null || unlockedTier.isEmpty) {
       return;
     }
 
