@@ -139,7 +139,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     final subscription = ref.read(subscriptionProvider);
     if (_analysisNeedsReplyRefresh(subscription)) {
-      _showFloatingSnackBar('已升級完整版，點一下「重新分析完整回覆」就會刷新完整選項。');
+      _showFloatingSnackBar('已升級完整版，正在幫你刷新完整回覆選項。');
+      await _refreshPremiumReplies();
     }
   }
 
