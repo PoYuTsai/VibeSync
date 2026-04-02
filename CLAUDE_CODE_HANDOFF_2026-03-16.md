@@ -4,6 +4,13 @@
 
 This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, subscription-state consistency around RevenueCat + Supabase sync, and the remaining auth / webhook boundary issues that could still leak stale state or mis-handle malformed events.
 
+## 2026-04-03 Subscription Sync Root-Cause Fix
+
+- The long-running "Free analyze -> upgrade to Essential -> analysis still behaves like free tier" bug was traced to `public.subscriptions` RLS: the app was trying to update the subscription row directly from the client, but `analyze-chat` only trusts the backend `subscriptions` row.
+- Added a new Edge Function `sync-subscription` that authenticates the current user, asks RevenueCat for the latest subscriber state, and writes the resolved tier/usage back with the Supabase service role.
+- `lib/features/subscription/data/providers/subscription_providers.dart` was rewritten so purchase / restore / forced tier sync now go through `sync-subscription` instead of client-side `subscriptions` updates.
+- `.github/workflows/deploy-edge-function.yml` now deploys `sync-subscription` alongside the other Edge Functions.
+
 ## 2026-04-01 Account Isolation Hotfix
 
 - Local conversations are now scoped by signed-in user instead of being read from a global Hive list.

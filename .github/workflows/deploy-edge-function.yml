@@ -33,6 +33,7 @@ jobs:
         run: |
           supabase functions deploy analyze-chat --no-verify-jwt
           supabase functions deploy delete-account --no-verify-jwt
+          supabase functions deploy sync-subscription --no-verify-jwt
           supabase functions deploy submit-feedback --no-verify-jwt
           supabase functions deploy revenuecat-webhook --no-verify-jwt
         env:
