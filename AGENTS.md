@@ -19,9 +19,10 @@
 - `docs/supabase-ops-guide.md`
 - `docs/revenuecat-ops-guide.md`
 - `docs/gstack-usage-sop.md`
-- `docs/phases/phase-a-launch-stabilization.md`
-- `docs/phases/phase-b-growth-content-engine.md`
-- `docs/phases/phase-c-line-oa-automation.md`
+- `docs/phases/phase-a-ios-launch-stabilization.md`
+- `docs/phases/phase-b-android-google-play-expansion.md`
+- `docs/phases/phase-c-growth-content-engine.md`
+- `docs/phases/phase-d-line-oa-automation.md`
 - `docs/discord-vibesync-troubleshooting.md` - 如果是 Discord Bot 即時監聽 / 回覆問題，先看這份；live state 在 WSL 的 `discord-vibesync` 路徑，不是 generic `discord`
 
 ### 後台分工總結
@@ -35,6 +36,13 @@
 
 - `App Store Connect`
   - 看 iOS 商品、subscription group、升降級週期、商店端規則
+
+### Phase 結構總覽
+
+- `Phase A`：iOS Launch Stabilization
+- `Phase B`：Android / Google Play Expansion
+- `Phase C`：Growth Content Engine
+- `Phase D`：LINE OA Automation
 
 ### 最近已完成的重點
 

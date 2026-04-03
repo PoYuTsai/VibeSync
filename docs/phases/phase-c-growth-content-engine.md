@@ -1,4 +1,4 @@
-# Phase B - Growth Content Engine
+# Phase C - Growth Content Engine
 
 > 狀態：規劃中
 > 最後更新：2026-04-03
@@ -50,7 +50,7 @@
 
 - 不處理 App 核心 OCR / 訂閱 bug
 - 不處理 LINE OA 客服自動化
-- 不處理 Android / Google Play 正式上架
+- 不處理 Android / Google Play 擴張
 
 ## 下一步建議
 

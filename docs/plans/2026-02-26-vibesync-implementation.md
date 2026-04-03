@@ -9437,6 +9437,7 @@ supabase functions deploy analyze-chat
 > - `docs/app-review-final-checklist.md`
 > - `docs/supabase-ops-guide.md`
 > - `docs/revenuecat-ops-guide.md`
-> - `docs/phases/phase-a-launch-stabilization.md`
-> - `docs/phases/phase-b-growth-content-engine.md`
-> - `docs/phases/phase-c-line-oa-automation.md`
+> - `docs/phases/phase-a-ios-launch-stabilization.md`
+> - `docs/phases/phase-b-android-google-play-expansion.md`
+> - `docs/phases/phase-c-growth-content-engine.md`
+> - `docs/phases/phase-d-line-oa-automation.md`

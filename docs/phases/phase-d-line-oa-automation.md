@@ -1,4 +1,4 @@
-# Phase C - LINE OA Automation
+# Phase D - LINE OA Automation
 
 > 狀態：規劃中
 > 最後更新：2026-04-03
@@ -43,15 +43,15 @@
   - 後台營運概念
 - 但應該視為一條獨立產品線來規劃
 
-## Android / Google Play 備註
+## 與 Android / Google Play 的關係
 
-Android / Google Play 正式驗收目前還沒展開。
+Android / Google Play 已獨立成 Phase B。
 
-建議做法：
+這代表：
 
-- 先完成 Phase A 的 iOS / TestFlight / App Review
-- Android / Google Play 之後再獨立開 spec / implementation plan
-- 不要在當前 launch stabilization 階段一起混進來
+- LINE OA Automation 不再承擔 Android 平台擴張的討論
+- 若要規劃 Android / Google Play，請改讀 Phase B
+- 本 Phase 只聚焦 LINE OA / webhook / AI 客服 / lead flow
 
 ## 下一步建議
 

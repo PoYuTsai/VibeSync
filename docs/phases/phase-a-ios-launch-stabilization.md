@@ -1,17 +1,17 @@
-# Phase A - Launch Stabilization
+# Phase A - iOS Launch Stabilization
 
 > 狀態：進行中
 > 最後更新：2026-04-03
 
 ## 這個 Phase 在做什麼
 
-這是 VibeSync 上架前最後穩定化階段。
+這是 VibeSync iOS 上架前最後穩定化階段。
 
 目標不是再擴新功能，而是把目前已做出的產品收斂到可送審、可營運、可持續 debug 的狀態。
 
 ## 目標
 
-- 穩定 iOS / TestFlight 主流程
+- 穩定 iOS / TestFlight / App Review 主流程
 - 收斂 OCR 邊界
 - 收斂 RevenueCat / restore / transfer 行為
 - 補齊後台手冊、送審 checklist、handoff
@@ -56,7 +56,7 @@
 
 - 不再做大功能擴張
 - 不在這階段做新的成長自動化產品
-- Android / Google Play 正式驗收延後
+- Android / Google Play 正式驗收不在本 Phase，改由獨立的 Phase B 處理
 
 ## 核心文件
 
