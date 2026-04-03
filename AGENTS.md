@@ -1,12 +1,12 @@
 # VibeSync Project
 
-## 2026-03-30 Current Snapshot
+## 2026-04-03 Current Snapshot
 
 ```
-目前階段：送審前最後穩定化 + TestFlight 邊界驗證
-當前主線：OCR / 引用回覆 / speaker 判斷 / 快取重識別 / 送審 checklist
-主要狀態：Auth、訂閱、RevenueCat、截圖上傳、手動輸入、TestFlight release workflow 都已打通
-目前重點：持續收 OCR 邊界案例，不再做大功能擴張
+目前階段：TestFlight v82 驗證中，已進入送審前最後穩定化
+當前主線：OCR 邊界驗證 + 訂閱/restore 一致性 + 送審前文件與後台手冊收尾
+主要狀態：Auth、刪帳、忘記密碼、RevenueCat、升級後完整回覆刷新、同 Apple ID restore 行為都已打通
+目前重點：持續收 OCR 邊界案例，不再做大功能擴張；整理營運文件給你和夥伴可直接使用
 ```
 
 ### 新 Session 先看這些文件
@@ -18,6 +18,7 @@
 - `docs/current-test-status-2026-04-03.md`
 - `docs/supabase-ops-guide.md`
 - `docs/revenuecat-ops-guide.md`
+- `docs/gstack-usage-sop.md`
 - `docs/discord-vibesync-troubleshooting.md` - 如果是 Discord Bot 即時監聽 / 回覆問題，先看這份；live state 在 WSL 的 `discord-vibesync` 路徑，不是 generic `discord`
 
 ### 後台分工總結
@@ -39,11 +40,15 @@
 - 加入 `強制重新識別`，避免同一張圖一直吃到舊快取
 - TestFlight 上傳 workflow 已補強，Apple 假性 upload failure 不再那麼容易把整條 release 打紅
 - 手動輸入頁上方訊息預覽的字體可讀性已修正
+- Auth 主流程已打通：註冊、驗證信、忘記密碼、回 App 重設、刪帳後重註冊都已通過
+- 升級 Essential 後，分析頁完整回覆刷新已修住；同 Apple ID 的 restore / transfer 行為已釐清
+- 營運文件已整理成兩份主文件：`supabase-ops-guide.md` 與 `revenuecat-ops-guide.md`
+- gstack 已安裝給 Claude/Codex，工作流說明在 `docs/gstack-usage-sop.md`
 
 ### 送審前剩餘重點
 
-- 真機再跑一輪 auth / restore / 升級後權限刷新
-- 持續驗 OCR 邊界：LINE 引用、長截圖、多張截圖、名字錯字、圖片/貼圖/影片 bubble
+- 真機補最後一輪 restore / Starter 升降級 / 不同 Apple ID 情境
+- 持續驗 OCR 邊界：長截圖、多張截圖、名字錯字、圖片/貼圖/影片 bubble、短句續句
 - 核對 privacy / terms / support email / App Store Connect privacy disclosure
 
 ### 注意

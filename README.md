@@ -1,5 +1,30 @@
 # VibeSync 頻率調校師
 
+## 2026-04-03 Current Status
+
+```
+目前階段：TestFlight v82 驗證中，已進入送審前最後穩定化
+當前主線：OCR 邊界驗證 + 訂閱/restore 一致性 + 送審前文件與後台手冊收尾
+主要狀態：Auth、刪帳、忘記密碼、RevenueCat、升級後完整回覆刷新、同 Apple ID restore 行為都已打通
+目前重點：持續收 OCR 邊界案例，不再做大功能擴張
+```
+
+### 目前最重要的文件
+
+- `docs/current-test-status-2026-04-03.md`
+- `docs/app-review-final-checklist.md`
+- `docs/testflight-regression-checklist.md`
+- `docs/supabase-ops-guide.md`
+- `docs/revenuecat-ops-guide.md`
+- `docs/gstack-usage-sop.md`
+
+### 目前已確認完成
+
+- Auth 主流程已打通：註冊、驗證信、忘記密碼、回 App 重設、刪帳後重註冊
+- 升級 Essential 後，分析頁完整回覆刷新已修住
+- 同 Apple ID 的 restore / transfer 行為已釐清
+- OCR 主案例目前穩定：LINE 引用回覆、單邊主訊息、quoted context
+
 社交溝通技巧教練 App - 幫助用戶提升對話品質與人際互動能力。
 
 ## 功能特色

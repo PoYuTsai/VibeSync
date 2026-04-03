@@ -4,6 +4,24 @@
 
 This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, subscription-state consistency around RevenueCat + Supabase sync, and the remaining auth / webhook boundary issues that could still leak stale state or mis-handle malformed events.
 
+## 2026-04-03 TestFlight v82 Snapshot
+
+- Current phase: pre-submission stabilization on TestFlight v82
+- Confirmed working on-device:
+  - signup
+  - email confirmation back into app
+  - forgot password / reset password back into app
+  - account deletion and re-registration
+  - free -> essential upgrade and full-reply refresh
+  - same-Apple-ID restore / transfer behavior
+  - account isolation across logout / login
+- Current docs of truth:
+  - `docs/current-test-status-2026-04-03.md`
+  - `docs/supabase-ops-guide.md`
+  - `docs/revenuecat-ops-guide.md`
+  - `docs/app-review-final-checklist.md`
+  - `docs/testflight-regression-checklist.md`
+
 ## 2026-04-03 Subscription Sync Root-Cause Fix
 
 - The long-running "Free analyze -> upgrade to Essential -> analysis still behaves like free tier" bug was traced to `public.subscriptions` RLS: the app was trying to update the subscription row directly from the client, but `analyze-chat` only trusts the backend `subscriptions` row.

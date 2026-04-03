@@ -21,6 +21,47 @@ This project has gstack installed for Claude and Codex.
 - If gstack skills stop working for Claude in this repo, run:
   `cd .claude/skills/gstack && ./setup --prefix`
 
+## 2026-04-03 Current Snapshot
+
+```
+目前階段：TestFlight v82 驗證中，已進入送審前最後穩定化
+當前主線：OCR 邊界驗證 + 訂閱/restore 一致性 + 送審前文件與後台手冊收尾
+主要狀態：Auth、刪帳、忘記密碼、RevenueCat、升級後完整回覆刷新、同 Apple ID restore 行為都已打通
+目前重點：持續收 OCR 邊界案例，不再做大功能擴張；整理營運文件給團隊直接使用
+```
+
+### 新 Session 先看這些文件
+
+- `docs/app-review-final-checklist.md`
+- `docs/testflight-regression-checklist.md`
+- `docs/launch-readiness-checklist.md`
+- `docs/ocr-analysis-maturity-benchmark.md`
+- `docs/current-test-status-2026-04-03.md`
+- `docs/supabase-ops-guide.md`
+- `docs/revenuecat-ops-guide.md`
+- `docs/gstack-usage-sop.md`
+- `docs/discord-vibesync-troubleshooting.md`
+
+### 最近已完成的重點
+
+- Auth 主流程已打通：註冊、驗證信、忘記密碼、回 App 重設、刪帳後重註冊都已通過
+- 升級 Essential 後，分析頁完整回覆刷新已修住
+- 同 Apple ID 的 restore / transfer 行為已釐清
+- OCR 主案例目前穩定：`only_left / only_right / mixed`、LINE 引用回覆、quoted context
+- 營運文件已整理成 `supabase-ops-guide.md` 與 `revenuecat-ops-guide.md`
+- gstack 已安裝完成，使用方式見 `docs/gstack-usage-sop.md`
+
+### 送審前剩餘重點
+
+- 真機補最後一輪 restore / Starter 升降級 / 不同 Apple ID 情境
+- 持續驗 OCR 邊界：長截圖、多張截圖、名字錯字、圖片/貼圖/影片 bubble、短句續句
+- 核對 privacy / terms / support email / App Store Connect privacy disclosure
+
+### 注意
+
+- 下方較舊段落仍保留歷史資訊與部分 mojibake。
+- 新 session 請優先以這個 snapshot 和上面的 `docs/` 文件為準，不要只看下面舊的 v41 / 2026-03-14 快照。
+
 ## 2026-03-30 Current Snapshot
 
 ```
