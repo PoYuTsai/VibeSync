@@ -30,8 +30,20 @@ class OcrRecognitionCacheService {
   static String _currentUserKey() =>
       SupabaseService.currentUser?.id ?? 'anonymous';
 
-  static String _cacheKey(String fingerprint, String userKey) =>
-      '$_cachePrefix:$userKey:$fingerprint';
+  static String _normalizeScopeKey(String? conversationId) {
+    final trimmed = conversationId?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return 'global';
+    }
+
+    return trimmed;
+  }
+
+  static String _cacheKey(
+    String fingerprint,
+    String userKey,
+    String scopeKey,
+  ) => '$_cachePrefix:$userKey:$scopeKey:$fingerprint';
 
   static String _fingerprintImages(List<Uint8List> images) {
     final combined = <int>[];
@@ -137,6 +149,7 @@ class OcrRecognitionCacheService {
 
   static Future<OcrRecognitionCacheEntry?> read(
     List<Uint8List> images,
+    String? conversationId,
   ) async {
     if (images.isEmpty) {
       return null;
@@ -145,9 +158,10 @@ class OcrRecognitionCacheService {
     await _pruneEntries();
 
     final userKey = _currentUserKey();
+    final scopeKey = _normalizeScopeKey(conversationId);
     final fingerprint = _fingerprintImages(images);
     final decoded = _decodeEntry(
-      StorageService.settingsBox.get(_cacheKey(fingerprint, userKey)),
+      StorageService.settingsBox.get(_cacheKey(fingerprint, userKey, scopeKey)),
     );
     if (decoded == null || decoded['version'] != _cacheVersion) {
       return null;
@@ -158,7 +172,9 @@ class OcrRecognitionCacheService {
     if (cachedAt == null ||
         _isExpired(cachedAt) ||
         recognizedJson is! Map<String, dynamic>) {
-      await StorageService.settingsBox.delete(_cacheKey(fingerprint, userKey));
+      await StorageService.settingsBox.delete(
+        _cacheKey(fingerprint, userKey, scopeKey),
+      );
       return null;
     }
 
@@ -166,7 +182,9 @@ class OcrRecognitionCacheService {
       recognizedJson,
     );
     if (!_shouldCache(recognizedConversation)) {
-      await StorageService.settingsBox.delete(_cacheKey(fingerprint, userKey));
+      await StorageService.settingsBox.delete(
+        _cacheKey(fingerprint, userKey, scopeKey),
+      );
       return null;
     }
 
@@ -180,12 +198,14 @@ class OcrRecognitionCacheService {
   static Future<void> write({
     required List<Uint8List> images,
     required RecognizedConversation recognizedConversation,
+    String? conversationId,
   }) async {
     if (images.isEmpty || !_shouldCache(recognizedConversation)) {
       return;
     }
 
     final userKey = _currentUserKey();
+    final scopeKey = _normalizeScopeKey(conversationId);
     final fingerprint = _fingerprintImages(images);
     final payload = <String, dynamic>{
       'version': _cacheVersion,
@@ -194,19 +214,25 @@ class OcrRecognitionCacheService {
     };
 
     await StorageService.settingsBox.put(
-      _cacheKey(fingerprint, userKey),
+      _cacheKey(fingerprint, userKey, scopeKey),
       jsonEncode(payload),
     );
     await _pruneEntries();
   }
 
-  static Future<void> invalidate(List<Uint8List> images) async {
+  static Future<void> invalidate(
+    List<Uint8List> images,
+    String? conversationId,
+  ) async {
     if (images.isEmpty) {
       return;
     }
 
     final userKey = _currentUserKey();
+    final scopeKey = _normalizeScopeKey(conversationId);
     final fingerprint = _fingerprintImages(images);
-    await StorageService.settingsBox.delete(_cacheKey(fingerprint, userKey));
+    await StorageService.settingsBox.delete(
+      _cacheKey(fingerprint, userKey, scopeKey),
+    );
   }
 }

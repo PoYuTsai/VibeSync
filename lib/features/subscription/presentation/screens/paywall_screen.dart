@@ -596,46 +596,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
   }
 
-  Future<void> _restorePurchases() async {
-    if (kIsWeb) {
-      _showSnackBar('目前請改用 iOS App 同步已買過的訂閱。');
-      return;
-    }
-
-    setState(() => _isPurchasing = true);
-
-    try {
-      final notifier = ref.read(subscriptionProvider.notifier);
-      final restored = await notifier.restorePurchases();
-
-      if (!mounted) {
-        return;
-      }
-
-      if (restored) {
-        await notifier.refresh();
-        if (!mounted) {
-          return;
-        }
-
-        _showSnackBar(
-          '已同步你先前買過的訂閱，方案狀態已更新。',
-          backgroundColor: AppColors.success,
-        );
-        context.pop(ref.read(subscriptionProvider).tier);
-      } else {
-        _showSnackBar('目前找不到可恢復的有效訂閱。');
-      }
-    } catch (error) {
-      debugPrint('Paywall restore error: $error');
-      _showSnackBar('同步已買過的訂閱失敗，請稍後再試一次。');
-    } finally {
-      if (mounted) {
-        setState(() => _isPurchasing = false);
-      }
-    }
-  }
-
   Future<void> _launchUrl(String url) async {
     final launched = await LinkLaunchService.open(url);
     if (!launched) {

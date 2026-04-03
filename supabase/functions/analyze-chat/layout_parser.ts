@@ -45,7 +45,24 @@ function isLikelyShortContinuationContent(content: string): boolean {
     return false;
   }
 
-  return trimmed.replace(/\s+/g, "").length <= 28;
+  if (trimmed.includes("\n")) {
+    return false;
+  }
+
+  const compact = trimmed.replace(/\s+/g, "");
+  if (compact.length > 16) {
+    return false;
+  }
+
+  if (/[.!?！？。]$/.test(trimmed) && compact.length > 4) {
+    return false;
+  }
+
+  if (trimmed.split(/\s+/).length >= 2 && compact.length > 8) {
+    return false;
+  }
+
+  return true;
 }
 
 function isLikelySystemRowContent(content: string): boolean {

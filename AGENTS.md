@@ -15,6 +15,7 @@
 - `docs/testflight-regression-checklist.md`
 - `docs/launch-readiness-checklist.md`
 - `docs/ocr-analysis-maturity-benchmark.md`
+- `docs/current-test-status-2026-04-03.md`
 - `docs/discord-vibesync-troubleshooting.md` - 如果是 Discord Bot 即時監聽 / 回覆問題，先看這份；live state 在 WSL 的 `discord-vibesync` 路徑，不是 generic `discord`
 
 ### 最近已完成的重點

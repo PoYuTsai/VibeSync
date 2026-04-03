@@ -412,42 +412,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-
-    try {
-      final restored =
-          await ref.read(subscriptionProvider.notifier).restorePurchases();
-
-      if (!context.mounted) {
-        return;
-      }
-
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            restored ? '已同步目前的訂閱狀態' : '目前沒有可同步的舊訂閱',
-          ),
-          backgroundColor: restored ? AppColors.success : null,
-        ),
-      );
-    } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_mapRestorePurchasesError(error))),
-      );
-    }
-  }
-
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,

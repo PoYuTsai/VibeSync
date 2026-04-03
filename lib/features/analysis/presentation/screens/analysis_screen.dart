@@ -1568,12 +1568,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       // 呼叫 API 識別截圖（純識別模式，不做完整分析，節省時間和額度）
       _debugLog('呼叫 API... (timeout: 120s)');
       if (forceRefresh) {
-        await OcrRecognitionCacheService.invalidate(imagesToProcess);
+        await OcrRecognitionCacheService.invalidate(
+          imagesToProcess,
+          widget.conversationId,
+        );
       }
       final cachedRecognition = forceRefresh
           ? null
           : await OcrRecognitionCacheService.read(
               imagesToProcess,
+              widget.conversationId,
             );
       AnalysisResult result;
       if (cachedRecognition != null) {
@@ -1650,6 +1654,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           await OcrRecognitionCacheService.write(
             images: imagesToProcess,
             recognizedConversation: result.recognizedConversation!,
+            conversationId: widget.conversationId,
           );
           _rememberRecognitionReplay(
             images: imagesToProcess,

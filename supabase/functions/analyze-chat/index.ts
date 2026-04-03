@@ -1496,8 +1496,24 @@ function isLikelyShortContinuationContent(content: string): boolean {
     return false;
   }
 
+  if (trimmed.includes("\n")) {
+    return false;
+  }
+
   const compact = trimmed.replace(/\s+/g, "");
-  return compact.length <= 24;
+  if (compact.length > 14) {
+    return false;
+  }
+
+  if (/[.!?！？。]$/.test(trimmed) && compact.length > 4) {
+    return false;
+  }
+
+  if (trimmed.split(/\s+/).length >= 2 && compact.length > 8) {
+    return false;
+  }
+
+  return true;
 }
 
 function sanitizeQuotedReplyPreviewValue(value: unknown): string | undefined {
@@ -1740,8 +1756,20 @@ function shouldDeduplicateSequentialMessage(
     return false;
   }
 
-  return normalizeComparableMessageText(previous.content) ===
-    normalizeComparableMessageText(current.content);
+  const previousComparable = normalizeComparableMessageText(previous.content);
+  const currentComparable = normalizeComparableMessageText(current.content);
+  const previousCanOverlap = isLikelyMediaPlaceholderContent(previous.content) ||
+    !!previous.quotedReplyPreview ||
+    previousComparable.replace(/\s+/g, "").length >= 8;
+  const currentCanOverlap = isLikelyMediaPlaceholderContent(current.content) ||
+    !!current.quotedReplyPreview ||
+    currentComparable.replace(/\s+/g, "").length >= 8;
+
+  if (!previousCanOverlap && !currentCanOverlap) {
+    return false;
+  }
+
+  return previousComparable === currentComparable;
 }
 
 function choosePreferredQuotedReplyPreview(
