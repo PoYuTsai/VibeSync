@@ -40,6 +40,9 @@ This project has gstack installed for Claude and Codex.
 - `docs/supabase-ops-guide.md`
 - `docs/revenuecat-ops-guide.md`
 - `docs/gstack-usage-sop.md`
+- `docs/phases/phase-a-launch-stabilization.md`
+- `docs/phases/phase-b-growth-content-engine.md`
+- `docs/phases/phase-c-line-oa-automation.md`
 - `docs/discord-vibesync-troubleshooting.md`
 
 ### 最近已完成的重點

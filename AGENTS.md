@@ -19,6 +19,9 @@
 - `docs/supabase-ops-guide.md`
 - `docs/revenuecat-ops-guide.md`
 - `docs/gstack-usage-sop.md`
+- `docs/phases/phase-a-launch-stabilization.md`
+- `docs/phases/phase-b-growth-content-engine.md`
+- `docs/phases/phase-c-line-oa-automation.md`
 - `docs/discord-vibesync-troubleshooting.md` - 如果是 Discord Bot 即時監聽 / 回覆問題，先看這份；live state 在 WSL 的 `discord-vibesync` 路徑，不是 generic `discord`
 
 ### 後台分工總結

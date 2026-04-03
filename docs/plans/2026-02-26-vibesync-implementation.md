@@ -9427,3 +9427,16 @@ supabase functions deploy analyze-chat
 - Phase 9: Paywall 訂閱畫面 (1 task → v2.2 更新為 2 tasks)
 
 **總任務數**: 15 → 19 tasks
+> Historical Baseline
+>
+> 這份是最早期的 MVP 實作計畫基線，保留當初 phase/task 拆法與初始範圍。
+> 後續 scope 已擴張到 OCR、RevenueCat、Auth 深連結、營運文件、送審穩定化等多條支線。
+>
+> 目前請優先搭配這些文件一起看：
+> - `docs/current-test-status-2026-04-03.md`
+> - `docs/app-review-final-checklist.md`
+> - `docs/supabase-ops-guide.md`
+> - `docs/revenuecat-ops-guide.md`
+> - `docs/phases/phase-a-launch-stabilization.md`
+> - `docs/phases/phase-b-growth-content-engine.md`
+> - `docs/phases/phase-c-line-oa-automation.md`
