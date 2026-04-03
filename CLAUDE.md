@@ -1,5 +1,26 @@
 # VibeSync Project
 
+## gstack
+
+This project has gstack installed for Claude and Codex.
+
+- Use `/gstack-browse` from gstack for web browsing in this project.
+- Never use `mcp__claude-in-chrome__*` tools when `gstack-browse` is available.
+- Available gstack skills include:
+  `/gstack-office-hours`, `/gstack-plan-ceo-review`, `/gstack-plan-eng-review`,
+  `/gstack-plan-design-review`, `/gstack-design-consultation`,
+  `/gstack-design-shotgun`, `/gstack-design-html`, `/gstack-review`,
+  `/gstack-ship`, `/gstack-land-and-deploy`, `/gstack-canary`,
+  `/gstack-benchmark`, `/gstack-browse`, `/gstack-connect-chrome`,
+  `/gstack-qa`, `/gstack-qa-only`, `/gstack-design-review`,
+  `/gstack-setup-browser-cookies`, `/gstack-setup-deploy`,
+  `/gstack-retro`, `/gstack-investigate`, `/gstack-document-release`,
+  `/gstack-codex`, `/gstack-cso`, `/gstack-autoplan`, `/gstack-careful`,
+  `/gstack-freeze`, `/gstack-guard`, `/gstack-unfreeze`,
+  `/gstack-upgrade`, `/gstack-learn`.
+- If gstack skills stop working for Claude in this repo, run:
+  `cd .claude/skills/gstack && ./setup --prefix`
+
 ## 2026-03-30 Current Snapshot
 
 ```
