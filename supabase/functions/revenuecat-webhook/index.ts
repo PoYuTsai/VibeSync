@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const DEPLOY_VERSION = "2026-03-16-rc-webhook-v3";
+const DEPLOY_VERSION = "2026-04-03-rc-webhook-v4";
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -43,6 +43,17 @@ function normalizeExpirationAt(value: unknown): string | null {
   }
 
   return new Date(value).toISOString();
+}
+
+function extractValidUuidList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && isValidUuid(item));
 }
 
 async function sha256Prefix(input: string): Promise<string> {
@@ -287,10 +298,119 @@ Deno.serve(async (req) => {
 
       case "NON_RENEWING_PURCHASE":
       case "SUBSCRIBER_ALIAS":
-      case "TRANSFER":
         console.log(`Event ${type} logged but no action taken`);
         shouldUpdate = false;
         break;
+
+      case "TRANSFER": {
+        const nowIso = new Date().toISOString();
+        const transferTier = getTierFromProductId(effectiveProductId) ??
+          (typeof existingSubscription?.tier === "string"
+            ? existingSubscription.tier
+            : "free");
+        const transferredFrom = extractValidUuidList(event.transferred_from);
+        const transferredTo = Array.from(
+          new Set([
+            ...extractValidUuidList(event.transferred_to),
+            app_user_id,
+          ]),
+        );
+        const transferredFromOnly = transferredFrom.filter((id) =>
+          !transferredTo.includes(id)
+        );
+
+        if (transferredTo.length > 0) {
+          const { data: existingRows, error: existingRowsError } = await supabase
+            .from("subscriptions")
+            .select("user_id")
+            .in("user_id", transferredTo);
+
+          if (existingRowsError) {
+            console.error(
+              "Failed to load transfer recipients:",
+              existingRowsError,
+            );
+            return jsonResponse({ error: "Database error" }, 500);
+          }
+
+          const existingUserIds = new Set(
+            (existingRows ?? [])
+              .map((row) => typeof row.user_id === "string" ? row.user_id : "")
+              .filter((userId) => userId.length > 0),
+          );
+          const missingUserIds = transferredTo.filter((userId) =>
+            !existingUserIds.has(userId)
+          );
+
+          const { error: updateRecipientsError } = await supabase
+            .from("subscriptions")
+            .update({
+              tier: transferTier,
+              status: "active",
+              expires_at: expiresAt,
+            })
+            .in("user_id", transferredTo);
+
+          if (updateRecipientsError) {
+            console.error(
+              "Failed to update transfer recipients:",
+              updateRecipientsError,
+            );
+            return jsonResponse({ error: "Database error" }, 500);
+          }
+
+          if (missingUserIds.length > 0) {
+            const inserts = missingUserIds.map((userId) => ({
+              user_id: userId,
+              tier: transferTier,
+              status: "active",
+              expires_at: expiresAt,
+              monthly_messages_used: 0,
+              daily_messages_used: 0,
+              daily_reset_at: nowIso,
+              monthly_reset_at: nowIso,
+              started_at: nowIso,
+            }));
+
+            const { error: insertRecipientsError } = await supabase
+              .from("subscriptions")
+              .insert(inserts);
+
+            if (insertRecipientsError) {
+              console.error(
+                "Failed to insert transfer recipients:",
+                insertRecipientsError,
+              );
+              return jsonResponse({ error: "Database error" }, 500);
+            }
+          }
+        }
+
+        if (transferredFromOnly.length > 0) {
+          const { error: downgradeError } = await supabase
+            .from("subscriptions")
+            .update({
+              tier: "free",
+              status: "expired",
+              expires_at: expiresAt ?? nowIso,
+            })
+            .in("user_id", transferredFromOnly);
+
+          if (downgradeError) {
+            console.error(
+              "Failed to downgrade transfer source users:",
+              downgradeError,
+            );
+            return jsonResponse({ error: "Database error" }, 500);
+          }
+        }
+
+        console.log(
+          `Processed transfer: tier=${transferTier}, to=${transferredTo.join(",")}, from=${transferredFromOnly.join(",")}`,
+        );
+        shouldUpdate = false;
+        break;
+      }
 
       default:
         console.log(`Unknown event type: ${type}`);

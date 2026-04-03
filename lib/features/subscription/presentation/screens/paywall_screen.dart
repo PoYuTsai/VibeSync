@@ -195,7 +195,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       ),
                       Text('｜', style: AppTypography.caption),
                       TextButton(
-                        onPressed: _restorePurchases,
+                        onPressed: _syncPurchasedPlan,
                         child: Text('同步已買過的訂閱', style: AppTypography.caption),
                       ),
                     ],
@@ -510,6 +510,89 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         return '目前無法購買此方案，請稍後再試。';
       default:
         return '訂閱失敗，請稍後再試一次。';
+    }
+  }
+
+  Future<void> _syncPurchasedPlan() async {
+    if (kIsWeb) {
+      _showSnackBar('目前請改用 iOS App 同步已買過的訂閱。');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: AppColors.glassWhite,
+            title: Text(
+              '同步已買過的訂閱',
+              style: AppTypography.titleMedium.copyWith(
+                color: AppColors.glassTextPrimary,
+              ),
+            ),
+            content: Text(
+              '這會把此 Apple ID 已買過的訂閱同步到目前登入的 VibeSync 帳號。如果你剛切換到另一個帳號，方案也可能跟著轉過來。',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(
+                  '取消',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.unselectedText,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(
+                  '確認同步',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) {
+      return;
+    }
+
+    setState(() => _isPurchasing = true);
+
+    try {
+      final notifier = ref.read(subscriptionProvider.notifier);
+      final restored = await notifier.restorePurchases();
+
+      if (!mounted) {
+        return;
+      }
+
+      if (restored) {
+        await notifier.refresh();
+        if (!mounted) {
+          return;
+        }
+
+        _showSnackBar(
+          '已把此 Apple ID 買過的方案同步到目前帳號。',
+          backgroundColor: AppColors.success,
+        );
+        context.pop(ref.read(subscriptionProvider).tier);
+      } else {
+        _showSnackBar('這個 Apple ID 目前沒有可同步的有效訂閱。');
+      }
+    } catch (error) {
+      debugPrint('Paywall restore error: $error');
+      _showSnackBar('同步已買過的訂閱失敗，請稍後再試一次。');
+    } finally {
+      if (mounted) {
+        setState(() => _isPurchasing = false);
+      }
     }
   }
 

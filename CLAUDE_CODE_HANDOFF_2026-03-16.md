@@ -12,6 +12,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - `.github/workflows/deploy-edge-function.yml` now deploys `sync-subscription` alongside the other Edge Functions.
 - Follow-up hardening (2026-04-03): `sync-subscription` no longer trusts client-supplied `expectedTier` to elevate plan state. The persisted tier now comes only from RevenueCat's server-side subscriber view.
 - Follow-up hardening (2026-04-03): `analyze-chat` now blocks requests whose projected `chargedMessageCount` would push daily/monthly usage over the tier limit, instead of only checking the pre-request counters.
+- Follow-up UX + consistency hardening (2026-04-03): restore/sync now shows an explicit confirmation explaining that the current Apple ID's purchase may transfer onto the currently signed-in VibeSync account, and the RevenueCat `TRANSFER` webhook now upgrades the recipient account while downgrading the source account back to free so the backend does not leave both accounts premium indefinitely.
 
 ## 2026-04-01 Account Isolation Hotfix
 

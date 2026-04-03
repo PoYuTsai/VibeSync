@@ -91,7 +91,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         context: context,
                         icon: Icons.restore,
                         title: '同步已買過的訂閱',
-                        onTap: () => _restorePurchases(context, ref),
+                        onTap: () => _syncPurchasedPlan(context, ref),
                       ),
                   ],
                 ),
@@ -337,6 +337,79 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           : Icon(Icons.chevron_right, color: AppColors.glassTextHint),
       onTap: onTap,
     );
+  }
+
+  Future<void> _syncPurchasedPlan(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: AppColors.glassWhite,
+            title: Text(
+              '同步已買過的訂閱',
+              style: TextStyle(color: AppColors.glassTextPrimary),
+            ),
+            content: Text(
+              '這會把此 Apple ID 已買過的訂閱同步到目前登入的 VibeSync 帳號。如果你剛切換到另一個帳號，方案也可能跟著轉過來。',
+              style: TextStyle(color: AppColors.glassTextSecondary),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(
+                  '取消',
+                  style: TextStyle(color: AppColors.unselectedText),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(
+                  '確認同步',
+                  style: TextStyle(color: AppColors.primary),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) {
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final restored =
+          await ref.read(subscriptionProvider.notifier).restorePurchases();
+
+      if (!context.mounted) {
+        return;
+      }
+
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            restored
+                ? '已把此 Apple ID 買過的方案同步到目前帳號。'
+                : '這個 Apple ID 目前沒有可同步的有效訂閱。',
+          ),
+          backgroundColor: restored ? AppColors.success : null,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_mapRestorePurchasesError(error))),
+      );
+    }
   }
 
   Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
