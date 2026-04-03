@@ -31,6 +31,63 @@ RevenueCat 不是你們的主後台。
 - 想查同 Apple ID 為什麼按同步後變 Essential
 - 想看 product、offering、entitlement 是否設對
 
+## 白話名詞
+
+### entitlement
+
+白話意思：
+
+- `這個人現在實際有沒有付費權限`
+
+你可以把它理解成：
+
+- 這個帳號現在到底是不是 premium
+- 現在能不能用 Starter / Essential 的功能
+
+一句話：
+
+- `entitlement = 目前生效中的付費資格`
+
+### restore
+
+白話意思：
+
+- `把以前買過的訂閱，重新同步回現在這支 App`
+
+常見情境：
+
+- 換手機
+- 重裝 App
+- App 一時沒同步到已買方案
+- 重新登入後 tier 不見了
+
+在 VibeSync 裡：
+
+- `同步已買過的訂閱` 就是在做 restore
+
+一句話：
+
+- `restore = 把以前買過的東西找回來`
+
+### transfer
+
+白話意思：
+
+- `同一個 Apple ID 買過的訂閱，被同步到另一個 App 帳號`
+
+例如：
+
+- 原本用 Google 帳號買了 Essential
+- 後來改登入 Yahoo 帳號
+- 按了 restore / 同步已買過的訂閱
+- Essential 跑到 Yahoo 帳號身上
+
+這個從 A 帳號轉到 B 帳號的動作，就是 transfer。
+
+一句話：
+
+- `transfer = 訂閱從一個 App 帳號轉到另一個 App 帳號`
+
 ## 目前 VibeSync 的 collaborator 現況
 
 你和夥伴現在都已經是 `Administrator`。
