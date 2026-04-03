@@ -16,7 +16,20 @@
 - `docs/launch-readiness-checklist.md`
 - `docs/ocr-analysis-maturity-benchmark.md`
 - `docs/current-test-status-2026-04-03.md`
+- `docs/supabase-ops-guide.md`
 - `docs/discord-vibesync-troubleshooting.md` - 如果是 Discord Bot 即時監聽 / 回覆問題，先看這份；live state 在 WSL 的 `discord-vibesync` 路徑，不是 generic `discord`
+
+### 後台分工總結
+
+- `Supabase`
+  - 主後台
+  - 看日常營運、查人、查 tier、查分析、查 Auth、跑 SQL
+
+- `RevenueCat`
+  - 看訂閱 entitlement、restore、transfer、同 Apple ID 行為
+
+- `App Store Connect`
+  - 看 iOS 商品、subscription group、升降級週期、商店端規則
 
 ### 最近已完成的重點
 

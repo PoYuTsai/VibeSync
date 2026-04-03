@@ -18,6 +18,24 @@
 - 遇到訂閱同步、restore、transfer 問題，再去看 `RevenueCat`
 - 遇到 iOS 訂閱週期或產品配置問題，再看 `App Store Connect`
 
+## 後台分工總結
+
+- `Supabase`
+  - 主後台
+  - 看日常營運、查人、查 tier、查分析、查 Auth、跑 SQL
+
+- `RevenueCat`
+  - 看訂閱 entitlement、restore、transfer、同 Apple ID 行為
+
+- `App Store Connect`
+  - 看 iOS 商品、subscription group、升降級週期、商店端規則
+
+一句話：
+
+- 主後台是 `Supabase`
+- 訂閱真相要搭配 `RevenueCat`
+- iOS 商店規則要看 `App Store Connect`
+
 ## 後台常用頁面
 
 | 頁面 | 路徑 | 用途 |
