@@ -41,7 +41,7 @@ This project has gstack installed for Claude and Codex.
 - `docs/revenuecat-ops-guide.md`
 - `docs/security-hardening-status.md`
 - `docs/security-incident-response.md`
-- Security rounds 2-3 are done: `auth_diagnostics` now has schema guardrails plus a dedicated ingestion function, observability log retention helpers are in place, and the incident-response runbook is part of the launch docs.
+- Security rounds 2-4 are done: `auth_diagnostics` now has schema guardrails plus a dedicated ingestion function, observability retention is scheduled with `pg_cron`, active security signals are queryable from Supabase/admin dashboard, and the incident-response runbook is part of the launch docs.
 - `docs/gstack-usage-sop.md`
 - `docs/phases/phase-a-ios-launch-stabilization.md`
 - `docs/phases/phase-b-android-google-play-expansion.md`

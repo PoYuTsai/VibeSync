@@ -522,3 +522,36 @@ select public.cleanup_observability_logs();
 
 - [security-hardening-status.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-hardening-status.md)
 - [security-incident-response.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-incident-response.md)
+
+## Security signals / automation
+
+```sql
+-- 看目前仍在觸發中的安全異常訊號
+select *
+from public.security_signals
+order by
+  case severity
+    when 'critical' then 0
+    when 'warning' then 1
+    else 2
+  end,
+  detected_at desc;
+
+-- 看 security cleanup cron jobs 是否有正常掛上
+select *
+from public.security_automation_status
+order by jobname;
+```
+
+白話版：
+- `security_signals`
+  - 看現在有沒有 auth、AI、webhook、cleanup job 相關的異常尖峰
+- `security_automation_status`
+  - 看 nightly cleanup / cron history cleanup 兩個 job 是否 active、最近有沒有跑、近 7 天有沒有失敗
+
+如果 `security_signals` 有資料：
+- 代表現在真的有值得看的異常，不是歷史紀錄而已
+
+如果 `security_automation_status` 是空的：
+- 先確認最新 migration 是否已套用
+- 再確認 `pg_cron` extension 是否可用

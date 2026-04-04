@@ -43,6 +43,18 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - The client-side diagnostics service was updated to call the new function with a short timeout, so pre-auth flows still work while the table write path is no longer directly exposed to app clients.
 - `.github/workflows/deploy-edge-function.yml` now deploys `auth-diagnostics` as a deliberate no-JWT ingress function, separate from the normal authenticated user-facing functions.
 
+## 2026-04-05 Security Round 4
+
+- `pg_cron` is now used to automate observability/security cleanup instead of leaving retention as a manual-only operator task.
+- Two scheduled jobs are now part of the schema:
+  - `vibesync-observability-retention-nightly`
+  - `vibesync-cron-history-retention-weekly`
+- A new helper function now cleans old `cron.job_run_details`, so pg_cron history itself does not become the next observability retention problem.
+- New database views now exist for launch monitoring:
+  - `public.security_signals`
+  - `public.security_automation_status`
+- `admin-dashboard` now includes a `Security` page that surfaces active auth/AI/webhook/cleanup anomalies plus cleanup-job status in one place.
+
 ## 2026-04-03 Subscription Sync Root-Cause Fix
 
 - The long-running "Free analyze -> upgrade to Essential -> analysis still behaves like free tier" bug was traced to `public.subscriptions` RLS: the app was trying to update the subscription row directly from the client, but `analyze-chat` only trusts the backend `subscriptions` row.

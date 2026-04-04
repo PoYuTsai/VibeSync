@@ -10,6 +10,7 @@ This file tracks the current security posture of VibeSync at a practical, launch
 - After round 1 hardening: `7/10`
 - After round 2 hardening: `7.5/10`
 - After round 3 hardening: `8/10`
+- After round 4 hardening: `8.5/10`
 
 This is good enough for an early public launch with active monitoring.
 It is not yet the posture of a mature, high-trust privacy product.
@@ -51,6 +52,19 @@ It is not yet the posture of a mature, high-trust privacy product.
   - service-role-owned insertion
 - The client now calls that function instead of inserting into `public.auth_diagnostics` directly.
 
+### Round 4
+
+- Observability/security cleanup is no longer manual-only:
+  - `pg_cron` now schedules nightly `cleanup_observability_logs()`
+  - `pg_cron` history now has its own retention cleanup job
+- A new `security_signals` view now surfaces active anomalies across:
+  - `auth_diagnostics`
+  - `ai_logs`
+  - `webhook_logs`
+  - security cleanup cron jobs
+- A new `security_automation_status` view now exposes whether the cleanup jobs are active and when they last ran.
+- `admin-dashboard` now has a `Security` page for these signals and automation states.
+
 ## Remaining Risks
 
 ### 1. `auth_diagnostics` still supports pre-auth ingestion
@@ -72,7 +86,7 @@ Still missing:
 - automated cleanup / alerting
 - stronger anomaly detection
 
-### 2. Retention is defined, but not yet automated
+### 2. Alerting is still operator-driven
 
 Current default retention:
 
@@ -80,7 +94,7 @@ Current default retention:
 - `webhook_logs`: 30 days
 - `ai_logs`: 30 days
 
-Today this is manual / operator-triggered unless a scheduled job is added later.
+These windows are now scheduled automatically, but alerts still need a human to look at the dashboard or run checks.
 
 ### 3. Privacy disclosure still matters
 
@@ -104,9 +118,6 @@ The partner-managed Vercel deployment is acceptable short term, but long term ad
 
 ## Next Recommended Security Upgrades
 
-1. Add automated retention scheduling for observability tables.
-2. Add anomaly alerts for:
-   - unusual auth diagnostics volume
-   - unusual webhook volume
-   - sudden AI failure spikes
-3. Review partner-owned deployment / domain / env access and ensure both founders retain control.
+1. Add external alert delivery (email/Slack/Telegram) for critical security signals.
+2. Review partner-owned deployment / domain / env access and ensure both founders retain control.
+3. Tighten privacy disclosure and in-app copy so Anthropic processing / retention is described precisely and consistently.
