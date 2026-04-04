@@ -9,6 +9,7 @@ This file tracks the current security posture of VibeSync at a practical, launch
 - Previous rough rating: `6/10`
 - After round 1 hardening: `7/10`
 - After round 2 hardening: `7.5/10`
+- After round 3 hardening: `8/10`
 
 This is good enough for an early public launch with active monitoring.
 It is not yet the posture of a mature, high-trust privacy product.
@@ -39,23 +40,37 @@ It is not yet the posture of a mature, high-trust privacy product.
 - A formal incident-response runbook now exists:
   - [security-incident-response.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-incident-response.md)
 
+### Round 3
+
+- Auth diagnostics ingestion is no longer a direct client -> table write.
+- A dedicated `auth-diagnostics` Edge Function now sits in front of the table.
+- That function adds:
+  - server-side payload validation
+  - hashed client fingerprinting
+  - coarse abuse throttling over recent windows
+  - service-role-owned insertion
+- The client now calls that function instead of inserting into `public.auth_diagnostics` directly.
+
 ## Remaining Risks
 
-### 1. `auth_diagnostics` still allows pre-auth insert
+### 1. `auth_diagnostics` still supports pre-auth ingestion
 
 This is intentional because signup / resend / forgot-password diagnostics happen before login.
 
 Current mitigation:
 
-- tighter insert policy
+- dedicated edge-function ingress
+- tighter schema policy
 - smaller payloads
+- hashed client fingerprinting
+- coarse rate limiting
 - retention helpers
 - incident-response visibility
 
 Still missing:
 
-- a stronger server-side ingestion path
 - automated cleanup / alerting
+- stronger anomaly detection
 
 ### 2. Retention is defined, but not yet automated
 
@@ -89,10 +104,9 @@ The partner-managed Vercel deployment is acceptable short term, but long term ad
 
 ## Next Recommended Security Upgrades
 
-1. Move auth diagnostics ingestion behind a server-controlled path instead of direct anon insert.
-2. Add automated retention scheduling for observability tables.
-3. Add anomaly alerts for:
+1. Add automated retention scheduling for observability tables.
+2. Add anomaly alerts for:
    - unusual auth diagnostics volume
    - unusual webhook volume
    - sudden AI failure spikes
-4. Review partner-owned deployment / domain / env access and ensure both founders retain control.
+3. Review partner-owned deployment / domain / env access and ensure both founders retain control.

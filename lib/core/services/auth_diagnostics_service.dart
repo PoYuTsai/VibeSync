@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -61,7 +62,18 @@ class AuthDiagnosticsService {
           'metadata': _sanitizeMetadata(metadata),
       };
 
-      await Supabase.instance.client.from('auth_diagnostics').insert(payload);
+      final response = await Supabase.instance.client.functions
+          .invoke(
+            'auth-diagnostics',
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.status < 200 || response.status >= 300) {
+        debugPrint(
+          'Auth diagnostics skipped: status=${response.status} data=${response.data}',
+        );
+      }
     } catch (error) {
       debugPrint('Auth diagnostics skipped: $error');
     }

@@ -35,6 +35,14 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - A new incident-response runbook now lives at `docs/security-incident-response.md`, covering containment, secret rotation, investigation queries, recovery, and postmortem expectations.
 - Security posture after this pass: stronger than the previous launch candidate, but still short of a "high-trust privacy product" until diagnostics ingestion, retention automation, and infra ownership are tightened further.
 
+## 2026-04-05 Security Round 3
+
+- Auth diagnostics ingestion is now behind a dedicated `auth-diagnostics` Edge Function instead of direct client writes into `public.auth_diagnostics`.
+- The new ingress path adds server-side validation, hashed client fingerprinting, and coarse recent-window throttling before a service-role insert happens.
+- `public.auth_diagnostics` now also has a `client_fingerprint` column plus an index tuned for abuse / rate-limit checks.
+- The client-side diagnostics service was updated to call the new function with a short timeout, so pre-auth flows still work while the table write path is no longer directly exposed to app clients.
+- `.github/workflows/deploy-edge-function.yml` now deploys `auth-diagnostics` as a deliberate no-JWT ingress function, separate from the normal authenticated user-facing functions.
+
 ## 2026-04-03 Subscription Sync Root-Cause Fix
 
 - The long-running "Free analyze -> upgrade to Essential -> analysis still behaves like free tier" bug was traced to `public.subscriptions` RLS: the app was trying to update the subscription row directly from the client, but `analyze-chat` only trusts the backend `subscriptions` row.

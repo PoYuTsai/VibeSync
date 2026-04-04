@@ -316,6 +316,7 @@ select
   event,
   status,
   email_redacted,
+  client_fingerprint,
   platform,
   app_version,
   build_number,
@@ -331,6 +332,7 @@ select
   created_at,
   event,
   status,
+  client_fingerprint,
   error_code,
   message,
   metadata
