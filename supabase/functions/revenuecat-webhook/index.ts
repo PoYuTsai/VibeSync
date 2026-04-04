@@ -56,6 +56,41 @@ function extractValidUuidList(value: unknown): string[] {
     .filter((item) => item.length > 0 && isValidUuid(item));
 }
 
+function sanitizeWebhookPayload(
+  body: Record<string, unknown>,
+  options?: { ignoredReason?: string },
+): Record<string, unknown> {
+  const event = isPlainObject(body.event) ? body.event : {};
+
+  const sanitized: Record<string, unknown> = {
+    source: "revenuecat",
+    type: typeof event.type === "string" ? event.type : null,
+    app_user_id: typeof event.app_user_id === "string" ? event.app_user_id : null,
+    product_id: typeof event.product_id === "string" ? event.product_id : null,
+    new_product_id: typeof event.new_product_id === "string"
+      ? event.new_product_id
+      : null,
+    entitlement_ids: Array.isArray(event.entitlement_ids)
+      ? event.entitlement_ids
+      : [],
+    transferred_from: extractValidUuidList(event.transferred_from),
+    transferred_to: extractValidUuidList(event.transferred_to),
+    expiration_at_ms: typeof event.expiration_at_ms === "number"
+      ? event.expiration_at_ms
+      : null,
+    environment: typeof event.environment === "string"
+      ? event.environment
+      : null,
+    aliases: Array.isArray(event.aliases) ? event.aliases : [],
+  };
+
+  if (options?.ignoredReason) {
+    sanitized.ignored_reason = options.ignoredReason;
+  }
+
+  return sanitized;
+}
+
 async function sha256Prefix(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -206,10 +241,9 @@ Deno.serve(async (req) => {
           source: "revenuecat",
           event_type: type,
           user_id: app_user_id,
-          payload: {
-            ...body,
-            ignored_reason: "user_not_found",
-          },
+          payload: sanitizeWebhookPayload(body, {
+            ignoredReason: "user_not_found",
+          }),
           created_at: new Date().toISOString(),
         });
 
@@ -463,7 +497,7 @@ Deno.serve(async (req) => {
       source: "revenuecat",
       event_type: type,
       user_id: app_user_id,
-      payload: body,
+      payload: sanitizeWebhookPayload(body),
       created_at: new Date().toISOString(),
     });
 

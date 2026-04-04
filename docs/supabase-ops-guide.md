@@ -65,6 +65,11 @@
 | `public.monthly_revenue` | view | 月營收 summary |
 | `public.monthly_profit` | view | 月毛利 summary |
 
+補充：
+
+- `webhook_logs` 現在保存的是「精簡過的 RevenueCat payload 摘要」，不是完整 raw payload。
+- `monthly_profit` 目前是 `收入 - token/AI 成本` 的營運毛利近似值，不是最終財務淨利。
+
 ## 日常監控 SQL
 
 ### 1. 用戶總覽

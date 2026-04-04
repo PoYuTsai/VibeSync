@@ -16,6 +16,7 @@
 - `docs/testflight-regression-checklist.md`
 - `docs/supabase-ops-guide.md`
 - `docs/revenuecat-ops-guide.md`
+- `docs/security-hardening-status.md`
 - `docs/gstack-usage-sop.md`
 - `docs/phases/phase-a-ios-launch-stabilization.md`
 - `docs/phases/phase-b-android-google-play-expansion.md`

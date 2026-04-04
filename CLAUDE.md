@@ -39,6 +39,7 @@ This project has gstack installed for Claude and Codex.
 - `docs/current-test-status-2026-04-03.md`
 - `docs/supabase-ops-guide.md`
 - `docs/revenuecat-ops-guide.md`
+- `docs/security-hardening-status.md`
 - `docs/gstack-usage-sop.md`
 - `docs/phases/phase-a-ios-launch-stabilization.md`
 - `docs/phases/phase-b-android-google-play-expansion.md`

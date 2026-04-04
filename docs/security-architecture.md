@@ -1,5 +1,30 @@
 # VibeSync 資安架構
 
+> 補充：
+> 若想快速知道目前已做到的安全硬化與剩餘風險，
+> 請先看 `docs/security-hardening-status.md`。
+
+## 2026-04-05 現況摘要
+
+- User-facing Edge Functions 已改回使用平台級 JWT 驗證
+- `revenuecat-webhook` 仍維持第三方 webhook 模式，不走 JWT 驗證
+- RevenueCat webhook logs 已改成只存精簡 payload，不再整包保存 raw payload
+- `sync-subscription` 已移除 repo 內 RevenueCat server key fallback
+- 本地 Hive 資料與 AI logs 敏感欄位遮罩仍維持有效
+
+## 隱私敘事的重要提醒
+
+VibeSync 目前不能對外宣稱：
+
+- 「聊天內容絕對不會離開裝置」
+
+更精準的說法應該是：
+
+- App 本身不把聊天內容長期儲存在自家伺服器
+- 但分析時，必要內容會送到第三方模型 API 處理
+- 目前使用 Anthropic API
+- Anthropic 商業/API產品官方說明：預設不使用商業/API資料訓練模型，但資料有標準 retention 週期（目前標準為 30 天，除非另有 zero retention agreement）
+
 ## 威脅模型
 
 ### 攻擊向量分析
