@@ -492,3 +492,31 @@ where user_id = (
 
 - [app-review-final-checklist.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/app-review-final-checklist.md)
 - [current-test-status-2026-04-03.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/current-test-status-2026-04-03.md)
+
+## Security / retention cleanup
+
+```sql
+-- 清掉 14 天前的 auth diagnostics
+select public.cleanup_old_auth_diagnostics();
+
+-- 清掉 30 天前的 RevenueCat webhook logs
+select public.cleanup_old_webhook_logs();
+
+-- 一次清掉舊 ai_logs / auth_diagnostics / webhook_logs
+select public.cleanup_observability_logs();
+```
+
+預設 retention：
+
+- `auth_diagnostics`: 14 天
+- `webhook_logs`: 30 天
+- `ai_logs`: 30 天
+
+注意：
+
+- 這些 cleanup function 是給 Supabase SQL Editor / service role 用的，不是前端 client 可直接打的 RPC。
+
+如果遇到疑似外洩、濫灌、webhook 異常、或要輪替 secrets，先搭配：
+
+- [security-hardening-status.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-hardening-status.md)
+- [security-incident-response.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-incident-response.md)

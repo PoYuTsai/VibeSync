@@ -17,7 +17,10 @@
 - `docs/supabase-ops-guide.md`
 - `docs/revenuecat-ops-guide.md`
 - `docs/security-hardening-status.md`
+- `docs/security-incident-response.md`
 - `docs/gstack-usage-sop.md`
+
+Security round 2 is done: `auth_diagnostics` guardrails, observability log retention helpers, and the incident-response runbook are now part of the launch docs.
 - `docs/phases/phase-a-ios-launch-stabilization.md`
 - `docs/phases/phase-b-android-google-play-expansion.md`
 - `docs/phases/phase-c-growth-content-engine.md`

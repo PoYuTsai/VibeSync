@@ -1,142 +1,98 @@
 # Security Hardening Status
 
-最後更新：2026-04-05
+Last updated: 2026-04-05
 
-用途：
-- 這份文件用來快速說明 VibeSync 目前的資安/隱私硬化進度。
-- 它不是完整架構設計，完整背景仍看 `docs/security-architecture.md`。
-- 這份更偏「現在做到了哪、還差什麼」。
+This file tracks the current security posture of VibeSync at a practical, launch-facing level.
 
-## 目前已完成的硬化
+## Current Rating
 
-### 1. 機密資料留在後端
+- Previous rough rating: `6/10`
+- After round 1 hardening: `7/10`
+- After round 2 hardening: `7.5/10`
 
-- `CLAUDE_API_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- RevenueCat 伺服器端 API key
+This is good enough for an early public launch with active monitoring.
+It is not yet the posture of a mature, high-trust privacy product.
 
-這些都只應存在：
-- Supabase secrets
-- GitHub Actions secrets
-- 其他受控部署環境
+## What Is Now Hardened
 
-不應出現在：
-- Flutter client
-- repo 內的硬編碼 fallback
+### Round 1
 
-### 2. 本地對話資料有加密
+- User-facing Edge Functions now deploy with JWT verification by default.
+- `revenuecat-webhook` remains webhook-only and is the only function intentionally deployed with `--no-verify-jwt`.
+- `sync-subscription` no longer has a repo-side RevenueCat key fallback.
+- RevenueCat webhook logs now store a reduced payload summary instead of raw full payloads.
 
-- 對話、settings、usage 目前都使用 Hive + `HiveAesCipher`
-- 加密金鑰存放在：
-  - iOS Keychain
-  - Android secure storage / keystore 對應層
+### Round 2
 
-### 3. AI 日誌已做敏感欄位遮罩
+- `auth_diagnostics` now has stricter schema-level limits:
+  - constrained event format
+  - allowed platform values
+  - bounded field lengths
+  - bounded metadata size
+  - bounded insert timestamps
+- App-side auth diagnostics now do lightweight dedupe and metadata shrinking before insert.
+- Retention helper SQL functions now exist for:
+  - `auth_diagnostics`
+  - `webhook_logs`
+  - combined observability cleanup
+- Those cleanup functions are not left open as public RPC surfaces; execute permission is revoked from `PUBLIC / anon / authenticated`.
+- A formal incident-response runbook now exists:
+  - [security-incident-response.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-incident-response.md)
 
-`ai_logs` 不會直接存完整：
-- messages
-- content
-- images
-- conversation
-- userDraft
-- sessionContext
+## Remaining Risks
 
-而是會做 redaction / truncate。
+### 1. `auth_diagnostics` still allows pre-auth insert
 
-### 4. User-facing Edge Functions 改回平台級 JWT 驗證
+This is intentional because signup / resend / forgot-password diagnostics happen before login.
 
-目前這些 function 部署時應使用 Supabase 預設 JWT 驗證：
-- `analyze-chat`
-- `delete-account`
-- `sync-subscription`
-- `submit-feedback`
+Current mitigation:
 
-只有 `revenuecat-webhook` 因為是第三方 webhook，才維持 `--no-verify-jwt`。
+- tighter insert policy
+- smaller payloads
+- retention helpers
+- incident-response visibility
 
-### 5. RevenueCat webhook 不再整包保存 raw payload
+Still missing:
 
-`webhook_logs` 現在只保存精簡後的欄位，例如：
-- type
-- app_user_id
-- product_id
-- new_product_id
-- entitlement_ids
-- transferred_from / transferred_to
-- expiration_at_ms
-- environment
+- a stronger server-side ingestion path
+- automated cleanup / alerting
 
-目的：
-- 降低不必要的資料留存
-- 保留營運排查需要的核心欄位
+### 2. Retention is defined, but not yet automated
 
-### 6. 移除 repo 內 RevenueCat server key fallback
+Current default retention:
 
-`sync-subscription` 現在若沒設定 RevenueCat API key，會直接回 server misconfigured，
-不再偷偷使用 repo 內 fallback。
+- `auth_diagnostics`: 14 days
+- `webhook_logs`: 30 days
+- `ai_logs`: 30 days
 
-## 目前仍存在的風險 / 技術債
+Today this is manual / operator-triggered unless a scheduled job is added later.
 
-### 1. Anthropic API retention 仍需誠實揭露
+### 3. Privacy disclosure still matters
 
-目前產品敘事不能寫成「聊天內容絕對不會離開裝置」。
+The app is local-first, but user-triggered analysis still sends content to backend processing and Anthropic API.
 
-更精準的說法應該是：
-- App 本身不長期保存聊天內容於自家伺服器
-- 但分析時會把必要內容傳到 Anthropic API 處理
-- Anthropic API 的商業產品預設有資料保留期（官方目前標準為 30 天，除非另有 zero retention agreement）
-- 官方也說商業/API資料預設不拿來訓練模型
+That must stay aligned across:
 
-所以：
-- Privacy Policy
-- App Store disclosure
-- App 內文案
+- privacy policy
+- App Store privacy disclosure
+- in-app user-facing copy
 
-都應該用一致、誠實的寫法。
+### 4. Single-owner infrastructure risk
 
-### 2. `auth_diagnostics` 仍可由 anon insert
+The partner-managed Vercel deployment is acceptable short term, but long term admin access and ownership should not sit with only one person.
 
-這讓註冊/忘記密碼前的診斷 log 能成立，
-但也代表這張表理論上可被濫灌。
+## Most Important Files
 
-後續可考慮：
-- 改成 Edge Function 寫入
-- 加速率限制
-- 加定期清理 / retention
+- [security-architecture.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-architecture.md)
+- [security-incident-response.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-incident-response.md)
+- [supabase-ops-guide.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/supabase-ops-guide.md)
 
-### 3. 還缺正式 retention policy
+## Next Recommended Security Upgrades
 
-目前建議至少定義並執行：
-- `auth_diagnostics`
-- `webhook_logs`
-- `ai_logs`
-
-的保留週期與清理方式。
-
-### 4. 部署權限仍偏集中
-
-目前官網部署在夥伴個人 Vercel，
-短期可接受，但中長期應避免：
-- domain
-- env
-- deploy 權限
-
-只綁定單一個人帳號。
-
-## 現在的安全等級判斷
-
-如果以「獨立開發 + 早期產品」來看：
-
-- 已經比很多純 vibe coding 直接上線的產品更安全
-- 但還不到高信任、高合規等級
-
-目前判斷：
-- 早期公開測試 / limited launch：可接受
-- 若要強調高度隱私與高度安全：還需要繼續補強
-
-## 下一輪最值得補的 5 件事
-
-1. 為 `auth_diagnostics` 加 rate limit / retention
-2. 定義 `webhook_logs` / `ai_logs` / `auth_diagnostics` 保留週期
-3. 將隱私政策與 App Store disclosure 明確寫出 Anthropic API 處理與 retention 事實
-4. 整理正式 incident response SOP（密鑰輪替、停用 function、通知流程）
-5. 將官網 / 後台 / 部署權限從單人帳號模式改成團隊可交接模式
+1. Move auth diagnostics ingestion behind a server-controlled path instead of direct anon insert.
+2. Add automated retention scheduling for observability tables.
+3. Add anomaly alerts for:
+   - unusual auth diagnostics volume
+   - unusual webhook volume
+   - sudden AI failure spikes
+4. Review partner-owned deployment / domain / env access and ensure both founders retain control.

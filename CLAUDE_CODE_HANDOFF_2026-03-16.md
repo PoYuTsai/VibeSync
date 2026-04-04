@@ -19,8 +19,21 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
   - `docs/current-test-status-2026-04-03.md`
   - `docs/supabase-ops-guide.md`
   - `docs/revenuecat-ops-guide.md`
+  - `docs/security-hardening-status.md`
+  - `docs/security-incident-response.md`
   - `docs/app-review-final-checklist.md`
   - `docs/testflight-regression-checklist.md`
+
+## 2026-04-05 Security Round 2
+
+- `auth_diagnostics` now has schema-level guardrails instead of being a near-open insert sink: bounded event format, bounded field lengths, bounded metadata size, and bounded timestamps.
+- Client-side auth diagnostics now also dedupe rapid repeated events and shrink metadata before insert, reducing normal-flow log spam and accidental oversized payloads.
+- A new migration adds retention helpers for observability/security tables:
+  - `cleanup_old_auth_diagnostics()`
+  - `cleanup_old_webhook_logs()`
+  - `cleanup_observability_logs()`
+- A new incident-response runbook now lives at `docs/security-incident-response.md`, covering containment, secret rotation, investigation queries, recovery, and postmortem expectations.
+- Security posture after this pass: stronger than the previous launch candidate, but still short of a "high-trust privacy product" until diagnostics ingestion, retention automation, and infra ownership are tightened further.
 
 ## 2026-04-03 Subscription Sync Root-Cause Fix
 
