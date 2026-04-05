@@ -1651,15 +1651,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
         // 把識別結果存入對話
         if (result.recognizedConversation != null) {
-          await OcrRecognitionCacheService.write(
-            images: imagesToProcess,
-            recognizedConversation: result.recognizedConversation!,
-            conversationId: widget.conversationId,
-          );
-          _rememberRecognitionReplay(
-            images: imagesToProcess,
-            metrics: metricsToProcess,
-          );
+          try {
+            await OcrRecognitionCacheService.write(
+              images: imagesToProcess,
+              recognizedConversation: result.recognizedConversation!,
+              conversationId: widget.conversationId,
+            );
+          } catch (cacheError) {
+            _debugLog(
+              '[Recognize] OCR cache write failed but recognition will continue: ${cacheError.runtimeType} - $cacheError',
+            );
+          }
+          try {
+            _rememberRecognitionReplay(
+              images: imagesToProcess,
+              metrics: metricsToProcess,
+            );
+          } catch (replayError) {
+            _debugLog(
+              '[Recognize] replay state update failed but recognition will continue: ${replayError.runtimeType} - $replayError',
+            );
+          }
         }
       }
 
@@ -1672,10 +1684,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           result.recognizedConversation!.messages != null &&
           result.recognizedConversation!.messages!.isNotEmpty) {
         final recognized = result.recognizedConversation!;
-        final warningMessage = _buildRecognitionWarning(
-          recognized: recognized,
-          currentConversation: conversation,
-        );
+        String? warningMessage;
+        try {
+          warningMessage = _buildRecognitionWarning(
+            recognized: recognized,
+            currentConversation: conversation,
+          );
+        } catch (warningError) {
+          _debugLog(
+            '[Recognize] warning builder failed, fallback to server warning: ${warningError.runtimeType} - $warningError',
+          );
+          warningMessage = recognized.warning;
+        }
 
         final isFromCache = cachedRecognition != null;
         if (recognized.importPolicy == 'reject') {
@@ -1701,11 +1721,31 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
         // 顯示確認對話框
         if (!mounted) return;
-        final dialogResult = await _showRecognitionConfirmDialog(
-          recognized: recognized,
-          currentConversation: conversation,
-          warningMessage: warningMessage,
-        );
+        ScreenshotRecognitionDialogResult? dialogResult;
+        try {
+          dialogResult = await _showRecognitionConfirmDialog(
+            recognized: recognized,
+            currentConversation: conversation,
+            warningMessage: warningMessage,
+          );
+        } catch (dialogError) {
+          _debugLog(
+            '[Recognize] confirmation dialog failed: ${dialogError.runtimeType} - $dialogError',
+          );
+          _preserveRecognitionDraft(
+            recognized: recognized,
+            warningMessage: warningMessage,
+          );
+          if (!mounted) return;
+          setState(() {
+            _applyErrorState(
+              message: 'OCR recognized the screenshot, but the confirmation sheet failed to open.',
+              origin: _AnalysisErrorOrigin.recognition,
+              guidance: "Tap 'Continue import settings' to finish importing. If this keeps happening, report OCR-UI-DIALOG.",
+            );
+          });
+          return;
+        }
 
         // 用戶取消
         if (dialogResult == null) {
@@ -1762,12 +1802,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _debugLog('未知錯誤，耗時: ${elapsed}s');
       _debugLog('錯誤類型: ${e.runtimeType}');
       _debugLog('錯誤詳情: $e');
+      final diagnosticCode = 'OCR-UI-${e.runtimeType}';
       setState(() {
         _isRecognizing = false;
         _applyErrorState(
-          message: '截圖辨識暫時失敗，請稍後再試。',
-          action: AnalysisErrorAction.retry,
+          message:
+              'Screenshot recognition was interrupted during local processing ($diagnosticCode).',
+          action: null,
           origin: _AnalysisErrorOrigin.recognition,
+          guidance:
+              'Please report this code to us. Recoverable recognition state has been kept whenever possible.',
         );
       });
     }

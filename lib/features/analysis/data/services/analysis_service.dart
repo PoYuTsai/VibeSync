@@ -373,6 +373,7 @@ AnalysisException _mapUnexpectedAnalysisError(
   required bool hasUserDraft,
 }) {
   final errorMessage = error.toString();
+  final isOcrRecognition = hasImages && recognizeOnly;
 
   if (errorMessage.contains('Unauthorized') || errorMessage.contains('401')) {
     return AnalysisException(
@@ -384,6 +385,14 @@ AnalysisException _mapUnexpectedAnalysisError(
 
   if (errorMessage.contains('SocketException') ||
       errorMessage.contains('Connection refused')) {
+    if (isOcrRecognition) {
+      return AnalysisException(
+        '截圖辨識暫時失敗（OCR-NETWORK），請稍後再試。',
+        code: 'NETWORK_ERROR',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+    }
+
     return AnalysisException(
       '網路連線不穩，請確認網路後再試。',
       code: 'NETWORK_ERROR',
@@ -392,6 +401,14 @@ AnalysisException _mapUnexpectedAnalysisError(
   }
 
   if (errorMessage.contains('timeout') || errorMessage.contains('Timeout')) {
+    if (isOcrRecognition) {
+      return AnalysisException(
+        '截圖辨識暫時失敗（OCR-TIMEOUT），請稍後再試。',
+        code: 'TIMEOUT',
+        suggestedAction: AnalysisErrorAction.wait,
+      );
+    }
+
     return AnalysisException(
       hasImages
           ? recognizeOnly
@@ -402,6 +419,14 @@ AnalysisException _mapUnexpectedAnalysisError(
               : '分析花太久了，請稍後再試。',
       code: 'TIMEOUT',
       suggestedAction: AnalysisErrorAction.wait,
+    );
+  }
+
+  if (isOcrRecognition) {
+    return AnalysisException(
+      '截圖辨識暫時失敗（OCR-SVC-${error.runtimeType}），請稍後再試。',
+      code: 'UNEXPECTED_ERROR',
+      suggestedAction: AnalysisErrorAction.retry,
     );
   }
 
@@ -821,6 +846,14 @@ Duration? _durationFromMilliseconds(dynamic value) {
                     ? '伺服器暫時無法正確回應，請稍後再試。'
                     : 'Analysis failed');
 
+            if (hasImages && recognizeOnly && status >= 500) {
+              throw AnalysisException(
+                '截圖辨識暫時失敗（OCR-HTTP-$status），請稍後再試。',
+                code: errorCode ?? 'UPSTREAM_UNAVAILABLE',
+                suggestedAction: AnalysisErrorAction.retry,
+              );
+            }
+
             if (status == 429) {
               final monthlyLimit = responseData['monthlyLimit'];
               final dailyLimit = responseData['dailyLimit'];
@@ -850,7 +883,23 @@ Duration? _durationFromMilliseconds(dynamic value) {
             );
           }
 
-          return AnalysisResult.fromJson(responseData);
+          try {
+            return AnalysisResult.fromJson(responseData);
+          } catch (parseError) {
+            _debugLog(
+              '[AnalysisService] response parse failed: ${parseError.runtimeType} - $parseError',
+            );
+
+            if (hasImages && recognizeOnly) {
+              throw AnalysisException(
+                '截圖辨識暫時失敗（OCR-PARSE-${parseError.runtimeType}），請稍後再試。',
+                code: 'INVALID_RESPONSE_FORMAT',
+                suggestedAction: AnalysisErrorAction.retry,
+              );
+            }
+
+            rethrow;
+          }
         } finally {
           awaitingAiTimer.cancel();
         }

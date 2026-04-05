@@ -21,6 +21,9 @@ class OcrRecognitionCacheEntry {
 
 class OcrRecognitionCacheService {
   static const _cachePrefix = 'ocr_recognition_cache';
+  // OCR is the core product path. Temporarily bypass local recognition cache
+  // until recognition stability is fully re-verified on real devices.
+  static const _enabled = false;
   // Bump this whenever OCR structure/speaker heuristics change so the app
   // does not keep replaying stale local recognition results for the same image.
   static const _cacheVersion = 4;
@@ -165,6 +168,10 @@ class OcrRecognitionCacheService {
     List<Uint8List> images,
     String? conversationId,
   ) async {
+    if (!_enabled) {
+      return null;
+    }
+
     if (images.isEmpty) {
       return null;
     }
@@ -214,6 +221,10 @@ class OcrRecognitionCacheService {
     required RecognizedConversation recognizedConversation,
     String? conversationId,
   }) async {
+    if (!_enabled) {
+      return;
+    }
+
     if (images.isEmpty || !_shouldCache(recognizedConversation)) {
       return;
     }
@@ -238,6 +249,10 @@ class OcrRecognitionCacheService {
     List<Uint8List> images,
     String? conversationId,
   ) async {
+    if (!_enabled) {
+      return;
+    }
+
     if (images.isEmpty) {
       return;
     }
