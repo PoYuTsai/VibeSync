@@ -169,8 +169,6 @@ void main() {
       );
       expect(result.recognizedConversation!.messages![1].isFromMe, true);
       expect(result.imagesUsed, 3);
-    },
-        skip:
-            'Pinned to OCR stable baseline 043ac23. Re-enable only after parser hardening is reintroduced safely.');
+    });
   });
 }
