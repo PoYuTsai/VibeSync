@@ -38,6 +38,16 @@ Those changes were useful exploration, but they are not the current production b
 
 If we want any of them back, they should be re-applied one by one on top of `28c0965`, with isolated verification each time.
 
+## Security Fixes Re-Applied Safely On Top Of 28c0965
+
+The following server/workflow-only fixes have now been restored without touching the OCR app runtime:
+
+- `sync-subscription` no longer falls back to a hard-coded RevenueCat API key
+- `deploy-edge-function.yml` now keeps JWT verification on user-facing functions and only deploys `revenuecat-webhook` with `--no-verify-jwt`
+- `revenuecat-webhook` now stores a minimized diagnostic payload in `webhook_logs` instead of the full raw webhook body
+
+These changes do not require a new app build.
+
 ## Working Rule Going Forward
 
 - Do not batch OCR changes together.

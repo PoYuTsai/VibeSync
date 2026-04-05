@@ -45,6 +45,61 @@ function normalizeExpirationAt(value: unknown): string | null {
   return new Date(value).toISOString();
 }
 
+function extractStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function buildWebhookLogPayload(
+  event: Record<string, unknown>,
+  options: {
+    ignoredReason?: string;
+    processedTier?: string;
+    transferTo?: string[];
+    transferFrom?: string[];
+  } = {},
+): Record<string, unknown> {
+  return {
+    version: DEPLOY_VERSION,
+    type: typeof event.type === "string" ? event.type.trim() : null,
+    app_user_id: typeof event.app_user_id === "string"
+      ? event.app_user_id.trim()
+      : null,
+    original_app_user_id: typeof event.original_app_user_id === "string"
+      ? event.original_app_user_id.trim()
+      : null,
+    aliases: extractValidUuidList(event.aliases),
+    product_id: typeof event.product_id === "string"
+      ? event.product_id.trim()
+      : null,
+    new_product_id: typeof event.new_product_id === "string"
+      ? event.new_product_id.trim()
+      : null,
+    entitlement_ids: extractStringList(event.entitlement_ids),
+    environment: typeof event.environment === "string"
+      ? event.environment.trim()
+      : null,
+    store: typeof event.store === "string" ? event.store.trim() : null,
+    expiration_at_ms: typeof event.expiration_at_ms === "number"
+      ? event.expiration_at_ms
+      : null,
+    purchased_at_ms: typeof event.purchased_at_ms === "number"
+      ? event.purchased_at_ms
+      : null,
+    transferred_to: options.transferTo ?? extractValidUuidList(event.transferred_to),
+    transferred_from: options.transferFrom ??
+      extractValidUuidList(event.transferred_from),
+    processed_tier: options.processedTier ?? null,
+    ignored_reason: options.ignoredReason ?? null,
+  };
+}
+
 function extractValidUuidList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -206,10 +261,9 @@ Deno.serve(async (req) => {
           source: "revenuecat",
           event_type: type,
           user_id: app_user_id,
-          payload: {
-            ...body,
-            ignored_reason: "user_not_found",
-          },
+          payload: buildWebhookLogPayload(event, {
+            ignoredReason: "user_not_found",
+          }),
           created_at: new Date().toISOString(),
         });
 
@@ -463,7 +517,9 @@ Deno.serve(async (req) => {
       source: "revenuecat",
       event_type: type,
       user_id: app_user_id,
-      payload: body,
+      payload: buildWebhookLogPayload(event, {
+        processedTier: shouldUpdate ? newTier : undefined,
+      }),
       created_at: new Date().toISOString(),
     });
 

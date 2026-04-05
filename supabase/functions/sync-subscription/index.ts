@@ -3,8 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY") ||
-  "appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY";
+const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -107,6 +106,11 @@ serve(async (req) => {
   }
 
   try {
+    if (!REVENUECAT_IOS_API_KEY) {
+      console.error("REVENUECAT_IOS_API_KEY is not configured");
+      return jsonResponse({ error: "Server misconfigured" }, 500);
+    }
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !/^Bearer\s+\S+/i.test(authHeader)) {
       return jsonResponse({ error: "Unauthorized" }, 401);

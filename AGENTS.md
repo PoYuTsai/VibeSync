@@ -15,6 +15,10 @@
 ### 重要
 
 - 2026-04-05 這輪除錯中提過的安全補強、CI 收斂、alerting / retention 自動化，因為整版回退，**目前不能假設仍然生效**
+- 已重新補回、且不影響 OCR app runtime 的只有 3 項：
+  - `sync-subscription` 移除 RevenueCat key fallback
+  - `deploy-edge-function.yml` 只讓 `revenuecat-webhook` 使用 `--no-verify-jwt`
+  - `revenuecat-webhook` 改為精簡寫入 `webhook_logs`
 - 如果之後要恢復安全補強，必須從 `28c0965` 往上單獨重做，一次一刀驗證，不要和 OCR 主線一起改
 - OCR 主線禁止再做多 agent 並行優化；未來只能一次改一個變數，並用同一批真實截圖回歸驗證
 
