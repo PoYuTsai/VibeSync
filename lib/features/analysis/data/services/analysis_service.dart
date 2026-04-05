@@ -839,9 +839,9 @@ Duration? _durationFromMilliseconds(dynamic value) {
           }
 
           if (status != 200) {
-            final errorCode = responseData['code'] as String?;
-            final errorMessage = responseData['message'] as String? ??
-                responseData['error'] as String? ??
+            final errorCode = _coerceString(responseData['code']);
+            final errorMessage = _coerceString(responseData['message']) ??
+                _coerceString(responseData['error']) ??
                 (responseData['_nonJson'] == true
                     ? '伺服器暫時無法正確回應，請稍後再試。'
                     : 'Analysis failed');
@@ -855,20 +855,21 @@ Duration? _durationFromMilliseconds(dynamic value) {
             }
 
             if (status == 429) {
-              final monthlyLimit = responseData['monthlyLimit'];
-              final dailyLimit = responseData['dailyLimit'];
+              final monthlyLimit = _coerceInt(responseData['monthlyLimit']);
+              final dailyLimit = _coerceInt(responseData['dailyLimit']);
+              final used = _coerceInt(responseData['used']) ?? 0;
 
               if (dailyLimit != null) {
                 throw DailyLimitExceededException(
-                  dailyLimit: dailyLimit as int,
-                  used: responseData['used'] as int? ?? 0,
+                  dailyLimit: dailyLimit,
+                  used: used,
                 );
               }
 
               if (monthlyLimit != null) {
                 throw MonthlyLimitExceededException(
-                  monthlyLimit: monthlyLimit as int,
-                  used: responseData['used'] as int? ?? 0,
+                  monthlyLimit: monthlyLimit,
+                  used: used,
                 );
               }
             }
