@@ -296,11 +296,13 @@ Deno.serve(async (req) => {
     let newTier = "free";
     let shouldUpdate = false;
     let subscriptionUpdate: Record<string, unknown> | null = null;
+    const currentTier = typeof existingSubscription?.tier === "string"
+      ? existingSubscription.tier
+      : "free";
 
     switch (type) {
       case "INITIAL_PURCHASE":
       case "RENEWAL":
-      case "PRODUCT_CHANGE":
       case "UNCANCELLATION":
       case "SUBSCRIPTION_EXTENDED": {
         const derivedTier = getTierFromProductId(effectiveProductId);
@@ -322,6 +324,47 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "PRODUCT_CHANGE": {
+        const derivedTier = getTierFromProductId(effectiveProductId);
+        if (derivedTier == null) {
+          console.error(
+            `Unsupported product_id for PRODUCT_CHANGE: "${effectiveProductId}"`,
+          );
+          return jsonResponse({ error: "Unsupported product_id" }, 400);
+        }
+
+        newTier = derivedTier;
+        const isUpgrade = getTierFromProductId(currentTier) == null
+          ? false
+          : (
+            (currentTier === "free" && (newTier === "starter" || newTier === "essential")) ||
+            (currentTier === "starter" && newTier === "essential")
+          );
+
+        if (isUpgrade) {
+          shouldUpdate = true;
+          subscriptionUpdate = {
+            tier: newTier,
+            status: "active",
+            expires_at: expiresAt,
+          };
+          console.log(
+            `Applying PRODUCT_CHANGE upgrade for user ${app_user_id}: ${currentTier} -> ${newTier}`,
+          );
+        } else {
+          shouldUpdate = false;
+          subscriptionUpdate = {
+            tier: currentTier,
+            status: "active",
+            expires_at: expiresAt,
+          };
+          console.log(
+            `Ignoring PRODUCT_CHANGE downgrade until renewal for user ${app_user_id}: ${currentTier} -> ${newTier}`,
+          );
+        }
+        break;
+      }
+
       case "EXPIRATION":
       case "BILLING_ISSUE":
         newTier = "free";
@@ -336,9 +379,7 @@ Deno.serve(async (req) => {
 
       case "CANCELLATION":
         newTier = getTierFromProductId(effectiveProductId) ??
-          (typeof existingSubscription?.tier === "string"
-            ? existingSubscription.tier
-            : "free");
+          currentTier;
         console.log(
           `User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`,
         );
@@ -359,9 +400,7 @@ Deno.serve(async (req) => {
       case "TRANSFER": {
         const nowIso = new Date().toISOString();
         const transferTier = getTierFromProductId(effectiveProductId) ??
-          (typeof existingSubscription?.tier === "string"
-            ? existingSubscription.tier
-            : "free");
+          currentTier;
         const transferredFrom = extractValidUuidList(event.transferred_from);
         const transferredTo = Array.from(
           new Set([

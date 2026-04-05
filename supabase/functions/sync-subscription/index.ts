@@ -62,6 +62,18 @@ function highestTier(
   return "free";
 }
 
+function tierRank(value: "free" | "starter" | "essential"): number {
+  switch (value) {
+    case "essential":
+      return 2;
+    case "starter":
+      return 1;
+    case "free":
+    default:
+      return 0;
+  }
+}
+
 function isActiveAt(expiresDate: unknown): boolean {
   if (expiresDate == null) return true;
   if (typeof expiresDate !== "string" || !expiresDate.trim()) return true;
@@ -172,13 +184,6 @@ serve(async (req) => {
       return jsonResponse({ error: "Missing RevenueCat subscriber" }, 502);
     }
 
-    const revenueCatTier = collectTiersFromRevenueCatPayload(subscriber);
-    // Never trust the client to elevate tier. The caller may hint what it
-    // expects to have purchased, but the persisted tier must come from
-    // RevenueCat's server-side view only.
-    const finalTier = revenueCatTier;
-    const limits = TIER_LIMITS[finalTier] ?? TIER_LIMITS.free;
-
     const { data: existingSub, error: existingError } = await supabase
       .from("subscriptions")
       .select("user_id, tier, monthly_messages_used, daily_messages_used")
@@ -191,6 +196,21 @@ serve(async (req) => {
     }
 
     const previousTier = normalizeTier(existingSub?.tier);
+    const revenueCatTier = collectTiersFromRevenueCatPayload(subscriber);
+    let finalTier = revenueCatTier;
+
+    // App Store same-group downgrades can be scheduled for the next renewal.
+    // During that window we should keep the already-granted higher tier until
+    // RevenueCat/Apple finalize the renewal and our subscription row changes.
+    if (
+      revenueCatTier !== "free" &&
+      expectedTier === previousTier &&
+      tierRank(previousTier) > tierRank(revenueCatTier)
+    ) {
+      finalTier = previousTier;
+    }
+
+    const limits = TIER_LIMITS[finalTier] ?? TIER_LIMITS.free;
     // Keep usage counters intact across tier sync / restore. Upgrading should
     // increase limits, not erase already-consumed usage.
     const shouldResetUsage = false;
