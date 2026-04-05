@@ -48,6 +48,7 @@ Use these files as the current source of truth:
   - LINE quoted reply handling
   - append vs new conversation confirmation
   - editable OCR correction before import
+  - 2026-04-05 reliability rollback: restored fuller screenshot context, OCR retries, parse-failure retry, and conservative image compression after a recognition regression
 - Security:
   - JWT-verified user-facing edge functions
   - auth diagnostics ingress function

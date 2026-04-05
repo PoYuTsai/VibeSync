@@ -752,7 +752,7 @@ function buildRecognizeOnlyImagePrompt(options: {
   } = options;
 
   return joinPromptSections(
-    `You received ${imageCount} chat screenshot(s). Extract the visible conversation only. Return the \`recognizedConversation\` JSON object defined in the system instructions.`,
+    `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the \`recognizedConversation\` JSON object defined in the system instructions. If some lines are blurry or incomplete, still return the best-effort \`recognizedConversation\` output with conservative \`classification\`, \`confidence\`, and \`warning\` values instead of returning nothing.`,
     contextInfo
       ? `${contextInfo}\n- Use this only as weak context for mismatch detection.`
       : "",
@@ -3457,8 +3457,11 @@ serve(async (req) => {
 
     // 對話記憶策略：最近 30 則訊息完整保留（約 15 輪）
     // 超過時，保留開頭 + 最近對話，中間省略
-    const MAX_RECENT_MESSAGES = recognizeOnly ? 12 : 30;
-    const OPENING_MESSAGES = recognizeOnly ? 2 : 4; // Recognize-only only needs light thread context.
+      // OCR reliability matters more than shaving a few tokens off screenshot
+      // requests. Recognize-only flows still benefit from the same opening +
+      // recent window as full analysis.
+      const MAX_RECENT_MESSAGES = 30;
+      const OPENING_MESSAGES = 4;
     let compiledConversationText = "";
     let compiledContextMode = "full";
     let compiledMessageCount = messages.length;
@@ -3791,7 +3794,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         {
           timeout: timeoutMs,
           allowModelFallback,
-          maxRetries: recognizeOnly || hasImages ? 1 : 2,
+          maxRetries: 2,
         },
       );
     } catch (error) {
@@ -3898,7 +3901,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         });
       }
     } catch (parseError) {
-      const shouldRetryParseFailure = !hasImages;
+      const shouldRetryParseFailure = true;
       logWarn("ai_response_parse_failed", {
         user: summarizeUser(user.id),
         model: actualModel,

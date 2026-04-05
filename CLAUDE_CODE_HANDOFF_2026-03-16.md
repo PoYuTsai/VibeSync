@@ -30,6 +30,27 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
   - `docs/gstack-usage-sop.md`
 - Historical tracked docs were also scrubbed of plaintext shared test-password references where they were still present.
 
+## 2026-04-05 OCR Regression Follow-up
+
+- A later regression check showed the OCR success rate had dropped after the
+  screenshot/latency optimizations in rounds 6-8.
+- Root cause:
+  - recognize-only screenshot requests were over-trimmed to a much smaller
+    thread context window
+  - image / recognize-only retries were reduced from 2 to 1
+  - parse-failure retry was disabled for image requests
+  - screenshot compression also gained a newer, more aggressive branch
+- Reliability-first rollback was applied:
+  - recognize-only requests now keep the fuller opening + recent thread window
+  - image / recognize-only requests retry up to 2 times again
+  - parse-failure retry is re-enabled for image requests
+  - screenshot compression was restored to the more conservative, previously
+    stable path
+- Principle going forward:
+  - OCR success rate and correctness are the primary gate
+  - screenshot latency optimizations must not ship if they reduce recognition
+    stability
+
 ## 2026-04-03 TestFlight v82 Snapshot
 
 - Current phase: pre-submission stabilization on TestFlight v82
