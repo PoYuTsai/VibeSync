@@ -1,6 +1,73 @@
 // lib/features/analysis/domain/entities/analysis_models.dart
 import 'game_stage.dart';
 
+Map<String, dynamic>? _asStringDynamicMap(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+
+  if (value is Map) {
+    return value.map((key, val) => MapEntry(key.toString(), val));
+  }
+
+  return null;
+}
+
+int? _asInt(dynamic value) {
+  if (value is int) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.round();
+  }
+
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    return int.tryParse(trimmed) ?? double.tryParse(trimmed)?.round();
+  }
+
+  return null;
+}
+
+bool? _asBool(dynamic value) {
+  if (value is bool) {
+    return value;
+  }
+
+  if (value is num) {
+    if (value == 1) return true;
+    if (value == 0) return false;
+  }
+
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true' || normalized == '1') {
+      return true;
+    }
+    if (normalized == 'false' || normalized == '0') {
+      return false;
+    }
+  }
+
+  return null;
+}
+
+List<String> _asStringList(dynamic value) {
+  if (value is! List) {
+    return const [];
+  }
+
+  return value
+      .map((item) => item is String ? item : item?.toString() ?? '')
+      .where((item) => item.trim().isNotEmpty)
+      .toList();
+}
+
 /// Topic depth levels (話題深度)
 enum TopicDepthLevel {
   event, // 事件層 (表面話題)
@@ -89,10 +156,10 @@ class HealthCheck {
       return const HealthCheck(issues: [], suggestions: []);
     }
     return HealthCheck(
-      issues: (json['issues'] as List?)?.cast<String>() ?? [],
-      suggestions: (json['suggestions'] as List?)?.cast<String>() ?? [],
-      hasNeedySignals: json['hasNeedySignals'] as bool? ?? false,
-      hasInterviewStyle: json['hasInterviewStyle'] as bool? ?? false,
+      issues: _asStringList(json['issues']),
+      suggestions: _asStringList(json['suggestions']),
+      hasNeedySignals: _asBool(json['hasNeedySignals']) ?? false,
+      hasInterviewStyle: _asBool(json['hasInterviewStyle']) ?? false,
       speakingRatio: (json['speakingRatio'] as num?)?.toDouble(),
     );
   }
@@ -139,15 +206,15 @@ class PsychologyAnalysis {
       return const PsychologyAnalysis(subtext: '');
     }
     // Parse nested shitTest object if present
-    final shitTestData = json['shitTest'] as Map<String, dynamic>?;
+    final shitTestData = _asStringDynamicMap(json['shitTest']);
     String? shitTestSuggestion;
-    if (shitTestData != null && shitTestData['detected'] == true) {
+    if (shitTestData != null && _asBool(shitTestData['detected']) == true) {
       shitTestSuggestion = shitTestData['suggestion'] as String?;
     }
     return PsychologyAnalysis(
       subtext: json['subtext'] as String? ?? '',
       shitTest: shitTestSuggestion,
-      qualificationSignal: json['qualificationSignal'] as bool? ?? false,
+      qualificationSignal: _asBool(json['qualificationSignal']) ?? false,
     );
   }
 }
@@ -300,11 +367,11 @@ class MyMessageAnalysis {
     return MyMessageAnalysis(
       sentMessage: json['sentMessage'] as String? ?? '',
       ifColdResponse: ResponsePrediction.fromJson(
-          json['ifColdResponse'] as Map<String, dynamic>?),
+          _asStringDynamicMap(json['ifColdResponse'])),
       ifWarmResponse: ResponsePrediction.fromJson(
-          json['ifWarmResponse'] as Map<String, dynamic>?),
-      backupTopics: (json['backupTopics'] as List?)?.cast<String>() ?? [],
-      warnings: (json['warnings'] as List?)?.cast<String>() ?? [],
+          _asStringDynamicMap(json['ifWarmResponse'])),
+      backupTopics: _asStringList(json['backupTopics']),
+      warnings: _asStringList(json['warnings']),
     );
   }
 }
@@ -354,11 +421,11 @@ class RecognizedMessage {
     final rawQuotedReplyPreview =
         (json['quotedReplyPreview'] as String?)?.trim();
     final rawQuotedReplyPreviewIsFromMe =
-        json['quotedReplyPreviewIsFromMe'] as bool?;
+        _asBool(json['quotedReplyPreviewIsFromMe']);
 
     return RecognizedMessage(
       side: normalizedSide,
-      isFromMe: json['isFromMe'] as bool? ?? false,
+      isFromMe: _asBool(json['isFromMe']) ?? false,
       content: json['content'] as String? ?? '',
       quotedReplyPreview:
           rawQuotedReplyPreview == null || rawQuotedReplyPreview.isEmpty
@@ -431,20 +498,23 @@ class RecognizedConversation {
     if (json == null) {
       return const RecognizedConversation(messageCount: 0, summary: '');
     }
+    final messagesData = json['messages'];
     return RecognizedConversation(
       contactName: json['contactName'] as String?,
-      messageCount: json['messageCount'] as int? ?? 0,
+      messageCount: _asInt(json['messageCount']) ?? 0,
       summary: json['summary'] as String? ?? '',
-      messages: json['messages'] != null
-          ? (json['messages'] as List)
-              .map((m) => RecognizedMessage.fromJson(m as Map<String, dynamic>))
+      messages: messagesData is List
+          ? messagesData
+              .map(_asStringDynamicMap)
+              .whereType<Map<String, dynamic>>()
+              .map(RecognizedMessage.fromJson)
               .toList()
           : null,
       classification: json['classification'] as String? ?? 'valid_chat',
       importPolicy: json['importPolicy'] as String? ?? 'allow',
       confidence: json['confidence'] as String? ?? 'high',
       sideConfidence: json['sideConfidence'] as String? ?? 'high',
-      uncertainSideCount: json['uncertainSideCount'] as int? ?? 0,
+      uncertainSideCount: _asInt(json['uncertainSideCount']) ?? 0,
       warning: json['warning'] as String?,
     );
   }
@@ -550,15 +620,14 @@ class AnalysisResult {
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
-    final enthusiasm = json['enthusiasm'] as Map<String, dynamic>?;
-    final repliesData = json['replies'] as Map<String, dynamic>?;
+    final enthusiasm = _asStringDynamicMap(json['enthusiasm']);
+    final repliesData = _asStringDynamicMap(json['replies']);
     final normalizedReplies = _normalizeRepliesMap(repliesData);
 
     // Parse healthCheck only if present (Essential tier only)
     HealthCheck? healthCheck;
     if (json['healthCheck'] != null) {
-      healthCheck =
-          HealthCheck.fromJson(json['healthCheck'] as Map<String, dynamic>?);
+      healthCheck = HealthCheck.fromJson(_asStringDynamicMap(json['healthCheck']));
     }
 
     // Determine if should give up (cold enthusiasm + specific signals)
@@ -574,41 +643,39 @@ class AnalysisResult {
     OptimizedMessage? optimizedMessage;
     if (json['optimizedMessage'] != null) {
       optimizedMessage = OptimizedMessage.fromJson(
-          json['optimizedMessage'] as Map<String, dynamic>?);
+          _asStringDynamicMap(json['optimizedMessage']));
     }
 
     // Parse myMessageAnalysis if present (「我說」模式)
     MyMessageAnalysis? myMessageAnalysis;
     if (json['myMessageAnalysis'] != null) {
       myMessageAnalysis = MyMessageAnalysis.fromJson(
-          json['myMessageAnalysis'] as Map<String, dynamic>?);
+          _asStringDynamicMap(json['myMessageAnalysis']));
     }
 
     // Parse recognizedConversation if present (截圖識別結果)
     RecognizedConversation? recognizedConversation;
     if (json['recognizedConversation'] != null) {
       recognizedConversation = RecognizedConversation.fromJson(
-          json['recognizedConversation'] as Map<String, dynamic>?);
+          _asStringDynamicMap(json['recognizedConversation']));
     }
 
     // Parse imagesUsed from usage
-    final usage = json['usage'] as Map<String, dynamic>?;
-    final imagesUsed = usage?['imagesUsed'] as int?;
+    final usage = _asStringDynamicMap(json['usage']);
+    final imagesUsed = _asInt(usage?['imagesUsed']);
     final recommendation = _ensureRecommendationFallback(
       FinalRecommendation.fromJson(
-          json['finalRecommendation'] as Map<String, dynamic>?),
+          _asStringDynamicMap(json['finalRecommendation'])),
       normalizedReplies,
     );
 
     return AnalysisResult(
-      enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
+      enthusiasmScore: _asInt(enthusiasm?['score']) ?? 50,
       strategy: json['strategy'] as String? ?? '',
-      gameStage:
-          GameStageInfo.fromJson(json['gameStage'] as Map<String, dynamic>?),
-      psychology: PsychologyAnalysis.fromJson(
-          json['psychology'] as Map<String, dynamic>?),
-      topicDepth:
-          TopicDepth.fromJson(json['topicDepth'] as Map<String, dynamic>?),
+      gameStage: GameStageInfo.fromJson(_asStringDynamicMap(json['gameStage'])),
+      psychology:
+          PsychologyAnalysis.fromJson(_asStringDynamicMap(json['psychology'])),
+      topicDepth: TopicDepth.fromJson(_asStringDynamicMap(json['topicDepth'])),
       healthCheck: healthCheck,
       replies: normalizedReplies,
       recommendation: recommendation,
