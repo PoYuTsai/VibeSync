@@ -30,7 +30,7 @@ extension BoosterPackageExtension on BoosterPackage {
 
   double get costPerMessage => priceNTD / messageCount;
 
-  String get label => '$messageCount messages';
+  String get label => '$messageCount 則';
 
   String get priceLabel => 'NT\$$priceNTD';
 
@@ -39,9 +39,9 @@ extension BoosterPackageExtension on BoosterPackage {
       case BoosterPackage.small:
         return '';
       case BoosterPackage.medium:
-        return 'Save 15%';
+        return '省 15%';
       case BoosterPackage.large:
-        return 'Save 23%';
+        return '省 23%';
     }
   }
 }

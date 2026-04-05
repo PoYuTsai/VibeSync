@@ -118,6 +118,16 @@ flutter run -d "iPhone 15 Pro"
 flutter devices
 ```
 
+## Flutter Test Strategy
+
+- Blocking release/distribution CI now runs the curated smoke suite in
+  `tool/run_flutter_ci_smoke_tests.sh`
+- The smoke-test manifest lives in `tool/flutter_ci_smoke_tests.txt`
+- Legacy screen/widget tests that no longer match the current UX are tracked in
+  `docs/flutter-test-debt-2026-04-05.md`
+
+Use full `flutter test` for broader local regression when the environment is stable, but treat the smoke suite as the release gate until the legacy suite is rewritten.
+
 ## Security / Privacy Posture
 
 Current rough security rating: `9.2/10 for an early public launch`, with active monitoring.

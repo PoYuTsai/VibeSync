@@ -103,6 +103,16 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - `Deploy Edge Function` now still deploys functions even when `SUPABASE_DB_PASSWORD` is missing, but emits a clear warning and skips `supabase db push` in that case instead of failing the whole workflow.
 - Net effect: `main` should have a much cleaner signal, with launch-critical workflows prioritized over legacy web/Firebase distribution noise.
 
+## 2026-04-05 Flutter CI Smoke Suite
+
+- Full `flutter test` still contains a batch of legacy widget/screen tests that no longer match the current UX and copy.
+- Added:
+  - `tool/run_flutter_ci_smoke_tests.sh`
+  - `tool/flutter_ci_smoke_tests.txt`
+  - `docs/flutter-test-debt-2026-04-05.md`
+- `release.yml` and `distribute.yml` now run the curated smoke suite as the blocking gate instead of the whole legacy suite.
+- Tests in the debt doc are not "ignored forever"; they are explicitly queued for rewrite in smaller batches.
+
 ## 2026-04-03 Subscription Sync Root-Cause Fix
 
 - The long-running "Free analyze -> upgrade to Essential -> analysis still behaves like free tier" bug was traced to `public.subscriptions` RLS: the app was trying to update the subscription row directly from the client, but `analyze-chat` only trusts the backend `subscriptions` row.

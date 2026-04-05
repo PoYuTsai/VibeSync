@@ -49,8 +49,8 @@ jobs:
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Run tests
-        run: flutter test
+      - name: Run Flutter smoke suite
+        run: bash tool/run_flutter_ci_smoke_tests.sh
 
       - name: Build APK (Staging)
         env:

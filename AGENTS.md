@@ -26,6 +26,7 @@ Use these files as the current source of truth:
 - `docs/security-incident-response.md`
 - `docs/security-alerting-setup.md`
 - `docs/ocr-analysis-maturity-benchmark.md`
+- `docs/flutter-test-debt-2026-04-05.md` - full `flutter test` 目前仍有一批落後現況的 legacy widget/screen tests；blocking CI 改跑 curated smoke suite
 - `docs/discord-vibesync-troubleshooting.md`
 
 ## Current Truth

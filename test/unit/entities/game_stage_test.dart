@@ -5,21 +5,21 @@ void main() {
   group('GameStage', () {
     group('label', () {
       test('returns correct Chinese label for each stage', () {
-        expect(GameStage.opening.label, '打開');
-        expect(GameStage.premise.label, '前提');
-        expect(GameStage.qualification.label, '評估');
-        expect(GameStage.narrative.label, '敘事');
-        expect(GameStage.close.label, '收尾');
+        expect(GameStage.opening.label, '初識');
+        expect(GameStage.premise.label, '熟悉中');
+        expect(GameStage.qualification.label, '深入了解');
+        expect(GameStage.narrative.label, '分享故事');
+        expect(GameStage.close.label, '見面邀約');
       });
     });
 
     group('description', () {
       test('returns correct description for each stage', () {
-        expect(GameStage.opening.description, '破冰階段');
-        expect(GameStage.premise.description, '進入男女框架');
-        expect(GameStage.qualification.description, '她在證明自己');
-        expect(GameStage.narrative.description, '說故事、個性樣本');
-        expect(GameStage.close.description, '準備邀約');
+        expect(GameStage.opening.description, '剛開始聊天');
+        expect(GameStage.premise.description, '慢慢熟悉對方');
+        expect(GameStage.qualification.description, '彼此更了解中');
+        expect(GameStage.narrative.description, '交換故事和想法');
+        expect(GameStage.close.description, '可以約出來了');
       });
     });
 
@@ -37,10 +37,10 @@ void main() {
   group('GameStageStatus', () {
     group('label', () {
       test('returns correct label for each status', () {
-        expect(GameStageStatus.normal.label, '正常進行');
-        expect(GameStageStatus.stuckFriend.label, '卡在朋友框');
-        expect(GameStageStatus.canAdvance.label, '可以推進');
-        expect(GameStageStatus.shouldRetreat.label, '建議退回');
+        expect(GameStageStatus.normal.label, '進展順利');
+        expect(GameStageStatus.stuckFriend.label, '偏向朋友');
+        expect(GameStageStatus.canAdvance.label, '可以更進一步');
+        expect(GameStageStatus.shouldRetreat.label, '放慢節奏');
       });
     });
   });

@@ -21,7 +21,7 @@ void main() {
       );
 
       expect(result.decision, ScreenshotPreflightDecision.reject);
-      expect(result.message, contains('解析度太低'));
+      expect(result.message, contains('太小了'));
     });
 
     test('warns instead of rejecting tight landscape chat crops', () {

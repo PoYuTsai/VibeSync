@@ -45,6 +45,7 @@ class AppColors {
 
   // === Warm Theme - 毛玻璃文字 ===
   static const glassTextPrimary = Color(0xFF4A3548);   // 深紫灰 (主要文字，用於玻璃容器內)
+  static const glassTextSecondary = Color(0xFF6C5A6B); // 次要說明文字，仍保持足夠對比
   static const glassTextHint = Color(0xFF8B4557);      // 酒紅色 (hint，參考圖風格)
 
   // === Warm Theme - 背景上的文字（不在玻璃容器內）===
