@@ -804,6 +804,85 @@ function buildImageAnalysisPrompt(options: {
   );
 }
 
+async function attemptContextFreeRecognizeOnlyRecovery(options: {
+  selectedModel: string;
+  images: ImageData[];
+  timeoutMs: number;
+  allowModelFallback: boolean;
+  userId: string;
+}) {
+  const recoveryPrompt = buildRecognizeOnlyImagePrompt({
+    imageCount: options.images.length,
+    contextInfo: "",
+    historicalContextInfo: "",
+    compiledConversationText: "",
+  });
+
+  logInfo("ocr_context_free_recovery_started", {
+    user: summarizeUser(options.userId),
+    imageCount: options.images.length,
+  });
+
+  try {
+    const recoveryResult = await callClaudeWithFallback(
+      {
+        model: options.selectedModel,
+        max_tokens: 1600,
+        system: OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: buildVisionContent(recoveryPrompt, options.images),
+          },
+        ],
+      },
+      CLAUDE_API_KEY,
+      {
+        timeout: options.timeoutMs,
+        allowModelFallback: options.allowModelFallback,
+        maxRetries: 2,
+      },
+    );
+
+    const recoveryData = recoveryResult.data as {
+      content?: Array<{ text?: string }>;
+    };
+    const recoveryContent = recoveryData.content?.[0]?.text ?? "";
+    const recoveryJsonMatch = recoveryContent.match(/\{[\s\S]*\}/);
+    if (!recoveryJsonMatch) {
+      logWarn("ocr_context_free_recovery_missing_json", {
+        user: summarizeUser(options.userId),
+        textLength: recoveryContent.length,
+      });
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(recoveryJsonMatch[0]) as Record<string, unknown>;
+      logInfo("ocr_context_free_recovery_succeeded", {
+        user: summarizeUser(options.userId),
+        model: recoveryResult.model,
+      });
+      return parsed;
+    } catch (parseError) {
+      const repaired = repairJson(recoveryJsonMatch[0]);
+      const parsed = JSON.parse(repaired) as Record<string, unknown>;
+      logInfo("ocr_context_free_recovery_repair_succeeded", {
+        user: summarizeUser(options.userId),
+        model: recoveryResult.model,
+        error: getErrorMessage(parseError),
+      });
+      return parsed;
+    }
+  } catch (error) {
+    logWarn("ocr_context_free_recovery_failed", {
+      user: summarizeUser(options.userId),
+      error: getErrorMessage(error),
+    });
+    return null;
+  }
+}
+
 const SYSTEM_PROMPT =
   `你是一位專業的社交溝通教練，幫助用戶提升對話技巧，最終目標是幫助用戶成功邀約。
 
@@ -4018,7 +4097,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     });
 
     // 檢查截圖識別是否失敗
-    const recognizedConversation = result.recognizedConversation as
+    let recognizedConversation = result.recognizedConversation as
       | {
         messageCount?: number;
         importPolicy?: string;
@@ -4039,7 +4118,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         };
       }
       | undefined;
-    const recognitionObservability = buildRecognitionObservability(
+    let recognitionObservability = buildRecognitionObservability(
       recognizedConversation,
     );
     if (
@@ -4102,6 +4181,50 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         shouldChargeQuota: false,
       }, 400);
     }
+    if (
+      hasImages &&
+      recognizeOnly &&
+      (!recognizedConversation || recognizedConversation.messageCount === 0)
+    ) {
+      const recoveryResult = await attemptContextFreeRecognizeOnlyRecovery({
+        selectedModel,
+        images: images as ImageData[],
+        timeoutMs,
+        allowModelFallback,
+        userId: user.id,
+      });
+
+      if (recoveryResult != null) {
+        result = normalizeRecognizedConversation(recoveryResult, {
+          knownContactName,
+        });
+        recognizedConversation = result.recognizedConversation as
+          | {
+            messageCount?: number;
+            importPolicy?: string;
+            warning?: string;
+            summary?: string;
+            classification?: string;
+            confidence?: string;
+            sideConfidence?: string;
+            uncertainSideCount?: number;
+            normalizationTelemetry?: {
+              continuityAdjustedCount?: number;
+              groupedAdjustedCount?: number;
+              layoutFirstAdjustedCount?: number;
+              systemRowsRemovedCount?: number;
+              quotedPreviewRemovedCount?: number;
+              quotedPreviewAttachedCount?: number;
+              overlapRemovedCount?: number;
+            };
+          }
+          | undefined;
+        recognitionObservability = buildRecognitionObservability(
+          recognizedConversation,
+        );
+      }
+    }
+
     if (
       hasImages &&
       (!recognizedConversation || recognizedConversation.messageCount === 0)

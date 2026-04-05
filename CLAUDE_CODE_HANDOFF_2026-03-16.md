@@ -46,6 +46,20 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
   - parse-failure retry is re-enabled for image requests
   - screenshot compression was restored to the more conservative, previously
     stable path
+- A second hidden failure path was then found on the Flutter side:
+  - some OCR payloads were structurally usable, but fields like
+    `messageCount / uncertainSideCount / imagesUsed / isFromMe /
+    quotedReplyPreviewIsFromMe / qualificationSignal` sometimes arrived as
+    strings, doubles, or loose maps
+  - `AnalysisResult.fromJson()` could throw on those payloads and the screen
+    would collapse into the generic `截圖辨識暫時失敗，請稍後再試` message even
+    though Claude had returned a partial OCR result
+- Follow-up OCR hardening was applied:
+  - `lib/features/analysis/domain/entities/analysis_models.dart` now coerces
+    loose OCR field types instead of requiring perfect JSON typing
+  - `analyze-chat` now attempts one extra context-free recognize-only recovery
+    pass before returning `RECOGNITION_FAILED`, which is meant to rescue cases
+    where thread context itself is the biasing factor
 - Principle going forward:
   - OCR success rate and correctness are the primary gate
   - screenshot latency optimizations must not ship if they reduce recognition
