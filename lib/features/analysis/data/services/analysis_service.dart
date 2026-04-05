@@ -373,7 +373,6 @@ AnalysisException _mapUnexpectedAnalysisError(
   required bool hasUserDraft,
 }) {
   final errorMessage = error.toString();
-  final isOcrRecognition = hasImages && recognizeOnly;
 
   if (errorMessage.contains('Unauthorized') || errorMessage.contains('401')) {
     return AnalysisException(
@@ -385,14 +384,6 @@ AnalysisException _mapUnexpectedAnalysisError(
 
   if (errorMessage.contains('SocketException') ||
       errorMessage.contains('Connection refused')) {
-    if (isOcrRecognition) {
-      return AnalysisException(
-        '截圖辨識暫時失敗（OCR-NETWORK），請稍後再試。',
-        code: 'NETWORK_ERROR',
-        suggestedAction: AnalysisErrorAction.retry,
-      );
-    }
-
     return AnalysisException(
       '網路連線不穩，請確認網路後再試。',
       code: 'NETWORK_ERROR',
@@ -401,14 +392,6 @@ AnalysisException _mapUnexpectedAnalysisError(
   }
 
   if (errorMessage.contains('timeout') || errorMessage.contains('Timeout')) {
-    if (isOcrRecognition) {
-      return AnalysisException(
-        '截圖辨識暫時失敗（OCR-TIMEOUT），請稍後再試。',
-        code: 'TIMEOUT',
-        suggestedAction: AnalysisErrorAction.wait,
-      );
-    }
-
     return AnalysisException(
       hasImages
           ? recognizeOnly
@@ -419,14 +402,6 @@ AnalysisException _mapUnexpectedAnalysisError(
               : '分析花太久了，請稍後再試。',
       code: 'TIMEOUT',
       suggestedAction: AnalysisErrorAction.wait,
-    );
-  }
-
-  if (isOcrRecognition) {
-    return AnalysisException(
-      '截圖辨識暫時失敗（OCR-SVC-${error.runtimeType}），請稍後再試。',
-      code: 'UNEXPECTED_ERROR',
-      suggestedAction: AnalysisErrorAction.retry,
     );
   }
 
@@ -545,84 +520,25 @@ class AnalysisService {
     }
   }
 
-Map<String, dynamic>? _normalizeObject(dynamic value) {
-  if (value is Map<String, dynamic>) {
-    return value;
-  }
+  Map<String, dynamic>? _normalizeObject(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
 
-  if (value is Map) {
-    return value.map((key, value) => MapEntry(key.toString(), value));
-  }
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
 
-  return null;
-}
-
-String? _coerceString(dynamic value) {
-  if (value is String) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
-  }
-
-  if (value == null) {
     return null;
   }
 
-  final normalized = value.toString().trim();
-  return normalized.isEmpty ? null : normalized;
-}
-
-int? _coerceInt(dynamic value) {
-  if (value is int) {
-    return value;
-  }
-
-  if (value is num) {
-    return value.round();
-  }
-
-  if (value is String) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      return null;
+  Duration? _durationFromMilliseconds(dynamic value) {
+    if (value is num) {
+      return Duration(milliseconds: value.round());
     }
 
-    return int.tryParse(trimmed) ?? double.tryParse(trimmed)?.round();
+    return null;
   }
-
-  return null;
-}
-
-bool? _coerceBool(dynamic value) {
-  if (value is bool) {
-    return value;
-  }
-
-  if (value is num) {
-    if (value == 1) return true;
-    if (value == 0) return false;
-  }
-
-  if (value is String) {
-    final normalized = value.trim().toLowerCase();
-    if (normalized == 'true' || normalized == '1') {
-      return true;
-    }
-    if (normalized == 'false' || normalized == '0') {
-      return false;
-    }
-  }
-
-  return null;
-}
-
-Duration? _durationFromMilliseconds(dynamic value) {
-  final milliseconds = _coerceInt(value);
-  if (milliseconds != null) {
-    return Duration(milliseconds: milliseconds);
-  }
-
-  return null;
-}
 
   Future<AnalysisResult> _doAnalyze(
     List<Message> messages, {
@@ -757,77 +673,104 @@ Duration? _durationFromMilliseconds(dynamic value) {
           final responseData = _decodeResponseBody(httpResponse);
           final telemetryData = _normalizeObject(responseData['telemetry']);
 
-          try {
-            onTelemetry?.call(
-              AnalysisTelemetry(
-                requestType: _coerceString(telemetryData?['requestType']),
-                imageCount: imageCount,
-                requestBodyBytes: requestBodyBytes,
-                payloadPreparationDuration: payloadPreparationDuration,
-                roundTripDuration: roundTripDuration,
-                edgeAiDuration: _durationFromMilliseconds(
-                  telemetryData?['serverAiLatencyMs'],
-                ),
-                totalCompressedImageBytes:
-                    _coerceInt(telemetryData?['totalImageBytes']),
-                cacheHit: false,
-                fallbackUsed: _coerceBool(telemetryData?['fallbackUsed']) ?? false,
-                retryCount: _coerceInt(telemetryData?['retries']) ?? 0,
-                timeoutDuration: _durationFromMilliseconds(
-                  telemetryData?['timeoutMs'],
-                ),
-                allowModelFallback:
-                    _coerceBool(telemetryData?['allowModelFallback']),
-                contextMode: _coerceString(telemetryData?['contextMode']),
-                inputMessageCount: _coerceInt(telemetryData?['inputMessageCount']),
-                compiledMessageCount:
-                    _coerceInt(telemetryData?['compiledMessageCount']),
-                truncatedMessageCount:
-                    _coerceInt(telemetryData?['truncatedMessageCount']),
-                openingMessagesUsed:
-                    _coerceInt(telemetryData?['openingMessagesUsed']),
-                recentMessagesUsed:
-                    _coerceInt(telemetryData?['recentMessagesUsed']),
-                conversationSummaryUsed:
-                    _coerceBool(telemetryData?['conversationSummaryUsed']) ?? false,
-                recognizedClassification:
-                    _coerceString(telemetryData?['recognizedClassification']),
-                recognizedConfidence:
-                    _coerceString(telemetryData?['recognizedConfidence']),
-                recognizedSideConfidence:
-                    _coerceString(telemetryData?['recognizedSideConfidence']),
-                recognizedMessageCount:
-                    _coerceInt(telemetryData?['recognizedMessageCount']),
-                uncertainSideCount:
-                    _coerceInt(telemetryData?['uncertainSideCount']),
-                continuityAdjustedCount:
-                    _coerceInt(telemetryData?['continuityAdjustedCount']),
-                groupedAdjustedCount:
-                    _coerceInt(telemetryData?['groupedAdjustedCount']),
-                layoutFirstAdjustedCount:
-                    _coerceInt(telemetryData?['layoutFirstAdjustedCount']),
-                systemRowsRemovedCount:
-                    _coerceInt(telemetryData?['systemRowsRemovedCount']),
-                quotedPreviewRemovedCount:
-                    _coerceInt(telemetryData?['quotedPreviewRemovedCount']),
-                quotedPreviewAttachedCount:
-                    _coerceInt(telemetryData?['quotedPreviewAttachedCount']),
-                overlapRemovedCount:
-                    _coerceInt(telemetryData?['overlapRemovedCount']),
-                shouldChargeQuota:
-                    _coerceBool(telemetryData?['shouldChargeQuota']),
-                chargedMessageCount:
-                    _coerceInt(telemetryData?['chargedMessageCount']),
-                estimatedMessageCount:
-                    _coerceInt(telemetryData?['estimatedMessageCount']),
-                quotaReason: _coerceString(telemetryData?['quotaReason']),
+          onTelemetry?.call(
+          AnalysisTelemetry(
+            requestType: telemetryData?['requestType'] as String?,
+            imageCount: imageCount,
+            requestBodyBytes: requestBodyBytes,
+            payloadPreparationDuration: payloadPreparationDuration,
+              roundTripDuration: roundTripDuration,
+              edgeAiDuration: _durationFromMilliseconds(
+                telemetryData?['serverAiLatencyMs'],
               ),
-            );
-          } catch (telemetryError) {
-            _debugLog(
-              '[AnalysisService] telemetry parse failed but analysis will continue: ${telemetryError.runtimeType} - $telemetryError',
-            );
-          }
+              totalCompressedImageBytes:
+                  telemetryData?['totalImageBytes'] is num
+                      ? (telemetryData?['totalImageBytes'] as num).round()
+                      : null,
+              cacheHit: false,
+              fallbackUsed: telemetryData?['fallbackUsed'] == true,
+              retryCount: telemetryData?['retries'] is num
+                  ? (telemetryData?['retries'] as num).round()
+                  : 0,
+              timeoutDuration: _durationFromMilliseconds(
+                telemetryData?['timeoutMs'],
+              ),
+              allowModelFallback: telemetryData?['allowModelFallback'] as bool?,
+              contextMode: telemetryData?['contextMode'] as String?,
+              inputMessageCount: telemetryData?['inputMessageCount'] is num
+                  ? (telemetryData?['inputMessageCount'] as num).round()
+                  : null,
+              compiledMessageCount:
+                  telemetryData?['compiledMessageCount'] is num
+                      ? (telemetryData?['compiledMessageCount'] as num).round()
+                      : null,
+              truncatedMessageCount:
+                  telemetryData?['truncatedMessageCount'] is num
+                      ? (telemetryData?['truncatedMessageCount'] as num).round()
+                      : null,
+              openingMessagesUsed: telemetryData?['openingMessagesUsed'] is num
+                  ? (telemetryData?['openingMessagesUsed'] as num).round()
+                  : null,
+              recentMessagesUsed: telemetryData?['recentMessagesUsed'] is num
+                  ? (telemetryData?['recentMessagesUsed'] as num).round()
+                  : null,
+              conversationSummaryUsed:
+                  telemetryData?['conversationSummaryUsed'] == true,
+              recognizedClassification:
+                  telemetryData?['recognizedClassification'] as String?,
+              recognizedConfidence:
+                  telemetryData?['recognizedConfidence'] as String?,
+              recognizedSideConfidence:
+                  telemetryData?['recognizedSideConfidence'] as String?,
+              recognizedMessageCount: telemetryData?['recognizedMessageCount']
+                      is num
+                  ? (telemetryData?['recognizedMessageCount'] as num).round()
+                  : null,
+              uncertainSideCount: telemetryData?['uncertainSideCount'] is num
+                  ? (telemetryData?['uncertainSideCount'] as num).round()
+                  : null,
+              continuityAdjustedCount: telemetryData?['continuityAdjustedCount']
+                      is num
+                  ? (telemetryData?['continuityAdjustedCount'] as num).round()
+                  : null,
+              groupedAdjustedCount: telemetryData?['groupedAdjustedCount'] is num
+                  ? (telemetryData?['groupedAdjustedCount'] as num).round()
+                  : null,
+              layoutFirstAdjustedCount:
+                  telemetryData?['layoutFirstAdjustedCount'] is num
+                      ? (telemetryData?['layoutFirstAdjustedCount'] as num)
+                          .round()
+                      : null,
+              systemRowsRemovedCount:
+                  telemetryData?['systemRowsRemovedCount'] is num
+                      ? (telemetryData?['systemRowsRemovedCount'] as num)
+                          .round()
+                      : null,
+              quotedPreviewRemovedCount:
+                  telemetryData?['quotedPreviewRemovedCount'] is num
+                      ? (telemetryData?['quotedPreviewRemovedCount'] as num)
+                          .round()
+                      : null,
+              quotedPreviewAttachedCount:
+                  telemetryData?['quotedPreviewAttachedCount'] is num
+                      ? (telemetryData?['quotedPreviewAttachedCount'] as num)
+                          .round()
+                      : null,
+              overlapRemovedCount: telemetryData?['overlapRemovedCount'] is num
+                  ? (telemetryData?['overlapRemovedCount'] as num).round()
+                  : null,
+              shouldChargeQuota: telemetryData?['shouldChargeQuota'] as bool?,
+              chargedMessageCount: telemetryData?['chargedMessageCount'] is num
+                  ? (telemetryData?['chargedMessageCount'] as num).round()
+                  : null,
+              estimatedMessageCount:
+                  telemetryData?['estimatedMessageCount'] is num
+                      ? (telemetryData?['estimatedMessageCount'] as num)
+                          .round()
+                      : null,
+              quotaReason: telemetryData?['quotaReason'] as String?,
+            ),
+          );
 
           final status = httpResponse.statusCode;
           if (responseData['_nonJson'] == true && status == 200) {
@@ -839,37 +782,28 @@ Duration? _durationFromMilliseconds(dynamic value) {
           }
 
           if (status != 200) {
-            final errorCode = _coerceString(responseData['code']);
-            final errorMessage = _coerceString(responseData['message']) ??
-                _coerceString(responseData['error']) ??
+            final errorCode = responseData['code'] as String?;
+            final errorMessage = responseData['message'] as String? ??
+                responseData['error'] as String? ??
                 (responseData['_nonJson'] == true
                     ? '伺服器暫時無法正確回應，請稍後再試。'
                     : 'Analysis failed');
 
-            if (hasImages && recognizeOnly && status >= 500) {
-              throw AnalysisException(
-                '截圖辨識暫時失敗（OCR-HTTP-$status），請稍後再試。',
-                code: errorCode ?? 'UPSTREAM_UNAVAILABLE',
-                suggestedAction: AnalysisErrorAction.retry,
-              );
-            }
-
             if (status == 429) {
-              final monthlyLimit = _coerceInt(responseData['monthlyLimit']);
-              final dailyLimit = _coerceInt(responseData['dailyLimit']);
-              final used = _coerceInt(responseData['used']) ?? 0;
+              final monthlyLimit = responseData['monthlyLimit'];
+              final dailyLimit = responseData['dailyLimit'];
 
               if (dailyLimit != null) {
                 throw DailyLimitExceededException(
-                  dailyLimit: dailyLimit,
-                  used: used,
+                  dailyLimit: dailyLimit as int,
+                  used: responseData['used'] as int? ?? 0,
                 );
               }
 
               if (monthlyLimit != null) {
                 throw MonthlyLimitExceededException(
-                  monthlyLimit: monthlyLimit,
-                  used: used,
+                  monthlyLimit: monthlyLimit as int,
+                  used: responseData['used'] as int? ?? 0,
                 );
               }
             }
@@ -884,23 +818,7 @@ Duration? _durationFromMilliseconds(dynamic value) {
             );
           }
 
-          try {
-            return AnalysisResult.fromJson(responseData);
-          } catch (parseError) {
-            _debugLog(
-              '[AnalysisService] response parse failed: ${parseError.runtimeType} - $parseError',
-            );
-
-            if (hasImages && recognizeOnly) {
-              throw AnalysisException(
-                '截圖辨識暫時失敗（OCR-PARSE-${parseError.runtimeType}），請稍後再試。',
-                code: 'INVALID_RESPONSE_FORMAT',
-                suggestedAction: AnalysisErrorAction.retry,
-              );
-            }
-
-            rethrow;
-          }
+          return AnalysisResult.fromJson(responseData);
         } finally {
           awaitingAiTimer.cancel();
         }

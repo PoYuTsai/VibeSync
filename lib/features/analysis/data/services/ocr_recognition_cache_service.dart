@@ -21,16 +21,11 @@ class OcrRecognitionCacheEntry {
 
 class OcrRecognitionCacheService {
   static const _cachePrefix = 'ocr_recognition_cache';
-  // OCR is the core product path. Temporarily bypass local recognition cache
-  // until recognition stability is fully re-verified on real devices.
-  static const _enabled = false;
   // Bump this whenever OCR structure/speaker heuristics change so the app
   // does not keep replaying stale local recognition results for the same image.
   static const _cacheVersion = 4;
   static const _maxEntriesPerUser = 20;
   static const _maxAge = Duration(hours: 24);
-  static const _pruneInterval = Duration(minutes: 10);
-  static DateTime? _lastPrunedAt;
 
   static String _currentUserKey() =>
       SupabaseService.currentUser?.id ?? 'anonymous';
@@ -113,20 +108,12 @@ class OcrRecognitionCacheService {
   }
 
   static Future<void> _pruneEntries() async {
-    final now = DateTime.now();
-    if (_lastPrunedAt != null &&
-        now.difference(_lastPrunedAt!) < _pruneInterval) {
-      return;
-    }
-    _lastPrunedAt = now;
-
     final box = StorageService.settingsBox;
     final prefix = '$_cachePrefix:';
     final cachedEntries = <({
       dynamic key,
       DateTime cachedAt,
     })>[];
-    final keysToDelete = <dynamic>[];
 
     for (final key in box.keys) {
       if (key is! String || !key.startsWith(prefix)) {
@@ -135,13 +122,13 @@ class OcrRecognitionCacheService {
 
       final decoded = _decodeEntry(box.get(key));
       if (decoded == null || decoded['version'] != _cacheVersion) {
-        keysToDelete.add(key);
+        await box.delete(key);
         continue;
       }
 
       final cachedAt = _parseCachedAt(decoded['cachedAt']);
       if (cachedAt == null || _isExpired(cachedAt)) {
-        keysToDelete.add(key);
+        await box.delete(key);
         continue;
       }
 
@@ -156,11 +143,7 @@ class OcrRecognitionCacheService {
       ..sort((a, b) => b.cachedAt.compareTo(a.cachedAt));
 
     for (final staleEntry in currentUserEntries.skip(_maxEntriesPerUser)) {
-      keysToDelete.add(staleEntry.key);
-    }
-
-    if (keysToDelete.isNotEmpty) {
-      await box.deleteAll(keysToDelete);
+      await box.delete(staleEntry.key);
     }
   }
 
@@ -168,10 +151,6 @@ class OcrRecognitionCacheService {
     List<Uint8List> images,
     String? conversationId,
   ) async {
-    if (!_enabled) {
-      return null;
-    }
-
     if (images.isEmpty) {
       return null;
     }
@@ -221,10 +200,6 @@ class OcrRecognitionCacheService {
     required RecognizedConversation recognizedConversation,
     String? conversationId,
   }) async {
-    if (!_enabled) {
-      return;
-    }
-
     if (images.isEmpty || !_shouldCache(recognizedConversation)) {
       return;
     }
@@ -249,10 +224,6 @@ class OcrRecognitionCacheService {
     List<Uint8List> images,
     String? conversationId,
   ) async {
-    if (!_enabled) {
-      return;
-    }
-
     if (images.isEmpty) {
       return;
     }

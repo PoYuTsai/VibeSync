@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image/image.dart' as img;
 
@@ -16,9 +15,11 @@ class ImageCompressService {
   /// 返回壓縮後的 JPEG bytes，或 null 如果壓縮失敗
   static Future<Uint8List?> compressImage(Uint8List imageBytes) async {
     try {
+      // 解碼圖片取得尺寸
       final image = img.decodeImage(imageBytes);
       if (image == null) return null;
 
+      // 計算目標尺寸
       int targetWidth = image.width;
       int targetHeight = image.height;
 
@@ -27,6 +28,7 @@ class ImageCompressService {
         targetHeight = (image.height * maxWidth / image.width).round();
       }
 
+      // 壓縮
       final result = await FlutterImageCompress.compressWithList(
         imageBytes,
         minWidth: targetWidth,
@@ -35,7 +37,9 @@ class ImageCompressService {
         format: CompressFormat.jpeg,
       );
 
+      // 檢查大小
       if (result.length > maxSizeBytes) {
+        // 再次壓縮，降低品質
         return await FlutterImageCompress.compressWithList(
           imageBytes,
           minWidth: targetWidth,
@@ -46,13 +50,16 @@ class ImageCompressService {
       }
 
       return result;
-    } catch (_) {
+    } catch (e) {
       return null;
     }
   }
 
   /// 檢查圖片格式是否支援
+  /// iOS 截圖通常是 HEIC 格式，也需要支援
+  /// 當 mimeType 為 null 時，允許嘗試處理（讓圖片庫判斷）
   static bool isSupportedFormat(String? mimeType) {
+    // 如果沒有 mimeType，允許嘗試處理
     if (mimeType == null) return true;
 
     final supported = [
