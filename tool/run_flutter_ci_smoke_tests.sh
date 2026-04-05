@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIST_FILE="$SCRIPT_DIR/flutter_ci_smoke_tests.txt"
 
 if [[ ! -f "$LIST_FILE" ]]; then
@@ -9,19 +9,25 @@ if [[ ! -f "$LIST_FILE" ]]; then
   exit 1
 fi
 
-mapfile -t TEST_FILES < <(grep -v '^\s*#' "$LIST_FILE" | grep -v '^\s*$')
+TEST_COUNT=0
 
-if [[ ${#TEST_FILES[@]} -eq 0 ]]; then
-  echo "No smoke tests configured." >&2
-  exit 1
-fi
+while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+  test_file="${raw_line%%#*}"
+  test_file="$(printf '%s' "$test_file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
-echo "Running ${#TEST_FILES[@]} Flutter smoke tests..."
+  if [[ -z "$test_file" ]]; then
+    continue
+  fi
 
-for test_file in "${TEST_FILES[@]}"; do
+  TEST_COUNT=$((TEST_COUNT + 1))
   echo "::group::flutter test $test_file"
   flutter test "$test_file"
   echo "::endgroup::"
-done
+done < "$LIST_FILE"
+
+if [[ "$TEST_COUNT" -eq 0 ]]; then
+  echo "No smoke tests configured." >&2
+  exit 1
+fi
 
 echo "Flutter CI smoke suite completed successfully."
