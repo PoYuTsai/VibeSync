@@ -155,6 +155,7 @@ After containment:
 3. retest the exact failure path
 4. verify the logs stop growing abnormally
 5. verify a normal user flow still works
+6. check whether `public.security_signals` and `public.security_alert_events` have returned to a healthy state
 
 Minimum re-verification checklist:
 
@@ -211,6 +212,7 @@ The repo now includes helper SQL functions:
 select public.cleanup_old_auth_diagnostics();
 select public.cleanup_old_webhook_logs();
 select public.cleanup_observability_logs();
+select public.invoke_security_alerts_job();
 ```
 
 Default retention:
@@ -219,4 +221,35 @@ Default retention:
 - `webhook_logs`: 30 days
 - `ai_logs`: 30 days
 
-Run them manually from Supabase SQL Editor until an automated schedule is in place.
+These cleanup jobs are now scheduled automatically with `pg_cron`.
+
+Security alerts are also scheduled automatically, but only work end-to-end if the following secrets are configured:
+
+- Supabase Vault:
+  - `security_alert_project_url`
+  - `security_alert_anon_key`
+  - `security_alert_secret`
+- Edge Function secrets:
+  - `SECURITY_ALERT_SECRET`
+  - `TELEGRAM_BOT_TOKEN`
+  - `TELEGRAM_SECURITY_CHAT_ID` (or fallback `TELEGRAM_CHAT_ID`)
+  - optional second sink:
+    - `SECURITY_ALERT_WEBHOOK_URL`
+    - `SECURITY_ALERT_WEBHOOK_BEARER_TOKEN`
+
+Manual checks still matter during incidents:
+
+```sql
+select * from public.security_signals;
+select * from public.security_alert_events order by last_detected_at desc limit 20;
+select * from public.security_automation_status order by jobname;
+```
+
+Operator setup reminders:
+
+- the `security-alerts` cron job will only work when both sides are configured:
+  - Supabase Vault secrets for invocation
+  - Edge Function secrets for delivery
+- if alerts stop arriving, check both:
+  - `public.security_automation_status`
+  - `public.security_alert_events`

@@ -26,6 +26,8 @@ class OcrRecognitionCacheService {
   static const _cacheVersion = 4;
   static const _maxEntriesPerUser = 20;
   static const _maxAge = Duration(hours: 24);
+  static const _pruneInterval = Duration(minutes: 10);
+  static DateTime? _lastPrunedAt;
 
   static String _currentUserKey() =>
       SupabaseService.currentUser?.id ?? 'anonymous';
@@ -108,12 +110,20 @@ class OcrRecognitionCacheService {
   }
 
   static Future<void> _pruneEntries() async {
+    final now = DateTime.now();
+    if (_lastPrunedAt != null &&
+        now.difference(_lastPrunedAt!) < _pruneInterval) {
+      return;
+    }
+    _lastPrunedAt = now;
+
     final box = StorageService.settingsBox;
     final prefix = '$_cachePrefix:';
     final cachedEntries = <({
       dynamic key,
       DateTime cachedAt,
     })>[];
+    final keysToDelete = <dynamic>[];
 
     for (final key in box.keys) {
       if (key is! String || !key.startsWith(prefix)) {
@@ -122,13 +132,13 @@ class OcrRecognitionCacheService {
 
       final decoded = _decodeEntry(box.get(key));
       if (decoded == null || decoded['version'] != _cacheVersion) {
-        await box.delete(key);
+        keysToDelete.add(key);
         continue;
       }
 
       final cachedAt = _parseCachedAt(decoded['cachedAt']);
       if (cachedAt == null || _isExpired(cachedAt)) {
-        await box.delete(key);
+        keysToDelete.add(key);
         continue;
       }
 
@@ -143,7 +153,11 @@ class OcrRecognitionCacheService {
       ..sort((a, b) => b.cachedAt.compareTo(a.cachedAt));
 
     for (final staleEntry in currentUserEntries.skip(_maxEntriesPerUser)) {
-      await box.delete(staleEntry.key);
+      keysToDelete.add(staleEntry.key);
+    }
+
+    if (keysToDelete.isNotEmpty) {
+      await box.deleteAll(keysToDelete);
     }
   }
 

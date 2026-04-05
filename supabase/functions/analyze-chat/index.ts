@@ -10,7 +10,7 @@ import {
 } from "./guardrails.ts";
 import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
-import { extractTokenUsage, logAiCall } from "./logger.ts";
+import { extractTokenUsage, logAiCall, type LogEntry } from "./logger.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
@@ -194,6 +194,19 @@ function getErrorMessage(error: unknown): string {
 
 function summarizeUser(userId: string): string {
   return userId.length <= 8 ? userId : `${userId.slice(0, 8)}...`;
+}
+
+function parseEmailAllowlist(value: string | undefined): Set<string> {
+  if (!value) {
+    return new Set();
+  }
+
+  return new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.length > 0),
+  );
 }
 
 function logInfo(event: string, metadata?: Record<string, unknown>) {
@@ -705,6 +718,24 @@ function joinPromptSections(
     .join("\n\n");
 }
 
+const OCR_QUOTE_PREVIEW_RULES =
+  "### Quote Preview Rules\n- In LINE-style quoted replies, the smaller inset quote card is context, not a new live message row.\n- This is true even when the inset card only shows the old message body and the quoted author's name is missing or too small to read.\n- Keep the quoted snippet in `quotedReplyPreview`, then keep the larger outer bubble as the actual message row.\n- If the quoted author is visually clear, also fill `quotedReplyPreviewIsFromMe`; if not, leave it empty.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header='Bruce' and quoted card shows 'Bruce'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.";
+
+const OCR_RECOGNIZE_ONLY_OUTPUT_RULES =
+  "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- Determine each bubble's `side` from the outer chat layout first, before reading the text inside that bubble.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders and image-in-image content: a right-side photo bubble must not be flipped just because the OCR text or the inner image content is generic.\n- If multiple visible bubbles continue on the same left side, keep them as the other person even when only the first bubble shows an avatar; do not treat missing-avatar rows as an automatic side switch.\n- If a quoted-reply preview is readable, keep it on the same outer message as `quotedReplyPreview`; do not emit it as a separate row.\n- If the quoted preview is readable and the quoted card author is visually clear, include `quotedReplyPreviewIsFromMe` for that quoted snippet. This metadata is for the quoted card only and must not override the outer bubble speaker.\n- If the quoted preview is unreadable, leave `quotedReplyPreview` empty instead of guessing.\n- For each returned message, include `outerColumn` as `left`, `right`, or `center`, and include `horizontalPosition` as an approximate 0-100 number for the outer bubble center.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `outerColumn` or `horizontalPosition` is clear, keep `side` and `isFromMe` consistent with that geometry.";
+
+const OCR_ANALYSIS_ADDITIONAL_RULES =
+  "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- Build `recognizedConversation.messages` with a layout-first pass: identify bubble side from the screen position first, then transcribe content.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- If a LINE-style bubble contains a quoted-reply preview card plus a larger main reply, only keep the larger main reply in `recognizedConversation.messages`; store the readable quoted text in `quotedReplyPreview` instead of emitting a separate message row.\n- If that quoted card clearly belongs to me or the other person, include `quotedReplyPreviewIsFromMe` for the quoted snippet. This quoted-card metadata must never flip the outer reply bubble's speaker.\n- If the quoted preview is too small or unclear, omit `quotedReplyPreview` rather than guessing.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.\n- If a bubble contains a screenshot/photo/video preview, use the outer bubble container to decide side; ignore the inner image contents for speaker assignment.\n- If the screenshots seem to mix two different contacts or unrelated thread segments, do not silently merge them into a clean conversation. Mark it low-confidence and explain the mismatch in `warning`.";
+
+const OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT_V2 = joinPromptSections(
+  OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT,
+  SCREENSHOT_OCR_ACCURACY_RULES,
+  OCR_QUOTE_PREVIEW_RULES,
+  OCR_RECOGNIZE_ONLY_OUTPUT_RULES,
+  "### JSON Schema",
+  RECOGNIZED_CONVERSATION_SCHEMA,
+);
+
 function buildRecognizeOnlyImagePrompt(options: {
   imageCount: number;
   contextInfo: string;
@@ -721,12 +752,7 @@ function buildRecognizeOnlyImagePrompt(options: {
   } = options;
 
   return joinPromptSections(
-    `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
-    SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Quote Preview Rules\n- In LINE-style quoted replies, the smaller inset quote card is context, not a new live message row.\n- This is true even when the inset card only shows the old message body and the quoted author's name is missing or too small to read.\n- Keep the quoted snippet in `quotedReplyPreview`, then keep the larger outer bubble as the actual message row.\n- If the quoted author is visually clear, also fill `quotedReplyPreviewIsFromMe`; if not, leave it empty.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header='Bruce' and quoted card shows 'Bruce'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.",
-    "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- Determine each bubble's `side` from the outer chat layout first, before reading the text inside that bubble.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders and image-in-image content: a right-side photo bubble must not be flipped to `她說` just because the OCR text or the inner image content is generic.\n- If multiple visible bubbles continue on the same left side, keep them as the other person even when only the first bubble shows an avatar; do not treat missing-avatar rows as an automatic side switch.\n- If a quoted-reply preview is readable, keep it on the same outer message as `quotedReplyPreview`; do not emit it as a separate row.\n- If the quoted preview is readable and the quoted card author is visually clear, include `quotedReplyPreviewIsFromMe` for that quoted snippet. This metadata is for the quoted card only and must not override the outer bubble speaker.\n- If the quoted preview is unreadable, leave `quotedReplyPreview` empty instead of guessing.\n- For each returned message, include `outerColumn` as `left`, `right`, or `center`, and include `horizontalPosition` as an approximate 0-100 number for the outer bubble center.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `outerColumn` or `horizontalPosition` is clear, keep `side` and `isFromMe` consistent with that geometry.",
-    "### JSON Schema",
-    RECOGNIZED_CONVERSATION_SCHEMA,
+    `You received ${imageCount} chat screenshot(s). Extract the visible conversation only. Return the \`recognizedConversation\` JSON object defined in the system instructions.`,
     contextInfo
       ? `${contextInfo}\n- Use this only as weak context for mismatch detection.`
       : "",
@@ -756,12 +782,7 @@ function buildImageAnalysisPrompt(options: {
   } = options;
 
   return joinPromptSections(
-    `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response.`,
-    SCREENSHOT_OCR_ACCURACY_RULES,
-    "### Quote Preview Rules\n- In LINE-style quoted replies, the smaller inset quote card is context, not a new live message row.\n- This is true even when the inset card only shows the old message body and the quoted author's name is missing or too small to read.\n- Keep the quoted snippet in `quotedReplyPreview`, then keep the larger outer bubble as the actual message row.\n- If the quoted author is visually clear, also fill `quotedReplyPreviewIsFromMe`; if not, leave it empty.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header='Bruce' and quoted card shows 'Bruce'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.",
-    "### Additional Rules\n- Always include `recognizedConversation` in the response.\n- Base the final analysis on the screenshot content plus any existing thread context.\n- If the screenshot is likely unsupported, set `recognizedConversation.importPolicy` to `reject` and explain why in `warning`.\n- Prefer the most specific `classification` from: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- Do not reject a screenshot only because the visible thread is dominated by call records, as long as it is still clearly a one-to-one chat conversation view.\n- Build `recognizedConversation.messages` with a layout-first pass: identify bubble side from the screen position first, then transcribe content.\n- When `recognizedConversation.messages` is built, verify speaker direction from bubble side before finalizing the JSON. Do not let semantic inference override a clearly left- or right-aligned bubble.\n- If a LINE-style bubble contains a quoted-reply preview card plus a larger main reply, only keep the larger main reply in `recognizedConversation.messages`; store the readable quoted text in `quotedReplyPreview` instead of emitting a separate message row.\n- If that quoted card clearly belongs to me or the other person, include `quotedReplyPreviewIsFromMe` for the quoted snippet. This quoted-card metadata must never flip the outer reply bubble's speaker.\n- If the quoted preview is too small or unclear, omit `quotedReplyPreview` rather than guessing.\n- Be extra careful with media rows: image bubbles and the text bubble immediately after them often belong to the same side and should not be split across two speakers unless the layout clearly changes.\n- If a bubble contains a screenshot/photo/video preview, use the outer bubble container to decide side; ignore the inner image contents for speaker assignment.\n- If the screenshots seem to mix two different contacts or unrelated thread segments, do not silently merge them into a clean conversation. Mark it low-confidence and explain the mismatch in `warning`.",
-    "### recognizedConversation Schema",
-    RECOGNIZED_CONVERSATION_SCHEMA,
+    `You received ${imageCount} chat screenshot(s). First extract the visible conversation, then analyze it and return the normal structured JSON response. Follow the OCR and \`recognizedConversation\` rules from the system instructions.`,
     contextInfo,
     knownContactName
       ? `## Known Contact Name\n- Existing thread contact name: ${knownContactName}\n- Use this only as a tie-breaker when the visible header or nickname is almost the same and OCR is uncertain by one similar-looking character.`
@@ -1228,6 +1249,15 @@ const SYSTEM_PROMPT =
 ${SAFETY_RULES}`;
 
 // 「我說」模式的 System Prompt（話題延續建議）
+const IMAGE_ANALYSIS_SYSTEM_PROMPT = joinPromptSections(
+  SYSTEM_PROMPT,
+  SCREENSHOT_OCR_ACCURACY_RULES,
+  OCR_QUOTE_PREVIEW_RULES,
+  OCR_ANALYSIS_ADDITIONAL_RULES,
+  "### recognizedConversation Schema",
+  RECOGNIZED_CONVERSATION_SCHEMA,
+);
+
 const MY_MESSAGE_PROMPT =
   `你是一位專業的社交溝通教練。用戶剛剛發送了一則訊息給對方，現在需要你根據對話脈絡，提供話題延續的建議。
 
@@ -2974,8 +3004,10 @@ function sanitizeConversationSummary(
 
 // 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
-// 測試帳號白名單 (不扣額度)
-const TEST_EMAILS = ["vibesync.test@gmail.com"];
+// Explicit test-account bypasses are controlled from Edge Function env, not repo code.
+const TEST_ACCOUNT_EMAILS = parseEmailAllowlist(
+  Deno.env.get("TEST_ACCOUNT_EMAILS"),
+);
 
 // 模型選擇函數 (設計規格 4.9)
 function selectModel(context: {
@@ -3025,6 +3057,31 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function scheduleBackgroundTask(task: Promise<unknown>) {
+  const runtime = (
+    globalThis as typeof globalThis & {
+      EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void };
+    }
+  ).EdgeRuntime;
+
+  const guardedTask = task.catch((error) => {
+    console.error("Background task failed:", error);
+  });
+
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(guardedTask);
+    return;
+  }
+
+  void guardedTask;
+}
+
+function scheduleAiLog(entry: LogEntry) {
+  scheduleBackgroundTask(
+    logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, entry),
+  );
+}
+
 serve(async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
@@ -3049,8 +3106,10 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
-    // 測試帳號：不檢查額度、不扣額度
-    const accountIsTest = TEST_EMAILS.includes(user.email || "");
+    // Test accounts can bypass quota checks when explicitly configured via env.
+    const accountIsTest = TEST_ACCOUNT_EMAILS.has(
+      (user.email || "").trim().toLowerCase(),
+    );
 
     // Parse request early so recognizeOnly can bypass quota checks.
     const contentLengthHeader = req.headers.get("content-length");
@@ -3153,9 +3212,9 @@ serve(async (req) => {
       sub = insertedSub;
     }
 
-    // Check if daily reset needed
+    // Check if daily reset is needed.
     const now = new Date();
-    // 安全處理 null 值
+    // Handle null reset timestamps defensively.
     const dailyResetAt = sub.daily_reset_at
       ? new Date(sub.daily_reset_at)
       : new Date(0);
@@ -3398,8 +3457,8 @@ serve(async (req) => {
 
     // 對話記憶策略：最近 30 則訊息完整保留（約 15 輪）
     // 超過時，保留開頭 + 最近對話，中間省略
-    const MAX_RECENT_MESSAGES = 30;
-    const OPENING_MESSAGES = 4; // 保留最初的 4 則（破冰階段）
+    const MAX_RECENT_MESSAGES = recognizeOnly ? 12 : 30;
+    const OPENING_MESSAGES = recognizeOnly ? 2 : 4; // Recognize-only only needs light thread context.
     let compiledConversationText = "";
     let compiledContextMode = "full";
     let compiledMessageCount = messages.length;
@@ -3583,7 +3642,9 @@ ${recentText}`;
     }
 
     const systemPrompt = recognizeOnly
-      ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT
+      ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT_V2
+      : hasImages
+      ? IMAGE_ANALYSIS_SYSTEM_PROMPT
       : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT);
 
     // 組合用戶訊息
@@ -3727,7 +3788,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           ],
         },
         CLAUDE_API_KEY,
-        { timeout: timeoutMs, allowModelFallback },
+        {
+          timeout: timeoutMs,
+          allowModelFallback,
+          maxRetries: recognizeOnly || hasImages ? 1 : 2,
+        },
       );
     } catch (error) {
       const latencyMs = Date.now() - startTime;
@@ -3747,7 +3812,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         });
 
         // Log failed request
-        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        scheduleAiLog({
           userId: user.id,
           model: selectedModel,
           requestType,
@@ -3833,70 +3898,84 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         });
       }
     } catch (parseError) {
-      // 記錄解析失敗但先不返回 fallback，嘗試重試
-      logWarn("ai_response_parse_failed_will_retry", {
+      const shouldRetryParseFailure = !hasImages;
+      logWarn("ai_response_parse_failed", {
         user: summarizeUser(user.id),
         model: actualModel,
         textLength: (content ?? "").length,
         error: getErrorMessage(parseError),
         attempt: 1,
+        hasImages,
+        shouldRetryParseFailure,
       });
 
-      // 重試一次 Claude API 呼叫
       let retrySucceeded = false;
-      try {
-        logInfo("claude_retry_after_parse_failure", {
-          user: summarizeUser(user.id),
-          model: selectedModel,
-        });
-
-        const retryResult = await callClaudeWithFallback(
-          {
+      if (shouldRetryParseFailure) {
+        try {
+          logInfo("claude_retry_after_parse_failure", {
+            user: summarizeUser(user.id),
             model: selectedModel,
-            max_tokens: recognizeOnly
-              ? 1600
-              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)),
-            system: systemPrompt + "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
-            messages: [
-              {
-                role: "user",
-                content: userMessageContent,
-              },
-            ],
-          },
-          CLAUDE_API_KEY,
-          { timeout: timeoutMs, allowModelFallback },
-        );
+          });
 
-        const retryData = retryResult.data as {
-          content?: Array<{ text?: string }>;
-        };
-        const retryContent = retryData.content?.[0]?.text ?? "";
-        const retryJsonMatch = retryContent.match(/\{[\s\S]*\}/);
+          const retryResult = await callClaudeWithFallback(
+            {
+              model: selectedModel,
+              max_tokens: recognizeOnly
+                ? 1600
+                : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)),
+              system: systemPrompt +
+                "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
+              messages: [
+                {
+                  role: "user",
+                  content: userMessageContent,
+                },
+              ],
+            },
+            CLAUDE_API_KEY,
+            {
+              timeout: timeoutMs,
+              allowModelFallback,
+              maxRetries: 1,
+            },
+          );
 
-        if (retryJsonMatch) {
-          try {
-            result = JSON.parse(retryJsonMatch[0]);
-            retrySucceeded = true;
-            logInfo("claude_retry_parse_succeeded", {
-              user: summarizeUser(user.id),
-              model: retryResult.model,
-            });
-          } catch {
-            // 嘗試修復
-            const repairedRetry = repairJson(retryJsonMatch[0]);
-            result = JSON.parse(repairedRetry);
-            retrySucceeded = true;
-            logInfo("claude_retry_repair_succeeded", {
-              user: summarizeUser(user.id),
-              model: retryResult.model,
-            });
+          const retryData = retryResult.data as {
+            content?: Array<{ text?: string }>;
+          };
+          const retryContent = retryData.content?.[0]?.text ?? "";
+          const retryJsonMatch = retryContent.match(/\{[\s\S]*\}/);
+
+          if (retryJsonMatch) {
+            try {
+              result = JSON.parse(retryJsonMatch[0]);
+              retrySucceeded = true;
+              logInfo("claude_retry_parse_succeeded", {
+                user: summarizeUser(user.id),
+                model: retryResult.model,
+              });
+            } catch {
+              const repairedRetry = repairJson(retryJsonMatch[0]);
+              result = JSON.parse(repairedRetry);
+              retrySucceeded = true;
+              logInfo("claude_retry_repair_succeeded", {
+                user: summarizeUser(user.id),
+                model: retryResult.model,
+              });
+            }
           }
+        } catch (retryError) {
+          logWarn("claude_retry_also_failed", {
+            user: summarizeUser(user.id),
+            error: getErrorMessage(retryError),
+          });
         }
-      } catch (retryError) {
-        logWarn("claude_retry_also_failed", {
+      } else {
+        logInfo("claude_parse_retry_skipped_for_image_request", {
           user: summarizeUser(user.id),
-          error: getErrorMessage(retryError),
+          model: actualModel,
+          requestType,
+          recognizeOnly,
         });
       }
 
@@ -3987,7 +4066,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         outputTokens: tokenUsage.outputTokens,
       });
 
-      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      scheduleAiLog({
         userId: user.id,
         model: actualModel,
         requestType,
@@ -4032,7 +4111,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       });
 
       // Log failed recognition
-      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      scheduleAiLog({
         userId: user.id,
         model: actualModel,
         requestType,
@@ -4108,7 +4187,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     });
 
     // Log successful request
-    await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    scheduleAiLog({
       userId: user.id,
       model: actualModel,
       requestType,

@@ -3,8 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type AuthDiagnosticRow = {
   id: string;
@@ -21,7 +21,7 @@ type AuthDiagnosticRow = {
 };
 
 function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("zh-TW", {
+  return new Date(value).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -49,41 +49,34 @@ export default function AuthDiagnosticsPage() {
 
   useEffect(() => {
     async function fetchDiagnostics() {
-      if (!isSupabaseConfigured()) {
-        setError("Supabase 尚未設定，無法讀取 Auth 診斷資料。");
-        setLoading(false);
-        return;
-      }
-
       try {
-        const { data, error } = await supabase
-          .from("auth_diagnostics")
-          .select(
-            "id, event, status, email_redacted, platform, app_version, build_number, error_code, message, metadata, created_at"
-          )
-          .order("created_at", { ascending: false })
-          .limit(100);
+        const response = await fetch("/api/admin/auth-diagnostics", {
+          cache: "no-store",
+        });
+        const payload = await response.json();
 
-        if (error) {
-          throw error;
+        if (!response.ok) {
+          throw new Error(payload.error || "Failed to load auth diagnostics");
         }
 
-        setRows((data ?? []) as AuthDiagnosticRow[]);
-      } catch (error) {
-        console.error("Failed to fetch auth diagnostics:", error);
-        setError("讀取 Auth 診斷資料失敗。");
+        setRows((payload.rows ?? []) as AuthDiagnosticRow[]);
+      } catch (fetchError) {
+        console.error("Failed to fetch auth diagnostics:", fetchError);
+        setError(
+          "Failed to load auth diagnostics. Check the admin API route and database access.",
+        );
       } finally {
         setLoading(false);
       }
     }
 
-    fetchDiagnostics();
+    void fetchDiagnostics();
   }, []);
 
   const summary = useMemo(() => {
     const last24Hours = Date.now() - 24 * 60 * 60 * 1000;
     const inLast24Hours = rows.filter(
-      (row) => new Date(row.created_at).getTime() >= last24Hours
+      (row) => new Date(row.created_at).getTime() >= last24Hours,
     );
 
     return {
@@ -96,7 +89,7 @@ export default function AuthDiagnosticsPage() {
         (row) =>
           row.event.startsWith("password_reset") ||
           row.event === "password_recovery_entered" ||
-          row.event === "recovery_link_detected"
+          row.event === "recovery_link_detected",
       ).length,
     };
   }, [rows]);
@@ -104,9 +97,9 @@ export default function AuthDiagnosticsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Auth 診斷</h1>
+        <h1 className="text-3xl font-bold">Auth diagnostics</h1>
         <p className="mt-2 text-sm text-gray-500">
-          用來追查註冊、驗證信、重設密碼、deep link 是否真的走完。
+          Signup, resend, password reset, and recovery-link event history.
         </p>
       </div>
 
@@ -114,7 +107,7 @@ export default function AuthDiagnosticsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              最近 100 筆
+              Last 100 rows
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -125,7 +118,7 @@ export default function AuthDiagnosticsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              24 小時內
+              Last 24h
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -136,7 +129,7 @@ export default function AuthDiagnosticsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              錯誤事件
+              Errors
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -149,7 +142,7 @@ export default function AuthDiagnosticsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              註冊相關
+              Signup-related
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -160,7 +153,7 @@ export default function AuthDiagnosticsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              重設密碼相關
+              Recovery-related
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -171,7 +164,7 @@ export default function AuthDiagnosticsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>最近 Auth 事件</CardTitle>
+          <CardTitle>Recent auth events</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -182,23 +175,23 @@ export default function AuthDiagnosticsPage() {
             <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
-          ) : rows.length == 0 ? (
+          ) : rows.length === 0 ? (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              目前還沒有 Auth 診斷資料。
+              No auth diagnostic rows yet.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead>
                   <tr className="border-b text-gray-500">
-                    <th className="px-3 py-2 font-medium">時間</th>
-                    <th className="px-3 py-2 font-medium">事件</th>
-                    <th className="px-3 py-2 font-medium">狀態</th>
+                    <th className="px-3 py-2 font-medium">Time</th>
+                    <th className="px-3 py-2 font-medium">Event</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
                     <th className="px-3 py-2 font-medium">Email</th>
-                    <th className="px-3 py-2 font-medium">平台</th>
-                    <th className="px-3 py-2 font-medium">版本</th>
-                    <th className="px-3 py-2 font-medium">錯誤碼</th>
-                    <th className="px-3 py-2 font-medium">訊息</th>
+                    <th className="px-3 py-2 font-medium">Platform</th>
+                    <th className="px-3 py-2 font-medium">Build</th>
+                    <th className="px-3 py-2 font-medium">Error code</th>
+                    <th className="px-3 py-2 font-medium">Message</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -211,7 +204,7 @@ export default function AuthDiagnosticsPage() {
                       <td className="px-3 py-2">
                         <span
                           className={`rounded-full px-2 py-1 text-xs font-medium ${statusPillClass(
-                            row.status
+                            row.status,
                           )}`}
                         >
                           {row.status}
@@ -231,21 +224,8 @@ export default function AuthDiagnosticsPage() {
                       <td className="px-3 py-2 text-gray-600">
                         {row.error_code ?? "-"}
                       </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        <div className="space-y-2">
-                          <div>{row.message ?? "-"}</div>
-                          {row.metadata &&
-                          Object.keys(row.metadata).length > 0 ? (
-                            <details className="rounded bg-slate-50 px-2 py-1">
-                              <summary className="cursor-pointer text-xs text-slate-500">
-                                metadata
-                              </summary>
-                              <pre className="mt-2 whitespace-pre-wrap break-all text-xs text-slate-600">
-                                {JSON.stringify(row.metadata, null, 2)}
-                              </pre>
-                            </details>
-                          ) : null}
-                        </div>
+                      <td className="max-w-xl px-3 py-2 text-gray-600">
+                        {row.message ?? "-"}
                       </td>
                     </tr>
                   ))}

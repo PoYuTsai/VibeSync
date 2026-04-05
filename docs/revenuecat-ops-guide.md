@@ -1,349 +1,190 @@
 # RevenueCat Ops Guide
 
-> VibeSync 的 RevenueCat 營運與排查手冊
-> 最後更新：2026-04-03
+Last updated: 2026-04-05
 
-## 先講結論
+This guide explains what RevenueCat is for in VibeSync, what to check there,
+and how to interpret common subscription situations.
 
-RevenueCat 不是你們的主後台。
-
-- `Supabase`
-  - 主後台
-  - 查用戶、查 tier、查 Auth、查分析、查 SQL、查收益與成本
-- `RevenueCat`
-  - 查訂閱真相
-  - 查 entitlement、restore、transfer、同 Apple ID 行為
-- `App Store Connect`
-  - 查 iOS 商品、subscription group、升降級週期、商店規則
-
-一句話：
-
-- 日常營運先看 `Supabase`
-- 訂閱真相看 `RevenueCat`
-- iOS 商店規則看 `App Store Connect`
-
-## 這份文件是給誰看的
-
-這份主要是給你和夥伴在這些情境下用的：
-
-- 想看某個用戶到底有沒有有效訂閱
-- 想知道 restore 為什麼把方案同步到另一個帳號
-- 想查同 Apple ID 為什麼按同步後變 Essential
-- 想看 product、offering、entitlement 是否設對
-
-## 白話名詞
+## Plain-English Terms
 
 ### entitlement
 
-白話意思：
+The paid access that is active right now.
 
-- `這個人現在實際有沒有付費權限`
+In VibeSync terms:
 
-你可以把它理解成：
+- does this account currently have paid features?
+- is it effectively `Starter` or `Essential` right now?
 
-- 這個帳號現在到底是不是 premium
-- 現在能不能用 Starter / Essential 的功能
+Short version:
 
-一句話：
-
-- `entitlement = 目前生效中的付費資格`
+- `entitlement = active paid access right now`
 
 ### restore
 
-白話意思：
+Bringing back a subscription that was already purchased before.
 
-- `把以前買過的訂閱，重新同步回現在這支 App`
+Typical cases:
 
-常見情境：
+- reinstalling the app
+- logging in again on the same device
+- the app lost local tier state
+- moving to a new device
 
-- 換手機
-- 重裝 App
-- App 一時沒同步到已買方案
-- 重新登入後 tier 不見了
+Short version:
 
-在 VibeSync 裡：
-
-- `同步已買過的訂閱` 就是在做 restore
-
-一句話：
-
-- `restore = 把以前買過的東西找回來`
+- `restore = recover what was already purchased`
 
 ### transfer
 
-白話意思：
+Moving a purchased subscription from one VibeSync app account to another VibeSync app account.
 
-- `同一個 Apple ID 買過的訂閱，被同步到另一個 App 帳號`
+Typical case:
 
-例如：
+1. the same Apple ID already bought Essential
+2. the user signs into a different VibeSync account
+3. the user taps restore / sync purchased subscription
+4. the subscription moves onto the current VibeSync account
 
-- 原本用 Google 帳號買了 Essential
-- 後來改登入 Yahoo 帳號
-- 按了 restore / 同步已買過的訂閱
-- Essential 跑到 Yahoo 帳號身上
+Short version:
 
-這個從 A 帳號轉到 B 帳號的動作，就是 transfer。
+- `transfer = the subscription moved from one app account to another`
 
-一句話：
+## Backend Split
 
-- `transfer = 訂閱從一個 App 帳號轉到另一個 App 帳號`
+- `Supabase`
+  - main operations backend
+  - local tier copy, AI usage, auth diagnostics, SQL
+- `RevenueCat`
+  - subscription truth
+  - entitlement, restore, transfer, customer timeline
+- `App Store Connect`
+  - iOS product setup
+  - subscription group and upgrade / downgrade rules
 
-## 目前 VibeSync 的 collaborator 現況
+Short version:
 
-你和夥伴現在都已經是 `Administrator`。
+- operations and SQL -> `Supabase`
+- subscription truth -> `RevenueCat`
+- iOS store rules -> `App Store Connect`
 
-所以這份文件不再展開一堆角色權限比較，重點放在：
+## What To Check In RevenueCat
 
-- RevenueCat 哪些頁面要看
-- 各種訂閱情境要怎麼判讀
+### Customers
 
-## RevenueCat 後台最常看的地方
+This is the most important screen.
 
-### 1. Collaborators
+Use it to inspect:
 
-用途很單純：
+- active entitlement
+- current products
+- renewals / cancellations
+- restore / transfer behavior
+- timeline of what actually happened
 
-- 看目前誰有進專案
-- 新增或移除協作者
+This is where you answer:
 
-你們現在這塊已經處理好，之後除非要加新成員，不然不用常看。
+- "Did this person really buy something?"
+- "Why did restore move paid access?"
+- "Why is Supabase still showing Free?"
 
-### 2. General / Project Settings
+### Project Settings
 
-這裡最重要的是：
+Important thing to know:
 
 - `Restore Behavior`
 
-它會直接影響：
+For VibeSync, the practical meaning is:
 
-- 同 Apple ID 按 `同步已買過的訂閱` 之後會怎樣
-- 訂閱會不會轉到另一個 VibeSync 帳號
+- if the same Apple ID already purchased something
+- and another VibeSync account uses restore
+- RevenueCat may move that entitlement to the currently signed-in account
 
-VibeSync 目前的理解是：
+That is usually expected behavior, not automatically a bug.
 
-- 維持 RevenueCat 預設的 `Transfer to new App User ID`
+### Products / Entitlements / Offerings
 
-所以：
+Use these pages to confirm:
 
-- 同一個 Apple ID 底下
-- 換另一個 VibeSync 帳號
-- 按 `同步已買過的訂閱`
-- 方案可能會同步過去
+- `Starter` and `Essential` products exist
+- both are mapped to the right entitlement
+- offerings contain the expected packages
 
-這是預期行為，不是 bug。
+## Expected VibeSync Subscription Behavior
 
-### 3. Customers
+### Same Apple ID restore
 
-這是最常用的排查頁。
+Expected:
 
-在這裡主要看：
+- a Free VibeSync account can become paid after restore
+- if that Apple ID already owns the subscription
 
-- 這個 App User ID 目前有沒有 active entitlement
-- 現在是 Starter 還是 Essential
-- 最近有沒有 purchase / renew / cancel / restore / transfer
-- customer timeline 是否合理
+This is normal under RevenueCat transfer behavior.
 
-最常見用途：
+### Different Apple ID restore
 
-- 用戶說「我明明買了，App 還是 free」
-- 用戶說「我按了 restore 還是沒回來」
-- 用戶說「我換帳號後怎麼變 premium 了」
+Expected:
 
-### 4. Entitlements / Products / Offerings / Paywalls
+- if that Apple ID never purchased Starter or Essential
+- restore should leave the account on `Free`
 
-這幾塊是設定層，不是日常排查第一站。
+### Upgrade / downgrade timing
 
-要看的是：
+Expected:
 
-- `Entitlements`
-  - Starter / Essential 是否都有正確綁到 premium entitlement
-- `Products`
-  - App Store / Play Store product id 是否正確
-- `Offerings`
-  - paywall 用的 packages 是否正確
-- `Paywalls`
-  - 如果之後真的使用 RevenueCat Paywalls，再回來看這裡
+- `Free -> Starter`: immediate
+- `Free -> Essential`: immediate
+- `Starter -> Essential`: immediate upgrade
+- `Essential -> Starter`: usually changes on the next renewal, not instantly
 
-### 5. Charts / Overview
+## Common Debug Paths
 
-這裡主要看：
+### "The app says Free, but the user says they paid"
 
-- 總收入趨勢
-- 訂閱變化趨勢
-- 取消率
-
-但如果你要排查某個用戶或某次事件，優先還是：
-
-- `Customers`
-- `Supabase webhook_logs`
-- `Supabase revenue_events`
-
-## 最常見的排查情境
-
-### 情境 1：用戶說「我買了，但 App 還是 free」
-
-先看：
+Check in this order:
 
 1. `RevenueCat -> Customers`
-   - 有沒有 active entitlement
 2. `Supabase -> public.subscriptions`
-   - tier 是否已同步
 3. `Supabase -> public.webhook_logs`
 4. `Supabase -> public.revenue_events`
 
-判讀：
+Interpretation:
 
-- RevenueCat 有 entitlement，但 Supabase 還是 free
-  - 比較像 webhook / sync 問題
-- RevenueCat 也沒有 entitlement
-  - 比較像購買根本沒完成，或商店狀態還沒進來
+- if RevenueCat shows an active entitlement but Supabase is still Free
+  - look at webhook delivery and sync
+- if RevenueCat itself shows no active entitlement
+  - this is not a Supabase bug first
 
-### 情境 2：同 Apple ID，另一個帳號按了同步後變 Essential
+### "Why did another account become Essential after restore?"
 
-先看：
+Check:
 
 1. `RevenueCat -> Project Settings -> Restore Behavior`
 2. `RevenueCat -> Customers`
 3. `Supabase -> public.subscriptions`
 
-判讀：
+If it was the same Apple ID, this is often expected transfer behavior.
 
-- 如果 Restore Behavior 是 `Transfer to new App User ID`
-  - 這是預期行為，不是 bug
+### "How do I know if this was a real bug or just same-Apple-ID restore?"
 
-### 情境 3：真的沒買過，按同步後卻變 premium
+Ask these first:
 
-這題才是潛在 bug，但前提是：
+- Was it the same Apple ID / Sandbox Apple ID?
+- Did the user tap restore / sync purchased subscription?
+- Did RevenueCat show a transfer or restored entitlement?
 
-- 真的換了另一個 Apple ID / Sandbox Apple ID
-- 那個 Apple ID 從沒買過 Starter / Essential
+If yes, this is usually product behavior, not a broken purchase pipeline.
 
-要看：
+## Practical Rules For VibeSync
 
-1. `RevenueCat -> Customers`
-2. `Supabase -> public.subscriptions`
-3. `Supabase -> public.webhook_logs`
+- Same Apple ID restore can move paid access to the current VibeSync account.
+- Different Apple ID restore should stay Free if nothing was ever purchased.
+- RevenueCat is the subscription truth.
+- Supabase is the app-facing copy of that truth.
+- App Store Connect defines iOS billing rules and timing.
 
-### 情境 4：restore 沒作用
+## Related Docs
 
-先看：
-
-1. `RevenueCat -> Customers`
-2. `Supabase -> public.subscriptions`
-3. `Supabase -> public.webhook_logs`
-
-### 情境 5：想知道某個月收入和利潤
-
-這題不要只看 RevenueCat。
-
-正確做法：
-
-- 看 RevenueCat 的趨勢圖，理解訂閱變化
-- 真正查營運數字，回 Supabase 看：
-  - `public.revenue_events`
-  - `public.monthly_revenue`
-  - `public.monthly_profit`
-
-## VibeSync 目前的訂閱規則理解
-
-### 同 Apple ID
-
-目前預期：
-
-- 不按同步、不購買
-  - `Free` 維持 `Free`
-- 同 Apple ID 下，另一個 VibeSync 帳號按 `同步已買過的訂閱`
-  - 可能變成 `Essential`
-  - 這是預期行為
-
-### 不同 Apple ID
-
-目前預期：
-
-- 如果這個 Apple ID 從沒買過
-- 按 `同步已買過的訂閱`
-- 應該維持 `Free`
-
-這一題之後若有新的 Sandbox Apple ID，再實機補測。
-
-### 升降級週期
-
-正常預期：
-
-- `Free -> Starter`
-  - 立即生效
-- `Free -> Essential`
-  - 立即生效
-- `Starter -> Essential`
-  - 立即升級
-- `Essential -> Starter`
-  - 通常不是立刻降
-  - 會維持 Essential 到下一個 renewal date，下一期才變 Starter
-
-這題最後還是要一起看：
-
-- `RevenueCat`
-- `App Store Connect`
-
-## RevenueCat 搜尋上的注意事項
-
-RevenueCat 後台找 customer，最穩的是：
-
-- `App User ID`
-- `Transaction ID`
-- `Order ID`
-
-不要預設一定能直接用 email 找到。
-
-因為 RevenueCat 是否能用 email 搜，取決於：
-
-- 你有沒有把 email 明確傳成 customer attributes
-
-## 你和夥伴平常怎麼分工看
-
-### 先看 Supabase 的情境
-
-- 查用戶有沒有註冊
-- 查 Auth 狀態
-- 查 tier
-- 查額度
-- 查 AI 成本
-- 跑 SQL
-
-看：
-
-- [supabase-ops-guide.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/supabase-ops-guide.md)
-
-### 先看 RevenueCat 的情境
-
-- 查 entitlement
-- 查 restore
-- 查 transfer
-- 查同 Apple ID 行為
-- 查 customer timeline
-
-看：
-
-- 這份文件
-
-### 先看 App Store Connect 的情境
-
-- 查 iOS 商品
-- 查 subscription group
-- 查升降級週期
-- 查商店端設定
-
-看：
-
-- App Store Connect
-
-## 官方文件
-
-- RevenueCat Collaborators:
-  - [Collaborators](https://www.revenuecat.com/docs/projects/collaborators)
-- RevenueCat Projects / Overview:
-  - [Projects Overview](https://www.revenuecat.com/docs/projects/overview)
-- RevenueCat Project Settings:
-  - [Project Settings](https://www.revenuecat.com/docs/projects/project-settings-index)
-- RevenueCat Supporting Customers:
-  - [Supporting Your Customers](https://www.revenuecat.com/docs/dashboard-and-metrics/supporting-your-customers)
+- [Supabase Ops Guide](./supabase-ops-guide.md)
+- [Current Test Status](./current-test-status-2026-04-03.md)
+- [App Review Final Checklist](./app-review-final-checklist.md)

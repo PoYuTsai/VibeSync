@@ -8,7 +8,15 @@ interface LoginBody {
 }
 
 function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status });
+  return NextResponse.json(
+    { error: message },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
 }
 
 export async function POST(request: Request) {
@@ -62,7 +70,14 @@ export async function POST(request: Request) {
     return jsonError("You do not have access to this dashboard", 403);
   }
 
-  const response = NextResponse.json({ success: true });
+  const response = NextResponse.json(
+    { success: true },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
   response.cookies.set({
     name: ADMIN_ACCESS_COOKIE,
     value: data.session.access_token,

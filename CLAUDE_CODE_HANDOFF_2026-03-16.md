@@ -4,6 +4,32 @@
 
 This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, subscription-state consistency around RevenueCat + Supabase sync, and the remaining auth / webhook boundary issues that could still leak stale state or mis-handle malformed events.
 
+## 2026-04-05 Rounds 6-8 Snapshot
+
+- Security posture was pushed from "good enough for early launch" toward a more disciplined launch candidate:
+  - Edge-function deployments now apply migrations before function deploys.
+  - CI release/distribution workflows no longer ignore failing Flutter tests.
+  - Admin dashboard data access now goes through server-side `/api/admin/*` routes backed by the Supabase service role instead of browser-side Supabase reads.
+  - Admin API responses now send `Cache-Control: no-store`.
+  - Next 16 admin routing now uses `proxy.ts` instead of the deprecated `middleware.ts` convention.
+- OCR / analysis path was trimmed for safer latency:
+  - recognize-only requests now carry a lighter context window
+  - image requests skip the expensive parse-failure retry path
+  - OCR cache pruning is throttled and batched
+  - already-small JPEG screenshots can bypass unnecessary recompression
+- Operational docs were cleaned up into current source-of-truth form:
+  - `README.md`
+  - `AGENTS.md`
+  - `CLAUDE.md`
+  - `docs/current-test-status-2026-04-03.md`
+  - `docs/app-review-final-checklist.md`
+  - `docs/testflight-regression-checklist.md`
+  - `docs/launch-readiness-checklist.md`
+  - `docs/supabase-ops-guide.md`
+  - `docs/revenuecat-ops-guide.md`
+  - `docs/gstack-usage-sop.md`
+- Historical tracked docs were also scrubbed of plaintext shared test-password references where they were still present.
+
 ## 2026-04-03 TestFlight v82 Snapshot
 
 - Current phase: pre-submission stabilization on TestFlight v82
@@ -54,6 +80,21 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
   - `public.security_signals`
   - `public.security_automation_status`
 - `admin-dashboard` now includes a `Security` page that surfaces active auth/AI/webhook/cleanup anomalies plus cleanup-job status in one place.
+
+## 2026-04-05 Security Round 5
+
+- Critical security signals are no longer dashboard-only.
+- A new `security-alerts` Edge Function now delivers critical signals externally through Telegram.
+- Alert delivery state is persisted in `public.security_alert_events` with cooldown / dedupe semantics so noisy periods do not spam operators.
+- `pg_cron` + `pg_net` + Vault now invoke the alert pipeline every 10 minutes through `public.invoke_security_alerts_job()`.
+- `admin-dashboard` `Security` now also shows recent alert deliveries and failures.
+- OCR recognize-only requests were also trimmed to a lighter thread-context window so screenshot recognition does not carry more historical context than needed for thread-mismatch checks.
+
+## 2026-04-05 Security Round 6
+
+- `security-alerts` now supports an optional second sink through a generic webhook in addition to Telegram, with dedupe / cooldown tracked per channel.
+- Internal test-account quota bypasses are no longer hardcoded in repo code; `analyze-chat` now reads `TEST_ACCOUNT_EMAILS` from Edge Function env.
+- `docs/security-architecture.md` and `docs/ocr-analysis-maturity-benchmark.md` were rewritten as clean launch-facing source-of-truth docs instead of leaving mojibake-heavy versions in place.
 
 ## 2026-04-03 Subscription Sync Root-Cause Fix
 
@@ -124,7 +165,7 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 7. `admin-dashboard/app/api/auth/logout/route.ts`
    - Added a server-side logout route that clears the admin session cookie.
 
-8. `admin-dashboard/app/login/page.tsx`, `admin-dashboard/components/layout/nav.tsx`, `admin-dashboard/middleware.ts`, `admin-dashboard/lib/auth.ts`
+8. `admin-dashboard/app/login/page.tsx`, `admin-dashboard/components/layout/nav.tsx`, `admin-dashboard/proxy.ts`, `admin-dashboard/lib/auth.ts`
    - Removed client-side token cookie writes.
    - Middleware now reads the `HttpOnly` admin cookie and clears it when the token is invalid or unauthorized.
 

@@ -313,8 +313,9 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
         continue;
       }
 
-      const neighborSide = previous?.side !== "unknown" &&
-          previous?.side === next?.side
+      const neighborSide = previous &&
+          previous.side !== "unknown" &&
+          previous.side === next?.side
         ? previous.side
         : undefined;
       const currentHasSupportElsewhere = otherRunSupportsSide(

@@ -419,6 +419,29 @@ AnalysisException _mapUnexpectedAnalysisError(
 }
 
 class AnalysisService {
+  static const int _recognizeOnlyOpeningMessages = 2;
+  static const int _recognizeOnlyRecentMessages = 12;
+
+  List<Message> _buildPayloadMessages(
+    List<Message> messages, {
+    required bool recognizeOnly,
+  }) {
+    if (!recognizeOnly) {
+      return messages;
+    }
+
+    final maxContextMessages =
+        _recognizeOnlyOpeningMessages + _recognizeOnlyRecentMessages;
+    if (messages.length <= maxContextMessages) {
+      return List<Message>.from(messages);
+    }
+
+    return [
+      ...messages.take(_recognizeOnlyOpeningMessages),
+      ...messages.skip(messages.length - _recognizeOnlyRecentMessages),
+    ];
+  }
+
   Future<AnalysisResult> analyzeConversation(
     List<Message> messages, {
     List<Uint8List>? images,
@@ -434,6 +457,10 @@ class AnalysisService {
     final sanitizedMessages = recognizeOnly
         ? messages.where((message) => message.id != 'placeholder').toList()
         : messages;
+    final payloadMessages = _buildPayloadMessages(
+      sanitizedMessages,
+      recognizeOnly: recognizeOnly,
+    );
 
     if (sanitizedMessages.isEmpty && !recognizeOnly) {
       throw AnalysisException(
@@ -443,7 +470,7 @@ class AnalysisService {
       );
     }
 
-    const maxRetries = 2;
+    final maxRetries = (recognizeOnly || (images?.isNotEmpty ?? false)) ? 1 : 2;
     const retriableCodes = <String>{
       'NETWORK_ERROR',
       'TIMEOUT',
@@ -455,7 +482,7 @@ class AnalysisService {
 
     _debugLog('[AnalysisService] analyzeConversation start');
     _debugLog(
-      '[AnalysisService] messages: ${sanitizedMessages.length}, images: ${images?.length ?? 0}, recognizeOnly: $recognizeOnly',
+      '[AnalysisService] messages: ${sanitizedMessages.length}, payloadMessages: ${payloadMessages.length}, images: ${images?.length ?? 0}, recognizeOnly: $recognizeOnly',
     );
 
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
@@ -464,7 +491,7 @@ class AnalysisService {
           '[AnalysisService] attempt ${attempt + 1}/${maxRetries + 1}',
         );
         return await _doAnalyze(
-          sanitizedMessages,
+          payloadMessages,
           images: images,
           sessionContext: sessionContext,
           conversationSummary: conversationSummary,

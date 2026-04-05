@@ -128,7 +128,7 @@ git commit -m "feat: 登入頁按鈕順序改為 Google → Apple"
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Email: vibesync.test@gmail.com\n密碼: test123456',
+                            'A shared internal test account exists. Keep the actual credentials outside the repo.',
                             style: AppTypography.caption.copyWith(
                               color: AppColors.glassTextHint,
                             ),
