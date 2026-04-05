@@ -1,12 +1,10 @@
 # .github/workflows/deploy-web.yml
-# Flutter Web 自動部署到 Vercel
+# Manual-only Flutter web deployment to Vercel
 
 name: Deploy Web to Vercel
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:  # 允許手動觸發
+  workflow_dispatch:
 
 jobs:
   deploy:

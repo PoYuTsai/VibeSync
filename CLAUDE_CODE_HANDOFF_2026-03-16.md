@@ -96,6 +96,13 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
 - Internal test-account quota bypasses are no longer hardcoded in repo code; `analyze-chat` now reads `TEST_ACCOUNT_EMAILS` from Edge Function env.
 - `docs/security-architecture.md` and `docs/ocr-analysis-maturity-benchmark.md` were rewritten as clean launch-facing source-of-truth docs instead of leaving mojibake-heavy versions in place.
 
+## 2026-04-05 CI Noise Reduction
+
+- `Build & Distribute` is now manual-only instead of auto-running on every `main` push. It had become long-term CI noise while the current launch track is iOS/TestFlight-first.
+- `Deploy Web to Vercel` is now manual-only instead of auto-running on every `main` push for the same reason: it was repeatedly red while not representing the current launch-critical path.
+- `Deploy Edge Function` now still deploys functions even when `SUPABASE_DB_PASSWORD` is missing, but emits a clear warning and skips `supabase db push` in that case instead of failing the whole workflow.
+- Net effect: `main` should have a much cleaner signal, with launch-critical workflows prioritized over legacy web/Firebase distribution noise.
+
 ## 2026-04-03 Subscription Sync Root-Cause Fix
 
 - The long-running "Free analyze -> upgrade to Essential -> analysis still behaves like free tier" bug was traced to `public.subscriptions` RLS: the app was trying to update the subscription row directly from the client, but `analyze-chat` only trusts the backend `subscriptions` row.

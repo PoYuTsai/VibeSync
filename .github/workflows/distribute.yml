@@ -4,8 +4,6 @@
 name: Build & Distribute
 
 on:
-  push:
-    branches: [main, develop]
   workflow_dispatch:
     inputs:
       environment:
