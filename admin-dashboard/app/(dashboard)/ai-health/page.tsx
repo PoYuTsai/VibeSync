@@ -1,24 +1,25 @@
+// app/(dashboard)/ai-health/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase";
 import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Legend,
-  Line,
   LineChart,
-  ResponsiveContainer,
-  Tooltip,
+  Line,
   XAxis,
   YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  AreaChart,
+  Area,
 } from "recharts";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-interface AIHealthRow {
+interface AIHealthData {
   date: string;
   total_requests: number;
   success_count: number;
@@ -27,26 +28,63 @@ interface AIHealthRow {
   success_rate: number;
 }
 
-interface AIHealthResponse {
-  rows: AIHealthRow[];
-}
-
 export default function AIHealthPage() {
-  const [rows, setRows] = useState<AIHealthRow[]>([]);
+  const [healthData, setHealthData] = useState<AIHealthData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState({
+    avgSuccessRate: 0,
+    totalRequests: 0,
+    totalFailed: 0,
+    totalFiltered: 0,
+  });
 
   useEffect(() => {
-    async function fetchHealth() {
+    async function fetchAIHealth() {
       try {
-        const response = await fetch("/api/admin/ai-health", {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Failed to load AI health");
-        }
+        const { data } = await supabase
+          .from("ai_success_rate")
+          .select("*")
+          .order("date", { ascending: true })
+          .limit(30);
 
-        const payload = (await response.json()) as AIHealthResponse;
-        setRows(payload.rows ?? []);
+        if (data && data.length > 0) {
+          const formattedData = data.map((d) => ({
+            date: new Date(d.date).toLocaleDateString("zh-TW", {
+              month: "short",
+              day: "numeric",
+            }),
+            total_requests: Number(d.total_requests),
+            success_count: Number(d.success_count),
+            failed_count: Number(d.failed_count),
+            filtered_count: Number(d.filtered_count),
+            success_rate: Number(d.success_rate),
+          }));
+
+          setHealthData(formattedData);
+
+          const totalRequests = formattedData.reduce(
+            (sum, d) => sum + d.total_requests,
+            0
+          );
+          const totalFailed = formattedData.reduce(
+            (sum, d) => sum + d.failed_count,
+            0
+          );
+          const totalFiltered = formattedData.reduce(
+            (sum, d) => sum + d.filtered_count,
+            0
+          );
+          const avgSuccessRate =
+            formattedData.reduce((sum, d) => sum + d.success_rate, 0) /
+            formattedData.length;
+
+          setSummary({
+            avgSuccessRate: Math.round(avgSuccessRate * 100) / 100,
+            totalRequests,
+            totalFailed,
+            totalFiltered,
+          });
+        }
       } catch (error) {
         console.error("Failed to fetch AI health:", error);
       } finally {
@@ -54,113 +92,98 @@ export default function AIHealthPage() {
       }
     }
 
-    void fetchHealth();
+    fetchAIHealth();
   }, []);
 
-  const chartRows = rows.map((row) => ({
-    ...row,
-    dateLabel: new Date(row.date).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    }),
-  }));
-
-  const summary = {
-    avgSuccessRate: chartRows.length > 0
-      ? Math.round(
-          (chartRows.reduce((sum, row) => sum + row.success_rate, 0) /
-            chartRows.length) * 100,
-        ) / 100
-      : 0,
-    totalRequests: chartRows.reduce((sum, row) => sum + row.total_requests, 0),
-    totalFailed: chartRows.reduce((sum, row) => sum + row.failed_count, 0),
-    totalFiltered: chartRows.reduce((sum, row) => sum + row.filtered_count, 0),
+  const getHealthColor = (rate: number) => {
+    if (rate >= 95) return "text-green-600";
+    if (rate >= 90) return "text-yellow-600";
+    return "text-red-600";
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">AI health</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          30-day AI success, failure, and guardrail-filter trend.
-        </p>
-      </div>
+      <h1 className="text-3xl font-bold">AI 健康度</h1>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Avg success rate
+              平均成功率
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary.avgSuccessRate}%</div>
-            <p className="mt-1 text-xs text-gray-500">Last 30 days</p>
+            <div
+              className={`text-2xl font-bold ${getHealthColor(summary.avgSuccessRate)}`}
+            >
+              {summary.avgSuccessRate}%
+            </div>
+            <p className="text-xs text-gray-500">近 30 天</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Total requests
+              總請求數
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {summary.totalRequests.toLocaleString()}
             </div>
-            <p className="mt-1 text-xs text-gray-500">Last 30 days</p>
+            <p className="text-xs text-gray-500">近 30 天</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Failed
+              失敗次數
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
               {summary.totalFailed.toLocaleString()}
             </div>
-            <p className="mt-1 text-xs text-gray-500">status=failed</p>
+            <p className="text-xs text-gray-500">需要關注</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Guardrail filtered
+              被過濾
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">
               {summary.totalFiltered.toLocaleString()}
             </div>
-            <p className="mt-1 text-xs text-gray-500">status=filtered</p>
+            <p className="text-xs text-gray-500">Guardrails 攔截</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Success rate trend</CardTitle>
+          <CardTitle>成功率趨勢</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex h-80 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            <div className="h-80 flex items-center justify-center">
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
             </div>
           ) : (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartRows}>
+                <LineChart data={healthData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="dateLabel" />
+                  <XAxis dataKey="date" />
                   <YAxis domain={[80, 100]} />
                   <Tooltip />
                   <Legend />
                   <Line
                     type="monotone"
                     dataKey="success_rate"
-                    name="Success rate (%)"
+                    name="成功率 (%)"
                     stroke="#10B981"
                     strokeWidth={2}
                     dot={false}
@@ -174,26 +197,26 @@ export default function AIHealthPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Request outcome mix</CardTitle>
+          <CardTitle>請求分佈</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex h-80 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            <div className="h-80 flex items-center justify-center">
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
             </div>
           ) : (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartRows}>
+                <AreaChart data={healthData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="dateLabel" />
+                  <XAxis dataKey="date" />
                   <YAxis />
                   <Tooltip />
                   <Legend />
                   <Area
                     type="monotone"
                     dataKey="success_count"
-                    name="Success"
+                    name="成功"
                     stackId="1"
                     stroke="#10B981"
                     fill="#10B981"
@@ -202,7 +225,7 @@ export default function AIHealthPage() {
                   <Area
                     type="monotone"
                     dataKey="filtered_count"
-                    name="Filtered"
+                    name="過濾"
                     stackId="1"
                     stroke="#F59E0B"
                     fill="#F59E0B"
@@ -211,7 +234,7 @@ export default function AIHealthPage() {
                   <Area
                     type="monotone"
                     dataKey="failed_count"
-                    name="Failed"
+                    name="失敗"
                     stackId="1"
                     stroke="#EF4444"
                     fill="#EF4444"

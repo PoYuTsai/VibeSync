@@ -56,140 +56,6 @@ function extractValidUuidList(value: unknown): string[] {
     .filter((item) => item.length > 0 && isValidUuid(item));
 }
 
-function sanitizeWebhookPayload(
-  body: Record<string, unknown>,
-  options?: { ignoredReason?: string },
-): Record<string, unknown> {
-  const event = isPlainObject(body.event) ? body.event : {};
-
-  const sanitized: Record<string, unknown> = {
-    source: "revenuecat",
-    type: typeof event.type === "string" ? event.type : null,
-    app_user_id: typeof event.app_user_id === "string" ? event.app_user_id : null,
-    product_id: typeof event.product_id === "string" ? event.product_id : null,
-    new_product_id: typeof event.new_product_id === "string"
-      ? event.new_product_id
-      : null,
-    entitlement_ids: Array.isArray(event.entitlement_ids)
-      ? event.entitlement_ids
-      : [],
-    transferred_from: extractValidUuidList(event.transferred_from),
-    transferred_to: extractValidUuidList(event.transferred_to),
-    expiration_at_ms: typeof event.expiration_at_ms === "number"
-      ? event.expiration_at_ms
-      : null,
-    environment: typeof event.environment === "string"
-      ? event.environment
-      : null,
-    aliases: Array.isArray(event.aliases) ? event.aliases : [],
-  };
-
-  if (options?.ignoredReason) {
-    sanitized.ignored_reason = options.ignoredReason;
-  }
-
-  return sanitized;
-}
-
-function normalizeOptionalText(value: unknown, maxLength = 160): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  return normalized.slice(0, maxLength);
-}
-
-function normalizeOptionalNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
-}
-
-function normalizeEventTimestamp(value: unknown): string {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return new Date(value).toISOString();
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  return new Date().toISOString();
-}
-
-function shouldRecordRevenueEvent(type: string): boolean {
-  return [
-    "INITIAL_PURCHASE",
-    "RENEWAL",
-    "CANCELLATION",
-    "BILLING_ISSUE",
-    "PRODUCT_CHANGE",
-  ].includes(type);
-}
-
-async function upsertRevenueEvent(
-  supabase: any,
-  body: Record<string, unknown>,
-  event: Record<string, unknown>,
-  userId: string,
-  type: string,
-  effectiveProductId: string,
-) {
-  if (!shouldRecordRevenueEvent(type)) {
-    return;
-  }
-
-  const sourceEventId = normalizeOptionalText(event.id ?? event.event_id, 120);
-  const priceUsd = normalizeOptionalNumber(event.price);
-  const priceInPurchasedCurrency = normalizeOptionalNumber(
-    event.price_in_purchased_currency,
-  );
-  const currency = normalizeOptionalText(event.currency, 16) ?? "USD";
-  const store = normalizeOptionalText(event.store, 40);
-  const transactionId = normalizeOptionalText(event.transaction_id, 160);
-  const eventTimestamp = normalizeEventTimestamp(
-    event.purchased_at_ms ?? event.event_timestamp_ms ?? event.event_timestamp,
-  );
-
-  const payload: Record<string, unknown> = {
-    user_id: userId,
-    event_type: type,
-    product_id: effectiveProductId,
-    price_usd: priceUsd,
-    price_in_purchased_currency: priceInPurchasedCurrency,
-    currency,
-    transaction_id: transactionId,
-    event_timestamp: eventTimestamp,
-    source_event_id: sourceEventId,
-    store,
-    raw_payload: sanitizeWebhookPayload(body),
-  };
-
-  const { error } = await supabase.from("revenue_events").upsert(payload as any, {
-    onConflict: "source_event_id",
-    ignoreDuplicates: false,
-  });
-
-  if (error) {
-    console.error("Failed to upsert revenue event:", error);
-  }
-}
-
 async function sha256Prefix(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -340,9 +206,10 @@ Deno.serve(async (req) => {
           source: "revenuecat",
           event_type: type,
           user_id: app_user_id,
-          payload: sanitizeWebhookPayload(body, {
-            ignoredReason: "user_not_found",
-          }),
+          payload: {
+            ...body,
+            ignored_reason: "user_not_found",
+          },
           created_at: new Date().toISOString(),
         });
 
@@ -596,22 +463,13 @@ Deno.serve(async (req) => {
       source: "revenuecat",
       event_type: type,
       user_id: app_user_id,
-      payload: sanitizeWebhookPayload(body),
+      payload: body,
       created_at: new Date().toISOString(),
     });
 
     if (logError) {
       console.log("Failed to log webhook event (non-fatal):", logError);
     }
-
-    await upsertRevenueEvent(
-      supabase,
-      body,
-      event,
-      app_user_id,
-      type,
-      effectiveProductId,
-    );
 
     return jsonResponse({
       success: true,

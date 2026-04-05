@@ -1,32 +1,24 @@
+// app/(dashboard)/subscriptions/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase";
 import {
-  Cell,
-  Legend,
-  Pie,
   PieChart,
+  Pie,
+  Cell,
   ResponsiveContainer,
+  Legend,
   Tooltip,
 } from "recharts";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-interface TierStat {
+interface TierStats {
   tier: string;
   count: number;
   percentage: number;
-}
-
-interface SubscriptionsResponse {
-  tierStats: TierStat[];
-  totals: {
-    active: number;
-    churned: number;
-    conversionRate: number;
-  };
 }
 
 const TIER_COLORS: Record<string, string> = {
@@ -36,7 +28,7 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 export default function SubscriptionsPage() {
-  const [tierStats, setTierStats] = useState<TierStat[]>([]);
+  const [tierStats, setTierStats] = useState<TierStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [totals, setTotals] = useState({
     active: 0,
@@ -47,16 +39,47 @@ export default function SubscriptionsPage() {
   useEffect(() => {
     async function fetchSubscriptions() {
       try {
-        const response = await fetch("/api/admin/subscriptions", {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Failed to load subscriptions");
-        }
+        // 取得各 tier 用戶數
+        const { data: subs } = await supabase
+          .from("real_subscriptions")
+          .select("tier, status");
 
-        const payload = (await response.json()) as SubscriptionsResponse;
-        setTierStats(payload.tierStats ?? []);
-        setTotals(payload.totals ?? { active: 0, churned: 0, conversionRate: 0 });
+        const { count: totalUsers } = await supabase
+          .from("real_users")
+          .select("*", { count: "exact", head: true });
+
+        const activeSubs = subs?.filter((s) => s.status === "active") || [];
+        const churnedSubs = subs?.filter((s) => s.status === "cancelled") || [];
+
+        // 計算 tier 分佈
+        const tierCounts: Record<string, number> = {
+          free: (totalUsers || 0) - activeSubs.length,
+          starter: 0,
+          essential: 0,
+        };
+
+        activeSubs.forEach((sub) => {
+          if (sub.tier in tierCounts) {
+            tierCounts[sub.tier]++;
+          }
+        });
+
+        const total = Object.values(tierCounts).reduce((a, b) => a + b, 0);
+        const stats = Object.entries(tierCounts).map(([tier, count]) => ({
+          tier: tier.charAt(0).toUpperCase() + tier.slice(1),
+          count,
+          percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        }));
+
+        setTierStats(stats);
+        setTotals({
+          active: activeSubs.length,
+          churned: churnedSubs.length,
+          conversionRate:
+            totalUsers && totalUsers > 0
+              ? Math.round((activeSubs.length / totalUsers) * 100)
+              : 0,
+        });
       } catch (error) {
         console.error("Failed to fetch subscriptions:", error);
       } finally {
@@ -64,23 +87,23 @@ export default function SubscriptionsPage() {
       }
     }
 
-    void fetchSubscriptions();
+    fetchSubscriptions();
   }, []);
 
-  const pieData = tierStats.map((tier) => ({
-    name: tier.tier,
-    value: tier.count,
+  const pieData = tierStats.map((t) => ({
+    name: t.tier,
+    value: t.count,
   }));
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Subscriptions</h1>
+      <h1 className="text-3xl font-bold">訂閱</h1>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Active paid
+              活躍訂閱
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -91,23 +114,23 @@ export default function SubscriptionsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Conversion rate
+              轉換率
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totals.conversionRate}%</div>
-            <p className="text-xs text-gray-500">Free to paid</p>
+            <p className="text-xs text-gray-500">Free → Paid</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Churned
+              流失數
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totals.churned}</div>
-            <p className="text-xs text-gray-500">Cancelled records</p>
+            <p className="text-xs text-gray-500">已取消訂閱</p>
           </CardContent>
         </Card>
       </div>
@@ -115,12 +138,12 @@ export default function SubscriptionsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Tier mix</CardTitle>
+            <CardTitle>訂閱分佈</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex h-64 items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+              <div className="h-64 flex items-center justify-center">
+                <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
               </div>
             ) : (
               <div className="h-64">
@@ -138,7 +161,7 @@ export default function SubscriptionsPage() {
                       {pieData.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={TIER_COLORS[entry.name.toLowerCase()] ?? "#ccc"}
+                          fill={TIER_COLORS[entry.name.toLowerCase()] || "#ccc"}
                         />
                       ))}
                     </Pie>
@@ -153,36 +176,36 @@ export default function SubscriptionsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Tier detail</CardTitle>
+            <CardTitle>Tier 統計</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {tierStats.map((tier) => (
                 <div key={tier.tier} className="flex items-center gap-4">
                   <div
-                    className="h-3 w-3 rounded-full"
+                    className="w-3 h-3 rounded-full"
                     style={{
                       backgroundColor:
-                        TIER_COLORS[tier.tier.toLowerCase()] ?? "#ccc",
+                        TIER_COLORS[tier.tier.toLowerCase()] || "#ccc",
                     }}
-                  />
+                  ></div>
                   <div className="flex-1">
                     <div className="flex justify-between">
                       <span className="font-medium">{tier.tier}</span>
-                      <span className="text-gray-500">{tier.count} users</span>
+                      <span className="text-gray-500">{tier.count} 人</span>
                     </div>
-                    <div className="mt-1 overflow-hidden rounded-full bg-gray-100">
+                    <div className="mt-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
-                        className="h-2 rounded-full"
+                        className="h-full rounded-full"
                         style={{
                           width: `${tier.percentage}%`,
                           backgroundColor:
-                            TIER_COLORS[tier.tier.toLowerCase()] ?? "#ccc",
+                            TIER_COLORS[tier.tier.toLowerCase()] || "#ccc",
                         }}
-                      />
+                      ></div>
                     </div>
                   </div>
-                  <span className="w-12 text-right text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 w-12 text-right">
                     {tier.percentage}%
                   </span>
                 </div>

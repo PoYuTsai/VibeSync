@@ -42,13 +42,13 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
           ),
           const SizedBox(height: 24),
           Text(
-            '加購訊息包',
+            'Message Booster',
             style: AppTypography.headlineMedium,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
           Text(
-            '先看看後續規劃中的加購方案，目前還不能直接購買。',
+            'Preview the planned one-time packages. Purchase is not live yet.',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -64,7 +64,7 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              '這裡目前是方案預覽。等 RevenueCat 的加購型 IAP 串好之後，才會正式開放購買。',
+              'This sheet is read-only for now. RevenueCat booster IAP still needs to be integrated before any purchase can complete.',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -80,7 +80,7 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
               foregroundColor: Colors.white,
             ),
             child: Text(
-              '即將推出',
+              'Coming Soon',
               style: AppTypography.titleMedium.copyWith(color: Colors.white),
             ),
           ),
@@ -125,7 +125,7 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
                 children: [
                   Text(pkg.label, style: AppTypography.titleMedium),
                   Text(
-                    '平均每則 ${pkg.costPerMessage.toStringAsFixed(2)} 元',
+                    'Per message ${pkg.costPerMessage.toStringAsFixed(2)} NTD',
                     style: AppTypography.caption,
                   ),
                 ],
@@ -164,7 +164,7 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          '訊息包加購功能還沒正式開放，現在先使用訂閱方案即可。',
+          'Booster purchases are not live yet. Please use the subscription plans for now.',
         ),
       ),
     );

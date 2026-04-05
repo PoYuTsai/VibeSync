@@ -1,18 +1,9 @@
+// app/(dashboard)/costs/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -22,8 +13,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { supabase } from "@/lib/supabase";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
-interface ProfitRow {
+interface ProfitData {
   month: string;
   revenue: number;
   cost: number;
@@ -32,17 +33,8 @@ interface ProfitRow {
   cost_per_user: number;
 }
 
-interface CostsResponse {
-  rows: ProfitRow[];
-  summary: {
-    totalCost: number;
-    avgCostPerUser: number;
-    avgMargin: number;
-  };
-}
-
 export default function CostsPage() {
-  const [rows, setRows] = useState<ProfitRow[]>([]);
+  const [profitData, setProfitData] = useState<ProfitData[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState({
     totalCost: 0,
@@ -53,22 +45,43 @@ export default function CostsPage() {
   useEffect(() => {
     async function fetchCosts() {
       try {
-        const response = await fetch("/api/admin/costs", {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Failed to load costs");
-        }
+        const { data } = await supabase
+          .from("monthly_profit")
+          .select("*")
+          .order("month", { ascending: false })
+          .limit(12);
 
-        const payload = (await response.json()) as CostsResponse;
-        setRows(payload.rows ?? []);
-        setSummary(
-          payload.summary ?? {
-            totalCost: 0,
-            avgCostPerUser: 0,
-            avgMargin: 0,
-          },
-        );
+        if (data && data.length > 0) {
+          const formattedData = data
+            .reverse()
+            .map((d) => ({
+              month: new Date(d.month).toLocaleDateString("zh-TW", {
+                year: "2-digit",
+                month: "short",
+              }),
+              revenue: Number(d.revenue),
+              cost: Number(d.cost),
+              profit: Number(d.profit),
+              margin_percent: Number(d.margin_percent),
+              cost_per_user: Number(d.cost_per_user),
+            }));
+
+          setProfitData(formattedData);
+
+          const totalCost = formattedData.reduce((sum, d) => sum + d.cost, 0);
+          const avgCostPerUser =
+            formattedData.reduce((sum, d) => sum + d.cost_per_user, 0) /
+            formattedData.length;
+          const avgMargin =
+            formattedData.reduce((sum, d) => sum + d.margin_percent, 0) /
+            formattedData.length;
+
+          setSummary({
+            totalCost: Math.round(totalCost * 100) / 100,
+            avgCostPerUser: Math.round(avgCostPerUser * 10000) / 10000,
+            avgMargin: Math.round(avgMargin * 100) / 100,
+          });
+        }
       } catch (error) {
         console.error("Failed to fetch costs:", error);
       } finally {
@@ -76,42 +89,42 @@ export default function CostsPage() {
       }
     }
 
-    void fetchCosts();
+    fetchCosts();
   }, []);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Costs</h1>
+      <h1 className="text-3xl font-bold">成本</h1>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              12-month AI cost
+              累計 AI 成本
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               ${summary.totalCost.toLocaleString()}
             </div>
-            <p className="text-xs text-gray-500">USD</p>
+            <p className="text-xs text-gray-500">USD (近 12 個月)</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Avg cost per user
+              平均每用戶成本
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${summary.avgCostPerUser}</div>
-            <p className="text-xs text-gray-500">USD / user</p>
+            <p className="text-xs text-gray-500">USD / 月</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Avg gross margin
+              平均毛利率
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -120,32 +133,30 @@ export default function CostsPage() {
             >
               {summary.avgMargin}%
             </div>
-            <p className="text-xs text-gray-500">
-              Revenue minus AI/token cost
-            </p>
+            <p className="text-xs text-gray-500">目標: &gt;90%</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Revenue vs cost</CardTitle>
+          <CardTitle>營收 vs 成本</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex h-80 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            <div className="h-80 flex items-center justify-center">
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
             </div>
           ) : (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={rows}>
+                <BarChart data={profitData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="revenue" name="Revenue" fill="#3B82F6" />
-                  <Bar dataKey="cost" name="Cost" fill="#EF4444" />
+                  <Bar dataKey="revenue" name="營收" fill="#3B82F6" />
+                  <Bar dataKey="cost" name="成本" fill="#EF4444" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -155,28 +166,28 @@ export default function CostsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Monthly profit table</CardTitle>
+          <CardTitle>月度利潤明細</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="animate-pulse space-y-2">
-              {[1, 2, 3, 4, 5].map((row) => (
-                <div key={row} className="h-10 rounded bg-gray-100" />
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-10 bg-gray-100 rounded"></div>
               ))}
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="text-right">Profit</TableHead>
-                  <TableHead className="text-right">Margin</TableHead>
+                  <TableHead>月份</TableHead>
+                  <TableHead className="text-right">營收</TableHead>
+                  <TableHead className="text-right">成本</TableHead>
+                  <TableHead className="text-right">利潤</TableHead>
+                  <TableHead className="text-right">毛利率</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...rows].reverse().map((row) => (
+                {[...profitData].reverse().map((row) => (
                   <TableRow key={row.month}>
                     <TableCell className="font-medium">{row.month}</TableCell>
                     <TableCell className="text-right">

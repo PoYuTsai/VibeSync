@@ -1,239 +1,260 @@
-# VibeSync Security Architecture
-
-Last updated: 2026-04-05
-
-This document describes the practical security boundaries for the current
-VibeSync launch architecture.
-
-## Current Security Goal
-
-VibeSync is targeting:
-
-- safe enough for an early public iOS launch
-- strong enough to limit common indie-app failure modes
-- observable enough that suspicious behavior can be detected and investigated
-
-It is **not** yet the posture of a fully mature, high-trust privacy product.
-
-## System Boundaries
-
-### Client
-
-The Flutter app is responsible for:
-
-- user authentication
-- local conversation storage
-- screenshot selection and pre-upload compression
-- initiating analysis / OCR / billing sync / diagnostics requests
-
-The client must **not** hold:
-
-- Anthropic API secrets
-- Supabase service-role credentials
-- RevenueCat server credentials
-
-The client **does** hold:
-
-- Supabase anon key
-- RevenueCat public SDK key
-
-Those are acceptable client-side values.
-
-### Supabase Edge Functions
-
-Edge Functions are the main trust boundary for privileged server actions.
-
-Current key functions:
-
-- `analyze-chat`
-- `submit-feedback`
-- `sync-subscription`
-- `delete-account`
-- `auth-diagnostics`
-- `revenuecat-webhook`
-- `security-alerts`
-
-Rules:
-
-- user-facing functions should verify JWT
-- webhook / pre-auth ingress must be explicit and narrowly scoped
-- privileged writes should happen with service-role authority only on the server
-
-### Database
-
-Postgres holds:
-
-- subscriptions
-- revenue events
-- AI logs
-- auth diagnostics
-- webhook logs
-- security alert events
-
-Operational tables are protected by:
-
-- RLS where appropriate
-- admin-only read paths
-- service-role-owned maintenance functions
-- retention cleanup jobs
-
-### Third-Party Services
-
-- `Anthropic`
-  - used for screenshot recognition / analysis generation
-- `RevenueCat`
-  - used for mobile subscription truth
-- `Telegram`
-  - current external alert sink
-- optional generic webhook sink
-  - second alert delivery path
-
-## Sensitive Data Classes
-
-### Highest sensitivity
-
-- `CLAUDE_API_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- RevenueCat server-side credentials / webhook secret
-- security alert shared secrets
-
-These must never ship in the client or tracked repo docs.
-
-### Medium sensitivity
-
-- auth diagnostics metadata
-- webhook event summaries
-- AI operational logs
-- screenshot-derived conversation structure
-
-These require:
-
-- minimal retention
-- minimal payload size
-- no unnecessary raw content persistence
-
-### Lower sensitivity
-
-- Supabase project URL
-- Supabase anon key
-- public RevenueCat SDK key
-- bundle identifiers
-
-These are not private secrets, but should still be handled cleanly.
-
-## Main Trust Boundaries
-
-### 1. App -> Edge Function
-
-For normal authenticated flows:
-
-- app sends Supabase JWT
-- edge function validates JWT
-- function performs server-side checks
-- function talks to Anthropic / RevenueCat / database
-
-### 2. Pre-auth diagnostics
-
-Auth diagnostics must work before login for:
-
-- sign-up
-- resend verification
-- forgot password
-
-This is why `auth-diagnostics` is a dedicated ingress function instead of a
-direct public table insert.
-
-Current protections:
-
-- server-side validation
-- hashed client fingerprint
-- coarse throttling
-- smaller payloads
-- retention cleanup
-
-### 3. Third-party webhook ingress
-
-`revenuecat-webhook` is intentionally webhook-style ingress.
-
-Its boundary is:
-
-- webhook secret validation
-- restricted purpose
-- reduced payload persistence
-- downstream sync into app-facing subscription state
-
-## Data Handling Reality
-
-VibeSync is local-first, but not local-only.
-
-Current real behavior:
-
-- conversations are stored locally on device
-- when the user explicitly triggers analysis / OCR, the minimum necessary request
-  content is sent through backend processing
-- Anthropic processes that request content
-
-Implication:
-
-- privacy policy
-- App Store privacy disclosure
-- in-app copy
-
-must all describe that reality precisely.
-
-## Observability / Abuse Controls
-
-Current controls in place:
-
-- `ai_logs`
-- `auth_diagnostics`
-- `webhook_logs`
-- `security_signals`
-- `security_alert_events`
-- nightly retention cleanup
-- cron health visibility
-- external critical alert delivery
-
-This means suspicious patterns now have:
-
-- local visibility in the admin dashboard
-- persistent alert state
-- external delivery for critical signals
-
-## Current Security Strengths
-
-- client does not hold privileged AI / service-role keys
-- user-facing functions now default to JWT verification
-- auth diagnostics no longer write directly from client to table
-- webhook logs store reduced summaries instead of raw payload blobs
-- security logs now have scheduled retention
-- critical anomalies can leave the dashboard through alert channels
-- admin dashboard data is now served through server-side API routes instead of
-  browser-side direct database reads
-
-## Current Security Gaps
-
-These are still real, even after the latest rounds:
-
-1. The product still depends on third-party processing for user-triggered analysis.
-2. Privacy trust still depends on accurate disclosure and disciplined retention.
-3. Infrastructure ownership and secret rotation must remain shared across founders.
-4. OCR correctness and billing correctness are product-trust issues, not just UX issues.
-
-## Launch Rating
-
-Current rough security rating:
-
-- `9.2/10 for an early public launch`
-
-Meaning:
-
-- good enough to launch with active monitoring
-- not yet a finished enterprise-grade privacy posture
-
-## Most Important Operational Docs
-
-- [security-hardening-status.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-hardening-status.md)
-- [security-incident-response.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-incident-response.md)
-- [security-alerting-setup.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/security-alerting-setup.md)
-- [supabase-ops-guide.md](/C:/Users/eric1/OneDrive/Desktop/VibeSync/docs/supabase-ops-guide.md)
+# VibeSync 資安架構
+
+## 威脅模型
+
+### 攻擊向量分析
+
+| 威脅 | 風險等級 | 攻擊方式 | 防護措施 |
+|------|----------|----------|----------|
+| API Key 洩漏 | 🔴 高 | 反編譯 APK、GitHub 掃描 | Key 只存後端 |
+| 用戶對話外洩 | 🔴 高 | 手機遺失、備份外洩 | 本地 AES-256 加密 |
+| JWT Token 竊取 | 🟡 中 | 中間人攻擊、XSS | HTTPS + Token 短效期 |
+| API 濫用 | 🟡 中 | 帳號分享、爬蟲 | Rate limit + 用量監控 |
+| DDoS | 🟢 低 | 大量請求 | Supabase 內建防護 |
+
+---
+
+## 機密資料分層
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SECRET LEVELS                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  🔴 Level 1: 絕不進入程式碼                                   │
+│  ├── Claude API Key (CLAUDE_API_KEY)                        │
+│  ├── Supabase Service Role Key                              │
+│  └── Database Connection String                             │
+│      → 只存在: Supabase Dashboard > Secrets                  │
+│                                                              │
+│  🟡 Level 2: 可進入 App 但不進 Git                            │
+│  ├── Supabase Anon Key (公開但不 commit)                     │
+│  ├── RevenueCat Public Key                                  │
+│  └── Sentry DSN                                             │
+│      → 存在: .env 檔案 (已在 .gitignore)                     │
+│      → Build 時注入: --dart-define                          │
+│                                                              │
+│  🟢 Level 3: 可公開                                          │
+│  ├── Supabase Project URL                                   │
+│  └── App Bundle ID                                          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## API Key 保護策略
+
+### 策略 1: Key 永不進入 Client
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│   Flutter    │ ──────▶ │   Supabase   │ ──────▶ │   Claude     │
+│     App      │  JWT    │  Edge Func   │  API    │     API      │
+└──────────────┘         └──────────────┘  Key    └──────────────┘
+                               │
+                               ▼
+                    CLAUDE_API_KEY 只存這裡
+                    (Supabase Secrets)
+```
+
+**關鍵：Flutter App 永遠不知道 Claude API Key**
+
+### 策略 2: 環境變數注入
+
+```bash
+# 本地開發
+flutter run --dart-define=SUPABASE_URL=xxx --dart-define=SUPABASE_ANON_KEY=xxx
+
+# CI/CD Build
+flutter build apk --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} ...
+```
+
+```dart
+// main.dart
+const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+const supabaseKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+```
+
+### 策略 3: Git 防護
+
+```bash
+# .gitignore (已設定)
+.env
+.env.*
+**/secrets/
+
+# Git hooks (pre-commit)
+# 掃描是否有 key 格式的字串
+```
+
+---
+
+## 本地資料加密
+
+### Hive + AES-256
+
+```dart
+class SecureStorageService {
+  static late List<int> _encryptionKey;
+
+  static Future<void> initialize() async {
+    // 1. 從 Secure Storage 取得 key
+    final secureStorage = FlutterSecureStorage();
+    String? storedKey = await secureStorage.read(key: 'hive_key');
+
+    if (storedKey == null) {
+      // 2. 首次使用，生成新 key
+      final newKey = Hive.generateSecureKey();
+      await secureStorage.write(
+        key: 'hive_key',
+        value: base64Encode(newKey),
+      );
+      _encryptionKey = newKey;
+    } else {
+      _encryptionKey = base64Decode(storedKey);
+    }
+
+    // 3. 用加密 key 開啟 Hive Box
+    await Hive.openBox<Conversation>(
+      'conversations',
+      encryptionCipher: HiveAesCipher(_encryptionKey),
+    );
+  }
+}
+```
+
+### 加密 Key 儲存位置
+
+| 平台 | 儲存位置 | 安全性 |
+|------|----------|--------|
+| iOS | Keychain | ✅ 硬體級加密 |
+| Android | EncryptedSharedPreferences | ✅ Android Keystore |
+| Web | LocalStorage | ⚠️ 較弱 (MVP 不支援 web) |
+
+---
+
+## JWT Token 安全
+
+### Token 設計
+
+```typescript
+// Supabase 預設 JWT 設定
+{
+  "aud": "authenticated",
+  "exp": 1234567890,  // 1 小時過期
+  "sub": "user-uuid",
+  "email": "user@example.com",
+  "role": "authenticated"
+}
+```
+
+### Token 重新整理
+
+```dart
+class AuthService {
+  Timer? _refreshTimer;
+
+  void startTokenRefresh() {
+    // 每 50 分鐘刷新 (token 60 分鐘過期)
+    _refreshTimer = Timer.periodic(
+      Duration(minutes: 50),
+      (_) => _refreshToken(),
+    );
+  }
+
+  Future<void> _refreshToken() async {
+    await SupabaseService.client.auth.refreshSession();
+  }
+}
+```
+
+---
+
+## Edge Function 安全驗證
+
+```typescript
+// supabase/functions/analyze-chat/index.ts
+
+async function validateRequest(req: Request): Promise<User> {
+  // 1. 檢查 Authorization header
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    throw new Error('Missing auth token');
+  }
+
+  // 2. 驗證 JWT
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) {
+    throw new Error('Invalid token');
+  }
+
+  // 3. 檢查用戶是否被封鎖
+  const { data: profile } = await supabase
+    .from('users')
+    .select('is_banned')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.is_banned) {
+    throw new Error('User banned');
+  }
+
+  // 4. 檢查訂閱狀態和用量
+  const { data: sub } = await supabase
+    .from('subscriptions')
+    .select('tier, monthly_analyses_used')
+    .eq('user_id', user.id)
+    .single();
+
+  const limits = { free: 5, pro: 200, unlimited: Infinity };
+  if (sub.monthly_analyses_used >= limits[sub.tier]) {
+    throw new Error('Quota exceeded');
+  }
+
+  return user;
+}
+```
+
+---
+
+## 安全監控
+
+### Sentry 錯誤追蹤
+
+```dart
+// main.dart
+await SentryFlutter.init(
+  (options) {
+    options.dsn = const String.fromEnvironment('SENTRY_DSN');
+    options.tracesSampleRate = 0.2;
+    // 不要傳送 PII
+    options.beforeSend = (event, {hint}) {
+      // 移除敏感資料
+      event.contexts.remove('device');
+      return event;
+    };
+  },
+  appRunner: () => runApp(const App()),
+);
+```
+
+### 異常行為偵測
+
+```sql
+-- 在 Supabase 設定 Alert
+
+-- 1. 單一用戶短時間大量請求
+SELECT user_id, COUNT(*) as count
+FROM api_logs
+WHERE created_at > NOW() - INTERVAL '1 minute'
+GROUP BY user_id
+HAVING COUNT(*) > 10;  -- Alert threshold
+
+-- 2. 異常付費行為
+SELECT user_id
+FROM subscriptions
+WHERE tier = 'unlimited'
+AND monthly_analyses_used > 1000;  -- 可疑大量使用
+```

@@ -1,32 +1,55 @@
+// lib/core/config/environment.dart
+
 import 'package:flutter/foundation.dart';
 
-/// Runtime environment for the app.
+/// 應用程式執行環境
 enum Environment { dev, staging, prod }
 
-/// Centralized runtime configuration.
+/// 環境配置
 ///
-/// Notes:
-/// - `dev` and `staging` currently point at the same Supabase project.
-/// - production-only values can be overridden via `--dart-define`.
-/// - RevenueCat keys must come from build-time environment variables.
+/// 根據編譯時定義的 ENV 環境變數決定配置:
+/// - dev: 本地開發 (localhost Supabase)
+/// - staging: 測試環境 (staging Supabase)
+/// - prod: 正式環境 (production Supabase)
+///
+/// 使用方式:
+/// ```bash
+/// # Development (default)
+/// flutter run
+///
+/// # Staging
+/// flutter run --dart-define=ENV=staging
+///
+/// # Production
+/// flutter run --dart-define=ENV=prod
+/// ```
 class AppConfig {
   static const _envKey = 'ENV';
 
+  /// 當前環境
   static Environment get environment {
     const env = String.fromEnvironment(_envKey, defaultValue: 'dev');
     return Environment.values.firstWhere(
-      (value) => value.name == env,
+      (e) => e.name == env,
       orElse: () => Environment.dev,
     );
   }
 
+  /// 是否為正式環境
   static bool get isProduction => environment == Environment.prod;
+
+  /// 是否為開發環境
   static bool get isDevelopment => environment == Environment.dev;
+
+  /// 是否為測試環境
   static bool get isStaging => environment == Environment.staging;
 
+  /// Supabase URL
   static String get supabaseUrl {
     switch (environment) {
       case Environment.dev:
+        // Dev 也使用遠端 Supabase (方便測試)
+        return 'https://fcmwrmwdoqiqdnbisdpg.supabase.co';
       case Environment.staging:
         return 'https://fcmwrmwdoqiqdnbisdpg.supabase.co';
       case Environment.prod:
@@ -37,41 +60,30 @@ class AppConfig {
     }
   }
 
+  /// Supabase Anonymous Key
   static String get supabaseAnonKey {
-    const defaultAnonKey =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg';
-
     switch (environment) {
       case Environment.dev:
+        // Dev 也使用遠端 Supabase anon key
+        return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg';
       case Environment.staging:
-        return defaultAnonKey;
+        return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg';
       case Environment.prod:
         return const String.fromEnvironment(
           'SUPABASE_PROD_ANON_KEY',
-          defaultValue: defaultAnonKey,
+          defaultValue:
+              'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjbXdybXdkb3FpcWRuYmlzZHBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDUzMjUsImV4cCI6MjA4Nzc4MTMyNX0.xqorAcT0NUTNxzktd-SgI3ePG8jJdeqCRU730Brzmlg',
         );
     }
   }
 
-  /// RevenueCat key selection:
-  /// - dev / staging: sandbox key
-  /// - prod: production key
-  ///
-  /// No repo-side fallback is allowed.
+  /// RevenueCat API Key (iOS)
+  /// Dev/Staging 使用同一個 key，Production 可透過環境變數覆蓋
   static String get revenueCatApiKey {
-    switch (environment) {
-      case Environment.dev:
-      case Environment.staging:
-        return const String.fromEnvironment(
-          'REVENUECAT_SANDBOX_KEY',
-          defaultValue: '',
-        );
-      case Environment.prod:
-        return const String.fromEnvironment(
-          'REVENUECAT_PROD_KEY',
-          defaultValue: '',
-        );
-    }
+    return const String.fromEnvironment(
+      'REVENUECAT_API_KEY',
+      defaultValue: 'appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY',
+    );
   }
 
   static const String _nativeAuthRedirectUri =
@@ -91,6 +103,7 @@ class AppConfig {
     return _nativeAuthRedirectUri;
   }
 
+  /// 顯示環境名稱
   static String get environmentName {
     switch (environment) {
       case Environment.dev:
@@ -102,6 +115,9 @@ class AppConfig {
     }
   }
 
+  /// 是否啟用 debug 功能
   static bool get debugEnabled => !isProduction;
+
+  /// 是否顯示環境標籤 (dev/staging 時顯示)
   static bool get showEnvironmentBadge => !isProduction;
 }

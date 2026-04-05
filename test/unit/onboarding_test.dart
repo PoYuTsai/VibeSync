@@ -19,7 +19,7 @@ void main() {
 
     test('demoResult has valid enthusiasm', () {
       expect(DemoConversation.demoResult.enthusiasmScore, 72);
-      expect(DemoConversation.demoResult.enthusiasmLevel.label, '熱情');
+      expect(DemoConversation.demoResult.enthusiasmLevel.label, 'hot');
     });
 
     test('demoResult has all reply types', () {

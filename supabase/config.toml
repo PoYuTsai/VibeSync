@@ -258,12 +258,6 @@ max_frequency = "5s"
 
 # Configure logged in session timeouts.
 # [auth.sessions]
-
-[functions.auth-diagnostics]
-verify_jwt = false
-
-[functions.revenuecat-webhook]
-verify_jwt = false
 # Force log out after the specified duration.
 # timebox = "24h"
 # Force log out if the user has been inactive longer than the specified duration.

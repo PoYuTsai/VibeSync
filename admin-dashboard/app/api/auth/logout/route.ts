@@ -2,14 +2,7 @@ import { NextResponse } from "next/server";
 import { ADMIN_ACCESS_COOKIE } from "@/lib/auth";
 
 export async function POST() {
-  const response = NextResponse.json(
-    { success: true },
-    {
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    },
-  );
+  const response = NextResponse.json({ success: true });
   response.cookies.set({
     name: ADMIN_ACCESS_COOKIE,
     value: "",

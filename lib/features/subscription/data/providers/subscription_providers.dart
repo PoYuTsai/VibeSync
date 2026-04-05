@@ -380,11 +380,12 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final customerInfo = await RevenueCatService.purchase(package);
 
       debugPrint('=== PURCHASE RESULT ===');
+      debugPrint('Active Subscriptions: ${customerInfo.activeSubscriptions}');
       debugPrint(
-        'Active subscription count: ${customerInfo.activeSubscriptions.length}',
+        'All Purchased: ${customerInfo.allPurchasedProductIdentifiers}',
       );
       debugPrint(
-        'Active entitlement count: ${customerInfo.entitlements.active.length}',
+        'Active Entitlements: ${customerInfo.entitlements.active.keys.toList()}',
       );
 
       final resolvedTier = _resolvePurchasedTier(
@@ -507,6 +508,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       if (customerInfo == null) return;
 
       final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+
+      if (state.isPremium && rcTier == SubscriptionTierHelper.free) {
+        debugPrint(
+          'Tier mismatch ignored: local=${state.tier}, RevenueCat=$rcTier (keep premium until sync stabilizes)',
+        );
+        return;
+      }
 
       if (rcTier != state.tier) {
         debugPrint('Tier mismatch: local=${state.tier}, RevenueCat=$rcTier');

@@ -36,9 +36,9 @@ void main() {
 
       final context = service.prepareContext(conversation);
 
-      expect(context, contains('Me: 你好'));
-      expect(context, contains('Her: 嗨！你好'));
-      expect(context, contains('Recent messages:'));
+      expect(context, contains('我: 你好'));
+      expect(context, contains('她: 嗨！你好'));
+      expect(context, contains('最近對話'));
     });
 
     test('includes historical summaries when present', () {
@@ -63,9 +63,9 @@ void main() {
 
       final context = service.prepareContext(conversation);
 
-      expect(context, contains('Historical summaries:'));
+      expect(context, contains('歷史摘要'));
       expect(context, contains('討論了旅行和美食'));
-      expect(context, contains('Topics: 旅行, 美食'));
+      expect(context, contains('關鍵話題: 旅行, 美食'));
     });
 
     test('returns empty context for empty conversation', () {

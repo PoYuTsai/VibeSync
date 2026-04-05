@@ -1,12 +1,16 @@
+// app/(dashboard)/activity/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase";
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -15,33 +19,60 @@ import {
   YAxis,
 } from "recharts";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-interface ActivityRow {
+interface ActivityData {
   date: string;
   dau: number;
 }
 
-interface ActivityResponse {
-  rows: ActivityRow[];
-}
-
 export default function ActivityPage() {
-  const [rows, setRows] = useState<ActivityRow[]>([]);
+  const [activityData, setActivityData] = useState<ActivityData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState({
+    todayDAU: 0,
+    avgDAU: 0,
+    peakDAU: 0,
+    wau: 0,
+    mau: 0,
+  });
 
   useEffect(() => {
     async function fetchActivity() {
       try {
-        const response = await fetch("/api/admin/activity", {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Failed to load activity");
+        const { data, error } = await supabase
+          .from("user_activity")
+          .select("*")
+          .order("date", { ascending: true })
+          .limit(30);
+
+        if (error) {
+          throw error;
         }
 
-        const payload = (await response.json()) as ActivityResponse;
-        setRows(payload.rows ?? []);
+        if (data && data.length > 0) {
+          const formattedData = data.map((row) => ({
+            date: new Date(row.date).toLocaleDateString("zh-TW", {
+              month: "short",
+              day: "numeric",
+            }),
+            dau: Number(row.dau),
+          }));
+
+          setActivityData(formattedData);
+
+          const todayDAU = formattedData[formattedData.length - 1]?.dau || 0;
+          const avgDAU =
+            formattedData.reduce((sum, row) => sum + row.dau, 0) /
+            formattedData.length;
+          const peakDAU = Math.max(...formattedData.map((row) => row.dau));
+
+          setSummary({
+            todayDAU,
+            avgDAU: Math.round(avgDAU),
+            peakDAU,
+            wau: Math.round(avgDAU * 2.5),
+            mau: Math.round(avgDAU * 5),
+          });
+        }
       } catch (error) {
         console.error("Failed to fetch activity:", error);
       } finally {
@@ -49,72 +80,78 @@ export default function ActivityPage() {
       }
     }
 
-    void fetchActivity();
+    fetchActivity();
   }, []);
-
-  const chartRows = rows.map((row) => ({
-    date: new Date(row.date).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    }),
-    dau: row.dau,
-  }));
-
-  const todayDau = chartRows.at(-1)?.dau ?? 0;
-  const averageDau = chartRows.length > 0
-    ? Math.round(
-        chartRows.reduce((sum, row) => sum + row.dau, 0) / chartRows.length,
-      )
-    : 0;
-  const peakDau = chartRows.length > 0
-    ? Math.max(...chartRows.map((row) => row.dau))
-    : 0;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Activity</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Daily active-user trend for the last 30 days.
-        </p>
-      </div>
+      <h1 className="text-3xl font-bold">用戶活動</h1>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Today DAU
+              今日 DAU
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{todayDau}</div>
+            <div className="text-2xl font-bold">{summary.todayDAU}</div>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              30d average DAU
+              平均 DAU
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{averageDau}</div>
+            <div className="text-2xl font-bold">{summary.avgDAU}</div>
+            <p className="text-xs text-gray-500">最近 30 天</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              30d peak DAU
+              峰值 DAU
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{peakDau}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {summary.peakDAU}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              預估 WAU
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.wau}</div>
+            <p className="text-xs text-gray-500">近似估算</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              預估 MAU
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.mau}</div>
+            <p className="text-xs text-gray-500">近似估算</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Daily active users</CardTitle>
+          <CardTitle>DAU 趨勢</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -124,16 +161,17 @@ export default function ActivityPage() {
           ) : (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartRows}>
+                <LineChart data={activityData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
                   <YAxis />
                   <Tooltip />
+                  <Legend />
                   <Line
                     type="monotone"
                     dataKey="dau"
                     name="DAU"
-                    stroke="#2563EB"
+                    stroke="#3B82F6"
                     strokeWidth={2}
                     dot={false}
                   />
@@ -146,7 +184,7 @@ export default function ActivityPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>DAU bar view</CardTitle>
+          <CardTitle>最近 30 天活躍分佈</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -156,12 +194,12 @@ export default function ActivityPage() {
           ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartRows}>
+                <BarChart data={activityData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="dau" name="DAU" fill="#2563EB" />
+                  <Bar dataKey="dau" name="DAU" fill="#3B82F6" />
                 </BarChart>
               </ResponsiveContainer>
             </div>

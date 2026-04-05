@@ -125,10 +125,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: Center(
-              child: AnalysisErrorWidget.fromCode(
-                'RATE_LIMITED',
-                onRetry: () {},
-              ),
+              child: AnalysisErrorWidget.fromCode('RATE_LIMITED'),
             ),
           ),
         ),

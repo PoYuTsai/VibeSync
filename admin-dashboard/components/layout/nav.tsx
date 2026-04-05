@@ -12,7 +12,6 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
-  ShieldAlert,
   TrendingUp,
   Users,
   Zap,
@@ -22,13 +21,12 @@ const navItems = [
   { href: "/", label: "總覽", icon: LayoutDashboard },
   { href: "/users", label: "用戶", icon: Users },
   { href: "/subscriptions", label: "訂閱", icon: CreditCard },
-  { href: "/revenue", label: "收益", icon: TrendingUp },
+  { href: "/revenue", label: "營收", icon: TrendingUp },
   { href: "/costs", label: "成本", icon: DollarSign },
   { href: "/ai-health", label: "AI 健康", icon: Zap },
-  { href: "/errors", label: "錯誤日誌", icon: AlertCircle },
-  { href: "/activity", label: "活躍度", icon: Activity },
+  { href: "/errors", label: "錯誤追蹤", icon: AlertCircle },
+  { href: "/activity", label: "用戶活動", icon: Activity },
   { href: "/auth-diagnostics", label: "Auth 診斷", icon: KeyRound },
-  { href: "/security-signals", label: "Security", icon: ShieldAlert },
 ];
 
 export function Nav() {
@@ -62,7 +60,7 @@ export function Nav() {
                   "flex items-center gap-3 rounded-md px-3 py-2 transition-colors",
                   isActive
                     ? "bg-blue-600 text-white"
-                    : "text-gray-300 hover:bg-gray-800",
+                    : "text-gray-300 hover:bg-gray-800"
                 )}
               >
                 <Icon className="h-5 w-5" />

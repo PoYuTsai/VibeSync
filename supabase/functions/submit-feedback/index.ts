@@ -21,6 +21,7 @@ const MODEL_MAX_LENGTH = 120;
 const USER_TIER_MAX_LENGTH = 50;
 const AI_RESPONSE_MAX_LENGTH = 12000;
 const TELEGRAM_COMMENT_PREVIEW = 300;
+const TELEGRAM_SNIPPET_PREVIEW = 500;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,6 +75,8 @@ async function sendTelegramNotification(feedback: {
   rating: string;
   category?: string;
   comment?: string;
+  conversationSnippet?: string;
+  aiResponse?: Record<string, unknown>;
   modelUsed?: string;
 }) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
@@ -108,6 +111,25 @@ async function sendTelegramNotification(feedback: {
         truncateForPreview(feedback.comment, TELEGRAM_COMMENT_PREVIEW)
       }"\n`,
     );
+  }
+
+  if (feedback.conversationSnippet) {
+    messageParts.push(
+      `\nConversation snippet:\n${
+        truncateForPreview(
+          feedback.conversationSnippet,
+          TELEGRAM_SNIPPET_PREVIEW,
+        )
+      }\n`,
+    );
+  }
+
+  if (feedback.aiResponse?.finalRecommendation) {
+    const rec = feedback.aiResponse.finalRecommendation as Record<
+      string,
+      string
+    >;
+    messageParts.push(`\nAI recommendation:\n${rec.pick}: "${rec.content}"\n`);
   }
 
   let message = messageParts.join("");
@@ -241,6 +263,8 @@ serve(async (req) => {
       rating,
       category,
       comment,
+      conversationSnippet,
+      aiResponse,
       modelUsed,
     });
 

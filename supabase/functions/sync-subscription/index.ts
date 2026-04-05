@@ -3,8 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const REVENUECAT_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY") ||
-  Deno.env.get("REVENUECAT_API_KEY");
+const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY") ||
+  "appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,11 +121,7 @@ serve(async (req) => {
 
     const requestBody = isPlainObject(body) ? body : {};
     const expectedTier = normalizeTier(requestBody.expectedTier);
-
-    if (!REVENUECAT_API_KEY || !REVENUECAT_API_KEY.trim()) {
-      console.error("sync-subscription missing RevenueCat API key");
-      return jsonResponse({ error: "Server misconfigured" }, 500);
-    }
+    const resetUsage = requestBody.resetUsage === true;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const token = stripBearer(authHeader);
@@ -142,7 +138,7 @@ serve(async (req) => {
       `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.id)}`,
       {
         headers: {
-          Authorization: `Bearer ${REVENUECAT_API_KEY}`,
+          Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
           "Content-Type": "application/json",
         },
       },

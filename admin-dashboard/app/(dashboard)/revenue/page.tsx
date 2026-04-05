@@ -1,22 +1,23 @@
+// app/(dashboard)/revenue/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase";
 import {
-  CartesianGrid,
-  Legend,
-  Line,
   LineChart,
-  ResponsiveContainer,
-  Tooltip,
+  Line,
   XAxis,
   YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
 } from "recharts";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-interface MonthlyRevenueRow {
+interface MonthlyRevenue {
   month: string;
   revenue: number;
   new_subscriptions: number;
@@ -24,18 +25,8 @@ interface MonthlyRevenueRow {
   cancellations: number;
 }
 
-interface RevenueResponse {
-  rows: MonthlyRevenueRow[];
-  totals: {
-    thisMonth: number;
-    lastMonth: number;
-    growth: number;
-    totalSubscriptions: number;
-  };
-}
-
 export default function RevenuePage() {
-  const [rows, setRows] = useState<MonthlyRevenueRow[]>([]);
+  const [revenueData, setRevenueData] = useState<MonthlyRevenue[]>([]);
   const [loading, setLoading] = useState(true);
   const [totals, setTotals] = useState({
     thisMonth: 0,
@@ -47,23 +38,49 @@ export default function RevenuePage() {
   useEffect(() => {
     async function fetchRevenue() {
       try {
-        const response = await fetch("/api/admin/revenue", {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Failed to load revenue");
-        }
+        const { data } = await supabase
+          .from("monthly_revenue")
+          .select("*")
+          .order("month", { ascending: true })
+          .limit(12);
 
-        const payload = (await response.json()) as RevenueResponse;
-        setRows(payload.rows ?? []);
-        setTotals(
-          payload.totals ?? {
-            thisMonth: 0,
-            lastMonth: 0,
-            growth: 0,
-            totalSubscriptions: 0,
-          },
-        );
+        if (data && data.length > 0) {
+          const formattedData = data.map((d) => ({
+            month: new Date(d.month).toLocaleDateString("zh-TW", {
+              year: "2-digit",
+              month: "short",
+            }),
+            revenue: Number(d.revenue),
+            new_subscriptions: Number(d.new_subscriptions),
+            renewals: Number(d.renewals),
+            cancellations: Number(d.cancellations),
+          }));
+
+          setRevenueData(formattedData);
+
+          const thisMonth = formattedData[formattedData.length - 1];
+          const lastMonth =
+            formattedData.length > 1
+              ? formattedData[formattedData.length - 2]
+              : null;
+
+          const growth = lastMonth
+            ? lastMonth.revenue > 0
+              ? Math.round(
+                  ((thisMonth.revenue - lastMonth.revenue) / lastMonth.revenue) *
+                    100
+                )
+              : 100
+            : 0;
+
+          setTotals({
+            thisMonth: thisMonth.revenue,
+            lastMonth: lastMonth?.revenue || 0,
+            growth,
+            totalSubscriptions:
+              thisMonth.new_subscriptions + thisMonth.renewals,
+          });
+        }
       } catch (error) {
         console.error("Failed to fetch revenue:", error);
       } finally {
@@ -71,18 +88,18 @@ export default function RevenuePage() {
       }
     }
 
-    void fetchRevenue();
+    fetchRevenue();
   }, []);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Revenue</h1>
+      <h1 className="text-3xl font-bold">營收</h1>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              This month
+              本月營收
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -95,7 +112,7 @@ export default function RevenuePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Last month
+              上月營收
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -108,7 +125,7 @@ export default function RevenuePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Growth
+              月成長率
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -124,29 +141,31 @@ export default function RevenuePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              Subscription events
+              本月交易數
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totals.totalSubscriptions}</div>
-            <p className="text-xs text-gray-500">New + renewals</p>
+            <div className="text-2xl font-bold">
+              {totals.totalSubscriptions}
+            </div>
+            <p className="text-xs text-gray-500">新訂閱 + 續訂</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>12-month revenue trend</CardTitle>
+          <CardTitle>營收趨勢</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex h-80 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            <div className="h-80 flex items-center justify-center">
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
             </div>
           ) : (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={rows}>
+                <LineChart data={revenueData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
@@ -155,21 +174,21 @@ export default function RevenuePage() {
                   <Line
                     type="monotone"
                     dataKey="revenue"
-                    name="Revenue (USD)"
+                    name="營收 (USD)"
                     stroke="#3B82F6"
                     strokeWidth={2}
                   />
                   <Line
                     type="monotone"
                     dataKey="new_subscriptions"
-                    name="New subscriptions"
+                    name="新訂閱"
                     stroke="#10B981"
                     strokeWidth={2}
                   />
                   <Line
                     type="monotone"
                     dataKey="renewals"
-                    name="Renewals"
+                    name="續訂"
                     stroke="#8B5CF6"
                     strokeWidth={2}
                   />

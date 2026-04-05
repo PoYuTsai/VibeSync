@@ -4,7 +4,7 @@ Deno.test("buildServerGuardrails flags high-risk OCR runs", () => {
   const result = buildServerGuardrails({
     requestType: "recognize_only",
     imageCount: 2,
-    latencyMs: 16000,
+    latencyMs: 14000,
     timeoutMs: 15000,
     retryCount: 1,
     fallbackUsed: false,

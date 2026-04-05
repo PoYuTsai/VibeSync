@@ -147,7 +147,7 @@ void main() {
         currentConversation: conversation,
       );
 
-      expect(result, '這張圖還不太確定，匯入前請先看一下內容有沒有抓對。');
+      expect(result, '這張截圖辨識信心較低，匯入前請先確認預覽內容是否正確。');
     });
   });
 
@@ -185,7 +185,7 @@ void main() {
     test('returns localized labels', () {
       expect(
         ScreenshotRecognitionHelper.classificationLabel('social_feed'),
-        '社群畫面',
+        '社群內容',
       );
       expect(
         ScreenshotRecognitionHelper.classificationLabel('group_chat'),
@@ -197,7 +197,7 @@ void main() {
       );
       expect(
         ScreenshotRecognitionHelper.confidenceLabel('medium'),
-        '內容大致可用',
+        '信心中等',
       );
     });
 
@@ -214,7 +214,7 @@ void main() {
 
       expect(result, contains('社群貼文'));
       expect(result, contains('雙人聊天畫面'));
-      expect(guidance.title, '請改傳聊天截圖');
+      expect(guidance.title, '建議改傳雙人聊天截圖');
       expect(guidance.tone, ScreenshotRecognitionGuidanceTone.reject);
     });
 
@@ -233,8 +233,8 @@ void main() {
       final guidance = ScreenshotRecognitionHelper.guidance(recognized);
 
       expect(result, contains('LINE 的回覆引用框'));
-      expect(result, contains('重截一次'));
-      expect(guidance.title, '先看一下再匯入');
+      expect(result, contains('重截'));
+      expect(guidance.title, '建議先確認再匯入');
       expect(guidance.tone, ScreenshotRecognitionGuidanceTone.review);
     });
 
@@ -251,7 +251,7 @@ void main() {
 
       expect(result, contains('群組聊天'));
       expect(result, contains('一對一'));
-      expect(guidance.title, '請改傳一對一聊天');
+      expect(guidance.title, '請改傳一對一聊天視窗');
     });
 
     test('supplies fallback warning for reject classifications', () {
