@@ -51,6 +51,7 @@ Use these files as the current source of truth:
   - 2026-04-05 reliability rollback: restored fuller screenshot context, OCR retries, parse-failure retry, and conservative image compression after a recognition regression
   - 2026-04-05 parsing hardening: client OCR parsing now tolerates loose field types instead of collapsing into the generic `截圖辨識暫時失敗` path
   - 2026-04-05 recovery hardening: recognize-only OCR now gets one extra context-free recovery attempt before the backend returns `RECOGNITION_FAILED`
+  - 2026-04-05 telemetry hardening: OCR telemetry parsing is now fail-open, so loosely typed telemetry fields can no longer abort an otherwise successful screenshot-recognition result
 - Security:
   - JWT-verified user-facing edge functions
   - auth diagnostics ingress function

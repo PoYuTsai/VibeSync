@@ -60,6 +60,16 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
   - `analyze-chat` now attempts one extra context-free recognize-only recovery
     pass before returning `RECOGNITION_FAILED`, which is meant to rescue cases
     where thread context itself is the biasing factor
+- A third failure path was then found in `analysis_service.dart`:
+  - telemetry parsing ran before the final successful result was returned
+  - newly added OCR telemetry fields could still arrive as loose strings / nums
+    and throw during `AnalysisTelemetry(...)` construction
+  - that exception then fell into the same generic screenshot-recognition error
+    bucket, making the app look like OCR had failed again
+- Telemetry hardening was applied:
+  - `analysis_service.dart` now coerces telemetry strings / ints / bools
+  - telemetry callback construction is wrapped fail-open, so observability can
+    never block a successful OCR response again
 - Principle going forward:
   - OCR success rate and correctness are the primary gate
   - screenshot latency optimizations must not ship if they reduce recognition
