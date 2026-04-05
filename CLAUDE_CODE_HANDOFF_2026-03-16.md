@@ -1,5 +1,13 @@
 # Claude Code Handoff - 2026-03-16
 
+## 2026-04-05 Rollback Outcome
+
+- OCR-stable baseline is now `28c0965`
+- `b46f619` rolled the repo back to the editable `043ac23` baseline
+- `28c0965` only restored the missing `glassTextSecondary` compile constant
+- The later 2026-04-05 security / CI / alerting hardening work was part of the reverted range and must not be assumed active on current `main`
+- If any of that work is needed later, re-apply it one commit at a time on top of `28c0965`
+
 ## Current Status
 
 This hotfix batch focused on the core conversation-analysis path, screenshot recognition reliability, the highest-risk admin/API security issues, subscription-state consistency around RevenueCat + Supabase sync, and the remaining auth / webhook boundary issues that could still leak stale state or mis-handle malformed events.

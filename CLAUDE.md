@@ -1,5 +1,24 @@
 # VibeSync Project
 
+## 2026-04-05 OCR Rollback Note
+
+```
+Current OCR-stable baseline: 28c0965
+b46f619 rolled the repo back to the editable 043ac23 baseline
+28c0965 only restored the missing glassTextSecondary theme constant so the app can compile
+Treat 28c0965 as the current truth for OCR/runtime behavior
+```
+
+Read first:
+
+- `docs/2026-04-05-ocr-rollback-note.md`
+
+Important:
+
+- The security / CI / alerting changes discussed during the 2026-04-05 debugging batch were rolled back with the repo rollback and are **not guaranteed active now**
+- If any of those changes need to return, re-apply them one by one on top of `28c0965`
+- Do not run multi-agent optimization on the OCR core path again
+
 ## 2026-03-30 Current Snapshot
 
 ```

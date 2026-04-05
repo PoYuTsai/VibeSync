@@ -223,3 +223,10 @@ Private - All Rights Reserved
 - Account deletion and verification-resend UX were tightened again: the delete-account dialog now uses stronger `DELETE` input styling, the server-side delete flow fails less often on non-blocking cleanup tables and returns clearer failure reasons, and the login screen now only enables the generic resend-verification action when the typed email is valid while using more conservative copy for "we tried to resend" cases.
 
 See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
+# 2026-04-05 Rollback Note
+
+- Current stable OCR baseline: `28c0965`
+- `b46f619` rolled the repo back to the editable `043ac23` baseline
+- `28c0965` only restored the missing `glassTextSecondary` compile constant
+- See `docs/2026-04-05-ocr-rollback-note.md`
+- Do not assume the later security hardening / CI tightening commits are still active after the rollback
