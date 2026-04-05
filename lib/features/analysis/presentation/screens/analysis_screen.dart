@@ -719,8 +719,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 child: OutlinedButton(
                   onPressed: (_isRecognizing || _isAnalyzing)
                       ? null
-                      : () =>
-                          _recognizeAndAddToConversation(forceRefresh: true),
+                      : () => _recognizeAndAddToConversation(forceRefresh: true),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         vertical: 13, horizontal: 12),
@@ -1574,18 +1573,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           widget.conversationId,
         );
       }
-      final cachedRecognition = await (() async {
-        if (forceRefresh) return null;
-        try {
-          return await OcrRecognitionCacheService.read(
-            imagesToProcess,
-            widget.conversationId,
-          );
-        } catch (e) {
-          _debugLog('[Recognize] OCR cache read failed, continue uncached: $e');
-          return null;
-        }
-      })();
+      final cachedRecognition = forceRefresh
+          ? null
+          : await OcrRecognitionCacheService.read(
+              imagesToProcess,
+              widget.conversationId,
+            );
       AnalysisResult result;
       if (cachedRecognition != null) {
         _debugLog('[Recognize] OCR cache hit');
@@ -1640,10 +1633,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             sessionContext: conversation.sessionContext,
             knownContactName:
                 ScreenshotRecognitionHelper.isPlaceholderConversationName(
-              conversation.name,
-            )
-                    ? null
-                    : conversation.name.trim(),
+                  conversation.name,
+                )
+                ? null
+                : conversation.name.trim(),
             onProgress: _handleRecognizeProgress,
             onTelemetry: _handleRecognizeTelemetry,
             recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
@@ -1658,19 +1651,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
         // 把識別結果存入對話
         if (result.recognizedConversation != null) {
-          try {
-            await OcrRecognitionCacheService.write(
-              images: imagesToProcess,
-              recognizedConversation: result.recognizedConversation!,
-              conversationId: widget.conversationId,
-            );
-            _rememberRecognitionReplay(
-              images: imagesToProcess,
-              metrics: metricsToProcess,
-            );
-          } catch (e) {
-            _debugLog('[Recognize] OCR cache write failed, keeping result: $e');
-          }
+          await OcrRecognitionCacheService.write(
+            images: imagesToProcess,
+            recognizedConversation: result.recognizedConversation!,
+            conversationId: widget.conversationId,
+          );
+          _rememberRecognitionReplay(
+            images: imagesToProcess,
+            metrics: metricsToProcess,
+          );
         }
       }
 
@@ -1683,18 +1672,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           result.recognizedConversation!.messages != null &&
           result.recognizedConversation!.messages!.isNotEmpty) {
         final recognized = result.recognizedConversation!;
-        String? warningMessage;
-        try {
-          warningMessage = _buildRecognitionWarning(
-            recognized: recognized,
-            currentConversation: conversation,
-          );
-        } catch (e) {
-          _debugLog(
-            '[Recognize] Warning builder failed, continue without local warning: $e',
-          );
-          warningMessage = recognized.warning;
-        }
+        final warningMessage = _buildRecognitionWarning(
+          recognized: recognized,
+          currentConversation: conversation,
+        );
 
         final isFromCache = cachedRecognition != null;
         if (recognized.importPolicy == 'reject') {
@@ -1720,30 +1701,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
         // 顯示確認對話框
         if (!mounted) return;
-        ScreenshotRecognitionDialogResult? dialogResult;
-        try {
-          dialogResult = await _showRecognitionConfirmDialog(
-            recognized: recognized,
-            currentConversation: conversation,
-            warningMessage: warningMessage,
-          );
-        } catch (e) {
-          _debugLog(
-            '[Recognize] Confirm dialog failed after OCR success, preserving draft: $e',
-          );
-          _preserveRecognitionDraft(
-            recognized: recognized,
-            warningMessage: warningMessage,
-          );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('截圖已識別成功，但開啟確認視窗時失敗，請重新進入後再匯入。'),
-              ),
-            );
-          }
-          return;
-        }
+        final dialogResult = await _showRecognitionConfirmDialog(
+          recognized: recognized,
+          currentConversation: conversation,
+          warningMessage: warningMessage,
+        );
 
         // 用戶取消
         if (dialogResult == null) {
@@ -1760,27 +1722,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           return;
         }
 
-        try {
-          await _applyRecognitionImport(
-            dialogResult: dialogResult,
-            recognized: recognized,
-          );
-        } catch (e) {
-          _debugLog(
-            '[Recognize] Import failed after OCR success, preserving draft: $e',
-          );
-          _preserveRecognitionDraft(
-            recognized: recognized,
-            warningMessage: warningMessage,
-          );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('截圖已識別成功，但匯入目前對話時失敗，請稍後再試。'),
-              ),
-            );
-          }
-        }
+        await _applyRecognitionImport(
+          dialogResult: dialogResult,
+          recognized: recognized,
+        );
         return;
       }
 
@@ -1910,10 +1855,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         conversationSummary: analysisContext.conversationSummary,
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
-          conversation.name,
-        )
-                ? null
-                : conversation.name.trim(),
+              conversation.name,
+            )
+            ? null
+            : conversation.name.trim(),
         onTelemetry: _handleAnalysisTelemetry,
       );
 
@@ -2012,10 +1957,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         conversationSummary: analysisContext.conversationSummary,
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
-          conversation.name,
-        )
-                ? null
-                : conversation.name.trim(),
+              conversation.name,
+            )
+            ? null
+            : conversation.name.trim(),
         analyzeMode: 'my_message',
         onTelemetry: _handleAnalysisTelemetry,
       );
@@ -2068,10 +2013,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         conversationSummary: analysisContext.conversationSummary,
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
-          conversation.name,
-        )
-                ? null
-                : conversation.name.trim(),
+              conversation.name,
+            )
+            ? null
+            : conversation.name.trim(),
         userDraft: draft,
         onTelemetry: _handleAnalysisTelemetry,
       );
@@ -2401,8 +2346,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     final segments = <String>[];
     for (var i = 0; i < matches.length; i++) {
       final start = matches[i].start;
-      final end =
-          i + 1 < matches.length ? matches[i + 1].start : normalized.length;
+      final end = i + 1 < matches.length ? matches[i + 1].start : normalized.length;
       final segment = normalized.substring(start, end).trim();
       if (segment.isNotEmpty) {
         segments.add(segment);
@@ -2462,8 +2406,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     for (final segment in segments) {
       final trimmed = segment.trim();
       final isHint = trimmed.startsWith('💡');
-      final replyText =
-          isHint ? null : _extractRecommendationReplyText(trimmed);
+      final replyText = isHint ? null : _extractRecommendationReplyText(trimmed);
 
       widgets.add(
         Container(
@@ -2484,8 +2427,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               Text(
                 trimmed,
                 style: AppTypography.bodyMedium.copyWith(
-                  color:
-                      isHint ? AppColors.textSecondary : AppColors.textPrimary,
+                  color: isHint
+                      ? AppColors.textSecondary
+                      : AppColors.textPrimary,
                 ),
               ),
               if (!isHint && replyText != null && replyText.isNotEmpty) ...[
@@ -2901,12 +2845,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.12),
+                                color: AppColors.primary.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color:
-                                      AppColors.primary.withValues(alpha: 0.28),
+                                  color: AppColors.primary.withValues(alpha: 0.28),
                                 ),
                               ),
                               child: Row(
@@ -3070,8 +3012,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   Text(
                                     '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
                                     style: AppTypography.bodySmall.copyWith(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.55),
+                                      color: Colors.white.withValues(alpha: 0.55),
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
@@ -3726,7 +3667,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ],
 
                           // Reply suggestions (5 種回覆)
-                          if (_replies != null && _replies!.isNotEmpty) ...[
+                          if (_replies != null &&
+                              _replies!.isNotEmpty) ...[
                             const SizedBox(height: 24),
                             Row(
                               children: [
@@ -3925,9 +3867,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
                           // 最終建議 (AI 推薦) - 只在有實際內容時顯示
                           if (_finalRecommendation != null &&
-                              _finalRecommendation!.content
-                                  .trim()
-                                  .isNotEmpty) ...[
+                              _finalRecommendation!.content.trim().isNotEmpty) ...[
                             const SizedBox(height: 24),
                             Container(
                               padding: const EdgeInsets.all(16),
