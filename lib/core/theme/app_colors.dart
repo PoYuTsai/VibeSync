@@ -1,21 +1,20 @@
-// lib/core/theme/app_colors.dart
 import 'package:flutter/material.dart';
 
 class AppColors {
   AppColors._();
 
-  // Primary - Deep Purple
+  // Primary
   static const primary = Color(0xFF6B4EE6);
   static const primaryLight = Color(0xFF9D8DF7);
   static const primaryDark = Color(0xFF4527A0);
 
-  // Enthusiasm Levels (調整為 Warm Theme 友善)
-  static const cold = Color(0xFF64B5F6);      // 藍色 - 冰點
-  static const warm = Color(0xFFD4A574);      // 沙棕色 - 溫和 (降低飽和度，手機不刺眼)
-  static const hot = Color(0xFFE57373);       // 柔和紅 - 熱情 (降低飽和度)
-  static const veryHot = Color(0xFFFF6B9D);   // 粉紅 - 高熱
+  // Enthusiasm levels
+  static const cold = Color(0xFF64B5F6);
+  static const warm = Color(0xFFD4A574);
+  static const hot = Color(0xFFE57373);
+  static const veryHot = Color(0xFFFF6B9D);
 
-  // Neutral (Dark Mode)
+  // Neutral
   static const background = Color(0xFF121212);
   static const surface = Color(0xFF1E1E1E);
   static const surfaceVariant = Color(0xFF2D2D2D);
@@ -29,40 +28,41 @@ class AppColors {
   static const warning = Color(0xFFFFB74D);
   static const info = Color(0xFF64B5F6);
 
-  // === Warm Theme - 漸層背景 ===
-  static const backgroundGradientStart = Color(0xFF1A0533);  // 深紫
-  static const backgroundGradientMid = Color(0xFF2D1B4E);    // 中紫
-  static const backgroundGradientEnd = Color(0xFF4A2C6A);    // 淡紫
+  // Warm theme backgrounds
+  static const backgroundGradientStart = Color(0xFF1A0533);
+  static const backgroundGradientMid = Color(0xFF2D1B4E);
+  static const backgroundGradientEnd = Color(0xFF4A2C6A);
 
-  // === Warm Theme - 光暈泡泡 ===
+  // Warm theme bokeh
   static const bokehPink = Color(0xFFFF6B9D);
   static const bokehCoral = Color(0xFFFF8A65);
   static const bokehYellow = Color(0xFFFFD54F);
 
-  // === Warm Theme - 毛玻璃 (改為實色，提升滑動效能) ===
-  static const glassWhite = Color(0xFFF5F0F8);     // 實色淡紫白（模擬毛玻璃視覺）
-  static const glassBorder = Color(0xFFE8E0F0);    // 實色淡紫邊框
+  // Warm theme glass surfaces
+  static const glassWhite = Color(0xFFF5F0F8);
+  static const glassBorder = Color(0xFFE8E0F0);
 
-  // === Warm Theme - 毛玻璃文字 ===
-  static const glassTextPrimary = Color(0xFF4A3548);   // 深紫灰 (主要文字，用於玻璃容器內)
-  static const glassTextHint = Color(0xFF8B4557);      // 酒紅色 (hint，參考圖風格)
+  // Warm theme text on glass
+  static const glassTextPrimary = Color(0xFF4A3548);
+  static const glassTextSecondary = Color(0xFF6C5A6B);
+  static const glassTextHint = Color(0xFF8B4557);
 
-  // === Warm Theme - 背景上的文字（不在玻璃容器內）===
-  static const onBackgroundPrimary = Color(0xFFFFFFFF);   // 白色 (標題)
-  static const onBackgroundSecondary = Color(0xFFE0D0E8); // 淡紫白 (副標題)
+  // Text on dark gradient
+  static const onBackgroundPrimary = Color(0xFFFFFFFF);
+  static const onBackgroundSecondary = Color(0xFFE0D0E8);
 
-  // === Warm Theme - 未選中狀態文字 ===
-  static const unselectedText = Color(0xFF5D4E6B);     // 深紫灰色
+  // Supporting text
+  static const unselectedText = Color(0xFF5D4E6B);
 
-  // === Warm Theme - 選中狀態 ===
+  // Selected gradients
   static const selectedStart = Color(0xFFFF6B9D);
   static const selectedEnd = Color(0xFFFF8A65);
 
-  // === Warm Theme - CTA 按鈕 ===
+  // CTA gradients
   static const ctaStart = Color(0xFFFF7043);
   static const ctaEnd = Color(0xFFFF5722);
 
-  // === Warm Theme - 頭像漸層 ===
+  // Avatar gradients
   static const avatarHerStart = Color(0xFFFFD54F);
   static const avatarHerEnd = Color(0xFFFFC107);
   static const avatarMeStart = Color(0xFF9D8DF7);
