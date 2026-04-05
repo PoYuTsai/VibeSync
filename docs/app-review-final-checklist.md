@@ -1,77 +1,61 @@
 # App Review Final Checklist
 
-最後更新：2026-03-25
+最後更新：2026-04-05
 
-用途：
-- 這份清單是送 App Review 前的最後勾選版。
-- 建議你和夥伴用最新 TestFlight build 逐項確認。
-- 只要有任何一個硬門檻沒過，就先不要送審。
+這份清單是送審前最後核對用，不是功能願望清單。
 
 ## 1. 帳號與登入
 
-- [ ] Apple Sign In 真機成功
-- [ ] Google Sign In 真機成功
-- [ ] Email sign up 成功
-- [ ] Email verify / resend 成功
-- [ ] Forgot password 成功，包含冷啟動點連結
-- [ ] 登出後重新登入正常
-- [ ] 換帳號後不會殘留上一個帳號的 tier / session
-- [ ] 刪帳後帳號真的失效，並回到登入頁
+- [ ] Apple Sign In 在 TestFlight 真機 round-trip 正常
+- [ ] Google Sign In 在 TestFlight 真機 round-trip 正常
+- [ ] Email sign up / verify / resend / forgot password 可正常完成
+- [ ] 登出後重新登入，tier / session / 本地狀態一致
+- [ ] 刪除帳號流程可完成，且重新登入不會吃到舊 session
 
-## 2. 訂閱與權限
+## 2. 訂閱與 restore
 
-- [ ] Starter 購買成功
-- [ ] Essential 購買成功
-- [ ] Restore Purchases 成功
-- [ ] 升級後畫面會正確反映新權限
-- [ ] 升級前的免費版分析不會假裝是完整版結果
-- [ ] 測試帳號與白名單行為符合預期
+- [ ] Starter 購買可完成
+- [ ] Essential 購買可完成
+- [ ] Restore Purchases 可完成
+- [ ] Free -> Starter 後權限刷新正確
+- [ ] Starter -> Essential 後權限刷新正確
+- [ ] Essential -> Starter 或降級情境顯示正確
+- [ ] 同 Apple ID restore 情境與預期一致
+- [ ] 不同 Apple ID restore 情境已驗證
 
-## 3. OCR 與分析核心
+## 3. OCR / 截圖主流程
 
-- [ ] 正常雙邊聊天截圖 OCR 正常
-- [ ] 單邊主訊息 + 引用卡 OCR 正常
-- [ ] LINE 引用回覆不會拆成新訊息
-- [ ] 主訊息左右不會被引用卡帶歪
-- [ ] 長截圖 OCR 正常
-- [ ] 多張連續截圖 OCR 正常
-- [ ] 圖片 / 貼圖 / 影片預覽不會污染 speaker 判斷
-- [ ] 對方名字 / 暱稱辨識沒有明顯錯字
-- [ ] 社群圖 / 相簿圖 / 非聊天圖不會污染目前對話
-- [ ] 錯圖時會給清楚白話提示，不會出現 raw error
+- [ ] 單張聊天截圖的純識別可成功
+- [ ] 單張聊天截圖識別後匯入對話可成功
+- [ ] 截圖後直接分析可成功
+- [ ] LINE 引用回覆：外層 bubble speaker 判斷正確，引用卡只當 quoted context
+- [ ] 長截圖可成功
+- [ ] 多張截圖 overlap 情境可成功
+- [ ] 名字小字、錯字、模糊邊界案例已抽測
+- [ ] 圖片 / 貼圖 / 影片 bubble 不會把 speaker 判斷帶歪
+- [ ] OCR 失敗時不顯示 raw internal error 給使用者
 
-## 4. 發版與法務
+## 4. 送審與對外資訊
 
-- [ ] GitHub Actions iOS release 成功
-- [ ] TestFlight build 可在 App Store Connect / TestFlight 正常看到
-- [ ] [privacy](https://vibesyncai.app/privacy) 可開
-- [ ] [terms](https://vibesyncai.app/terms) 可開
-- [x] `support@vibesyncai.app` 可收信（統一對外聯絡信箱，2026-03-30 確認）
-- [ ] App Store Connect privacy disclosure 已核對
+- [ ] `https://vibesyncai.app/privacy` 可正常開啟
+- [ ] `https://vibesyncai.app/terms` 可正常開啟
+- [ ] `support@vibesyncai.app` 可收信
+- [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
+- [ ] App Review 說明文已更新成目前實際功能與資料流
 
-## 5. 硬門檻
+## 5. Release / Workflow
 
-以下任一項沒過，就先不要送審：
+- [ ] 最新 iOS release workflow 綠燈
+- [ ] 最新 Edge Function deploy workflow 綠燈
+- [ ] TestFlight build 可在 App Store Connect / TestFlight 看到
+- [ ] `analyze-chat` 目前維持 `--no-verify-jwt`，未被誤改
 
-- [ ] Apple / Google / Email auth 沒有 P1 問題
-- [ ] Essential 購買與 Restore 沒有 P1 問題
-- [ ] OCR 正常聊天、引用回覆、長截圖三類都通過
-- [ ] 沒有 raw error、英文技術詞、或明顯錯誤文案直接露給用戶
-- [ ] iOS release workflow 不再因假性上傳失敗而卡住
-- [ ] Privacy / Terms / disclosure 都和實際產品一致
+## 6. Release Gate
 
-## 6. 建議記錄的錯誤類型
+只有以下條件都成立，才算可送審：
 
-- [ ] 左右判斷錯
-- [ ] 引用卡被拆成新訊息
-- [ ] 名字辨識錯字
-- [ ] 升級後權限沒刷新
-- [ ] Restore / 換帳號 tier 異常
-- [ ] OCR 結果被舊快取干擾
-
-## 7. 相關文件
-
-- [Launch Readiness Checklist](./launch-readiness-checklist.md)
-- [TestFlight Regression Checklist](./testflight-regression-checklist.md)
-- [OCR Analysis Maturity Benchmark](./ocr-analysis-maturity-benchmark.md)
-- [App Store Strategy](./app-store-strategy.md)
+- [ ] Auth 沒有 P1 blocker
+- [ ] Subscription / restore 沒有 P1 blocker
+- [ ] OCR 主流程用同一批真實截圖再測仍穩定
+- [ ] Privacy / Terms / support / disclosure 都已對齊
+- [ ] 沒有新的 deploy-only regression

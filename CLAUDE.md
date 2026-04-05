@@ -1,5 +1,30 @@
 # VibeSync Project
 
+## 2026-04-05 OCR Stability Guardrail
+
+```
+Current OCR-stable baseline: 28c0965
+b46f619 rolled the repo back to the editable 043ac23 baseline
+28c0965 only restored glassTextSecondary so the app can compile again
+Treat 28c0965 as the current OCR/runtime truth
+```
+
+Read first:
+
+- `docs/2026-04-05-ocr-rollback-note.md`
+
+Important:
+
+- The 2026-04-05 debugging batch included useful security and CI exploration, but the repo rollback removed most of those changes from the active OCR baseline.
+- Three server-side fixes were re-applied safely on top of `28c0965`:
+  - `sync-subscription` no longer uses a RevenueCat key fallback
+  - `revenuecat-webhook` stores a minimized diagnostic payload
+  - `delete-account / sync-subscription / submit-feedback` keep normal JWT verification
+- `analyze-chat` must currently remain deployed with `--no-verify-jwt`
+- Root cause confirmed on 2026-04-05: screenshot OCR regressed after Edge Function deploy because `analyze-chat` was switched to platform JWT verification
+- If OCR regresses after a deploy, check `.github/workflows/deploy-edge-function.yml` before touching app code
+- Do not batch OCR changes with security hardening, cache experiments, parser changes, prompt changes, or multi-agent work
+
 ## 2026-04-05 OCR Rollback Note
 
 ```
