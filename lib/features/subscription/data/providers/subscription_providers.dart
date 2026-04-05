@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -80,6 +81,31 @@ class SubscriptionState {
       offerings: offerings ?? this.offerings,
     );
   }
+}
+
+class SubscriptionPurchaseResult {
+  final bool success;
+  final bool cancelled;
+  final String requestedTier;
+  final String activeTier;
+  final PurchasesErrorCode? errorCode;
+  final String? errorMessage;
+
+  const SubscriptionPurchaseResult({
+    required this.success,
+    required this.cancelled,
+    required this.requestedTier,
+    required this.activeTier,
+    this.errorCode,
+    this.errorMessage,
+  });
+
+  bool get isDeferredDowngrade =>
+      success &&
+      SubscriptionTierHelper.isDowngrade(
+        fromTier: activeTier,
+        toTier: requestedTier,
+      );
 }
 
 class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
@@ -370,7 +396,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     await _loadOfferings();
   }
 
-  Future<bool> purchase(Package package) async {
+  Future<SubscriptionPurchaseResult> purchase(Package package) async {
+    final requestedTier = SubscriptionTierHelper.tierFromProductId(
+      package.storeProduct.identifier,
+    );
+
     try {
       state = state.copyWith(isLoading: true, error: null);
 
@@ -416,11 +446,34 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
       debugPrint('=== PURCHASE END ===');
 
-      return true;
+      return SubscriptionPurchaseResult(
+        success: true,
+        cancelled: false,
+        requestedTier: requestedTier,
+        activeTier: tier,
+      );
+    } on PlatformException catch (error) {
+      final errorCode = PurchasesErrorHelper.getErrorCode(error);
+      debugPrint('Purchase platform error: $errorCode / $error');
+      state = state.copyWith(isLoading: false, error: null);
+      return SubscriptionPurchaseResult(
+        success: false,
+        cancelled: errorCode == PurchasesErrorCode.purchaseCancelledError,
+        requestedTier: requestedTier,
+        activeTier: state.tier,
+        errorCode: errorCode,
+        errorMessage: error.message ?? error.toString(),
+      );
     } catch (e) {
       debugPrint('Purchase error: $e');
-      state = state.copyWith(isLoading: false, error: e.toString());
-      return false;
+      state = state.copyWith(isLoading: false, error: null);
+      return SubscriptionPurchaseResult(
+        success: false,
+        cancelled: false,
+        requestedTier: requestedTier,
+        activeTier: state.tier,
+        errorMessage: e.toString(),
+      );
     }
   }
 
@@ -497,8 +550,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       return tier != SubscriptionTierHelper.free;
     } catch (e) {
       debugPrint('Restore error: $e');
-      state = state.copyWith(isLoading: false, error: e.toString());
-      return false;
+      state = state.copyWith(isLoading: false, error: null);
+      rethrow;
     }
   }
 

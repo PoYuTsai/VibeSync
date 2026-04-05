@@ -785,6 +785,23 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 ## Lessons Learned
 
 ### Bugs & Fixes
+#### [2026-04-06] Essential -> Starter 降級被當成立即升級處理
+**症狀**: 已在 Essential 的帳號切到 Starter 時，主按鈕仍顯示升級；取消購買後會冒出誤導性的同步異常訊息；真的送出購買時又容易看到「訂閱處理失敗」。
+**Root Cause**:
+1. Paywall 沒有區分 upgrade / downgrade，所有非當前方案都用升級文案與升級後立即生效的假設處理。
+2. 購買流程把 RevenueCat 的 user-cancelled 和真正失敗混在一起，UI 只收到模糊失敗結果。
+3. iOS 同一 subscription group 的降級通常不會立刻把有效 tier 改成較低方案，但 paywall 仍強制用 `_selectedTier` 做後續 sync 與成功提示。
+**修復**:
+1. 在 `SubscriptionTierHelper` 新增 tier rank / `isUpgrade` / `isDowngrade` 判斷。
+2. `subscriptionProvider.purchase()` 改回傳結構化結果，保留 `cancelled`、`errorCode`、`requestedTier`、`activeTier`。
+3. `paywall_screen.dart` 依當前 tier 顯示「升級到 ...」或「降級到 ...」，並在降級時提示通常會於下一個續訂週期生效。
+4. 取消購買不再冒出誤導性的同步錯誤；降級成功時不再強制把目前有效 tier 直接改成 Starter。
+**預防**: 之後碰訂閱 UI 時，要先分清楚 upgrade、downgrade、restore、cancelled 這 4 種路徑，不要再共用同一套成功/失敗分支。
+**相關檔案**:
+- `lib/features/subscription/domain/services/subscription_tier_helper.dart`
+- `lib/features/subscription/data/providers/subscription_providers.dart`
+- `lib/features/subscription/presentation/screens/paywall_screen.dart`
+- `test/unit/services/subscription_tier_helper_test.dart`
 <!-- 遇到 bug 時在此記錄，格式見上方 Debugging Protocol -->
 
 #### [2026-02-28] iOS Safari Pull-to-refresh 關閉頁面

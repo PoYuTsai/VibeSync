@@ -81,4 +81,31 @@ class SubscriptionTierHelper {
 
     return free;
   }
+
+  static int rankOf(String? tier) {
+    switch (normalizeTier(tier)) {
+      case free:
+        return 0;
+      case starter:
+        return 1;
+      case essential:
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
+  static bool isUpgrade({
+    required String fromTier,
+    required String toTier,
+  }) {
+    return rankOf(toTier) > rankOf(fromTier);
+  }
+
+  static bool isDowngrade({
+    required String fromTier,
+    required String toTier,
+  }) {
+    return rankOf(toTier) < rankOf(fromTier);
+  }
 }

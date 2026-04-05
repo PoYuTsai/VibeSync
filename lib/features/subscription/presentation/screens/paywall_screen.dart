@@ -76,6 +76,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final offeringsReady = subscription.starterPackage != null ||
         subscription.essentialPackage != null;
     final isCurrentPlan = subscription.tier == _selectedTier;
+    final isDowngrade = SubscriptionTierHelper.isDowngrade(
+      fromTier: subscription.tier,
+      toTier: _selectedTier,
+    );
 
     return GradientBackground(
       child: Scaffold(
@@ -159,6 +163,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   const SizedBox(height: 16),
                   GradientButton(
                     text: _buildPrimaryButtonText(
+                      currentTier: subscription.tier,
                       selectedPackage: selectedPackage,
                       isCurrentPlan: isCurrentPlan,
                     ),
@@ -173,6 +178,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   Text(
                     isCurrentPlan
                         ? '你目前已在此方案。如需取消或變更方案，請改用 App Store 訂閱管理。'
+                        : isDowngrade
+                        ? 'iOS 同一個訂閱群組的降級通常會在下一個續訂週期才生效。目前的 Essential 權限會先保留到本期結束。'
                         : '升級完成後會立即同步方案狀態；如果你以前買過、換手機或重裝 App，請改用下方的「同步已買過的訂閱」。',
                     style: AppTypography.caption
                         .copyWith(color: AppColors.onBackgroundSecondary),
@@ -250,6 +257,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   String _buildPrimaryButtonText({
+    required String currentTier,
     required Package? selectedPackage,
     required bool isCurrentPlan,
   }) {
@@ -266,6 +274,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final tierLabel = _selectedTier == SubscriptionTierHelper.essential
         ? 'Essential'
         : 'Starter';
+    if (SubscriptionTierHelper.isDowngrade(
+      fromTier: currentTier,
+      toTier: _selectedTier,
+    )) {
+      return '降級到 $tierLabel';
+    }
     return '升級到 $tierLabel';
   }
 
@@ -466,20 +480,38 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
-      final success = await notifier.purchase(package);
+      final result = await notifier.purchase(package);
 
-      if (!mounted || !success) {
+      if (!mounted || result.cancelled) {
         return;
       }
 
-      await notifier.forceSyncTier(_selectedTier);
       await notifier.refresh();
 
       if (!mounted) {
         return;
       }
 
-      final purchasedTier = _selectedTier == SubscriptionTierHelper.essential
+      if (!result.success) {
+        _showSnackBar(
+          _messageForPurchaseError(
+            result.errorCode,
+            fallbackMessage: result.errorMessage,
+          ),
+        );
+        return;
+      }
+
+      if (result.isDeferredDowngrade) {
+        _showSnackBar(
+          '已提交 Starter 降級申請，會在目前 Essential 週期結束後生效。',
+          backgroundColor: AppColors.success,
+        );
+        context.pop(result.activeTier);
+        return;
+      }
+
+      final purchasedTier = result.activeTier == SubscriptionTierHelper.essential
           ? 'Essential'
           : 'Starter';
 
@@ -487,9 +519,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         '訂閱成功，已切換為 $purchasedTier 方案。',
         backgroundColor: AppColors.success,
       );
-      context.pop(_selectedTier);
-    } on PurchasesErrorCode catch (errorCode) {
-      _showSnackBar(_messageForPurchaseError(errorCode));
+      context.pop(result.activeTier);
     } catch (error) {
       debugPrint('Paywall purchase error: $error');
       _showSnackBar('訂閱處理失敗，請稍後再試一次。');
@@ -500,7 +530,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
   }
 
-  String _messageForPurchaseError(PurchasesErrorCode errorCode) {
+  String _messageForPurchaseError(
+    PurchasesErrorCode? errorCode, {
+    String? fallbackMessage,
+  }) {
     switch (errorCode) {
       case PurchasesErrorCode.purchaseCancelledError:
         return '你已取消本次訂閱。';
@@ -508,7 +541,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         return '付款仍在等待確認，稍後可再回到此頁查看。';
       case PurchasesErrorCode.productNotAvailableForPurchaseError:
         return '目前無法購買此方案，請稍後再試。';
+      case PurchasesErrorCode.storeProblemError:
+      case PurchasesErrorCode.networkError:
+        return '目前無法連線到 App Store，請稍後再試一次。';
       default:
+        if (fallbackMessage != null && fallbackMessage.isNotEmpty) {
+          return fallbackMessage;
+        }
         return '訂閱失敗，請稍後再試一次。';
     }
   }

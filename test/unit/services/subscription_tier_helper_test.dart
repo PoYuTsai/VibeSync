@@ -82,4 +82,63 @@ void main() {
       expect(tier, SubscriptionTierHelper.free);
     });
   });
+
+  group('SubscriptionTierHelper rank helpers', () {
+    test('rankOf orders free starter essential', () {
+      expect(SubscriptionTierHelper.rankOf(SubscriptionTierHelper.free), 0);
+      expect(SubscriptionTierHelper.rankOf(SubscriptionTierHelper.starter), 1);
+      expect(
+        SubscriptionTierHelper.rankOf(SubscriptionTierHelper.essential),
+        2,
+      );
+    });
+
+    test('isUpgrade returns true only when moving to higher tier', () {
+      expect(
+        SubscriptionTierHelper.isUpgrade(
+          fromTier: SubscriptionTierHelper.free,
+          toTier: SubscriptionTierHelper.starter,
+        ),
+        isTrue,
+      );
+      expect(
+        SubscriptionTierHelper.isUpgrade(
+          fromTier: SubscriptionTierHelper.starter,
+          toTier: SubscriptionTierHelper.essential,
+        ),
+        isTrue,
+      );
+      expect(
+        SubscriptionTierHelper.isUpgrade(
+          fromTier: SubscriptionTierHelper.essential,
+          toTier: SubscriptionTierHelper.starter,
+        ),
+        isFalse,
+      );
+    });
+
+    test('isDowngrade returns true only when moving to lower tier', () {
+      expect(
+        SubscriptionTierHelper.isDowngrade(
+          fromTier: SubscriptionTierHelper.essential,
+          toTier: SubscriptionTierHelper.starter,
+        ),
+        isTrue,
+      );
+      expect(
+        SubscriptionTierHelper.isDowngrade(
+          fromTier: SubscriptionTierHelper.starter,
+          toTier: SubscriptionTierHelper.free,
+        ),
+        isTrue,
+      );
+      expect(
+        SubscriptionTierHelper.isDowngrade(
+          fromTier: SubscriptionTierHelper.starter,
+          toTier: SubscriptionTierHelper.essential,
+        ),
+        isFalse,
+      );
+    });
+  });
 }
