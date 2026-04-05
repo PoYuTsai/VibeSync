@@ -43,7 +43,8 @@ If we want any of them back, they should be re-applied one by one on top of `28c
 The following server/workflow-only fixes have now been restored without touching the OCR app runtime:
 
 - `sync-subscription` no longer falls back to a hard-coded RevenueCat API key
-- `deploy-edge-function.yml` now keeps JWT verification on user-facing functions and only deploys `revenuecat-webhook` with `--no-verify-jwt`
+- `deploy-edge-function.yml` now keeps JWT verification on `delete-account`, `sync-subscription`, and `submit-feedback`
+- `analyze-chat` remains deployed with `--no-verify-jwt` for now, because re-enabling platform JWT verification regressed screenshot/OCR after edge deployment
 - `revenuecat-webhook` now stores a minimized diagnostic payload in `webhook_logs` instead of the full raw webhook body
 
 These changes do not require a new app build.

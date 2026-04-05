@@ -31,7 +31,7 @@ jobs:
 
       - name: Deploy Edge Functions
         run: |
-          supabase functions deploy analyze-chat
+          supabase functions deploy analyze-chat --no-verify-jwt
           supabase functions deploy delete-account
           supabase functions deploy sync-subscription
           supabase functions deploy submit-feedback
