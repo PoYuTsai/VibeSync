@@ -70,6 +70,13 @@ This hotfix batch focused on the core conversation-analysis path, screenshot rec
   - `analysis_service.dart` now coerces telemetry strings / ints / bools
   - telemetry callback construction is wrapped fail-open, so observability can
     never block a successful OCR response again
+- Emergency rollback:
+  - after repeated real-device failures still reproduced the same generic OCR
+    error, `supabase/functions/analyze-chat/index.ts` was restored to the
+    `043ac23` baseline as the last-known-good OCR server path
+  - this intentionally removes the later server-side OCR chain experiments from
+    `c002de0` onward so recognition reliability can recover before any new OCR
+    tuning is attempted again
 - Principle going forward:
   - OCR success rate and correctness are the primary gate
   - screenshot latency optimizations must not ship if they reduce recognition

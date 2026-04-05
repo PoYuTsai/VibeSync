@@ -48,6 +48,7 @@ Use these files as the current source of truth:
   - LINE quoted reply handling
   - append vs new conversation confirmation
   - editable OCR correction before import
+  - 2026-04-05 emergency rollback: `supabase/functions/analyze-chat/index.ts` was restored to the `043ac23` OCR baseline after later server-side OCR chain changes regressed recognition reliability
   - 2026-04-05 reliability rollback: restored fuller screenshot context, OCR retries, parse-failure retry, and conservative image compression after a recognition regression
   - 2026-04-05 parsing hardening: client OCR parsing now tolerates loose field types instead of collapsing into the generic `截圖辨識暫時失敗` path
   - 2026-04-05 recovery hardening: recognize-only OCR now gets one extra context-free recovery attempt before the backend returns `RECOGNITION_FAILED`
