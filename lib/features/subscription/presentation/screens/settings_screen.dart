@@ -282,7 +282,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   'This will take effect on ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
-                  'Until then your current quota stays active.',
+                  'Until then your current quota stays active and there is no new charge today.',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.glassTextSecondary,
                   ),

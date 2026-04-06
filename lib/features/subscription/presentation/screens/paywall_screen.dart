@@ -137,7 +137,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Upgrades usually apply immediately. Downgrades apply on the next renewal, and your current quota stays active until then.',
+                    'Upgrades apply right away and Apple adjusts the current billing period automatically. Downgrades start on the next renewal and do not charge again today.',
                     style: AppTypography.bodyLarge.copyWith(
                       color: AppColors.onBackgroundSecondary,
                     ),
@@ -291,7 +291,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       fromTier: subscription.tier,
       toTier: _selectedTier,
     )) {
-      return 'Downgrade to ${_tierLabel(_selectedTier)}';
+      return 'Schedule downgrade to ${_tierLabel(_selectedTier)}';
     }
     return 'Upgrade to ${_tierLabel(_selectedTier)}';
   }
@@ -306,17 +306,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (canManagePendingDowngrade) {
       return 'A downgrade to ${_tierLabel(subscription.pendingDowngradeToTier)} '
           'is scheduled for ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
-          'Use App Store subscription management to cancel it.';
+          'Your current plan stays active until then. Use App Store subscription management to cancel it.';
     }
     if (pendingDowngradeMatchesSelection) {
       return 'This downgrade is already scheduled and will take effect on '
-          '${_formatDate(subscription.pendingDowngradeEffectiveAt)}.';
+          '${_formatDate(subscription.pendingDowngradeEffectiveAt)}. No new charge happens today.';
     }
     if (isCurrentPlan) return 'This is your current active plan.';
     if (isDowngrade) {
-      return 'Downgrades take effect on the next renewal. Your current quota stays active until then.';
+      return 'Downgrades take effect on the next renewal. Your current quota stays active until then, and there is no new charge today.';
     }
-    return 'Upgrades usually apply immediately and refresh your quota right away.';
+    return 'Upgrades apply immediately, refresh your quota right away, and Apple automatically prorates the billing change.';
   }
 
   Widget _buildQuotaSummaryCard(SubscriptionState subscription) {
@@ -413,7 +413,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 const SizedBox(height: 4),
                 Text(
                   'This takes effect on ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
-                  'Until then you can keep using the ${_tierLabel(subscription.tier)} quota and features.',
+                  'Until then you can keep using the ${_tierLabel(subscription.tier)} quota and features. No new charge happens today.',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.glassTextSecondary,
                   ),
@@ -663,7 +663,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               ? 'Essential'
               : 'Starter';
       _showSnackBar(
-        'Purchase complete. Active plan: $purchasedTier.',
+        'Plan updated. Active plan: $purchasedTier.',
         backgroundColor: AppColors.success,
       );
       context.pop(result.activeTier);
