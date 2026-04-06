@@ -197,4 +197,52 @@ class RevenueCatService {
     debugPrint('RevenueCat: No matching tier found, returning free');
     return SubscriptionTierHelper.free;
   }
+
+  /// Returns the best-known premium expiration date from RevenueCat.
+  /// Useful for scheduled downgrades that should only take effect on renewal.
+  static DateTime? getPremiumExpirationDate(CustomerInfo? customerInfo) {
+    if (customerInfo == null) {
+      return null;
+    }
+
+    DateTime? parseDate(String? value) {
+      if (value == null || value.isEmpty) {
+        return null;
+      }
+      return DateTime.tryParse(value);
+    }
+
+    final latest = parseDate(customerInfo.latestExpirationDate);
+    if (latest != null) {
+      return latest;
+    }
+
+    DateTime? best;
+
+    for (final entitlement in customerInfo.entitlements.active.values) {
+      final expiration = parseDate(entitlement.expirationDate);
+      if (expiration == null) {
+        continue;
+      }
+      if (best == null || expiration.isAfter(best)) {
+        best = expiration;
+      }
+    }
+
+    if (best != null) {
+      return best;
+    }
+
+    for (final raw in customerInfo.allExpirationDates.values) {
+      final expiration = parseDate(raw);
+      if (expiration == null) {
+        continue;
+      }
+      if (best == null || expiration.isAfter(best)) {
+        best = expiration;
+      }
+    }
+
+    return best;
+  }
 }

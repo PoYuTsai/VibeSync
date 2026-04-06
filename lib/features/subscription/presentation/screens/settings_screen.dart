@@ -25,6 +25,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _manageSubscriptionsUrl =
       'https://apps.apple.com/account/subscriptions';
+
   String _versionString = '';
 
   @override
@@ -35,10 +36,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _loadVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     setState(() {
       _versionString = '${packageInfo.version} (${packageInfo.buildNumber})';
     });
@@ -54,7 +52,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: Text('設定', style: AppTypography.titleLarge),
+          title: Text('Settings', style: AppTypography.titleLarge),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => context.pop(),
@@ -71,107 +69,108 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: 16),
                   _buildPendingDowngradeCard(subscription),
                 ],
-                const SizedBox(height: 16),
                 _buildSection(
-                  title: '帳號與方案',
+                  title: 'Plan and account',
                   children: [
                     _buildTile(
-                      context: context,
                       icon: Icons.workspace_premium,
-                      title: '目前方案',
-                      trailing: _getTierDisplayName(subscription.tier),
-                      onTap: () => context.push('/paywall'),
+                      title: 'Current plan',
+                      trailing: _tierLabel(subscription.tier),
+                      onTap: () {
+                        context.push('/paywall');
+                      },
                     ),
                     _buildTile(
-                      context: context,
-                      icon: Icons.analytics,
-                      title: '本月已分析',
-                      trailing:
-                          '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit}',
-                    ),
-                    _buildTile(
-                      context: context,
                       icon: Icons.today,
-                      title: '今日剩餘額度',
+                      title: 'Daily left',
                       trailing:
                           '${subscription.dailyRemaining}/${subscription.dailyLimit}',
                     ),
                     _buildTile(
-                      context: context,
                       icon: Icons.calendar_month,
-                      title: '本月剩餘額度',
+                      title: 'Monthly left',
                       trailing:
                           '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
                     ),
                     _buildTile(
-                      context: context,
-                      icon: Icons.person,
-                      title: '帳號',
-                      trailing: _getAccountDisplay(),
-                    ),
-                    if (!kIsWeb)
-                      _buildTile(
-                        context: context,
-                        icon: Icons.subscriptions_outlined,
-                        title: '管理 App Store 訂閱',
-                        onTap: _openManageSubscriptions,
-                      ),
-                    if (!kIsWeb)
-                      _buildTile(
-                        context: context,
-                        icon: Icons.restore,
-                        title: '同步已買過的訂閱',
-                        onTap: () => _syncPurchasedPlan(context, ref),
-                      ),
-                  ],
-                ),
-                _buildSection(
-                  title: '安全與隱私',
-                  children: [
-                    _buildTile(
-                      context: context,
-                      icon: Icons.delete_forever,
-                      title: '刪除帳號',
-                      titleColor: AppColors.error,
-                      onTap: () => _confirmDeleteAccount(context, ref),
-                    ),
-                    _buildTile(
-                      context: context,
-                      icon: Icons.privacy_tip,
-                      title: '隱私權政策',
-                      onTap: () => _launchUrl('https://vibesyncai.app/privacy'),
-                    ),
-                  ],
-                ),
-                _buildSection(
-                  title: '其他',
-                  children: [
-                    _buildTile(
-                      context: context,
-                      icon: Icons.info,
-                      title: '版本',
+                      icon: Icons.analytics,
+                      title: 'Monthly used',
                       trailing:
-                          _versionString.isNotEmpty ? _versionString : '讀取中...',
+                          '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit}',
                     ),
                     _buildTile(
-                      context: context,
-                      icon: Icons.description,
-                      title: '服務條款',
-                      onTap: () => _launchUrl('https://vibesyncai.app/terms'),
+                      icon: Icons.person,
+                      title: 'Account',
+                      trailing: _accountLabel(),
                     ),
+                    if (!kIsWeb)
+                      _buildTile(
+                        icon: Icons.subscriptions_outlined,
+                        title: 'Manage App Store subscription',
+                        onTap: () {
+                          _openManageSubscriptions();
+                        },
+                      ),
+                    if (!kIsWeb)
+                      _buildTile(
+                        icon: Icons.restore,
+                        title: 'Restore purchases',
+                        onTap: () {
+                          _restorePurchases(context, ref);
+                        },
+                      ),
+                  ],
+                ),
+                _buildSection(
+                  title: 'Privacy and data',
+                  children: [
                     _buildTile(
-                      context: context,
-                      icon: Icons.feedback,
-                      title: '意見回饋',
-                      onTap: () =>
-                          _launchUrl('https://t.me/vibesync_feedback_bot'),
-                    ),
-                    _buildTile(
-                      context: context,
-                      icon: Icons.logout,
-                      title: '登出',
+                      icon: Icons.delete_forever,
+                      title: 'Delete account',
                       titleColor: AppColors.error,
-                      onTap: () => _logout(context, ref),
+                      onTap: () {
+                        _confirmDeleteAccount(context, ref);
+                      },
+                    ),
+                    _buildTile(
+                      icon: Icons.privacy_tip,
+                      title: 'Privacy policy',
+                      onTap: () {
+                        _launchUrl('https://vibesyncai.app/privacy');
+                      },
+                    ),
+                  ],
+                ),
+                _buildSection(
+                  title: 'More',
+                  children: [
+                    _buildTile(
+                      icon: Icons.info,
+                      title: 'Version',
+                      trailing:
+                          _versionString.isNotEmpty ? _versionString : 'Loading...',
+                    ),
+                    _buildTile(
+                      icon: Icons.description,
+                      title: 'Terms',
+                      onTap: () {
+                        _launchUrl('https://vibesyncai.app/terms');
+                      },
+                    ),
+                    _buildTile(
+                      icon: Icons.feedback,
+                      title: 'Support',
+                      onTap: () {
+                        _launchUrl('https://t.me/vibesync_feedback_bot');
+                      },
+                    ),
+                    _buildTile(
+                      icon: Icons.logout,
+                      title: 'Sign out',
+                      titleColor: AppColors.error,
+                      onTap: () {
+                        _logout(context, ref);
+                      },
                     ),
                   ],
                 ),
@@ -184,17 +183,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  String _getTierDisplayName(String tier) {
-    switch (tier) {
-      case 'starter':
-        return 'Starter';
-      case 'essential':
-        return 'Essential';
-      default:
-        return 'Free';
-    }
-  }
-
   Widget _buildUsageSummaryCard(SubscriptionState subscription) {
     return GlassmorphicContainer(
       padding: const EdgeInsets.all(16),
@@ -202,14 +190,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '方案與額度',
+            'Current plan and quota',
             style: AppTypography.titleMedium.copyWith(
               color: AppColors.glassTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            '${_getTierDisplayName(subscription.tier)} 目前生效中',
+            'Active plan: ${_tierLabel(subscription.tier)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextHint,
             ),
@@ -219,7 +207,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               Expanded(
                 child: _buildUsagePill(
-                  label: '本月剩餘',
+                  label: 'Monthly left',
                   value:
                       '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
                 ),
@@ -227,7 +215,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildUsagePill(
-                  label: '今日剩餘',
+                  label: 'Daily left',
                   value:
                       '${subscription.dailyRemaining}/${subscription.dailyLimit}',
                 ),
@@ -284,23 +272,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '已排程降級到 ${_getTierDisplayName(subscription.pendingDowngradeToTier ?? SubscriptionTierHelper.free)}',
+                  'Scheduled downgrade to ${_tierLabel(subscription.pendingDowngradeToTier)}',
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '會在 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。在此之前仍保留目前方案額度。',
+                  'This will take effect on ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
+                  'Until then your current quota stays active.',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.glassTextSecondary,
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
-                  onPressed: _openManageSubscriptions,
+                  onPressed: () {
+                    _openManageSubscriptions();
+                  },
                   child: Text(
-                    '前往 App Store 管理訂閱',
+                    'Manage in App Store',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -312,136 +303,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
-  }
-
-  String _formatDate(DateTime? dateTime) {
-    if (dateTime == null) {
-      return '下個續訂日';
-    }
-    final local = dateTime.toLocal();
-    return '${local.month}/${local.day}';
-  }
-
-  String _getAccountDisplay() {
-    final user = SupabaseService.currentUser;
-    if (user == null) {
-      return '未登入';
-    }
-
-    final provider = user.appMetadata['provider'] as String?;
-
-    if (provider == 'apple') {
-      final fullName = user.userMetadata?['full_name'] as String?;
-      final name = user.userMetadata?['name'] as String?;
-      return fullName ?? name ?? 'Apple 帳號';
-    }
-
-    return user.email ?? '未提供 email';
-  }
-
-  bool _containsAny(String source, List<String> patterns) {
-    return patterns.any(source.contains);
-  }
-
-  String _mapRestorePurchasesError(Object error) {
-    final normalized = error.toString().toLowerCase();
-
-    if (_containsAny(normalized, [
-      'network',
-      'timeout',
-      'socket',
-      'failed host lookup',
-      'connection',
-    ])) {
-      return '網路不太穩，請稍後再試一次。';
-    }
-
-    if (_containsAny(normalized, [
-      'not logged in',
-      'unauthorized',
-      'auth',
-      'jwt',
-      'session',
-    ])) {
-      return '登入狀態已失效，請重新登入後再試。';
-    }
-
-    if (_containsAny(normalized, [
-      'not initialized',
-      'configured',
-      'configuration',
-      'platform',
-    ])) {
-      return '購買服務還在準備中，請稍後再試。';
-    }
-
-    return '目前無法同步已買過的訂閱，請稍後再試一次。';
-  }
-
-  String _mapDeleteAccountError(Object error) {
-    final normalized = error.toString().toLowerCase();
-
-    if (_containsAny(normalized, [
-      'confirmation',
-      'mismatch',
-    ])) {
-      return '確認資訊不正確，請重新輸入 DELETE 再試一次。';
-    }
-
-    if (_containsAny(normalized, [
-      'network',
-      'timeout',
-      'socket',
-      'failed host lookup',
-      'connection',
-    ])) {
-      return '網路不太穩，請稍後再試一次。';
-    }
-
-    if (_containsAny(normalized, [
-      'not logged in',
-      'unauthorized',
-      'auth',
-      'jwt',
-      'session',
-    ])) {
-      return '登入狀態已失效，請重新登入後再試。';
-    }
-
-    if (_containsAny(normalized, [
-      'delete account data cleanup failed',
-      'revenue_events',
-      'feedback',
-      'webhook_logs',
-      'cleanup failed',
-    ])) {
-      return '伺服器正在清理帳號資料，請稍後再試一次。';
-    }
-
-    if (_containsAny(normalized, [
-      'delete account failed',
-      'failed to delete account',
-    ])) {
-      return '帳號刪除沒有完成，請稍後再試一次。';
-    }
-
-    return '現在還不能刪除帳號，請稍後再試一次。';
-  }
-
-  String _mapLogoutError(Object error) {
-    final normalized = error.toString().toLowerCase();
-
-    if (_containsAny(normalized, [
-      'network',
-      'timeout',
-      'socket',
-      'failed host lookup',
-      'connection',
-    ])) {
-      return '目前無法順利登出，請檢查網路後再試一次。';
-    }
-
-    return '登出時出了點問題，請再試一次。';
   }
 
   Widget _buildSection({
@@ -469,7 +330,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildTile({
-    required BuildContext context,
     required IconData icon,
     required String title,
     String? trailing,
@@ -496,31 +356,99 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Future<void> _syncPurchasedPlan(BuildContext context, WidgetRef ref) async {
+  String _tierLabel(String? tier) {
+    switch (tier) {
+      case SubscriptionTierHelper.starter:
+        return 'Starter';
+      case SubscriptionTierHelper.essential:
+        return 'Essential';
+      default:
+        return 'Free';
+    }
+  }
+
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) return 'next renewal';
+    final local = dateTime.toLocal();
+    return '${local.month}/${local.day}';
+  }
+
+  String _accountLabel() {
+    final user = SupabaseService.currentUser;
+    if (user == null) return 'Not signed in';
+
+    final provider = user.appMetadata['provider'] as String?;
+    if (provider == 'apple') {
+      final fullName = user.userMetadata?['full_name'] as String?;
+      final name = user.userMetadata?['name'] as String?;
+      return fullName ?? name ?? 'Apple account';
+    }
+
+    return user.email ?? 'No email';
+  }
+
+  bool _containsAny(String source, List<String> patterns) {
+    return patterns.any(source.contains);
+  }
+
+  String _mapRestoreError(Object error) {
+    final normalized = error.toString().toLowerCase();
+    if (_containsAny(normalized, ['network', 'timeout', 'socket', 'connection'])) {
+      return 'Network error while restoring purchases.';
+    }
+    if (_containsAny(normalized, ['not logged in', 'unauthorized', 'auth'])) {
+      return 'Session expired. Please sign in again.';
+    }
+    return 'Restore failed. Please try again.';
+  }
+
+  String _mapDeleteError(Object error) {
+    final normalized = error.toString().toLowerCase();
+    if (_containsAny(normalized, ['confirmation', 'mismatch'])) {
+      return 'Confirmation text did not match DELETE.';
+    }
+    if (_containsAny(normalized, ['network', 'timeout', 'socket', 'connection'])) {
+      return 'Network error while deleting the account.';
+    }
+    if (_containsAny(normalized, ['not logged in', 'unauthorized', 'auth'])) {
+      return 'Session expired. Please sign in again.';
+    }
+    return 'Delete account failed. Please try again.';
+  }
+
+  String _mapLogoutError(Object error) {
+    final normalized = error.toString().toLowerCase();
+    if (_containsAny(normalized, ['network', 'timeout', 'socket', 'connection'])) {
+      return 'Network error while signing out.';
+    }
+    return 'Sign out failed. Please try again.';
+  }
+
+  Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             backgroundColor: AppColors.glassWhite,
             title: Text(
-              '同步已買過的訂閱',
+              'Restore purchases',
               style: TextStyle(color: AppColors.glassTextPrimary),
             ),
             content: Text(
-              '這會把此 Apple ID 已買過的訂閱同步到目前登入的 VibeSync 帳號。如果你剛切換到另一個帳號，方案也可能跟著轉過來。',
+              'Use this if this Apple ID already has a subscription and the app has not refreshed yet.',
               style: TextStyle(color: AppColors.glassTextSecondary),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
                 child: Text(
-                  '取消',
+                  'Cancel',
                   style: TextStyle(color: AppColors.unselectedText),
                 ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
                 child: Text(
-                  '確認同步',
+                  'Restore',
                   style: TextStyle(color: AppColors.primary),
                 ),
               ),
@@ -528,9 +456,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ) ??
         false;
-    if (!confirmed || !context.mounted) {
-      return;
-    }
+    if (!confirmed || !context.mounted) return;
 
     showDialog(
       context: context,
@@ -541,30 +467,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final restored =
           await ref.read(subscriptionProvider.notifier).restorePurchases();
-
-      if (!context.mounted) {
-        return;
-      }
+      if (!context.mounted) return;
 
       Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             restored
-                ? '已把此 Apple ID 買過的方案同步到目前帳號。'
-                : '這個 Apple ID 目前沒有可同步的有效訂閱。',
+                ? 'Subscription status refreshed.'
+                : 'No active subscription was found for this Apple ID.',
           ),
           backgroundColor: restored ? AppColors.success : null,
         ),
       );
     } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
+      if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_mapRestorePurchasesError(error))),
+        SnackBar(content: Text(_mapRestoreError(error))),
       );
     }
   }
@@ -575,41 +495,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
         title: Text(
-          '確認登出',
+          'Confirm sign out',
           style: TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(
-              '取消',
+              'Cancel',
               style: TextStyle(color: AppColors.unselectedText),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(
-              '登出',
+              'Sign out',
               style: TextStyle(color: AppColors.error),
             ),
           ),
         ],
       ),
     );
-
-    if (confirmed != true || !context.mounted) {
-      return;
-    }
+    if (confirmed != true || !context.mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
-
     try {
       await SupabaseService.signOut();
       await UsageService.clearSnapshot();
     } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
+      if (!context.mounted) return;
 
       if (!SupabaseService.isAuthenticated) {
         await UsageService.clearSnapshot();
@@ -618,21 +532,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ref.invalidate(usageDataProvider);
         context.go('/login');
         messenger.showSnackBar(
-          const SnackBar(content: Text('你已登出。若畫面還有異常，重新開啟 App 即可。')),
+          const SnackBar(
+            content: Text('Signed out, but local cleanup had a minor issue. Please reopen the app.'),
+          ),
         );
         return;
       }
 
-      messenger.showSnackBar(
-        SnackBar(content: Text(_mapLogoutError(error))),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(_mapLogoutError(error))));
       return;
     }
 
     ref.invalidate(subscriptionProvider);
     ref.invalidate(conversationsProvider);
     ref.invalidate(usageDataProvider);
-
     if (context.mounted) {
       context.go('/login');
     }
@@ -649,7 +562,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         builder: (dialogContext, setDialogState) => AlertDialog(
           backgroundColor: AppColors.glassWhite,
           title: Text(
-            '刪除帳號',
+            'Delete account',
             style: TextStyle(color: AppColors.glassTextPrimary),
           ),
           content: Column(
@@ -657,7 +570,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '這會永久刪除你的帳號與雲端資料。若你仍有 App Store 訂閱，仍需到 Apple 的訂閱管理頁另外取消續訂。',
+                'This removes your account and local data. If you still have an App Store subscription, cancel auto-renew separately in Apple subscription management.',
                 style: TextStyle(
                   color: AppColors.glassTextPrimary,
                   height: 1.5,
@@ -665,7 +578,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                '請輸入 DELETE 以確認',
+                'Type DELETE to confirm',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.glassTextPrimary,
                   fontWeight: FontWeight.w600,
@@ -703,7 +616,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                '取消',
+                'Cancel',
                 style: TextStyle(color: AppColors.unselectedText),
               ),
             ),
@@ -715,22 +628,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 foregroundColor: AppColors.error,
                 disabledForegroundColor: AppColors.error.withValues(alpha: 0.35),
               ),
-              child: const Text(
-                '永久刪除',
-              ),
+              child: const Text('Delete'),
             ),
           ],
         ),
       ),
     );
     controller.dispose();
-
-    if (confirmation == null || !context.mounted) {
-      return;
-    }
+    if (confirmation == null || !context.mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
-
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -744,28 +651,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.invalidate(subscriptionProvider);
       ref.invalidate(conversationsProvider);
       ref.invalidate(usageDataProvider);
-
-      if (!context.mounted) {
-        return;
-      }
+      if (!context.mounted) return;
 
       Navigator.of(context, rootNavigator: true).pop();
       context.go('/login');
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('帳號已刪除'),
+          content: Text('Account deleted.'),
           backgroundColor: AppColors.success,
         ),
       );
     } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
+      if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
       messenger.showSnackBar(
         SnackBar(
-          content: Text(_mapDeleteAccountError(error)),
+          content: Text(_mapDeleteError(error)),
           backgroundColor: AppColors.error,
         ),
       );
@@ -776,7 +677,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final launched = await LinkLaunchService.open(url);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('目前無法開啟連結，請稍後再試。')),
+        const SnackBar(content: Text('Could not open the link right now.')),
       );
     }
   }
@@ -786,7 +687,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('目前無法開啟 App Store 訂閱管理，請稍後再試。'),
+          content: Text('Could not open App Store subscription management.'),
         ),
       );
     }

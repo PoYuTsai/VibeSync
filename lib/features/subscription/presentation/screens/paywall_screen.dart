@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
-import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
@@ -37,35 +36,34 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final essentialLimits = SubscriptionTierHelper.limitsFor(
       SubscriptionTierHelper.essential,
     );
-
     return [
       _PaywallPlanData(
         tier: SubscriptionTierHelper.starter,
         name: 'Starter',
-        badge: '入門',
-        description: '適合穩定使用、想先升級分析品質的你',
-        features: [
-          '${starterLimits.monthly} 則分析額度 / 月',
-          '${starterLimits.daily} 則分析額度 / 日',
-          '5 種回覆建議',
-          'Needy 警示提醒',
-          '延續對話建議',
+        badge: 'Entry',
+        description: 'Steady daily use.',
+        pricePoints: [
+          '${starterLimits.monthly} analyses / month',
+          '${starterLimits.daily} analyses / day',
+          '5 reply styles',
+          'Needy warning',
+          'Final recommendation',
         ],
       ),
       _PaywallPlanData(
         tier: SubscriptionTierHelper.essential,
         name: 'Essential',
-        badge: '推薦',
-        description: '適合高頻使用、想要完整策略與優化建議的你',
-        features: [
-          '${essentialLimits.monthly} 則分析額度 / 月',
-          '${essentialLimits.daily} 則分析額度 / 日',
-          '5 種回覆建議',
-          'Needy 警示提醒',
-          '延續對話建議',
-          '我說優化功能',
-          'Sonnet 高品質模型',
-          '完整對話健檢與策略建議',
+        badge: 'Recommended',
+        description: 'Higher limits and deeper analysis.',
+        pricePoints: [
+          '${essentialLimits.monthly} analyses / month',
+          '${essentialLimits.daily} analyses / day',
+          '5 reply styles',
+          'Needy warning',
+          'Final recommendation',
+          'Health check',
+          'Higher limits',
+          'Deeper analysis',
         ],
       ),
     ];
@@ -87,13 +85,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         subscription.pendingDowngradeToTier == _selectedTier;
     final canManagePendingDowngrade = hasPendingDowngrade &&
         subscription.tier == _selectedTier;
-    final primaryAction = _isPurchasing
-        ? null
-        : canManagePendingDowngrade
-        ? _openManageSubscriptions
-        : (isCurrentPlan || pendingDowngradeMatchesSelection || selectedPackage == null)
-        ? null
-        : _subscribe;
+
+    VoidCallback? primaryAction;
+    if (_isPurchasing) {
+      primaryAction = null;
+    } else if (canManagePendingDowngrade) {
+      primaryAction = () {
+        _openManageSubscriptions();
+      };
+    } else if (isCurrentPlan ||
+        pendingDowngradeMatchesSelection ||
+        selectedPackage == null) {
+      primaryAction = null;
+    } else {
+      primaryAction = () {
+        _subscribe();
+      };
+    }
 
     return GradientBackground(
       child: Scaffold(
@@ -102,9 +110,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           title: Text(
-            '升級方案',
-            style: AppTypography.titleLarge
-                .copyWith(color: AppColors.onBackgroundPrimary),
+            'Plans and quota',
+            style: AppTypography.titleLarge.copyWith(
+              color: AppColors.onBackgroundPrimary,
+            ),
           ),
           leading: IconButton(
             icon: const Icon(Icons.close),
@@ -119,53 +128,53 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '選一個最適合你的方案',
-                    style: AppTypography.headlineLarge
-                        .copyWith(color: AppColors.onBackgroundPrimary),
+                    'Choose the plan that fits you',
+                    style: AppTypography.headlineLarge.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '所有訂閱與退款皆由 App Store 處理，方案會自動續訂，可隨時在系統訂閱管理取消。',
-                    style: AppTypography.bodyLarge
-                        .copyWith(color: AppColors.onBackgroundSecondary),
+                    'Upgrades usually apply immediately. Downgrades apply on the next renewal, and your current quota stays active until then.',
+                    style: AppTypography.bodyLarge.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
                   _buildQuotaSummaryCard(subscription),
-                  const SizedBox(height: 16),
                   if (hasPendingDowngrade) ...[
-                    _buildPendingDowngradeCard(subscription),
                     const SizedBox(height: 16),
+                    _buildPendingDowngradeCard(subscription),
                   ],
-                  if (!offeringsReady && subscription.isLoading)
+                  if (!offeringsReady) ...[
+                    const SizedBox(height: 16),
                     _buildInfoCard(
-                      icon: Icons.sync,
-                      title: '正在同步 App Store 方案',
-                      message: '剛開啟頁面時若尚未顯示價格，通常等待 1-2 秒就會完成。',
+                      icon: subscription.isLoading ? Icons.sync : Icons.info_outline,
+                      title: subscription.isLoading
+                          ? 'Syncing plan info'
+                          : 'Plan info not ready',
+                      message: subscription.isLoading
+                          ? 'App Store product sync can take 1 to 2 minutes.'
+                          : 'The latest App Store products are not available yet. Please try again soon.',
+                      iconColor: subscription.isLoading
+                          ? AppColors.info
+                          : AppColors.warning,
                     ),
-                  if (!offeringsReady && !subscription.isLoading)
-                    _buildInfoCard(
-                      icon: Icons.info_outline,
-                      title: '暫時還沒取得方案價格',
-                      message: '你可以稍後再試，或重新開啟此頁面同步 App Store 方案資訊。',
-                      iconColor: AppColors.warning,
-                    ),
+                  ],
                   if (subscription.error != null &&
                       subscription.error!.isNotEmpty &&
-                      subscription.error != 'Not logged in')
+                      subscription.error != 'Not logged in') ...[
+                    const SizedBox(height: 16),
                     _buildInfoCard(
                       icon: Icons.error_outline,
-                      title: '方案資訊同步異常',
-                      message: '目前仍可稍後重試；如果問題持續，請重新登入後再試一次。',
+                      title: 'Plan sync error',
+                      message: 'We could not refresh your latest plan status. Please try again later or sign in again if it keeps failing.',
                       iconColor: AppColors.error,
                     ),
-                  if ((!offeringsReady && subscription.isLoading) ||
-                      (!offeringsReady && !subscription.isLoading) ||
-                      (subscription.error != null &&
-                          subscription.error!.isNotEmpty &&
-                          subscription.error != 'Not logged in'))
-                    const SizedBox(height: 20),
+                  ],
+                  const SizedBox(height: 20),
                   ..._plans.map(
                     (plan) => Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -180,30 +189,28 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
                   GradientButton(
-                    text: _buildPrimaryButtonText(
-                      isCurrentPlan: isCurrentPlan,
-                      canManagePendingDowngrade: canManagePendingDowngrade,
-                      pendingDowngradeMatchesSelection:
-                          pendingDowngradeMatchesSelection,
+                    text: _primaryButtonText(
+                      subscription,
+                      isCurrentPlan,
+                      canManagePendingDowngrade,
+                      pendingDowngradeMatchesSelection,
                     ),
                     onPressed: primaryAction,
                     isLoading: _isPurchasing,
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    canManagePendingDowngrade
-                        ? '你目前已排程於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}。若想保留目前方案，請改用 App Store 訂閱管理。'
-                        : pendingDowngradeMatchesSelection
-                        ? '這個降級已經排程完成，會在 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。在此之前仍沿用目前方案與額度。'
-                        : isCurrentPlan
-                        ? '你目前已在此方案。如需取消或變更方案，請改用 App Store 訂閱管理。'
-                        : isDowngrade
-                        ? 'iOS 同一個訂閱群組的降級通常會在下一個續訂週期才生效。目前的 Essential 權限會先保留到本期結束。'
-                        : '升級完成後會立即同步方案狀態；如果你以前買過、換手機或重裝 App，請改用下方的「同步已買過的訂閱」。',
-                    style: AppTypography.caption
-                        .copyWith(color: AppColors.onBackgroundSecondary),
+                    _primaryFootnote(
+                      subscription,
+                      isCurrentPlan,
+                      isDowngrade,
+                      canManagePendingDowngrade,
+                      pendingDowngradeMatchesSelection,
+                    ),
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
@@ -213,54 +220,34 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     runSpacing: 4,
                     children: [
                       TextButton(
-                        onPressed: () => _launchUrl(_termsUrl),
-                        child: Text('使用條款', style: AppTypography.caption),
+                        onPressed: () {
+                          _launchUrl(_termsUrl);
+                        },
+                        child: Text('Terms', style: AppTypography.caption),
                       ),
-                      Text('｜', style: AppTypography.caption),
+                      Text('|', style: AppTypography.caption),
                       TextButton(
-                        onPressed: () => _launchUrl(_privacyUrl),
-                        child: Text('隱私權政策', style: AppTypography.caption),
+                        onPressed: () {
+                          _launchUrl(_privacyUrl);
+                        },
+                        child: Text('Privacy', style: AppTypography.caption),
                       ),
-                      Text('｜', style: AppTypography.caption),
+                      Text('|', style: AppTypography.caption),
                       TextButton(
-                        onPressed: _openManageSubscriptions,
-                        child: Text('管理訂閱', style: AppTypography.caption),
+                        onPressed: () {
+                          _openManageSubscriptions();
+                        },
+                        child: Text('Manage', style: AppTypography.caption),
                       ),
-                      Text('｜', style: AppTypography.caption),
+                      Text('|', style: AppTypography.caption),
                       TextButton(
-                        onPressed: _syncPurchasedPlan,
-                        child: Text('同步已買過的訂閱', style: AppTypography.caption),
+                        onPressed: () {
+                          _syncPurchasedPlan();
+                        },
+                        child: Text('Restore', style: AppTypography.caption),
                       ),
                     ],
                   ),
-                  if (kDebugMode) ...[
-                    const SizedBox(height: 12),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        TextButton(
-                          onPressed: _showDebugInfo,
-                          child: Text(
-                            'Debug 資訊',
-                            style: AppTypography.caption.copyWith(
-                              color: Colors.orange,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _forceSyncToSupabase,
-                          child: Text(
-                            'Force Sync',
-                            style: AppTypography.caption.copyWith(
-                              color: Colors.orange,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                   const SizedBox(height: 32),
                 ],
               ),
@@ -282,35 +269,49 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         : subscription.starterPackage;
   }
 
-  String _buildPrimaryButtonText({
-    required bool isCurrentPlan,
-    required bool canManagePendingDowngrade,
-    required bool pendingDowngradeMatchesSelection,
-  }) {
-    if (_isPurchasing) {
-      return '處理中...';
-    }
-    if (canManagePendingDowngrade) {
-      return '管理訂閱以取消降級';
-    }
+  String _primaryButtonText(
+    SubscriptionState subscription,
+    bool isCurrentPlan,
+    bool canManagePendingDowngrade,
+    bool pendingDowngradeMatchesSelection,
+  ) {
+    if (_isPurchasing) return 'Processing...';
+    if (canManagePendingDowngrade) return 'Manage in App Store';
     if (pendingDowngradeMatchesSelection) {
-      return '已排程降級到 ${_tierLabel(_selectedTier)}';
+      return 'Downgrade scheduled to ${_tierLabel(_selectedTier)}';
     }
-    if (isCurrentPlan) {
-      return '目前已使用此方案';
-    }
-    final selectedPackage = _selectedPackageFor(ref.read(subscriptionProvider));
-    if (selectedPackage == null) {
-      return '同步方案中...';
-    }
-
+    if (isCurrentPlan) return 'Current plan';
+    if (_selectedPackageFor(subscription) == null) return 'Syncing plan info...';
     if (SubscriptionTierHelper.isDowngrade(
-      fromTier: ref.read(subscriptionProvider).tier,
+      fromTier: subscription.tier,
       toTier: _selectedTier,
     )) {
-      return '降級到 ${_tierLabel(_selectedTier)}';
+      return 'Downgrade to ${_tierLabel(_selectedTier)}';
     }
-    return '升級到 ${_tierLabel(_selectedTier)}';
+    return 'Upgrade to ${_tierLabel(_selectedTier)}';
+  }
+
+  String _primaryFootnote(
+    SubscriptionState subscription,
+    bool isCurrentPlan,
+    bool isDowngrade,
+    bool canManagePendingDowngrade,
+    bool pendingDowngradeMatchesSelection,
+  ) {
+    if (canManagePendingDowngrade) {
+      return 'A downgrade to ${_tierLabel(subscription.pendingDowngradeToTier)} '
+          'is scheduled for ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
+          'Use App Store subscription management to cancel it.';
+    }
+    if (pendingDowngradeMatchesSelection) {
+      return 'This downgrade is already scheduled and will take effect on '
+          '${_formatDate(subscription.pendingDowngradeEffectiveAt)}.';
+    }
+    if (isCurrentPlan) return 'This is your current active plan.';
+    if (isDowngrade) {
+      return 'Downgrades take effect on the next renewal. Your current quota stays active until then.';
+    }
+    return 'Upgrades usually apply immediately and refresh your quota right away.';
   }
 
   Widget _buildQuotaSummaryCard(SubscriptionState subscription) {
@@ -320,14 +321,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '目前方案與額度',
+            'Current plan and quota',
             style: AppTypography.titleMedium.copyWith(
               color: AppColors.glassTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            '${_tierLabel(subscription.tier)} 目前生效中',
+            'Active plan: ${_tierLabel(subscription.tier)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextHint,
             ),
@@ -337,7 +338,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             children: [
               Expanded(
                 child: _buildQuotaPill(
-                  label: '本月剩餘',
+                  label: 'Monthly left',
                   value:
                       '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
                 ),
@@ -345,7 +346,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildQuotaPill(
-                  label: '今日剩餘',
+                  label: 'Daily left',
                   value:
                       '${subscription.dailyRemaining}/${subscription.dailyLimit}',
                 ),
@@ -357,10 +358,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
-  Widget _buildQuotaPill({
-    required String label,
-    required String value,
-  }) {
+  Widget _buildQuotaPill({required String label, required String value}) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -402,23 +400,26 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '已排程降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}',
+                  'Scheduled downgrade to ${_tierLabel(subscription.pendingDowngradeToTier)}',
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '會在 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。在此之前仍保留 ${_tierLabel(subscription.tier)} 的額度與功能。',
+                  'This takes effect on ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
+                  'Until then you can keep using the ${_tierLabel(subscription.tier)} quota and features.',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.glassTextSecondary,
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
-                  onPressed: _openManageSubscriptions,
+                  onPressed: () {
+                    _openManageSubscriptions();
+                  },
                   child: Text(
-                    '前往 App Store 管理訂閱',
+                    'Manage in App Store',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -430,26 +431,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         ],
       ),
     );
-  }
-
-  String _tierLabel(String? tier) {
-    switch (tier) {
-      case SubscriptionTierHelper.starter:
-        return 'Starter';
-      case SubscriptionTierHelper.essential:
-        return 'Essential';
-      default:
-        return 'Free';
-    }
-  }
-
-  String _formatDate(DateTime? dateTime) {
-    if (dateTime == null) {
-      return '下個續訂日';
-    }
-
-    final local = dateTime.toLocal();
-    return '${local.month}/${local.day}';
   }
 
   Widget _buildInfoCard({
@@ -497,8 +478,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required bool isCurrentPlan,
     required VoidCallback onTap,
   }) {
-    final priceLabel = package?.storeProduct.priceString ?? '價格同步中';
-    final priceSuffix = package == null ? '' : ' / 月';
+    final priceLabel = package?.storeProduct.priceString ?? 'Syncing price';
+    final priceSuffix = package == null ? '' : ' / month';
 
     return GestureDetector(
       onTap: onTap,
@@ -519,7 +500,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 const SizedBox(width: 8),
                 _buildBadge(
                   label: plan.badge,
-                  background: plan.badge == '推薦'
+                  background: plan.badge == 'Recommended'
                       ? const LinearGradient(
                           colors: [
                             AppColors.selectedStart,
@@ -527,14 +508,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                           ],
                         )
                       : null,
-                  color: plan.badge == '推薦'
+                  color: plan.badge == 'Recommended'
                       ? Colors.white
                       : AppColors.glassTextPrimary,
                 ),
                 if (isCurrentPlan) ...[
                   const SizedBox(width: 8),
                   _buildBadge(
-                    label: '目前方案',
+                    label: 'Current',
                     background: LinearGradient(
                       colors: [
                         AppColors.success.withValues(alpha: 0.88),
@@ -571,8 +552,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            ...plan.features.map(
-              (feature) => Padding(
+            ...plan.pricePoints.map(
+              (item) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -588,7 +569,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        feature,
+                        item,
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.glassTextPrimary,
                         ),
@@ -633,27 +614,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Future<void> _subscribe() async {
     if (kIsWeb) {
-      _showSnackBar('目前請改用 iOS App 進行訂閱。');
+      _showSnackBar('Please manage subscriptions in the iOS app.');
       return;
     }
 
     final subscription = ref.read(subscriptionProvider);
     final package = _selectedPackageFor(subscription);
-
     if (package == null) {
-      _showSnackBar('目前尚未取得方案資訊，請稍後再試。');
+      _showSnackBar('Plan info is not ready yet. Please try again.');
       return;
     }
 
     setState(() => _isPurchasing = true);
-
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
       final result = await notifier.purchase(package);
-
-      if (!mounted || result.cancelled) {
-        return;
-      }
+      if (!mounted || result.cancelled) return;
 
       if (!result.success) {
         _showSnackBar(
@@ -667,7 +643,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       if (result.isDeferredDowngrade) {
         _showSnackBar(
-          '已提交 ${_tierLabel(result.requestedTier)} 降級申請，會在 ${_formatDate(result.effectiveAt)} 生效。',
+          'Downgrade to ${_tierLabel(result.requestedTier)} scheduled for ${_formatDate(result.effectiveAt)}.',
           backgroundColor: AppColors.success,
         );
         context.pop(result.activeTier);
@@ -675,23 +651,20 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       }
 
       await notifier.refresh();
+      if (!mounted) return;
 
-      if (!mounted) {
-        return;
-      }
-
-      final purchasedTier = result.activeTier == SubscriptionTierHelper.essential
+      final purchasedTier =
+          result.activeTier == SubscriptionTierHelper.essential
           ? 'Essential'
           : 'Starter';
-
       _showSnackBar(
-        '訂閱成功，已切換為 $purchasedTier 方案。',
+        'Purchase complete. Active plan: $purchasedTier.',
         backgroundColor: AppColors.success,
       );
       context.pop(result.activeTier);
     } catch (error) {
       debugPrint('Paywall purchase error: $error');
-      _showSnackBar('訂閱處理失敗，請稍後再試一次。');
+      _showSnackBar('Purchase failed. Please try again.');
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
@@ -705,25 +678,25 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }) {
     switch (errorCode) {
       case PurchasesErrorCode.purchaseCancelledError:
-        return '你已取消本次訂閱。';
+        return 'Purchase cancelled.';
       case PurchasesErrorCode.paymentPendingError:
-        return '付款仍在等待確認，稍後可再回到此頁查看。';
+        return 'Payment is pending App Store confirmation.';
       case PurchasesErrorCode.productNotAvailableForPurchaseError:
-        return '目前無法購買此方案，請稍後再試。';
+        return 'This product is not available right now.';
       case PurchasesErrorCode.storeProblemError:
       case PurchasesErrorCode.networkError:
-        return '目前無法連線到 App Store，請稍後再試一次。';
+        return 'Could not reach App Store. Please try again.';
       default:
         if (fallbackMessage != null && fallbackMessage.isNotEmpty) {
           return fallbackMessage;
         }
-        return '訂閱失敗，請稍後再試一次。';
-    }
+        return 'Purchase failed. Please try again.';
+      }
   }
 
   Future<void> _syncPurchasedPlan() async {
     if (kIsWeb) {
-      _showSnackBar('目前請改用 iOS App 同步已買過的訂閱。');
+      _showSnackBar('Please restore purchases in the iOS app.');
       return;
     }
 
@@ -732,13 +705,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           builder: (dialogContext) => AlertDialog(
             backgroundColor: AppColors.glassWhite,
             title: Text(
-              '同步已買過的訂閱',
+              'Restore purchases',
               style: AppTypography.titleMedium.copyWith(
                 color: AppColors.glassTextPrimary,
               ),
             ),
             content: Text(
-              '這會把此 Apple ID 已買過的訂閱同步到目前登入的 VibeSync 帳號。如果你剛切換到另一個帳號，方案也可能跟著轉過來。',
+              'If this Apple ID already has a subscription, you can refresh it here.',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextSecondary,
               ),
@@ -747,7 +720,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
                 child: Text(
-                  '取消',
+                  'Cancel',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.unselectedText,
                   ),
@@ -756,7 +729,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
                 child: Text(
-                  '確認同步',
+                  'Restore',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.primary,
                   ),
@@ -766,37 +739,28 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
         ) ??
         false;
-    if (!confirmed || !mounted) {
-      return;
-    }
+    if (!confirmed || !mounted) return;
 
     setState(() => _isPurchasing = true);
-
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
       final restored = await notifier.restorePurchases();
-
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (restored) {
         await notifier.refresh();
-        if (!mounted) {
-          return;
-        }
-
+        if (!mounted) return;
         _showSnackBar(
-          '已把此 Apple ID 買過的方案同步到目前帳號。',
+          'Subscription status refreshed.',
           backgroundColor: AppColors.success,
         );
         context.pop(ref.read(subscriptionProvider).tier);
       } else {
-        _showSnackBar('這個 Apple ID 目前沒有可同步的有效訂閱。');
+        _showSnackBar('No active subscription was found for this Apple ID.');
       }
     } catch (error) {
       debugPrint('Paywall restore error: $error');
-      _showSnackBar('同步已買過的訂閱失敗，請稍後再試一次。');
+      _showSnackBar('Restore failed. Please try again.');
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
@@ -806,226 +770,40 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Future<void> _launchUrl(String url) async {
     final launched = await LinkLaunchService.open(url);
-    if (!launched) {
-      if (!mounted) {
-        return;
-      }
-      _showSnackBar('目前無法開啟連結，請稍後再試。');
+    if (!launched && mounted) {
+      _showSnackBar('Could not open the link right now.');
     }
   }
 
   Future<void> _openManageSubscriptions() async {
     final launched = await LinkLaunchService.open(_manageSubscriptionsUrl);
-    if (!launched) {
-      if (!mounted) {
-        return;
-      }
-      _showSnackBar('目前無法開啟 App Store 訂閱管理，請稍後再試。');
+    if (!launched && mounted) {
+      _showSnackBar('Could not open App Store subscription management.');
     }
   }
 
   void _showSnackBar(String message, {Color? backgroundColor}) {
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: backgroundColor,
-      ),
+      SnackBar(content: Text(message), backgroundColor: backgroundColor),
     );
   }
 
-  Future<void> _forceSyncToSupabase() async {
-    if (!kDebugMode) {
-      return;
-    }
-
-    try {
-      setState(() => _isPurchasing = true);
-
-      debugPrint('[ForceSync] Getting customer info from RevenueCat...');
-      final customerInfo = await RevenueCatService.getCustomerInfo();
-
-      if (customerInfo == null) {
-        debugPrint('[ForceSync] CustomerInfo is null.');
-        if (mounted) {
-          await _showManualTierDialog(
-            'RevenueCat 尚未回傳 CustomerInfo，若你剛完成購買，可手動同步 tier 到 Supabase。',
-          );
-        }
-        return;
-      }
-
-      final activeEntitlements = customerInfo.entitlements.active.keys.toList();
-      final activeSubscriptions = customerInfo.activeSubscriptions.toList();
-      final allPurchased = customerInfo.allPurchasedProductIdentifiers.toList();
-
-      debugPrint('[ForceSync] Active entitlements: $activeEntitlements');
-      debugPrint('[ForceSync] Active subscriptions: $activeSubscriptions');
-      debugPrint('[ForceSync] All purchased: $allPurchased');
-
-      final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
-      debugPrint('[ForceSync] Detected tier: $tier');
-
-      if (tier == SubscriptionTierHelper.free && allPurchased.isNotEmpty) {
-        if (mounted) {
-          await _showManualTierDialog(
-            'RevenueCat 偵測到有購買紀錄，但 tier 仍為 free。\n\n'
-            'Purchased: $allPurchased\n'
-            'Active Subs: $activeSubscriptions\n'
-            'Entitlements: $activeEntitlements\n\n'
-            '你可以手動指定 tier 再同步回 Supabase。',
-          );
-        }
-        return;
-      }
-
-      debugPrint('[ForceSync] Syncing to Supabase...');
-      await ref.read(subscriptionProvider.notifier).forceSyncTier(tier);
-      debugPrint('[ForceSync] Sync complete.');
-
-      _showSnackBar(
-        '已同步 RevenueCat 狀態到 Supabase：$tier',
-        backgroundColor: AppColors.success,
-      );
-    } catch (error) {
-      debugPrint('[ForceSync] Error: $error');
-      _showSnackBar('Force Sync 失敗，請查看 debug log。');
-    } finally {
-      if (mounted) {
-        setState(() => _isPurchasing = false);
-      }
+  String _tierLabel(String? tier) {
+    switch (tier) {
+      case SubscriptionTierHelper.starter:
+        return 'Starter';
+      case SubscriptionTierHelper.essential:
+        return 'Essential';
+      default:
+        return 'Free';
     }
   }
 
-  Future<void> _showManualTierDialog(String message) async {
-    if (!kDebugMode) {
-      return;
-    }
-
-    final selectedTier = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('手動指定 Tier'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SelectableText(
-              message,
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 16),
-            const Text('選擇要同步回 Supabase 的 tier。'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, SubscriptionTierHelper.free),
-            child: const Text('Free'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, SubscriptionTierHelper.starter),
-            child: const Text('Starter'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, SubscriptionTierHelper.essential),
-            child: const Text('Essential'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-        ],
-      ),
-    );
-
-    if (selectedTier == null || !mounted) {
-      return;
-    }
-
-    debugPrint('[ForceSync] Manual tier selected: $selectedTier');
-    await ref.read(subscriptionProvider.notifier).forceSyncTier(selectedTier);
-    _showSnackBar(
-      '已手動同步 tier 到 Supabase：$selectedTier',
-      backgroundColor: AppColors.success,
-    );
-  }
-
-  Future<void> _showDebugInfo() async {
-    if (!kDebugMode) {
-      return;
-    }
-
-    var debugInfo = 'Loading...';
-
-    try {
-      final customerInfo = await RevenueCatService.getCustomerInfo();
-
-      if (customerInfo == null) {
-        debugInfo =
-            'CustomerInfo is null.\n\nRevenueCat may not be initialized yet.';
-      } else {
-        final allEntitlements = customerInfo.entitlements.all.keys.toList();
-        final activeEntitlements = customerInfo.entitlements.active;
-        final activeSubscriptions = customerInfo.activeSubscriptions.toList();
-        final allPurchased =
-            customerInfo.allPurchasedProductIdentifiers.toList();
-
-        final tier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
-        final localState = ref.read(subscriptionProvider);
-
-        debugInfo = '''
-=== RevenueCat Debug ===
-
-All Entitlements: $allEntitlements
-Active Entitlements: ${activeEntitlements.keys.toList()}
-Active Subscriptions: $activeSubscriptions
-All Purchased Products: $allPurchased
-
---- Entitlement Details ---
-${activeEntitlements.entries.map((entry) => '${entry.key}: ${entry.value.productIdentifier}').join('\n')}
-
-=== Detected Tier ===
-$tier
-
-=== Local State ===
-Tier: ${localState.tier}
-Monthly Limit: ${localState.monthlyLimit}
-Daily Limit: ${localState.dailyLimit}
-''';
-      }
-    } catch (error) {
-      debugInfo = 'Error: $error';
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Debug 資訊'),
-        content: SingleChildScrollView(
-          child: SelectableText(
-            debugInfo,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('關閉'),
-          ),
-        ],
-      ),
-    );
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) return 'next renewal';
+    final local = dateTime.toLocal();
+    return '${local.month}/${local.day}';
   }
 }
 
@@ -1035,12 +813,12 @@ class _PaywallPlanData {
     required this.name,
     required this.badge,
     required this.description,
-    required this.features,
+    required this.pricePoints,
   });
 
   final String tier;
   final String name;
   final String badge;
   final String description;
-  final List<String> features;
+  final List<String> pricePoints;
 }
