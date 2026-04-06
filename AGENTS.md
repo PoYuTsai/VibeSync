@@ -804,6 +804,24 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat --no-ve
 - `test/unit/services/subscription_tier_helper_test.dart`
 <!-- 遇到 bug 時在此記錄，格式見上方 Debugging Protocol -->
 
+#### [2026-04-06] 降級排程被提早當成 Starter 生效
+**症狀**: Essential 用戶點降級到 Starter 後，畫面雖然顯示「下個週期生效」，但分析額度卻立刻掉成 Starter，且同一個降級流程可以反覆觸發。
+**Root Cause**:
+1. `PRODUCT_CHANGE` webhook 被當成立即生效，提早把 `subscriptions.tier` 寫成較低方案。
+2. `sync-subscription` 在同群組排程降級期間，也會把較低 tier 提早寫回 server。
+3. app 端沒有正式的 `pending downgrade` 狀態，paywall 只能靠一次性提示，無法顯示排程狀態或避免重複降級。
+**修復**:
+1. webhook 與 `sync-subscription` 只在真正到期/續訂後才套用降級。
+2. app 端新增本地 `pending downgrade` 狀態，並綁定 user id，避免跨帳號串用。
+3. paywall / settings 顯示目前生效方案、月/日剩餘額度、排程降級 banner，並把重複降級按鈕改成 disabled 或導向管理訂閱。
+**預防**: iOS 同群組訂閱要區分 `upgrade = 立即生效` 與 `downgrade = 下個 renewal 才生效`，不能只看 `PRODUCT_CHANGE` 就改 tier。
+**相關檔案**:
+- `supabase/functions/revenuecat-webhook/index.ts`
+- `supabase/functions/sync-subscription/index.ts`
+- `lib/features/subscription/data/providers/subscription_providers.dart`
+- `lib/features/subscription/presentation/screens/paywall_screen.dart`
+- `lib/features/subscription/presentation/screens/settings_screen.dart`
+
 #### [2026-02-28] iOS Safari Pull-to-refresh 關閉頁面
 **症狀**: 在 iOS Safari 上下滑動時，整個網頁會被關閉
 **Root Cause**: iOS Safari 的 pull-to-refresh 手勢會觸發頁面關閉

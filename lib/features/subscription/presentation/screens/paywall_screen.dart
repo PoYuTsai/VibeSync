@@ -24,6 +24,8 @@ class PaywallScreen extends ConsumerStatefulWidget {
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
+  static const _manageSubscriptionsUrl =
+      'https://apps.apple.com/account/subscriptions';
 
   String _selectedTier = SubscriptionTierHelper.essential;
   bool _isPurchasing = false;
@@ -80,6 +82,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       fromTier: subscription.tier,
       toTier: _selectedTier,
     );
+    final hasPendingDowngrade = subscription.hasPendingDowngrade;
+    final pendingDowngradeMatchesSelection = hasPendingDowngrade &&
+        subscription.pendingDowngradeToTier == _selectedTier;
+    final canManagePendingDowngrade = hasPendingDowngrade &&
+        subscription.tier == _selectedTier;
+    final primaryAction = _isPurchasing
+        ? null
+        : canManagePendingDowngrade
+        ? _openManageSubscriptions
+        : (isCurrentPlan || pendingDowngradeMatchesSelection || selectedPackage == null)
+        ? null
+        : _subscribe;
 
     return GradientBackground(
       child: Scaffold(
@@ -118,6 +132,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
+                  _buildQuotaSummaryCard(subscription),
+                  const SizedBox(height: 16),
+                  if (hasPendingDowngrade) ...[
+                    _buildPendingDowngradeCard(subscription),
+                    const SizedBox(height: 16),
+                  ],
                   if (!offeringsReady && subscription.isLoading)
                     _buildInfoCard(
                       icon: Icons.sync,
@@ -163,20 +183,21 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   const SizedBox(height: 16),
                   GradientButton(
                     text: _buildPrimaryButtonText(
-                      currentTier: subscription.tier,
-                      selectedPackage: selectedPackage,
                       isCurrentPlan: isCurrentPlan,
+                      canManagePendingDowngrade: canManagePendingDowngrade,
+                      pendingDowngradeMatchesSelection:
+                          pendingDowngradeMatchesSelection,
                     ),
-                    onPressed: _isPurchasing ||
-                            isCurrentPlan ||
-                            selectedPackage == null
-                        ? null
-                        : _subscribe,
+                    onPressed: primaryAction,
                     isLoading: _isPurchasing,
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    isCurrentPlan
+                    canManagePendingDowngrade
+                        ? '你目前已排程於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}。若想保留目前方案，請改用 App Store 訂閱管理。'
+                        : pendingDowngradeMatchesSelection
+                        ? '這個降級已經排程完成，會在 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。在此之前仍沿用目前方案與額度。'
+                        : isCurrentPlan
                         ? '你目前已在此方案。如需取消或變更方案，請改用 App Store 訂閱管理。'
                         : isDowngrade
                         ? 'iOS 同一個訂閱群組的降級通常會在下一個續訂週期才生效。目前的 Essential 權限會先保留到本期結束。'
@@ -199,6 +220,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       TextButton(
                         onPressed: () => _launchUrl(_privacyUrl),
                         child: Text('隱私權政策', style: AppTypography.caption),
+                      ),
+                      Text('｜', style: AppTypography.caption),
+                      TextButton(
+                        onPressed: _openManageSubscriptions,
+                        child: Text('管理訂閱', style: AppTypography.caption),
                       ),
                       Text('｜', style: AppTypography.caption),
                       TextButton(
@@ -257,30 +283,173 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   String _buildPrimaryButtonText({
-    required String currentTier,
-    required Package? selectedPackage,
     required bool isCurrentPlan,
+    required bool canManagePendingDowngrade,
+    required bool pendingDowngradeMatchesSelection,
   }) {
     if (_isPurchasing) {
       return '處理中...';
     }
+    if (canManagePendingDowngrade) {
+      return '管理訂閱以取消降級';
+    }
+    if (pendingDowngradeMatchesSelection) {
+      return '已排程降級到 ${_tierLabel(_selectedTier)}';
+    }
     if (isCurrentPlan) {
       return '目前已使用此方案';
     }
+    final selectedPackage = _selectedPackageFor(ref.read(subscriptionProvider));
     if (selectedPackage == null) {
       return '同步方案中...';
     }
 
-    final tierLabel = _selectedTier == SubscriptionTierHelper.essential
-        ? 'Essential'
-        : 'Starter';
     if (SubscriptionTierHelper.isDowngrade(
-      fromTier: currentTier,
+      fromTier: ref.read(subscriptionProvider).tier,
       toTier: _selectedTier,
     )) {
-      return '降級到 $tierLabel';
+      return '降級到 ${_tierLabel(_selectedTier)}';
     }
-    return '升級到 $tierLabel';
+    return '升級到 ${_tierLabel(_selectedTier)}';
+  }
+
+  Widget _buildQuotaSummaryCard(SubscriptionState subscription) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '目前方案與額度',
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_tierLabel(subscription.tier)} 目前生效中',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextHint,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildQuotaPill(
+                  label: '本月剩餘',
+                  value:
+                      '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildQuotaPill(
+                  label: '今日剩餘',
+                  value:
+                      '${subscription.dailyRemaining}/${subscription.dailyLimit}',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuotaPill({
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextHint,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingDowngradeCard(SubscriptionState subscription) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_repeat, color: AppColors.warning),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '已排程降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '會在 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。在此之前仍保留 ${_tierLabel(subscription.tier)} 的額度與功能。',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _openManageSubscriptions,
+                  child: Text(
+                    '前往 App Store 管理訂閱',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _tierLabel(String? tier) {
+    switch (tier) {
+      case SubscriptionTierHelper.starter:
+        return 'Starter';
+      case SubscriptionTierHelper.essential:
+        return 'Essential';
+      default:
+        return 'Free';
+    }
+  }
+
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) {
+      return '下個續訂日';
+    }
+
+    final local = dateTime.toLocal();
+    return '${local.month}/${local.day}';
   }
 
   Widget _buildInfoCard({
@@ -486,12 +655,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         return;
       }
 
-      await notifier.refresh();
-
-      if (!mounted) {
-        return;
-      }
-
       if (!result.success) {
         _showSnackBar(
           _messageForPurchaseError(
@@ -504,10 +667,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       if (result.isDeferredDowngrade) {
         _showSnackBar(
-          '已提交 Starter 降級申請，會在目前 Essential 週期結束後生效。',
+          '已提交 ${_tierLabel(result.requestedTier)} 降級申請，會在 ${_formatDate(result.effectiveAt)} 生效。',
           backgroundColor: AppColors.success,
         );
         context.pop(result.activeTier);
+        return;
+      }
+
+      await notifier.refresh();
+
+      if (!mounted) {
         return;
       }
 
@@ -642,6 +811,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         return;
       }
       _showSnackBar('目前無法開啟連結，請稍後再試。');
+    }
+  }
+
+  Future<void> _openManageSubscriptions() async {
+    final launched = await LinkLaunchService.open(_manageSubscriptionsUrl);
+    if (!launched) {
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar('目前無法開啟 App Store 訂閱管理，請稍後再試。');
     }
   }
 

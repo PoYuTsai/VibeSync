@@ -13,6 +13,7 @@ import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../data/providers/subscription_providers.dart';
+import '../../domain/services/subscription_tier_helper.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -22,6 +23,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  static const _manageSubscriptionsUrl =
+      'https://apps.apple.com/account/subscriptions';
   String _versionString = '';
 
   @override
@@ -63,6 +66,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
+                _buildUsageSummaryCard(subscription),
+                if (subscription.hasPendingDowngrade) ...[
+                  const SizedBox(height: 16),
+                  _buildPendingDowngradeCard(subscription),
+                ],
+                const SizedBox(height: 16),
                 _buildSection(
                   title: '帳號與方案',
                   children: [
@@ -82,10 +91,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     _buildTile(
                       context: context,
+                      icon: Icons.today,
+                      title: '今日剩餘額度',
+                      trailing:
+                          '${subscription.dailyRemaining}/${subscription.dailyLimit}',
+                    ),
+                    _buildTile(
+                      context: context,
+                      icon: Icons.calendar_month,
+                      title: '本月剩餘額度',
+                      trailing:
+                          '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
+                    ),
+                    _buildTile(
+                      context: context,
                       icon: Icons.person,
                       title: '帳號',
                       trailing: _getAccountDisplay(),
                     ),
+                    if (!kIsWeb)
+                      _buildTile(
+                        context: context,
+                        icon: Icons.subscriptions_outlined,
+                        title: '管理 App Store 訂閱',
+                        onTap: _openManageSubscriptions,
+                      ),
                     if (!kIsWeb)
                       _buildTile(
                         context: context,
@@ -163,6 +193,133 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       default:
         return 'Free';
     }
+  }
+
+  Widget _buildUsageSummaryCard(SubscriptionState subscription) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '方案與額度',
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_getTierDisplayName(subscription.tier)} 目前生效中',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextHint,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildUsagePill(
+                  label: '本月剩餘',
+                  value:
+                      '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildUsagePill(
+                  label: '今日剩餘',
+                  value:
+                      '${subscription.dailyRemaining}/${subscription.dailyLimit}',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsagePill({
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextHint,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingDowngradeCard(SubscriptionState subscription) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_repeat, color: AppColors.warning),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '已排程降級到 ${_getTierDisplayName(subscription.pendingDowngradeToTier ?? SubscriptionTierHelper.free)}',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '會在 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。在此之前仍保留目前方案額度。',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _openManageSubscriptions,
+                  child: Text(
+                    '前往 App Store 管理訂閱',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) {
+      return '下個續訂日';
+    }
+    final local = dateTime.toLocal();
+    return '${local.month}/${local.day}';
   }
 
   String _getAccountDisplay() {
@@ -620,6 +777,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('目前無法開啟連結，請稍後再試。')),
+      );
+    }
+  }
+
+  Future<void> _openManageSubscriptions() async {
+    final launched = await LinkLaunchService.open(_manageSubscriptionsUrl);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('目前無法開啟 App Store 訂閱管理，請稍後再試。'),
+        ),
       );
     }
   }
