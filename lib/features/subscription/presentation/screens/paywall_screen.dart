@@ -277,7 +277,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool pendingDowngradeMatchesSelection,
   ) {
     if (_isPurchasing) return '處理中...';
-    if (canManagePendingDowngrade) return '前往 App Store 管理';
+    if (canManagePendingDowngrade) return '取消降級 / 管理訂閱';
     if (pendingDowngradeMatchesSelection) {
       return '已排程降級到 ${_tierLabel(_selectedTier)}';
     }
@@ -419,7 +419,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     _openManageSubscriptions();
                   },
                   child: Text(
-                    '前往 App Store 取消或管理',
+                    '取消降級 / 管理訂閱',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -777,6 +777,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Future<void> _openManageSubscriptions() async {
+    final openedNative =
+        await RevenueCatService.showNativeManageSubscriptions();
+    if (openedNative) {
+      return;
+    }
+
     final managementUrl =
         await RevenueCatService.getManagementUrl() ?? _manageSubscriptionsUrl;
     final launched = await LinkLaunchService.open(managementUrl);

@@ -1,5 +1,6 @@
 // lib/core/services/revenuecat_service.dart
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../config/environment.dart';
@@ -9,6 +10,9 @@ import '../utils/platform_info.dart';
 /// RevenueCat 服務封裝
 class RevenueCatService {
   static bool _isInitialized = false;
+  static const MethodChannel _subscriptionManagementChannel = MethodChannel(
+    'vibesync/subscription_management',
+  );
 
   /// 初始化 RevenueCat SDK
   /// 應在 main.dart 中 Supabase 初始化後呼叫
@@ -256,6 +260,26 @@ class RevenueCatService {
   static Future<String?> getManagementUrl() async {
     final customerInfo = await getCustomerInfo();
     return customerInfo?.managementURL;
+  }
+
+  /// Opens the platform-native subscription management UI when supported.
+  static Future<bool> showNativeManageSubscriptions() async {
+    if (kIsWeb || !isIOSPlatform) {
+      return false;
+    }
+
+    try {
+      final didOpen = await _subscriptionManagementChannel.invokeMethod<bool>(
+        'showManageSubscriptions',
+      );
+      return didOpen ?? false;
+    } on PlatformException catch (error) {
+      debugPrint('RevenueCat showManageSubscriptions error: $error');
+      return false;
+    } catch (error) {
+      debugPrint('RevenueCat showManageSubscriptions unexpected error: $error');
+      return false;
+    }
   }
 
   /// Estimates the next renewal date from an ISO 8601 subscription period.

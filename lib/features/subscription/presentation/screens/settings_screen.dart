@@ -107,7 +107,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     if (!kIsWeb)
                       _buildTile(
                         icon: Icons.subscriptions_outlined,
-                        title: '管理 App Store 訂閱',
+                        title: '管理訂閱',
                         onTap: () {
                           _openManageSubscriptions();
                         },
@@ -292,7 +292,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _openManageSubscriptions();
                   },
                   child: Text(
-                    '前往 App Store 取消或管理',
+                    '取消降級 / 管理訂閱',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -686,6 +686,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _openManageSubscriptions() async {
+    final openedNative =
+        await RevenueCatService.showNativeManageSubscriptions();
+    if (openedNative) {
+      return;
+    }
+
     final managementUrl =
         await RevenueCatService.getManagementUrl() ?? _manageSubscriptionsUrl;
     final launched = await LinkLaunchService.open(managementUrl);
