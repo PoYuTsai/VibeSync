@@ -23,6 +23,7 @@ class SubscriptionState {
   final Offerings? offerings;
   final String? pendingDowngradeToTier;
   final DateTime? pendingDowngradeEffectiveAt;
+  final DateTime? renewsAt;
 
   const SubscriptionState({
     this.tier = SubscriptionTierHelper.free,
@@ -35,6 +36,7 @@ class SubscriptionState {
     this.offerings,
     this.pendingDowngradeToTier,
     this.pendingDowngradeEffectiveAt,
+    this.renewsAt,
   });
 
   bool get isFreeUser => tier == SubscriptionTierHelper.free;
@@ -80,6 +82,7 @@ class SubscriptionState {
     Offerings? offerings,
     Object? pendingDowngradeToTier = _subscriptionStateUnset,
     Object? pendingDowngradeEffectiveAt = _subscriptionStateUnset,
+    Object? renewsAt = _subscriptionStateUnset,
   }) {
     return SubscriptionState(
       tier: tier ?? this.tier,
@@ -95,8 +98,11 @@ class SubscriptionState {
           : pendingDowngradeToTier as String?,
       pendingDowngradeEffectiveAt:
           pendingDowngradeEffectiveAt == _subscriptionStateUnset
-          ? this.pendingDowngradeEffectiveAt
-          : pendingDowngradeEffectiveAt as DateTime?,
+              ? this.pendingDowngradeEffectiveAt
+              : pendingDowngradeEffectiveAt as DateTime?,
+      renewsAt: renewsAt == _subscriptionStateUnset
+          ? this.renewsAt
+          : renewsAt as DateTime?,
     );
   }
 }
@@ -212,9 +218,19 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     box.delete(_pendingDowngradeEffectiveAtKey);
   }
 
-  SubscriptionState _applyPendingDowngradeMetadata(SubscriptionState nextState) {
+  SubscriptionState _applyPendingDowngradeMetadata(
+      SubscriptionState nextState) {
     final pending = _readPendingDowngrade();
     if (pending == null) {
+      return nextState.copyWith(
+        pendingDowngradeToTier: null,
+        pendingDowngradeEffectiveAt: null,
+      );
+    }
+
+    final nextTier = SubscriptionTierHelper.normalizeTier(nextState.tier);
+    if (nextTier == pending.toTier || nextTier != pending.fromTier) {
+      _clearPendingDowngrade();
       return nextState.copyWith(
         pendingDowngradeToTier: null,
         pendingDowngradeEffectiveAt: null,
@@ -233,6 +249,25 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       pendingDowngradeToTier: pending.toTier,
       pendingDowngradeEffectiveAt: pending.effectiveAt,
     );
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
+  }
+
+  DateTime? _resolveDowngradeEffectiveAt({
+    required CustomerInfo customerInfo,
+    required Package package,
+  }) {
+    return RevenueCatService.getPremiumExpirationDate(customerInfo) ??
+        state.renewsAt ??
+        RevenueCatService.estimateRenewalDateFromPeriod(
+          package.storeProduct.subscriptionPeriod,
+          from: DateTime.now(),
+        );
   }
 
   String _highestTier(Iterable<String> tiers) {
@@ -301,6 +336,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             final limits = SubscriptionTierHelper.limitsFor(tier);
             final monthlyUsed = _readInt(data['monthlyMessagesUsed']);
             final dailyUsed = _readInt(data['dailyMessagesUsed']);
+            final renewsAt = _parseDateTime(data['expiresAt']);
 
             state = _applyPendingDowngradeMetadata(state.copyWith(
               tier: tier,
@@ -308,6 +344,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               dailyLimit: limits.daily,
               monthlyMessagesUsed: monthlyUsed,
               dailyMessagesUsed: dailyUsed,
+              renewsAt: renewsAt ?? state.renewsAt,
               error: null,
             ));
             UsageService.syncSubscriptionSnapshot(
@@ -366,8 +403,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     final normalizedDailyRemaining = dailyRemaining.clamp(0, state.dailyLimit);
     final monthlyUsed = (state.monthlyLimit - normalizedMonthlyRemaining)
         .clamp(0, state.monthlyLimit);
-    final dailyUsed =
-        (state.dailyLimit - normalizedDailyRemaining).clamp(0, state.dailyLimit);
+    final dailyUsed = (state.dailyLimit - normalizedDailyRemaining)
+        .clamp(0, state.dailyLimit);
 
     final limits = SubscriptionTierHelper.limitsFor(state.tier);
     state = state.copyWith(
@@ -467,6 +504,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         response['tier'] as String?,
       );
       final initialLimits = SubscriptionTierHelper.limitsFor(initialTier);
+      final renewsAt = _parseDateTime(response['expires_at']);
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
         tier: initialTier,
@@ -474,6 +512,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyMessagesUsed: _readInt(response['daily_messages_used']),
         monthlyLimit: initialLimits.monthly,
         dailyLimit: initialLimits.daily,
+        renewsAt: renewsAt,
         isLoading: false,
         error: null,
       ));
@@ -550,8 +589,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
 
       if (requestedDowngrade) {
-        final effectiveAt =
-            RevenueCatService.getPremiumExpirationDate(customerInfo);
+        final effectiveAt = _resolveDowngradeEffectiveAt(
+          customerInfo: customerInfo,
+          package: package,
+        );
         if (effectiveAt != null) {
           _storePendingDowngrade(
             fromTier: previousTier,
@@ -591,8 +632,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
       final syncedTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier: resolvedTier,
-        resetUsage:
-            previousTier != resolvedTier &&
+        resetUsage: previousTier != resolvedTier &&
             resolvedTier != SubscriptionTierHelper.free,
       );
       final tier = syncedTier ?? resolvedTier;
@@ -703,12 +743,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       state = state.copyWith(isLoading: true, error: null);
 
       final customerInfo = await RevenueCatService.restorePurchases();
-      final restoredTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      final restoredTier =
+          RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
       final previousTier = state.tier;
       final syncedTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier: restoredTier,
-        resetUsage:
-            previousTier != restoredTier &&
+        resetUsage: previousTier != restoredTier &&
             restoredTier != SubscriptionTierHelper.free,
       );
       final tier = syncedTier ?? restoredTier;
@@ -718,6 +759,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        renewsAt: renewsAt ?? state.renewsAt,
         isLoading: false,
         error: null,
       ));
@@ -739,6 +781,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       if (customerInfo == null) return;
 
       final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
 
       if (state.isPremium && rcTier == SubscriptionTierHelper.free) {
         debugPrint(
@@ -762,6 +805,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           tier: tier,
           monthlyLimit: limits.monthly,
           dailyLimit: limits.daily,
+          renewsAt: renewsAt ?? state.renewsAt,
         ));
         _syncUsageCache(tier, limits);
       }

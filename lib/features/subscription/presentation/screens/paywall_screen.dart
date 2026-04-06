@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
+import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
@@ -83,8 +84,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final hasPendingDowngrade = subscription.hasPendingDowngrade;
     final pendingDowngradeMatchesSelection = hasPendingDowngrade &&
         subscription.pendingDowngradeToTier == _selectedTier;
-    final canManagePendingDowngrade = hasPendingDowngrade &&
-        subscription.tier == _selectedTier;
+    final canManagePendingDowngrade =
+        hasPendingDowngrade && subscription.tier == _selectedTier;
 
     VoidCallback? primaryAction;
     if (_isPurchasing) {
@@ -151,7 +152,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   if (!offeringsReady) ...[
                     const SizedBox(height: 16),
                     _buildInfoCard(
-                      icon: subscription.isLoading ? Icons.sync : Icons.info_outline,
+                      icon: subscription.isLoading
+                          ? Icons.sync
+                          : Icons.info_outline,
                       title: subscription.isLoading
                           ? 'Syncing plan info'
                           : 'Plan info not ready',
@@ -170,7 +173,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     _buildInfoCard(
                       icon: Icons.error_outline,
                       title: 'Plan sync error',
-                      message: 'We could not refresh your latest plan status. Please try again later or sign in again if it keeps failing.',
+                      message:
+                          'We could not refresh your latest plan status. Please try again later or sign in again if it keeps failing.',
                       iconColor: AppColors.error,
                     ),
                   ],
@@ -281,7 +285,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return 'Downgrade scheduled to ${_tierLabel(_selectedTier)}';
     }
     if (isCurrentPlan) return 'Current plan';
-    if (_selectedPackageFor(subscription) == null) return 'Syncing plan info...';
+    if (_selectedPackageFor(subscription) == null)
+      return 'Syncing plan info...';
     if (SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
       toTier: _selectedTier,
@@ -419,7 +424,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     _openManageSubscriptions();
                   },
                   child: Text(
-                    'Manage in App Store',
+                    'Cancel or manage in App Store',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -655,8 +660,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       final purchasedTier =
           result.activeTier == SubscriptionTierHelper.essential
-          ? 'Essential'
-          : 'Starter';
+              ? 'Essential'
+              : 'Starter';
       _showSnackBar(
         'Purchase complete. Active plan: $purchasedTier.',
         backgroundColor: AppColors.success,
@@ -691,7 +696,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           return fallbackMessage;
         }
         return 'Purchase failed. Please try again.';
-      }
+    }
   }
 
   Future<void> _syncPurchasedPlan() async {
@@ -776,7 +781,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Future<void> _openManageSubscriptions() async {
-    final launched = await LinkLaunchService.open(_manageSubscriptionsUrl);
+    final managementUrl =
+        await RevenueCatService.getManagementUrl() ?? _manageSubscriptionsUrl;
+    final launched = await LinkLaunchService.open(managementUrl);
     if (!launched && mounted) {
       _showSnackBar('Could not open App Store subscription management.');
     }

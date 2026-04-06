@@ -150,17 +150,22 @@ class RevenueCatService {
     }
 
     // 印出所有 entitlements（包括 inactive）
-    debugPrint('RevenueCat: All entitlements: ${customerInfo.entitlements.all.keys.toList()}');
+    debugPrint(
+        'RevenueCat: All entitlements: ${customerInfo.entitlements.all.keys.toList()}');
 
     final activeEntitlements = customerInfo.entitlements.active;
-    debugPrint('RevenueCat: Active entitlements count: ${activeEntitlements.length}');
-    debugPrint('RevenueCat: Active entitlements keys: ${activeEntitlements.keys.toList()}');
+    debugPrint(
+        'RevenueCat: Active entitlements count: ${activeEntitlements.length}');
+    debugPrint(
+        'RevenueCat: Active entitlements keys: ${activeEntitlements.keys.toList()}');
 
     // 如果沒有 active entitlements，印出更多資訊
     if (activeEntitlements.isEmpty) {
       debugPrint('RevenueCat: No active entitlements!');
-      debugPrint('RevenueCat: Active subscriptions: ${customerInfo.activeSubscriptions}');
-      debugPrint('RevenueCat: All purchased product IDs: ${customerInfo.allPurchasedProductIdentifiers}');
+      debugPrint(
+          'RevenueCat: Active subscriptions: ${customerInfo.activeSubscriptions}');
+      debugPrint(
+          'RevenueCat: All purchased product IDs: ${customerInfo.allPurchasedProductIdentifiers}');
 
       // 直接從 activeSubscriptions 判斷
       for (final productId in customerInfo.activeSubscriptions) {
@@ -185,7 +190,8 @@ class RevenueCatService {
       final entitlement = entry.value;
       final productId = entitlement.productIdentifier;
 
-      debugPrint('RevenueCat: Entitlement "$entitlementId" -> Product "$productId"');
+      debugPrint(
+          'RevenueCat: Entitlement "$entitlementId" -> Product "$productId"');
 
       final tier = SubscriptionTierHelper.tierFromProductId(productId);
       if (tier != SubscriptionTierHelper.free) {
@@ -244,5 +250,79 @@ class RevenueCatService {
     }
 
     return best;
+  }
+
+  /// Returns the store-native subscription management URL when available.
+  static Future<String?> getManagementUrl() async {
+    final customerInfo = await getCustomerInfo();
+    return customerInfo?.managementURL;
+  }
+
+  /// Estimates the next renewal date from an ISO 8601 subscription period.
+  /// Example values include P1W, P1M, P3M and P1Y.
+  static DateTime? estimateRenewalDateFromPeriod(
+    String? subscriptionPeriod, {
+    DateTime? from,
+  }) {
+    if (subscriptionPeriod == null || subscriptionPeriod.isEmpty) {
+      return null;
+    }
+
+    final match = RegExp(r'^P(?:(\d+)W|(\d+)M|(\d+)Y|(\d+)D)$').firstMatch(
+      subscriptionPeriod,
+    );
+    if (match == null) {
+      return null;
+    }
+
+    final base = (from ?? DateTime.now()).toUtc();
+
+    int? parseGroup(int index) {
+      final raw = match.group(index);
+      if (raw == null || raw.isEmpty) {
+        return null;
+      }
+      return int.tryParse(raw);
+    }
+
+    final weeks = parseGroup(1);
+    if (weeks != null) {
+      return base.add(Duration(days: weeks * 7));
+    }
+
+    final months = parseGroup(2);
+    if (months != null) {
+      return DateTime.utc(
+        base.year,
+        base.month + months,
+        base.day,
+        base.hour,
+        base.minute,
+        base.second,
+        base.millisecond,
+        base.microsecond,
+      );
+    }
+
+    final years = parseGroup(3);
+    if (years != null) {
+      return DateTime.utc(
+        base.year + years,
+        base.month,
+        base.day,
+        base.hour,
+        base.minute,
+        base.second,
+        base.millisecond,
+        base.microsecond,
+      );
+    }
+
+    final days = parseGroup(4);
+    if (days != null) {
+      return base.add(Duration(days: days));
+    }
+
+    return null;
   }
 }

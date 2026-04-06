@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -147,8 +148,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _buildTile(
                       icon: Icons.info,
                       title: 'Version',
-                      trailing:
-                          _versionString.isNotEmpty ? _versionString : 'Loading...',
+                      trailing: _versionString.isNotEmpty
+                          ? _versionString
+                          : 'Loading...',
                     ),
                     _buildTile(
                       icon: Icons.description,
@@ -291,7 +293,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _openManageSubscriptions();
                   },
                   child: Text(
-                    'Manage in App Store',
+                    'Cancel or manage in App Store',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -393,7 +395,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _mapRestoreError(Object error) {
     final normalized = error.toString().toLowerCase();
-    if (_containsAny(normalized, ['network', 'timeout', 'socket', 'connection'])) {
+    if (_containsAny(
+        normalized, ['network', 'timeout', 'socket', 'connection'])) {
       return 'Network error while restoring purchases.';
     }
     if (_containsAny(normalized, ['not logged in', 'unauthorized', 'auth'])) {
@@ -407,7 +410,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (_containsAny(normalized, ['confirmation', 'mismatch'])) {
       return 'Confirmation text did not match DELETE.';
     }
-    if (_containsAny(normalized, ['network', 'timeout', 'socket', 'connection'])) {
+    if (_containsAny(
+        normalized, ['network', 'timeout', 'socket', 'connection'])) {
       return 'Network error while deleting the account.';
     }
     if (_containsAny(normalized, ['not logged in', 'unauthorized', 'auth'])) {
@@ -418,7 +422,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _mapLogoutError(Object error) {
     final normalized = error.toString().toLowerCase();
-    if (_containsAny(normalized, ['network', 'timeout', 'socket', 'connection'])) {
+    if (_containsAny(
+        normalized, ['network', 'timeout', 'socket', 'connection'])) {
       return 'Network error while signing out.';
     }
     return 'Sign out failed. Please try again.';
@@ -533,7 +538,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         context.go('/login');
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('Signed out, but local cleanup had a minor issue. Please reopen the app.'),
+            content: Text(
+                'Signed out, but local cleanup had a minor issue. Please reopen the app.'),
           ),
         );
         return;
@@ -626,7 +632,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : null,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.error,
-                disabledForegroundColor: AppColors.error.withValues(alpha: 0.35),
+                disabledForegroundColor:
+                    AppColors.error.withValues(alpha: 0.35),
               ),
               child: const Text('Delete'),
             ),
@@ -683,7 +690,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _openManageSubscriptions() async {
-    final launched = await LinkLaunchService.open(_manageSubscriptionsUrl);
+    final managementUrl =
+        await RevenueCatService.getManagementUrl() ?? _manageSubscriptionsUrl;
+    final launched = await LinkLaunchService.open(managementUrl);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

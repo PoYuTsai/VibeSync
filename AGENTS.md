@@ -72,6 +72,7 @@ Important:
 - 加入 `強制重新識別`，避免同一張圖一直吃到舊快取
 - TestFlight 上傳 workflow 已補強，Apple 假性 upload failure 不再那麼容易把整條 release 打紅
 - 手動輸入頁上方訊息預覽的字體可讀性已修正
+- 訂閱降級流程收斂：同群組 downgrade 會標記為「已排程下次續訂生效」，避免重複觸發購買；取消降級走 App Store 訂閱管理
 
 ### 送審前剩餘重點
 

@@ -186,7 +186,7 @@ serve(async (req) => {
 
     const { data: existingSub, error: existingError } = await supabase
       .from("subscriptions")
-      .select("user_id, tier, monthly_messages_used, daily_messages_used")
+      .select("user_id, tier, monthly_messages_used, daily_messages_used, expires_at")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -232,7 +232,7 @@ serve(async (req) => {
         daily_reset_at: nowIso,
         started_at: nowIso,
       }).select(
-        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at",
+        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at",
       ).single();
 
       if (error) {
@@ -244,7 +244,7 @@ serve(async (req) => {
       const { data, error } = await supabase.from("subscriptions").update(
         updatePayload,
       ).eq("user_id", user.id).select(
-        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at",
+        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at",
       ).single();
 
       if (error) {
@@ -263,6 +263,7 @@ serve(async (req) => {
       tierConfirmedByRevenueCat: revenueCatTier === finalTier,
       monthlyMessagesUsed: syncedRow?.monthly_messages_used ?? 0,
       dailyMessagesUsed: syncedRow?.daily_messages_used ?? 0,
+      expiresAt: syncedRow?.expires_at ?? existingSub?.expires_at ?? null,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
       resetUsage: shouldResetUsage,
