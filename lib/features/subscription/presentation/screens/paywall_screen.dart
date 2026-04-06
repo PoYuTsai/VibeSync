@@ -41,30 +41,30 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       _PaywallPlanData(
         tier: SubscriptionTierHelper.starter,
         name: 'Starter',
-        badge: 'Entry',
-        description: 'Steady daily use.',
+        badge: '入門',
+        description: '適合穩定的日常使用。',
         pricePoints: [
-          '${starterLimits.monthly} analyses / month',
-          '${starterLimits.daily} analyses / day',
-          '5 reply styles',
-          'Needy warning',
-          'Final recommendation',
+          '每月 ${starterLimits.monthly} 次分析',
+          '每日 ${starterLimits.daily} 次分析',
+          '5 種回覆風格',
+          '需求感提醒',
+          '最終建議',
         ],
       ),
       _PaywallPlanData(
         tier: SubscriptionTierHelper.essential,
         name: 'Essential',
-        badge: 'Recommended',
-        description: 'Higher limits and deeper analysis.',
+        badge: '推薦',
+        description: '更高額度與更深入的分析。',
         pricePoints: [
-          '${essentialLimits.monthly} analyses / month',
-          '${essentialLimits.daily} analyses / day',
-          '5 reply styles',
-          'Needy warning',
-          'Final recommendation',
-          'Health check',
-          'Higher limits',
-          'Deeper analysis',
+          '每月 ${essentialLimits.monthly} 次分析',
+          '每日 ${essentialLimits.daily} 次分析',
+          '5 種回覆風格',
+          '需求感提醒',
+          '最終建議',
+          '對話健檢',
+          '更高額度',
+          '更深入分析',
         ],
       ),
     ];
@@ -111,7 +111,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           title: Text(
-            'Plans and quota',
+            '方案與額度',
             style: AppTypography.titleLarge.copyWith(
               color: AppColors.onBackgroundPrimary,
             ),
@@ -129,7 +129,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Choose the plan that fits you',
+                    '選擇最適合你的方案',
                     style: AppTypography.headlineLarge.copyWith(
                       color: AppColors.onBackgroundPrimary,
                     ),
@@ -137,7 +137,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Upgrades apply right away and Apple adjusts the current billing period automatically. Downgrades start on the next renewal and do not charge again today.',
+                    '升級會立即生效，Apple 會自動按比例調整本期費用。降級則會在下次續訂時生效，今天不會再次扣款。',
                     style: AppTypography.bodyLarge.copyWith(
                       color: AppColors.onBackgroundSecondary,
                     ),
@@ -155,12 +155,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       icon: subscription.isLoading
                           ? Icons.sync
                           : Icons.info_outline,
-                      title: subscription.isLoading
-                          ? 'Syncing plan info'
-                          : 'Plan info not ready',
+                      title: subscription.isLoading ? '正在同步方案資訊' : '方案資訊尚未就緒',
                       message: subscription.isLoading
-                          ? 'App Store product sync can take 1 to 2 minutes.'
-                          : 'The latest App Store products are not available yet. Please try again soon.',
+                          ? 'App Store 產品同步可能需要 1 到 2 分鐘。'
+                          : '目前還拿不到最新的 App Store 方案，請稍後再試。',
                       iconColor: subscription.isLoading
                           ? AppColors.info
                           : AppColors.warning,
@@ -172,9 +170,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     const SizedBox(height: 16),
                     _buildInfoCard(
                       icon: Icons.error_outline,
-                      title: 'Plan sync error',
-                      message:
-                          'We could not refresh your latest plan status. Please try again later or sign in again if it keeps failing.',
+                      title: '方案同步異常',
+                      message: '目前無法更新你的最新方案狀態。若持續失敗，請稍後再試或重新登入。',
                       iconColor: AppColors.error,
                     ),
                   ],
@@ -227,28 +224,28 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         onPressed: () {
                           _launchUrl(_termsUrl);
                         },
-                        child: Text('Terms', style: AppTypography.caption),
+                        child: Text('條款', style: AppTypography.caption),
                       ),
                       Text('|', style: AppTypography.caption),
                       TextButton(
                         onPressed: () {
                           _launchUrl(_privacyUrl);
                         },
-                        child: Text('Privacy', style: AppTypography.caption),
+                        child: Text('隱私', style: AppTypography.caption),
                       ),
                       Text('|', style: AppTypography.caption),
                       TextButton(
                         onPressed: () {
                           _openManageSubscriptions();
                         },
-                        child: Text('Manage', style: AppTypography.caption),
+                        child: Text('管理訂閱', style: AppTypography.caption),
                       ),
                       Text('|', style: AppTypography.caption),
                       TextButton(
                         onPressed: () {
                           _syncPurchasedPlan();
                         },
-                        child: Text('Restore', style: AppTypography.caption),
+                        child: Text('恢復購買', style: AppTypography.caption),
                       ),
                     ],
                   ),
@@ -279,21 +276,20 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool canManagePendingDowngrade,
     bool pendingDowngradeMatchesSelection,
   ) {
-    if (_isPurchasing) return 'Processing...';
-    if (canManagePendingDowngrade) return 'Manage in App Store';
+    if (_isPurchasing) return '處理中...';
+    if (canManagePendingDowngrade) return '前往 App Store 管理';
     if (pendingDowngradeMatchesSelection) {
-      return 'Downgrade scheduled to ${_tierLabel(_selectedTier)}';
+      return '已排程降級到 ${_tierLabel(_selectedTier)}';
     }
-    if (isCurrentPlan) return 'Current plan';
-    if (_selectedPackageFor(subscription) == null)
-      return 'Syncing plan info...';
+    if (isCurrentPlan) return '目前方案';
+    if (_selectedPackageFor(subscription) == null) return '正在同步方案資訊...';
     if (SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
       toTier: _selectedTier,
     )) {
-      return 'Schedule downgrade to ${_tierLabel(_selectedTier)}';
+      return '安排降級到 ${_tierLabel(_selectedTier)}';
     }
-    return 'Upgrade to ${_tierLabel(_selectedTier)}';
+    return '升級到 ${_tierLabel(_selectedTier)}';
   }
 
   String _primaryFootnote(
@@ -304,19 +300,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool pendingDowngradeMatchesSelection,
   ) {
     if (canManagePendingDowngrade) {
-      return 'A downgrade to ${_tierLabel(subscription.pendingDowngradeToTier)} '
-          'is scheduled for ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
-          'Your current plan stays active until then. Use App Store subscription management to cancel it.';
+      return '${_tierLabel(subscription.pendingDowngradeToTier)} 的降級已排程於 '
+          '${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。'
+          '在那之前目前方案仍會持續生效；如要取消降級，請前往 App Store 訂閱管理。';
     }
     if (pendingDowngradeMatchesSelection) {
-      return 'This downgrade is already scheduled and will take effect on '
-          '${_formatDate(subscription.pendingDowngradeEffectiveAt)}. No new charge happens today.';
+      return '這個降級已經排程，將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效，今天不會再次扣款。';
     }
-    if (isCurrentPlan) return 'This is your current active plan.';
+    if (isCurrentPlan) return '這是你目前正在使用的方案。';
     if (isDowngrade) {
-      return 'Downgrades take effect on the next renewal. Your current quota stays active until then, and there is no new charge today.';
+      return '降級會在下次續訂時生效；在那之前你仍可使用目前額度，今天不會再次扣款。';
     }
-    return 'Upgrades apply immediately, refresh your quota right away, and Apple automatically prorates the billing change.';
+    return '升級會立即生效並立刻刷新額度，Apple 也會自動按比例調整本期費用。';
   }
 
   Widget _buildQuotaSummaryCard(SubscriptionState subscription) {
@@ -326,14 +321,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Current plan and quota',
+            '目前方案與額度',
             style: AppTypography.titleMedium.copyWith(
               color: AppColors.glassTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Active plan: ${_tierLabel(subscription.tier)}',
+            '目前方案：${_tierLabel(subscription.tier)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextHint,
             ),
@@ -343,7 +338,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             children: [
               Expanded(
                 child: _buildQuotaPill(
-                  label: 'Monthly left',
+                  label: '本月剩餘',
                   value:
                       '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
                 ),
@@ -351,7 +346,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildQuotaPill(
-                  label: 'Daily left',
+                  label: '今日剩餘',
                   value:
                       '${subscription.dailyRemaining}/${subscription.dailyLimit}',
                 ),
@@ -405,15 +400,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Scheduled downgrade to ${_tierLabel(subscription.pendingDowngradeToTier)}',
+                  '已排程降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}',
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'This takes effect on ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
-                  'Until then you can keep using the ${_tierLabel(subscription.tier)} quota and features. No new charge happens today.',
+                  '將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。'
+                  '在那之前你仍可使用 ${_tierLabel(subscription.tier)} 的額度與功能，今天不會再次扣款。',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.glassTextSecondary,
                   ),
@@ -424,7 +419,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     _openManageSubscriptions();
                   },
                   child: Text(
-                    'Cancel or manage in App Store',
+                    '前往 App Store 取消或管理',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -483,8 +478,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required bool isCurrentPlan,
     required VoidCallback onTap,
   }) {
-    final priceLabel = package?.storeProduct.priceString ?? 'Syncing price';
-    final priceSuffix = package == null ? '' : ' / month';
+    final priceLabel = package?.storeProduct.priceString ?? '價格同步中';
+    final priceSuffix = package == null ? '' : ' / 月';
 
     return GestureDetector(
       onTap: onTap,
@@ -520,7 +515,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 if (isCurrentPlan) ...[
                   const SizedBox(width: 8),
                   _buildBadge(
-                    label: 'Current',
+                    label: '目前',
                     background: LinearGradient(
                       colors: [
                         AppColors.success.withValues(alpha: 0.88),
@@ -620,13 +615,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   Future<void> _subscribe() async {
     if (kIsWeb) {
       _showSnackBar('Please manage subscriptions in the iOS app.');
+
       return;
     }
 
     final subscription = ref.read(subscriptionProvider);
     final package = _selectedPackageFor(subscription);
     if (package == null) {
-      _showSnackBar('Plan info is not ready yet. Please try again.');
+      _showSnackBar('方案資訊尚未就緒，請稍後再試。');
       return;
     }
 
@@ -648,7 +644,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       if (result.isDeferredDowngrade) {
         _showSnackBar(
-          'Downgrade to ${_tierLabel(result.requestedTier)} scheduled for ${_formatDate(result.effectiveAt)}.',
+          '已安排於 ${_formatDate(result.effectiveAt)} 降級到 ${_tierLabel(result.requestedTier)}。',
           backgroundColor: AppColors.success,
         );
         context.pop(result.activeTier);
@@ -663,13 +659,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               ? 'Essential'
               : 'Starter';
       _showSnackBar(
-        'Plan updated. Active plan: $purchasedTier.',
+        '方案已更新，目前方案：$purchasedTier。',
         backgroundColor: AppColors.success,
       );
       context.pop(result.activeTier);
     } catch (error) {
       debugPrint('Paywall purchase error: $error');
-      _showSnackBar('Purchase failed. Please try again.');
+      _showSnackBar('訂閱處理失敗，請稍後再試。');
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
@@ -683,25 +679,25 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }) {
     switch (errorCode) {
       case PurchasesErrorCode.purchaseCancelledError:
-        return 'Purchase cancelled.';
+        return '已取消購買。';
       case PurchasesErrorCode.paymentPendingError:
-        return 'Payment is pending App Store confirmation.';
+        return '付款仍在等待 App Store 確認。';
       case PurchasesErrorCode.productNotAvailableForPurchaseError:
-        return 'This product is not available right now.';
+        return '此方案目前無法購買。';
       case PurchasesErrorCode.storeProblemError:
       case PurchasesErrorCode.networkError:
-        return 'Could not reach App Store. Please try again.';
+        return '目前無法連線到 App Store，請稍後再試。';
       default:
         if (fallbackMessage != null && fallbackMessage.isNotEmpty) {
           return fallbackMessage;
         }
-        return 'Purchase failed. Please try again.';
+        return '訂閱處理失敗，請稍後再試。';
     }
   }
 
   Future<void> _syncPurchasedPlan() async {
     if (kIsWeb) {
-      _showSnackBar('Please restore purchases in the iOS app.');
+      _showSnackBar('請在 iOS App 內恢復購買。');
       return;
     }
 
@@ -710,13 +706,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           builder: (dialogContext) => AlertDialog(
             backgroundColor: AppColors.glassWhite,
             title: Text(
-              'Restore purchases',
+              '恢復購買',
               style: AppTypography.titleMedium.copyWith(
                 color: AppColors.glassTextPrimary,
               ),
             ),
             content: Text(
-              'If this Apple ID already has a subscription, you can refresh it here.',
+              '如果這個 Apple ID 已經有訂閱，可以在這裡重新同步。',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextSecondary,
               ),
@@ -725,7 +721,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
                 child: Text(
-                  'Cancel',
+                  '取消',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.unselectedText,
                   ),
@@ -734,7 +730,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
                 child: Text(
-                  'Restore',
+                  '恢復購買',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.primary,
                   ),
@@ -756,16 +752,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         await notifier.refresh();
         if (!mounted) return;
         _showSnackBar(
-          'Subscription status refreshed.',
+          '訂閱狀態已更新。',
           backgroundColor: AppColors.success,
         );
         context.pop(ref.read(subscriptionProvider).tier);
       } else {
-        _showSnackBar('No active subscription was found for this Apple ID.');
+        _showSnackBar('這個 Apple ID 目前沒有可恢復的有效訂閱。');
       }
     } catch (error) {
       debugPrint('Paywall restore error: $error');
-      _showSnackBar('Restore failed. Please try again.');
+      _showSnackBar('恢復購買失敗，請稍後再試。');
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
@@ -776,7 +772,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   Future<void> _launchUrl(String url) async {
     final launched = await LinkLaunchService.open(url);
     if (!launched && mounted) {
-      _showSnackBar('Could not open the link right now.');
+      _showSnackBar('目前無法開啟連結。');
     }
   }
 
@@ -785,7 +781,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         await RevenueCatService.getManagementUrl() ?? _manageSubscriptionsUrl;
     final launched = await LinkLaunchService.open(managementUrl);
     if (!launched && mounted) {
-      _showSnackBar('Could not open App Store subscription management.');
+      _showSnackBar('目前無法開啟 App Store 訂閱管理。');
     }
   }
 
@@ -808,7 +804,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   String _formatDate(DateTime? dateTime) {
-    if (dateTime == null) return 'next renewal';
+    if (dateTime == null) return '下次續訂';
     final local = dateTime.toLocal();
     return '${local.month}/${local.day}';
   }

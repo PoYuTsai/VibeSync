@@ -53,7 +53,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: Text('Settings', style: AppTypography.titleLarge),
+          title: Text('設定', style: AppTypography.titleLarge),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => context.pop(),
@@ -71,11 +71,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _buildPendingDowngradeCard(subscription),
                 ],
                 _buildSection(
-                  title: 'Plan and account',
+                  title: '方案與帳號',
                   children: [
                     _buildTile(
                       icon: Icons.workspace_premium,
-                      title: 'Current plan',
+                      title: '目前方案',
                       trailing: _tierLabel(subscription.tier),
                       onTap: () {
                         context.push('/paywall');
@@ -83,31 +83,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     _buildTile(
                       icon: Icons.today,
-                      title: 'Daily left',
+                      title: '今日剩餘',
                       trailing:
                           '${subscription.dailyRemaining}/${subscription.dailyLimit}',
                     ),
                     _buildTile(
                       icon: Icons.calendar_month,
-                      title: 'Monthly left',
+                      title: '本月剩餘',
                       trailing:
                           '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
                     ),
                     _buildTile(
                       icon: Icons.analytics,
-                      title: 'Monthly used',
+                      title: '本月已使用',
                       trailing:
                           '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit}',
                     ),
                     _buildTile(
                       icon: Icons.person,
-                      title: 'Account',
+                      title: '帳號',
                       trailing: _accountLabel(),
                     ),
                     if (!kIsWeb)
                       _buildTile(
                         icon: Icons.subscriptions_outlined,
-                        title: 'Manage App Store subscription',
+                        title: '管理 App Store 訂閱',
                         onTap: () {
                           _openManageSubscriptions();
                         },
@@ -115,7 +115,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     if (!kIsWeb)
                       _buildTile(
                         icon: Icons.restore,
-                        title: 'Restore purchases',
+                        title: '恢復購買',
                         onTap: () {
                           _restorePurchases(context, ref);
                         },
@@ -123,11 +123,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
                 _buildSection(
-                  title: 'Privacy and data',
+                  title: '隱私與資料',
                   children: [
                     _buildTile(
                       icon: Icons.delete_forever,
-                      title: 'Delete account',
+                      title: '刪除帳號',
                       titleColor: AppColors.error,
                       onTap: () {
                         _confirmDeleteAccount(context, ref);
@@ -135,7 +135,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     _buildTile(
                       icon: Icons.privacy_tip,
-                      title: 'Privacy policy',
+                      title: '隱私政策',
                       onTap: () {
                         _launchUrl('https://vibesyncai.app/privacy');
                       },
@@ -143,32 +143,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
                 _buildSection(
-                  title: 'More',
+                  title: '其他',
                   children: [
                     _buildTile(
                       icon: Icons.info,
-                      title: 'Version',
-                      trailing: _versionString.isNotEmpty
-                          ? _versionString
-                          : 'Loading...',
+                      title: '版本',
+                      trailing:
+                          _versionString.isNotEmpty ? _versionString : '載入中...',
                     ),
                     _buildTile(
                       icon: Icons.description,
-                      title: 'Terms',
+                      title: '服務條款',
                       onTap: () {
                         _launchUrl('https://vibesyncai.app/terms');
                       },
                     ),
                     _buildTile(
                       icon: Icons.feedback,
-                      title: 'Support',
+                      title: '客服與支援',
                       onTap: () {
                         _launchUrl('https://t.me/vibesync_feedback_bot');
                       },
                     ),
                     _buildTile(
                       icon: Icons.logout,
-                      title: 'Sign out',
+                      title: '登出',
                       titleColor: AppColors.error,
                       onTap: () {
                         _logout(context, ref);
@@ -192,14 +191,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Current plan and quota',
+            '目前方案與額度',
             style: AppTypography.titleMedium.copyWith(
               color: AppColors.glassTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Active plan: ${_tierLabel(subscription.tier)}',
+            '目前方案：${_tierLabel(subscription.tier)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextHint,
             ),
@@ -209,7 +208,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               Expanded(
                 child: _buildUsagePill(
-                  label: 'Monthly left',
+                  label: '本月剩餘',
                   value:
                       '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
                 ),
@@ -217,7 +216,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildUsagePill(
-                  label: 'Daily left',
+                  label: '今日剩餘',
                   value:
                       '${subscription.dailyRemaining}/${subscription.dailyLimit}',
                 ),
@@ -274,15 +273,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Scheduled downgrade to ${_tierLabel(subscription.pendingDowngradeToTier)}',
+                  '已排程降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}',
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'This will take effect on ${_formatDate(subscription.pendingDowngradeEffectiveAt)}. '
-                  'Until then your current quota stays active and there is no new charge today.',
+                  '將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。'
+                  '在那之前目前額度仍會維持，今天不會再次扣款。',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.glassTextSecondary,
                   ),
@@ -293,7 +292,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _openManageSubscriptions();
                   },
                   child: Text(
-                    'Cancel or manage in App Store',
+                    '前往 App Store 取消或管理',
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -370,23 +369,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   String _formatDate(DateTime? dateTime) {
-    if (dateTime == null) return 'next renewal';
+    if (dateTime == null) return '下次續訂';
     final local = dateTime.toLocal();
     return '${local.month}/${local.day}';
   }
 
   String _accountLabel() {
     final user = SupabaseService.currentUser;
-    if (user == null) return 'Not signed in';
+    if (user == null) return '尚未登入';
 
     final provider = user.appMetadata['provider'] as String?;
     if (provider == 'apple') {
       final fullName = user.userMetadata?['full_name'] as String?;
       final name = user.userMetadata?['name'] as String?;
-      return fullName ?? name ?? 'Apple account';
+      return fullName ?? name ?? 'Apple 帳號';
     }
 
-    return user.email ?? 'No email';
+    return user.email ?? '未提供 Email';
   }
 
   bool _containsAny(String source, List<String> patterns) {
@@ -397,36 +396,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final normalized = error.toString().toLowerCase();
     if (_containsAny(
         normalized, ['network', 'timeout', 'socket', 'connection'])) {
-      return 'Network error while restoring purchases.';
+      return '恢復購買時發生網路錯誤。';
     }
     if (_containsAny(normalized, ['not logged in', 'unauthorized', 'auth'])) {
-      return 'Session expired. Please sign in again.';
+      return '登入狀態已失效，請重新登入。';
     }
-    return 'Restore failed. Please try again.';
+    return '恢復購買失敗，請稍後再試。';
   }
 
   String _mapDeleteError(Object error) {
     final normalized = error.toString().toLowerCase();
     if (_containsAny(normalized, ['confirmation', 'mismatch'])) {
-      return 'Confirmation text did not match DELETE.';
+      return '確認文字與 DELETE 不一致。';
     }
     if (_containsAny(
         normalized, ['network', 'timeout', 'socket', 'connection'])) {
-      return 'Network error while deleting the account.';
+      return '刪除帳號時發生網路錯誤。';
     }
     if (_containsAny(normalized, ['not logged in', 'unauthorized', 'auth'])) {
-      return 'Session expired. Please sign in again.';
+      return '登入狀態已失效，請重新登入。';
     }
-    return 'Delete account failed. Please try again.';
+    return '刪除帳號失敗，請稍後再試。';
   }
 
   String _mapLogoutError(Object error) {
     final normalized = error.toString().toLowerCase();
     if (_containsAny(
         normalized, ['network', 'timeout', 'socket', 'connection'])) {
-      return 'Network error while signing out.';
+      return '登出時發生網路錯誤。';
     }
-    return 'Sign out failed. Please try again.';
+    return '登出失敗，請稍後再試。';
   }
 
   Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
@@ -435,25 +434,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           builder: (dialogContext) => AlertDialog(
             backgroundColor: AppColors.glassWhite,
             title: Text(
-              'Restore purchases',
+              '恢復購買',
               style: TextStyle(color: AppColors.glassTextPrimary),
             ),
             content: Text(
-              'Use this if this Apple ID already has a subscription and the app has not refreshed yet.',
+              '如果這個 Apple ID 已經有訂閱，但 App 尚未更新狀態，可以在這裡重新同步。',
               style: TextStyle(color: AppColors.glassTextSecondary),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
                 child: Text(
-                  'Cancel',
+                  '取消',
                   style: TextStyle(color: AppColors.unselectedText),
                 ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
                 child: Text(
-                  'Restore',
+                  '恢復購買',
                   style: TextStyle(color: AppColors.primary),
                 ),
               ),
@@ -478,9 +477,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            restored
-                ? 'Subscription status refreshed.'
-                : 'No active subscription was found for this Apple ID.',
+            restored ? '訂閱狀態已更新。' : '這個 Apple ID 目前沒有可恢復的有效訂閱。',
           ),
           backgroundColor: restored ? AppColors.success : null,
         ),
@@ -500,21 +497,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
         title: Text(
-          'Confirm sign out',
+          '確認登出',
           style: TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(
-              'Cancel',
+              '取消',
               style: TextStyle(color: AppColors.unselectedText),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(
-              'Sign out',
+              '登出',
               style: TextStyle(color: AppColors.error),
             ),
           ),
@@ -538,8 +535,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         context.go('/login');
         messenger.showSnackBar(
           const SnackBar(
-            content: Text(
-                'Signed out, but local cleanup had a minor issue. Please reopen the app.'),
+            content: Text('已完成登出，但本機清理時發生小問題，請重新開啟 App。'),
           ),
         );
         return;
@@ -568,7 +564,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         builder: (dialogContext, setDialogState) => AlertDialog(
           backgroundColor: AppColors.glassWhite,
           title: Text(
-            'Delete account',
+            '刪除帳號',
             style: TextStyle(color: AppColors.glassTextPrimary),
           ),
           content: Column(
@@ -576,7 +572,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'This removes your account and local data. If you still have an App Store subscription, cancel auto-renew separately in Apple subscription management.',
+                '這會刪除你的帳號與本機資料。如果你仍有 App Store 訂閱，請另外到 Apple 訂閱管理中取消自動續訂。',
                 style: TextStyle(
                   color: AppColors.glassTextPrimary,
                   height: 1.5,
@@ -584,7 +580,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Type DELETE to confirm',
+                '輸入 DELETE 以確認',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.glassTextPrimary,
                   fontWeight: FontWeight.w600,
@@ -622,7 +618,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                '取消',
                 style: TextStyle(color: AppColors.unselectedText),
               ),
             ),
@@ -635,7 +631,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 disabledForegroundColor:
                     AppColors.error.withValues(alpha: 0.35),
               ),
-              child: const Text('Delete'),
+              child: const Text('刪除'),
             ),
           ],
         ),
@@ -664,7 +660,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context.go('/login');
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Account deleted.'),
+          content: Text('帳號已刪除。'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -684,7 +680,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final launched = await LinkLaunchService.open(url);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the link right now.')),
+        const SnackBar(content: Text('目前無法開啟連結。')),
       );
     }
   }
@@ -696,7 +692,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Could not open App Store subscription management.'),
+          content: Text('目前無法開啟 App Store 訂閱管理。'),
         ),
       );
     }
