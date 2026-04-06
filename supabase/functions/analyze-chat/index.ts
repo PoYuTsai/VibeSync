@@ -770,6 +770,7 @@ function buildImageAnalysisPrompt(options: {
     compiledConversationText
       ? `## Existing Thread Context\n${compiledConversationText}`
       : "",
+    "### Multi-Message Reply Reminder\n- 截圖中如果對方連發多條訊息，finalRecommendation.content 必須從中挑 1-3 條最值得回的，用分句標註格式（① 回「關鍵詞」→ 回覆）。不要只回最後一條。",
   );
 }
 
@@ -907,8 +908,8 @@ const SYSTEM_PROMPT =
 所有建議回覆的字數必須 ≤ 對方「單條」訊息字數 × 1.8
 這條規則不可違反。
 
-### 1.2 多條訊息處理規則（極重要 — 必須逐條檢查）
-如果對方連續發了多條訊息，**你必須逐條檢查每一則**，根據當前對話階段、熱度、和上下文，判斷哪些值得回覆、哪些可以忽略。
+### 1.2 多條訊息處理規則（極重要）
+如果對方連續發了多條訊息，**你必須瀏覽每一則**，根據當前對話階段、熱度、和上下文，判斷哪些最值得回覆。
 
 判斷原則（彈性判斷，不要死板套用）：
 - 疑問句或請求 → 優先回覆
@@ -917,15 +918,16 @@ const SYSTEM_PROMPT =
 - 圖片/貼圖 → 通常值得回應
 - **不要只看最後一條！** 中間如果有好的接話點不要放過
 
-**輸出格式**：當對方有多條需要回覆的訊息時，finalRecommendation.content 必須分句標註，格式如下：
+**回覆數量**：從多條訊息中挑 1-3 條最有價值的回覆，由你根據情境彈性決定。不需要每條都回，上限 3 句。像真人一樣自然地選擇要回哪些。
+
+**輸出格式**：當你決定回覆多條訊息時，finalRecommendation.content 用分句標註，格式如下：
 ① 回「她的原文關鍵詞」→ 你的建議回覆
 ② 回「她的另一條關鍵詞」→ 你的建議回覆
-💡 「不需要回覆的那條」→ 簡短說明為什麼不用回
+（不需要解釋為什麼不回某條）
 
 範例（她連發三條：「今天好熱 我穿超辣」「你晚餐吃什麼 也推薦我一下」「[圖片]」）：
 ① 回「穿超辣」→ 「這麼辣喔，那我晚餐要吃冰降溫」
 ② 回「晚餐推薦」→ 「最近迷上一家泰式的，你吃辣嗎？」
-③ 回「圖片」→ 「香蕉配飲料，養生派的喔」
 
 ### 1.5 回覆結構指南
 **優先考慮兩段式**（在 1.8x 限制內）：
@@ -1189,7 +1191,7 @@ const SYSTEM_PROMPT =
   },
   "finalRecommendation": {
     "pick": "tease",
-    "content": "推薦的完整回覆內容。如果對方有多條需要回覆的訊息，用分句標註格式：① 回「關鍵詞」→ 回覆內容 ② 回「關鍵詞」→ 回覆內容 💡「不用回的」→ 原因",
+    "content": "推薦的完整回覆內容。如果對方有多條訊息，從中挑 1-3 條最值得回的，用分句標註：① 回「關鍵詞」→ 回覆內容 ② 回「關鍵詞」→ 回覆內容",
     "reason": "為什麼推薦這個回覆",
     "psychology": "心理學依據"
   },
@@ -3717,7 +3719,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           model: selectedModel,
           max_tokens: recognizeOnly
             ? 1600
-            : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)), // 多句推薦回覆保留較穩定的 JSON 空間
+            : (hasImages ? 2560 : (isMyMessageMode ? 512 : 1536)), // 多句推薦回覆保留較穩定的 JSON 空間
           system: systemPrompt,
           messages: [
             {
