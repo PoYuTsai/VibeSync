@@ -268,7 +268,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       case AnalysisErrorAction.upgrade:
         return '升級後可解鎖更完整的分析能力與較高額度。';
       case AnalysisErrorAction.wait:
-        return '這通常是暫時性的服務忙碌或逾時問題，稍後再試即可。';
+        return '今日額度用完後會在隔天重置，或升級方案取得更多額度。';
       case AnalysisErrorAction.addIncomingMessage:
         return _selectedImages.isNotEmpty
             ? '先把截圖識別進目前對話，或在下方補上一則她的回覆後再分析。'
