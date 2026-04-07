@@ -1865,6 +1865,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       // 記錄已分析的訊息數量
       _lastAnalyzedMessageCount = conversation.messages.length;
 
+      // 分析完成後清除殘留的 SnackBar（例如識別完成後的「立即分析」提示）
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+
       setState(() {
         _isAnalyzing = false;
         _applyAnalysisResult(result);
