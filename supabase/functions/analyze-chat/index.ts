@@ -16,6 +16,7 @@ import { buildServerGuardrails } from "./server_guardrails.ts";
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
 
 // JSON 修復函數 - 處理 Claude 有時輸出不完整的 JSON
 function repairJson(jsonString: string): string {
@@ -76,6 +77,123 @@ const TIER_DAILY_LIMITS: Record<string, number> = {
   starter: 50,
   essential: 150,
 };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeTier(value: unknown): "free" | "starter" | "essential" {
+  if (typeof value !== "string") return "free";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "starter" || normalized === "essential") {
+    return normalized;
+  }
+  return "free";
+}
+
+function tierRank(value: "free" | "starter" | "essential"): number {
+  switch (value) {
+    case "essential":
+      return 2;
+    case "starter":
+      return 1;
+    case "free":
+    default:
+      return 0;
+  }
+}
+
+function tierFromProductId(productId: unknown): "free" | "starter" | "essential" {
+  if (typeof productId !== "string") return "free";
+  const normalized = productId.trim().toLowerCase();
+  if (normalized.includes("essential")) return "essential";
+  if (normalized.includes("starter")) return "starter";
+  return "free";
+}
+
+function highestTier(
+  tiers: Iterable<"free" | "starter" | "essential">,
+): "free" | "starter" | "essential" {
+  const all = Array.from(tiers);
+  if (all.includes("essential")) return "essential";
+  if (all.includes("starter")) return "starter";
+  return "free";
+}
+
+function parseRevenueCatDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isActiveAt(expiresDate: unknown): boolean {
+  const parsed = parseRevenueCatDate(expiresDate);
+  if (parsed == null) return true;
+  return parsed.getTime() > Date.now();
+}
+
+function collectTiersFromRevenueCatPayload(
+  subscriber: Record<string, unknown>,
+): "free" | "starter" | "essential" {
+  const activeTiers: Array<"free" | "starter" | "essential"> = [];
+
+  const entitlements = isPlainObject(subscriber.entitlements)
+    ? subscriber.entitlements
+    : {};
+  for (const value of Object.values(entitlements)) {
+    if (!isPlainObject(value)) continue;
+    if (!isActiveAt(value.expires_date)) continue;
+    activeTiers.push(tierFromProductId(value.product_identifier));
+  }
+
+  const subscriptions = isPlainObject(subscriber.subscriptions)
+    ? subscriber.subscriptions
+    : {};
+  for (const [productId, value] of Object.entries(subscriptions)) {
+    if (!isPlainObject(value)) continue;
+    if (!isActiveAt(value.expires_date)) continue;
+    activeTiers.push(tierFromProductId(productId));
+  }
+
+  return highestTier(activeTiers);
+}
+
+function collectLatestExpirationFromRevenueCatPayload(
+  subscriber: Record<string, unknown>,
+): string | null {
+  let latestTimestamp: number | null = null;
+  let latestIso: string | null = null;
+
+  const considerExpiration = (rawValue: unknown) => {
+    const parsed = parseRevenueCatDate(rawValue);
+    if (parsed == null) return;
+    const timestamp = parsed.getTime();
+    if (latestTimestamp == null || timestamp > latestTimestamp) {
+      latestTimestamp = timestamp;
+      latestIso = parsed.toISOString();
+    }
+  };
+
+  const entitlements = isPlainObject(subscriber.entitlements)
+    ? subscriber.entitlements
+    : {};
+  for (const value of Object.values(entitlements)) {
+    if (!isPlainObject(value)) continue;
+    if (!isActiveAt(value.expires_date)) continue;
+    considerExpiration(value.expires_date);
+  }
+
+  const subscriptions = isPlainObject(subscriber.subscriptions)
+    ? subscriber.subscriptions
+    : {};
+  for (const value of Object.values(subscriptions)) {
+    if (!isPlainObject(value)) continue;
+    if (!isActiveAt(value.expires_date)) continue;
+    considerExpiration(value.expires_date);
+  }
+
+  return latestIso;
+}
 
 // 功能權限
 const TIER_FEATURES: Record<string, string[]> = {
@@ -3189,43 +3307,171 @@ serve(async (req) => {
     }
 
     // Check monthly limit (測試帳號跳過)
-    const monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+    let effectiveTier = accountIsTest ? "essential" : sub.tier;
+    let allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
+    const maybeRefreshSubscriptionTierFromRevenueCat = async (
+      reason: string,
+    ): Promise<boolean> => {
+      if (!REVENUECAT_IOS_API_KEY) {
+        return false;
+      }
+
+      const previousTier = normalizeTier(sub?.tier);
+      if (previousTier === "essential") {
+        return false;
+      }
+
+      try {
+        const revenueCatResponse = await fetch(
+          `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.id)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+
+        if (!revenueCatResponse.ok) {
+          const detail = await revenueCatResponse.text().catch(() => "");
+          logWarn("subscription_revenuecat_refresh_failed", {
+            user: summarizeUser(user.id),
+            reason,
+            previousTier,
+            status: revenueCatResponse.status,
+            detail,
+          });
+          return false;
+        }
+
+        const revenueCatPayload = await revenueCatResponse.json().catch(() =>
+          null
+        );
+        if (
+          !isPlainObject(revenueCatPayload) ||
+          !isPlainObject(revenueCatPayload.subscriber)
+        ) {
+          logWarn("subscription_revenuecat_refresh_invalid_payload", {
+            user: summarizeUser(user.id),
+            reason,
+            previousTier,
+          });
+          return false;
+        }
+
+        const subscriber = revenueCatPayload.subscriber;
+        const refreshedTier = collectTiersFromRevenueCatPayload(subscriber);
+        if (tierRank(refreshedTier) <= tierRank(previousTier)) {
+          return false;
+        }
+
+        const refreshedExpiresAt =
+          collectLatestExpirationFromRevenueCatPayload(subscriber);
+        const updatePayload: Record<string, unknown> = {
+          tier: refreshedTier,
+          status: "active",
+        };
+        if (refreshedExpiresAt) {
+          updatePayload.expires_at = refreshedExpiresAt;
+        }
+
+        const { data: refreshedSub, error: refreshedError } = await supabase
+          .from("subscriptions")
+          .update(updatePayload)
+          .eq("user_id", user.id)
+          .select(
+            "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
+          )
+          .maybeSingle();
+
+        if (refreshedSub) {
+          sub = refreshedSub;
+        } else {
+          sub = { ...sub, tier: refreshedTier };
+        }
+
+        effectiveTier = accountIsTest ? "essential" : sub.tier;
+        allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
+        monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+          TIER_MONTHLY_LIMITS.free;
+        dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+
+        if (refreshedError) {
+          logError("subscription_revenuecat_refresh_persist_failed", {
+            user: summarizeUser(user.id),
+            reason,
+            previousTier,
+            refreshedTier,
+            error: refreshedError.message,
+          });
+        }
+
+        logInfo("subscription_revenuecat_refresh_applied", {
+          user: summarizeUser(user.id),
+          reason,
+          previousTier,
+          refreshedTier,
+          persisted: !refreshedError,
+        });
+        return true;
+      } catch (error) {
+        logWarn("subscription_revenuecat_refresh_exception", {
+          user: summarizeUser(user.id),
+          reason,
+          previousTier,
+          error: getErrorMessage(error),
+        });
+        return false;
+      }
+    };
+
+    let monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
       TIER_MONTHLY_LIMITS.free;
     if (
       !recognizeOnly && !accountIsTest &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
-      logWarn("monthly_limit_exceeded", {
-        user: summarizeUser(user.id),
-        tier: sub.tier,
-        used: sub.monthly_messages_used,
-        limit: monthlyLimit,
-      });
-      return jsonResponse({
-        error: "Monthly limit exceeded",
-        monthlyLimit,
-        used: sub.monthly_messages_used,
-      }, 429);
+      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+        "monthly_limit_exceeded",
+      );
+      if (!(refreshed && sub.monthly_messages_used < monthlyLimit)) {
+        logWarn("monthly_limit_exceeded", {
+          user: summarizeUser(user.id),
+          tier: sub.tier,
+          used: sub.monthly_messages_used,
+          limit: monthlyLimit,
+        });
+        return jsonResponse({
+          error: "Monthly limit exceeded",
+          monthlyLimit,
+          used: sub.monthly_messages_used,
+        }, 429);
+      }
     }
 
     // Check daily limit (測試帳號跳過)
-    const dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+    let dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
     if (
       !recognizeOnly && !accountIsTest &&
       sub.daily_messages_used >= dailyLimit
     ) {
-      logWarn("daily_limit_exceeded", {
-        user: summarizeUser(user.id),
-        tier: sub.tier,
-        used: sub.daily_messages_used,
-        limit: dailyLimit,
-      });
-      return jsonResponse({
-        error: "Daily limit exceeded",
-        dailyLimit,
-        used: sub.daily_messages_used,
-        resetAt: "tomorrow",
-      }, 429);
+      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+        "daily_limit_exceeded",
+      );
+      if (!(refreshed && sub.daily_messages_used < dailyLimit)) {
+        logWarn("daily_limit_exceeded", {
+          user: summarizeUser(user.id),
+          tier: sub.tier,
+          used: sub.daily_messages_used,
+          limit: dailyLimit,
+        });
+        return jsonResponse({
+          error: "Daily limit exceeded",
+          dailyLimit,
+          used: sub.daily_messages_used,
+          resetAt: "tomorrow",
+        }, 429);
+      }
     }
 
     logInfo("request_received", {
@@ -3513,8 +3759,6 @@ ${recentText}`;
 
     // Get available features for this tier
     // 測試帳號強制使用 essential tier 功能
-    const effectiveTier = accountIsTest ? "essential" : sub.tier;
-    const allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
 
     // 檢查「我說」模式權限（只限 Essential）
     const isMyMessageMode = analyzeMode === "my_message";
@@ -3532,55 +3776,72 @@ ${recentText}`;
       accountIsTest,
       estimatedMessageCount,
     });
-    const projectedMonthlyUsage = sub.monthly_messages_used +
+    let projectedMonthlyUsage = sub.monthly_messages_used +
       quotaUsage.chargedMessageCount;
-    const projectedDailyUsage = sub.daily_messages_used +
+    let projectedDailyUsage = sub.daily_messages_used +
       quotaUsage.chargedMessageCount;
-
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       projectedMonthlyUsage > monthlyLimit
     ) {
-      logWarn("monthly_limit_projected_exceeded", {
-        user: summarizeUser(user.id),
-        tier: sub.tier,
-        used: sub.monthly_messages_used,
-        requested: quotaUsage.chargedMessageCount,
-        limit: monthlyLimit,
-      });
-      return jsonResponse({
-        error: "Monthly limit exceeded",
-        monthlyLimit,
-        used: sub.monthly_messages_used,
-        requested: quotaUsage.chargedMessageCount,
-      }, 429);
+      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+        "monthly_limit_projected_exceeded",
+      );
+      projectedMonthlyUsage = sub.monthly_messages_used +
+        quotaUsage.chargedMessageCount;
+      if (!(refreshed && projectedMonthlyUsage <= monthlyLimit)) {
+        logWarn("monthly_limit_projected_exceeded", {
+          user: summarizeUser(user.id),
+          tier: sub.tier,
+          used: sub.monthly_messages_used,
+          requested: quotaUsage.chargedMessageCount,
+          limit: monthlyLimit,
+        });
+        return jsonResponse({
+          error: "Monthly limit exceeded",
+          monthlyLimit,
+          used: sub.monthly_messages_used,
+          requested: quotaUsage.chargedMessageCount,
+        }, 429);
+      }
     }
-
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       projectedDailyUsage > dailyLimit
     ) {
-      logWarn("daily_limit_projected_exceeded", {
-        user: summarizeUser(user.id),
-        tier: sub.tier,
-        used: sub.daily_messages_used,
-        requested: quotaUsage.chargedMessageCount,
-        limit: dailyLimit,
-      });
-      return jsonResponse({
-        error: "Daily limit exceeded",
-        dailyLimit,
-        used: sub.daily_messages_used,
-        requested: quotaUsage.chargedMessageCount,
-        resetAt: "tomorrow",
-      }, 429);
+      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+        "daily_limit_projected_exceeded",
+      );
+      projectedDailyUsage = sub.daily_messages_used +
+        quotaUsage.chargedMessageCount;
+      if (!(refreshed && projectedDailyUsage <= dailyLimit)) {
+        logWarn("daily_limit_projected_exceeded", {
+          user: summarizeUser(user.id),
+          tier: sub.tier,
+          used: sub.daily_messages_used,
+          requested: quotaUsage.chargedMessageCount,
+          limit: dailyLimit,
+        });
+        return jsonResponse({
+          error: "Daily limit exceeded",
+          dailyLimit,
+          used: sub.daily_messages_used,
+          requested: quotaUsage.chargedMessageCount,
+          resetAt: "tomorrow",
+        }, 429);
+      }
     }
     if (isMyMessageMode && effectiveTier !== "essential") {
-      return jsonResponse({
+      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+        "feature_gate_my_message",
+      );
+      if (!(refreshed && effectiveTier === "essential")) {
+        return jsonResponse({
         error: "「我說」分析功能僅限 Essential 方案",
         code: "FEATURE_NOT_AVAILABLE",
         requiredTier: "essential",
       }, 403);
+    }
     }
 
     const systemPrompt = recognizeOnly
