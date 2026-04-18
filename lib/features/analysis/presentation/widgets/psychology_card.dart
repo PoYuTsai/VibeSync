@@ -26,7 +26,7 @@ class PsychologyCard extends StatelessWidget {
             children: [
               const Text('🧠', style: TextStyle(fontSize: 20)),
               const SizedBox(width: 8),
-              Text('淺溝通解讀', style: AppTypography.titleMedium),
+              Text('她話裡的意思', style: AppTypography.titleMedium),
             ],
           ),
           const SizedBox(height: 12),

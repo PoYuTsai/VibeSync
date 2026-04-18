@@ -23,15 +23,15 @@ class ReplyCard extends StatelessWidget {
   String get _label {
     switch (type) {
       case ReplyType.extend:
-        return '🔄 延展';
+        return '🔄 延展・深挖她的回答';
       case ReplyType.resonate:
-        return '💬 共鳴';
+        return '💬 共鳴・讓她覺得你懂她';
       case ReplyType.tease:
-        return '😏 調情';
+        return '😏 調情・製造曖昧張力';
       case ReplyType.humor:
-        return '🎭 幽默';
+        return '🎭 幽默・讓她笑著想回';
       case ReplyType.coldRead:
-        return '🔮 冷讀';
+        return '🔮 冷讀・猜中她沒說的';
     }
   }
 

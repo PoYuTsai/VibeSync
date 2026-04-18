@@ -18,30 +18,30 @@ enum GameStage {
   String get label {
     switch (this) {
       case opening:
-        return '初識';
+        return '破冰階段';
       case premise:
-        return '熟悉中';
+        return '建立男女感';
       case qualification:
-        return '深入了解';
+        return '讓她證明自己';
       case narrative:
-        return '分享故事';
+        return '展現個人魅力';
       case close:
-        return '見面邀約';
+        return '準備邀約';
     }
   }
 
   String get description {
     switch (this) {
       case opening:
-        return '剛開始聊天';
+        return '你們還在破冰，先讓對話自然流動';
       case premise:
-        return '慢慢熟悉對方';
+        return '開始有男女氛圍，可以加點張力';
       case qualification:
-        return '彼此更了解中';
+        return '她在向你證明自己，保持沉穩';
       case narrative:
-        return '交換故事和想法';
+        return '分享故事展現魅力，讓她更了解你';
       case close:
-        return '可以約出來了';
+        return '時機對了，可以邀她出來見面';
     }
   }
 

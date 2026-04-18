@@ -237,14 +237,14 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            '還沒有對話',
+            '準備好了嗎？',
             style: AppTypography.titleLarge.copyWith(
               color: AppColors.onBackgroundPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            '點擊右下角 +，用手動輸入或截圖開始建立新對話。',
+            '截圖她的訊息，或手動貼上對話\nAI 幫你分析熱度，教你怎麼回',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),

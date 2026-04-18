@@ -5,21 +5,21 @@ void main() {
   group('GameStage', () {
     group('label', () {
       test('returns correct Chinese label for each stage', () {
-        expect(GameStage.opening.label, '打開');
-        expect(GameStage.premise.label, '前提');
-        expect(GameStage.qualification.label, '評估');
-        expect(GameStage.narrative.label, '敘事');
-        expect(GameStage.close.label, '收尾');
+        expect(GameStage.opening.label, '破冰階段');
+        expect(GameStage.premise.label, '建立男女感');
+        expect(GameStage.qualification.label, '讓她證明自己');
+        expect(GameStage.narrative.label, '展現個人魅力');
+        expect(GameStage.close.label, '準備邀約');
       });
     });
 
     group('description', () {
       test('returns correct description for each stage', () {
-        expect(GameStage.opening.description, '破冰階段');
-        expect(GameStage.premise.description, '進入男女框架');
-        expect(GameStage.qualification.description, '她在證明自己');
-        expect(GameStage.narrative.description, '說故事、個性樣本');
-        expect(GameStage.close.description, '準備邀約');
+        expect(GameStage.opening.description, '你們還在破冰，先讓對話自然流動');
+        expect(GameStage.premise.description, '開始有男女氛圍，可以加點張力');
+        expect(GameStage.qualification.description, '她在向你證明自己，保持沉穩');
+        expect(GameStage.narrative.description, '分享故事展現魅力，讓她更了解你');
+        expect(GameStage.close.description, '時機對了，可以邀她出來見面');
       });
     });
 
@@ -37,10 +37,10 @@ void main() {
   group('GameStageStatus', () {
     group('label', () {
       test('returns correct label for each status', () {
-        expect(GameStageStatus.normal.label, '正常進行');
-        expect(GameStageStatus.stuckFriend.label, '卡在朋友框');
-        expect(GameStageStatus.canAdvance.label, '可以推進');
-        expect(GameStageStatus.shouldRetreat.label, '建議退回');
+        expect(GameStageStatus.normal.label, '進展順利');
+        expect(GameStageStatus.stuckFriend.label, '偏向朋友');
+        expect(GameStageStatus.canAdvance.label, '可以更進一步');
+        expect(GameStageStatus.shouldRetreat.label, '放慢節奏');
       });
     });
   });

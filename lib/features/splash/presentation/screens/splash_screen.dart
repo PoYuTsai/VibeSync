@@ -283,7 +283,7 @@ class _SplashScreenState extends State<SplashScreen>
                       return Opacity(
                         opacity: _subtitleOpacity.value,
                         child: Text(
-                          '你的AI專屬聊天教練',
+                          'AI 幫你讀懂她、教你怎麼回',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,

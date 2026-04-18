@@ -30,7 +30,7 @@ void main() {
         ),
       );
 
-      expect(find.text('還沒有對話'), findsOneWidget);
+      expect(find.text('準備好了嗎？'), findsOneWidget);
       expect(find.text('點擊右下角 + 開始新增'), findsOneWidget);
     });
 
@@ -95,7 +95,7 @@ void main() {
       );
 
       expect(find.text('Alice'), findsOneWidget);
-      expect(find.text('還沒有對話'), findsNothing);
+      expect(find.text('準備好了嗎？'), findsNothing);
     });
   });
 }

@@ -2994,7 +2994,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    '我會分析熱度、對話進度、心理解讀，\n並給你最適合的回覆建議。',
+                                    'AI 會分析她的熱度、讀懂她話裡的意思，\n教你最適合的回覆方式。',
                                     style: AppTypography.bodyMedium.copyWith(
                                       color: AppColors.textSecondary,
                                     ),
@@ -3446,7 +3446,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        '熱度過低，建議放棄這段對話，開始新的機會',
+                                        '機會不大，建議開新對話，把時間留給對的人',
                                         style: AppTypography.bodyMedium,
                                       ),
                                     ),

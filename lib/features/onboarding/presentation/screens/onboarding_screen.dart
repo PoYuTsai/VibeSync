@@ -19,18 +19,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final _pages = [
     {
-      'title': '歡迎使用 VibeSync',
-      'description': '你的個人社交溝通教練\n幫助你提升對話技巧，成功邀約',
+      'title': '不知道怎麼回她？',
+      'description': '貼上對話或截圖，AI 幫你分析她的心理狀態\n教你最適合的回覆方式',
       'imagePath': 'welcome',
     },
     {
-      'title': 'AI 深度分析',
-      'description': '貼上對話，AI 會分析熱度、心理狀態\n給你精準的回覆建議',
+      'title': '即時看懂她的訊號',
+      'description': '熱度分析 0-100 一目瞭然\n心理解讀告訴你她話裡的意思',
       'imagePath': 'analyze',
     },
     {
-      'title': '五種回覆風格',
-      'description': '延展、共鳴、調情、幽默、冷讀\n選擇最適合當下情境的回覆',
+      'title': '五種風格，選最對的那句',
+      'description': '延展、共鳴、調情、幽默、冷讀\n每句都幫你控制字數，不會顯得太 needy',
       'imagePath': 'reply',
     },
   ];

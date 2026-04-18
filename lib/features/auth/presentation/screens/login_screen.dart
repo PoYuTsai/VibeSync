@@ -749,7 +749,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '讓每段對話更有節奏，也更有自信。',
+                      '截圖就能分析，五種風格教你回',
                       style: AppTypography.bodyLarge.copyWith(
                         color: AppColors.onBackgroundSecondary,
                       ),
