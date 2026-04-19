@@ -2216,7 +2216,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
       if (_psychology != null) {
         buffer.writeln('');
-        buffer.writeln('心理解讀: ${_psychology!.subtext}');
+        buffer.writeln('她話裡的意思: ${_psychology!.subtext}');
         if (_psychology!.shitTest != null) {
           buffer.writeln('試探偵測: ${_psychology!.shitTest}');
         }
@@ -3476,7 +3476,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             ),
                           ],
 
-                          // 心理分析 (淺溝通解讀)
+                          // 她話裡的意思
                           if (_psychology != null) ...[
                             const SizedBox(height: 16),
                             GlassmorphicContainer(
@@ -3488,7 +3488,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       const Text('🧠',
                                           style: TextStyle(fontSize: 18)),
                                       const SizedBox(width: 8),
-                                      Text('心理解讀',
+                                      Text('她話裡的意思',
                                           style: AppTypography.titleMedium
                                               .copyWith(
                                                   color: AppColors

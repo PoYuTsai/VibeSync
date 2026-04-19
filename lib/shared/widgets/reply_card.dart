@@ -71,24 +71,31 @@ class ReplyCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _color.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        _label,
-                        style: AppTypography.caption.copyWith(color: _color),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _color.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                AppTypography.caption.copyWith(color: _color),
+                          ),
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     if (isLocked)
-                      Icon(Icons.lock,
-                          size: 16, color: AppColors.glassTextHint)
+                      Icon(Icons.lock, size: 16, color: AppColors.glassTextHint)
                     else
                       Icon(Icons.copy,
                           size: 16, color: AppColors.glassTextHint),
@@ -96,7 +103,7 @@ class ReplyCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  isLocked ? '升級 Pro 解鎖' : content,
+                  isLocked ? '升級解鎖完整回覆' : content,
                   style: isLocked
                       ? AppTypography.bodyMedium.copyWith(
                           color: AppColors.glassTextHint,

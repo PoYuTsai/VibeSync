@@ -54,7 +54,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       _PaywallPlanData(
         tier: SubscriptionTierHelper.essential,
         name: 'Essential',
-        badge: '最多人選',
+        badge: '推薦方案',
         description: '每天 150 則 + 對話健檢，重度用戶首選',
         pricePoints: [
           '每月 ${essentialLimits.monthly} 則，重度用戶首選',
@@ -127,7 +127,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '解鎖完整分析，讓她秒回你',
+                    '解鎖完整分析，回得更有把握',
                     style: AppTypography.headlineLarge.copyWith(
                       color: AppColors.onBackgroundPrimary,
                     ),
@@ -478,6 +478,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }) {
     final priceLabel = package?.storeProduct.priceString ?? '價格同步中';
     final priceSuffix = package == null ? '' : ' / 月';
+    final isRecommendedPlan = plan.tier == SubscriptionTierHelper.essential;
 
     return GestureDetector(
       onTap: onTap,
@@ -498,7 +499,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 const SizedBox(width: 8),
                 _buildBadge(
                   label: plan.badge,
-                  background: plan.badge == 'Recommended'
+                  background: isRecommendedPlan
                       ? const LinearGradient(
                           colors: [
                             AppColors.selectedStart,
@@ -506,7 +507,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                           ],
                         )
                       : null,
-                  color: plan.badge == 'Recommended'
+                  color: isRecommendedPlan
                       ? Colors.white
                       : AppColors.glassTextPrimary,
                 ),

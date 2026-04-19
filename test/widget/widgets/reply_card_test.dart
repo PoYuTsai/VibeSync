@@ -94,7 +94,7 @@ void main() {
       );
 
       expect(find.byIcon(Icons.lock), findsOneWidget);
-      expect(find.text('升級 Pro 解鎖'), findsOneWidget);
+      expect(find.text('升級解鎖完整回覆'), findsOneWidget);
     });
 
     testWidgets('shows copy icon when not locked', (tester) async {

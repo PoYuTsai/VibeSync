@@ -25,7 +25,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     },
     {
       'title': '即時看懂她的訊號',
-      'description': '熱度分析 0-100 一目瞭然\n心理解讀告訴你她話裡的意思',
+      'description': '熱度分析 0-100 一目瞭然\n讀懂她話裡的意思',
       'imagePath': 'analyze',
     },
     {

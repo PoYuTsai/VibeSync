@@ -31,7 +31,10 @@ void main() {
       );
 
       expect(find.text('準備好了嗎？'), findsOneWidget);
-      expect(find.text('點擊右下角 + 開始新增'), findsOneWidget);
+      expect(
+        find.text('截圖她的訊息，或手動貼上對話\nAI 幫你分析熱度，教你怎麼回'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows FAB button', (tester) async {
