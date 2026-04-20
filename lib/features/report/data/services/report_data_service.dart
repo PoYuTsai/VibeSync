@@ -54,13 +54,16 @@ class ReportDataService {
       scoreDelta = newerAvg - olderAvg;
     }
 
-    // 5. 對話比較 (依分數降序)
-    final comparisons = scored
-        .map((c) => ConversationComparison(
-              name: c.name,
-              score: c.lastEnthusiasmScore!,
-            ))
-        .toList()
+    // 5. 對話比較 (同名合併，取最新分數，依分數降序)
+    // scored 已按 updatedAt 升序排列，後面的覆蓋前面的 = 最新分數
+    final mergedMap = <String, ConversationComparison>{};
+    for (final c in scored) {
+      mergedMap[c.name.trim()] = ConversationComparison(
+        name: c.name.trim(),
+        score: c.lastEnthusiasmScore!,
+      );
+    }
+    final comparisons = mergedMap.values.toList()
       ..sort((a, b) => b.score.compareTo(a.score));
 
     // 6. 階段分佈 (使用 GameStage.fromString 取得短標籤)
