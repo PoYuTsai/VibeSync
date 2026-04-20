@@ -97,7 +97,7 @@ class DimensionRadarChart extends StatelessWidget {
                   ];
                   return RadarChartTitle(
                     text: titles[index],
-                    angle: angle,
+                    angle: 0,
                   );
                 },
                 titleTextStyle: AppTypography.caption.copyWith(
