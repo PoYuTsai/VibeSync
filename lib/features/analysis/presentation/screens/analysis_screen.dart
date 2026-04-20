@@ -18,6 +18,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
+import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/services/memory_service.dart';
@@ -56,6 +57,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   bool _isAnalyzing = false;
   bool _isRefreshingPremiumReplies = false;
   int? _enthusiasmScore;
+  Map<String, int>? _dimensionScores;
   String? _strategy;
   Map<String, String>? _replies;
   TopicDepth? _topicDepth;
@@ -453,6 +455,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     bool resetFeedbackState = true,
   }) {
     _enthusiasmScore = result.enthusiasmScore;
+    _dimensionScores = result.dimensionScores;
     _strategy = result.strategy;
     _replies = result.replies;
     _topicDepth = result.topicDepth;
@@ -1873,6 +1876,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _isAnalyzing = false;
         _applyAnalysisResult(result);
         _enthusiasmScore = result.enthusiasmScore;
+        _dimensionScores = result.dimensionScores;
         _strategy = result.strategy;
         _replies = result.replies;
         _topicDepth = result.topicDepth;
@@ -3458,6 +3462,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   SizedBox(height: 12),
                                   Text('分析中...'),
                                 ],
+                              ),
+                            ),
+                          ],
+
+                          // 五維度剖析
+                          if (_dimensionScores != null) ...[
+                            const SizedBox(height: 16),
+                            DimensionRadarChart(
+                              scores: DimensionScores(
+                                heat: _dimensionScores!['heat'] ?? 50,
+                                engagement: _dimensionScores!['engagement'] ?? 50,
+                                topicDepth: _dimensionScores!['topicDepth'] ?? 50,
+                                replyWillingness: _dimensionScores!['replyWillingness'] ?? 50,
+                                emotionalConnection: _dimensionScores!['emotionalConnection'] ?? 50,
                               ),
                             ),
                           ],

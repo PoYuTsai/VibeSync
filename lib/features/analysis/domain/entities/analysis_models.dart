@@ -530,6 +530,7 @@ class AnalysisResult {
   final MyMessageAnalysis? myMessageAnalysis; // 「我說」話題延續分析
   final RecognizedConversation? recognizedConversation; // 截圖識別結果
   final int? imagesUsed; // 使用的截圖數量
+  final Map<String, int>? dimensionScores; // 五維度分數
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -547,6 +548,7 @@ class AnalysisResult {
     this.myMessageAnalysis,
     this.recognizedConversation,
     this.imagesUsed,
+    this.dimensionScores,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -619,6 +621,19 @@ class AnalysisResult {
       myMessageAnalysis: myMessageAnalysis,
       recognizedConversation: recognizedConversation,
       imagesUsed: imagesUsed,
+      dimensionScores: _parseDimensions(json['dimensions']),
     );
+  }
+
+  static Map<String, int>? _parseDimensions(dynamic raw) {
+    if (raw == null || raw is! Map) return null;
+    final map = raw as Map<String, dynamic>;
+    return {
+      'heat': (map['heat'] as num?)?.toInt() ?? 50,
+      'engagement': (map['engagement'] as num?)?.toInt() ?? 50,
+      'topicDepth': (map['topicDepth'] as num?)?.toInt() ?? 50,
+      'replyWillingness': (map['replyWillingness'] as num?)?.toInt() ?? 50,
+      'emotionalConnection': (map['emotionalConnection'] as num?)?.toInt() ?? 50,
+    };
   }
 }

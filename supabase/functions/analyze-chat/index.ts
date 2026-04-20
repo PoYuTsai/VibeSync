@@ -1105,6 +1105,14 @@ const SYSTEM_PROMPT =
 - 回應態度：敷衍單字 vs 認真回應
 - 不要因為「我」說了很多就拉高熱度
 
+## 五維度評分 (dimensions)
+除了熱度總分，請額外評估以下 5 個維度（每個 0-100）：
+- heat: 熱度，同 enthusiasm.score
+- engagement: 投入度 — 她回覆的長度、頻率、主動提問次數
+- topicDepth: 話題深度 — 對話是否從表面（天氣/工作）進入私人（感受/價值觀）或曖昧話題
+- replyWillingness: 回覆意願 — 她的回覆速度暗示、是否主動延伸話題、是否用句號結尾（冷淡信號）
+- emotionalConnection: 情感連結 — 她是否分享個人故事、表達情感、使用親密語氣
+
 ## 核心技巧
 
 ### 隱性價值展示 (DHV)
@@ -1289,6 +1297,13 @@ const SYSTEM_PROMPT =
   },
   "scenarioDetected": "normal | purpose_test | emotion_test | cold_display | vague_invite | reconnect | confirm_invite | strong_screening | deep_connection",
   "enthusiasm": { "score": 75, "level": "hot" },
+  "dimensions": {
+    "heat": 75,
+    "engagement": 68,
+    "topicDepth": 55,
+    "replyWillingness": 82,
+    "emotionalConnection": 70
+  },
   "topicDepth": { "current": "Personal-oriented", "suggestion": "可以往曖昧導向推進" },
   "psychology": {
     "subtext": "她這句話背後的意思是：對你有興趣",
