@@ -11,7 +11,9 @@ import '../widgets/conversation_tile.dart';
 
 /// Body-only content for use inside MainShell (no Scaffold/AppBar/FAB).
 class HomeContent extends ConsumerWidget {
-  const HomeContent({super.key});
+  final VoidCallback? onNewConversation;
+
+  const HomeContent({super.key, this.onNewConversation});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -166,7 +168,13 @@ class HomeContent extends ConsumerWidget {
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(26),
-                  onTap: () => context.push('/new'),
+                  onTap: () {
+                    if (onNewConversation != null) {
+                      onNewConversation!();
+                    } else {
+                      context.push('/new');
+                    }
+                  },
                   child: Center(
                     child: Text(
                       '立即開始',
