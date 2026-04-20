@@ -96,29 +96,151 @@ class HomeContent extends ConsumerWidget {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    return Center(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 64,
-            color: AppColors.onBackgroundSecondary,
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
-            '準備好了嗎？',
-            style: AppTypography.titleLarge.copyWith(
+            '三步開始',
+            style: AppTypography.headlineMedium.copyWith(
               color: AppColors.onBackgroundPrimary,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
-            '截圖她的訊息，或手動貼上對話\nAI 幫你分析熱度，教你怎麼回',
+            'AI 教練幫你拆解每一句話',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),
-            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 28),
+
+          // Step 1
+          _buildGuideStep(
+            number: '1',
+            icon: Icons.photo_camera_outlined,
+            title: '截圖她的訊息',
+            subtitle: '從相簿選一張聊天截圖',
+          ),
+          const SizedBox(height: 12),
+
+          // Step 2
+          _buildGuideStep(
+            number: '2',
+            icon: Icons.psychology_outlined,
+            title: 'AI 幫你分析',
+            subtitle: '熱度、階段、心理全拆解',
+          ),
+          const SizedBox(height: 12),
+
+          // Step 3
+          _buildGuideStep(
+            number: '3',
+            icon: Icons.chat_outlined,
+            title: '教你怎麼回',
+            subtitle: '五種風格，複製就能用',
+          ),
+          const SizedBox(height: 32),
+
+          // CTA Button
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                ),
+                borderRadius: BorderRadius.circular(26),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.ctaStart.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(26),
+                  onTap: () => context.push('/new'),
+                  child: Center(
+                    child: Text(
+                      '立即開始',
+                      style: AppTypography.titleMedium.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuideStep({
+    required String number,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          // Number circle
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.ctaStart, AppColors.ctaEnd],
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: AppTypography.titleMedium.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          // Icon
+          Icon(icon, color: AppColors.glassTextHint, size: 28),
+          const SizedBox(width: 14),
+          // Text
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTypography.titleSmall.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
