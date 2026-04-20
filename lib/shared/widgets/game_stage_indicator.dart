@@ -16,6 +16,8 @@ class GameStageIndicator extends StatelessWidget {
     this.nextStep,
   });
 
+  static const _stageLabels = ['打開', '前提', '評估', '敘事', '收尾'];
+
   Color _getStatusColor() {
     switch (status) {
       case GameStageStatus.normal:
@@ -26,6 +28,21 @@ class GameStageIndicator extends StatelessWidget {
         return AppColors.primary;
       case GameStageStatus.shouldRetreat:
         return AppColors.error;
+    }
+  }
+
+  String _shortLabel(GameStage stage) {
+    switch (stage) {
+      case GameStage.opening:
+        return '打開';
+      case GameStage.premise:
+        return '前提';
+      case GameStage.qualification:
+        return '評估';
+      case GameStage.narrative:
+        return '敘事';
+      case GameStage.close:
+        return '收尾';
     }
   }
 
@@ -41,73 +58,74 @@ class GameStageIndicator extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header row
           Row(
             children: [
               Text(
-                '對話進度',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.glassTextHint,
+                'GAME 階段',
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _getStatusColor().withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(6),
+                  color: AppColors.ctaStart.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  status.label,
+                  '目前・${_shortLabel(currentStage)}',
                   style: AppTypography.caption.copyWith(
-                    color: _getStatusColor(),
+                    color: AppColors.ctaStart,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
+          // Progress circles with connecting lines
+          _buildStageProgress(),
+          const SizedBox(height: 8),
+          // Labels below circles
           Row(
-            children: [
-              Text(
-                currentStage.emoji,
-                style: const TextStyle(fontSize: 28),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      currentStage.label,
-                      style: AppTypography.headlineMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
-                      ),
-                    ),
-                    Text(
-                      currentStage.description,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.glassTextHint,
-                      ),
-                    ),
-                  ],
+            children: GameStage.values.map((stage) {
+              return Expanded(
+                child: Text(
+                  _shortLabel(stage),
+                  textAlign: TextAlign.center,
+                  style: AppTypography.caption.copyWith(
+                    fontSize: 10,
+                    color: stage.index <= currentStage.index
+                        ? AppColors.glassTextPrimary
+                        : AppColors.glassTextHint.withValues(alpha: 0.5),
+                    fontWeight: stage == currentStage
+                        ? FontWeight.w700
+                        : FontWeight.normal,
+                  ),
                 ),
-              ),
-            ],
+              );
+            }).toList(),
           ),
+          // Next step description
           if (nextStep != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: AppColors.ctaStart.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.lightbulb_outline,
                     size: 16,
-                    color: AppColors.warning,
+                    color: AppColors.ctaStart,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -122,45 +140,66 @@ class GameStageIndicator extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          _buildStageProgress(),
         ],
       ),
     );
   }
 
   Widget _buildStageProgress() {
-    return Row(
-      children: GameStage.values.map((stage) {
-        final isActive = stage.index <= currentStage.index;
-        final isCurrent = stage == currentStage;
+    final stages = GameStage.values;
+    const circleSize = 28.0;
+    const currentCircleSize = 32.0;
+    const coralColor = AppColors.ctaStart;
+    final greyColor = AppColors.glassBorder;
 
-        return Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            child: Column(
-              children: [
-                Container(
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? AppColors.primary
-                        : AppColors.glassBorder,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Row(
+          children: List.generate(stages.length * 2 - 1, (i) {
+            // Even indices = circles, odd indices = lines
+            if (i.isEven) {
+              final stageIndex = i ~/ 2;
+              final stage = stages[stageIndex];
+              final isCompleted = stage.index < currentStage.index;
+              final isCurrent = stage == currentStage;
+              final isActive = isCompleted || isCurrent;
+              final size = isCurrent ? currentCircleSize : circleSize;
+
+              return Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isActive ? coralColor : Colors.transparent,
+                  border: isActive
+                      ? null
+                      : Border.all(color: greyColor, width: 1.5),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  stage.emoji,
+                alignment: Alignment.center,
+                child: Text(
+                  '${stageIndex + 1}',
                   style: TextStyle(
-                    fontSize: isCurrent ? 16 : 12,
+                    fontSize: isCurrent ? 14 : 12,
+                    fontWeight: FontWeight.w700,
+                    color: isActive ? Colors.white : greyColor,
                   ),
                 ),
-              ],
-            ),
-          ),
+              );
+            } else {
+              // Connecting line
+              final leftStageIndex = i ~/ 2;
+              final isLineActive = leftStageIndex < currentStage.index;
+
+              return Expanded(
+                child: Container(
+                  height: 2,
+                  color: isLineActive ? coralColor : greyColor,
+                ),
+              );
+            }
+          }),
         );
-      }).toList(),
+      },
     );
   }
 }

@@ -20,6 +20,7 @@ import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/enthusiasm_gauge.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/reply_card.dart';
+import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -3421,11 +3422,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
                           // Enthusiasm Gauge
                           if (_enthusiasmScore != null) ...[
-                            Text('熱度分析',
-                                style: AppTypography.titleLarge.copyWith(
-                                    color: AppColors.onBackgroundPrimary)),
-                            const SizedBox(height: 12),
-                            EnthusiasmGauge(score: _enthusiasmScore!),
+                            ScoreHeroCard(
+                              score: _enthusiasmScore!,
+                              // previousScore: null for now
+                            ),
 
                             // 冰點放棄建議
                             if (_shouldGiveUp) ...[
@@ -3677,45 +3677,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             const SizedBox(height: 24),
                             Row(
                               children: [
-                                Text('建議回覆',
+                                Text('回覆建議・${_replies!.length} 種風格',
                                     style: AppTypography.titleLarge.copyWith(
                                         color: AppColors.onBackgroundPrimary)),
                                 const Spacer(),
-                                Text(
-                                  '字數上限: $maxLength字',
-                                  style: AppTypography.caption
-                                      .copyWith(color: AppColors.glassTextHint),
-                                ),
+                                Text('← 左右滑動',
+                                    style: AppTypography.caption
+                                        .copyWith(color: AppColors.glassTextHint)),
                               ],
                             ),
                             const SizedBox(height: 12),
-                            // 延展回覆 (所有方案都有)
-                            if (_replies!.containsKey('extend'))
-                              ReplyCard(
-                                type: ReplyType.extend,
-                                content: _replies!['extend']!,
+                            SizedBox(
+                              height: 200,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                children: [
+                                  if (_replies!.containsKey('extend'))
+                                    _buildHorizontalReplyCard('extend', _replies!['extend']!, isRecommended: true),
+                                  if (_replies!.containsKey('resonate'))
+                                    _buildHorizontalReplyCard('resonate', _replies!['resonate']!),
+                                  if (_replies!.containsKey('tease'))
+                                    _buildHorizontalReplyCard('tease', _replies!['tease']!),
+                                  if (_replies!.containsKey('humor'))
+                                    _buildHorizontalReplyCard('humor', _replies!['humor']!),
+                                  if (_replies!.containsKey('coldRead'))
+                                    _buildHorizontalReplyCard('coldRead', _replies!['coldRead']!),
+                                ],
                               ),
-                            // 以下回覆根據 API 回傳結果顯示 (已在後端過濾)
-                            if (_replies!.containsKey('resonate'))
-                              ReplyCard(
-                                type: ReplyType.resonate,
-                                content: _replies!['resonate']!,
-                              ),
-                            if (_replies!.containsKey('tease'))
-                              ReplyCard(
-                                type: ReplyType.tease,
-                                content: _replies!['tease']!,
-                              ),
-                            if (_replies!.containsKey('humor'))
-                              ReplyCard(
-                                type: ReplyType.humor,
-                                content: _replies!['humor']!,
-                              ),
-                            if (_replies!.containsKey('coldRead'))
-                              ReplyCard(
-                                type: ReplyType.coldRead,
-                                content: _replies!['coldRead']!,
-                              ),
+                            ),
                             // 如果只有 extend，根據用戶 tier 顯示不同提示
                             if (_replies!.length == 1 &&
                                 _replies!.containsKey('extend')) ...[
@@ -4384,6 +4373,105 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHorizontalReplyCard(String type, String content, {bool isRecommended = false}) {
+    final labels = {
+      'extend': '\u{1F504} 延展',
+      'resonate': '\u{1F4AC} 共鳴',
+      'tease': '\u{1F60F} 調情',
+      'humor': '\u{1F3AD} 幽默',
+      'coldRead': '\u{1F52E} 冷讀',
+    };
+
+    final colors = {
+      'extend': AppColors.cold,
+      'resonate': AppColors.warm,
+      'tease': AppColors.veryHot,
+      'humor': AppColors.hot,
+      'coldRead': AppColors.primaryLight,
+    };
+
+    final reasons = {
+      'extend': '順勢接話並深挖細節',
+      'resonate': '建立情感連結與共鳴',
+      'tease': '製造曖昧張力與反差',
+      'humor': '用幽默化解尷尬或升溫',
+      'coldRead': '猜中她沒說的，製造驚喜',
+    };
+
+    return Container(
+      width: 280,
+      margin: const EdgeInsets.only(right: 12),
+      child: GlassmorphicContainer(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(labels[type] ?? type,
+                  style: AppTypography.titleMedium.copyWith(
+                    color: colors[type] ?? AppColors.glassTextPrimary,
+                  )),
+                const Spacer(),
+                if (isRecommended)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('AI 推薦',
+                      style: AppTypography.caption.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      )),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已複製到剪貼簿'), duration: Duration(seconds: 1)),
+                  );
+                },
+                child: Text(content,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                  ),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text('為什麼推薦',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.ctaStart,
+                    fontWeight: FontWeight.w600,
+                  )),
+                Flexible(
+                  child: Text('・${reasons[type] ?? ''}',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.glassTextHint,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
