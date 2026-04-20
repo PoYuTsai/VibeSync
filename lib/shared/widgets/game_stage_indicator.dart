@@ -16,21 +16,6 @@ class GameStageIndicator extends StatelessWidget {
     this.nextStep,
   });
 
-  static const _stageLabels = ['打開', '前提', '評估', '敘事', '收尾'];
-
-  Color _getStatusColor() {
-    switch (status) {
-      case GameStageStatus.normal:
-        return AppColors.success;
-      case GameStageStatus.stuckFriend:
-        return AppColors.warning;
-      case GameStageStatus.canAdvance:
-        return AppColors.primary;
-      case GameStageStatus.shouldRetreat:
-        return AppColors.error;
-    }
-  }
-
   String _shortLabel(GameStage stage) {
     switch (stage) {
       case GameStage.opening:

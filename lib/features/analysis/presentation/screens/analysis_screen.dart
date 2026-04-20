@@ -17,9 +17,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
-import '../../../../shared/widgets/enthusiasm_gauge.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
-import '../../../../shared/widgets/reply_card.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/services/memory_service.dart';
@@ -2755,8 +2753,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         ),
       );
     }
-
-    final maxLength = _calculateMaxReplyLength(conversation);
 
     return GradientBackground(
       child: Scaffold(
