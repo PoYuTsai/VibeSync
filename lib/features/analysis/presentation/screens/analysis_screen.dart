@@ -504,6 +504,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     super.dispose();
   }
 
+  /// 退出時自動刪除空對話（沒有訊息的「新對話」）
+  Future<void> _cleanupAndGoBack() async {
+    final repository = ref.read(conversationRepositoryProvider);
+    final conversation = repository.getConversation(widget.conversationId);
+    if (conversation != null && conversation.messages.isEmpty) {
+      await repository.deleteConversation(conversation.id);
+      ref.invalidate(conversationsProvider);
+    }
+    if (mounted) {
+      context.go('/');
+    }
+  }
+
   /// 啟動識別計時器
   void _startRecognizeTimer() {
     Future.doWhile(() async {
@@ -2750,7 +2763,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/'),
+              onPressed: _cleanupAndGoBack,
             ),
           ),
           body: const Center(child: Text('找不到對話')),
@@ -2767,7 +2780,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           title: Text(conversation.name, style: AppTypography.titleLarge),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.go('/'),
+            onPressed: _cleanupAndGoBack,
           ),
           actions: [
             // 匯出按鈕
