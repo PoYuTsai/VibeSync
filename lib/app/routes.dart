@@ -6,8 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
-import '../features/conversation/presentation/screens/home_screen.dart';
 import '../features/conversation/presentation/screens/new_conversation_screen.dart';
+import 'main_shell.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
@@ -43,7 +43,7 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/',
-      builder: (context, state) => const HomeScreen(),
+      builder: (context, state) => const MainShell(),
     ),
     GoRoute(
       path: '/new',
