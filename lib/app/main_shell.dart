@@ -90,42 +90,46 @@ class _MainShellState extends State<MainShell> {
     final isSelected = _currentIndex == index;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _currentIndex = index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(
-          horizontal: isSelected ? 20 : 16,
-          vertical: 8,
-        ),
-        decoration: isSelected
-            ? BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                ),
-                borderRadius: BorderRadius.circular(24),
-              )
-            : null,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected ? activeIcon : icon,
-              color: isSelected
-                  ? Colors.white
-                  : AppColors.onBackgroundSecondary,
-              size: 22,
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: AppTypography.bodySmall.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(
+            horizontal: isSelected ? 24 : 20,
+            vertical: 12,
+          ),
+          decoration: isSelected
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                )
+              : null,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? activeIcon : icon,
+                color: isSelected
+                    ? Colors.white
+                    : AppColors.onBackgroundSecondary,
+                size: 22,
               ),
+              if (isSelected) ...[
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
