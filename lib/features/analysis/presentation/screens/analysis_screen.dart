@@ -486,6 +486,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;
     conv.lastAnalyzedMessageCount = conversation.messages.length;
+    conv.currentGameStage = result.gameStage.current.name;
     conv.lastAnalysisSnapshotJson =
         result.rawResponse == null || result.rawResponse!.isEmpty
             ? null
@@ -508,9 +509,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _cleanupAndGoBack() async {
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
-    if (conversation != null && conversation.messages.isEmpty) {
-      await repository.deleteConversation(conversation.id);
-      ref.invalidate(conversationsProvider);
+    try {
+      if (conversation != null && conversation.messages.isEmpty) {
+        await repository.deleteConversation(conversation.id);
+        ref.invalidate(conversationsProvider);
+      }
+    } catch (_) {
+      // Leaving the screen should not be blocked by best-effort cleanup.
     }
     if (mounted) {
       context.go('/');
@@ -734,7 +739,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 child: OutlinedButton(
                   onPressed: (_isRecognizing || _isAnalyzing)
                       ? null
-                      : () => _recognizeAndAddToConversation(forceRefresh: true),
+                      : () =>
+                          _recognizeAndAddToConversation(forceRefresh: true),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         vertical: 13, horizontal: 12),
@@ -1648,10 +1654,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             sessionContext: conversation.sessionContext,
             knownContactName:
                 ScreenshotRecognitionHelper.isPlaceholderConversationName(
-                  conversation.name,
-                )
-                ? null
-                : conversation.name.trim(),
+              conversation.name,
+            )
+                    ? null
+                    : conversation.name.trim(),
             onProgress: _handleRecognizeProgress,
             onTelemetry: _handleRecognizeTelemetry,
             recognizeOnly: true, // 純識別模式：只識別截圖，不扣額度
@@ -1870,10 +1876,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         conversationSummary: analysisContext.conversationSummary,
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
-              conversation.name,
-            )
-            ? null
-            : conversation.name.trim(),
+          conversation.name,
+        )
+                ? null
+                : conversation.name.trim(),
         onTelemetry: _handleAnalysisTelemetry,
       );
 
@@ -1978,10 +1984,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         conversationSummary: analysisContext.conversationSummary,
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
-              conversation.name,
-            )
-            ? null
-            : conversation.name.trim(),
+          conversation.name,
+        )
+                ? null
+                : conversation.name.trim(),
         analyzeMode: 'my_message',
         onTelemetry: _handleAnalysisTelemetry,
       );
@@ -2034,10 +2040,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         conversationSummary: analysisContext.conversationSummary,
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
-              conversation.name,
-            )
-            ? null
-            : conversation.name.trim(),
+          conversation.name,
+        )
+                ? null
+                : conversation.name.trim(),
         userDraft: draft,
         onTelemetry: _handleAnalysisTelemetry,
       );
@@ -2367,7 +2373,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     final segments = <String>[];
     for (var i = 0; i < matches.length; i++) {
       final start = matches[i].start;
-      final end = i + 1 < matches.length ? matches[i + 1].start : normalized.length;
+      final end =
+          i + 1 < matches.length ? matches[i + 1].start : normalized.length;
       final segment = normalized.substring(start, end).trim();
       if (segment.isNotEmpty) {
         segments.add(segment);
@@ -2427,7 +2434,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     for (final segment in segments) {
       final trimmed = segment.trim();
       final isHint = trimmed.startsWith('💡');
-      final replyText = isHint ? null : _extractRecommendationReplyText(trimmed);
+      final replyText =
+          isHint ? null : _extractRecommendationReplyText(trimmed);
 
       widgets.add(
         Container(
@@ -2448,9 +2456,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               Text(
                 trimmed,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: isHint
-                      ? AppColors.textSecondary
-                      : AppColors.textPrimary,
+                  color:
+                      isHint ? AppColors.textSecondary : AppColors.textPrimary,
                 ),
               ),
               if (!isHint && replyText != null && replyText.isNotEmpty) ...[
@@ -2766,7 +2773,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               onPressed: _cleanupAndGoBack,
             ),
           ),
-          body: const Center(child: Text('找不到對話')),
+          body: Stack(
+            children: [
+              const Center(child: Text('找不到對話')),
+              _buildRoutePopScopeRegistration(),
+            ],
+          ),
         ),
       );
     }
@@ -2807,6 +2819,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               constraints: const BoxConstraints(maxWidth: 600),
               child: Column(
                 children: [
+                  _buildRoutePopScopeRegistration(),
                   Expanded(
                     child: SingleChildScrollView(
                       controller: _scrollController,
@@ -2864,10 +2877,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: AppColors.primary.withValues(alpha: 0.28),
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.28),
                                 ),
                               ),
                               child: Row(
@@ -3031,7 +3046,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   Text(
                                     '建議每張截圖保留 15 則內完整對話；過長請拆成 2-3 張，辨識會更穩。',
                                     style: AppTypography.bodySmall.copyWith(
-                                      color: Colors.white.withValues(alpha: 0.55),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.55),
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
@@ -3485,10 +3501,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             DimensionRadarChart(
                               scores: DimensionScores(
                                 heat: _dimensionScores!['heat'] ?? 50,
-                                engagement: _dimensionScores!['engagement'] ?? 50,
-                                topicDepth: _dimensionScores!['topicDepth'] ?? 50,
-                                replyWillingness: _dimensionScores!['replyWillingness'] ?? 50,
-                                emotionalConnection: _dimensionScores!['emotionalConnection'] ?? 50,
+                                engagement:
+                                    _dimensionScores!['engagement'] ?? 50,
+                                topicDepth:
+                                    _dimensionScores!['topicDepth'] ?? 50,
+                                replyWillingness:
+                                    _dimensionScores!['replyWillingness'] ?? 50,
+                                emotionalConnection:
+                                    _dimensionScores!['emotionalConnection'] ??
+                                        50,
                               ),
                             ),
                           ],
@@ -3699,8 +3720,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ],
 
                           // Reply suggestions (5 種回覆)
-                          if (_replies != null &&
-                              _replies!.isNotEmpty) ...[
+                          if (_replies != null && _replies!.isNotEmpty) ...[
                             const SizedBox(height: 24),
                             Row(
                               children: [
@@ -3709,8 +3729,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         color: AppColors.onBackgroundPrimary)),
                                 const Spacer(),
                                 Text('← 左右滑動',
-                                    style: AppTypography.caption
-                                        .copyWith(color: AppColors.glassTextHint)),
+                                    style: AppTypography.caption.copyWith(
+                                        color: AppColors.glassTextHint)),
                               ],
                             ),
                             const SizedBox(height: 12),
@@ -3720,15 +3740,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                 scrollDirection: Axis.horizontal,
                                 children: [
                                   if (_replies!.containsKey('extend'))
-                                    _buildHorizontalReplyCard('extend', _replies!['extend']!, isRecommended: true),
+                                    _buildHorizontalReplyCard(
+                                        'extend', _replies!['extend']!,
+                                        isRecommended:
+                                            _isRecommendedReplyType('extend')),
                                   if (_replies!.containsKey('resonate'))
-                                    _buildHorizontalReplyCard('resonate', _replies!['resonate']!),
+                                    _buildHorizontalReplyCard(
+                                        'resonate', _replies!['resonate']!,
+                                        isRecommended: _isRecommendedReplyType(
+                                            'resonate')),
                                   if (_replies!.containsKey('tease'))
-                                    _buildHorizontalReplyCard('tease', _replies!['tease']!),
+                                    _buildHorizontalReplyCard(
+                                        'tease', _replies!['tease']!,
+                                        isRecommended:
+                                            _isRecommendedReplyType('tease')),
                                   if (_replies!.containsKey('humor'))
-                                    _buildHorizontalReplyCard('humor', _replies!['humor']!),
+                                    _buildHorizontalReplyCard(
+                                        'humor', _replies!['humor']!,
+                                        isRecommended:
+                                            _isRecommendedReplyType('humor')),
                                   if (_replies!.containsKey('coldRead'))
-                                    _buildHorizontalReplyCard('coldRead', _replies!['coldRead']!),
+                                    _buildHorizontalReplyCard(
+                                        'coldRead', _replies!['coldRead']!,
+                                        isRecommended: _isRecommendedReplyType(
+                                            'coldRead')),
                                 ],
                               ),
                             ),
@@ -3888,7 +3923,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
                           // 最終建議 (AI 推薦) - 只在有實際內容時顯示
                           if (_finalRecommendation != null &&
-                              _finalRecommendation!.content.trim().isNotEmpty) ...[
+                              _finalRecommendation!.content
+                                  .trim()
+                                  .isNotEmpty) ...[
                             const SizedBox(height: 24),
                             Container(
                               padding: const EdgeInsets.all(16),
@@ -4405,7 +4442,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
-  Widget _buildHorizontalReplyCard(String type, String content, {bool isRecommended = false}) {
+  Widget _buildRoutePopScopeRegistration() {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _cleanupAndGoBack();
+      },
+      child: const SizedBox.shrink(),
+    );
+  }
+
+  bool _isRecommendedReplyType(String type) {
+    final pick = _finalRecommendation?.pick.trim();
+    return pick == type && (_replies?[type]?.trim().isNotEmpty ?? false);
+  }
+
+  Widget _buildHorizontalReplyCard(String type, String content,
+      {bool isRecommended = false}) {
     final labels = {
       'extend': '\u{1F504} 延展',
       'resonate': '\u{1F4AC} 共鳴',
@@ -4441,13 +4495,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             Row(
               children: [
                 Text(labels[type] ?? type,
-                  style: AppTypography.titleMedium.copyWith(
-                    color: colors[type] ?? AppColors.glassTextPrimary,
-                  )),
+                    style: AppTypography.titleMedium.copyWith(
+                      color: colors[type] ?? AppColors.glassTextPrimary,
+                    )),
                 const Spacer(),
                 if (isRecommended)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [AppColors.ctaStart, AppColors.ctaEnd],
@@ -4455,10 +4510,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text('AI 推薦',
-                      style: AppTypography.caption.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      )),
+                        style: AppTypography.caption.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        )),
                   ),
               ],
             ),
@@ -4468,10 +4523,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: content));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已複製到剪貼簿'), duration: Duration(seconds: 1)),
+                    const SnackBar(
+                        content: Text('已複製到剪貼簿'),
+                        duration: Duration(seconds: 1)),
                   );
                 },
-                child: Text(content,
+                child: Text(
+                  content,
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
@@ -4484,12 +4542,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             Row(
               children: [
                 Text('為什麼推薦',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.ctaStart,
-                    fontWeight: FontWeight.w600,
-                  )),
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.ctaStart,
+                      fontWeight: FontWeight.w600,
+                    )),
                 Flexible(
-                  child: Text('・${reasons[type] ?? ''}',
+                  child: Text(
+                    '・${reasons[type] ?? ''}',
                     style: AppTypography.caption.copyWith(
                       color: AppColors.glassTextHint,
                     ),

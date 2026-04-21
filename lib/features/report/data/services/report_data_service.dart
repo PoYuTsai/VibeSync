@@ -1,5 +1,7 @@
 // lib/features/report/data/services/report_data_service.dart
 
+import 'dart:convert';
+
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../domain/entities/report_models.dart';
@@ -17,9 +19,7 @@ class ReportDataService {
   /// 從對話列表產生完整報告數據
   ReportData generateReport(List<Conversation> conversations) {
     // 1. 篩選有熱度分數的對話，按 updatedAt 排序
-    final scored = conversations
-        .where((c) => c.lastEnthusiasmScore != null)
-        .toList()
+    final scored = conversations.where(_hasCurrentAnalysisScore).toList()
       ..sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
 
     // 2. 取最近 7 筆作為趨勢數據
@@ -68,8 +68,9 @@ class ReportDataService {
 
     // 6. 階段分佈 (使用 GameStage.fromString 取得短標籤)
     final stageCounts = <String, int>{};
-    for (final c in conversations) {
-      final stage = GameStage.fromString(c.currentGameStage ?? 'opening');
+    for (final c in scored) {
+      final stage = _stageForConversation(c);
+      if (stage == null) continue;
       final label = _stageShortLabels[stage] ?? '打開';
       stageCounts[label] = (stageCounts[label] ?? 0) + 1;
     }
@@ -84,7 +85,44 @@ class ReportDataService {
       scoreDelta: scoreDelta,
       comparisons: comparisons,
       stageDistributions: stageDistributions,
-      totalConversations: conversations.length,
+      totalConversations: scored.length,
     );
+  }
+
+  bool _hasCurrentAnalysisScore(Conversation conversation) {
+    if (conversation.lastEnthusiasmScore == null) {
+      return false;
+    }
+
+    final analyzedCount = conversation.lastAnalyzedMessageCount;
+    return analyzedCount == null ||
+        analyzedCount == conversation.messages.length;
+  }
+
+  GameStage? _stageForConversation(Conversation conversation) {
+    final directStage = conversation.currentGameStage?.trim();
+    if (directStage != null && directStage.isNotEmpty) {
+      return GameStage.fromString(directStage);
+    }
+
+    final snapshotJson = conversation.lastAnalysisSnapshotJson;
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(snapshotJson);
+      if (decoded is! Map) return null;
+
+      final gameStage = decoded['gameStage'];
+      if (gameStage is! Map) return null;
+
+      final current = gameStage['current'];
+      if (current is! String || current.trim().isEmpty) return null;
+
+      return GameStage.fromString(current.trim());
+    } catch (_) {
+      return null;
+    }
   }
 }
