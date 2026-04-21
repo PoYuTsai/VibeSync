@@ -53,15 +53,8 @@ class ArticleDetailScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: GradientButton(
+                  text: '學完了？來實戰練習',
                   onPressed: () => context.go('/'),
-                  child: const Text(
-                    '學完了？來實戰練習',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
                 ),
               ),
             ],
