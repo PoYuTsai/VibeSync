@@ -19,15 +19,15 @@ class GameStageIndicator extends StatelessWidget {
   String _shortLabel(GameStage stage) {
     switch (stage) {
       case GameStage.opening:
-        return '打開';
+        return '破冰';
       case GameStage.premise:
-        return '前提';
+        return '升溫';
       case GameStage.qualification:
-        return '評估';
+        return '深入';
       case GameStage.narrative:
-        return '敘事';
+        return '連結';
       case GameStage.close:
-        return '收尾';
+        return '邀約';
     }
   }
 
@@ -47,7 +47,7 @@ class GameStageIndicator extends StatelessWidget {
           Row(
             children: [
               Text(
-                'GAME 階段',
+                '對話進度',
                 style: AppTypography.titleMedium.copyWith(
                   color: AppColors.glassTextPrimary,
                   fontWeight: FontWeight.w700,

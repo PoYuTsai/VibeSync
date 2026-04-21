@@ -9,11 +9,11 @@ import '../../domain/entities/report_models.dart';
 class ReportDataService {
   /// GAME 階段短標籤對照
   static const _stageShortLabels = {
-    GameStage.opening: '打開',
-    GameStage.premise: '前提',
-    GameStage.qualification: '評估',
-    GameStage.narrative: '敘事',
-    GameStage.close: '收尾',
+    GameStage.opening: '破冰',
+    GameStage.premise: '升溫',
+    GameStage.qualification: '深入',
+    GameStage.narrative: '連結',
+    GameStage.close: '邀約',
   };
 
   /// 從對話列表產生完整報告數據
@@ -71,7 +71,7 @@ class ReportDataService {
     for (final c in scored) {
       final stage = _stageForConversation(c);
       if (stage == null) continue;
-      final label = _stageShortLabels[stage] ?? '打開';
+      final label = _stageShortLabels[stage] ?? '破冰';
       stageCounts[label] = (stageCounts[label] ?? 0) + 1;
     }
     final stageDistributions = stageCounts.entries

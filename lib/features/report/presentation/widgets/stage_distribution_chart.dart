@@ -19,11 +19,11 @@ class StageDistributionChart extends StatelessWidget {
   });
 
   static const _stageColors = <String, Color>{
-    '打開': AppColors.bokehYellow,
-    '前提': AppColors.bokehCoral,
-    '評估': AppColors.ctaStart,
-    '敘事': AppColors.hot,
-    '收尾': AppColors.veryHot,
+    '破冰': AppColors.bokehYellow,
+    '升溫': AppColors.bokehCoral,
+    '深入': AppColors.ctaStart,
+    '連結': AppColors.hot,
+    '邀約': AppColors.veryHot,
   };
 
   @override
