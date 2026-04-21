@@ -48,8 +48,49 @@ class ArticleDetailScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ..._parseContent(article.content),
-              const SizedBox(height: 32),
+              // Source + read time
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.ctaStart.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      article.category,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.ctaStart,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    article.readTime,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    article.source,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Article content in glass container
+              GlassmorphicContainer(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _parseContent(article.content),
+                ),
+              ),
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 child: GradientButton(
@@ -57,6 +98,7 @@ class ArticleDetailScreen extends StatelessWidget {
                   onPressed: () => context.go('/'),
                 ),
               ),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -84,7 +126,7 @@ class ArticleDetailScreen extends StatelessWidget {
           child: Text(
             text,
             style: AppTypography.titleSmall.copyWith(
-              color: AppColors.onBackgroundPrimary,
+              color: AppColors.glassTextPrimary,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -97,7 +139,7 @@ class ArticleDetailScreen extends StatelessWidget {
           child: Text(
             text,
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.onBackgroundPrimary,
+              color: AppColors.glassTextPrimary,
               fontWeight: FontWeight.bold,
               fontSize: 18,
             ),
@@ -117,7 +159,7 @@ class ArticleDetailScreen extends StatelessWidget {
                   width: 5,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: AppColors.onBackgroundSecondary,
+                    color: AppColors.glassTextSecondary,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -161,7 +203,7 @@ class ArticleDetailScreen extends StatelessWidget {
 
     // Default style
     var baseStyle = AppTypography.bodyMedium.copyWith(
-      color: AppColors.onBackgroundSecondary,
+      color: AppColors.glassTextPrimary,
       height: 1.6,
     );
 
