@@ -11,16 +11,30 @@ import '../../data/articles_data.dart';
 class LearningScreen extends ConsumerWidget {
   const LearningScreen({super.key});
 
-  Color _categoryColor(String colorName) {
+  // 文字用深色版本，背景用淺色版本
+  Color _categoryTextColor(String colorName) {
     switch (colorName) {
       case 'yellow':
-        return AppColors.bokehYellow;
+        return const Color(0xFFB8860B); // dark goldenrod
       case 'coral':
-        return AppColors.bokehCoral;
+        return const Color(0xFFC62828); // dark red
       case 'pink':
-        return AppColors.veryHot;
+        return const Color(0xFFAD1457); // dark pink
       default:
-        return AppColors.bokehCoral;
+        return const Color(0xFFC62828);
+    }
+  }
+
+  Color _categoryBgColor(String colorName) {
+    switch (colorName) {
+      case 'yellow':
+        return const Color(0xFFFFF3CD); // light yellow
+      case 'coral':
+        return const Color(0xFFFFE0D6); // light coral
+      case 'pink':
+        return const Color(0xFFFFD6E8); // light pink
+      default:
+        return const Color(0xFFFFE0D6);
     }
   }
 
@@ -69,14 +83,13 @@ class LearningScreen extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: _categoryColor(article.categoryColor)
-                              .withValues(alpha: 0.15),
+                          color: _categoryBgColor(article.categoryColor),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           article.category,
                           style: AppTypography.bodySmall.copyWith(
-                            color: _categoryColor(article.categoryColor),
+                            color: _categoryTextColor(article.categoryColor),
                             fontWeight: FontWeight.w600,
                             fontSize: 11,
                           ),
