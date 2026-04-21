@@ -117,7 +117,7 @@ class LearningScreen extends ConsumerWidget {
                         },
                       ),
 
-                      // Bottom gradient overlay
+                      // Bottom gradient overlay — deeper for readability
                       Positioned(
                         left: 0,
                         right: 0,
@@ -128,10 +128,11 @@ class LearningScreen extends ConsumerWidget {
                             gradient: LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
-                              stops: const [0.4, 1.0],
+                              stops: const [0.25, 0.6, 1.0],
                               colors: [
                                 Colors.transparent,
-                                Colors.black.withValues(alpha: 0.7),
+                                Colors.black.withValues(alpha: 0.3),
+                                Colors.black.withValues(alpha: 0.85),
                               ],
                             ),
                           ),
@@ -146,7 +147,7 @@ class LearningScreen extends ConsumerWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.4),
+                            color: Colors.black.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -160,32 +161,48 @@ class LearningScreen extends ConsumerWidget {
                         ),
                       ),
 
-                      // Title + read time (bottom-left)
+                      // Title + read time (bottom) with background frame
                       Positioned(
-                        left: 10,
-                        right: 10,
-                        bottom: 10,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              article.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.titleSmall.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(12),
+                              bottomRight: Radius.circular(12),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              article.readTime,
-                              style: AppTypography.caption.copyWith(
-                                color: Colors.white.withValues(alpha: 0.7),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                article.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.titleSmall.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black.withValues(alpha: 0.5),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                article.readTime,
+                                style: AppTypography.caption.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
