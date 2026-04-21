@@ -7,6 +7,7 @@ class Article {
   final String source;
   final String content; // Full translated content in markdown-ish format
   final String readTime;
+  final String sourceUrl; // 原文連結
 
   const Article({
     required this.id,
@@ -17,6 +18,7 @@ class Article {
     required this.source,
     required this.content,
     required this.readTime,
+    required this.sourceUrl,
   });
 }
 
@@ -29,6 +31,7 @@ const articles = <Article>[
     categoryColor: 'yellow',
     source: 'The Art of Manliness',
     readTime: '8 分鐘',
+    sourceUrl: 'https://www.artofmanliness.com/people/social-skills/how-to-make-small-talk/',
     content: '''
 ## 為什麼閒聊很重要？
 
@@ -93,6 +96,7 @@ const articles = <Article>[
     categoryColor: 'coral',
     source: 'Psychology Today',
     readTime: '6 分鐘',
+    sourceUrl: 'https://www.psychologytoday.com/us/blog/conversational-intelligence/201410/the-art-of-the-deep-conversation',
     content: '''
 ## 為什麼大多數對話都很淺？
 
@@ -155,6 +159,7 @@ const articles = <Article>[
     categoryColor: 'pink',
     source: 'Practical Psychology',
     readTime: '7 分鐘',
+    sourceUrl: 'https://www.practicalpie.com/how-to-be-funny/',
     content: '''
 ## 幽默感可以學嗎？
 
