@@ -148,17 +148,9 @@ class LearningScreen extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      // Source + read time
+                      // Read time
                       Row(
                         children: [
-                          Text(
-                            article.source,
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.glassTextHint,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const Spacer(),
                           Icon(
                             Icons.schedule,
                             size: 13,

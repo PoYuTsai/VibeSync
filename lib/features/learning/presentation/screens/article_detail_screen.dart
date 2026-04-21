@@ -1,7 +1,6 @@
 // lib/features/learning/presentation/screens/article_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -73,13 +72,6 @@ class ArticleDetailScreen extends StatelessWidget {
                       color: AppColors.onBackgroundSecondary,
                     ),
                   ),
-                  const Spacer(),
-                  Text(
-                    article.source,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -89,28 +81,6 @@ class ArticleDetailScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: _parseContent(article.content),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 原文連結
-              GestureDetector(
-                onTap: () => launchUrl(
-                  Uri.parse(article.sourceUrl),
-                  mode: LaunchMode.externalApplication,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.open_in_new, size: 14, color: AppColors.onBackgroundSecondary),
-                    const SizedBox(width: 4),
-                    Text(
-                      '閱讀原文（${article.source}）',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.onBackgroundSecondary,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ],
                 ),
               ),
               const SizedBox(height: 24),
