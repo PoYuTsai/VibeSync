@@ -9,6 +9,7 @@ import '../shared/widgets/warm_theme_widgets.dart';
 import '../features/conversation/data/providers/conversation_providers.dart';
 import '../features/conversation/presentation/screens/home_screen.dart';
 import '../features/report/presentation/screens/my_report_screen.dart';
+import '../features/learning/presentation/screens/learning_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -43,6 +44,7 @@ class _MainShellState extends State<MainShell> {
               onNewConversation: () => _showNewConversationOptions(context),
             ),
             const MyReportScreen(),
+            const LearningScreen(),
           ],
         ),
         floatingActionButton: _currentIndex == 0
@@ -78,7 +80,9 @@ class _MainShellState extends State<MainShell> {
           children: [
             _buildTab(0, Icons.home_outlined, Icons.home, '首頁'),
             _buildTab(
-                1, Icons.bar_chart_outlined, Icons.bar_chart, '我的報告'),
+                1, Icons.bar_chart_outlined, Icons.bar_chart, '報告'),
+            _buildTab(
+                2, Icons.menu_book_outlined, Icons.menu_book, '學習'),
           ],
         ),
       ),
