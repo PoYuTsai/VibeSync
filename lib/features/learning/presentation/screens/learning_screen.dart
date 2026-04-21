@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
+import '../../data/providers/learning_providers.dart';
 
 class LearningScreen extends ConsumerWidget {
   const LearningScreen({super.key});
@@ -40,6 +42,9 @@ class LearningScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final subscription = ref.watch(subscriptionProvider);
+    final readService = ref.watch(articleReadServiceProvider);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
@@ -68,11 +73,39 @@ class LearningScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 24),
 
+        // Free user daily limit notice
+        if (subscription.isFreeUser)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline,
+                    size: 14, color: AppColors.onBackgroundSecondary),
+                const SizedBox(width: 6),
+                Text(
+                  '今日剩餘 ${readService.remainingReads} 篇免費閱讀',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // Article cards
         ...articles.map((article) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: GestureDetector(
-                onTap: () => context.push('/article/${article.id}'),
+                onTap: () {
+                  if (subscription.isFreeUser) {
+                    if (!readService.canRead()) {
+                      context.push('/paywall');
+                      return;
+                    }
+                    readService.recordRead();
+                  }
+                  context.push('/article/${article.id}');
+                },
                 child: GlassmorphicContainer(
                   padding: const EdgeInsets.all(16),
                   child: Column(
