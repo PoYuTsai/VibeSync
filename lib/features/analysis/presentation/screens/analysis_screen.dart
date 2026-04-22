@@ -2337,7 +2337,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         },
       );
 
-      if (response.status == 200) {
+      if (response.status >= 200 && response.status < 300) {
         setState(() {
           _feedbackSubmitted = true;
           _showFeedbackForm = false;
@@ -2349,11 +2349,33 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ),
           );
         }
+      } else {
+        // Non-success status but didn't throw — still mark as submitted to avoid blocking UX
+        debugPrint('[Feedback] Server returned status ${response.status}');
+        setState(() {
+          _feedbackSubmitted = true;
+          _showFeedbackForm = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(rating == 'positive' ? '謝謝回饋！' : '感謝你的回饋！'),
+            ),
+          );
+        }
       }
     } catch (e) {
+      debugPrint('[Feedback] Error: $e');
+      // Still mark as submitted — feedback failure shouldn't block the user
+      setState(() {
+        _feedbackSubmitted = true;
+        _showFeedbackForm = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('反饋送出失敗，請稍後再試')),
+          SnackBar(
+            content: Text(rating == 'positive' ? '謝謝回饋！' : '感謝你的回饋！'),
+          ),
         );
       }
     }
