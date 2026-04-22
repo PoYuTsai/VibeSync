@@ -168,13 +168,7 @@ class HomeContent extends ConsumerWidget {
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(26),
-                  onTap: () {
-                    if (onNewConversation != null) {
-                      onNewConversation!();
-                    } else {
-                      context.push('/new');
-                    }
-                  },
+                  onTap: onNewConversation ?? () => context.push('/new'),
                   child: Center(
                     child: Text(
                       '立即開始',

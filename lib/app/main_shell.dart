@@ -37,15 +37,17 @@ class _MainShellState extends State<MainShell> {
             ),
           ],
         ),
-        body: IndexedStack(
-          index: _currentIndex,
-          children: [
-            HomeContent(
-              onNewConversation: () => _showNewConversationOptions(context),
-            ),
-            const MyReportScreen(),
-            const LearningScreen(),
-          ],
+        body: Builder(
+          builder: (shellContext) => IndexedStack(
+            index: _currentIndex,
+            children: [
+              HomeContent(
+                onNewConversation: () => _showNewConversationOptions(shellContext),
+              ),
+              const MyReportScreen(),
+              const LearningScreen(),
+            ],
+          ),
         ),
         floatingActionButton: _currentIndex == 0
             ? _HomeFab()
