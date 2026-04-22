@@ -89,11 +89,10 @@ class LearningScreen extends ConsumerWidget {
               return GestureDetector(
                 onTap: () {
                   if (subscription.isFreeUser) {
-                    if (!readService.canRead()) {
+                    if (!readService.canReadArticle(article.id)) {
                       context.push('/paywall');
                       return;
                     }
-                    readService.recordRead();
                   }
                   context.push('/article/${article.id}');
                 },
@@ -188,7 +187,8 @@ class LearningScreen extends ConsumerWidget {
                                   fontWeight: FontWeight.bold,
                                   shadows: [
                                     Shadow(
-                                      color: Colors.black.withValues(alpha: 0.5),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.5),
                                       blurRadius: 4,
                                     ),
                                   ],

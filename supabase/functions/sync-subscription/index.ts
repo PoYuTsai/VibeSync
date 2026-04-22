@@ -45,7 +45,9 @@ function normalizeTier(value: unknown): "free" | "starter" | "essential" {
   return "free";
 }
 
-function tierFromProductId(productId: unknown): "free" | "starter" | "essential" {
+function tierFromProductId(
+  productId: unknown,
+): "free" | "starter" | "essential" {
   if (typeof productId !== "string") return "free";
   const normalized = productId.trim().toLowerCase();
   if (normalized.includes("essential")) return "essential";
@@ -82,10 +84,10 @@ function isActiveAt(expiresDate: unknown): boolean {
   return parsed.getTime() > Date.now();
 }
 
-function collectTiersFromRevenueCatPayload(
+function collectActiveProductIdsFromRevenueCatPayload(
   subscriber: Record<string, unknown>,
-): "free" | "starter" | "essential" {
-  const activeTiers: Array<"free" | "starter" | "essential"> = [];
+): string[] {
+  const activeProductIds: string[] = [];
 
   const entitlements = isPlainObject(subscriber.entitlements)
     ? subscriber.entitlements
@@ -93,7 +95,9 @@ function collectTiersFromRevenueCatPayload(
   for (const value of Object.values(entitlements)) {
     if (!isPlainObject(value)) continue;
     if (!isActiveAt(value.expires_date)) continue;
-    activeTiers.push(tierFromProductId(value.product_identifier));
+    if (typeof value.product_identifier !== "string") continue;
+    const productId = value.product_identifier.trim();
+    if (productId) activeProductIds.push(productId);
   }
 
   const subscriptions = isPlainObject(subscriber.subscriptions)
@@ -102,10 +106,22 @@ function collectTiersFromRevenueCatPayload(
   for (const [productId, value] of Object.entries(subscriptions)) {
     if (!isPlainObject(value)) continue;
     if (!isActiveAt(value.expires_date)) continue;
-    activeTiers.push(tierFromProductId(productId));
+    if (productId.trim()) activeProductIds.push(productId.trim());
   }
 
-  return highestTier(activeTiers);
+  return Array.from(new Set(activeProductIds));
+}
+
+function highestActiveProductId(productIds: string[]): string | null {
+  const ranked = productIds
+    .map((productId) => ({
+      productId,
+      tier: tierFromProductId(productId),
+    }))
+    .filter((entry) => entry.tier !== "free")
+    .sort((a, b) => tierRank(b.tier) - tierRank(a.tier));
+
+  return ranked[0]?.productId ?? null;
 }
 
 serve(async (req) => {
@@ -151,7 +167,9 @@ serve(async (req) => {
     }
 
     const revenueCatResponse = await fetch(
-      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.id)}`,
+      `https://api.revenuecat.com/v1/subscribers/${
+        encodeURIComponent(user.id)
+      }`,
       {
         headers: {
           Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
@@ -186,7 +204,9 @@ serve(async (req) => {
 
     const { data: existingSub, error: existingError } = await supabase
       .from("subscriptions")
-      .select("user_id, tier, monthly_messages_used, daily_messages_used, expires_at")
+      .select(
+        "user_id, tier, monthly_messages_used, daily_messages_used, expires_at",
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -196,19 +216,40 @@ serve(async (req) => {
     }
 
     const previousTier = normalizeTier(existingSub?.tier);
-    const revenueCatTier = collectTiersFromRevenueCatPayload(subscriber);
+    const activeProductIds = collectActiveProductIdsFromRevenueCatPayload(
+      subscriber,
+    );
+    const revenueCatTier = highestTier(activeProductIds.map(tierFromProductId));
+    const revenueCatProductId = highestActiveProductId(activeProductIds);
     let finalTier = revenueCatTier;
+    let tierPreservedReason: string | null = null;
 
     // App Store same-group downgrades can be scheduled for the next renewal.
     // During that window we should keep the already-granted higher tier until
     // RevenueCat/Apple finalize the renewal and our subscription row changes.
     if (
       revenueCatTier !== "free" &&
-      expectedTier === previousTier &&
       tierRank(previousTier) > tierRank(revenueCatTier)
     ) {
       finalTier = previousTier;
+      tierPreservedReason = "scheduled_paid_downgrade";
     }
+
+    // Client-initiated refreshes can briefly see an empty RevenueCat subscriber
+    // before aliases / entitlements settle. Do not let that transient free
+    // snapshot erase an already-paid DB tier; true expiration / billing issues
+    // are owned by RevenueCat webhook events.
+    if (
+      revenueCatTier === "free" &&
+      tierRank(previousTier) > tierRank("free")
+    ) {
+      finalTier = previousTier;
+      tierPreservedReason = "paid_tier_free_snapshot_guard";
+    }
+
+    const finalActiveProductId = finalTier === revenueCatTier
+      ? revenueCatProductId
+      : null;
 
     const limits = TIER_LIMITS[finalTier] ?? TIER_LIMITS.free;
     // Keep usage counters intact across tier sync / restore. Upgrading should
@@ -259,8 +300,10 @@ serve(async (req) => {
       tier: finalTier,
       previousTier,
       revenueCatTier,
+      activeProductId: finalActiveProductId,
       expectedTier,
       tierConfirmedByRevenueCat: revenueCatTier === finalTier,
+      tierPreservedReason,
       monthlyMessagesUsed: syncedRow?.monthly_messages_used ?? 0,
       dailyMessagesUsed: syncedRow?.daily_messages_used ?? 0,
       expiresAt: syncedRow?.expires_at ?? existingSub?.expires_at ?? null,

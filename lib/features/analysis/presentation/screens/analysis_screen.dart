@@ -9,7 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -2198,15 +2197,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     };
   }
 
-  int _calculateMaxReplyLength(Conversation conversation) {
-    final theirMessages = conversation.theirMessages;
-    if (theirMessages.isEmpty) return 50;
-
-    final lastTheirMessage = theirMessages.last;
-    return (lastTheirMessage.wordCount * AppConstants.goldenRuleMultiplier)
-        .round();
-  }
-
   /// 匯出對話紀錄 (含 AI 分析結果)
   void _exportConversation(Conversation conversation) {
     final buffer = StringBuffer();
@@ -2350,32 +2340,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           );
         }
       } else {
-        // Non-success status but didn't throw — still mark as submitted to avoid blocking UX
         debugPrint('[Feedback] Server returned status ${response.status}');
         setState(() {
-          _feedbackSubmitted = true;
-          _showFeedbackForm = false;
+          _feedbackSubmitted = false;
+          _showFeedbackForm = rating == 'negative';
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(rating == 'positive' ? '謝謝回饋！' : '感謝你的回饋！'),
-            ),
+            const SnackBar(content: Text('回饋暫時沒有送出，稍後可以再試一次。')),
           );
         }
       }
     } catch (e) {
       debugPrint('[Feedback] Error: $e');
-      // Still mark as submitted — feedback failure shouldn't block the user
       setState(() {
-        _feedbackSubmitted = true;
-        _showFeedbackForm = false;
+        _feedbackSubmitted = false;
+        _showFeedbackForm = rating == 'negative';
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(rating == 'positive' ? '謝謝回饋！' : '感謝你的回饋！'),
-          ),
+          const SnackBar(content: Text('回饋暫時沒有送出，稍後可以再試一次。')),
         );
       }
     }

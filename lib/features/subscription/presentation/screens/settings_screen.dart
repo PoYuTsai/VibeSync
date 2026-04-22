@@ -28,6 +28,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       'https://apps.apple.com/account/subscriptions';
 
   String _versionString = '';
+  bool _isRefreshingPendingDowngrade = false;
 
   @override
   void initState() {
@@ -287,16 +288,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () {
-                    _openManageSubscriptions();
-                  },
-                  child: Text(
-                    '取消降級 / 管理訂閱',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.primary,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        _openManageSubscriptions();
+                      },
+                      child: Text(
+                        '取消降級 / 管理訂閱',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
                     ),
-                  ),
+                    TextButton(
+                      onPressed: _isRefreshingPendingDowngrade
+                          ? null
+                          : _refreshAfterExternalDowngradeCancel,
+                      child: Text(
+                        _isRefreshingPendingDowngrade
+                            ? '同步中...'
+                            : '我已取消降級，更新狀態',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.glassTextPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -529,6 +549,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       if (!SupabaseService.isAuthenticated) {
         await UsageService.clearSnapshot();
+        if (!context.mounted) return;
         ref.invalidate(subscriptionProvider);
         ref.invalidate(conversationsProvider);
         ref.invalidate(usageDataProvider);
@@ -701,6 +722,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           content: Text('目前無法開啟 App Store 訂閱管理。'),
         ),
       );
+    }
+  }
+
+  Future<void> _refreshAfterExternalDowngradeCancel() async {
+    if (_isRefreshingPendingDowngrade) return;
+
+    setState(() => _isRefreshingPendingDowngrade = true);
+    try {
+      final didClear = await ref
+          .read(subscriptionProvider.notifier)
+          .clearPendingDowngradeMetadata();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            didClear ? '已重新同步訂閱狀態。' : 'App Store 仍顯示降級排程，請確認取消後稍後再試。',
+          ),
+          backgroundColor: didClear ? AppColors.success : null,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('同步失敗，請稍後再試。')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingPendingDowngrade = false);
+      }
     }
   }
 }

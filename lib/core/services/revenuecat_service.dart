@@ -208,6 +208,33 @@ class RevenueCatService {
     return SubscriptionTierHelper.free;
   }
 
+  /// Returns the best active product identifier for the current subscriber.
+  /// When multiple products are present during App Store transitions, prefer
+  /// the highest tier so the UI can distinguish monthly vs quarterly plans.
+  static String? getActiveProductIdFromCustomerInfo(
+      CustomerInfo? customerInfo) {
+    if (customerInfo == null) return null;
+
+    final productIds = <String>{
+      for (final entitlement in customerInfo.entitlements.active.values)
+        if (entitlement.productIdentifier.isNotEmpty)
+          entitlement.productIdentifier,
+      ...customerInfo.activeSubscriptions.where((id) => id.isNotEmpty),
+    }.toList();
+
+    if (productIds.isEmpty) return null;
+
+    productIds.sort((a, b) {
+      final aRank = SubscriptionTierHelper.rankOf(
+          SubscriptionTierHelper.tierFromProductId(a));
+      final bRank = SubscriptionTierHelper.rankOf(
+          SubscriptionTierHelper.tierFromProductId(b));
+      return bRank.compareTo(aRank);
+    });
+
+    return productIds.first;
+  }
+
   /// Returns the best-known premium expiration date from RevenueCat.
   /// Useful for scheduled downgrades that should only take effect on renewal.
   static DateTime? getPremiumExpirationDate(CustomerInfo? customerInfo) {

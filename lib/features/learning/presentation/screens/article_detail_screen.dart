@@ -1,23 +1,68 @@
 // lib/features/learning/presentation/screens/article_detail_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
+import '../../data/providers/learning_providers.dart';
 
-class ArticleDetailScreen extends StatelessWidget {
+class ArticleDetailScreen extends ConsumerStatefulWidget {
   final String articleId;
 
   const ArticleDetailScreen({super.key, required this.articleId});
 
+  @override
+  ConsumerState<ArticleDetailScreen> createState() =>
+      _ArticleDetailScreenState();
+}
+
+class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
+  bool _readGateChecked = false;
+
   Article? _findArticle() {
     try {
-      return articles.firstWhere((a) => a.id == articleId);
+      return articles.firstWhere((a) => a.id == widget.articleId);
     } catch (_) {
       return null;
     }
+  }
+
+  void _scheduleReadGate(SubscriptionState subscription) {
+    if (_readGateChecked || subscription.isLoading) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyReadGate());
+  }
+
+  void _applyReadGate() {
+    if (!mounted || _readGateChecked) return;
+
+    final subscription = ref.read(subscriptionProvider);
+    if (subscription.isLoading) return;
+
+    final article = _findArticle();
+    if (article == null) {
+      setState(() => _readGateChecked = true);
+      return;
+    }
+
+    if (!subscription.isFreeUser) {
+      setState(() => _readGateChecked = true);
+      return;
+    }
+
+    final readService = ref.read(articleReadServiceProvider);
+    if (!readService.canReadArticle(widget.articleId)) {
+      setState(() => _readGateChecked = true);
+      context.go('/paywall');
+      return;
+    }
+
+    readService.recordReadArticle(widget.articleId);
+    ref.invalidate(articleReadServiceProvider);
+    setState(() => _readGateChecked = true);
   }
 
   @override
@@ -25,6 +70,18 @@ class ArticleDetailScreen extends StatelessWidget {
     final article = _findArticle();
     if (article == null) {
       return const Scaffold(body: Center(child: Text('Article not found')));
+    }
+    final subscription = ref.watch(subscriptionProvider);
+    _scheduleReadGate(subscription);
+
+    if (subscription.isLoading ||
+        (subscription.isFreeUser && !_readGateChecked)) {
+      return const GradientBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      );
     }
 
     return GradientBackground(
@@ -52,7 +109,8 @@ class ArticleDetailScreen extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.ctaStart.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
@@ -203,7 +261,8 @@ class ArticleDetailScreen extends StatelessWidget {
     // Check/cross prefix colouring
     Widget? leadingIcon;
     if (text.startsWith('\u2705 ') || text.startsWith('\u2705')) {
-      leadingIcon = const Icon(Icons.check_circle, color: AppColors.success, size: 16);
+      leadingIcon =
+          const Icon(Icons.check_circle, color: AppColors.success, size: 16);
     } else if (text.startsWith('\u274C ') || text.startsWith('\u274C')) {
       leadingIcon = const Icon(Icons.cancel, color: AppColors.error, size: 16);
     }

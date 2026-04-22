@@ -22,8 +22,10 @@ class SubscriptionState {
   final String? error;
   final Offerings? offerings;
   final String? pendingDowngradeToTier;
+  final String? pendingDowngradeProductId;
   final DateTime? pendingDowngradeEffectiveAt;
   final DateTime? renewsAt;
+  final String? activeProductId;
 
   const SubscriptionState({
     this.tier = SubscriptionTierHelper.free,
@@ -35,8 +37,10 @@ class SubscriptionState {
     this.error,
     this.offerings,
     this.pendingDowngradeToTier,
+    this.pendingDowngradeProductId,
     this.pendingDowngradeEffectiveAt,
     this.renewsAt,
+    this.activeProductId,
   });
 
   bool get isFreeUser => tier == SubscriptionTierHelper.free;
@@ -76,20 +80,17 @@ class SubscriptionState {
     if (packages == null || packages.isEmpty) return null;
 
     return packages.cast<Package?>().firstWhere(
-          (p) {
-            final id = p?.storeProduct.identifier ?? '';
-            return id.contains(tierKeyword) && id.contains(periodKeyword);
-          },
-          orElse: () => null,
-        );
+      (p) {
+        final id = (p?.storeProduct.identifier ?? '').toLowerCase();
+        return id.contains(tierKeyword) && id.contains(periodKeyword);
+      },
+      orElse: () => null,
+    );
   }
 
-  Package? get starterMonthlyPackage =>
-      _findPackage('starter', 'monthly');
-  Package? get starterQuarterlyPackage =>
-      _findPackage('starter', 'quarterly');
-  Package? get essentialMonthlyPackage =>
-      _findPackage('essential', 'monthly');
+  Package? get starterMonthlyPackage => _findPackage('starter', 'monthly');
+  Package? get starterQuarterlyPackage => _findPackage('starter', 'quarterly');
+  Package? get essentialMonthlyPackage => _findPackage('essential', 'monthly');
   Package? get essentialQuarterlyPackage =>
       _findPackage('essential', 'quarterly');
 
@@ -103,8 +104,10 @@ class SubscriptionState {
     String? error,
     Offerings? offerings,
     Object? pendingDowngradeToTier = _subscriptionStateUnset,
+    Object? pendingDowngradeProductId = _subscriptionStateUnset,
     Object? pendingDowngradeEffectiveAt = _subscriptionStateUnset,
     Object? renewsAt = _subscriptionStateUnset,
+    Object? activeProductId = _subscriptionStateUnset,
   }) {
     return SubscriptionState(
       tier: tier ?? this.tier,
@@ -118,6 +121,10 @@ class SubscriptionState {
       pendingDowngradeToTier: pendingDowngradeToTier == _subscriptionStateUnset
           ? this.pendingDowngradeToTier
           : pendingDowngradeToTier as String?,
+      pendingDowngradeProductId:
+          pendingDowngradeProductId == _subscriptionStateUnset
+              ? this.pendingDowngradeProductId
+              : pendingDowngradeProductId as String?,
       pendingDowngradeEffectiveAt:
           pendingDowngradeEffectiveAt == _subscriptionStateUnset
               ? this.pendingDowngradeEffectiveAt
@@ -125,6 +132,9 @@ class SubscriptionState {
       renewsAt: renewsAt == _subscriptionStateUnset
           ? this.renewsAt
           : renewsAt as DateTime?,
+      activeProductId: activeProductId == _subscriptionStateUnset
+          ? this.activeProductId
+          : activeProductId as String?,
     );
   }
 }
@@ -156,11 +166,13 @@ class SubscriptionPurchaseResult {
 class _PendingDowngrade {
   final String fromTier;
   final String toTier;
+  final String? toProductId;
   final DateTime effectiveAt;
 
   const _PendingDowngrade({
     required this.fromTier,
     required this.toTier,
+    this.toProductId,
     required this.effectiveAt,
   });
 }
@@ -169,6 +181,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   static const _pendingDowngradeUserIdKey = 'pending_downgrade_user_id';
   static const _pendingDowngradeFromTierKey = 'pending_downgrade_from_tier';
   static const _pendingDowngradeToTierKey = 'pending_downgrade_to_tier';
+  static const _pendingDowngradeToProductIdKey =
+      'pending_downgrade_to_product_id';
   static const _pendingDowngradeEffectiveAtKey =
       'pending_downgrade_effective_at';
 
@@ -193,6 +207,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     final toTier = SubscriptionTierHelper.normalizeTier(
       box.get(_pendingDowngradeToTierKey) as String?,
     );
+    final toProductId = box.get(_pendingDowngradeToProductIdKey) as String?;
     final effectiveAtRaw = box.get(_pendingDowngradeEffectiveAtKey) as String?;
 
     if (effectiveAtRaw == null || effectiveAtRaw.isEmpty) {
@@ -208,6 +223,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     return _PendingDowngrade(
       fromTier: fromTier,
       toTier: toTier,
+      toProductId: toProductId?.trim().isEmpty == true ? null : toProductId,
       effectiveAt: effectiveAt,
     );
   }
@@ -220,6 +236,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   void _storePendingDowngrade({
     required String fromTier,
     required String toTier,
+    required String toProductId,
     required DateTime effectiveAt,
   }) {
     final box = StorageService.settingsBox;
@@ -229,6 +246,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
     box.put(_pendingDowngradeFromTierKey, fromTier);
     box.put(_pendingDowngradeToTierKey, toTier);
+    box.put(_pendingDowngradeToProductIdKey, toProductId);
     box.put(_pendingDowngradeEffectiveAtKey, effectiveAt.toIso8601String());
   }
 
@@ -237,6 +255,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     box.delete(_pendingDowngradeUserIdKey);
     box.delete(_pendingDowngradeFromTierKey);
     box.delete(_pendingDowngradeToTierKey);
+    box.delete(_pendingDowngradeToProductIdKey);
     box.delete(_pendingDowngradeEffectiveAtKey);
   }
 
@@ -246,6 +265,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     if (pending == null) {
       return nextState.copyWith(
         pendingDowngradeToTier: null,
+        pendingDowngradeProductId: null,
         pendingDowngradeEffectiveAt: null,
       );
     }
@@ -255,6 +275,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       _clearPendingDowngrade();
       return nextState.copyWith(
         pendingDowngradeToTier: null,
+        pendingDowngradeProductId: null,
         pendingDowngradeEffectiveAt: null,
       );
     }
@@ -263,12 +284,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       _clearPendingDowngrade();
       return nextState.copyWith(
         pendingDowngradeToTier: null,
+        pendingDowngradeProductId: null,
         pendingDowngradeEffectiveAt: null,
       );
     }
 
     return nextState.copyWith(
       pendingDowngradeToTier: pending.toTier,
+      pendingDowngradeProductId: pending.toProductId,
       pendingDowngradeEffectiveAt: pending.effectiveAt,
     );
   }
@@ -278,6 +301,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       return DateTime.tryParse(value);
     }
     return null;
+  }
+
+  String? _cleanProductId(String? productId) {
+    final trimmed = productId?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
   }
 
   DateTime? _resolveDowngradeEffectiveAt({
@@ -324,6 +355,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     return resolvedTier;
   }
 
+  bool _isScheduledPaidDowngradeSnapshot({
+    required String currentTier,
+    required String revenueCatTier,
+  }) {
+    return state.hasPendingDowngrade &&
+        revenueCatTier != SubscriptionTierHelper.free &&
+        SubscriptionTierHelper.isDowngrade(
+          fromTier: currentTier,
+          toTier: revenueCatTier,
+        );
+  }
+
   int _readInt(dynamic value, {int fallback = 0}) {
     if (value is num) {
       return value.round();
@@ -359,6 +402,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             final monthlyUsed = _readInt(data['monthlyMessagesUsed']);
             final dailyUsed = _readInt(data['dailyMessagesUsed']);
             final renewsAt = _parseDateTime(data['expiresAt']);
+            final activeProductId = _cleanProductId(
+              data['activeProductId'] as String?,
+            );
 
             state = _applyPendingDowngradeMetadata(state.copyWith(
               tier: tier,
@@ -367,6 +413,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               monthlyMessagesUsed: monthlyUsed,
               dailyMessagesUsed: dailyUsed,
               renewsAt: renewsAt ?? state.renewsAt,
+              activeProductId: tier == SubscriptionTierHelper.free
+                  ? null
+                  : activeProductId ?? state.activeProductId,
               error: null,
             ));
             UsageService.syncSubscriptionSnapshot(
@@ -582,8 +631,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   Future<SubscriptionPurchaseResult> purchase(Package package) async {
+    final packageProductId = package.storeProduct.identifier.trim();
     final requestedTier = SubscriptionTierHelper.tierFromProductId(
-      package.storeProduct.identifier,
+      packageProductId,
     );
     final previousTier = state.tier;
     final requestedDowngrade = SubscriptionTierHelper.isDowngrade(
@@ -619,6 +669,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           _storePendingDowngrade(
             fromTier: previousTier,
             toTier: requestedTier,
+            toProductId: packageProductId,
             effectiveAt: effectiveAt,
           );
         }
@@ -652,6 +703,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         package: package,
         customerInfo: customerInfo,
       );
+      final purchasedProductId = _cleanProductId(
+            RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
+          ) ??
+          packageProductId;
       final syncedTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier: resolvedTier,
         resetUsage: previousTier != resolvedTier &&
@@ -664,6 +719,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        activeProductId:
+            tier == SubscriptionTierHelper.free ? null : purchasedProductId,
         isLoading: false,
         error: null,
       ));
@@ -736,30 +793,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     );
   }
 
-  Future<bool> _updateSupabaseTier(
-    String tier, {
-    bool resetUsage = false,
-  }) async {
-    final user = SupabaseService.currentUser;
-    if (user == null) {
-      debugPrint('[_updateSupabaseTier] ERROR: No user logged in');
-      return false;
-    }
-
-    debugPrint(
-      '[_updateSupabaseTier] Syncing tier "$tier" for user ${user.id}',
-    );
-    final syncedTier = await _syncSubscriptionViaEdgeFunction(
-      expectedTier: tier,
-      resetUsage: resetUsage,
-    );
-    final success = syncedTier != null;
-    debugPrint(
-      '[_updateSupabaseTier] ${success ? 'SUCCESS' : 'FAILED'}: syncedTier=${syncedTier ?? 'null'}',
-    );
-    return success;
-  }
-
   Future<bool> restorePurchases() async {
     try {
       state = state.copyWith(isLoading: true, error: null);
@@ -767,14 +800,32 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final customerInfo = await RevenueCatService.restorePurchases();
       final restoredTier =
           RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      final restoredProductId = _cleanProductId(
+        RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
+      );
       final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
       final previousTier = state.tier;
+      final isScheduledDowngradeSnapshot = _isScheduledPaidDowngradeSnapshot(
+        currentTier: previousTier,
+        revenueCatTier: restoredTier,
+      );
+      final shouldPreservePaidFreeSnapshot =
+          previousTier != SubscriptionTierHelper.free &&
+              restoredTier == SubscriptionTierHelper.free;
       final syncedTier = await _syncSubscriptionViaEdgeFunction(
-        expectedTier: restoredTier,
-        resetUsage: previousTier != restoredTier &&
+        expectedTier:
+            isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
+                ? previousTier
+                : restoredTier,
+        resetUsage: !isScheduledDowngradeSnapshot &&
+            !shouldPreservePaidFreeSnapshot &&
+            previousTier != restoredTier &&
             restoredTier != SubscriptionTierHelper.free,
       );
-      final tier = syncedTier ?? restoredTier;
+      final tier =
+          isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
+              ? previousTier
+              : syncedTier ?? restoredTier;
       final limits = SubscriptionTierHelper.limitsFor(tier);
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
@@ -782,6 +833,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
         renewsAt: renewsAt ?? state.renewsAt,
+        activeProductId: tier == SubscriptionTierHelper.free
+            ? null
+            : isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
+                ? state.activeProductId
+                : restoredProductId ?? state.activeProductId,
         isLoading: false,
         error: null,
       ));
@@ -803,7 +859,29 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       if (customerInfo == null) return;
 
       final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      final activeProductId = _cleanProductId(
+        RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
+      );
       final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
+
+      if (_isScheduledPaidDowngradeSnapshot(
+        currentTier: state.tier,
+        revenueCatTier: rcTier,
+      )) {
+        debugPrint(
+          'Scheduled downgrade snapshot ignored: local=${state.tier}, RevenueCat=$rcTier',
+        );
+        await _syncSubscriptionViaEdgeFunction(
+          expectedTier: state.tier,
+          resetUsage: false,
+        );
+        if (renewsAt != null && renewsAt != state.renewsAt) {
+          state = _applyPendingDowngradeMetadata(state.copyWith(
+            renewsAt: renewsAt,
+          ));
+        }
+        return;
+      }
 
       if (state.isPremium && rcTier == SubscriptionTierHelper.free) {
         debugPrint(
@@ -828,12 +906,66 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           monthlyLimit: limits.monthly,
           dailyLimit: limits.daily,
           renewsAt: renewsAt ?? state.renewsAt,
+          activeProductId: tier == SubscriptionTierHelper.free
+              ? null
+              : activeProductId ?? state.activeProductId,
         ));
         _syncUsageCache(tier, limits);
+      } else {
+        final shouldRefreshMetadata = (activeProductId != null &&
+                activeProductId != state.activeProductId) ||
+            (renewsAt != null && renewsAt != state.renewsAt);
+        if (shouldRefreshMetadata) {
+          state = _applyPendingDowngradeMetadata(state.copyWith(
+            activeProductId: activeProductId ?? state.activeProductId,
+            renewsAt: renewsAt ?? state.renewsAt,
+          ));
+        }
       }
     } catch (e) {
       debugPrint('Sync with RevenueCat error: $e');
     }
+  }
+
+  Future<bool> clearPendingDowngradeMetadata() async {
+    if (!state.hasPendingDowngrade) {
+      await syncWithRevenueCat();
+      return true;
+    }
+
+    final currentTier = state.tier;
+    final customerInfo = await RevenueCatService.getCustomerInfo();
+    if (customerInfo == null) {
+      return false;
+    }
+
+    final revenueCatTier =
+        RevenueCatService.getTierFromCustomerInfo(customerInfo);
+    if (SubscriptionTierHelper.isDowngrade(
+      fromTier: currentTier,
+      toTier: revenueCatTier,
+    )) {
+      debugPrint(
+        'Pending downgrade not cleared: RevenueCat still reports $revenueCatTier while local is $currentTier',
+      );
+      return false;
+    }
+
+    final activeProductId = _cleanProductId(
+      RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
+    );
+    final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
+
+    _clearPendingDowngrade();
+    state = state.copyWith(
+      pendingDowngradeToTier: null,
+      pendingDowngradeProductId: null,
+      pendingDowngradeEffectiveAt: null,
+      activeProductId: activeProductId ?? state.activeProductId,
+      renewsAt: renewsAt ?? state.renewsAt,
+    );
+    await syncWithRevenueCat();
+    return true;
   }
 }
 

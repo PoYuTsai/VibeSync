@@ -27,7 +27,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   static const _manageSubscriptionsUrl =
       'https://apps.apple.com/account/subscriptions';
 
-  String _selectedOptionId = 'essential_quarterly';
+  String _selectedOptionId = 'essential_monthly';
   bool _isPurchasing = false;
 
   List<_PaywallOption> _buildOptions(SubscriptionState subscription) {
@@ -103,24 +103,93 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         .firstWhere((o) => o?.id == _selectedOptionId, orElse: () => null);
   }
 
+  _PaywallOption? _firstAvailableOption(List<_PaywallOption> options) {
+    return options
+        .cast<_PaywallOption?>()
+        .firstWhere((o) => o?.package != null, orElse: () => null);
+  }
+
+  _PaywallOption? _resolvedSelectedOption(List<_PaywallOption> options) {
+    final selected = _selectedOption(options);
+    if (selected == null || selected.package != null) {
+      return selected;
+    }
+    return _firstAvailableOption(options) ?? selected;
+  }
+
+  void _scheduleSelectedOptionFallback(_PaywallOption? resolved) {
+    if (resolved == null || resolved.id == _selectedOptionId) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || resolved.id == _selectedOptionId) return;
+      setState(() => _selectedOptionId = resolved.id);
+    });
+  }
+
+  String? _productIdForOption(_PaywallOption? option) {
+    final productId = option?.package?.storeProduct.identifier.trim();
+    if (productId == null || productId.isEmpty) return null;
+    return productId;
+  }
+
+  bool _sameProduct(String? a, String? b) {
+    return a != null && a.isNotEmpty && b != null && b.isNotEmpty && a == b;
+  }
+
+  bool _isCurrentOption(
+    SubscriptionState subscription,
+    _PaywallOption? option,
+  ) {
+    if (option == null) return false;
+
+    final optionProductId = _productIdForOption(option);
+    final activeProductId = subscription.activeProductId?.trim();
+    if (_sameProduct(activeProductId, optionProductId)) {
+      return true;
+    }
+    if (activeProductId != null && activeProductId.isNotEmpty) {
+      return false;
+    }
+
+    // Legacy fallback before RevenueCat product IDs have synced into state.
+    return subscription.tier == option.tier && option.id.endsWith('_monthly');
+  }
+
+  bool _pendingDowngradeMatchesOption(
+    SubscriptionState subscription,
+    _PaywallOption? option,
+  ) {
+    if (option == null || !subscription.hasPendingDowngrade) return false;
+
+    final pendingProductId = subscription.pendingDowngradeProductId?.trim();
+    final optionProductId = _productIdForOption(option);
+    if (_sameProduct(pendingProductId, optionProductId)) {
+      return true;
+    }
+    if (pendingProductId != null && pendingProductId.isNotEmpty) {
+      return false;
+    }
+
+    return subscription.pendingDowngradeToTier == option.tier;
+  }
+
   @override
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
     final options = _buildOptions(subscription);
-    final selected = _selectedOption(options);
+    final selected = _resolvedSelectedOption(options);
+    _scheduleSelectedOptionFallback(selected);
     final selectedPackage = selected?.package;
     final selectedTier = selected?.tier ?? SubscriptionTierHelper.essential;
     final offeringsReady = options.any((o) => o.package != null);
-    final isCurrentPlan = subscription.tier == selectedTier;
+    final isCurrentPlan = _isCurrentOption(subscription, selected);
     final isDowngrade = SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
       toTier: selectedTier,
     );
     final hasPendingDowngrade = subscription.hasPendingDowngrade;
-    final pendingDowngradeMatchesSelection = hasPendingDowngrade &&
-        subscription.pendingDowngradeToTier == selectedTier;
-    final canManagePendingDowngrade =
-        hasPendingDowngrade && subscription.tier == selectedTier;
+    final pendingDowngradeMatchesSelection =
+        _pendingDowngradeMatchesOption(subscription, selected);
+    final canManagePendingDowngrade = hasPendingDowngrade && isCurrentPlan;
 
     VoidCallback? primaryAction;
     if (_isPurchasing) {
@@ -219,7 +288,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       child: _buildOptionCard(
                         option: option,
                         isSelected: _selectedOptionId == option.id,
-                        isCurrentPlan: subscription.tier == option.tier,
+                        isCurrentPlan: _isCurrentOption(subscription, option),
                         onTap: () =>
                             setState(() => _selectedOptionId = option.id),
                       ),
@@ -229,6 +298,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   GradientButton(
                     text: _primaryButtonText(
                       subscription,
+                      selected,
                       selectedTier,
                       isCurrentPlan,
                       canManagePendingDowngrade,
@@ -242,6 +312,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   Text(
                     _primaryFootnote(
                       subscription,
+                      selected,
                       isCurrentPlan,
                       isDowngrade,
                       canManagePendingDowngrade,
@@ -304,6 +375,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   String _primaryButtonText(
     SubscriptionState subscription,
+    _PaywallOption? selected,
     String selectedTier,
     bool isCurrentPlan,
     bool canManagePendingDowngrade,
@@ -317,6 +389,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
     if (isCurrentPlan) return '目前方案';
     if (selectedPackage == null) return '正在同步方案資訊...';
+    if (subscription.tier == selectedTier) {
+      return '改用 ${_tierLabel(selectedTier)} ${selected?.period ?? ''}';
+    }
     if (SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
       toTier: selectedTier,
@@ -328,6 +403,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   String _primaryFootnote(
     SubscriptionState subscription,
+    _PaywallOption? selected,
     bool isCurrentPlan,
     bool isDowngrade,
     bool canManagePendingDowngrade,
@@ -342,6 +418,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '這個降級已經排程，將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效，今天不會再次扣款。';
     }
     if (isCurrentPlan) return '這是你目前正在使用的方案。';
+    if (selected != null && subscription.tier == selected.tier) {
+      return '同方案更改月繳 / 季繳會由 App Store 確認，實際生效時間與費用以 Apple 畫面為準。';
+    }
     if (isDowngrade) {
       return '降級會在下次續訂時生效；在那之前你仍可使用目前額度，今天不會再次扣款。';
     }
@@ -361,10 +440,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _buildComparisonRow('回覆風格', 'Free', '延展', 'Starter', '全部 5 種',
-              'Essential', '全部 5 種'),
           _buildComparisonRow(
-              'AI 模型', 'Free', 'Haiku', 'Starter', 'Sonnet', 'Essential', 'Sonnet'),
+              '回覆風格', 'Free', '延展', 'Starter', '全部 5 種', 'Essential', '全部 5 種'),
+          _buildComparisonRow('AI 模型', 'Free', 'Haiku', 'Starter', 'Sonnet',
+              'Essential', 'Sonnet'),
           _buildComparisonRow(
               '雷達圖', 'Free', '--', 'Starter', 'V', 'Essential', 'V'),
           _buildComparisonRow(
@@ -535,16 +614,31 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () {
-                    _openManageSubscriptions();
-                  },
-                  child: Text(
-                    '取消降級 / 管理訂閱',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.primary,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        _openManageSubscriptions();
+                      },
+                      child: Text(
+                        '取消降級 / 管理訂閱',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
                     ),
-                  ),
+                    TextButton(
+                      onPressed: _refreshAfterExternalDowngradeCancel,
+                      child: Text(
+                        '我已取消降級，更新狀態',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.glassTextPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -631,9 +725,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                           ],
                         )
                       : null,
-                  color: isRecommended
-                      ? Colors.white
-                      : AppColors.glassTextPrimary,
+                  color:
+                      isRecommended ? Colors.white : AppColors.glassTextPrimary,
                 ),
                 if (option.discount != null) ...[
                   const SizedBox(width: 6),
@@ -883,6 +976,33 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     } catch (error) {
       debugPrint('Paywall restore error: $error');
       _showSnackBar('恢復購買失敗，請稍後再試。');
+    } finally {
+      if (mounted) {
+        setState(() => _isPurchasing = false);
+      }
+    }
+  }
+
+  Future<void> _refreshAfterExternalDowngradeCancel() async {
+    if (_isPurchasing) return;
+
+    setState(() => _isPurchasing = true);
+    try {
+      final didClear = await ref
+          .read(subscriptionProvider.notifier)
+          .clearPendingDowngradeMetadata();
+      if (!mounted) return;
+      if (didClear) {
+        _showSnackBar(
+          '已重新同步訂閱狀態。',
+          backgroundColor: AppColors.success,
+        );
+      } else {
+        _showSnackBar('App Store 仍顯示降級排程，請確認取消後稍後再試。');
+      }
+    } catch (error) {
+      debugPrint('Paywall pending downgrade refresh error: $error');
+      _showSnackBar('同步失敗，請稍後再試。');
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
