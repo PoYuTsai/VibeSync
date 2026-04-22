@@ -953,10 +953,18 @@ class _ScreenshotRecognitionDialogState
                           width: 1.2,
                         ),
                       ),
-                      child: Scrollbar(
-                        controller: _messageScrollController,
-                        thumbVisibility: _editableMessages.length > 3,
-                        child: ListView.builder(
+                      child: ScrollbarTheme(
+                        data: ScrollbarThemeData(
+                          thumbColor: WidgetStatePropertyAll(
+                            AppColors.primary.withValues(alpha: 0.4),
+                          ),
+                          thickness: const WidgetStatePropertyAll(6),
+                          radius: const Radius.circular(3),
+                        ),
+                        child: Scrollbar(
+                          controller: _messageScrollController,
+                          thumbVisibility: _editableMessages.length > 2,
+                          child: ListView.builder(
                           controller: _messageScrollController,
                           padding: const EdgeInsets.all(8),
                           keyboardDismissBehavior:
@@ -968,6 +976,7 @@ class _ScreenshotRecognitionDialogState
                             index,
                           ),
                         ),
+                      ),
                       ),
                     ),
                     if (_editValidationMessage != null)
