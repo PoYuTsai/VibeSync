@@ -389,10 +389,10 @@ class _ScreenshotRecognitionDialogState
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
+        color: const Color(0xFFF0EAF5), // 淡紫色背景，與外層白色區分
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.18),
+          color: AppColors.primary.withValues(alpha: 0.15),
         ),
       ),
       child: Column(
