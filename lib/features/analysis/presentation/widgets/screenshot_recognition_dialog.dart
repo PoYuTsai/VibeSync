@@ -103,6 +103,37 @@ class _ScreenshotRecognitionDialogState
     });
   }
 
+  Future<void> _confirmRemoveMessage(int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.glassWhite,
+        title: Text(
+          '刪除這則訊息？',
+          style: TextStyle(color: AppColors.glassTextPrimary),
+        ),
+        content: Text(
+          '確定要刪除第 ${index + 1} 則訊息嗎？',
+          style: TextStyle(color: AppColors.glassTextSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _removeMessage(index);
+    }
+  }
+
   void _submit() {
     final sanitizedMessages = _sanitizedMessages();
     if (sanitizedMessages.isEmpty) {
@@ -380,7 +411,7 @@ class _ScreenshotRecognitionDialogState
               IconButton(
                 onPressed: _editableMessages.length <= 1
                     ? null
-                    : () => _removeMessage(index),
+                    : () => _confirmRemoveMessage(index),
                 icon: const Icon(
                   Icons.delete_outline_rounded,
                   size: 20,
