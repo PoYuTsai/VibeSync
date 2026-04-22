@@ -71,6 +71,28 @@ class SubscriptionState {
         );
   }
 
+  Package? _findPackage(String tierKeyword, String periodKeyword) {
+    final packages = offerings?.current?.availablePackages;
+    if (packages == null || packages.isEmpty) return null;
+
+    return packages.cast<Package?>().firstWhere(
+          (p) {
+            final id = p?.storeProduct.identifier ?? '';
+            return id.contains(tierKeyword) && id.contains(periodKeyword);
+          },
+          orElse: () => null,
+        );
+  }
+
+  Package? get starterMonthlyPackage =>
+      _findPackage('starter', 'monthly');
+  Package? get starterQuarterlyPackage =>
+      _findPackage('starter', 'quarterly');
+  Package? get essentialMonthlyPackage =>
+      _findPackage('essential', 'monthly');
+  Package? get essentialQuarterlyPackage =>
+      _findPackage('essential', 'quarterly');
+
   SubscriptionState copyWith({
     String? tier,
     int? monthlyMessagesUsed,

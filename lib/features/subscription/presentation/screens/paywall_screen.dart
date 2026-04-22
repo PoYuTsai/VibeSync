@@ -27,10 +27,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   static const _manageSubscriptionsUrl =
       'https://apps.apple.com/account/subscriptions';
 
-  String _selectedTier = SubscriptionTierHelper.essential;
+  String _selectedOptionId = 'essential_quarterly';
   bool _isPurchasing = false;
 
-  List<_PaywallPlanData> get _plans {
+  List<_PaywallOption> _buildOptions(SubscriptionState subscription) {
     final starterLimits = SubscriptionTierHelper.limitsFor(
       SubscriptionTierHelper.starter,
     );
@@ -38,52 +38,89 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       SubscriptionTierHelper.essential,
     );
     return [
-      _PaywallPlanData(
+      _PaywallOption(
+        id: 'starter_monthly',
         tier: SubscriptionTierHelper.starter,
         name: 'Starter',
+        period: '月繳',
         badge: '入門',
-        description: '每天分析 50 則，五種回覆風格全開',
-        pricePoints: [
-          '每月 ${starterLimits.monthly} 則，夠你聊好幾個對象',
-          '每日 ${starterLimits.daily} 則分析',
-          '五種風格：延展、共鳴、調情、幽默、冷讀',
-          'AI 幫你抓 needy 訊號，避免踩雷',
-          'AI 推薦最適合的那句',
+        discount: null,
+        package: subscription.starterMonthlyPackage,
+        highlights: [
+          '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
+          '五種風格全開 + Sonnet AI',
+          '雷達圖五維度剖析',
         ],
       ),
-      _PaywallPlanData(
+      _PaywallOption(
+        id: 'starter_quarterly',
+        tier: SubscriptionTierHelper.starter,
+        name: 'Starter',
+        period: '季繳',
+        badge: '入門',
+        discount: '省 27%',
+        package: subscription.starterQuarterlyPackage,
+        highlights: [
+          '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
+          '五種風格全開 + Sonnet AI',
+          '雷達圖五維度剖析',
+        ],
+      ),
+      _PaywallOption(
+        id: 'essential_monthly',
         tier: SubscriptionTierHelper.essential,
         name: 'Essential',
-        badge: '推薦方案',
-        description: '每天 150 則 + 對話健檢，重度用戶首選',
-        pricePoints: [
-          '每月 ${essentialLimits.monthly} 則，重度用戶首選',
-          '每日 ${essentialLimits.daily} 則分析',
-          '五種風格：延展、共鳴、調情、幽默、冷讀',
-          'AI 幫你抓 needy 訊號，避免踩雷',
-          'AI 推薦最適合的那句',
-          '對話健檢：找出你的溝通盲點',
+        period: '月繳',
+        badge: '推薦',
+        discount: null,
+        package: subscription.essentialMonthlyPackage,
+        highlights: [
+          '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
+          '五種風格全開 + Sonnet AI',
+          '雷達圖 + 對話健檢 + 訊息優化',
+        ],
+      ),
+      _PaywallOption(
+        id: 'essential_quarterly',
+        tier: SubscriptionTierHelper.essential,
+        name: 'Essential',
+        period: '季繳',
+        badge: '最划算',
+        discount: '省 36%',
+        package: subscription.essentialQuarterlyPackage,
+        highlights: [
+          '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
+          '五種風格全開 + Sonnet AI',
+          '雷達圖 + 對話健檢 + 訊息優化',
         ],
       ),
     ];
   }
 
+  _PaywallOption? _selectedOption(List<_PaywallOption> options) {
+    return options
+        .cast<_PaywallOption?>()
+        .firstWhere((o) => o?.id == _selectedOptionId, orElse: () => null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
-    final selectedPackage = _selectedPackageFor(subscription);
-    final offeringsReady = subscription.starterPackage != null ||
-        subscription.essentialPackage != null;
-    final isCurrentPlan = subscription.tier == _selectedTier;
+    final options = _buildOptions(subscription);
+    final selected = _selectedOption(options);
+    final selectedPackage = selected?.package;
+    final selectedTier = selected?.tier ?? SubscriptionTierHelper.essential;
+    final offeringsReady = options.any((o) => o.package != null);
+    final isCurrentPlan = subscription.tier == selectedTier;
     final isDowngrade = SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
-      toTier: _selectedTier,
+      toTier: selectedTier,
     );
     final hasPendingDowngrade = subscription.hasPendingDowngrade;
     final pendingDowngradeMatchesSelection = hasPendingDowngrade &&
-        subscription.pendingDowngradeToTier == _selectedTier;
+        subscription.pendingDowngradeToTier == selectedTier;
     final canManagePendingDowngrade =
-        hasPendingDowngrade && subscription.tier == _selectedTier;
+        hasPendingDowngrade && subscription.tier == selectedTier;
 
     VoidCallback? primaryAction;
     if (_isPurchasing) {
@@ -98,7 +135,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       primaryAction = null;
     } else {
       primaryAction = () {
-        _subscribe();
+        _subscribe(selectedPackage, selectedTier);
       };
     }
 
@@ -174,26 +211,29 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     ),
                   ],
                   const SizedBox(height: 20),
-                  ..._plans.map(
-                    (plan) => Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: _buildPlanCard(
-                        plan: plan,
-                        package: plan.tier == SubscriptionTierHelper.starter
-                            ? subscription.starterPackage
-                            : subscription.essentialPackage,
-                        isSelected: _selectedTier == plan.tier,
-                        isCurrentPlan: subscription.tier == plan.tier,
-                        onTap: () => setState(() => _selectedTier = plan.tier),
+                  _buildFeatureComparisonTable(),
+                  const SizedBox(height: 20),
+                  ...options.map(
+                    (option) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildOptionCard(
+                        option: option,
+                        isSelected: _selectedOptionId == option.id,
+                        isCurrentPlan: subscription.tier == option.tier,
+                        onTap: () =>
+                            setState(() => _selectedOptionId = option.id),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 8),
                   GradientButton(
                     text: _primaryButtonText(
                       subscription,
+                      selectedTier,
                       isCurrentPlan,
                       canManagePendingDowngrade,
                       pendingDowngradeMatchesSelection,
+                      selectedPackage,
                     ),
                     onPressed: primaryAction,
                     isLoading: _isPurchasing,
@@ -262,32 +302,28 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
-  Package? _selectedPackageFor(SubscriptionState subscription) {
-    return _selectedTier == SubscriptionTierHelper.essential
-        ? subscription.essentialPackage
-        : subscription.starterPackage;
-  }
-
   String _primaryButtonText(
     SubscriptionState subscription,
+    String selectedTier,
     bool isCurrentPlan,
     bool canManagePendingDowngrade,
     bool pendingDowngradeMatchesSelection,
+    Package? selectedPackage,
   ) {
     if (_isPurchasing) return '處理中...';
     if (canManagePendingDowngrade) return '取消降級 / 管理訂閱';
     if (pendingDowngradeMatchesSelection) {
-      return '已排程降級到 ${_tierLabel(_selectedTier)}';
+      return '已排程降級到 ${_tierLabel(selectedTier)}';
     }
     if (isCurrentPlan) return '目前方案';
-    if (_selectedPackageFor(subscription) == null) return '正在同步方案資訊...';
+    if (selectedPackage == null) return '正在同步方案資訊...';
     if (SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
-      toTier: _selectedTier,
+      toTier: selectedTier,
     )) {
-      return '安排降級到 ${_tierLabel(_selectedTier)}';
+      return '安排降級到 ${_tierLabel(selectedTier)}';
     }
-    return '升級到 ${_tierLabel(_selectedTier)}';
+    return '升級到 ${_tierLabel(selectedTier)}';
   }
 
   String _primaryFootnote(
@@ -310,6 +346,93 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '降級會在下次續訂時生效；在那之前你仍可使用目前額度，今天不會再次扣款。';
     }
     return '升級會立即生效並立刻刷新額度，Apple 也會自動按比例調整本期費用。';
+  }
+
+  Widget _buildFeatureComparisonTable() {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '功能比較',
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildComparisonRow('回覆風格', 'Free', '延展', 'Starter', '全部 5 種',
+              'Essential', '全部 5 種'),
+          _buildComparisonRow(
+              'AI 模型', 'Free', 'Haiku', 'Starter', 'Sonnet', 'Essential', 'Sonnet'),
+          _buildComparisonRow(
+              '雷達圖', 'Free', '--', 'Starter', 'V', 'Essential', 'V'),
+          _buildComparisonRow(
+              '對話健檢', 'Free', '--', 'Starter', '--', 'Essential', 'V'),
+          _buildComparisonRow(
+              '訊息優化', 'Free', '--', 'Starter', '--', 'Essential', 'V'),
+          _buildComparisonRow(
+              '每日額度', 'Free', '15', 'Starter', '50', 'Essential', '120'),
+          _buildComparisonRow(
+              '每月額度', 'Free', '30', 'Starter', '300', 'Essential', '800'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComparisonRow(
+    String feature,
+    String freeLabel,
+    String freeValue,
+    String starterLabel,
+    String starterValue,
+    String essentialLabel,
+    String essentialValue,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(
+              feature,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextHint,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              freeValue,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              starterValue,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              essentialValue,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildQuotaSummaryCard(SubscriptionState subscription) {
@@ -469,16 +592,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
-  Widget _buildPlanCard({
-    required _PaywallPlanData plan,
-    required Package? package,
+  Widget _buildOptionCard({
+    required _PaywallOption option,
     required bool isSelected,
     required bool isCurrentPlan,
     required VoidCallback onTap,
   }) {
-    final priceLabel = package?.storeProduct.priceString ?? '價格同步中';
-    final priceSuffix = package == null ? '' : ' / 月';
-    final isRecommendedPlan = plan.tier == SubscriptionTierHelper.essential;
+    final priceLabel = option.package?.storeProduct.priceString ?? '價格同步中';
+    final periodSuffix = option.package == null
+        ? ''
+        : (option.id.contains('quarterly') ? ' / 季' : ' / 月');
+    final isRecommended = option.id == 'essential_quarterly';
 
     return GestureDetector(
       onTap: onTap,
@@ -491,15 +615,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             Row(
               children: [
                 Text(
-                  plan.name,
+                  '${option.name} ${option.period}',
                   style: AppTypography.titleLarge.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
                 ),
                 const SizedBox(width: 8),
                 _buildBadge(
-                  label: plan.badge,
-                  background: isRecommendedPlan
+                  label: option.badge,
+                  background: isRecommended
                       ? const LinearGradient(
                           colors: [
                             AppColors.selectedStart,
@@ -507,10 +631,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                           ],
                         )
                       : null,
-                  color: isRecommendedPlan
+                  color: isRecommended
                       ? Colors.white
                       : AppColors.glassTextPrimary,
                 ),
+                if (option.discount != null) ...[
+                  const SizedBox(width: 6),
+                  _buildBadge(
+                    label: option.discount!,
+                    background: LinearGradient(
+                      colors: [
+                        AppColors.success.withValues(alpha: 0.88),
+                        AppColors.success.withValues(alpha: 0.72),
+                      ],
+                    ),
+                    color: Colors.white,
+                  ),
+                ],
                 if (isCurrentPlan) ...[
                   const SizedBox(width: 8),
                   _buildBadge(
@@ -526,34 +663,27 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ],
                 const Spacer(),
                 Radio<String>(
-                  value: plan.tier,
-                  groupValue: _selectedTier,
+                  value: option.id,
+                  groupValue: _selectedOptionId,
                   onChanged: (value) {
                     if (value == null) return;
-                    setState(() => _selectedTier = value);
+                    setState(() => _selectedOptionId = value);
                   },
                   activeColor: AppColors.selectedStart,
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Text(
-              plan.description,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextHint,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '$priceLabel$priceSuffix',
+              '$priceLabel$periodSuffix',
               style: AppTypography.headlineMedium.copyWith(
                 color: AppColors.glassTextPrimary,
               ),
             ),
-            const SizedBox(height: 12),
-            ...plan.pricePoints.map(
+            const SizedBox(height: 8),
+            ...option.highlights.map(
               (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.only(bottom: 4),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -561,11 +691,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       padding: EdgeInsets.only(top: 2),
                       child: Icon(
                         Icons.check_circle,
-                        size: 16,
+                        size: 14,
                         color: AppColors.success,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         item,
@@ -611,17 +741,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
-  Future<void> _subscribe() async {
+  Future<void> _subscribe(Package package, String selectedTier) async {
     if (kIsWeb) {
       _showSnackBar('Please manage subscriptions in the iOS app.');
-
-      return;
-    }
-
-    final subscription = ref.read(subscriptionProvider);
-    final package = _selectedPackageFor(subscription);
-    if (package == null) {
-      _showSnackBar('方案資訊尚未就緒，請稍後再試。');
       return;
     }
 
@@ -815,18 +937,24 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 }
 
-class _PaywallPlanData {
-  const _PaywallPlanData({
+class _PaywallOption {
+  const _PaywallOption({
+    required this.id,
     required this.tier,
     required this.name,
+    required this.period,
     required this.badge,
-    required this.description,
-    required this.pricePoints,
+    required this.discount,
+    required this.package,
+    required this.highlights,
   });
 
+  final String id;
   final String tier;
   final String name;
+  final String period;
   final String badge;
-  final String description;
-  final List<String> pricePoints;
+  final String? discount;
+  final Package? package;
+  final List<String> highlights;
 }

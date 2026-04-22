@@ -22,7 +22,7 @@ interface RateLimitRow {
 const TIER_LIMITS: Record<string, TierLimits> = {
   free: { monthly: 30, daily: 15 },
   starter: { monthly: 300, daily: 50 },
-  essential: { monthly: 1000, daily: 150 },
+  essential: { monthly: 800, daily: 120 },
 };
 
 const MINUTE_LIMIT = 5;

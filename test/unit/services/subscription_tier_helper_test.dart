@@ -31,7 +31,16 @@ void main() {
     test('infers essential tier from product identifier', () {
       expect(
         SubscriptionTierHelper.tierFromProductId(
-          'vibesync_essential_monthly',
+          'vibesync_essential_monthly_v2',
+        ),
+        SubscriptionTierHelper.essential,
+      );
+    });
+
+    test('infers essential tier from quarterly product identifier', () {
+      expect(
+        SubscriptionTierHelper.tierFromProductId(
+          'vibesync_essential_quarterly_v2',
         ),
         SubscriptionTierHelper.essential,
       );
@@ -39,7 +48,16 @@ void main() {
 
     test('infers starter tier from product identifier', () {
       expect(
-        SubscriptionTierHelper.tierFromProductId('vibesync_starter_monthly'),
+        SubscriptionTierHelper.tierFromProductId('vibesync_starter_monthly_v2'),
+        SubscriptionTierHelper.starter,
+      );
+    });
+
+    test('infers starter tier from quarterly product identifier', () {
+      expect(
+        SubscriptionTierHelper.tierFromProductId(
+          'vibesync_starter_quarterly_v2',
+        ),
         SubscriptionTierHelper.starter,
       );
     });
@@ -59,8 +77,8 @@ void main() {
   group('SubscriptionTierHelper.tierFromProductIds', () {
     test('prefers essential when multiple purchased products exist', () {
       final tier = SubscriptionTierHelper.tierFromProductIds([
-        'vibesync_starter_monthly',
-        'vibesync_essential_monthly',
+        'vibesync_starter_monthly_v2',
+        'vibesync_essential_monthly_v2',
       ]);
 
       expect(tier, SubscriptionTierHelper.essential);
@@ -68,7 +86,7 @@ void main() {
 
     test('returns starter when only starter products exist', () {
       final tier = SubscriptionTierHelper.tierFromProductIds([
-        'vibesync_starter_monthly',
+        'vibesync_starter_monthly_v2',
       ]);
 
       expect(tier, SubscriptionTierHelper.starter);

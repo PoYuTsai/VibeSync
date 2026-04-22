@@ -3517,8 +3517,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             ),
                           ],
 
-                          // 五維度剖析
-                          if (_dimensionScores != null) ...[
+                          // 五維度剖析 (Starter / Essential only)
+                          if (_dimensionScores != null &&
+                              subscription.isPremium) ...[
                             const SizedBox(height: 16),
                             DimensionRadarChart(
                               scores: DimensionScores(

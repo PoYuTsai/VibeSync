@@ -15,7 +15,7 @@ const corsHeaders = {
 const TIER_LIMITS: Record<string, { monthly: number; daily: number }> = {
   free: { monthly: 30, daily: 15 },
   starter: { monthly: 300, daily: 50 },
-  essential: { monthly: 1000, daily: 150 },
+  essential: { monthly: 800, daily: 120 },
 };
 
 function jsonResponse(data: unknown, status = 200): Response {

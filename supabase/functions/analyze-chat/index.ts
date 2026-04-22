@@ -69,13 +69,13 @@ function repairJson(jsonString: string): string {
 const TIER_MONTHLY_LIMITS: Record<string, number> = {
   free: 30,
   starter: 300,
-  essential: 1000,
+  essential: 800,
 };
 
 const TIER_DAILY_LIMITS: Record<string, number> = {
   free: 15,
   starter: 50,
-  essential: 150,
+  essential: 120,
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -3124,8 +3124,8 @@ function selectModel(context: {
     return "claude-haiku-4-5-20251001";
   }
 
-  // Essential 用戶優先使用 Sonnet
-  if (context.tier === "essential") {
+  // Starter / Essential 用戶優先使用 Sonnet
+  if (context.tier === "starter" || context.tier === "essential") {
     return "claude-sonnet-4-20250514";
   }
 

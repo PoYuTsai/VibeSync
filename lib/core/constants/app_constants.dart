@@ -17,12 +17,12 @@ class AppConstants {
   // Subscription Tiers (訊息制)
   static const freeMonthlyLimit = 30;
   static const starterMonthlyLimit = 300;
-  static const essentialMonthlyLimit = 1000;
+  static const essentialMonthlyLimit = 800;
 
   // Daily Limits (每日上限)
   static const freeDailyLimit = 15;
   static const starterDailyLimit = 50;
-  static const essentialDailyLimit = 150;
+  static const essentialDailyLimit = 120;
 
   // Conversation Limits (對話數量)
   static const freeConversationLimit = 3;
