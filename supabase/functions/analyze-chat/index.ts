@@ -3651,8 +3651,18 @@ serve(async (req) => {
           { timeout: 60000, maxRetries: 2, allowModelFallback: true },
         );
       } catch (apiError) {
-        logWarn("opener_api_error", { error: getErrorMessage(apiError) });
-        return jsonResponse({ error: "AI 生成失敗，請稍後再試" }, 500);
+        const errMsg = getErrorMessage(apiError);
+        const errCode = apiError instanceof AiServiceError ? apiError.code : "UNKNOWN";
+        const errMeta = apiError instanceof AiServiceError ? apiError.metadata : {};
+        logWarn("opener_api_error", {
+          error: errMsg,
+          code: errCode,
+          metadata: errMeta,
+          model: openerModel,
+          imageCount,
+          userContentLength: userContent.join("\n").length,
+        });
+        return jsonResponse({ error: `AI 生成失敗：${errMsg}` }, 500);
       }
 
       const apiData = apiResult.data as { content?: Array<{ text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
