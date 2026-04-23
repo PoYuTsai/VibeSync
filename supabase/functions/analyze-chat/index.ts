@@ -3609,14 +3609,19 @@ serve(async (req) => {
       // Build messages for Claude API
       let claudeMessages;
       if (imageCount > 0 && Array.isArray(images)) {
-        const imageContents = images.map((img: string) => ({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: "image/jpeg",
-            data: img,
-          },
-        }));
+        const imageContents = images.map((img: ImageData | string) => {
+          // Support both ImageData objects and plain base64 strings
+          const data = typeof img === "string" ? img : (img as ImageData).data;
+          const mediaType = typeof img === "string" ? "image/jpeg" : ((img as ImageData).mediaType || "image/jpeg");
+          return {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: mediaType,
+              data,
+            },
+          };
+        });
         claudeMessages = [{
           role: "user",
           content: [

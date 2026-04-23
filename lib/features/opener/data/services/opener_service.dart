@@ -26,10 +26,16 @@ class OpenerService {
     String? interests,
     String? meetingContext,
   }) async {
-    // Build image list as base64
-    List<String>? imageDataList;
+    // Build image list as ImageData objects (matching existing format)
+    List<Map<String, dynamic>>? imageDataList;
     if (images != null && images.isNotEmpty) {
-      imageDataList = images.map((img) => base64Encode(img)).toList();
+      imageDataList = images.asMap().entries.map((entry) {
+        return {
+          'data': base64Encode(entry.value),
+          'mediaType': 'image/jpeg',
+          'order': entry.key + 1,
+        };
+      }).toList();
     }
 
     // Build profile info
