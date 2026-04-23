@@ -428,6 +428,7 @@ class AnalysisService {
     String? userDraft,
     String? analyzeMode,
     bool recognizeOnly = false,
+    int? previousAnalyzedCount,
     AnalysisProgressCallback? onProgress,
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
@@ -472,6 +473,7 @@ class AnalysisService {
           userDraft: userDraft,
           analyzeMode: analyzeMode,
           recognizeOnly: recognizeOnly,
+          previousAnalyzedCount: previousAnalyzedCount,
           onProgress: onProgress,
           onTelemetry: onTelemetry,
         );
@@ -549,6 +551,7 @@ class AnalysisService {
     String? userDraft,
     String? analyzeMode,
     required bool recognizeOnly,
+    int? previousAnalyzedCount,
     AnalysisProgressCallback? onProgress,
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
@@ -624,6 +627,8 @@ class AnalysisService {
         if (hasUserDraft) 'userDraft': userDraft.trim(),
         if (analyzeMode != null) 'analyzeMode': analyzeMode,
         if (recognizeOnly) 'recognizeOnly': true,
+        if (previousAnalyzedCount != null && previousAnalyzedCount > 0)
+          'previousAnalyzedCount': previousAnalyzedCount,
       };
 
       final encodedRequestBody = jsonEncode(requestBody);

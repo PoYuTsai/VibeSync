@@ -3296,6 +3296,7 @@ serve(async (req) => {
       recognizeOnly: rawRecognizeOnly,
       mode: rawMode,
       profileInfo: rawProfileInfo,
+      previousAnalyzedCount: rawPreviousAnalyzedCount,
     } = requestBody;
 
     if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
@@ -4005,7 +4006,13 @@ ${recentText}`;
       hasUserDraft:
         !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
     });
-    const estimatedMessageCount = recognizeOnly ? 0 : countMessages(messages);
+    const totalMessageCount = recognizeOnly ? 0 : countMessages(messages);
+    // 繼續對話時只計算新增的訊息額度
+    const prevCount = typeof rawPreviousAnalyzedCount === "number" && rawPreviousAnalyzedCount > 0
+      ? rawPreviousAnalyzedCount : 0;
+    const estimatedMessageCount = prevCount > 0
+      ? Math.max(1, totalMessageCount - prevCount)
+      : totalMessageCount;
     const quotaUsage = buildQuotaUsageMetadata({
       requestType,
       recognizeOnly,

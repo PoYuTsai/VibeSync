@@ -1040,9 +1040,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return false;
     }
 
+    // 只計算新增的訊息（繼續對話時不重複收費）
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    final lastAnalyzed = conversation?.lastAnalyzedMessageCount ?? 0;
+    final totalMessages = conversation?.messages.length ?? requestMessages.length;
+
+    List<Message> billableMessages;
+    if (lastAnalyzed > 0 && lastAnalyzed < totalMessages) {
+      // 只算新增的部分
+      billableMessages = requestMessages.length > (totalMessages - lastAnalyzed)
+          ? requestMessages.sublist(requestMessages.length - (totalMessages - lastAnalyzed))
+          : requestMessages;
+    } else {
+      // 第一次分析，算全部
+      billableMessages = requestMessages;
+    }
+
     return showAnalysisPreviewDialog(
       context: context,
-      preview: MessageCalculator.previewConversation(requestMessages),
+      preview: MessageCalculator.previewConversation(billableMessages),
       usage: _buildPreviewUsageData(),
       onUpgrade: () {
         Navigator.of(context, rootNavigator: true).pop(false);
@@ -1879,6 +1895,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         )
                 ? null
                 : conversation.name.trim(),
+        previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
         onTelemetry: _handleAnalysisTelemetry,
       );
 
