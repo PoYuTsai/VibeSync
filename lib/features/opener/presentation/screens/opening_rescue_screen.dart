@@ -29,6 +29,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   bool _isGenerating = false;
   OpenerResult? _result;
   String? _error;
+  final _scrollController = ScrollController();
 
   static const _meetingOptions = ['交友軟體', 'IG', '現實認識', '其他'];
 
@@ -47,6 +48,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     _nameController.dispose();
     _bioController.dispose();
     _interestsController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -70,6 +72,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       return;
     }
 
+    // 收鍵盤
+    FocusScope.of(context).unfocus();
+
     setState(() {
       _isGenerating = true;
       _error = null;
@@ -89,6 +94,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         setState(() {
           _result = result;
           _isGenerating = false;
+        });
+        // 滾到結果區域
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              _scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
         });
       }
     } catch (e) {
@@ -118,6 +133,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           title: Text('開場救星', style: AppTypography.headlineMedium),
         ),
         body: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
