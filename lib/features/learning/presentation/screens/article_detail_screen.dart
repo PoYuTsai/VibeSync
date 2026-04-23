@@ -146,7 +146,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                 width: double.infinity,
                 child: GradientButton(
                   text: '學完了？來實戰練習',
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => context.push('/opener'),
                 ),
               ),
               const SizedBox(height: 32),
