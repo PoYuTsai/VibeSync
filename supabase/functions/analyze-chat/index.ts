@@ -3637,7 +3637,7 @@ serve(async (req) => {
       }
 
       // Call Claude API using shared fallback helper
-      const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
+      const apiKey = CLAUDE_API_KEY;
       let apiResult: FallbackResult;
       try {
         apiResult = await callClaudeWithFallback(
