@@ -8,7 +8,7 @@ import {
   SAFETY_RULES,
   getSafeReplies,
 } from "./guardrails.ts";
-import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
+import { AiServiceError, callClaudeWithFallback, type FallbackResult } from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
 import { extractTokenUsage, logAiCall } from "./logger.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
