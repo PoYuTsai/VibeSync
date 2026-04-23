@@ -248,6 +248,29 @@ class _NewConversationSheet extends ConsumerWidget {
               }
             },
           ),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.bokehYellow.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.auto_awesome, color: AppColors.bokehYellow),
+            ),
+            title: Text(
+              '開場救星',
+              style: TextStyle(color: AppColors.glassTextPrimary),
+            ),
+            subtitle: Text(
+              '交友軟體不知道怎麼開場？AI 幫你生成開場白',
+              style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/opener');
+            },
+          ),
           const SizedBox(height: 16),
         ],
       ),
