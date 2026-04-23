@@ -528,11 +528,20 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '目前方案：${_tierLabel(subscription.tier)}',
+            '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextHint,
             ),
           ),
+          if (subscription.renewsAt != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '下次續約：${_formatDate(subscription.renewsAt!)}',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextHint,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1053,7 +1062,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   String _formatDate(DateTime? dateTime) {
     if (dateTime == null) return '下次續訂';
     final local = dateTime.toLocal();
-    return '${local.month}/${local.day}';
+    return '${local.year}/${local.month}/${local.day}';
+  }
+
+  String _billingPeriodLabel(SubscriptionState subscription) {
+    if (subscription.isFreeUser) return '';
+    final productId = subscription.activeProductId ?? '';
+    if (productId.contains('quarterly')) return '（季繳）';
+    if (productId.contains('monthly')) return '（月繳）';
+    return '';
   }
 }
 
