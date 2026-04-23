@@ -12,6 +12,7 @@ import '../features/learning/presentation/screens/article_detail_screen.dart';
 import '../features/opener/presentation/screens/opening_rescue_screen.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
+import '../features/conversation/presentation/screens/profile_card_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 
 final _routerRefreshListenable =
@@ -68,6 +69,12 @@ final router = GoRouter(
     GoRoute(
       path: '/opener',
       builder: (context, state) => const OpeningRescueScreen(),
+    ),
+    GoRoute(
+      path: '/profile/:id',
+      builder: (context, state) => ProfileCardScreen(
+        conversationId: state.pathParameters['id']!,
+      ),
     ),
     GoRoute(
       path: '/article/:id',

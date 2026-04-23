@@ -2872,6 +2872,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             onPressed: _cleanupAndGoBack,
           ),
           actions: [
+            // 對方檔案按鈕
+            IconButton(
+              icon: const Icon(Icons.person_outline),
+              tooltip: '對方檔案',
+              onPressed: () => context.push('/profile/${widget.conversationId}'),
+            ),
             // 匯出按鈕
             IconButton(
               icon: const Icon(Icons.share),
