@@ -7,8 +7,15 @@ import '../../domain/entities/message.dart';
 
 class MessageBubble extends StatelessWidget {
   final Message message;
+  final VoidCallback? onSwapSide;
+  final VoidCallback? onDelete;
 
-  const MessageBubble({super.key, required this.message});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.onSwapSide,
+    this.onDelete,
+  });
 
   String? _quotedReplyLabel() {
     final quotedIsFromMe = message.quotedReplyPreviewIsFromMe;
@@ -23,10 +30,16 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final quotedReplyLabel = _quotedReplyLabel();
 
-    return Align(
-      alignment:
-          message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+    final hasActions = onSwapSide != null || onDelete != null;
+
+    return GestureDetector(
+      onLongPress: hasActions
+          ? () => _showActionMenu(context)
+          : null,
+      child: Align(
+        alignment:
+            message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(
@@ -107,6 +120,78 @@ class MessageBubble extends StatelessWidget {
                     : AppColors.glassTextPrimary,
               ),
             ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+
+  void _showActionMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: AppColors.glassWhite,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.glassBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Preview of the message
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                message.content,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (onSwapSide != null)
+              ListTile(
+                leading: Icon(Icons.swap_horiz, color: AppColors.primary),
+                title: Text(
+                  message.isFromMe ? '改成她說' : '改成我說',
+                  style: TextStyle(color: AppColors.glassTextPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onSwapSide!();
+                },
+              ),
+            if (onDelete != null)
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: AppColors.error),
+                title: Text(
+                  '刪除這則訊息',
+                  style: TextStyle(color: AppColors.error),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onDelete!();
+                },
+              ),
+            const SizedBox(height: 8),
           ],
         ),
       ),

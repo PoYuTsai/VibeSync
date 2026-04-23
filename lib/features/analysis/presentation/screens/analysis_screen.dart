@@ -521,6 +521,60 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
   }
 
+  /// 換邊（她說 ↔ 我說）
+  Future<void> _swapMessageSide(Conversation conversation, Message message) async {
+    final index = conversation.messages.indexWhere((m) => m.id == message.id);
+    if (index == -1) return;
+
+    conversation.messages[index] = Message(
+      id: message.id,
+      content: message.content,
+      isFromMe: !message.isFromMe,
+      timestamp: message.timestamp,
+      enthusiasmScore: message.enthusiasmScore,
+      quotedReplyPreview: message.quotedReplyPreview,
+      quotedReplyPreviewIsFromMe: message.quotedReplyPreviewIsFromMe,
+    );
+
+    final repository = ref.read(conversationRepositoryProvider);
+    await repository.updateConversation(conversation);
+    ref.invalidate(conversationProvider(widget.conversationId));
+    setState(() {});
+  }
+
+  /// 刪除訊息
+  Future<void> _deleteMessage(Conversation conversation, Message message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.glassWhite,
+        title: Text('刪除訊息', style: TextStyle(color: AppColors.glassTextPrimary)),
+        content: Text(
+          '確定要刪除這則訊息嗎？',
+          style: TextStyle(color: AppColors.glassTextSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    conversation.messages.removeWhere((m) => m.id == message.id);
+    final repository = ref.read(conversationRepositoryProvider);
+    await repository.updateConversation(conversation);
+    ref.invalidate(conversationProvider(widget.conversationId));
+    setState(() {});
+  }
+
   /// 啟動識別計時器
   void _startRecognizeTimer() {
     Future.doWhile(() async {
@@ -2859,7 +2913,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                 ...(_showAllMessages
                                         ? conversation.messages
                                         : conversation.messages.take(5))
-                                    .map((m) => MessageBubble(message: m)),
+                                    .map((m) => MessageBubble(
+                                          message: m,
+                                          onSwapSide: () => _swapMessageSide(conversation, m),
+                                          onDelete: () => _deleteMessage(conversation, m),
+                                        )),
                                 if (conversation.messages.length > 5)
                                   GestureDetector(
                                     onTap: () => setState(() =>
