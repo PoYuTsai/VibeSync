@@ -77,11 +77,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _buildTile(
                       icon: Icons.workspace_premium,
                       title: '目前方案',
-                      trailing: _tierLabel(subscription.tier),
+                      trailing: '${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
                       onTap: () {
                         context.push('/paywall');
                       },
                     ),
+                    if (subscription.renewsAt != null && !subscription.isFreeUser)
+                      _buildTile(
+                        icon: Icons.event,
+                        title: '下次續約',
+                        trailing: _formatDate(subscription.renewsAt),
+                      ),
                     _buildTile(
                       icon: Icons.today,
                       title: '今日剩餘',
@@ -199,7 +205,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '目前方案：${_tierLabel(subscription.tier)}',
+            '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextHint,
             ),
@@ -389,9 +395,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   String _formatDate(DateTime? dateTime) {
-    if (dateTime == null) return '下次續訂';
+    if (dateTime == null) return '--';
     final local = dateTime.toLocal();
-    return '${local.month}/${local.day}';
+    return '${local.year}/${local.month}/${local.day}';
+  }
+
+  String _billingPeriodLabel(SubscriptionState subscription) {
+    if (subscription.isFreeUser) return '';
+    final productId = subscription.activeProductId ?? '';
+    if (productId.contains('quarterly')) return '（季繳）';
+    if (productId.contains('monthly')) return '（月繳）';
+    return '';
   }
 
   String _accountLabel() {
