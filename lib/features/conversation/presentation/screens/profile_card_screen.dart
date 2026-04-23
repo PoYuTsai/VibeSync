@@ -1,4 +1,5 @@
 // lib/features/conversation/presentation/screens/profile_card_screen.dart
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../data/providers/conversation_providers.dart';
+import '../../domain/entities/conversation.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 
@@ -141,10 +143,154 @@ class ProfileCardScreen extends ConsumerWidget {
 
               const SizedBox(height: 16),
 
+              // Info Card 2.5: Target Profile (if available)
+              _buildTargetProfileCard(conversation),
+
               // Info Card 3: AI Summary
               _buildSummaryCard(conversation.summaries),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Map<String, dynamic>? _extractTargetProfile(Conversation conversation) {
+    final snapshotJson = conversation.lastAnalysisSnapshotJson;
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(snapshotJson);
+      if (decoded is! Map) return null;
+      return decoded['targetProfile'] as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildTargetProfileCard(Conversation conversation) {
+    final targetProfile = _extractTargetProfile(conversation);
+    if (targetProfile == null) return const SizedBox.shrink();
+
+    final interests =
+        (targetProfile['interests'] as List?)?.cast<String>() ?? [];
+    final traits = (targetProfile['traits'] as List?)?.cast<String>() ?? [];
+    final notes = (targetProfile['notes'] as List?)?.cast<String>() ?? [];
+
+    if (interests.isEmpty && traits.isEmpty && notes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      children: [
+        GlassmorphicContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '她的特質',
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                ),
+              ),
+              if (interests.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '興趣',
+                  style: AppTypography.labelMedium.copyWith(
+                    color: AppColors.glassTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: interests
+                      .map((interest) => _buildColoredChip(
+                            interest,
+                            AppColors.bokehCoral.withValues(alpha: 0.12),
+                            AppColors.bokehCoral,
+                          ))
+                      .toList(),
+                ),
+              ],
+              if (traits.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '性格',
+                  style: AppTypography.labelMedium.copyWith(
+                    color: AppColors.glassTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: traits
+                      .map((trait) => _buildColoredChip(
+                            trait,
+                            AppColors.primary.withValues(alpha: 0.12),
+                            AppColors.primary,
+                          ))
+                      .toList(),
+                ),
+              ],
+              if (notes.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '備註',
+                  style: AppTypography.labelMedium.copyWith(
+                    color: AppColors.glassTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: notes
+                      .map((note) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '  •  ',
+                                  style: AppTypography.bodyMedium.copyWith(
+                                    color: AppColors.glassTextPrimary,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    note,
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.glassTextPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildColoredChip(String text, Color bgColor, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: AppTypography.labelMedium.copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );

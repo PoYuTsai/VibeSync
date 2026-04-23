@@ -531,6 +531,7 @@ class AnalysisResult {
   final RecognizedConversation? recognizedConversation; // 截圖識別結果
   final int? imagesUsed; // 使用的截圖數量
   final Map<String, int>? dimensionScores; // 五維度分數
+  final Map<String, dynamic>? targetProfile; // 對方個人檔案
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -549,6 +550,7 @@ class AnalysisResult {
     this.recognizedConversation,
     this.imagesUsed,
     this.dimensionScores,
+    this.targetProfile,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -622,6 +624,7 @@ class AnalysisResult {
       recognizedConversation: recognizedConversation,
       imagesUsed: imagesUsed,
       dimensionScores: _parseDimensions(json['dimensions']),
+      targetProfile: json['targetProfile'] as Map<String, dynamic>?,
     );
   }
 
