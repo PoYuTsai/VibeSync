@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,7 +51,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Future<void> _generate() async {
-    final subscription = ref.read(subscriptionProvider);
     final usage = ref.read(usageDataProvider);
     final cost = _estimatedCost;
 
