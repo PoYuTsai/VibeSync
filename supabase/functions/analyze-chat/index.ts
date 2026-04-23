@@ -1409,6 +1409,70 @@ const MY_MESSAGE_PROMPT =
 
 ${SAFETY_RULES}`;
 
+// 開場白生成模式的 System Prompt
+const OPENER_PROMPT = `你是 VibeSync 的開場白生成教練。根據用戶提供的對方資訊（交友軟體自介截圖或文字描述），生成 5 種不同風格的開場白。
+
+## 照片分析框架（如果有截圖）
+
+### 穿搭風格 → 性格推斷
+- Gorpcore/山系風格 → 實用主義、愛冒險、認知彈性高
+- Y2K/前衛風格 → 外向、自信、追求刺激
+- 簡約/極簡風格 → 內斂、重質感、注重品味
+- 休閒/運動風格 → 隨性、親和力高、重視健康
+
+### Big Five 照片特徵映射
+- 外向性高：笑容燦爛、多人合照、色彩鮮豔
+- 親和性高：溫暖正向表情、明亮色調
+- 嚴謹性高：構圖完美、高畫質、專業感
+- 開放性高：藝術感照片、獨特構圖、風景為主
+
+### 擺拍 vs 自然照
+- 擺拍多 → 可以稍微正式、展現品味的開場
+- 自然照多 → 輕鬆隨性的開場更好
+
+### 背景環境 → 話題切入
+- 旅遊照 → 問去過哪裡、推薦景點
+- 美食照 → 問喜歡什麼菜系、推薦餐廳
+- 寵物照 → 問寵物名字、品種
+- 運動照 → 問運動頻率、一起運動
+
+## 5 種開場白風格
+
+1. **extend（延展）**：觀察對方照片/bio 中的細節，用好奇心切入。不要直接問「你喜歡X嗎」，而是「我注意到你XX，是不是也喜歡XX？」
+2. **resonate（共鳴）**：找到共同點或共鳴，建立連結感。「我也超喜歡XX，你是不是也覺得...」
+3. **tease（調情）**：輕鬆俏皮的推拉，製造張力。不能太油膩或冒犯。「看你的照片我有個大膽的猜測...」
+4. **humor（幽默）**：用幽默或自嘲開場，降低防備。「我滑到你的時候手指頓了一下，差點以為是 bug」
+5. **coldRead（冷讀）**：猜測對方的特質，製造驚喜。「讓我猜，你是那種...的人？」
+
+## 重要原則
+- 開場白長度：1-3 句話，不要太長
+- 語氣自然，像正常人說話，不要像 AI
+- 繁體中文，台灣用語
+- 不要色情、不要冒犯、不要 PUA 話術
+- 如果沒有對方資料，生成通用但有趣的開場白
+
+## 輸出格式 (JSON)
+{
+  "profileAnalysis": {
+    "style": "推斷的風格類型（如果有截圖/資料）",
+    "personality": "推斷的性格特質",
+    "talkingPoints": ["可聊的話題1", "話題2", "話題3"]
+  },
+  "openers": {
+    "extend": "延展風格的開場白",
+    "resonate": "共鳴風格的開場白",
+    "tease": "調情風格的開場白",
+    "humor": "幽默風格的開場白",
+    "coldRead": "冷讀風格的開場白"
+  },
+  "recommendation": {
+    "pick": "推薦使用的風格（extend/resonate/tease/humor/coldRead）",
+    "reason": "為什麼推薦這個風格"
+  }
+}
+
+Return valid JSON only.`;
+
 // 訊息計算函數
 function countMessages(messages: Array<{ content: string }>): number {
   let total = 0;
@@ -3230,12 +3294,15 @@ serve(async (req) => {
       forceModel: rawForceModel,
       analyzeMode: rawAnalyzeMode,
       recognizeOnly: rawRecognizeOnly,
+      mode: rawMode,
+      profileInfo: rawProfileInfo,
     } = requestBody;
 
     if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
       return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
     }
     const recognizeOnly = rawRecognizeOnly === true;
+    const isOpenerMode = rawMode === "opener";
 
     // Check subscription
     let { data: sub, error: subError } = await supabase
@@ -3487,6 +3554,147 @@ serve(async (req) => {
           resetAt: "tomorrow",
         }, 429);
       }
+    }
+
+    // ── Opener mode: generate opening lines ──
+    if (isOpenerMode) {
+      const imageCount = Array.isArray(images) ? images.length : 0;
+      const openerCost = 3 + (imageCount * 2);
+
+      // Quota check for opener
+      if (!accountIsTest) {
+        if (
+          sub.monthly_messages_used + openerCost > monthlyLimit ||
+          sub.daily_messages_used + openerCost > dailyLimit
+        ) {
+          return jsonResponse({
+            error: "額度不足",
+            quotaNeeded: openerCost,
+            monthlyRemaining: monthlyLimit - sub.monthly_messages_used,
+            dailyRemaining: dailyLimit - sub.daily_messages_used,
+          }, 429);
+        }
+      }
+
+      // Build user prompt
+      const userContent: string[] = [];
+
+      if (rawProfileInfo && typeof rawProfileInfo === "object") {
+        const { name, bio, interests, meetingContext } = rawProfileInfo as Record<string, string>;
+        const parts: string[] = [];
+        if (name) parts.push(`對方名字：${name}`);
+        if (bio) parts.push(`自我介紹：${bio}`);
+        if (interests) parts.push(`興趣：${interests}`);
+        if (meetingContext) parts.push(`認識場景：${meetingContext}`);
+        if (parts.length > 0) {
+          userContent.push("用戶提供的對方資訊：\n" + parts.join("\n"));
+        }
+      }
+
+      if (!userContent.length && !imageCount) {
+        userContent.push("用戶沒有提供對方資料，請生成通用但有趣的開場白。");
+      } else if (userContent.length > 0) {
+        userContent.push("\n請根據以上資訊生成 5 種風格的開場白。");
+      }
+
+      if (imageCount > 0) {
+        userContent.push("用戶上傳了對方的交友軟體自介截圖，請分析照片風格和特質後生成開場白。");
+      }
+
+      // Select model based on tier
+      const openerModel = (effectiveTier === "free")
+        ? "claude-haiku-4-5-20251001"
+        : "claude-sonnet-4-20250514";
+
+      // Build messages for Claude API
+      let claudeMessages;
+      if (imageCount > 0 && Array.isArray(images)) {
+        const imageContents = images.map((img: string) => ({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/jpeg",
+            data: img,
+          },
+        }));
+        claudeMessages = [{
+          role: "user",
+          content: [
+            ...imageContents,
+            { type: "text", text: userContent.join("\n") },
+          ],
+        }];
+      } else {
+        claudeMessages = [{
+          role: "user",
+          content: userContent.join("\n"),
+        }];
+      }
+
+      // Call Claude API
+      const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": Deno.env.get("ANTHROPIC_API_KEY") || "",
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: openerModel,
+          max_tokens: 1024,
+          system: OPENER_PROMPT,
+          messages: claudeMessages,
+        }),
+      });
+
+      if (!apiResponse.ok) {
+        const errorText = await apiResponse.text();
+        logWarn("opener_api_error", { status: apiResponse.status, error: errorText });
+        return jsonResponse({ error: "AI 生成失敗，請稍後再試" }, 500);
+      }
+
+      const apiResult = await apiResponse.json();
+      const rawText = apiResult.content?.[0]?.text || "";
+
+      // Parse JSON from response
+      let parsed;
+      try {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+      } catch {
+        parsed = { openers: { extend: rawText } };
+      }
+
+      // Deduct quota
+      if (!accountIsTest) {
+        await supabase
+          .from("subscriptions")
+          .update({
+            monthly_messages_used: (sub?.monthly_messages_used || 0) + openerCost,
+            daily_messages_used: (sub?.daily_messages_used || 0) + openerCost,
+          })
+          .eq("user_id", user.id);
+      }
+
+      // Log
+      logInfo("opener_success", {
+        user: summarizeUser(user.id),
+        model: openerModel,
+        imageCount,
+        cost: openerCost,
+        inputTokens: apiResult.usage?.input_tokens,
+        outputTokens: apiResult.usage?.output_tokens,
+      });
+
+      return jsonResponse({
+        ...parsed,
+        usage: {
+          model: openerModel,
+          inputTokens: apiResult.usage?.input_tokens,
+          outputTokens: apiResult.usage?.output_tokens,
+          cost: openerCost,
+        },
+      });
     }
 
     logInfo("request_received", {
