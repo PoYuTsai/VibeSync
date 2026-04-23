@@ -3636,30 +3636,27 @@ serve(async (req) => {
         }];
       }
 
-      // Call Claude API
-      const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": Deno.env.get("ANTHROPIC_API_KEY") || "",
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: openerModel,
-          max_tokens: 1024,
-          system: OPENER_PROMPT,
-          messages: claudeMessages,
-        }),
-      });
-
-      if (!apiResponse.ok) {
-        const errorText = await apiResponse.text();
-        logWarn("opener_api_error", { status: apiResponse.status, error: errorText });
+      // Call Claude API using shared fallback helper
+      const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
+      let apiResult: FallbackResult;
+      try {
+        apiResult = await callClaudeWithFallback(
+          {
+            model: openerModel,
+            max_tokens: 1024,
+            system: OPENER_PROMPT,
+            messages: claudeMessages,
+          },
+          apiKey,
+          { timeout: 60000, maxRetries: 2, allowModelFallback: true },
+        );
+      } catch (apiError) {
+        logWarn("opener_api_error", { error: getErrorMessage(apiError) });
         return jsonResponse({ error: "AI 生成失敗，請稍後再試" }, 500);
       }
 
-      const apiResult = await apiResponse.json();
-      const rawText = apiResult.content?.[0]?.text || "";
+      const apiData = apiResult.data as { content?: Array<{ text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
+      const rawText = apiData.content?.[0]?.text || "";
 
       // Parse JSON from response
       let parsed;
@@ -3684,19 +3681,20 @@ serve(async (req) => {
       // Log
       logInfo("opener_success", {
         user: summarizeUser(user.id),
-        model: openerModel,
+        model: apiResult.model,
         imageCount,
         cost: openerCost,
-        inputTokens: apiResult.usage?.input_tokens,
-        outputTokens: apiResult.usage?.output_tokens,
+        inputTokens: apiData.usage?.input_tokens,
+        outputTokens: apiData.usage?.output_tokens,
+        fallbackUsed: apiResult.fallbackUsed,
       });
 
       return jsonResponse({
         ...parsed,
         usage: {
-          model: openerModel,
-          inputTokens: apiResult.usage?.input_tokens,
-          outputTokens: apiResult.usage?.output_tokens,
+          model: apiResult.model,
+          inputTokens: apiData.usage?.input_tokens,
+          outputTokens: apiData.usage?.output_tokens,
           cost: openerCost,
         },
       });
