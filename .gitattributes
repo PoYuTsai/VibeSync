@@ -1,0 +1,20 @@
+# 統一換行符為 LF（消除 WSL/Windows CRLF 漂移）
+* text=auto eol=lf
+
+# 二進位檔案不處理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.keystore binary
+*.jks binary
+*.p12 binary
+*.pem binary
