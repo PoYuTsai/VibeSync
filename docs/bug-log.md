@@ -1,0 +1,279 @@
+# VibeSync Bug Log
+
+> 歷史 bug 記錄與修復說明。新 bug 遇到時在這裡新增，**不寫進 CLAUDE.md**。
+>
+> 格式：`#### [YYYY-MM-DD] 標題` → 症狀 / Root Cause / 修復 / 預防 / 相關檔案
+>
+> 目前 Common Pitfalls（仍會踩）請看 `CLAUDE.md`，那裡只保留**現役陷阱**。
+
+---
+
+## 2026-03
+
+### [2026-03-15] 購買後 Tier 未同步到 Supabase — 截圖功能 Timeout
+**症狀**:
+- 測試帳號（白名單）截圖識別 8 秒成功
+- 真實帳號（已購買訂閱）截圖識別永遠 timeout
+- Edge Function 日誌顯示 `tier: "free"`，但用戶已購買 Essential
+
+**Root Cause**:
+1. RevenueCat 購買後，`_updateSupabaseTier()` 可能靜默失敗
+2. Force Sync 按鈕呼叫 `getTierFromCustomerInfo()`，但 RevenueCat 可能返回 `free`（entitlements 未正確設定）
+3. Supabase 的 `subscriptions` 表中 tier 仍是 `free`
+4. Edge Function 根據 `free` tier 檢查額度，15 則/天很快用完
+5. 超過額度後返回 429，但前端沒有正確處理，導致 timeout
+
+**修復**:
+1. 臨時：手動 SQL 更新 tier
+   ```sql
+   UPDATE subscriptions SET tier = 'essential'
+   WHERE user_id = (SELECT id FROM auth.users WHERE email = 'xxx@xxx.com');
+   ```
+2. 永久：
+   - Force Sync 顯示 RevenueCat 詳細資訊，允許手動選擇 tier
+   - `_updateSupabaseTier` 用 `select()` 驗證更新成功，失敗時 upsert
+   - `forceSyncTier` 檢查記錄存在與否，不存在則 insert
+   - `purchase` 流程從 product ID 推測 tier，重試 3 次同步
+
+**預防**:
+- RevenueCat Entitlements 必須正確關聯產品
+- 購買後顯示同步結果，不要靜默失敗
+- Edge Function 返回明確 429 錯誤，前端正確處理
+
+**相關檔案**:
+- `lib/features/subscription/data/providers/subscription_providers.dart`
+- `lib/features/subscription/presentation/screens/paywall_screen.dart`
+
+---
+
+### [2026-03-14] Google Sign In Nonce 錯誤 + 空白頁面
+**症狀**:
+1. 使用 `google_sign_in` 套件 → Nonce 錯誤
+2. 使用 `signInWithOAuth` → 空白頁面 / 一直轉圈圈不返回
+
+**Root Cause**:
+- `google_sign_in` 套件與 Supabase 的 nonce 處理不相容
+- `signInWithOAuth` 在 iOS 上的 redirect 處理有問題
+
+**修復**:
+改用 `flutter_web_auth_2` 實現 ASWebAuthenticationSession（像 Claude app）：
+```dart
+final result = await FlutterWebAuth2.authenticate(
+  url: authUrl.toString(),
+  callbackUrlScheme: 'com.poyutsai.vibesync',
+  options: const FlutterWebAuth2Options(preferEphemeral: false),
+);
+```
+
+**預防**:
+- iOS OAuth 登入優先用 `flutter_web_auth_2`
+- ASWebAuthenticationSession 提供最流暢的體驗
+- Callback scheme 必須在 Info.plist 註冊
+
+**相關檔案**: `lib/core/services/social_auth/social_auth_native.dart`
+
+---
+
+### [2026-03-14] RevenueCat 無法取得產品資訊
+**症狀**: App 顯示「無法取得產品資訊」，RevenueCat Products 顯示 "Could not check"
+
+**Root Cause**: RevenueCat 有兩個 P8 key 設定區塊，只設定了一個：
+1. **In-app purchase key configuration** — 已設定 ✅
+2. **App Store Connect API** — 沒設定 ❌
+
+且 App Store Connect API 需要 **App Manager 權限**的 Key，原本的 Subscription Key 權限不夠。
+
+**修復**:
+1. App Store Connect → Users and Access → Integrations → **App Store Connect API** 建立新 Key
+2. 權限選擇 **App Manager**
+3. 下載 P8 檔案，命名為 `AuthKey_XXXXXX.p8`
+4. 上傳到 RevenueCat 的 "App Store Connect API" 區塊
+5. 填入 Key ID、Issuer ID、Vendor Number
+
+**預防**:
+- RevenueCat 設定時，兩個 P8 key 區塊都要設定
+- In-App Purchase Key 和 App Store Connect API Key 是不同的 Key
+- App Store Connect API Key 必須有 App Manager 權限
+
+**關鍵資源**（見 `docs/integrations/revenuecat.md`）
+
+---
+
+### [2026-03-12] warnings 欄位型別轉換錯誤
+**症狀**: 解析 Edge Function 回應失敗
+**Root Cause**: `warnings` 可能是 String 或 Object 陣列，直接 cast 會失敗
+**修復**:
+```dart
+final rawWarnings = json['warnings'] as List? ?? [];
+final warnings = rawWarnings.map((w) => w is String ? w : w.toString()).toList();
+```
+**相關檔案**: `lib/features/analysis/domain/entities/analysis_models.dart:362`
+
+---
+
+### [2026-03-12] 付費用戶看到升級提示
+**症狀**: 付費用戶在某些情境只收到延展回覆，卻看到「升級解鎖」提示
+**Root Cause**: UI 判斷邏輯只看「是否只有 extend」，沒考慮 tier
+**修復**: 依 tier 顯示不同提示
+- Free：「升級解鎖共鳴、調情、幽默、冷讀等回覆風格」
+- 付費：「AI 判斷此情境最適合使用延展回覆」
+
+**相關檔案**: `lib/features/analysis/presentation/screens/analysis_screen.dart:1515-1565`
+
+---
+
+### [2026-03-12] 測試帳號功能被限制為 Free tier
+**症狀**: 測試帳號看到「升級解鎖共鳴、調情...」提示，只有延展回覆
+**Root Cause**: Edge Function 從資料庫讀 tier，資料庫可能設定錯誤
+**修復**: 測試帳號強制使用 essential tier 功能
+```javascript
+const effectiveTier = isTestAccount ? "essential" : sub.tier;
+```
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:750`
+
+---
+
+### [2026-03-06] Slack 通知失敗導致整個 workflow 失敗
+**症狀**: TestFlight 上傳成功，但 workflow 顯示失敗
+**Root Cause**: Slack webhook URL 無效時 Fastlane 會拋錯，中斷整個 lane
+**修復**:
+```ruby
+begin
+  slack(...)
+rescue => e
+  UI.important("Slack failed (non-fatal): #{e.message}")
+end
+```
+**預防**: 選用性通知用 `begin/rescue` 包住
+**相關檔案**: `ios/fastlane/Fastfile`
+
+---
+
+### [2026-03-06] TestFlight 拒絕重複 build number
+**症狀**: `The bundle version must be higher than the previously uploaded version: '1'`
+**Root Cause**: TestFlight 要求 build number 遞增，但 Flutter 預設吃 pubspec.yaml 版本
+**修復**: `flutter build ipa --release --build-number=${{ github.run_number }}`
+**預防**: CI 永遠用 `github.run_number` 作為 build number
+**相關檔案**: `.github/workflows/release.yml`
+
+---
+
+### [2026-03-06] Fastfile 找不到 IPA 檔案
+**症狀**: `No IPA found in ../build/ios/ipa`
+**Root Cause**: Fastfile 用相對路徑 `../build/ios/ipa`，工作目錄不固定
+**修復**:
+```ruby
+project_root = File.expand_path("../../..", __FILE__)
+ipa_dir = File.join(project_root, "build", "ios", "ipa")
+```
+**預防**: Fastfile 永遠用 `__FILE__` 計算絕對路徑
+**相關檔案**: `ios/fastlane/Fastfile`
+
+---
+
+### [2026-03-06] App Store 拒絕上傳：MinimumOSVersion 缺失
+**症狀**: `Invalid MinimumOSVersion. MinimumOSVersion in 'Runner.app/Frameworks/App.framework' is ''`
+**Root Cause**: Flutter 預設的 `AppFrameworkInfo.plist` 缺少 `MinimumOSVersion`
+**修復**: 在 `ios/Flutter/AppFrameworkInfo.plist` 加入：
+```xml
+<key>MinimumOSVersion</key>
+<string>13.0</string>
+```
+**預防**: Flutter 專案檢查 `AppFrameworkInfo.plist` 是否有 `MinimumOSVersion`
+**相關檔案**: `ios/Flutter/AppFrameworkInfo.plist`
+
+---
+
+### [2026-03-06] GitHub Actions iOS Code Signing 失敗
+**症狀**: `No profile for team 'TTQHTVG8CC' matching 'VibeSync App Store' found`
+**Root Cause**:
+1. `PROVISIONING_PROFILE_SPECIFIER` 用 profile **名稱**匹配
+2. Xcode 在 CI 安裝 profile 用 **UUID** 作檔名
+3. 名稱匹配找不到已安裝 profile
+
+**修復**:
+1. 分離 `flutter build ios --no-codesign` 和 `xcodebuild archive`
+2. `PROVISIONING_PROFILE=UUID` 直接指定（非名稱）
+3. 從 profile 提取 UUID：`security cms -D -i profile.mobileprovision | PlistBuddy -c "Print :UUID"`
+4. 動態產生 ExportOptions.plist 使用 UUID
+
+**預防**:
+- iOS CI 簽名永遠用 UUID，不用名稱
+- 加入充分除錯輸出（證書列表、profile UUID/Name/TeamID）
+
+**相關檔案**:
+- `.github/workflows/release.yml`
+- `ios/Runner.xcodeproj/project.pbxproj`
+- `ios/ExportOptions.plist`
+
+---
+
+### [2026-03-06] 分析失敗錯誤訊息太籠統
+**症狀**: 所有錯誤都顯示 "Network error" 或 minified 錯誤碼
+**修復**:
+1. 移除 `dart:io`（Web 不支援）
+2. 顯示完整錯誤類型和訊息以便除錯
+3. 新增自動重試（最多 2 次）
+4. 新增 60 秒 timeout
+
+**相關檔案**:
+- `lib/features/analysis/data/services/analysis_service.dart`
+- `lib/core/services/supabase_service.dart`
+
+---
+
+### [2026-03-06] Edge Function 變數重複宣告導致 Boot Failure
+**症狀**: 點擊分析後顯示 "Failed to fetch"，Edge Function 完全無法啟動
+**Root Cause**: `actualModel` 變數在同一 scope 宣告兩次（line 717 和 762）
+**修復**: 第一個 `actualModel` 改名為 `selectedModel`
+**預防**: 新增變數前先 `grep "const\|let" <name>` 確認無同名
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:717`
+
+---
+
+### [2026-03-01] 熱度分析受用戶發言影響
+**症狀**: 熱度分數因用戶自己話多而升高
+**Root Cause**: AI 沒明確指示只從對方回覆判斷熱度
+**修復**: System Prompt 新增「熱度分析規則」，明確列出只從「她」的訊息判斷：回覆長度、表情符號、主動提問、話題延伸、回應態度
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:88-95`
+
+---
+
+## 2026-02
+
+### [2026-02-28] Edge Function CORS 錯誤
+**症狀**: Flutter web 顯示 "Failed to fetch"
+**Root Cause**: 錯誤回應沒有 CORS headers
+**修復**: 新增 `jsonResponse()` helper，所有回應包含 CORS headers
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:193-205`
+
+---
+
+### [2026-02-28] Claude 模型名稱過期
+**症狀**: Edge Function 回傳 "model not found"
+**Root Cause**: Claude 3.5 模型已停用
+**修復**:
+- `claude-3-5-haiku-20241022` → `claude-haiku-4-5-20251001`
+- `claude-sonnet-4-20250514` 保持不變
+**相關檔案**: `supabase/functions/analyze-chat/index.ts:190`
+
+---
+
+### [2026-02-28] 每次開對話都自動分析
+**症狀**: 進入對話頁就自動呼叫 API 分析，浪費額度
+**修復**: 改為手動觸發，新增「開始分析」按鈕
+**相關檔案**: `lib/features/analysis/presentation/screens/analysis_screen.dart:71`
+
+---
+
+### [2026-02-28] iOS Safari Pull-to-refresh 關閉頁面
+**症狀**: iOS Safari 上下滑動時整個網頁被關閉
+**Root Cause**: iOS Safari pull-to-refresh 手勢觸發頁面關閉
+**修復**:
+1. `web/index.html` 加 JS 防頂部下拉默認行為
+2. `overscroll-behavior: none` CSS
+3. Flutter 端用 `ClampingScrollPhysics` + `ScrollConfiguration`
+
+**相關檔案**:
+- `web/index.html`
+- `lib/features/analysis/presentation/screens/analysis_screen.dart:452-458`

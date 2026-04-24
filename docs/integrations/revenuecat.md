@@ -1,0 +1,133 @@
+# RevenueCat 整合
+
+> iOS 訂閱管理使用 RevenueCat。本檔記錄配置、產品、webhook、除錯歷史。
+>
+> Common pitfall（每次部署都會重新踩到的）已搬到 CLAUDE.md；此檔是深度細節與歷史。
+
+---
+
+## Project 資源
+
+| 項目 | 值 |
+|------|-----|
+| RevenueCat Project | VibeSync (`projd482586c`) |
+| iOS App | `app73a7f8a72d` |
+| iOS Public API Key | `appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY` |
+| In-App Purchase Key | `SF836SBCKL`（P8 uploaded） |
+| App Store Connect API Key | 另建的 App Manager 權限 Key |
+| Issuer ID | `35ed1ede-ef4b-4b24-9dd1-47d777cb032b` |
+| Vendor Number | `94060817` |
+| Bundle ID | `com.poyutsai.vibesync` |
+| Team ID | `TTQHTVG8CC` |
+
+---
+
+## 產品（2026-04-22 起，共 4 個付費產品）
+
+| Product ID | Tier | 週期 | 價格 |
+|------------|------|------|------|
+| `starter_monthly` | Starter | 月繳 | NT$590 |
+| `starter_quarterly` | Starter | 季繳 | （季繳價，以 App Store 為準） |
+| `essential_monthly` | Essential | 月繳 | NT$1,290 |
+| `essential_quarterly` | Essential | 季繳 | （季繳價，以 App Store 為準） |
+
+### 額度（2026-04-22 起）
+| Tier | 月訊息 | 日上限 | AI 模型 |
+|------|--------|--------|---------|
+| Free | 30 | 15 | Haiku |
+| Starter | 300 | 50 | **Sonnet**（原 Haiku，2026-04-22 升級）|
+| Essential | 800 | 120 | Sonnet |
+
+雷達圖限 Starter / Essential 可見，Free 隱藏。
+
+---
+
+## Entitlements
+
+- `premium` entitlement 關聯全部 4 個訂閱產品
+- 購買後 webhook → Supabase `subscriptions` 表 tier 自動更新
+
+---
+
+## Webhook
+
+**Edge Function**: `revenuecat-webhook`（部署於 Supabase）
+**URL**: 已在 RevenueCat Dashboard 設定
+
+**事件流**:
+```
+用戶購買 → RevenueCat webhook → revenuecat-webhook Edge Function
+         → 更新 Supabase `subscriptions.tier` = 'starter' | 'essential'
+         → App 下次 query 即反映新 tier
+```
+
+**實作細節**:
+- 儲存 minimized diagnostic payload（2026-04-05 起）
+- 不再依賴 RevenueCat key fallback（安全性調整）
+
+---
+
+## 常見狀況與處理
+
+### Tier 購買後未同步
+見 `docs/bug-log.md#2026-03-15`。速查：
+
+```sql
+-- 確認當前 tier
+SELECT tier FROM subscriptions
+WHERE user_id = (SELECT id FROM auth.users WHERE email = 'xxx@xxx.com');
+
+-- 強制同步（只有必要時才動）
+UPDATE subscriptions SET tier = 'essential'
+WHERE user_id = (SELECT id FROM auth.users WHERE email = 'xxx@xxx.com');
+```
+
+App 端的 Force Sync 按鈕會顯示 RevenueCat 詳細資訊並允許手動選擇 tier。
+
+### 「無法取得產品資訊」
+見 `docs/bug-log.md#2026-03-14`。根因通常是：
+1. **RevenueCat App Store Connect API 區塊沒上傳 P8 key**（不是 In-App Purchase 那個 P8！）
+2. P8 key 權限不足 — 必須是 **App Manager** 等級
+3. Packages 內混了無效的 RevenueCat 測試產品
+4. 訂閱產品沒關聯到 App 版本
+
+---
+
+## TestFlight 測試購買
+
+TestFlight 購買**自動走 Sandbox**，不會真的扣款。測試者直接用自己的 Apple ID 購買即可。
+
+Sandbox Tester 帳號只在極少數特殊情境需要（例如要測試未上架 app 的 IAP）。
+
+---
+
+## 歷史除錯記錄
+
+### 2026-03-14 設定階段踩過的坑
+
+| # | 問題 | 解法 |
+|---|------|------|
+| 1 | Products "Could not check" | 銀行審核過了還在顯示 → P8 key 問題 |
+| 2 | Offerings 未設為 Current | Dashboard 手動設 |
+| 3 | App Store Connect 產品狀態 | 確認 Ready to Submit |
+| 4 | RevenueCat "App Store Connect API" 區塊空 | 上傳 P8 |
+| 5 | P8 權限錯誤 | 建 App Manager 權限的 Key |
+| 6 | Packages 含 RC 測試產品（Monthly/Yearly/Lifetime） | 移除，只留 App Store 產品 |
+| 7 | Debug: `CONFIGURATION_ERROR - None of the products could be fetched` | 訂閱沒關聯到 App 版本 |
+| 8 | 關聯後還是拿不到 | 等 Apple 同步（產品剛建 + 剛關聯需幾小時） |
+
+### 驗證清單
+- [x] RC Configured（初始化成功）
+- [x] Offerings/Packages 載入（2 packages 正確）
+- [x] TestFlight Sandbox 購買成功
+- [x] Webhook 觸發 → Supabase tier 更新為 essential
+- [x] `premium` entitlement 建立並關聯產品
+
+---
+
+## 相關檔案
+
+- `lib/features/subscription/data/providers/subscription_providers.dart`
+- `lib/features/subscription/presentation/screens/paywall_screen.dart`
+- `lib/features/subscription/presentation/screens/settings_screen.dart`（月/季繳標示 + 下次續約日）
+- `supabase/functions/revenuecat-webhook/`
