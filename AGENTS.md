@@ -190,12 +190,37 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat \
 
 ---
 
-## 🤝 Superpowers 工作流
+## 🤝 Claude ↔ Codex 協作協議
 
-遵循 `~/.claude/CLAUDE.md` 全域定義的流程：
-`brainstorming → writing-plans → executing-plans → verification`
+共用記憶 = `git log` + `docs/reviews/` + `docs/decisions.md` + `memory/`，**絕不**靠 session 記憶。完整腳本見 `memory/reference_ai_pair_roles.md` + `feedback_arbitration_protocol.md`。
 
-Bug → `systematic-debugging`；宣稱完成前 → `verification-before-completion`
+### 任務分工（可覆蓋）
+- UI / Flutter / 文案 / 產品判斷 → **Claude** 主導
+- OCR / 演算法 / 效能 / 重構 plan → **Codex** 主導
+- 緊急 L1/L2 → Claude；L3 禁區 → 都不動（止血或延後）
+- Code review → **Codex**（獨立 bias）
+
+### Codex review 權限
+- 🔴 Bug / 🟡 功能風險 → **直接改** + 寫 `docs/reviews/*_codex-review.md`
+- 🟠 架構替代方案 → 只寫不改，標 `Verdict: Daisy-Decision-Needed`
+- 🟢 風格 / 命名 → 只建議不動
+
+### Commit trailer（必含）
+- `Reviewer-Hint: [不確定之處]`（若有）
+- `Next-Step: [下步或禁區]`（若有）
+
+### 新 session 開場固定流程
+`git log --oneline -15` → `ls -t docs/reviews/ | head -5` → 讀 `docs/decisions.md` 最新 5 條 ADR → 讀 memory + `docs/snapshot.md` → 再動手
+
+### 防 echo chamber（用戶盲點保護）
+- Codex review **只看 diff**，Claude rationale 不先給
+- 主張「安全 / 快 / 最佳」→ 必附 test / benchmark / 官方文件引用
+- 2-2 僵持 → 引入 Haiku 當第三方
+- 業務 / 產品 / 文案判斷 → **用戶直覺優先**，AI 只輸入不仲裁
+
+### 定案寫 ADR
+🟠 級分歧仲裁後**必**寫 `docs/decisions.md` ADR。
+反駁對方改動 → 寫 `docs/reviews/*_<claude|codex>-rebuttal.md`，**絕不** revert / amend / force-push。
 
 ---
 
