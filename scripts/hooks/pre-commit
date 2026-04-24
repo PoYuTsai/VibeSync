@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#
+# VibeSync pre-commit hook — 防止 CLAUDE.md 再次膨脹
+#
+# 安裝方式：
+#   cp scripts/hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# 或一次啟用所有 scripts/hooks/* hooks：
+#   ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
+#
+# 跳過檢查（緊急情況）：
+#   SKIP_CLAUDE_MD_LINT=1 git commit -m "..."
+#
+# 檢查項目：
+#   1. CLAUDE.md 行數上限（預設 250）
+#   2. 禁止新增 [YYYY-MM-DD] bug/decision 記錄到 CLAUDE.md
+#   3. 禁止新增「已完成功能」清單條目到 CLAUDE.md
+#
+set -euo pipefail
+
+# --- 可調參數 ---
+LINE_LIMIT=250
+FILE="CLAUDE.md"
+
+# --- Bypass for emergencies ---
+if [[ "${SKIP_CLAUDE_MD_LINT:-0}" == "1" ]]; then
+  echo "⚠️  SKIP_CLAUDE_MD_LINT=1 set, skipping CLAUDE.md lint"
+  exit 0
+fi
+
+# --- Early exit if CLAUDE.md not staged ---
+if ! git diff --cached --name-only | grep -q "^${FILE}$"; then
+  exit 0
+fi
+
+echo "🔍 Checking ${FILE}..."
+
+errors=0
+
+# --- 檢查 1: 行數上限 ---
+current_lines=$(wc -l < "${FILE}")
+if [[ "${current_lines}" -gt "${LINE_LIMIT}" ]]; then
+  echo "❌ ${FILE} 行數 ${current_lines} 超過上限 ${LINE_LIMIT}"
+  echo "   請搬歷史內容到 docs/ (bug-log.md / decisions.md / integrations/ / snapshot.md)"
+  echo "   或執行: less ${FILE} 檢查可刪段落"
+  errors=$((errors + 1))
+fi
+
+# --- 檢查 2: 禁止新增 [YYYY-MM-DD] 格式（bug/decision 歷史記錄） ---
+bad_date_lines=$(git diff --cached "${FILE}" | grep -E '^\+####?\s*\[20[0-9]{2}-[0-9]{2}-[0-9]{2}\]' || true)
+if [[ -n "${bad_date_lines}" ]]; then
+  echo "❌ ${FILE} 不得新增 [YYYY-MM-DD] 歷史記錄："
+  echo "${bad_date_lines}" | sed 's/^/   /'
+  echo ""
+  echo "   Bug fix 請寫 docs/bug-log.md；架構決策請寫 docs/decisions.md"
+  errors=$((errors + 1))
+fi
+
+# --- 檢查 3: 禁止「已完成功能」條目（避免 40+ 條清單回歸） ---
+bad_completed=$(git diff --cached "${FILE}" | grep -E '^\+.*\|\s*✅\s*完成\s*\|' || true)
+if [[ -n "${bad_completed}" ]]; then
+  echo "❌ ${FILE} 不得新增「✅ 完成」功能清單項目："
+  echo "${bad_completed}" | sed 's/^/   /'
+  echo ""
+  echo "   已完成功能請看 git log 或 docs/snapshot.md"
+  errors=$((errors + 1))
+fi
+
+# --- 檢查 4: CLAUDE.md ↔ AGENTS.md 必須同步（Codex 讀後者） ---
+# 若 CLAUDE.md 有 stage 但 AGENTS.md 沒同步 stage 為一致內容，擋
+if git diff --cached --name-only | grep -q "^${FILE}$"; then
+  if ! diff -q "${FILE}" "AGENTS.md" > /dev/null 2>&1; then
+    echo "❌ ${FILE} 與 AGENTS.md 內容不一致"
+    echo "   兩檔必須同步（Claude Code 讀 CLAUDE.md，Codex 讀 AGENTS.md）"
+    echo "   執行: cp ${FILE} AGENTS.md && git add AGENTS.md"
+    errors=$((errors + 1))
+  elif ! git diff --cached --name-only | grep -q "^AGENTS.md$"; then
+    echo "❌ ${FILE} 已 stage，但 AGENTS.md 未 stage（雖內容一致）"
+    echo "   執行: git add AGENTS.md"
+    errors=$((errors + 1))
+  fi
+fi
+
+# --- 結果 ---
+if [[ "${errors}" -gt 0 ]]; then
+  echo ""
+  echo "❌ ${errors} 項檢查失敗。修正後再 commit，或用 SKIP_CLAUDE_MD_LINT=1 繞過。"
+  exit 1
+fi
+
+echo "✅ ${FILE} ${current_lines}/${LINE_LIMIT} lines — OK (AGENTS.md in sync)"
