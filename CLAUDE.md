@@ -94,7 +94,7 @@ Current OCR-stable baseline: 28c0965
 | 資源 | 值 |
 |------|-----|
 | Supabase Project | `fcmwrmwdoqiqdnbisdpg` |
-| Edge Functions | `analyze-chat`（含 opener 模式）/ `submit-feedback` / `revenuecat-webhook` |
+| Edge Functions | `analyze-chat`（含 opener 模式）/ `submit-feedback` / `sync-subscription` / `revenuecat-webhook` / `delete-account` |
 | Bundle ID | `com.poyutsai.vibesync` |
 | Team ID | `TTQHTVG8CC` |
 | 測試帳號 | `vibesync.test@gmail.com`（Essential，不扣額度）|
@@ -133,8 +133,9 @@ Current OCR-stable baseline: 28c0965
 - （全域已有 Git 安全規則，此處不重複）
 
 ### Privacy First
-- 對話內容**永不**上傳伺服器
-- API 請求處理完即丟
+- 對話內容預設只存本地
+- 分析 / OCR / 開場救星只傳必要內容；後端不長期保存完整對話
+- 診斷資料只留最小必要資訊
 - 本地資料 AES-256
 
 ---
@@ -151,7 +152,7 @@ Current OCR-stable baseline: 28c0965
 - Edge Function 冷啟動 → 加 loading state + timeout
 - Edge Function 新增變數前先 `grep "const\|let" <name>` 確認無同名
 - 錯誤訊息 minified → 開發時顯示完整錯誤類型，上線再簡化
-- RevenueCat 購買後 tier 未同步 → 檢查 entitlements / 用 Force Sync / 必要時 SQL 直接更新
+- RevenueCat 購買後 tier 未同步 → 檢查 entitlements / 先用恢復購買或 `sync-subscription` / 必要時 SQL 直接更新
 - **OCR 改動必須獨立 commit**，不混 security / cache / parser / prompt
 - Edge Function 呼叫 Claude API 用 `CLAUDE_API_KEY`，**不是** `ANTHROPIC_API_KEY`
 - 開場救星傳截圖必須用 `ImageData` 物件，**不能**用純 base64 字串

@@ -1,7 +1,7 @@
 # TestFlight 回歸與簽核清單
 
-最後更新：2026-03-24
-適用版本：v41 之後
+最後更新：2026-04-24
+適用範圍：送審前所有 TestFlight build
 
 目的：
 - 每次新的 TestFlight build 出來後，用同一份清單驗證核心流程
@@ -32,10 +32,15 @@
 ## B. 訂閱 / Paywall
 
 - [ ] Paywall 文案正常，沒有 mojibake
+- [ ] 月繳 / 季繳標示正確，當前方案不會把同 tier 其他週期誤判成「目前方案」
 - [ ] Privacy / Terms 可正常開啟
 - [ ] Starter 購買成功
 - [ ] Essential 購買成功
-- [ ] Restore Purchases 成功
+- [ ] `恢復購買` 成功
+- [ ] `管理訂閱` 可正常跳 App Store 管理頁
+- [ ] `Starter -> Essential` 升級後立即刷新成高 tier 權限
+- [ ] `Essential -> Starter` 會顯示已排程降級，當期額度仍維持 Essential
+- [ ] 去 App Store 取消降級後，回 App 點 `我已取消降級，更新狀態` 會清掉 pending 狀態
 - [ ] 升級後回分析頁，不會停留在舊 free-tier 結果
 
 ## C. OCR 識別

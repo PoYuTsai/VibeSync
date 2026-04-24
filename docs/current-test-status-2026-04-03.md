@@ -1,5 +1,8 @@
 # Current Test Status - 2026-04-03
 
+> **歷史快照**：此檔保留 2026-04-03 當時的測試狀態，不再作為目前 source of truth。
+> 目前請先看 `docs/snapshot.md`，送審前回歸請看 `docs/testflight-regression-checklist.md` 與 `docs/app-review-final-checklist.md`。
+
 ## Summary
 
 目前階段：送審前最後穩定化  

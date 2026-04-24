@@ -1,5 +1,8 @@
 # Claude Code Handoff - 2026-03-16
 
+> **歷史 handoff**：此檔保留當時交接脈絡，不是目前的專案入口。
+> 現況請先看 `AGENTS.md` / `CLAUDE.md`、`docs/snapshot.md`、`docs/decisions.md`、`docs/integrations/revenuecat.md`。
+
 ## 2026-04-05 Rollback Outcome
 
 - OCR-stable baseline is now `28c0965`

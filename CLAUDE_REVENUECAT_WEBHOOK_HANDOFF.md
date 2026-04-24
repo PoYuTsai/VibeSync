@@ -1,5 +1,7 @@
 # RevenueCat Webhook Fix Handoff (for Claude Code)
 
+> **歷史 handoff**：此檔記錄單次 webhook 修復背景，現在請優先參考 `docs/integrations/revenuecat.md` 作為整合 source of truth。
+
 ## What We Observed
 
 - Supabase Edge Function logs show repeated errors: `Invalid webhook authorization`.

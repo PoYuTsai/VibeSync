@@ -1,7 +1,7 @@
 # VibeSync 定價方案 (最終版)
 
 > **原始決定日期**：2026-02-26
-> **最新修訂**：2026-04-22（Starter NT$590 / Essential NT$1,290 / 新增季繳 / Starter 升 Sonnet）
+> **最新修訂**：2026-04-24（同步目前 Paywall / Subscription 狀態）
 > **目標用戶**：個人用戶
 > **計費模式**：訊息制
 >
@@ -105,22 +105,24 @@ function countMessages(text: string): number {
 | `essential_monthly` | Essential | 月繳 | NT$1,290 |
 | `essential_quarterly` | Essential | 季繳 | 以 App Store 為準 |
 
-### 季繳優惠
+### 月繳 / 季繳切換規則
 
 同方案更改月繳 / 季繳會由 App Store 確認，實際生效時間與費用以 Apple 畫面為準。
-Paywall 預設推薦方案：`essential_quarterly`。
+Paywall 目前預設先選 `essential_monthly`；若該方案尚未回傳，會 fallback 到第一個 available package，避免首屏卡在「正在同步方案資訊」。
+同 tier 的月繳 / 季繳在 app 內視為不同產品，不應互相被誤判成同一個目前方案。
 
 ---
 
-## 加購訊息包
+## 加購訊息包（規劃中，尚未上線）
 
-| 訊息包 | 價格 | 每則成本 |
+| 訊息包 | 規劃價格 | 每則成本 |
 |--------|------|----------|
 | 50 則 | NT$39 | NT$0.78 |
 | 150 則 | NT$99 | NT$0.66 |
 | 300 則 | NT$179 | NT$0.60 |
 
-> 加購比訂閱貴，鼓勵升級訂閱
+> 目前 App 內 Booster sheet 仍是 read-only preview，尚未串接 RevenueCat one-time purchase。
+> 這段先保留作為規劃參考，不作為目前對外銷售中的 source of truth。
 
 ---
 
@@ -172,7 +174,7 @@ Paywall 預設推薦方案：`essential_quarterly`。
 │  本次需要：25 則                        │
 │  剩餘額度：18 則                        │
 │                                         │
-│  [加購額度]         [升級方案]          │
+│  [管理方案]         [升級方案]          │
 └─────────────────────────────────────────┘
 ```
 

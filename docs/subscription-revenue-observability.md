@@ -112,5 +112,5 @@ limit 50;
 ## 目前判讀邏輯
 
 - 購買成功: 先看商店交易是否成功，再看 RevenueCat entitlements 是否生效
-- App 內方案顯示: 以 Supabase `subscriptions.tier` + RevenueCat sync 結果為主
-- `同步已買過的訂閱`: 不是再次扣款，而是把商店裡已存在的訂閱重新同步回 app
+- App 內方案顯示: 以 Supabase `subscriptions` + RevenueCat `sync-subscription` 結果為主
+- `恢復購買`: 不是再次扣款，而是把商店裡已存在的訂閱重新同步回 app

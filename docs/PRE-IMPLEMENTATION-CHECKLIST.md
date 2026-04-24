@@ -1,5 +1,8 @@
 # VibeSync 實作前完整檢查清單
 
+> **歷史規劃文件**：此檔是專案早期實作前的 planning snapshot，內含已過時的定價、成本假設與技術選型。
+> 目前請改看 `docs/snapshot.md`、`docs/pricing-final.md`、`docs/decisions.md`、`AGENTS.md` / `CLAUDE.md`。
+
 > 在開始寫任何程式碼之前，確認以下所有項目都已決定且文件化。
 
 ---

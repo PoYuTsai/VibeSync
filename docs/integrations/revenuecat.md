@@ -45,7 +45,8 @@
 ## Entitlements
 
 - `premium` entitlement 關聯全部 4 個訂閱產品
-- 購買後 webhook → Supabase `subscriptions` 表 tier 自動更新
+- App 內購買 / 恢復購買後，client 會呼叫 `sync-subscription` 對齊 Supabase `subscriptions`
+- 真正的續訂 / 到期 / billing issue 由 `revenuecat-webhook` 寫回資料庫
 
 ---
 
@@ -56,14 +57,26 @@
 
 **事件流**:
 ```
-用戶購買 → RevenueCat webhook → revenuecat-webhook Edge Function
-         → 更新 Supabase `subscriptions.tier` = 'starter' | 'essential'
-         → App 下次 query 即反映新 tier
+用戶購買 / 恢復購買 → RevenueCat SDK → sync-subscription Edge Function
+                   → 更新 Supabase `subscriptions`
+                   → App 重新載入後反映新 tier / product_id / 額度
+
+續訂 / 到期 / billing issue → RevenueCat webhook → revenuecat-webhook Edge Function
+                           → 更新 Supabase `subscriptions` / `revenue_events`
 ```
 
 **實作細節**:
 - 儲存 minimized diagnostic payload（2026-04-05 起）
 - 不再依賴 RevenueCat key fallback（安全性調整）
+- client-initiated sync 若 RevenueCat 暫時回空，不應把 paid tier 直接寫回 free
+
+---
+
+## App 內入口（目前 UX）
+
+- `恢復購買`：重新向商店 / RevenueCat 同步既有訂閱，不會再次扣款
+- `管理訂閱`：跳 App Store 管理目前方案、續訂與取消
+- 若已排程降級：App 會顯示 pending downgrade；使用者去 App Store 取消後，回 App 可點「我已取消降級，更新狀態」重新驗證
 
 ---
 
@@ -82,7 +95,7 @@ UPDATE subscriptions SET tier = 'essential'
 WHERE user_id = (SELECT id FROM auth.users WHERE email = 'xxx@xxx.com');
 ```
 
-App 端的 Force Sync 按鈕會顯示 RevenueCat 詳細資訊並允許手動選擇 tier。
+App 端目前沒有手動選 tier 的 debug UI。先走 `恢復購買`，再檢查 `sync-subscription` / webhook 與 RevenueCat entitlement 狀態。
 
 ### 「無法取得產品資訊」
 見 `docs/bug-log.md#2026-03-14`。根因通常是：
