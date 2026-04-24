@@ -4,6 +4,7 @@ import {
   maskEmailForNotification,
   resolveDiscordNotificationTarget,
   sanitizeFeedbackAiResponse,
+  truncateOptionalStringToMax,
 } from "./feedback_utils.ts";
 
 Deno.test("maskEmailForNotification masks normal emails", () => {
@@ -19,6 +20,20 @@ Deno.test("maskEmailForNotification masks short local parts", () => {
 
 Deno.test("maskEmailForNotification hides malformed emails", () => {
   assertEquals(maskEmailForNotification("unknown"), "hidden");
+});
+
+Deno.test("truncateOptionalStringToMax trims and clamps oversized input", () => {
+  assertEquals(
+    truncateOptionalStringToMax("  1234567890  ", 8),
+    "12345...",
+  );
+});
+
+Deno.test("truncateOptionalStringToMax keeps short input unchanged", () => {
+  assertEquals(
+    truncateOptionalStringToMax("  short  ", 10),
+    "short",
+  );
 });
 
 Deno.test("sanitizeFeedbackAiResponse keeps only whitelisted fields", () => {
@@ -51,6 +66,25 @@ Deno.test("sanitizeFeedbackAiResponse keeps only whitelisted fields", () => {
       gameStageStatus: "normal",
       topicDepth: "event",
       tierUsed: "starter",
+    },
+  );
+});
+
+Deno.test("sanitizeFeedbackAiResponse clamps long text fields within max length", () => {
+  const longText = "a".repeat(700);
+  assertEquals(
+    sanitizeFeedbackAiResponse({
+      strategy: longText,
+      finalRecommendation: {
+        content: longText,
+      },
+    }),
+    {
+      schemaVersion: 1,
+      strategy: `${"a".repeat(597)}...`,
+      finalRecommendation: {
+        content: `${"a".repeat(297)}...`,
+      },
     },
   );
 });

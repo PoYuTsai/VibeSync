@@ -26,6 +26,30 @@ export function normalizeOptionalString(
   return normalized;
 }
 
+export function truncateOptionalStringToMax(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  if (maxLength <= 3) {
+    return normalized.slice(0, maxLength);
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
 export function truncateForPreview(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
@@ -164,18 +188,7 @@ function clampOptionalString(
   value: unknown,
   maxLength: number,
 ): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    return undefined;
-  }
-
-  return normalized.length > maxLength
-    ? `${normalized.slice(0, maxLength)}...`
-    : normalized;
+  return truncateOptionalStringToMax(value, maxLength);
 }
 
 export function sanitizeFeedbackAiResponse(

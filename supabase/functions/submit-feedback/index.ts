@@ -5,10 +5,10 @@ import {
   AI_RESPONSE_MAX_LENGTH,
   buildDiscordNotificationContent,
   isPlainObject,
-  normalizeOptionalString,
   resolveDiscordNotificationTarget,
   sanitizeFeedbackAiResponse,
   stripBearer,
+  truncateOptionalStringToMax,
 } from "./feedback_utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -200,32 +200,34 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid category" }, 400);
     }
 
-    if (rawAiResponse != null && !isPlainObject(rawAiResponse)) {
-      return jsonResponse({ error: "Invalid aiResponse" }, 400);
-    }
-
     const rating = rawRating;
     const category = typeof rawCategory === "string" ? rawCategory : undefined;
-    const comment = normalizeOptionalString(body?.comment, COMMENT_MAX_LENGTH);
-    const conversationSnippet = normalizeOptionalString(
+    const comment = truncateOptionalStringToMax(
+      body?.comment,
+      COMMENT_MAX_LENGTH,
+    );
+    const conversationSnippet = truncateOptionalStringToMax(
       body?.conversationSnippet,
       SNIPPET_MAX_LENGTH,
     );
-    const userTier = normalizeOptionalString(
+    const userTier = truncateOptionalStringToMax(
       body?.userTier,
       USER_TIER_MAX_LENGTH,
     );
-    const modelUsed = normalizeOptionalString(
+    const modelUsed = truncateOptionalStringToMax(
       body?.modelUsed,
       MODEL_MAX_LENGTH,
     );
-    const aiResponse = sanitizeFeedbackAiResponse(rawAiResponse);
+    let aiResponse = sanitizeFeedbackAiResponse(rawAiResponse);
 
     if (
       aiResponse != null &&
       JSON.stringify(aiResponse).length > AI_RESPONSE_MAX_LENGTH
     ) {
-      return jsonResponse({ error: "aiResponse too large" }, 400);
+      console.warn(
+        "Feedback aiResponse exceeded max length after sanitization; dropping field",
+      );
+      aiResponse = undefined;
     }
 
     const { error: insertError } = await supabase.from("feedback").insert({
@@ -257,16 +259,6 @@ serve(async (req) => {
 
     return jsonResponse({ success: true });
   } catch (error) {
-    if (
-      error instanceof Error && error.message.startsWith("STRING_TOO_LONG:")
-    ) {
-      const maxLength = error.message.split(":")[1];
-      return jsonResponse(
-        { error: `Text field exceeds maximum length (${maxLength})` },
-        400,
-      );
-    }
-
     console.error("Error:", error);
     return jsonResponse({ error: "Internal server error" }, 500);
   }

@@ -10,6 +10,43 @@
 
 ## 2026-04
 
+### [2026-04-24] submit-feedback 對舊版 TestFlight feedback payload 相容性不足
+
+**症狀**:
+
+- TestFlight Build 137
+  點「送出反饋」時，使用者只看到「回饋暫時沒有送出，稍後可以再試一次」
+- Supabase Dashboard 上 `submit-feedback` logs 幾乎沒有線索
+- 同時間 server 端已經是新版本 Edge Function，但 TF137 還是舊 Flutter payload
+
+**Root Cause**:
+
+1. 舊版 Flutter 會固定送出最後 6 則對話片段，且未先截斷
+2. `submit-feedback` 對 optional string 欄位仍採「超長直接 400」策略
+3. Flutter `functions.invoke()` 在非 2xx 會 throw，而 app 端把 400/401/network
+   都吃成同一句 generic snackbar
+
+**修復**:
+
+1. `submit-feedback` 對 optional string 欄位改成 server-side truncate，相容舊版
+   client
+2. 若 `aiResponse` 在 sanitize 後仍超出上限，直接丟棄該欄位，不讓整筆 feedback
+   失敗
+3. 補上 unit tests 覆蓋 truncate 行為與 sanitize 後長字串壓縮
+
+**預防**:
+
+- client/server 獨立生命週期的功能，optional diagnostics payload 要做
+  backward-compatible 容錯
+- 舊版 app 可能仍在野外時，server 不應因 optional feedback context oversized
+  就回 400
+
+**相關檔案**:
+
+- `supabase/functions/submit-feedback/index.ts`
+- `supabase/functions/submit-feedback/feedback_utils.ts`
+- `supabase/functions/submit-feedback/feedback_utils_test.ts`
+
 ### [2026-04-24] submit-feedback Discord bot fallback 被 webhook 早退短路
 
 **症狀**:
