@@ -45,6 +45,14 @@ Default: **write nothing beyond git history** unless one of these is true.
 5. ADR-level decision
    - Update `docs/decisions.md`
 
+6. New contributor onboarding would fail or be materially misled
+   - Update `README.md`
+   - Triggers:
+     - setup / install / run / test / deploy commands changed
+     - required env vars, third-party services, or platform support changed
+     - top-level feature map or project entrypoints changed enough that README overview is stale
+     - docs entrypoint changed for first-30-minute onboarding
+
 If none apply:
 
 - leave docs untouched
@@ -57,6 +65,7 @@ If none apply:
 - `docs/snapshot.md` is a periodic rewrite, not an append-only diary.
 - `docs/reviews/` should capture decisions, findings, or rebuttals; not routine changelogs.
 - `AGENTS.md` / `CLAUDE.md` should stay short and point here for shared rules.
+- `README.md` is an onboarding doc, not a changelog; only update it when first-30-minute developer understanding would otherwise drift.
 - If a note is only useful for the current session, keep it out of permanent docs.
 
 ## Audience Tags

@@ -65,7 +65,8 @@ lib/shared/         # 共用 UI 元件 + services
 
 | 要找什麼 | 去哪 |
 |---------|------|
-| Claude Code 專案規則 | [CLAUDE.md](CLAUDE.md)（同步到 [AGENTS.md](AGENTS.md) 給 Codex） |
+| Agent 入口 | [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) |
+| 共享 Agent 規則 | [docs/shared-agent-rules.md](docs/shared-agent-rules.md) |
 | 當前階段狀態 | [docs/snapshot.md](docs/snapshot.md)（每月刷新） |
 | 架構決策記錄 | [docs/decisions.md](docs/decisions.md) |
 | Bug 歷史 | [docs/bug-log.md](docs/bug-log.md) |
