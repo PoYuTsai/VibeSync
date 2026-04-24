@@ -196,6 +196,8 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat \
 
 共用記憶 = `git log` + `docs/reviews/` + `docs/decisions.md` + `memory/`，**絕不**靠 session 記憶。完整腳本見 `memory/reference_ai_pair_roles.md` + `feedback_arbitration_protocol.md`。
 
+Claude / Codex 若需跨 bot 討論或仲裁，先寫 `docs/reviews/ai-arbitration-queue.md`，**不要**自由來回對話。
+
 ### 任務分工（可覆蓋）
 - UI / Flutter / 文案 / 產品判斷 → **Claude** 主導
 - OCR / 演算法 / 效能 / 重構 plan → **Codex** 主導
@@ -236,6 +238,7 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat \
 | **上線準備** | `docs/launch-readiness-checklist.md` |
 | **OCR benchmark** | `docs/ocr-analysis-maturity-benchmark.md` |
 | **Discord bot 問題** | `docs/discord-vibesync-troubleshooting.md`（live state 在 WSL `discord-vibesync`） |
+| **AI 協作仲裁 queue** | `docs/reviews/ai-arbitration-queue.md` |
 | **設計規格 v1.3** | `docs/plans/2026-02-26-vibesync-design.md` |
 | **實作計畫** | `docs/plans/2026-02-26-vibesync-implementation.md` |
 | **Bug 歷史（18 條）** | `docs/bug-log.md` |
