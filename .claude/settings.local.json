@@ -1,0 +1,10 @@
+{
+  "enabledPlugins": {
+    "discord@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "mcp__plugin_discord_discord__reply"
+    ]
+  }
+}

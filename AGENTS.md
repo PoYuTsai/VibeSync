@@ -156,6 +156,7 @@ Current OCR-stable baseline: 28c0965
 - **OCR 改動必須獨立 commit**，不混 security / cache / parser / prompt
 - Edge Function 呼叫 Claude API 用 `CLAUDE_API_KEY`，**不是** `ANTHROPIC_API_KEY`
 - 開場救星傳截圖必須用 `ImageData` 物件，**不能**用純 base64 字串
+- Discord bridge 若 session 還活著但 bot 顯示離線 → 先檢查 repo `.claude/settings.local.json` 是否有 `enabledPlugins.discord@claude-plugins-official = true`
 
 ---
 

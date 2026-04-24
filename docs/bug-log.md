@@ -9,6 +9,38 @@
 ---
 
 ## 2026-04
+### [2026-04-25] VibeSync Discord bridge session 還活著，但 bot 顯示離線不回訊息
+**症狀**:
+
+- `VibeSyncClaude` 在 Discord 顯示 offline
+- VibeSync 的 WSL / VSCode session 仍在運行
+- Supabase `submit-feedback` 仍可用同一個 bot token 發 Discord 通知
+- 但 bot 不會回應頻道內的新訊息
+
+**Root Cause**:
+
+1. 全域 `~/.claude/settings.json` 把 `discord@claude-plugins-official` 設成 `false`
+2. TravelAPP 有 project-local `.claude/settings.local.json` override，VibeSync 沒有
+3. VibeSync bridge 主程序雖然存在，但 Discord plugin child 沒被拉起來，所以沒有 gateway 連線
+
+**修復**:
+
+1. 讓 `.claude/settings.local.json` 成為 repo 內可追蹤的最小設定，明確啟用 `discord@claude-plugins-official`
+2. 更新 `.gitignore`，只放行這個安全的 project-local Claude 設定檔
+3. 重啟 `discord-vibesync` bridge，確認 Discord plugin child process 成功啟動
+
+**預防**:
+
+- Discord bot「能發通知」不等於 bridge「在線監聽」；Supabase REST 發文和 WSL gateway 監聽是兩條路
+- 若 bot 顯示 offline，但 session 還在，先查 `.claude/settings.local.json` 和 plugin child process
+
+**相關檔案**:
+
+- `.gitignore`
+- `.claude/settings.local.json`
+- `AGENTS.md`
+- `docs/discord-vibesync-troubleshooting.md`
+
 
 ### [2026-04-24] submit-feedback 對舊版 TestFlight feedback payload 相容性不足
 

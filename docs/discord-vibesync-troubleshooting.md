@@ -47,6 +47,40 @@ Relevant group/channel IDs:
 - `1487899618090946634`
 - `1488034916481368147`
 
+## Root Cause Found On 2026-04-25
+
+Symptom:
+
+- `VibeSyncClaude` showed offline in Discord.
+- The VibeSync WSL session was still open.
+- Feedback notifications could still post to Discord from Supabase.
+- The bot would not reply to live Discord messages.
+
+Actual root cause:
+
+- Global `~/.claude/settings.json` had `discord@claude-plugins-official` set to `false`.
+- TravelAPP had a project-local override in `.claude/settings.local.json`.
+- VibeSync did not have that override, so the Discord plugin child never spawned.
+- The session could still exist without a live Discord gateway connection.
+
+Fix committed in this repo:
+
+1. Track the minimal VibeSync project override in `.claude/settings.local.json`:
+   ```json
+   {
+     "enabledPlugins": {
+       "discord@claude-plugins-official": true
+     }
+   }
+   ```
+2. Narrow `.gitignore` so that only this safe project-local Claude setting is committed.
+
+Runtime action needed when it is already stuck:
+
+1. Restart the VibeSync bridge after the override exists.
+2. If launching from automation or a detached shell, use a real TTY such as `tmux`.
+3. A plain `nohup ... start.sh` relaunch can leave Claude in a non-interactive state and exit early.
+
 ## Fix Applied Outside This Repo
 
 These runtime fixes were applied directly in the live WSL environment and are **not** committed in this repo:
@@ -69,7 +103,8 @@ If Discord real-time monitoring breaks again, check in this order:
 1. Which start script is actually used.
 2. Which `DISCORD_STATE_DIR` it exports.
 3. Whether the real live `access.json` contains the target user ID.
-4. Whether the live plugin file in WSL is the one being edited.
+4. Whether the repo has `.claude/settings.local.json` enabling `discord@claude-plugins-official`.
+5. Whether the live plugin file in WSL is the one being edited.
 
 ## Important Distinction
 
@@ -85,9 +120,10 @@ Do not assume fixes under the generic `discord` path apply to VibeSync.
 1. Confirm the user can post in the expected Discord channel.
 2. Inspect `~/.claude/channels/discord-vibesync/access.json`.
 3. Verify the target user ID appears in both top-level `allowFrom` and the relevant group.
-4. If allowlist is correct but real-time still fails, inspect the live WSL plugin:
+4. Confirm the repo-local `.claude/settings.local.json` overrides the globally-disabled Discord plugin.
+5. If allowlist is correct but real-time still fails, inspect the live WSL plugin:
    - `~/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/discord/server.ts`
-5. Restart the channel via:
+6. Restart the channel via:
    - `~/.claude/channels/discord-vibesync/start.sh`
 
 ## Notes For Future Sessions
