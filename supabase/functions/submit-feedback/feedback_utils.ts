@@ -2,6 +2,7 @@ const FEEDBACK_SCHEMA_VERSION = 1;
 const ENUM_MAX_LENGTH = 64;
 const SHORT_TEXT_MAX_LENGTH = 300;
 const MEDIUM_TEXT_MAX_LENGTH = 600;
+const DISCORD_MESSAGE_MAX_LENGTH = 1900;
 
 export const AI_RESPONSE_MAX_LENGTH = 12000;
 
@@ -50,6 +51,85 @@ export function maskEmailForNotification(email: string): string {
   const domain = normalized.slice(atIndex + 1);
   const visiblePrefix = localPart.slice(0, Math.min(2, localPart.length));
   return `${visiblePrefix}***@${domain}`;
+}
+
+export type FeedbackNotification = {
+  userEmail: string;
+  userTier: string;
+  rating: string;
+  category?: string;
+  comment?: string;
+  conversationSnippet?: string;
+  aiResponse?: Record<string, unknown>;
+  modelUsed?: string;
+};
+
+function truncateWholeMessage(message: string): string {
+  if (message.length <= DISCORD_MESSAGE_MAX_LENGTH) {
+    return message;
+  }
+
+  return `${message.slice(0, DISCORD_MESSAGE_MAX_LENGTH - 3)}...`;
+}
+
+export function buildDiscordNotificationContent(
+  feedback: FeedbackNotification,
+  options?: {
+    commentPreviewLength?: number;
+    snippetPreviewLength?: number;
+    timestamp?: string;
+  },
+): string {
+  const categoryLabels: Record<string, string> = {
+    too_direct: "Too direct",
+    too_long: "Too long",
+    unnatural: "Unnatural",
+    wrong_style: "Wrong style",
+    other: "Other",
+  };
+
+  const commentPreviewLength = options?.commentPreviewLength ?? 300;
+  const snippetPreviewLength = options?.snippetPreviewLength ?? 500;
+  const timestamp = options?.timestamp ?? new Date().toISOString();
+  const maskedEmail = maskEmailForNotification(feedback.userEmail);
+
+  const messageParts: string[] = [
+    "Negative feedback received\n\n",
+    `User: ${maskedEmail} (${feedback.userTier})\n`,
+    `Category: ${
+      categoryLabels[feedback.category || "other"] || feedback.category
+    }\n`,
+  ];
+
+  if (feedback.comment) {
+    messageParts.push(
+      `Comment: "${
+        truncateForPreview(feedback.comment, commentPreviewLength)
+      }"\n`,
+    );
+  }
+
+  if (feedback.conversationSnippet) {
+    messageParts.push(
+      `\nConversation snippet:\n${
+        truncateForPreview(feedback.conversationSnippet, snippetPreviewLength)
+      }\n`,
+    );
+  }
+
+  if (feedback.aiResponse?.finalRecommendation) {
+    const rec = feedback.aiResponse.finalRecommendation as Record<
+      string,
+      string
+    >;
+    messageParts.push(`\nAI recommendation:\n${rec.pick}: "${rec.content}"\n`);
+  }
+
+  let message = messageParts.join("");
+  message += `\nModel: ${feedback.modelUsed || "unknown"}`;
+  message += `\nTime: ${timestamp}`;
+
+  return truncateWholeMessage(message);
 }
 
 function clampOptionalString(

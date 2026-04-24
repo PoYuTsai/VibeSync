@@ -81,5 +81,5 @@
 ## 監控
 
 - 定期 check `ai_logs` 的 cost 分佈
-- Telegram `@vibesync_feedback_bot` 接收負面反饋（品質問題也會間接暴露模型選擇失誤）
+- Discord 通知接收負面反饋（品質問題也會間接暴露模型選擇失誤）
 - Admin Dashboard（`admin-dashboard/`）有 Token 成本報表（ADR #8 Phase）

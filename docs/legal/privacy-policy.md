@@ -72,7 +72,7 @@ VibeSync 是一款聊天分析與回覆建議工具。服務包含：
 | Supabase | 帳號、資料庫、Edge Functions、後端處理 | 帳號資料、訂閱資料、診斷資料、營運日誌 |
 | Anthropic | AI 分析與 OCR 相關處理 | 您主動送出的對話內容、截圖與相關上下文 |
 | RevenueCat | 訂閱驗證與 entitlement 同步 | App user ID、產品 ID、訂閱事件 |
-| Telegram Bot（若有啟用） | 負評通知與客服支援 | 您主動提交且選擇附加的留言、AI 建議片段、部分對話片段 |
+| Discord Webhook / Bot（若有啟用） | 負評通知與客服支援 | 您主動提交且選擇附加的留言、AI 建議片段、部分對話片段 |
 | Apple / Google | 平台登入、支付與商店流程 | 平台要求的帳號與交易資料 |
 
 我們不會在與本服務無關的情況下，出售您的個人資料。

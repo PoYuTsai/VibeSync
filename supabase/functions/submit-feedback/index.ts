@@ -3,18 +3,25 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import {
   AI_RESPONSE_MAX_LENGTH,
+  buildDiscordNotificationContent,
   isPlainObject,
-  maskEmailForNotification,
   normalizeOptionalString,
   sanitizeFeedbackAiResponse,
   stripBearer,
-  truncateForPreview,
 } from "./feedback_utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
-const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID");
+const DISCORD_FEEDBACK_WEBHOOK_URL =
+  Deno.env.get("DISCORD_FEEDBACK_WEBHOOK_URL") ??
+    Deno.env.get("DISCORD_WEBHOOK_URL");
+const DISCORD_BOT_TOKEN = Deno.env.get("DISCORD_BOT_TOKEN")?.replace(
+  /^Bot\s+/i,
+  "",
+).trim();
+const DISCORD_FEEDBACK_CHANNEL_ID =
+  Deno.env.get("DISCORD_FEEDBACK_CHANNEL_ID") ??
+    Deno.env.get("DISCORD_CHANNEL_ID");
 
 const VALID_CATEGORIES = new Set([
   "too_direct",
@@ -28,8 +35,8 @@ const COMMENT_MAX_LENGTH = 2000;
 const SNIPPET_MAX_LENGTH = 4000;
 const MODEL_MAX_LENGTH = 120;
 const USER_TIER_MAX_LENGTH = 50;
-const TELEGRAM_COMMENT_PREVIEW = 300;
-const TELEGRAM_SNIPPET_PREVIEW = 500;
+const DISCORD_COMMENT_PREVIEW = 300;
+const DISCORD_SNIPPET_PREVIEW = 500;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +52,7 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-async function sendTelegramNotification(feedback: {
+async function sendDiscordNotification(feedback: {
   userEmail: string;
   userTier: string;
   rating: string;
@@ -55,8 +62,8 @@ async function sendTelegramNotification(feedback: {
   aiResponse?: Record<string, unknown>;
   modelUsed?: string;
 }) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.warn("Telegram credentials not configured");
+  if (!DISCORD_FEEDBACK_WEBHOOK_URL) {
+    console.warn("Discord feedback webhook not configured");
     return;
   }
 
@@ -64,63 +71,52 @@ async function sendTelegramNotification(feedback: {
     return;
   }
 
-  const categoryLabels: Record<string, string> = {
-    too_direct: "Too direct",
-    too_long: "Too long",
-    unnatural: "Unnatural",
-    wrong_style: "Wrong style",
-    other: "Other",
-  };
-
-  const maskedEmail = maskEmailForNotification(feedback.userEmail);
-  const messageParts: string[] = [
-    "Negative feedback received\n\n",
-    `User: ${maskedEmail} (${feedback.userTier})\n`,
-    `Category: ${
-      categoryLabels[feedback.category || "other"] || feedback.category
-    }\n`,
-  ];
-
-  if (feedback.comment) {
-    messageParts.push(
-      `Comment: "${
-        truncateForPreview(feedback.comment, TELEGRAM_COMMENT_PREVIEW)
-      }"\n`,
-    );
-  }
-
-  if (feedback.conversationSnippet) {
-    messageParts.push(
-      `\nConversation snippet:\n${
-        truncateForPreview(
-          feedback.conversationSnippet,
-          TELEGRAM_SNIPPET_PREVIEW,
-        )
-      }\n`,
-    );
-  }
-
-  if (feedback.aiResponse?.finalRecommendation) {
-    const rec = feedback.aiResponse.finalRecommendation as Record<
-      string,
-      string
-    >;
-    messageParts.push(`\nAI recommendation:\n${rec.pick}: "${rec.content}"\n`);
-  }
-
-  let message = messageParts.join("");
-  message += `\nModel: ${feedback.modelUsed || "unknown"}`;
-  message += `\nTime: ${new Date().toISOString()}`;
+  const content = buildDiscordNotificationContent(feedback, {
+    commentPreviewLength: DISCORD_COMMENT_PREVIEW,
+    snippetPreviewLength: DISCORD_SNIPPET_PREVIEW,
+  });
 
   try {
+    if (DISCORD_FEEDBACK_WEBHOOK_URL) {
+      const response = await fetch(
+        DISCORD_FEEDBACK_WEBHOOK_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content,
+            username: "VibeSync Feedback",
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        console.error(
+          "Discord webhook notification failed:",
+          response.status,
+          responseText,
+        );
+      }
+
+      return;
+    }
+
+    if (!DISCORD_BOT_TOKEN || !DISCORD_FEEDBACK_CHANNEL_ID) {
+      console.warn("Discord notification not configured");
+      return;
+    }
+
     const response = await fetch(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      `https://discord.com/api/v10/channels/${DISCORD_FEEDBACK_CHANNEL_ID}/messages`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+        },
         body: JSON.stringify({
-          chat_id: TELEGRAM_CHAT_ID,
-          text: message,
+          content,
         }),
       },
     );
@@ -128,13 +124,13 @@ async function sendTelegramNotification(feedback: {
     if (!response.ok) {
       const responseText = await response.text();
       console.error(
-        "Telegram notification failed:",
+        "Discord bot notification failed:",
         response.status,
         responseText,
       );
     }
   } catch (error) {
-    console.error("Failed to send Telegram notification:", error);
+    console.error("Failed to send Discord notification:", error);
   }
 }
 
@@ -233,7 +229,7 @@ serve(async (req) => {
       return jsonResponse({ error: "Failed to save feedback" }, 500);
     }
 
-    await sendTelegramNotification({
+    await sendDiscordNotification({
       userEmail: user.email || "unknown",
       userTier: userTier || "unknown",
       rating,

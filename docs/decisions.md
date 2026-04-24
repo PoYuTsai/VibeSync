@@ -166,7 +166,7 @@
 - 分析結果頁底部 👍👎 按鈕
 - 負面反饋展開表單（分類 + 補充說明）
 - 反饋存 Supabase `feedback` 表
-- 負面反饋自動發送 Telegram 通知
+- 負面反饋自動發送 Discord 通知
 
 **相關文件**:
 - 設計: `docs/plans/2026-03-04-system-prompt-optimization-design.md`

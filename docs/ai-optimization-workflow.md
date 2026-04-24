@@ -74,7 +74,7 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx \
 - 分析結果頁底部 👍👎 按鈕
 - 負面反饋展開表單（分類 + 補充說明）
 - 反饋存 Supabase `feedback` 表
-- 負面反饋自動發送 Telegram（`@vibesync_feedback_bot`）
+- 負面反饋由 `submit-feedback` Edge Function 直接發送 Discord 通知（優先 webhook，否則 bot 直送 channel；不依賴本機 WSL / VS Code bridge）
 
 **Edge Function**: `submit-feedback`
 
