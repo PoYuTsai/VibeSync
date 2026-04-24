@@ -10,6 +10,45 @@
 
 ## 2026-04
 
+### [2026-04-24] 上傳頁 helper text + 識別按鈕 disabled 狀態白字低對比 — WCAG AA 不過
+
+**症狀**:
+- Bruce 在 Build 137 回報三張截圖標註紅框：
+  - 上傳頁兩條 helper text（「每張盡量保留 15 則內」/「請上傳聊天畫面…」）白字貼淺色 glass 漸層，幾乎看不見
+  - 識別中 loading 按鈕「AI 辨識中」在 disabled 狀態幾乎透明
+- 對比度不足，實機肉眼難讀；送審 App Store 若走 WCAG AA 檢查會卡
+
+**Root Cause**:
+1. `image_picker_widget.dart` 三處 `Text` widget 色號寫死 `Colors.white.withValues(alpha: 0.85)`——原本設計假設背景是深色 `AppColors.background`（`#121212`），但該 widget 被嵌進淺色 glass surface（`AppColors.glassWhite` `#F5F0F8`）時沒套對應 token
+2. `analysis_screen.dart` 兩處 `ElevatedButton.styleFrom` 只設 `backgroundColor: AppColors.primary`，沒設 `disabledBackgroundColor` / `disabledForegroundColor`——按鈕 `onPressed: null`（識別中）時 Material 預設把 BG 和 label 都灰化，結果白字 label 貼淺灰 BG，對比度 ~1.3:1
+
+**修復**:
+1. `image_picker_widget.dart` 三處 helper text 色：`Colors.white.withValues(alpha: 0.85)` → `AppColors.glassTextHint`（`#8B4557`，跟 `analysis_screen.dart:756` 既有 pattern 對齊）
+2. `analysis_screen.dart` 兩處 ElevatedButton 明確加 4 個色號：
+   - `foregroundColor: Colors.white`（active 的 label + icon）
+   - `disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.7)`（disabled 時仍是可見紫）
+   - `disabledForegroundColor: Colors.white.withValues(alpha: 0.95)`（disabled 時白字保持可讀）
+3. 不動設計系統、不動其他 `Colors.white.withValues` 用法（最小 blast radius）
+
+**預防**:
+- 新增 `Text` widget 時，禁用 `Colors.white.withValues(...)` 直寫——一律走 `AppColors.glass*` 或 `AppColors.text*` token
+- ElevatedButton 有 `onPressed: null` 分支時，必設 `disabledBackgroundColor` + `disabledForegroundColor`（Material 預設會把按鈕灰到幾乎看不見）
+- 送審前走一次全頁 WCAG AA 掃（對比度 < 4.5:1 的 text 都要改）
+
+**相關檔案**:
+- `lib/shared/widgets/image_picker_widget.dart` (lines 194, 202, 215)
+- `lib/features/analysis/presentation/screens/analysis_screen.dart` (ElevatedButton styleFrom × 2)
+
+**不動範圍**:
+- `analysis_screen.dart:3239` 還有一條 `Colors.white.withValues(alpha: 0.55)` 類似問題（「建議每張截圖保留 15 則內完整對話…」）——Bruce 未標，暫不動，等全域 design audit 一起收
+- 其他畫面的 `Colors.white` 用法未掃（避免超 scope）
+
+**Reviewer-Hint**（留給 Codex）:
+- `glassTextHint` 色號是否真的對 glass surface 有 ≥4.5:1 對比度？沒跑 contrast checker，憑 eye-ball
+- `disabledBackgroundColor: primary.withValues(alpha: 0.7)` 的 0.7 是拍腦袋挑的——若實機看起來太亮太像 active，改 0.5 或 0.6
+
+---
+
 ### [2026-04-24] 圖片壓縮對拼貼版面失效 — 截圖顯示「太大」擋住上傳
 **症狀**:
 - Bruce 上傳約會軟體 profile 截圖（1.5MB、iPhone 高解析度、多張照片拼貼版面）

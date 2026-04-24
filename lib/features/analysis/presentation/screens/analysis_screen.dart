@@ -785,6 +785,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   label: Text(_recognizeButtonLabel),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        AppColors.primary.withValues(alpha: 0.7),
+                    disabledForegroundColor:
+                        Colors.white.withValues(alpha: 0.95),
                     padding: const EdgeInsets.symmetric(vertical: 13),
                   ),
                 ),
@@ -3270,6 +3275,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                           padding: const EdgeInsets.symmetric(
                                               vertical: 14),
                                           backgroundColor: AppColors.primary,
+                                          foregroundColor: Colors.white,
+                                          disabledBackgroundColor: AppColors
+                                              .primary
+                                              .withValues(alpha: 0.7),
+                                          disabledForegroundColor: Colors.white
+                                              .withValues(alpha: 0.95),
                                         ),
                                       ),
                                     ),
