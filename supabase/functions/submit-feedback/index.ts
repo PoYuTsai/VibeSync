@@ -6,6 +6,7 @@ import {
   buildDiscordNotificationContent,
   isPlainObject,
   normalizeOptionalString,
+  resolveDiscordNotificationTarget,
   sanitizeFeedbackAiResponse,
   stripBearer,
 } from "./feedback_utils.ts";
@@ -62,12 +63,18 @@ async function sendDiscordNotification(feedback: {
   aiResponse?: Record<string, unknown>;
   modelUsed?: string;
 }) {
-  if (!DISCORD_FEEDBACK_WEBHOOK_URL) {
-    console.warn("Discord feedback webhook not configured");
+  if (feedback.rating !== "negative") {
     return;
   }
 
-  if (feedback.rating !== "negative") {
+  const notificationTarget = resolveDiscordNotificationTarget({
+    webhookUrl: DISCORD_FEEDBACK_WEBHOOK_URL,
+    botToken: DISCORD_BOT_TOKEN,
+    channelId: DISCORD_FEEDBACK_CHANNEL_ID,
+  });
+
+  if (!notificationTarget) {
+    console.warn("Discord notification not configured");
     return;
   }
 
@@ -77,9 +84,15 @@ async function sendDiscordNotification(feedback: {
   });
 
   try {
-    if (DISCORD_FEEDBACK_WEBHOOK_URL) {
+    if (notificationTarget === "webhook") {
+      const webhookUrl = DISCORD_FEEDBACK_WEBHOOK_URL;
+      if (!webhookUrl) {
+        console.warn("Discord webhook target resolved without webhook URL");
+        return;
+      }
+
       const response = await fetch(
-        DISCORD_FEEDBACK_WEBHOOK_URL,
+        webhookUrl,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -102,18 +115,20 @@ async function sendDiscordNotification(feedback: {
       return;
     }
 
-    if (!DISCORD_BOT_TOKEN || !DISCORD_FEEDBACK_CHANNEL_ID) {
-      console.warn("Discord notification not configured");
+    const botToken = DISCORD_BOT_TOKEN;
+    const channelId = DISCORD_FEEDBACK_CHANNEL_ID;
+    if (!botToken || !channelId) {
+      console.warn("Discord bot target resolved without complete bot config");
       return;
     }
 
     const response = await fetch(
-      `https://discord.com/api/v10/channels/${DISCORD_FEEDBACK_CHANNEL_ID}/messages`,
+      `https://discord.com/api/v10/channels/${channelId}/messages`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+          Authorization: `Bot ${botToken}`,
         },
         body: JSON.stringify({
           content,

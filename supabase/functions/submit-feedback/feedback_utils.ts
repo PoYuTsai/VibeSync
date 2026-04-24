@@ -64,6 +64,34 @@ export type FeedbackNotification = {
   modelUsed?: string;
 };
 
+export type DiscordNotificationTarget = "webhook" | "bot";
+
+function normalizeConfigString(
+  value: string | null | undefined,
+): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+export function resolveDiscordNotificationTarget(config: {
+  webhookUrl?: string | null;
+  botToken?: string | null;
+  channelId?: string | null;
+}): DiscordNotificationTarget | undefined {
+  if (normalizeConfigString(config.webhookUrl)) {
+    return "webhook";
+  }
+
+  if (
+    normalizeConfigString(config.botToken) &&
+    normalizeConfigString(config.channelId)
+  ) {
+    return "bot";
+  }
+
+  return undefined;
+}
+
 function truncateWholeMessage(message: string): string {
   if (message.length <= DISCORD_MESSAGE_MAX_LENGTH) {
     return message;

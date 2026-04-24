@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildDiscordNotificationContent,
   maskEmailForNotification,
+  resolveDiscordNotificationTarget,
   sanitizeFeedbackAiResponse,
 } from "./feedback_utils.ts";
 
@@ -63,6 +64,36 @@ Deno.test("sanitizeFeedbackAiResponse clamps numeric score", () => {
       schemaVersion: 1,
       enthusiasmScore: 100,
     },
+  );
+});
+
+Deno.test("resolveDiscordNotificationTarget prefers webhook delivery", () => {
+  assertEquals(
+    resolveDiscordNotificationTarget({
+      webhookUrl: "https://discord.com/api/webhooks/test",
+      botToken: "bot-token",
+      channelId: "123",
+    }),
+    "webhook",
+  );
+});
+
+Deno.test("resolveDiscordNotificationTarget uses bot fallback when webhook is absent", () => {
+  assertEquals(
+    resolveDiscordNotificationTarget({
+      botToken: "bot-token",
+      channelId: "123",
+    }),
+    "bot",
+  );
+});
+
+Deno.test("resolveDiscordNotificationTarget returns undefined for incomplete config", () => {
+  assertEquals(
+    resolveDiscordNotificationTarget({
+      botToken: "bot-token",
+    }),
+    undefined,
   );
 });
 
