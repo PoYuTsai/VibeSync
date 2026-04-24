@@ -6,50 +6,53 @@ import 'package:image/image.dart' as img;
 /// 圖片壓縮服務
 /// 用於壓縮用戶上傳的截圖到適合 API 傳輸的大小
 class ImageCompressService {
-  static const int maxWidth = 960;
-  static const int quality = 78;
-  static const int fallbackQuality = 60;
-  static const int maxSizeBytes = 350 * 1024; // 350KB
+  static const int maxSizeBytes = 1024 * 1024; // 1MB
+
+  // Progressive fallback：寬度從大到小、品質從高到低。
+  // 用於對付拼貼版面、高解析度截圖等壓縮阻抗高的輸入。
+  static const List<(int width, int quality)> _compressionAttempts = [
+    (960, 78),
+    (960, 60),
+    (768, 60),
+    (768, 45),
+    (640, 45),
+    (640, 30),
+  ];
 
   /// 壓縮圖片到適合上傳的大小
-  /// 返回壓縮後的 JPEG bytes，或 null 如果壓縮失敗
+  /// 壓得到目標 → 回該結果；全部嘗試都超標 → 回最小的版本（由 caller 決定擋不擋）
+  /// 解碼失敗或例外 → 回 null
   static Future<Uint8List?> compressImage(Uint8List imageBytes) async {
     try {
-      // 解碼圖片取得尺寸
       final image = img.decodeImage(imageBytes);
       if (image == null) return null;
 
-      // 計算目標尺寸
-      int targetWidth = image.width;
-      int targetHeight = image.height;
+      Uint8List? smallest;
+      for (final (width, q) in _compressionAttempts) {
+        int targetWidth = image.width;
+        int targetHeight = image.height;
+        if (image.width > width) {
+          targetWidth = width;
+          targetHeight = (image.height * width / image.width).round();
+        }
 
-      if (image.width > maxWidth) {
-        targetWidth = maxWidth;
-        targetHeight = (image.height * maxWidth / image.width).round();
-      }
-
-      // 壓縮
-      final result = await FlutterImageCompress.compressWithList(
-        imageBytes,
-        minWidth: targetWidth,
-        minHeight: targetHeight,
-        quality: quality,
-        format: CompressFormat.jpeg,
-      );
-
-      // 檢查大小
-      if (result.length > maxSizeBytes) {
-        // 再次壓縮，降低品質
-        return await FlutterImageCompress.compressWithList(
+        final result = await FlutterImageCompress.compressWithList(
           imageBytes,
           minWidth: targetWidth,
           minHeight: targetHeight,
-          quality: fallbackQuality,
+          quality: q,
           format: CompressFormat.jpeg,
         );
+
+        if (result.length <= maxSizeBytes) {
+          return result;
+        }
+        if (smallest == null || result.length < smallest.length) {
+          smallest = result;
+        }
       }
 
-      return result;
+      return smallest;
     } catch (e) {
       return null;
     }

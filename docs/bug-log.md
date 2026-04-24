@@ -8,6 +8,43 @@
 
 ---
 
+## 2026-04
+
+### [2026-04-24] 圖片壓縮對拼貼版面失效 — 截圖顯示「太大」擋住上傳
+**症狀**:
+- Bruce 上傳約會軟體 profile 截圖（1.5MB、iPhone 高解析度、多張照片拼貼版面）
+- App 顯示「壓縮後圖片仍然太大，請裁小一點再試。」，無法上傳
+- Claude Vision API 實際可吃 ~5MB 原始 / ~3.75MB base64，350KB 硬限制過度保守
+
+**Root Cause**:
+1. `ImageCompressService.compressImage` 只試兩次：quality 78 → 60，寬度都固定 960px
+2. 對「高解析度 + 拼貼版面」（JPEG 壓縮阻抗高）兩次都打不到 350KB 上限
+3. 壓不下時直接把超標結果回給 widget，widget 看到 `> maxSizeBytes` 直接擋
+4. 錯誤訊息「請裁小一點」對用戶沒實際引導——用戶不知道該裁哪裡
+
+**修復**:
+1. `maxSizeBytes` 放寬：350KB → 1MB（3 張 × 1MB + JSON overhead 仍在 Claude API body limit 內）
+2. 壓縮策略改 progressive fallback，6 階段：
+   `(960, 78) → (960, 60) → (768, 60) → (768, 45) → (640, 45) → (640, 30)`
+3. 全部超標時回傳「最小的版本」而非任意一次結果，讓 caller 可用「目前最佳」判斷
+4. 錯誤訊息改成具體引導：「這張截圖內容太複雜（例如多張照片拼貼），請只截自介文字段落再試。」
+
+**預防**:
+- 新增壓縮策略時，要用「多張拼貼截圖」當 worst-case fixture 驗證
+- 不在 mobile-only 本機環境（WSL）做最終 analyze；Codex review + 真機測試當閘門
+
+**相關檔案**:
+- `lib/shared/services/image_compress_service.dart`
+- `lib/shared/widgets/image_picker_widget.dart`（錯誤訊息）
+
+**不動範圍**:
+- `lib/features/analysis/data/services/analysis_service.dart:228`（Edge Function 回的 `Request body too large`，屬不同路徑）
+- Edge Function 本身（L3 邊緣，未觸碰）
+
+**Discord context**: 群組 `1487899618090946634`，Bruce 回報 message `1497131529854521506`
+
+---
+
 ## 2026-03
 
 ### [2026-03-15] 購買後 Tier 未同步到 Supabase — 截圖功能 Timeout

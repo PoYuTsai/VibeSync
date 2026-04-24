@@ -128,7 +128,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     }
 
     if (compressed.length > ImageCompressService.maxSizeBytes) {
-      _showError('壓縮後圖片仍然太大，請裁小一點再試。');
+      _showError('這張截圖內容太複雜（例如多張照片拼貼），請只截自介文字段落再試。');
       return;
     }
 
