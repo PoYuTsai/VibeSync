@@ -156,7 +156,6 @@ Current OCR-stable baseline: 28c0965
 - **OCR 改動必須獨立 commit**，不混 security / cache / parser / prompt
 - Edge Function 呼叫 Claude API 用 `CLAUDE_API_KEY`，**不是** `ANTHROPIC_API_KEY`
 - 開場救星傳截圖必須用 `ImageData` 物件，**不能**用純 base64 字串
-- Discord bridge 若 session 還活著但 bot 顯示離線 → 先檢查 repo `.claude/settings.local.json` 是否有 `enabledPlugins.discord@claude-plugins-official = true`
 
 ---
 
@@ -194,9 +193,7 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat \
 
 ## 🤝 Claude ↔ Codex 協作協議
 
-共用記憶 = `git log` + `docs/reviews/` + `docs/decisions.md` + `memory/`，**絕不**靠 session 記憶。完整腳本見 `memory/reference_ai_pair_roles.md` + `feedback_arbitration_protocol.md`。
-
-Claude / Codex 若需跨 bot 討論或仲裁，先寫 `docs/reviews/ai-arbitration-queue.md`，**不要**自由來回對話。
+共用記憶 = `git log` + `docs/reviews/` + `docs/decisions.md` + `memory/`，**絕不**靠 session 記憶。完整腳本見 `memory/reference_ai_pair_roles.md` + `feedback_arbitration_protocol.md`。共享流程主檔：`docs/shared-agent-rules.md`。凡是 Claude / Codex 都該遵守的規則、commit+push 收尾紀錄門檻、跨 bot 討論流程，都改這份；**不要**雙改 `AGENTS.md` / `CLAUDE.md`。
 
 ### 任務分工（可覆蓋）
 - UI / Flutter / 文案 / 產品判斷 → **Claude** 主導
@@ -238,7 +235,7 @@ Claude / Codex 若需跨 bot 討論或仲裁，先寫 `docs/reviews/ai-arbitrati
 | **上線準備** | `docs/launch-readiness-checklist.md` |
 | **OCR benchmark** | `docs/ocr-analysis-maturity-benchmark.md` |
 | **Discord bot 問題** | `docs/discord-vibesync-troubleshooting.md`（live state 在 WSL `discord-vibesync`） |
-| **AI 協作仲裁 queue** | `docs/reviews/ai-arbitration-queue.md` |
+| **共享 Agent 規則** | `docs/shared-agent-rules.md` |
 | **設計規格 v1.3** | `docs/plans/2026-02-26-vibesync-design.md` |
 | **實作計畫** | `docs/plans/2026-02-26-vibesync-implementation.md` |
 | **Bug 歷史（18 條）** | `docs/bug-log.md` |
