@@ -49,3 +49,10 @@ service-account*.json
 supabase/.env
 supabase/.env.local
 .worktrees/
+
+# Local Claude Code / MCP config (per-machine, not project state)
+.claude/
+.mcp.json
+
+# Externally-cloned GitHub Pages repo (has its own .git, should live outside this repo)
+vibesync-web/
