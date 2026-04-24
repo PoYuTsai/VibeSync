@@ -1,6 +1,15 @@
 // supabase/functions/submit-feedback/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import {
+  AI_RESPONSE_MAX_LENGTH,
+  isPlainObject,
+  maskEmailForNotification,
+  normalizeOptionalString,
+  sanitizeFeedbackAiResponse,
+  stripBearer,
+  truncateForPreview,
+} from "./feedback_utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -19,7 +28,6 @@ const COMMENT_MAX_LENGTH = 2000;
 const SNIPPET_MAX_LENGTH = 4000;
 const MODEL_MAX_LENGTH = 120;
 const USER_TIER_MAX_LENGTH = 50;
-const AI_RESPONSE_MAX_LENGTH = 12000;
 const TELEGRAM_COMMENT_PREVIEW = 300;
 const TELEGRAM_SNIPPET_PREVIEW = 500;
 
@@ -35,38 +43,6 @@ function jsonResponse(data: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
-}
-
-function normalizeOptionalString(
-  value: unknown,
-  maxLength: number,
-): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    return undefined;
-  }
-
-  if (normalized.length > maxLength) {
-    throw new Error(`STRING_TOO_LONG:${maxLength}`);
-  }
-
-  return normalized;
-}
-
-function truncateForPreview(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
-}
-
-function stripBearer(value: string): string {
-  return value.trim().replace(/^Bearer\s+/i, "");
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function sendTelegramNotification(feedback: {
@@ -96,7 +72,7 @@ async function sendTelegramNotification(feedback: {
     other: "Other",
   };
 
-  const maskedEmail = feedback.userEmail.replace(/(.{2})(.*)(@.*)/, "$1***$3");
+  const maskedEmail = maskEmailForNotification(feedback.userEmail);
   const messageParts: string[] = [
     "Negative feedback received\n\n",
     `User: ${maskedEmail} (${feedback.userTier})\n`,
@@ -232,7 +208,7 @@ serve(async (req) => {
       body?.modelUsed,
       MODEL_MAX_LENGTH,
     );
-    const aiResponse = isPlainObject(rawAiResponse) ? rawAiResponse : undefined;
+    const aiResponse = sanitizeFeedbackAiResponse(rawAiResponse);
 
     if (
       aiResponse != null &&

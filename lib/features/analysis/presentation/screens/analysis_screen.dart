@@ -85,6 +85,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // 反饋相關
   bool _feedbackSubmitted = false;
   bool _showFeedbackForm = false;
+  bool _isSubmittingFeedback = false;
+  bool _includeFeedbackContext = false;
 
   // 訊息優化功能
   bool _showOptimizeInput = false;
@@ -467,9 +469,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     _lastAiResponse = result.rawResponse;
 
     if (resetFeedbackState) {
-      _feedbackSubmitted = false;
-      _showFeedbackForm = false;
-      _feedbackCategory = null;
+      _resetFeedbackState();
     }
   }
 
@@ -522,7 +522,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   /// 換邊（她說 ↔ 我說）
-  Future<void> _swapMessageSide(Conversation conversation, Message message) async {
+  Future<void> _swapMessageSide(
+      Conversation conversation, Message message) async {
     final index = conversation.messages.indexWhere((m) => m.id == message.id);
     if (index == -1) return;
 
@@ -543,12 +544,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   /// 刪除訊息
-  Future<void> _deleteMessage(Conversation conversation, Message message) async {
+  Future<void> _deleteMessage(
+      Conversation conversation, Message message) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
-        title: Text('刪除訊息', style: TextStyle(color: AppColors.glassTextPrimary)),
+        title:
+            Text('刪除訊息', style: TextStyle(color: AppColors.glassTextPrimary)),
         content: Text(
           '確定要刪除這則訊息嗎？',
           style: TextStyle(color: AppColors.glassTextSecondary),
@@ -556,7 +559,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            child:
+                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
@@ -1097,13 +1101,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     // 只計算新增的訊息（繼續對話時不重複收費）
     final conversation = ref.read(conversationProvider(widget.conversationId));
     final lastAnalyzed = conversation?.lastAnalyzedMessageCount ?? 0;
-    final totalMessages = conversation?.messages.length ?? requestMessages.length;
+    final totalMessages =
+        conversation?.messages.length ?? requestMessages.length;
 
     List<Message> billableMessages;
     if (lastAnalyzed > 0 && lastAnalyzed < totalMessages) {
       // 只算新增的部分
       billableMessages = requestMessages.length > (totalMessages - lastAnalyzed)
-          ? requestMessages.sublist(requestMessages.length - (totalMessages - lastAnalyzed))
+          ? requestMessages
+              .sublist(requestMessages.length - (totalMessages - lastAnalyzed))
           : requestMessages;
     } else {
       // 第一次分析，算全部
@@ -1976,9 +1982,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _reminder = result.reminder;
         _shouldGiveUp = result.shouldGiveUp;
         _lastAiResponse = result.rawResponse; // 儲存原始 AI 回應
-        _feedbackSubmitted = false; // 重置反饋狀態
-        _showFeedbackForm = false;
-        _feedbackCategory = null;
+        _resetFeedbackState();
       });
 
       try {
@@ -2365,7 +2369,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   /// 提交反饋
   Future<void> _submitFeedback(String rating) async {
-    if (_feedbackSubmitted) return;
+    if (_feedbackSubmitted || _isSubmittingFeedback) return;
 
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) return;
@@ -2373,14 +2377,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     // 取得用戶訂閱資訊
     final subscription = ref.read(subscriptionProvider);
     final userTier = subscription.tier;
+    final conversationSnippet = _buildFeedbackConversationSnippet(conversation);
+    final aiResponse = _buildFeedbackAiContext();
+    final usage = _lastAiResponse?['usage'];
+    final modelUsed = usage is Map && usage['model'] is String
+        ? usage['model'] as String
+        : null;
 
-    // 建構對話片段 (最後 6 則訊息)
-    final messages = conversation.messages;
-    final lastMessages =
-        messages.length > 6 ? messages.sublist(messages.length - 6) : messages;
-    final conversationSnippet = lastMessages
-        .map((m) => '${m.isFromMe ? "我" : "她"}: ${m.content}')
-        .join('\n');
+    setState(() {
+      _isSubmittingFeedback = true;
+    });
 
     try {
       final response = await Supabase.instance.client.functions.invoke(
@@ -2392,17 +2398,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ? null
               : _feedbackCommentController.text.trim(),
           'conversationSnippet': conversationSnippet,
-          'aiResponse': _lastAiResponse,
+          'aiResponse': aiResponse,
           'userTier': userTier,
-          'modelUsed': _lastAiResponse?['usage']?['model'],
+          'modelUsed': modelUsed,
         },
       );
+
+      if (!mounted) {
+        return;
+      }
 
       if (response.status >= 200 && response.status < 300) {
         setState(() {
           _feedbackSubmitted = true;
           _showFeedbackForm = false;
+          _feedbackCategory = null;
+          _includeFeedbackContext = false;
         });
+        _feedbackCommentController.clear();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -2424,6 +2437,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       }
     } catch (e) {
       debugPrint('[Feedback] Error: $e');
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _feedbackSubmitted = false;
         _showFeedbackForm = rating == 'negative';
@@ -2433,7 +2449,88 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           const SnackBar(content: Text('回饋暫時沒有送出，稍後可以再試一次。')),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmittingFeedback = false;
+        });
+      }
     }
+  }
+
+  void _resetFeedbackState() {
+    _feedbackSubmitted = false;
+    _showFeedbackForm = false;
+    _feedbackCategory = null;
+    _includeFeedbackContext = false;
+    _isSubmittingFeedback = false;
+    _feedbackCommentController.clear();
+  }
+
+  String _truncateFeedbackText(String value, int maxLength) {
+    final normalized = value.trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxLength)}...';
+  }
+
+  String? _buildFeedbackConversationSnippet(Conversation conversation) {
+    if (!_includeFeedbackContext) {
+      return null;
+    }
+
+    final messages = conversation.messages;
+    final lastMessages =
+        messages.length > 6 ? messages.sublist(messages.length - 6) : messages;
+    final snippet = lastMessages
+        .map((m) => '${m.isFromMe ? "我" : "她"}: ${m.content}')
+        .join('\n')
+        .trim();
+
+    if (snippet.isEmpty) {
+      return null;
+    }
+
+    return _truncateFeedbackText(snippet, 1000);
+  }
+
+  Map<String, dynamic>? _buildFeedbackAiContext() {
+    final payload = <String, dynamic>{
+      'schemaVersion': 1,
+    };
+
+    if (_enthusiasmScore != null) {
+      payload['enthusiasmScore'] = _enthusiasmScore;
+    }
+
+    if (_strategy != null && _strategy!.trim().isNotEmpty) {
+      payload['strategy'] = _truncateFeedbackText(_strategy!, 300);
+    }
+
+    if (_gameStage != null) {
+      payload['gameStage'] = _gameStage!.current.name;
+      payload['gameStageStatus'] = _gameStage!.status.name;
+    }
+
+    if (_topicDepth != null) {
+      payload['topicDepth'] = _topicDepth!.current.name;
+    }
+
+    final tierUsed = _analysisTierUsed();
+    if (tierUsed != null && tierUsed.isNotEmpty) {
+      payload['tierUsed'] = tierUsed;
+    }
+
+    if (_finalRecommendation != null) {
+      payload['finalRecommendation'] = {
+        'pick': _finalRecommendation!.pick,
+        'content': _truncateFeedbackText(_finalRecommendation!.content, 300),
+        'reason': _truncateFeedbackText(_finalRecommendation!.reason, 200),
+      };
+    }
+
+    return payload.length > 1 ? payload : null;
   }
 
   List<String> _extractRecommendationSegments(String content) {
@@ -2827,9 +2924,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      onSelected: (selected) {
-        setState(() => _feedbackCategory = selected ? value : null);
-      },
+      onSelected: _isSubmittingFeedback
+          ? null
+          : (selected) {
+              setState(() => _feedbackCategory = selected ? value : null);
+            },
     );
   }
 
@@ -2876,7 +2975,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             IconButton(
               icon: const Icon(Icons.person_outline),
               tooltip: '對方檔案',
-              onPressed: () => context.push('/profile/${widget.conversationId}'),
+              onPressed: () =>
+                  context.push('/profile/${widget.conversationId}'),
             ),
             // 匯出按鈕
             IconButton(
@@ -2921,8 +3021,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         : conversation.messages.take(5))
                                     .map((m) => MessageBubble(
                                           message: m,
-                                          onSwapSide: () => _swapMessageSide(conversation, m),
-                                          onDelete: () => _deleteMessage(conversation, m),
+                                          onSwapSide: () =>
+                                              _swapMessageSide(conversation, m),
+                                          onDelete: () =>
+                                              _deleteMessage(conversation, m),
                                         )),
                                 if (conversation.messages.length > 5)
                                   GestureDetector(
@@ -4292,15 +4394,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   const SizedBox(width: 16),
                                   IconButton(
                                     icon: const Icon(Icons.thumb_up_outlined),
-                                    onPressed: () =>
-                                        _submitFeedback('positive'),
+                                    onPressed: _isSubmittingFeedback
+                                        ? null
+                                        : () => _submitFeedback('positive'),
                                     tooltip: '有幫助',
                                     color: AppColors.success,
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.thumb_down_outlined),
-                                    onPressed: () => setState(
-                                        () => _showFeedbackForm = true),
+                                    onPressed: _isSubmittingFeedback
+                                        ? null
+                                        : () => setState(
+                                            () => _showFeedbackForm = true),
                                     tooltip: '需要改進',
                                     color: AppColors.error,
                                   ),
@@ -4318,13 +4423,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                               .copyWith(
                                                   color: AppColors
                                                       .glassTextPrimary)),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '預設只送評分類別與結構化分析資訊，不附原始對話。',
+                                        style: AppTypography.caption.copyWith(
+                                          color: AppColors.glassTextHint,
+                                        ),
+                                      ),
                                       const SizedBox(height: 12),
                                       Wrap(
                                         spacing: 8,
                                         runSpacing: 8,
                                         children: [
                                           _buildFeedbackCategoryChip(
-                                              'too_direct', '太直接/不自然'),
+                                              'too_direct', '太直接'),
+                                          _buildFeedbackCategoryChip(
+                                              'unnatural', '不自然'),
                                           _buildFeedbackCategoryChip(
                                               'too_long', '回覆太長'),
                                           _buildFeedbackCategoryChip(
@@ -4334,8 +4448,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         ],
                                       ),
                                       const SizedBox(height: 16),
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Checkbox(
+                                            value: _includeFeedbackContext,
+                                            onChanged: _isSubmittingFeedback
+                                                ? null
+                                                : (value) {
+                                                    setState(() {
+                                                      _includeFeedbackContext =
+                                                          value ?? false;
+                                                    });
+                                                  },
+                                          ),
+                                          Expanded(
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                  top: 12),
+                                              child: Text(
+                                                '附上最後 6 則對話片段，幫助我們排查（選填）',
+                                                style: AppTypography.bodySmall
+                                                    .copyWith(
+                                                  color: AppColors
+                                                      .glassTextPrimary,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
                                       TextField(
                                         controller: _feedbackCommentController,
+                                        enabled: !_isSubmittingFeedback,
                                         style: AppTypography.bodyMedium
                                             .copyWith(
                                                 color:
@@ -4370,17 +4517,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                                 width: 1.5),
                                           ),
                                         ),
-                                        maxLines: 2,
+                                        maxLength: 300,
+                                        maxLines: 3,
                                       ),
                                       const SizedBox(height: 16),
                                       SizedBox(
                                         width: double.infinity,
                                         child: ElevatedButton(
-                                          onPressed: _feedbackCategory != null
+                                          onPressed: _feedbackCategory !=
+                                                      null &&
+                                                  !_isSubmittingFeedback
                                               ? () =>
                                                   _submitFeedback('negative')
                                               : null,
-                                          child: const Text('送出反饋'),
+                                          child: _isSubmittingFeedback
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                )
+                                              : const Text('送出反饋'),
                                         ),
                                       ),
                                     ],
