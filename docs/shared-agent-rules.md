@@ -53,6 +53,14 @@ Default: **write nothing beyond git history** unless one of these is true.
      - top-level feature map or project entrypoints changed enough that README overview is stale
      - docs entrypoint changed for first-30-minute onboarding
 
+7. Another agent may later need to continue, review, or sanity-check this work
+   - Update `docs/reviews/ai-arbitration-queue.md`
+   - Required when:
+     - Claude handled a DC / mobile-driven round that Codex may later read
+     - Codex finished a pass that Claude may later validate
+     - a task remains partially open across sessions or devices
+     - the next agent would otherwise need human re-translation of context
+
 If none apply:
 
 - leave docs untouched
@@ -64,6 +72,7 @@ If none apply:
 - Do not write the same summary into `bug-log`, `snapshot`, and `reviews`.
 - `docs/snapshot.md` is a periodic rewrite, not an append-only diary.
 - `docs/reviews/` should capture decisions, findings, or rebuttals; not routine changelogs.
+- `docs/reviews/ai-arbitration-queue.md` is a live handoff/review queue, not an append-only log; one task should keep one live item.
 - `AGENTS.md` / `CLAUDE.md` should stay short and point here for shared rules.
 - `README.md` is an onboarding doc, not a changelog; only update it when first-30-minute developer understanding would otherwise drift.
 - If a note is only useful for the current session, keep it out of permanent docs.
