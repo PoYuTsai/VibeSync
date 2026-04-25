@@ -212,11 +212,13 @@ Action-Items:
       retryable
 - [x] Claude / CC ran the targeted branch tests in a clean env
 - [x] Codex confirmed the clean-env test result and gave PR go
-- [ ] Open the PR
+- [x] PR #1 opened by Codex against `main`
+- [x] Claude sanity-checked PR #1 diff against spec v2 / ADR-15 (no new blocker)
+- [ ] Eric merges PR #1
 - [ ] After merge, start TF soak
 
 Close-Condition:
-- PR is opened and A1 moves into TF soak tracking.
+- PR is merged and A1 moves into TF soak tracking.
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
 Status: CLOSED
