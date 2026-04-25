@@ -236,10 +236,11 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy analyze-chat \
 | **OCR benchmark** | `docs/ocr-analysis-maturity-benchmark.md` |
 | **Discord bot 問題** | `docs/discord-vibesync-troubleshooting.md`（live state 在 WSL `discord-vibesync`） |
 | **共享 Agent 規則** | `docs/shared-agent-rules.md` |
+| **🚧 Partner Entity Refactor 設計（in-flight 2026-04-25）** | `docs/plans/2026-04-25-partner-entity-design.md` |
 | **設計規格 v1.3** | `docs/plans/2026-02-26-vibesync-design.md` |
 | **實作計畫** | `docs/plans/2026-02-26-vibesync-implementation.md` |
 | **Bug 歷史（18 條）** | `docs/bug-log.md` |
-| **架構決策（14 條 ADR）** | `docs/decisions.md` |
+| **架構決策（15 條 ADR）** | `docs/decisions.md` |
 | **RevenueCat 配置 + 除錯** | `docs/integrations/revenuecat.md` |
 | **Third-Party Login 配置** | `docs/integrations/auth.md` |
 | **AI 回覆優化流程** | `docs/ai-optimization-workflow.md` |

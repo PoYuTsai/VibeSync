@@ -301,3 +301,29 @@
 **相關文件**:
 - 設計: `docs/plans/*opener*design.md`
 - 實作: `docs/plans/*opener*impl.md`
+
+---
+
+## ADR #15 — [2026-04-25] Partner Entity Refactor — 從 per-conversation 改為 per-partner data model
+**狀態**: 🟡 Proposed (pending Codex spec review)
+
+**決定**: 引入 `Partner` Hive entity 作為對象的一級資料單位；`Conversation` 加 `partnerId` 掛在 Partner 下；跨對話的 trait/heat/count 透過 Partner aggregates 聚合（derived，not stored）；AI 分析時以「當前對話完整訊息 + Partner 摘要」雙層 context 餵入 prompt。
+
+**動機**:
+- Bruce 2026-04-25 測試期回報：同一個對方分兩次新對話建立 → 首頁顯示兩張獨立卡片，特質 / 熱度趨勢不聚合
+- 根因：`Conversation` entity 只有 `name`（字串），無 `partnerId`，無 Partner 概念
+- 上線後修 data model 風險 10×，趁 Bruce 測試期修補成本最低
+
+**Brainstorm 決策**（鎖定）:
+- 資訊架構：2 層（Home = Partner list → Partner detail）
+- Migration：**B** 每 Conversation = 獨立 Partner + 手動合併 UI
+- 聚合：**A Union** traits 聯集去重 / heat=latest / counts=sum / last=max
+- AI context：**C Hybrid** 當前對話完整訊息 + Partner 摘要塞 prompt
+- 我的報告 tab：**D** tab 不動，Partner 詳情頁加最新對話 5 維雷達摘要小卡
+- 排程：Phase A Big Bang（內切 A1 schema 1.5 天 + A2 UI 7-8 天）
+
+**送審影響**: 延 ~2 週。Eric 接受（trade-off：上線後修 data model 成本 10×）。
+
+**相關文件**:
+- 設計: `docs/plans/2026-04-25-partner-entity-design.md`
+- Live tracking: `docs/reviews/ai-arbitration-queue.md`
