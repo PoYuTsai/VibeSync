@@ -24,6 +24,7 @@
 | 12 | UI 重構 — 溫暖粉紫漸層毛玻璃 | ✅ Active |
 | 13 | 截圖上傳 — Claude Vision | ✅ Active |
 | 14 | 開場救星 feature（2026-04） | ✅ Active |
+| 15 | Partner Entity Refactor（2026-04-25） — A1 schema-only ship + A2 UI/AI deferred | ✅ Active |
 
 ---
 
@@ -305,7 +306,7 @@
 ---
 
 ## ADR #15 — [2026-04-25] Partner Entity Refactor — 從 per-conversation 改為 per-partner data model
-**狀態**: 🟡 Proposed (pending Codex spec review)
+**狀態**: ✅ Accepted（2026-04-26：A1 已 merge `919e034` + TF soak 雙綠燈通過 [Eric build 139 + Bruce「Structure hasn't been changed, please proceed」]，A2 啟動）
 
 **決定**: 引入 `Partner` Hive entity 作為對象的一級資料單位；`Conversation` 加 `partnerId` 掛在 Partner 下；跨對話的 trait/heat/count 透過 Partner aggregates 聚合（derived，not stored）；AI 分析時以「當前對話完整訊息 + Partner 摘要」雙層 context 餵入 prompt。
 

@@ -129,6 +129,79 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-26] Partner Entity Refactor - A2 Implementation Plan Review
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: architecture
+Branch/Commit: `main` (plan-only commit; impl branch `feature/partner-entity-A2` will be cut after Codex spec review pass)
+
+Question:
+- Does the A2 plan faithfully execute ADR-15 + design doc v2 §2/3/4/6? Any
+  missing risk before Claude opens the implementation branch and runs through
+  17 TDD tasks?
+
+Context:
+- A1 已 merge `919e034` + TF soak 雙綠燈通過 (Eric build 139 + Bruce
+  「Structure hasn't been changed, please proceed」)
+- ADR-15 翻 ✅ Accepted (2026-04-26)
+- A2 範圍 = Partner UI / merge UI / AI prompt summary / copy sweep /
+  routing — 7-8 dev days 上限保留
+- A1 hot spots HS1 (Sentry SDK) / HS2 (redo-rebackup) 帶到 A2 plan
+  Task 16 follow-up，不在 A2 主線執行
+
+Changed:
+- 新增 `docs/plans/2026-04-26-partner-entity-A2-impl.md`，17 個 TDD task
+- 4 個 Daisy-Decision-Needed 標記（D1 截圖 flow 掛 Partner / D2 domain
+  rename 範圍 / D3 conversation cell tap / D4 dedupe banner 顯示時機），
+  皆有 plan-default
+- Plan 末尾「Codex Review Hot Spots」5 項（HS-A2-1 ~ HS-A2-5）
+
+Evidence:
+- [A2 plan](../plans/2026-04-26-partner-entity-A2-impl.md)
+- [ADR-15 Accepted](../decisions.md)
+- A1 ship commit `919e034`
+- `grep -rn 'typeId:' lib/`（pre-flight 必再跑）
+
+Open-Risks:
+1. Riverpod narrow invalidation contract 若實作層用 Hive box stream
+   listener，可能仍 fan-out（HS-A2-1）
+2. Partner summary truncate 邊界處理中文 surrogate 風險（HS-A2-2）
+3. D1 fallback path 是否真能避免 Bruce 同人多卡痛點（HS-A2-3）
+4. 7-8 dev day 工期估算（HS-A2-4）
+5. Routing deep-link 入口 back stack 缺 partner parent（HS-A2-5）
+
+Claude-Position:
+- Plan 4 個 Daisy-Decision 都有 plan-default A，不阻塞執行
+- HS-A2-1 ~ HS-A2-5 是 Codex 應在 spec review 階段給 verdict 的重點
+- 17 task TDD granularity 對齊 A1 plan 的 13 task 風格 + spec §5 已寫死的測試列
+- A2 期間禁區（不 reopen ADR-15、不動 A1 schema、不混 testing-context build）已寫死於
+  memory `reference_partner_refactor_in_flight.md`
+
+Codex-Position:
+- Pending
+
+Verdict:
+- Pending
+
+Eric-Decision:
+- Pending（Daisy-Decision-Needed 4 項可在此或 PR description 覆蓋預設值）
+
+Action-Items:
+- [x] Claude 寫 A2 plan
+- [x] Claude commit + push plan to `main`
+- [x] Claude 開本 queue item
+- [ ] Codex spec review（重點：HS-A2-1 ~ HS-A2-5 + Daisy-Decision-Needed 4 項是否合理）
+- [ ] Eric 拍板 Daisy-Decision-Needed 4 項（或維持 plan-default）
+- [ ] Codex verdict pass → Claude 切 `feature/partner-entity-A2` 開始執行
+- [ ] A2 ship 後另開新 queue item 做 code review，不 reopen 本 item
+
+Close-Condition:
+- Codex spec review verdict = PASS（plan 可執行）→ Status flip APPROVED
+- 或 verdict = 🔴 / 🟠 → 於 docs/reviews/ 開 review doc，本 item 留 IN_REVIEW
+  直到 plan 修訂
+
 ## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
 Status: CLOSED
 Request-Type: review
