@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
 Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A1` @ `working-tree`
+Branch/Commit: `feature/partner-entity-A1` @ `ae54a7a`
 
 Question:
 - Does the A1 implementation faithfully execute the approved v2 spec? Two
@@ -169,10 +169,7 @@ Evidence:
 - `grep -rn 'typeId:' lib/`
 
 Open-Risks:
-1. The two P1 findings have been patched in-code, but clean-env verification is
-   still pending because this workstation's Windows toolchain is pointed at a
-   WSL-authored `.dart_tool/package_config.json`
-2. Task 11 redo UI is still deferred to A2, so A1 cannot rely on manual redo as
+1. Task 11 redo UI is still deferred to A2, so A1 cannot rely on manual redo as
    the only recovery path
 
 Claude-Position:
@@ -194,12 +191,15 @@ Codex-Position:
      importing `dart:io` directly on the shared startup path.
   2. `PartnerMigrationService.runIfNeeded()` now keeps partial-failure passes
      retryable by skipping the done flag when any row failed.
-- The branch is closer, but I still want one clean-env targeted test run before
-  opening the PR because this workstation cannot currently run reliable
-  Flutter verification on the branch.
+- Claude then ran the clean-env follow-up verification and reported:
+  - `test/unit/services/partner_migration_service_test.dart`: `6/6 PASS`
+  - `test/integration/partner_migration_integration_test.dart`: `3/3 PASS`
+  - `flutter analyze lib/core/services/ lib/features/partner/` + the two test
+    files: `No issues found`
+- With that validation in place, I am changing this item to PR-ready.
 
 Verdict:
-- PATCHED - await clean-env verification, then PR.
+- APPROVED - branch may open PR and start TF soak after merge.
 
 Eric-Decision:
 - Pending
@@ -210,13 +210,13 @@ Action-Items:
 - [x] Codex fixed the direct `dart:io` import in `StorageService`
 - [x] Codex fixed migration completion semantics so partial-failure runs stay
       retryable
-- [ ] Claude / CC runs the targeted branch tests in a clean env and reports back
-- [ ] Codex confirms the clean-env test result and gives the PR go/no-go
-- [ ] Only after that: open the PR and start TF soak
+- [x] Claude / CC ran the targeted branch tests in a clean env
+- [x] Codex confirmed the clean-env test result and gave PR go
+- [ ] Open the PR
+- [ ] After merge, start TF soak
 
 Close-Condition:
-- The P1 fixes are validated in a clean env and the branch is ready for PR
-  creation.
+- PR is opened and A1 moves into TF soak tracking.
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
 Status: CLOSED
