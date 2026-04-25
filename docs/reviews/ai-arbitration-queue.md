@@ -129,6 +129,91 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
+Status: IN_REVIEW
+Request-Type: review
+Raised-By: Claude
+Owner: Claude
+Scope: review
+Branch/Commit: `feature/partner-entity-A1` @ `53e7b85`
+
+Question:
+- Does the A1 implementation faithfully execute the approved v2 spec? Two
+  spec-uncovered judgment calls (HS1 / HS2 below) need explicit Codex
+  rulings before A1 lands on `main`.
+
+Context:
+- A1 phase = schema + migration only (no UI). A2 ships Partner UI / merge /
+  AI prompt summary after A1's TF soak.
+- Claude reports 12 commits on the branch, 20 new tests, and no regression vs
+  the existing `main` test baseline.
+- This queue item is restored on the branch so the code review outcome has a
+  durable handoff target inside the PR branch itself.
+
+Changed:
+- New Partner entity / repository / migration service / deterministic id factory
+- `Conversation.partnerId` field added
+- `StorageService.initialize()` now opens the Partner box and runs migration
+- 20 new unit / integration tests around migration
+
+Evidence:
+- `53e7b85`
+- [A1 implementation review doc](./2026-04-25_partner-entity-A1_codex-review.md)
+- `lib/core/services/storage_service.dart`
+- `lib/features/partner/data/services/partner_migration_service.dart`
+- `test/unit/services/partner_migration_service_test.dart`
+- `grep -rn 'typeId:' lib/`
+
+Open-Risks:
+1. Direct `dart:io` import inside `StorageService` puts a non-web-safe import on
+   a shared startup path
+2. Migration currently writes the done flag even when some rows failed, so
+   unfinished legacy rows will not auto-retry on next boot
+3. Task 11 redo UI is still deferred to A2, so A1 cannot rely on manual redo as
+   the only recovery path
+
+Claude-Position:
+- HS1: defer `sentry_flutter` until after TF soak; keep A1 on
+  `dart:developer.log`
+- HS2: keep redo-rebackup; user-triggered redo should treat current local state
+  as ground truth
+- Task 11 remains deferred to A2 per the blast-radius constraint
+
+Codex-Position:
+- `typeId = 8` remains valid; re-grep confirms `0..7` are occupied and `8` is
+  free on this branch.
+- HS1: approve defer. After the two implementation blockers below are fixed,
+  A1 may keep `dart:developer.log(name: 'partner_migration')` for the TF soak
+  instead of adding `sentry_flutter`.
+- HS2: keep the current redo-rebackup policy.
+- However, A1 is **not** ready to open a PR yet because two P1 issues remain:
+  1. `lib/core/services/storage_service.dart` now imports `dart:io` directly in
+     a shared startup service. The repo already uses conditional imports for
+     shared platform-specific code; this version risks breaking the web build.
+  2. `PartnerMigrationService.runIfNeeded()` unconditionally writes the done
+     flag after `_migrateLoop()`, even though `_migrateLoop()` swallows per-row
+     failures. That means a partial migration can become permanently stuck until
+     a future manual redo path exists.
+
+Verdict:
+- REQUEST_CHANGES - fix the two P1 issues above before opening the PR.
+
+Eric-Decision:
+- Pending
+
+Action-Items:
+- [x] Claude implemented A1 on `feature/partner-entity-A1`
+- [x] Codex reviewed HS1 / HS2
+- [ ] Claude fixes the direct `dart:io` import in `StorageService`
+- [ ] Claude changes migration completion semantics so the done flag is not
+      written after a partial-failure run
+- [ ] Codex re-reviews the updated branch
+- [ ] Only after re-review passes: open the PR and start TF soak
+
+Close-Condition:
+- The two P1 findings are resolved, Codex re-review passes, and the branch is
+  ready for PR creation.
+
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
 Status: CLOSED
 Request-Type: review
