@@ -201,4 +201,52 @@ void main() {
     }
     expect(partnerBox.length, 5);
   });
+
+  test('backup throw → service rethrows → both flags stay false, loop never ran',
+      () async {
+    await convoBox.put('c-1', _legacyConv('c-1', '糖糖'));
+    final prefs = await SharedPreferences.getInstance();
+    final svc = PartnerMigrationService(
+      conversationBox: convoBox,
+      partnerRepo: repo,
+      prefs: prefs,
+      backupConversationBox: () async {
+        throw StateError('simulated disk full during backup');
+      },
+    );
+
+    await expectLater(svc.runIfNeeded(), throwsA(isA<StateError>()));
+
+    expect(prefs.getBool('partner_migration_v1_done'), isNot(true));
+    expect(prefs.getBool('partner_migration_v1_backup_done'), isNot(true));
+    expect(convoBox.get('c-1')!.partnerId, isNull,
+        reason: 'Loop must not have run if backup failed');
+    expect(partnerBox.length, 0);
+  });
+
+  test(
+      'redo re-takes the backup (HS2 hot spot — Codex review will judge '
+      'whether redo should overwrite the prior backup)',
+      () async {
+    await convoBox.put('c-1', _legacyConv('c-1', '糖糖'));
+    final prefs = await SharedPreferences.getInstance();
+    var backupCalls = 0;
+
+    final svc = PartnerMigrationService(
+      conversationBox: convoBox,
+      partnerRepo: repo,
+      prefs: prefs,
+      backupConversationBox: () async => backupCalls++,
+    );
+    await svc.runIfNeeded();
+    expect(backupCalls, 1, reason: 'Backup runs once per first migration');
+
+    await svc.resetForRedo();
+    await svc.runIfNeeded();
+    expect(backupCalls, 2,
+        reason: 'Current policy (HS2): redo re-runs backup, overwriting '
+                'prior backup file. Codex may flip this to one-shot. If '
+                'this assertion ever changes from 2 to 1, also flip the '
+                'resetForRedo dartdoc and the plan HS2 description.');
+  });
 }
