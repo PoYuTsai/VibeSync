@@ -34,15 +34,22 @@ class PartnerMigrationService {
     required PartnerRepository partnerRepo,
     required SharedPreferences prefs,
     Future<void> Function()? backupConversationBox,
+
+    /// Test-only injection point. Production callers must NOT pass this.
+    /// Used by the crash-safe contract test (A1 task 8) to simulate a
+    /// mid-loop interrupt deterministically.
+    void Function(Conversation convo)? onBeforeSavePerConvo,
   })  : _convoBox = conversationBox,
         _partnerRepo = partnerRepo,
         _prefs = prefs,
-        _backupConversationBox = backupConversationBox;
+        _backupConversationBox = backupConversationBox,
+        _onBeforeSavePerConvo = onBeforeSavePerConvo;
 
   final Box<Conversation> _convoBox;
   final PartnerRepository _partnerRepo;
   final SharedPreferences _prefs;
   final Future<void> Function()? _backupConversationBox;
+  final void Function(Conversation convo)? _onBeforeSavePerConvo;
 
   /// Run the migration if it has not yet completed on this device.
   ///
@@ -92,6 +99,7 @@ class PartnerMigrationService {
           ownerUserId: convo.ownerUserId,
         ));
         convo.partnerId = partnerId;
+        _onBeforeSavePerConvo?.call(convo);
         await convo.save();
       } catch (e, st) {
         developer.log(
