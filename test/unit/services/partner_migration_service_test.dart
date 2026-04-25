@@ -97,4 +97,38 @@ void main() {
               'changed since Task 3 — investigate before proceeding.',
     );
   });
+
+  test(
+      'idempotent — running twice yields identical state '
+      '(partner box size + every convo.partnerId)',
+      () async {
+    await convoBox.put('c-1', _legacyConv('c-1', '糖糖'));
+    await convoBox.put('c-2', _legacyConv('c-2', '小白'));
+
+    final prefs = await SharedPreferences.getInstance();
+    final svc = PartnerMigrationService(
+      conversationBox: convoBox,
+      partnerRepo: repo,
+      prefs: prefs,
+    );
+
+    await svc.runIfNeeded();
+    final firstPartnerIds = partnerBox.keys.toSet();
+    final firstConvoMap = {
+      for (final c in convoBox.values) c.id: c.partnerId
+    };
+
+    // Force a real second pass by clearing the perf-shortcut flags.
+    // Correctness must NOT depend on those flags — only on deterministic
+    // UUID v5 + per-row partnerId marker.
+    await svc.resetForRedo();
+    await svc.runIfNeeded();
+
+    expect(partnerBox.keys.toSet(), firstPartnerIds);
+    expect(
+      {for (final c in convoBox.values) c.id: c.partnerId},
+      firstConvoMap,
+    );
+    expect(partnerBox.length, 2); // no duplicate partners
+  });
 }
