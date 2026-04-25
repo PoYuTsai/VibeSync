@@ -62,6 +62,13 @@ class Conversation extends HiveObject {
   @HiveField(14)
   String? ownerUserId;
 
+  /// Partner this conversation belongs to.
+  /// Populated by Partner migration (A1) for legacy rows; set on creation
+  /// once the Partner-first new-conversation flow lands in A2.
+  /// Stored in device local time-independent (it's just an id string).
+  @HiveField(15)
+  String? partnerId;
+
   Conversation({
     required this.id,
     required this.name,
@@ -78,6 +85,7 @@ class Conversation extends HiveObject {
     this.lastAnalysisSnapshotJson,
     this.lastAnalyzedMessageCount,
     this.ownerUserId,
+    this.partnerId,
   });
 
   Message? get lastMessage => messages.isNotEmpty ? messages.last : null;
