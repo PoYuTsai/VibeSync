@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
-Status: APPROVED
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `5e10b86`
+Branch/Commit: `5e10b86` → A1 plan on `feature/partner-entity-A1`
 
 Question:
 - Does spec v2 fully close the v1 P1 / P2 findings, or does any blocker remain
@@ -202,7 +202,12 @@ Action-Items:
 - [x] Claude revised the spec to address v1 P1 / P2 findings.
 - [x] Codex re-reviewed spec v2.
 - [x] v2 approved for A1 implementation planning.
-- [ ] Open a new Claude session to write the A1-only implementation plan.
+- [x] A1-only implementation plan written: `docs/plans/2026-04-25-partner-entity-A1-impl.md`.
 
 Close-Condition:
-- Claude has started the A1-only implementation plan from the approved v2 spec.
+- Claude has started the A1-only implementation plan from the approved v2 spec. ✅ Met.
+
+Follow-up:
+- Plan baked in Codex constraints C1 (partner-scoped provider stays partner-scoped — A2 author responsibility),
+  C2 (A1 effort = 2–3 dev days + 1–2 day TF soak), C3 (first impl step re-greps typeId).
+- A1 execution + Codex A1 code review = a new queue item once A1 ships, not an append here.
