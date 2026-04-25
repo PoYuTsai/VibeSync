@@ -8,6 +8,10 @@ void main() {
     Hive.registerAdapter(PartnerAdapter());
   });
 
+  tearDownAll(() async {
+    await Hive.close();
+  });
+
   group('Partner Hive round-trip', () {
     test('serializes and deserializes all fields', () async {
       final box = await Hive.openBox<Partner>('partner_rt_test');
