@@ -5,6 +5,7 @@ import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';
 import '../../features/conversation/domain/entities/session_context.dart';
+import '../../features/partner/domain/entities/partner.dart';
 import '../constants/app_constants.dart';
 
 class StorageService {
@@ -23,6 +24,7 @@ class StorageService {
     Hive.registerAdapter(UserGoalAdapter());
     Hive.registerAdapter(UserStyleAdapter());
     Hive.registerAdapter(ConversationSummaryAdapter()); // v2.0: Memory feature
+    Hive.registerAdapter(PartnerAdapter()); // A1: Partner Entity Refactor
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -30,6 +32,11 @@ class StorageService {
     // Open encrypted boxes
     await Hive.openBox<Conversation>(
       AppConstants.conversationsBox,
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<Partner>(
+      AppConstants.partnersBox,
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -62,13 +69,17 @@ class StorageService {
   static Box<Conversation> get conversationsBox =>
       Hive.box<Conversation>(AppConstants.conversationsBox);
 
+  static Box<Partner> get partnersBox =>
+      Hive.box<Partner>(AppConstants.partnersBox);
+
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
 
-  /// Clear all stored data (conversations, settings, usage)
+  /// Clear all stored data (conversations, partners, settings, usage)
   static Future<void> clearAll() async {
     await conversationsBox.clear();
+    await partnersBox.clear();
     await settingsBox.clear();
     await usageBox.clear();
   }

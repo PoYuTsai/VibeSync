@@ -39,6 +39,7 @@ class AppConstants {
 
   // Local Storage
   static const conversationsBox = 'conversations';
+  static const partnersBox = 'partners';
   static const settingsBox = 'settings';
   static const usageBox = 'usage';
 }
