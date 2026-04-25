@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
-Status: APPROVED
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A1` @ `ae54a7a`
+Branch/Commit: merged to `main` @ `919e034` (PR #1) — branch `feature/partner-entity-A1` retained per Eric for soak fallback
 
 Question:
 - Does the A1 implementation faithfully execute the approved v2 spec? Two
@@ -202,7 +202,7 @@ Verdict:
 - APPROVED - branch may open PR and start TF soak after merge.
 
 Eric-Decision:
-- Pending
+- MERGED via PR #1 → `main` @ `919e034` (2026-04-25)
 
 Action-Items:
 - [x] Claude implemented A1 on `feature/partner-entity-A1`
@@ -214,11 +214,20 @@ Action-Items:
 - [x] Codex confirmed the clean-env test result and gave PR go
 - [x] PR #1 opened by Codex against `main`
 - [x] Claude sanity-checked PR #1 diff against spec v2 / ADR-15 (no new blocker)
-- [ ] Eric merges PR #1
-- [ ] After merge, start TF soak
+- [x] Eric merged PR #1 (2026-04-25)
+- [x] TF soak started; ownership = Eric + testers (tracked outside this queue)
 
 Close-Condition:
-- PR is merged and A1 moves into TF soak tracking.
+- PR is merged and A1 moves into TF soak tracking. ✅ Met 2026-04-25.
+
+Follow-up:
+- Soak surface: cold-boot crash, lost conversations, same-name partner data
+  bleed, force-close + reopen stability, regression in list / chat / analyze.
+- If a soak bug surfaces, open a NEW queue item (do not reopen this one); CC
+  fixes by default, escalate to Codex only for review / hardening.
+- ADR-15 stays 🟡 Proposed until soak passes; flip to Accepted then.
+- Branch `feature/partner-entity-A1` retained until soak verdict.
+- A2 (UI / merge / prompt summary) is paused during soak.
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
 Status: CLOSED
