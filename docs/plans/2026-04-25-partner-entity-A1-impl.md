@@ -27,6 +27,19 @@ Read in order. Do **not** skip:
 
 ---
 
+## Codex Review Hot Spots (flag these explicitly at A1 closeout — Eric 2026-04-25)
+
+When handing A1 off to Codex for code review, the queue-item handoff must call out these 2 spec-uncovered judgment calls **by name**. They are the parts of A1 that the v2 spec did **not** rule on, so independent verification matters more here than on the rest of the patch.
+
+| HS | Topic | Where it lives in code | What Codex must judge |
+|---|---|---|---|
+| **HS1** | **Sentry SDK gap** — `pubspec.yaml` has no `sentry_flutter`. A1 logs migration events via `dart:developer.log` with the grep-able tag `partner_migration` instead. | `lib/features/partner/data/services/partner_migration_service.dart` (search `_kLogTag`) | Is `dart:developer.log` acceptable for TF-soak observability, or should A1 add `sentry_flutter` despite the "minimum blast radius" framing? Trade-off: no remote signal during 1–2 day soak vs. one new SDK in A1. |
+| **HS2** | **Redo-backup policy** — the in-app "重做升級" button (Task 11) clears **both** `partner_migration_v1_done` and `partner_migration_v1_backup_done`, so the next run re-takes the backup, **overwriting the prior backup file**. The alternative is "backup is a one-shot, never overwritten." | `partner_migration_service.dart::resetForRedo` + Task 9 second test | If migration v2 ever ships with a regression, the "always re-backup" choice means the only good copy could be overwritten before the user notices. The "one-shot backup" choice keeps a known-good copy at the cost of stale-backup risk. Spec §5 #6 is ambiguous here — Eric / Codex must pick. |
+
+The closeout queue-item update (Task 13 Step 4) **must include an "HS-Review-Asks:" block** quoting the two rows above so Codex does not miss them inside a 1300-line plan.
+
+---
+
 ## Codex Implementation Constraints (load-bearing — do not deviate)
 
 These are spec re-review carry-overs from `docs/reviews/ai-arbitration-queue.md`. Each is wired into a specific task below; if you find yourself violating one, stop and arbitrate via the queue file.
@@ -1225,12 +1238,39 @@ Flip the status line:
 ```
 Add a one-line "A1 ship" entry. **Do not** rewrite the decision body.
 
-**Step 4: Update the queue item, do NOT open a new review file**
+**Step 4: Open a NEW queue item for A1 code review (do not reopen the closed spec-review item)**
 
-In `docs/reviews/ai-arbitration-queue.md`, edit the existing "Partner Entity Refactor — Design Spec Review" item:
-- `Status: APPROVED` → `Status: IN_REVIEW` (now Codex's turn to sanity-check the A1 implementation against the spec)
-- Add an `A1-Ship-Update:` block with: latest commit, test counts, manual TF observations, open risks for Codex (e.g. "redo-rebackup behaviour was assumed; confirm").
-- `Owner` flips to Codex.
+The spec-review item (`Status: CLOSED` since the plan was written) is a different decision. Add a fresh item at the top of `docs/reviews/ai-arbitration-queue.md`:
+
+```
+## [YYYY-MM-DD] Partner Entity Refactor — A1 Implementation Code Review
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: feature/partner-entity-A1 @ <sha>
+
+HS-Review-Asks (Eric 2026-04-25):
+- HS1 Sentry SDK gap: A1 uses dart:developer.log + tag 'partner_migration'.
+  Acceptable for TF soak, or should sentry_flutter be added? See plan §"Codex
+  Review Hot Spots" HS1.
+- HS2 Redo-backup policy: 重做升級 currently re-takes the backup on every
+  redo (overwrites prior). Alternative is one-shot backup. See plan HS2.
+
+Context: <one paragraph: scope, A1 vs A2 split, migration B>
+Changed: <files, test counts>
+Evidence: <commit shas, test run output, manual TF observations>
+Open-Risks: <e.g. Web platform untested, settings UI hookup deferred>
+Claude-Position: <faithful-to-spec summary; explicit calls on HS1 + HS2>
+Codex-Position: Pending
+Verdict: Pending
+Action-Items:
+- [ ] Codex reviews diff against design doc v2
+- [ ] Codex rules on HS1 + HS2
+- [ ] If HS1/HS2 fail → rebuttal in docs/reviews/ + spec or plan amendment
+Close-Condition: A1 lands on main with HS1 + HS2 resolved.
+```
 
 **Step 5: Closeout per shared matrix**
 
