@@ -1,18 +1,21 @@
 # AI Arbitration Queue
 
-> Purpose: a shared handoff + review + debate queue for Daisy, Claude, and Codex.
-> Use this instead of free-form bot-to-bot chat.
+> Purpose: a shared handoff + review + debate queue for Eric, Claude, and
+> Codex. Use this instead of free-form bot-to-bot chat.
 
 ## When To Use
 
 Use this file when:
 
 - Claude and Codex need a live handoff between work rounds
-- Claude finished a DC / mobile-driven bugfix or partial feature and Codex may later review or continue it
-- Codex finished a hardening / review pass and wants Claude to sanity-check product or UX impact
+- Claude finished a DC / mobile-driven bugfix or partial feature and Codex may
+  later review or continue it
+- Codex finished a hardening / review pass and wants Claude to sanity-check
+  product or UX impact
 - Claude wants Codex to review a concrete bug, risk, or architecture tradeoff
 - Codex wants Claude to sanity-check UI, product, or copy direction
-- Daisy wants one place to see the current disagreement, evidence, and next action
+- Eric wants one place to see the current disagreement, evidence, and next
+  action
 
 Do not use this file for:
 
@@ -26,16 +29,17 @@ Those still belong in `git log`, `docs/bug-log.md`, or `docs/decisions.md`.
 ## Ground Rules
 
 1. One queue item = one decision or one concrete blocker.
-2. One task keeps one live item. Update the existing item instead of appending a new one for every small round.
+2. One task keeps one live item. Update the existing item instead of appending
+   a new one for every small round.
 3. Newest open item goes on top.
-4. Each side gets at most 2 rounds before escalating to Daisy.
+4. Each side gets at most 2 rounds before escalating to Eric.
 5. Every claim about "safe", "faster", or "better" must cite evidence:
    - file path
    - commit hash
    - test result
    - benchmark
    - official doc
-6. Product taste, UX preference, and business priority are Daisy-final.
+6. Product taste, UX preference, and business priority are Eric-final.
 7. No free-form bot loop:
    - Claude writes one structured position
    - Codex replies with one structured position
@@ -46,7 +50,8 @@ Those still belong in `git log`, `docs/bug-log.md`, or `docs/decisions.md`.
    - tests run
    - open risks
    - next ask for the other agent
-9. Keep only open items plus a few recently closed items. Once the durable record exists elsewhere, prune old closed entries.
+9. Keep only open items plus a few recently closed items. Once the durable
+   record exists elsewhere, prune old closed entries.
 
 ## Status Values
 
@@ -63,8 +68,8 @@ Copy this block for each new item:
 ## [YYYY-MM-DD] Short Title
 Status: OPEN
 Request-Type: handoff | review | arbitration
-Raised-By: Claude | Codex | Daisy
-Owner: Claude | Codex | Daisy
+Raised-By: Claude | Codex | Eric
+Owner: Claude | Codex | Eric
 Scope: bug | review | architecture | product | copy | ops
 Branch/Commit: `commit-hash` or `working-tree`
 
@@ -93,7 +98,7 @@ Codex-Position:
 Verdict:
 - Pending
 
-Daisy-Decision:
+Eric-Decision:
 - Pending
 
 Action-Items:
@@ -107,9 +112,12 @@ Close-Condition:
 
 - Claude should lead UI / Flutter / copy / product framing items.
 - Codex should lead bugs / performance / architecture / code review items.
-- If Claude is operating through Discord / mobile-driven sessions, update this file at the end of each meaningful round that Codex may later need to continue or review.
-- If Codex finishes a pass and wants Claude to sanity-check it later, update the same item instead of opening a parallel summary.
-- If Daisy asks for a recommendation, end with a single recommended path.
+- If Claude is operating through Discord / mobile-driven sessions, update this
+  file at the end of each meaningful round that Codex may later need to
+  continue or review.
+- If Codex finishes a pass and wants Claude to sanity-check it later, update
+  the same item instead of opening a parallel summary.
+- If Eric asks for a recommendation, end with a single recommended path.
 - If the issue becomes a lasting rule, move the final outcome into:
   - `docs/decisions.md` for ADR-level decisions
   - `docs/bug-log.md` for recurring bug traps
@@ -120,63 +128,100 @@ Close-Condition:
 
 ## Live Queue
 
-## [2026-04-25] Partner Entity Refactor — Design Spec Review
-Status: IN_REVIEW
+## [2026-04-25] Partner Entity Refactor - Design Spec Review
+Status: WAITING_ON_CODEX_REREVIEW
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `working-tree`（design 即將 commit）
+Branch/Commit: `working-tree`（spec v2 即將 commit）
 
 Question:
-- 9-10 天 / Big Bang refactor 的 design spec 是否設計合理？是否有架構級瑕疵 / 風險未防護？
+- Does spec v2 fully close the v1 P1 / P2 findings, or does any blocker remain
+  before A1 implementation planning?
 
 Context:
-- Bruce 2026-04-25 測試期發現「同對方多段對話特質碎裂」（`Conversation` 無 partnerId）
-- Eric 拍板 Phase A 全面重構（不延後到送審後），接受 ~2 週送審延誤
-- Brainstorm 5 個關鍵決策已鎖定：IA 2 層 / Migration B / Aggregation A Union / AI Context C Hybrid / Report D
-- Phasing：A1 (1.5 天 Schema+Migration) → 驗證 → A2 (7-8 天 UI+AI summary+Merge UI)
+- v1 review verdict: 🔴 Critical flaw (`docs/reviews/2026-04-25_partner-entity-design_codex-review.md`).
+- Eric authorized Claude to revise spec without reopening locked brainstorm
+  decisions (IA / Migration B / Union / Hybrid / Report D).
+- v2 revision log lives at the top of the design doc.
 
-Changed:
-- 寫了 `docs/plans/2026-04-25-partner-entity-design.md` 完整 design（6 sections + Phasing + Codex Review Request）
-- 加 ADR-15 到 `docs/decisions.md`
-- CLAUDE.md / AGENTS.md 「📚 Docs 指路」加入新 design 與 ADR 編號更新
-- 取代 `memory/reference_testing_phase_feature_queue.md` Item #2（escape hatch button）
+Changed (v2 revision, 2026-04-25 18:05):
+- §1 Data Model:
+  - `Partner @HiveType(typeId: 5)` → `typeId = 8` with grep evidence.
+  - Migration rewritten: `PARTNER_NAMESPACE_UUID` compile-time constant,
+    deterministic UUID v5 from `conversation.id`, per-convo `partnerId` marker
+    is the source of idempotency. SharedPreferences flag demoted to perf-only.
+  - Crash scenario table covers loop interruption, account switch, OOM,
+    backup failure.
+- §3 Aggregation:
+  - Riverpod invalidation narrowed to `partnerAggregateProvider(partnerId)`
+    instead of fanning out on any conversation change.
+  - Partner summary now has hard char cap (1500), ranking rules
+    (`lastInteraction` desc, N=8 for interests / traits, N=5 for notes), and
+    explicit assembly source (`lastAnalysisSnapshotJson` parsed fields, not
+    raw JSON).
+  - Pre-assembly safety checks added (length assert, ownerUserId mismatch,
+    parse-fail isolation).
+- §5 Tests:
+  - Idempotent + crash-safe rerun unit test.
+  - Deterministic UUID v5 contract + namespace constant regression guard.
+  - Summary truncation tests for 30-conversation worst case.
+  - Narrow invalidation tests.
+  - Integration test extended with crash-safe rerun + backup byte-equality.
+- §6 Phasing:
+  - A1 estimate `1.5 day` marked `TBD` pending Codex re-review.
+  - 9-10 day overall envelope retained, but internal allocation pending.
 
 Evidence:
-- [Design doc](../plans/2026-04-25-partner-entity-design.md)
-- ADR-15 in `docs/decisions.md`
-- Brainstorm 對話完整保留在 Discord channel `1488034916481368147` 2026-04-25 09:00–09:35 區段
+- [Design doc v2](../plans/2026-04-25-partner-entity-design.md) — see top "Spec Revision Log"
+- [v1 critical review doc](./2026-04-25_partner-entity-design_codex-review.md)
+- `grep -rn 'typeId:' lib/` → 0..7 occupied; 8 free as of 2026-04-25 18:05
+- `lib/features/conversation/domain/entities/conversation.dart:8-62` → fields 0..14 used; 15 free
 
-Open-Risks（請 Codex 優先掃）:
-1. Hive `typeId=5` 全 repo 真沒衝突？(`grep -rn 'typeId:' lib/`)
-2. `Conversation @HiveField(15)` 真沒被舊版佔用？
-3. Migration race conditions（強關 App / 切帳戶 / OOM）graceful 是否真 graceful
-4. Riverpod auto-invalidate 鏈會不會 thrash UI（每次 Conversation 改動 N Partner provider invalidate？）
-5. Partner summary token worst-case（30 段對話）會不會爆 prompt（**Free Haiku tier 特別注意**）
-6. 9-10 天估算 sanity check（哪些子任務低估 / 高估？）
-7. 測試 coverage gap（特別 integration test 範圍夠嗎？）
+Open-Risks (deferred to v2 re-review):
+1. Crash scenario table coverage — any unhandled path?
+2. Truncation rules (N=8, cap=1500) — Free Haiku tier worst case still safe?
+3. Narrow invalidation — does `conversationsByPartnerProvider` introduce its
+   own fan-out problem?
+4. A1 re-estimate — what is the realistic span after migration rewrite?
+5. New test surface — anything still uncovered?
 
 Claude-Position:
-- Spec 大方向對：IA / Migration B / Union / Hybrid context 都是合理設計
-- 技術風險集中在實作細節（Hive schema / Migration / Riverpod 連動），不是整體方向
-- 推薦 A1 / A2 切分隔離 migration blast radius
+- v2 closes v1 P1 blockers via algorithmic change (deterministic UUID + per-convo
+  marker) instead of just relabeling.
+- v2 P2 findings (token budget, Riverpod fan-out) addressed with hard rules,
+  not aspirations.
+- A1 estimate honestly left as TBD instead of papering over the gap.
 
 Codex-Position:
-- 待 review
+- v1 review complete (🔴 Critical, see review doc).
+- v2 re-review pending.
 
 Verdict:
-- Pending（等 Codex review）
+- v1: Critical flaw - revise spec before A1 implementation planning. ✅ Done.
+- v2: Pending re-review.
 
-Daisy-Decision:
-- Eric 已拍板 Phase A 全面重構（2026-04-25 09:35），等 Codex spec review verdict 後決定下一步動作
+Eric-Decision:
+- 2026-04-25 18:05 — Authorized Claude to revise spec along the lines proposed
+  in DC (deterministic UUID + per-convo marker + hard token cap + narrow
+  invalidation + A1 TBD). No reopening of brainstorm decisions.
 
 Action-Items:
-- [ ] Codex 執行 spec review（範圍全 design doc，特別 Section 1/3/5/6）
-- [ ] Verdict 寫進本 item Codex-Position 欄
-- [ ] 🟢 PASS → Status: APPROVED，開新 Claude session 寫 A1 implementation plan（用 `superpowers:writing-plans`）
-- [ ] 🟠 architectural alternative → 標 `Verdict: Daisy-Decision-Needed`
-- [ ] 🔴 Critical flaw → 開 `docs/reviews/2026-04-25_partner-entity-design_codex-review.md` 列問題，spec 修完再 review
+- [x] v1 Codex review complete + critical doc opened.
+- [x] v1 P1 blockers revised in spec:
+  - typeId=8 with grep evidence
+  - rerun-safe migration via deterministic UUID v5 + per-convo marker
+- [x] v1 P2 findings addressed:
+  - Partner summary char cap + ranking + assembly source
+  - Riverpod narrow invalidation
+  - A1 estimate marked TBD
+  - test coverage extended
+- [x] queue item updated with v2 changeset.
+- [ ] **Codex re-review** spec v2 against v1 findings + new "Open-Risks
+  deferred to v2 re-review" list above.
+- [ ] If v2 re-review verdict 🟢 PASS → status APPROVED → open new Claude
+  session to write A1 implementation plan.
 
 Close-Condition:
-- Codex 給 verdict + 必要 spec 修訂完成 + A1 implementation plan 開始才能標 CLOSED
+- Codex v2 re-review verdict 🟢 PASS, A1 implementation plan started.
