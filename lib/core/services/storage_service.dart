@@ -1,11 +1,16 @@
-// lib/core/services/storage_service.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';
 import '../../features/conversation/domain/entities/session_context.dart';
+import '../../features/partner/data/repositories/partner_repository.dart';
+import '../../features/partner/data/services/partner_migration_service.dart';
+import '../../features/partner/domain/entities/partner.dart';
 import '../constants/app_constants.dart';
+import 'conversation_box_backup.dart';
 
 class StorageService {
   static const _encryptionKeyName = 'vibesync_encryption_key';
@@ -23,6 +28,7 @@ class StorageService {
     Hive.registerAdapter(UserGoalAdapter());
     Hive.registerAdapter(UserStyleAdapter());
     Hive.registerAdapter(ConversationSummaryAdapter()); // v2.0: Memory feature
+    Hive.registerAdapter(PartnerAdapter()); // A1: Partner Entity Refactor
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -30,6 +36,11 @@ class StorageService {
     // Open encrypted boxes
     await Hive.openBox<Conversation>(
       AppConstants.conversationsBox,
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<Partner>(
+      AppConstants.partnersBox,
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -42,6 +53,18 @@ class StorageService {
       AppConstants.usageBox,
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
+
+    // Partner Entity Refactor A1 — Migration runs once on first boot
+    // after Partner box is open. Subsequent boots short-circuit on the
+    // perf flag inside runIfNeeded.
+    final prefs = await SharedPreferences.getInstance();
+    final migration = PartnerMigrationService(
+      conversationBox: conversationsBox,
+      partnerRepo: PartnerRepository(box: partnersBox),
+      prefs: prefs,
+      backupConversationBox: _backupConversationBox,
+    );
+    await migration.runIfNeeded();
   }
 
   static Future<List<int>> _getEncryptionKey() async {
@@ -59,16 +82,34 @@ class StorageService {
     return newKey;
   }
 
+  /// One-shot backup of the conversations Hive file used by the Partner
+  /// migration (A1). Mobile-only; on Web `box.path` is unsupported and
+  /// the backup is short-circuited so init does not crash.
+  ///
+  /// Throwing here intentionally aborts `runIfNeeded` (see
+  /// `PartnerMigrationService._ensureBackup`) so the migration loop
+  /// does not start without a backup. The next boot retries.
+  static Future<void> _backupConversationBox() async {
+    if (kIsWeb) {
+      return; // Hive on Web has no real path; A1 is mobile-only.
+    }
+    await backupConversationBoxFile(conversationsBox);
+  }
+
   static Box<Conversation> get conversationsBox =>
       Hive.box<Conversation>(AppConstants.conversationsBox);
+
+  static Box<Partner> get partnersBox =>
+      Hive.box<Partner>(AppConstants.partnersBox);
 
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
 
-  /// Clear all stored data (conversations, settings, usage)
+  /// Clear all stored data (conversations, partners, settings, usage)
   static Future<void> clearAll() async {
     await conversationsBox.clear();
+    await partnersBox.clear();
     await settingsBox.clear();
     await usageBox.clear();
   }

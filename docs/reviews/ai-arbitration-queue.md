@@ -129,13 +129,13 @@ Close-Condition:
 
 ## Live Queue
 
-## [2026-04-25] Partner Entity Refactor — A1 Implementation Code Review
-Status: OPEN
+## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A1` @ `53e7b85` (pushed to origin)
+Branch/Commit: `feature/partner-entity-A1` @ `ae54a7a`
 
 Question:
 - Does the A1 implementation faithfully execute the approved v2 spec? Two
@@ -145,105 +145,80 @@ Question:
 Context:
 - A1 phase = schema + migration only (no UI). A2 ships Partner UI / merge /
   AI prompt summary after A1's TF soak.
-- Implementation followed the plan at `docs/plans/2026-04-25-partner-entity-A1-impl.md`.
-- 12 commits on the branch. Tasks 0–10 + 12 implemented; Task 11 (settings UI
-  redo entry) **intentionally deferred to A2** because no advanced/debug
-  section exists in the current settings IA and the plan forbade inventing
-  one for A1. The service surface (`PartnerMigrationService.resetForRedo()`)
-  is in place so A2's UI hookup is a one-call wire.
-- Subagent-driven-development workflow used for execution; each task ran
-  through implementer → spec reviewer → code-quality reviewer.
-
-HS-Review-Asks (Eric 2026-04-25, MUST be ruled on):
-- **HS1 — Sentry SDK gap.** `pubspec.yaml` has no `sentry_flutter`. A1
-  logs migration events via `dart:developer.log(name: 'partner_migration')`.
-  Question: acceptable for the planned 1–2 day TF soak, or should A1 add
-  `sentry_flutter` despite "minimum blast radius" framing? Trade-off: no
-  remote signal during soak vs. one new SDK in A1.
-  Code site: `lib/features/partner/data/services/partner_migration_service.dart`
-  search for `_kLogTag`.
-- **HS2 — Redo-backup policy.** `PartnerMigrationService.resetForRedo()`
-  clears both `partner_migration_v1_done` and `partner_migration_v1_backup_done`,
-  so the next `runIfNeeded` re-takes the backup, **overwriting the prior
-  backup file**. Alternative: backup is one-shot, never overwritten.
-  Spec §5 #6 is ambiguous; current choice = redo-rebackup, encoded by
-  the test `redo re-takes the backup (HS2 hot spot)` in
-  `test/unit/services/partner_migration_service_test.dart` asserting
-  `backupCalls == 2`. If Codex flips the policy, the assertion + the
-  `resetForRedo` dartdoc + the plan's HS2 description all need flipping.
+- Claude reports 12 commits on the branch, 20 new tests, and no regression vs
+  the existing `main` test baseline.
+- This queue item is restored on the branch so the code review outcome has a
+  durable handoff target inside the PR branch itself.
 
 Changed:
-- New: `lib/features/partner/{domain/entities,data/repositories,data/services}/`
-- Modified: `lib/features/conversation/domain/entities/conversation.dart` (+ `.g.dart`)
-- Modified: `lib/core/services/storage_service.dart` (+ `lib/core/constants/app_constants.dart`)
-- New tests: `test/unit/{entities,services,repositories}/...` + `test/integration/`
-- Total: 20 new tests, all green.
+- New Partner entity / repository / migration service / deterministic id factory
+- `Conversation.partnerId` field added
+- `StorageService.initialize()` now opens the Partner box and runs migration
+- 20 new unit / integration tests around migration
+- Codex follow-up patch removes the direct `dart:io` import from the shared
+  startup path by moving backup I/O behind a conditional import helper
+- Codex follow-up patch changes migration completion semantics so partial-failure
+  passes stay retryable on next boot instead of writing the done flag
 
 Evidence:
-- 12 commits, listed via `git log --oneline feature/partner-entity-A1 ^main`
-- A1 branch test count: **227 PASS / 86 FAIL** (full `flutter test`)
-- Main baseline test count: **207 PASS / 86 FAIL** — confirming all 86 failures
-  are pre-existing baseline noise (settings_screen widget tests with
-  pumpAndSettle timeouts, message_booster localization mismatches, etc.),
-  **none introduced by A1**. Delta = +20 PASS / +0 FAIL.
-- Continuity guard: `'conv-abc' → 3a9475c9-fb99-5117-8e19-6a42c0298c49`
-  (Task 3 namespace constant + Task 6 happy path agree).
-- Bruce regression guard: integration test asserts 5 conversations with
-  2 named '糖糖' produce 5 distinct Partners (Migration B contract).
-- Codex C3 evidence: re-grep typeId output verbatim in commit `4a46cf9`'s body.
+- `53e7b85`
+- [A1 implementation review doc](./2026-04-25_partner-entity-A1_codex-review.md)
+- `lib/core/services/storage_service.dart`
+- `lib/features/partner/data/services/partner_migration_service.dart`
+- `test/unit/services/partner_migration_service_test.dart`
+- `grep -rn 'typeId:' lib/`
 
 Open-Risks:
-1. HS1 unresolved → no remote signal if migration corrupts a TF user's box.
-2. HS2 unresolved → ambiguous spec leaves redo behaviour up to interpretation.
-3. Web platform (kIsWeb) untested in CI — backup short-circuits but the
-   wider `StorageService.initialize()` path on Web is unverified.
-4. Settings UI for `重做升級` is deferred to A2 (intentional). If a TF user
-   suspects corruption before A2 ships, they have no in-app recovery — only
-   a fresh install.
-5. Pre-existing 86 failures on `main` are not addressed by this branch and
-   represent ambient tech debt; flagging for awareness, not for this PR.
+1. Task 11 redo UI is still deferred to A2, so A1 cannot rely on manual redo as
+   the only recovery path
 
 Claude-Position:
-- Implementation is faithful to v2 spec on all sections that were ruled on.
-- HS1: `dart:developer.log` is acceptable for the soak window because (a) Bruce
-  + Eric are TF testing on physical devices we can hand-instrument, and
-  (b) adding `sentry_flutter` in A1 expands blast radius beyond "schema +
-  migration" — the dep's init code itself is a new failure surface during
-  the very soak we'd be using it to observe. Recommend: add `sentry_flutter`
-  in a dedicated commit AFTER A1 TF soak passes, BEFORE A2 starts.
-- HS2: redo-rebackup is the safer default because the redo button is a user-
-  initiated panic action — they're saying "something is wrong, try again".
-  At that point a stale backup is more dangerous than a fresh one (the user's
-  current Hive state is the new ground truth). One-shot backup would freeze
-  the user's recovery point at first-run, which is wrong for the Bruce-style
-  scenario where the bug manifested after multiple TF cycles.
-- Task 11 deferral: defensible because the production settings IA has no
-  natural slot, and inventing a "Debug" section for A1 violates the plan's
-  blast-radius principle. A2 plan must include the UI hookup.
+- HS1: defer `sentry_flutter` until after TF soak; keep A1 on
+  `dart:developer.log`
+- HS2: keep redo-rebackup; user-triggered redo should treat current local state
+  as ground truth
+- Task 11 remains deferred to A2 per the blast-radius constraint
 
 Codex-Position:
-- Pending
+- `typeId = 8` remains valid; re-grep confirms `0..7` are occupied and `8` is
+  free on this branch.
+- HS1: approve defer. After the two implementation blockers below are fixed,
+  A1 may keep `dart:developer.log(name: 'partner_migration')` for the TF soak
+  instead of adding `sentry_flutter`.
+- HS2: keep the current redo-rebackup policy.
+- Codex directly patched the two original P1 findings:
+  1. `StorageService` now calls a conditional-import backup helper instead of
+     importing `dart:io` directly on the shared startup path.
+  2. `PartnerMigrationService.runIfNeeded()` now keeps partial-failure passes
+     retryable by skipping the done flag when any row failed.
+- Claude then ran the clean-env follow-up verification and reported:
+  - `test/unit/services/partner_migration_service_test.dart`: `6/6 PASS`
+  - `test/integration/partner_migration_integration_test.dart`: `3/3 PASS`
+  - `flutter analyze lib/core/services/ lib/features/partner/` + the two test
+    files: `No issues found`
+- With that validation in place, I am changing this item to PR-ready.
 
 Verdict:
-- Pending
+- APPROVED - branch may open PR and start TF soak after merge.
 
 Eric-Decision:
 - Pending
 
 Action-Items:
-- [x] A1 plan written (`docs/plans/2026-04-25-partner-entity-A1-impl.md`).
-- [x] 12 implementation commits on `feature/partner-entity-A1`, pushed to origin.
-- [x] 20 new tests, all green; zero regressions over `main` baseline.
-- [ ] Codex reviews diff against design doc v2 + this queue item's HS1 / HS2.
-- [ ] Codex rules on HS1 (Sentry now vs. after soak) and HS2 (redo-rebackup
-      policy). If either rules differently, update tests + dartdoc + plan.
-- [ ] Eric merges PR after Codex verdict.
-- [ ] TF soak 1–2 days on the merged branch (Codex C2). A2 plan does NOT
-      start until soak passes.
-- [ ] After soak: flip ADR-15 status from 🟡 Proposed → 🟢 Active (A1 shipped).
+- [x] Claude implemented A1 on `feature/partner-entity-A1`
+- [x] Codex reviewed HS1 / HS2
+- [x] Codex fixed the direct `dart:io` import in `StorageService`
+- [x] Codex fixed migration completion semantics so partial-failure runs stay
+      retryable
+- [x] Claude / CC ran the targeted branch tests in a clean env
+- [x] Codex confirmed the clean-env test result and gave PR go
+- [x] PR #1 opened by Codex against `main`
+- [x] Claude sanity-checked PR #1 diff against spec v2 / ADR-15 (no new blocker)
+- [ ] Eric merges PR #1
+- [ ] After merge, start TF soak
 
 Close-Condition:
-- A1 lands on `main` with HS1 + HS2 resolved AND TF soak signed off.
+- PR is merged and A1 moves into TF soak tracking.
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
 Status: CLOSED
