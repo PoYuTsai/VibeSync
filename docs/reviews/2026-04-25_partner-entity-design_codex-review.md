@@ -151,3 +151,115 @@ So `@HiveField(15)` is currently available and is not the blocker.
 
 Do **not** start the A1 implementation plan from the current spec. First revise
 the design doc on the two P1 issues, then rerun Codex spec review.
+
+---
+
+## v2 re-review (latest)
+
+### Verdict
+
+**PASS for A1 implementation planning.**
+
+The v2 spec closes the two v1 blockers:
+
+1. `Partner` moved to `typeId = 8`, and repo grep still shows `0..7` occupied
+   with `8` free.
+2. Migration correctness no longer depends on a terminal done flag. The design
+   now uses deterministic UUID v5 from `conversation.id` plus
+   `conversation.partnerId` itself as the idempotency marker.
+
+I do **not** see a remaining architecture-level blocker that should stop A1
+planning. The remaining issues are implementation constraints, not spec flaws.
+
+### Verified fixes
+
+#### v2 closes the Hive id collision
+
+- Spec v2 moved `Partner` to `typeId = 8`
+  (`docs/plans/2026-04-25-partner-entity-design.md:56`)
+- Fresh repo grep still shows these ids occupied and no `8` in use:
+  - `Conversation = 0`
+  - `Message = 1`
+  - `ConversationSummary = 2`
+  - `MeetingContext = 3`
+  - `AcquaintanceDuration = 4`
+  - `UserGoal = 5`
+  - `SessionContext = 6`
+  - `UserStyle = 7`
+
+That removes the v1 P1 adapter conflict.
+
+#### v2 closes the rerun-safety gap
+
+The v2 migration now states:
+
+- deterministic UUID v5 namespace constant
+  (`docs/plans/2026-04-25-partner-entity-design.md:87`)
+- skip already-migrated conversations when `convo.partnerId != null`
+  (`docs/plans/2026-04-25-partner-entity-design.md:100`)
+- reuse an existing `Partner` when `partnerBox.containsKey(partnerId)`
+  (`docs/plans/2026-04-25-partner-entity-design.md:107`)
+- demote `partner_migration_v1_done` to perf-only
+  (`docs/plans/2026-04-25-partner-entity-design.md:132,146,345`)
+
+That is the right shape for crash-safe reruns: a partial run converges on the
+same partner ids instead of minting duplicates.
+
+#### v2 closes the token-budget handwave at spec level
+
+The spec now adds:
+
+- hard cap `1500 chars (~400 tok)`
+  (`docs/plans/2026-04-25-partner-entity-design.md:248`)
+- ranking limits `N=8` for interests and traits
+  (`docs/plans/2026-04-25-partner-entity-design.md:249-250`)
+- truncation before request assembly
+  (`docs/plans/2026-04-25-partner-entity-design.md:256`)
+- source restriction to parsed `lastAnalysisSnapshotJson` fields instead of raw
+  JSON blob
+  (`docs/plans/2026-04-25-partner-entity-design.md:251-255`)
+
+Given the current server-side `conversationSummary` cap of `5000` chars, this
+looks reasonable even for Free Haiku tier. I do not see this as a blocker now.
+
+### Non-blocking implementation notes
+
+#### Keep `conversationsByPartnerProvider(partnerId)` truly narrow
+
+The v2 spec correctly narrows invalidation to
+`partnerAggregateProvider(partnerId)`
+(`docs/plans/2026-04-25-partner-entity-design.md:219`), which is a good fix to
+the earlier "invalidate everything" design.
+
+The one thing to watch in implementation is this:
+
+- if `conversationsByPartnerProvider(partnerId)` is built by filtering the full
+  `conversationsProvider`, then the global fan-out comes back through the side
+  door
+
+So this is now an implementation constraint for A1/A2 planning, not a spec
+blocker.
+
+#### A1 should be re-estimated above the original `1.5 day`
+
+The spec now marks A1 as `TBD pending Codex re-review`
+(`docs/plans/2026-04-25-partner-entity-design.md:22,359,374`), and I agree
+with that correction.
+
+My sanity-check estimate:
+
+- A1 coding + tests: roughly **2-3 dev days**
+- plus the already-planned **1-2 day TF soak / observation window**
+
+So the earlier `1.5 day` number should stay retired.
+
+### Final recommendation
+
+The v2 spec is good enough to proceed to **A1 implementation planning**.
+
+Recommended guardrails for the next step:
+
+1. keep the implementation plan A1-only
+2. explicitly state that partner-scoped providers must not derive from the full
+   conversations list
+3. keep the implementation-phase grep / typeId verification step

@@ -58,6 +58,7 @@ Those still belong in `git log`, `docs/bug-log.md`, or `docs/decisions.md`.
 - `OPEN`
 - `IN_REVIEW`
 - `WAITING_ON_DAISY`
+- `APPROVED`
 - `CLOSED`
 
 ## Queue Template
@@ -129,99 +130,79 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
-Status: WAITING_ON_CODEX_REREVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `working-tree`（spec v2 即將 commit）
+Branch/Commit: `5e10b86`
 
 Question:
 - Does spec v2 fully close the v1 P1 / P2 findings, or does any blocker remain
   before A1 implementation planning?
 
 Context:
-- v1 review verdict: 🔴 Critical flaw (`docs/reviews/2026-04-25_partner-entity-design_codex-review.md`).
-- Eric authorized Claude to revise spec without reopening locked brainstorm
-  decisions (IA / Migration B / Union / Hybrid / Report D).
-- v2 revision log lives at the top of the design doc.
+- v1 review verdict was `Critical flaw`; see
+  `docs/reviews/2026-04-25_partner-entity-design_codex-review.md`.
+- Eric authorized Claude to revise the spec without reopening the locked
+  brainstorm decisions.
+- Codex re-reviewed spec v2 against the original blockers plus the new v2
+  open-risk list.
 
-Changed (v2 revision, 2026-04-25 18:05):
-- §1 Data Model:
-  - `Partner @HiveType(typeId: 5)` → `typeId = 8` with grep evidence.
-  - Migration rewritten: `PARTNER_NAMESPACE_UUID` compile-time constant,
-    deterministic UUID v5 from `conversation.id`, per-convo `partnerId` marker
-    is the source of idempotency. SharedPreferences flag demoted to perf-only.
-  - Crash scenario table covers loop interruption, account switch, OOM,
-    backup failure.
-- §3 Aggregation:
-  - Riverpod invalidation narrowed to `partnerAggregateProvider(partnerId)`
-    instead of fanning out on any conversation change.
-  - Partner summary now has hard char cap (1500), ranking rules
-    (`lastInteraction` desc, N=8 for interests / traits, N=5 for notes), and
-    explicit assembly source (`lastAnalysisSnapshotJson` parsed fields, not
-    raw JSON).
-  - Pre-assembly safety checks added (length assert, ownerUserId mismatch,
-    parse-fail isolation).
-- §5 Tests:
-  - Idempotent + crash-safe rerun unit test.
-  - Deterministic UUID v5 contract + namespace constant regression guard.
-  - Summary truncation tests for 30-conversation worst case.
-  - Narrow invalidation tests.
-  - Integration test extended with crash-safe rerun + backup byte-equality.
-- §6 Phasing:
-  - A1 estimate `1.5 day` marked `TBD` pending Codex re-review.
-  - 9-10 day overall envelope retained, but internal allocation pending.
+Changed:
+- Spec v2 moved `Partner` from `typeId=5` to `typeId=8`.
+- Migration was rewritten around deterministic UUID v5 +
+  `conversation.partnerId` as the idempotency marker.
+- Partner summary got a hard size cap and ranking rules.
+- Provider invalidation was narrowed from "any conversation change" to
+  partner-scoped invalidation.
+- A1 estimate was demoted from `1.5 day` to `TBD pending Codex re-review`.
 
 Evidence:
-- [Design doc v2](../plans/2026-04-25-partner-entity-design.md) — see top "Spec Revision Log"
-- [v1 critical review doc](./2026-04-25_partner-entity-design_codex-review.md)
-- `grep -rn 'typeId:' lib/` → 0..7 occupied; 8 free as of 2026-04-25 18:05
-- `lib/features/conversation/domain/entities/conversation.dart:8-62` → fields 0..14 used; 15 free
+- [Design doc v2](../plans/2026-04-25-partner-entity-design.md)
+- [Codex review doc](./2026-04-25_partner-entity-design_codex-review.md)
+- `grep -rn 'typeId:' lib/`
+- `lib/features/conversation/domain/entities/conversation.dart`
+- `supabase/functions/analyze-chat/index.ts`
 
-Open-Risks (deferred to v2 re-review):
-1. Crash scenario table coverage — any unhandled path?
-2. Truncation rules (N=8, cap=1500) — Free Haiku tier worst case still safe?
-3. Narrow invalidation — does `conversationsByPartnerProvider` introduce its
-   own fan-out problem?
-4. A1 re-estimate — what is the realistic span after migration rewrite?
-5. New test surface — anything still uncovered?
+Open-Risks:
+1. `conversationsByPartnerProvider(partnerId)` must stay truly partner-scoped
+   and not reintroduce global provider fan-out via `conversationsProvider`
+2. A1 implementation plan should re-estimate coding work above the original
+   `1.5 day` number
 
 Claude-Position:
-- v2 closes v1 P1 blockers via algorithmic change (deterministic UUID + per-convo
-  marker) instead of just relabeling.
-- v2 P2 findings (token budget, Riverpod fan-out) addressed with hard rules,
-  not aspirations.
-- A1 estimate honestly left as TBD instead of papering over the gap.
+- v2 closes v1 P1 blockers via algorithmic change, not cosmetic relabeling.
+- v2 turns token budget and invalidation from hopes into explicit rules.
+- A1 estimate was correctly reopened instead of being hand-waved.
 
 Codex-Position:
-- v1 review complete (🔴 Critical, see review doc).
-- v2 re-review pending.
+- v2 closes the v1 P1 blockers.
+- Verified by fresh repo grep: `typeId 0..7` are occupied and `typeId = 8` is
+  free, so the new `Partner` id no longer collides.
+- The migration design is now rerun-safe at spec level: deterministic UUID v5
+  from `conversation.id` + `conversation.partnerId` as the marker means partial
+  runs converge instead of duplicating Partner rows.
+- The token-budget risk is now bounded enough for planning: hard cap `1500`
+  chars, `N=8` ranking, and parsed-field assembly instead of raw JSON.
+- The Riverpod fan-out issue is reduced to an implementation constraint:
+  `conversationsByPartnerProvider(partnerId)` must stay truly partner-scoped and
+  not be backed by the full `conversationsProvider`.
+- A1 should be re-estimated above the original `1.5 day`; `2-3 dev days` plus
+  the planned TF soak is a more realistic planning baseline.
 
 Verdict:
-- v1: Critical flaw - revise spec before A1 implementation planning. ✅ Done.
-- v2: Pending re-review.
+- PASS - spec v2 is approved for A1 implementation planning.
 
 Eric-Decision:
-- 2026-04-25 18:05 — Authorized Claude to revise spec along the lines proposed
-  in DC (deterministic UUID + per-convo marker + hard token cap + narrow
-  invalidation + A1 TBD). No reopening of brainstorm decisions.
+- Pending
 
 Action-Items:
-- [x] v1 Codex review complete + critical doc opened.
-- [x] v1 P1 blockers revised in spec:
-  - typeId=8 with grep evidence
-  - rerun-safe migration via deterministic UUID v5 + per-convo marker
-- [x] v1 P2 findings addressed:
-  - Partner summary char cap + ranking + assembly source
-  - Riverpod narrow invalidation
-  - A1 estimate marked TBD
-  - test coverage extended
-- [x] queue item updated with v2 changeset.
-- [ ] **Codex re-review** spec v2 against v1 findings + new "Open-Risks
-  deferred to v2 re-review" list above.
-- [ ] If v2 re-review verdict 🟢 PASS → status APPROVED → open new Claude
-  session to write A1 implementation plan.
+- [x] v1 Codex review completed and critical doc opened.
+- [x] Claude revised the spec to address v1 P1 / P2 findings.
+- [x] Codex re-reviewed spec v2.
+- [x] v2 approved for A1 implementation planning.
+- [ ] Open a new Claude session to write the A1-only implementation plan.
 
 Close-Condition:
-- Codex v2 re-review verdict 🟢 PASS, A1 implementation plan started.
+- Claude has started the A1-only implementation plan from the approved v2 spec.
