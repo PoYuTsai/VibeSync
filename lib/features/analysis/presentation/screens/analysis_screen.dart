@@ -1013,19 +1013,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _hasPendingRecognitionImport = false;
     });
 
-    final canAnalyzeImportedConversation =
-        _buildMessagesForReplyAnalysis(conv.messages) != null;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('已加入目前對話，共 $messageCount 則訊息'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('已加入目前對話，共 $messageCount 則訊息'),
+            const SizedBox(height: 4),
+            Text(
+              '💡 若這段訊息不連貫，建議從首頁開新對話避免「對方檔案」混淆',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: Colors.green,
-        action: canAnalyzeImportedConversation
-            ? SnackBarAction(
-                label: '立即分析',
-                textColor: Colors.white,
-                onPressed: _runAnalysis,
-              )
-            : null,
+        duration: const Duration(seconds: 7),
+        action: SnackBarAction(
+          label: '捲到匯入位置',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            if (!_showAllMessages) {
+              setState(() => _showAllMessages = true);
+            }
+            _scrollToBottom(delay: const Duration(milliseconds: 80));
+          },
+        ),
       ),
     );
   }
@@ -2039,7 +2056,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       // 記錄已分析的訊息數量
       _lastAnalyzedMessageCount = conversation.messages.length;
 
-      // 分析完成後清除殘留的 SnackBar（例如識別完成後的「立即分析」提示）
+      // 分析完成後清除殘留的 SnackBar（例如識別完成後的匯入提示）
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
       }
