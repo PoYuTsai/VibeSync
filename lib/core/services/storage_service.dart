@@ -1,10 +1,16 @@
 // lib/core/services/storage_service.dart
+import 'dart:io' show File;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';
 import '../../features/conversation/domain/entities/session_context.dart';
+import '../../features/partner/data/repositories/partner_repository.dart';
+import '../../features/partner/data/services/partner_migration_service.dart';
 import '../../features/partner/domain/entities/partner.dart';
 import '../constants/app_constants.dart';
 
@@ -49,6 +55,18 @@ class StorageService {
       AppConstants.usageBox,
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
+
+    // Partner Entity Refactor A1 — Migration runs once on first boot
+    // after Partner box is open. Subsequent boots short-circuit on the
+    // perf flag inside runIfNeeded.
+    final prefs = await SharedPreferences.getInstance();
+    final migration = PartnerMigrationService(
+      conversationBox: conversationsBox,
+      partnerRepo: PartnerRepository(box: partnersBox),
+      prefs: prefs,
+      backupConversationBox: _backupConversationBox,
+    );
+    await migration.runIfNeeded();
   }
 
   static Future<List<int>> _getEncryptionKey() async {
@@ -64,6 +82,25 @@ class StorageService {
       value: String.fromCharCodes(newKey),
     );
     return newKey;
+  }
+
+  /// One-shot backup of the conversations Hive file used by the Partner
+  /// migration (A1). Mobile-only; on Web `box.path` is unsupported and
+  /// the backup is short-circuited so init does not crash.
+  ///
+  /// Throwing here intentionally aborts `runIfNeeded` (see
+  /// `PartnerMigrationService._ensureBackup`) so the migration loop
+  /// does not start without a backup. The next boot retries.
+  static Future<void> _backupConversationBox() async {
+    if (kIsWeb) {
+      return; // Hive on Web has no real path; A1 is mobile-only.
+    }
+    final source = conversationsBox.path;
+    if (source == null) {
+      return;
+    }
+    final backup = File('$source.partner_migration_backup');
+    await File(source).copy(backup.path);
   }
 
   static Box<Conversation> get conversationsBox =>
