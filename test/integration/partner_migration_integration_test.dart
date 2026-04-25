@@ -188,6 +188,7 @@ void main() {
       },
     );
     await svc1.runIfNeeded();
+    expect(prefs.getBool('partner_migration_v1_done'), isNot(true));
 
     // Simulate process death.
     await convoBox.close();
@@ -201,7 +202,6 @@ void main() {
     expect(partial, lessThan(5),
         reason: 'On disk, the 3rd save did not run');
 
-    await svc1.resetForRedo();
     final svc2 = PartnerMigrationService(
       conversationBox: convoBox,
       partnerRepo: repo,
@@ -209,6 +209,7 @@ void main() {
       backupConversationBox: () async {},
     );
     await svc2.runIfNeeded();
+    expect(prefs.getBool('partner_migration_v1_done'), true);
 
     for (final id in ['c-1', 'c-2', 'c-3', 'c-4', 'c-5']) {
       expect(convoBox.get(id)!.partnerId,

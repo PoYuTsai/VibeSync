@@ -1,6 +1,3 @@
-// lib/core/services/storage_service.dart
-import 'dart:io' show File;
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
@@ -13,6 +10,7 @@ import '../../features/partner/data/repositories/partner_repository.dart';
 import '../../features/partner/data/services/partner_migration_service.dart';
 import '../../features/partner/domain/entities/partner.dart';
 import '../constants/app_constants.dart';
+import 'conversation_box_backup.dart';
 
 class StorageService {
   static const _encryptionKeyName = 'vibesync_encryption_key';
@@ -95,12 +93,7 @@ class StorageService {
     if (kIsWeb) {
       return; // Hive on Web has no real path; A1 is mobile-only.
     }
-    final source = conversationsBox.path;
-    if (source == null) {
-      return;
-    }
-    final backup = File('$source.partner_migration_backup');
-    await File(source).copy(backup.path);
+    await backupConversationBoxFile(conversationsBox);
   }
 
   static Box<Conversation> get conversationsBox =>

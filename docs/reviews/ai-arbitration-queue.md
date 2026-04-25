@@ -135,7 +135,7 @@ Request-Type: review
 Raised-By: Claude
 Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A1` @ `53e7b85`
+Branch/Commit: `feature/partner-entity-A1` @ `working-tree`
 
 Question:
 - Does the A1 implementation faithfully execute the approved v2 spec? Two
@@ -155,6 +155,10 @@ Changed:
 - `Conversation.partnerId` field added
 - `StorageService.initialize()` now opens the Partner box and runs migration
 - 20 new unit / integration tests around migration
+- Codex follow-up patch removes the direct `dart:io` import from the shared
+  startup path by moving backup I/O behind a conditional import helper
+- Codex follow-up patch changes migration completion semantics so partial-failure
+  passes stay retryable on next boot instead of writing the done flag
 
 Evidence:
 - `53e7b85`
@@ -165,11 +169,10 @@ Evidence:
 - `grep -rn 'typeId:' lib/`
 
 Open-Risks:
-1. Direct `dart:io` import inside `StorageService` puts a non-web-safe import on
-   a shared startup path
-2. Migration currently writes the done flag even when some rows failed, so
-   unfinished legacy rows will not auto-retry on next boot
-3. Task 11 redo UI is still deferred to A2, so A1 cannot rely on manual redo as
+1. The two P1 findings have been patched in-code, but clean-env verification is
+   still pending because this workstation's Windows toolchain is pointed at a
+   WSL-authored `.dart_tool/package_config.json`
+2. Task 11 redo UI is still deferred to A2, so A1 cannot rely on manual redo as
    the only recovery path
 
 Claude-Position:
@@ -186,17 +189,17 @@ Codex-Position:
   A1 may keep `dart:developer.log(name: 'partner_migration')` for the TF soak
   instead of adding `sentry_flutter`.
 - HS2: keep the current redo-rebackup policy.
-- However, A1 is **not** ready to open a PR yet because two P1 issues remain:
-  1. `lib/core/services/storage_service.dart` now imports `dart:io` directly in
-     a shared startup service. The repo already uses conditional imports for
-     shared platform-specific code; this version risks breaking the web build.
-  2. `PartnerMigrationService.runIfNeeded()` unconditionally writes the done
-     flag after `_migrateLoop()`, even though `_migrateLoop()` swallows per-row
-     failures. That means a partial migration can become permanently stuck until
-     a future manual redo path exists.
+- Codex directly patched the two original P1 findings:
+  1. `StorageService` now calls a conditional-import backup helper instead of
+     importing `dart:io` directly on the shared startup path.
+  2. `PartnerMigrationService.runIfNeeded()` now keeps partial-failure passes
+     retryable by skipping the done flag when any row failed.
+- The branch is closer, but I still want one clean-env targeted test run before
+  opening the PR because this workstation cannot currently run reliable
+  Flutter verification on the branch.
 
 Verdict:
-- REQUEST_CHANGES - fix the two P1 issues above before opening the PR.
+- PATCHED - await clean-env verification, then PR.
 
 Eric-Decision:
 - Pending
@@ -204,15 +207,16 @@ Eric-Decision:
 Action-Items:
 - [x] Claude implemented A1 on `feature/partner-entity-A1`
 - [x] Codex reviewed HS1 / HS2
-- [ ] Claude fixes the direct `dart:io` import in `StorageService`
-- [ ] Claude changes migration completion semantics so the done flag is not
-      written after a partial-failure run
-- [ ] Codex re-reviews the updated branch
-- [ ] Only after re-review passes: open the PR and start TF soak
+- [x] Codex fixed the direct `dart:io` import in `StorageService`
+- [x] Codex fixed migration completion semantics so partial-failure runs stay
+      retryable
+- [ ] Claude / CC runs the targeted branch tests in a clean env and reports back
+- [ ] Codex confirms the clean-env test result and gives the PR go/no-go
+- [ ] Only after that: open the PR and start TF soak
 
 Close-Condition:
-- The two P1 findings are resolved, Codex re-review passes, and the branch is
-  ready for PR creation.
+- The P1 fixes are validated in a clean env and the branch is ready for PR
+  creation.
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
 Status: CLOSED

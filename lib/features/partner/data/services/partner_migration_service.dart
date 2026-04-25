@@ -68,7 +68,11 @@ class PartnerMigrationService {
     }
 
     await _ensureBackup();
-    await _migrateLoop();
+    final hadFailures = await _migrateLoop();
+    if (hadFailures) {
+      developer.log('partial_failure_retry_needed', name: _kLogTag);
+      return;
+    }
 
     await _prefs.setBool(_kMigrationDoneFlag, true);
     developer.log('completed', name: _kLogTag);
@@ -84,7 +88,8 @@ class PartnerMigrationService {
     developer.log('backup_completed', name: _kLogTag);
   }
 
-  Future<void> _migrateLoop() async {
+  Future<bool> _migrateLoop() async {
+    var hadFailures = false;
     for (final convo in _convoBox.values.toList()) {
       if (convo.partnerId != null) continue;
       try {
@@ -108,8 +113,10 @@ class PartnerMigrationService {
           error: e,
           stackTrace: st,
         );
+        hadFailures = true;
       }
     }
+    return hadFailures;
   }
 
   /// Test/dev-only: wipe both perf-shortcut flags so the next call to
