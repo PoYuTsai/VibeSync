@@ -543,6 +543,78 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     setState(() {});
   }
 
+  /// 編輯訊息文字（供 OCR 錯字現場修正用）
+  Future<void> _editMessage(
+      Conversation conversation, Message message) async {
+    final controller = TextEditingController(text: message.content);
+    final edited = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.glassWhite,
+        title: Text('編輯文字',
+            style: TextStyle(color: AppColors.glassTextPrimary)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: null,
+          minLines: 1,
+          style: TextStyle(color: AppColors.glassTextPrimary),
+          decoration: InputDecoration(
+            hintText: '修正 OCR 錯字...',
+            hintStyle: TextStyle(color: AppColors.glassTextHint),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: AppColors.glassBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: AppColors.glassBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: Text('取消',
+                style: TextStyle(color: AppColors.unselectedText)),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(controller.text.trim()),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            child: const Text('儲存'),
+          ),
+        ],
+      ),
+    );
+
+    if (edited == null || edited.isEmpty || edited == message.content) {
+      return;
+    }
+
+    final index = conversation.messages.indexWhere((m) => m.id == message.id);
+    if (index == -1) return;
+
+    conversation.messages[index] = Message(
+      id: message.id,
+      content: edited,
+      isFromMe: message.isFromMe,
+      timestamp: message.timestamp,
+      enthusiasmScore: message.enthusiasmScore,
+      quotedReplyPreview: message.quotedReplyPreview,
+      quotedReplyPreviewIsFromMe: message.quotedReplyPreviewIsFromMe,
+    );
+
+    final repository = ref.read(conversationRepositoryProvider);
+    await repository.updateConversation(conversation);
+    ref.invalidate(conversationProvider(widget.conversationId));
+    setState(() {});
+  }
+
   /// 刪除訊息
   Future<void> _deleteMessage(
       Conversation conversation, Message message) async {
@@ -3026,6 +3098,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         : conversation.messages.take(5))
                                     .map((m) => MessageBubble(
                                           message: m,
+                                          onEdit: () =>
+                                              _editMessage(conversation, m),
                                           onSwapSide: () =>
                                               _swapMessageSide(conversation, m),
                                           onDelete: () =>

@@ -9,12 +9,14 @@ class MessageBubble extends StatelessWidget {
   final Message message;
   final VoidCallback? onSwapSide;
   final VoidCallback? onDelete;
+  final VoidCallback? onEdit;
 
   const MessageBubble({
     super.key,
     required this.message,
     this.onSwapSide,
     this.onDelete,
+    this.onEdit,
   });
 
   String? _quotedReplyLabel() {
@@ -30,7 +32,8 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final quotedReplyLabel = _quotedReplyLabel();
 
-    final hasActions = onSwapSide != null || onDelete != null;
+    final hasActions =
+        onSwapSide != null || onDelete != null || onEdit != null;
 
     return GestureDetector(
       onLongPress: hasActions
@@ -167,6 +170,18 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            if (onEdit != null)
+              ListTile(
+                leading: Icon(Icons.edit_outlined, color: AppColors.primary),
+                title: Text(
+                  '編輯文字',
+                  style: TextStyle(color: AppColors.glassTextPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onEdit!();
+                },
+              ),
             if (onSwapSide != null)
               ListTile(
                 leading: Icon(Icons.swap_horiz, color: AppColors.primary),
