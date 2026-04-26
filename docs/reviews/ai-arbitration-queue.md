@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
-Owner: Codex (r3 scoped re-review)
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ r3 commit (plan-only, no code yet)
+Branch/Commit: `feature/partner-entity-A2-ui` @ `58b22db` (r3 plan-only, no code yet)
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -163,7 +163,7 @@ Changed:
 
 Evidence:
 - Plan: [docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md](../plans/2026-04-26-partner-entity-A2-phase2-impl.md)
-- Branch HEAD: `ca2581d` (r2 plan commit)
+- Branch HEAD: `58b22db` (r3 plan commit)
 - Codex-Review-Hot-Spots section in plan (six grep-able invariants)
 
 Open-Risks:
@@ -295,15 +295,26 @@ Codex-Position:
     `StreamController<String?>()` but does not import `dart:async`; it also
     includes unused Hive/path-provider imports that should be removed unless
     actually used.
+- **r3 scoped re-review (`58b22db`)**: `APPROVED`. Reviewed only the two r2
+  remaining test-harness findings.
+  - Navigation test false-red is resolved: `/` now uses `_HomeSentinel`, the
+    const-empty `partnerListProvider` override is gone, the test asserts back
+    returns to `home-sentinel`, and a cheap Hive sanity check still proves the
+    submit persisted `Alice`.
+  - Import issue is resolved: `add_partner_screen_test.dart` now imports
+    `dart:async`, removes the unused Hive Flutter / path-provider imports, and
+    `add_partner_navigation_test.dart` also imports `dart:async` for
+    `Stream.value(...)`.
+  - No remaining blocker in the r3 scope. Claude can execute Tasks 6-9.
 
 Verdict:
 - (r1) REVISE_BEFORE_IMPLEMENTATION
 - (r2) REVISE_BEFORE_IMPLEMENTATION — patch the two remaining test-harness
   issues before executing Tasks 6-9
-- (r3) Pending — awaiting Codex r3 scoped re-review on the two test-harness fixes
+- (r3) APPROVED — the two r2 remaining test-harness fixes are resolved
 
 Eric-Decision:
-- Pending
+- Not needed
 
 Action-Items:
 - [x] Codex reviews `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
@@ -323,16 +334,16 @@ Action-Items:
       - add `dart:async` and remove unused imports in
         `add_partner_screen_test.dart` → done; same `dart:async` added to
         navigation test for `Stream.value`
-- [ ] **Codex r3 scoped re-review** — verify ONLY the two r2 remaining
+- [x] **Codex r3 scoped re-review** — verify ONLY the two r2 remaining
       test-harness findings are resolved. Do NOT re-litigate r1 hot-spots or
       r2-already-acceptable items. Plan revision header carries an r3 changelog.
-- [ ] If 🟢 or REVISED_AND_APPROVED, Claude executes Tasks 6-9 via
+- [ ] Claude executes Tasks 6-9 via
       `superpowers:executing-plans`
 
 Close-Condition:
-- Codex returns `APPROVED` or `REVISED_AND_APPROVED` on the Phase 2 sub-plan
-  AND any Daisy-Decision items resolved by Eric. Plan execution starts only
-  after this item flips to APPROVED.
+- Codex returned `APPROVED` on the r3 scoped review. Phase 2 plan execution can
+  start; close this item after Tasks 6-9 finish or a new implementation review
+  item supersedes it.
 
 ---
 

@@ -218,3 +218,50 @@ Required r3 patch:
 No Eric decision is needed. The remaining issues are execution-plan correctness
 problems, not product tradeoffs. Patch r3, update the same queue item, and ask
 Codex to re-check only these two points.
+
+## r3 scoped re-review — 2026-04-26
+
+### Verdict
+
+**APPROVED.**
+
+I reviewed only the two r2 remaining findings, per the scoped request. Both are
+resolved in `feature/partner-entity-A2-ui @ 58b22db`, and there is no production
+code diff in this revision.
+
+### r2 Finding 1: navigation test false-red
+
+Resolved.
+
+- `add_partner_navigation_test.dart` now uses `_HomeSentinel` for `/`, so the
+  test verifies the routing contract directly: Home root persists, submitting
+  from `/partner/new` lands on detail, and back returns to Home instead of the
+  add form.
+- The old `partnerListProvider.overrideWith((_) => const <Partner>[])` was
+  removed from this navigation test.
+- The test no longer expects `Alice` to render from an always-empty Home list.
+  Instead, it asserts `home-sentinel` after pop and keeps a cheap persistence
+  sanity check with `partnerBox.values.single.name == 'Alice'`.
+- The unused `partner_list_screen.dart` import was removed.
+
+This is the weaker of the two r2-approved repair options, but it is valid for
+the stated test scope. Data-side persistence remains covered in
+`add_partner_screen_test.dart`.
+
+### r2 Finding 2: missing `dart:async` / unused imports
+
+Resolved.
+
+- `add_partner_screen_test.dart` now imports `dart:async` for
+  `StreamController<String?>`.
+- The unused `hive_ce_flutter/hive_flutter.dart` and
+  `path_provider_platform_interface/path_provider_platform_interface.dart`
+  imports were removed from that snippet.
+- `add_partner_navigation_test.dart` also imports `dart:async`, which is
+  appropriate because the auth override uses `Stream.value(...)`.
+
+### Scoped status
+
+No remaining blocker in the r3 scope. Claude can proceed with Tasks 6-9 using
+`superpowers:executing-plans`. Do not reopen r1/r2 hot spots unless the actual
+implementation diverges from this plan.
