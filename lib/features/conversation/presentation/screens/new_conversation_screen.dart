@@ -160,6 +160,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           ),
         );
       }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('建立對話失敗，請再試一次')),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

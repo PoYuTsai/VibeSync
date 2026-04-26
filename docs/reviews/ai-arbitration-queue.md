@@ -321,6 +321,17 @@ Codex-Position:
   - Codex could not complete Flutter/Dart verification in this shell because
     `flutter`, `dart`, `flutter test`, and `flutter analyze` all timed out.
     Claude should rerun the touched tests/analyze before opening/merging PR.
+- **r2 final code review (`f9815b7`)**:
+  `APPROVED_WITH_TF_QA_NOTE` after one Codex P2 follow-up fix.
+  - The `partner_detail_screen_test.dart` surface-size adjustment is accepted
+    as a test-harness fix for an artificial 800x600 bottom-sheet overflow.
+  - The skipped AddPartner submit widget test is accepted as a temporary
+    Windows `flutter_test` harness gap, but it does not provide full automated
+    coverage for `AddPartnerScreen -> ownerUserId`. Keep the manual TF
+    submit/back-stack item.
+  - Radar "未分析" copy remains Phase 4 polish, not a Phase 2 blocker.
+  - P2 fixed directly: `NewConversationScreen._createConversation` now catches
+    create/save failure and shows a snackbar instead of only resetting loading.
 
 Verdict:
 - (r1) REVISE_BEFORE_IMPLEMENTATION
@@ -333,6 +344,8 @@ Eric-Decision:
 
 - (code review) REVISED_BEFORE_MERGE; Codex fixed one P1 and one P2, pending
   Claude verification because Flutter/Dart tooling timed out in Codex
+- (r2 final) APPROVED_WITH_TF_QA_NOTE; pending Claude rerun of touched
+  tests/analyze after Codex's final P2 catch fix
 
 Action-Items:
 - [x] Codex reviews `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
