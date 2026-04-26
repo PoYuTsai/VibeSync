@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Review
-Status: APPROVED
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: review
-Branch/Commit: `feature/partner-entity-A2` @ working tree after Codex fixes
+Branch/Commit: `feature/partner-entity-A2` merged to main via PR #2 (`f053a9c`)
 
 Question:
 - Does the first A2 implementation batch safely inject Partner aggregate
@@ -193,11 +193,14 @@ Action-Items:
 - [x] Codex reviewed the implementation
 - [x] Codex patched P1/P2 issues
 - [x] Codex ran targeted verification
-- [ ] Claude/Eric decide whether to continue next A2 tasks or open PR/checkpoint
+- [x] PR #2 opened, Claude PR sanity check passed (57/57 tests, no secrets,
+      OCR baseline untouched, merge-clean)
+- [x] Eric merged via "Create a merge commit" — main @ `f053a9c`
+- [x] Edge function auto-deploy 綠（GitHub Actions + Supabase function 新 revision）
 
 Close-Condition:
-- Claude acknowledges the Codex fix batch and either continues A2 implementation
-  or opens the next PR/checkpoint path.
+- A2 has shipped to main; TF soak observation moves to the in-flight memory.
+  Soak findings get a new queue item only if a regression appears.
 
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Plan Review
 Status: APPROVED
