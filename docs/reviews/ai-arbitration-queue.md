@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review
-Status: OPEN
+Status: IN_REVIEW
 Request-Type: review
 Raised-By: Claude
-Owner: Claude
+Owner: Codex (r3 scoped re-review)
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ `ca2581d` (r2 plan-only, no code yet)
+Branch/Commit: `feature/partner-entity-A2-ui` @ r3 commit (plan-only, no code yet)
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -227,6 +227,28 @@ Claude-Position:
     "（即將推出）" label) instead of visible-no-op. Phase 4 Tasks 12-13
     flip them to enabled with handlers. Codex's "acceptable only if Phase 2
     doesn't ship independently" condition no longer required.
+- (r3 — Round 3 after Codex r2 scoped re-review at `6842bab`): Two remaining
+  P1 test-harness fixes patched. No production code touched. Specifically:
+  - **P1 navigation-test 假紅 fix**: `add_partner_navigation_test.dart`
+    previously overrode `partnerListProvider` to `const <Partner>[]` while
+    asserting `find.text('Alice')` after back-pop — that override is a static
+    function returning the empty list every time, so the post-submit assertion
+    was guaranteed to fail regardless of routing behavior. Picked the
+    **`_HomeSentinel` route** of Codex's two suggested fixes: replaced the real
+    `PartnerListScreen` at `/` with `_HomeSentinel` (a tiny widget that just
+    renders `'home-sentinel'`) and dropped the `partnerListProvider` override
+    entirely. The temp Hive box + repo override stay so `submit` actually
+    persists; the new assertion `partnerBox.values.single.name == 'Alice'` is a
+    cheap sanity check, with the full data-side coverage living in
+    `add_partner_screen_test.dart`'s "successful submit writes Partner with
+    ownerUserId from auth" test. Removed the now-unused
+    `partner_list_screen.dart` import.
+  - **P1 import fix**: Added `import 'dart:async';` to
+    `add_partner_screen_test.dart` (used by `StreamController<String?>()` in
+    the auth-loading test); removed unused `package:hive_ce_flutter/hive_flutter.dart`
+    and `package:path_provider_platform_interface/path_provider_platform_interface.dart`.
+    Same `dart:async` import added to `add_partner_navigation_test.dart` to
+    cover the `Stream.value(...)` use in the auth override.
 
 Codex-Position:
 - **REVISE_BEFORE_IMPLEMENTATION** — direction is correct, but the plan has
@@ -278,6 +300,7 @@ Verdict:
 - (r1) REVISE_BEFORE_IMPLEMENTATION
 - (r2) REVISE_BEFORE_IMPLEMENTATION — patch the two remaining test-harness
   issues before executing Tasks 6-9
+- (r3) Pending — awaiting Codex r3 scoped re-review on the two test-harness fixes
 
 Eric-Decision:
 - Pending
@@ -292,12 +315,17 @@ Action-Items:
       in the patched plan; do NOT re-litigate hot-spots already judged
       acceptable in r1. Plan revision header now includes a r2 changelog
       pointer at the top.
-- [ ] Claude patches the Phase 2 plan to r3:
+- [x] Claude patches the Phase 2 plan to r3:
       - fix `add_partner_navigation_test.dart` so the Home assertion is
-        compatible with the provider overrides
+        compatible with the provider overrides → `_HomeSentinel` route +
+        dropped `partnerListProvider` override + dropped
+        `partner_list_screen.dart` import
       - add `dart:async` and remove unused imports in
-        `add_partner_screen_test.dart`
-- [ ] Codex r3 scoped re-review on only those two remaining points
+        `add_partner_screen_test.dart` → done; same `dart:async` added to
+        navigation test for `Stream.value`
+- [ ] **Codex r3 scoped re-review** — verify ONLY the two r2 remaining
+      test-harness findings are resolved. Do NOT re-litigate r1 hot-spots or
+      r2-already-acceptable items. Plan revision header carries an r3 changelog.
 - [ ] If 🟢 or REVISED_AND_APPROVED, Claude executes Tasks 6-9 via
       `superpowers:executing-plans`
 

@@ -2,12 +2,23 @@
 
 > **Revision history**
 > - r1 (2026-04-26 e25cfce): initial draft
-> - r2 (2026-04-26): patched after Codex `REVISE_BEFORE_IMPLEMENTATION` verdict
+> - r2 (2026-04-26 ca2581d): patched after Codex `REVISE_BEFORE_IMPLEMENTATION` verdict
 >   in [`docs/reviews/2026-04-26_partner-entity-A2-phase2-plan_codex-review.md`](../reviews/2026-04-26_partner-entity-A2-phase2-plan_codex-review.md).
 >   Five fixes: (P1) package name `vibesync`, (P1) `context.replace` for submit
 >   + back-stack test, (P1) hermetic widget tests, (P1) auth-null guard,
 >   (P2) explicit `AnalysisResult.fromJson` reuse target. Plus ⋮ menu
 >   conditional from Hot-spot judgment.
+> - r3 (2026-04-26): patched after Codex r2 scoped re-review (`6842bab`). Two
+>   test-harness fixes:
+>   - **(P1)** `add_partner_navigation_test.dart` was const-empty-overriding
+>     `partnerListProvider` while asserting `Alice` appears after back — false
+>     red guaranteed. Switched to `_HomeSentinel` (this test verifies routing,
+>     not list rendering); kept temp Hive box so submit still persists; data-
+>     side claim already covered by `add_partner_screen_test.dart`.
+>   - **(P1)** `add_partner_screen_test.dart` was missing `import 'dart:async'`
+>     (used by `StreamController` in the auth-loading test) and carried
+>     unused `hive_ce_flutter` + `path_provider_platform_interface` imports.
+>     Imports trimmed.
 >
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 >
@@ -524,13 +535,12 @@ flutter pub add uuid
 
 ```dart
 // test/widget/features/partner/add_partner_screen_test.dart
-import 'dart:io';
+import 'dart:async';   // StreamController for the auth-loading test
+import 'dart:io';      // Directory.systemTemp.createTemp
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:hive_ce_flutter/hive_flutter.dart';
-import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
@@ -739,10 +749,11 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
 
 **Step 3b: Add Home → new → detail → back navigation test** (Codex P1.2)
 
-Add a separate test file to lock the back-stack contract after `context.replace`:
+Add a separate test file to lock the back-stack contract after `context.replace`. **Home is a sentinel**, not the real `PartnerListScreen` — this test's job is to verify *routing* behavior (Home root persists; back from detail does not return to `/partner/new`). The data-side claim (Partner actually written to Hive) is already covered by `add_partner_screen_test.dart`'s "successful submit writes Partner with ownerUserId from auth" test, so we don't re-assert it here.
 
 ```dart
 // test/widget/features/partner/add_partner_navigation_test.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -755,7 +766,19 @@ import 'package:vibesync/features/partner/data/repositories/partner_repository.d
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/add_partner_screen.dart';
-import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+
+// Sentinel Home — we verify the BACK-STACK contract, not what Home renders.
+// Using the real PartnerListScreen here would require also overriding
+// partnerAggregateProvider per partner (Task 7's lifted-aggregate design),
+// turning a router test into an integration test that fails for unrelated
+// reasons. The data-side assertion ("Partner actually persisted") lives in
+// add_partner_screen_test.dart.
+class _HomeSentinel extends StatelessWidget {
+  const _HomeSentinel();
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Text('home-sentinel'));
+}
 
 void main() {
   late Directory tmp;
@@ -776,14 +799,12 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
-  // Sentinel detail to keep this test focused on routing — Task 9 covers the
-  // real PartnerDetailScreen.
   testWidgets('Home → /partner/new → submit → /partner/:id → back → Home',
       (t) async {
     final router = GoRouter(
       initialLocation: '/',
       routes: [
-        GoRoute(path: '/', builder: (c, s) => const PartnerListScreen()),
+        GoRoute(path: '/', builder: (c, s) => const _HomeSentinel()),
         GoRoute(path: '/partner/new', builder: (c, s) => const AddPartnerScreen()),
         GoRoute(
           path: '/partner/:id',
@@ -798,14 +819,17 @@ void main() {
         partnerRepositoryProvider.overrideWithValue(repo),
         authConversationScopeProvider
             .overrideWith((ref) => Stream.value('u-test')),
-        partnerListProvider.overrideWith((_) => const <Partner>[]),
+        // NB: do NOT override partnerListProvider — _HomeSentinel doesn't
+        // read it. Overriding it const-empty here was the r2 false-red
+        // (Alice could never appear in a const [] list, so the back→Home
+        // assertion was guaranteed to fail).
       ],
       child: MaterialApp.router(routerConfig: router),
     ));
     await t.pumpAndSettle();
 
-    // Home — empty state visible
-    expect(find.textContaining('還沒有對象'), findsOneWidget);
+    // Home sentinel visible
+    expect(find.text('home-sentinel'), findsOneWidget);
 
     // Push to /partner/new
     router.push('/partner/new');
@@ -818,16 +842,21 @@ void main() {
     await t.tap(find.widgetWithText(FilledButton, '建立'));
     await t.pumpAndSettle();
 
-    // We're on detail
+    // We're on detail (sentinel detail, just enough to read partnerId)
     expect(find.textContaining('detail:'), findsOneWidget);
+
+    // Sanity: Partner actually persisted (cheap check; full coverage in
+    // add_partner_screen_test.dart's repo write test).
+    expect(partnerBox.values.length, 1);
+    expect(partnerBox.values.single.name, 'Alice');
 
     // Critical: pop returns to Home, NOT back to /partner/new (which would
     // happen if we used context.go and then push instead of replace).
     expect(router.canPop(), isTrue, reason: 'Home stack root must persist');
     router.pop();
     await t.pumpAndSettle();
-    expect(find.text('Alice'), findsOneWidget,
-        reason: 'Back from detail must land on Home with new partner shown');
+    expect(find.text('home-sentinel'), findsOneWidget,
+        reason: 'Back from detail must land on Home, not /partner/new');
     expect(find.text('新增對象'), findsNothing,
         reason: '/partner/new must NOT be reachable via back');
   });
@@ -1253,10 +1282,13 @@ git push
 
 ## Codex Review Hot Spots
 
-> **r2 scoped re-review:** focus only on whether the five r1 findings (P1
-> package name, P1 `context.replace` + back-stack test, P1 hermetic widget
-> tests, P1 auth-null guard, P2 `AnalysisResult.fromJson` reuse) are now
-> resolved. Hot spots below remain in scope for first-time reviewers.
+> **r3 scoped re-review:** focus ONLY on the two r2 remaining findings:
+> (1) `add_partner_navigation_test.dart` no longer false-reds (sentinel Home,
+>     no `partnerListProvider` const-empty override),
+> (2) `add_partner_screen_test.dart` imports clean (`dart:async` added,
+>     `hive_ce_flutter` + `path_provider_platform_interface` removed).
+> All r1 findings + r2 hot-spot judgments stand. Do NOT re-litigate items
+> previously marked acceptable.
 
 Tell Codex to focus on:
 
