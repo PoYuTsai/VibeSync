@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review + Code Review
-Status: WAITING_ON_CLAUDE_VERIFY
+Status: AWAITING_TF_QA_BEFORE_MERGE
 Request-Type: review
 Raised-By: Claude
-Owner: Claude
+Owner: Eric
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ `d9ce767` + Codex review fixes
+Branch/Commit: `feature/partner-entity-A2-ui` @ `7cc2f52` — **PR #3 opened**: https://github.com/PoYuTsai/VibeSync/pull/3
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -370,7 +370,6 @@ Action-Items:
       r2-already-acceptable items. Plan revision header carries an r3 changelog.
 - [x] Claude executes Tasks 6-9 via `superpowers:executing-plans`
       (commits `27481fd` / `d31103c` / `9be4cd2` / `637465f`)
-- [ ] Claude opens PR after Codex fixes pass local verification
 - [x] **Codex code review (NOT spec review)** — diff the 4 implementation
       commits against `main`. Focus per the plan's `Codex Review Hot Spots`:
       narrow-invalidation grep (zero hits on `conversationsProvider` in Phase 2
@@ -381,9 +380,27 @@ Action-Items:
       not duplicate parser. PLUS one item NOT in the plan: see
       Implementation-Notes below for `add_partner_navigation_test.dart`
       omission rationale.
-- [ ] Claude reruns touched widget tests + touched-file `flutter analyze` after
-      Codex fixes
-- [ ] If green, Claude opens PR `feature/partner-entity-A2-ui` → `main`
+- [x] **Codex r2 final** — `APPROVED_WITH_TF_QA_NOTE` @ `7cc2f52` after one
+      P2 catch fix on `NewConversationScreen._createConversation` (manual-create
+      failure now surfaces a snackbar instead of silently resetting loading).
+- [x] Claude reruns touched widget tests + touched-file `flutter analyze` after
+      Codex r2 fix — analyze 0 issues; 5 widget test files **+20 ~1**
+      (router 3 / list 3 / add 4+1skip / detail 5 / radar 4).
+- [x] Claude opens PR `feature/partner-entity-A2-ui` → `main` — **PR #3** at
+      https://github.com/PoYuTsai/VibeSync/pull/3 (manual via web UI; gh CLI not
+      authenticated on this WSL host).
+- [ ] **Eric runs 5 manual TF QA items** (gate before merge per Codex
+      `_WITH_TF_QA_NOTE` suffix). Items, in priority order:
+      1. AddPartner submit ownerUserId/partner flow — fills the gap left by the
+         skipped `successful submit writes Partner with ownerUserId` widget test
+         (Codex 在 r2 final 明確點名要保留)
+      2. back-stack semantic — Home → 新增對象 → detail → back **回 Partner list**
+         (不是回 `/partner/new`)
+      3. PartnerDetail「+ 新增對話」(手動 + 截圖兩條路徑) → 新對話應掛回該 Partner
+         (data-side 已 source-trace 過，TF 是 user-visible 驗證)
+      4. 舊 `/conversation/:id` deep-link 仍可開（向後相容）
+      5. 手動建對話失敗時看到 snackbar（Codex r2 補的那行）
+- [ ] **Eric merges PR #3** once all 5 TF QA items pass.
 
 Implementation-Notes (Code Review round):
 - **Plan-required `add_partner_navigation_test.dart` was OMITTED.** Reproducible
@@ -410,9 +427,10 @@ Implementation-Notes (Code Review round):
   Task 15/16 will remove it.
 
 Close-Condition:
-- Codex returns 🟢 PASS or 🟡 nit-only verdict on the implementation diff
-  AND the PR is merged to main, OR Codex flags 🔴 / 🟠 issues that get fixed
-  in additional rounds. Close after merge.
+- All 5 TF QA items pass on a TestFlight build off `feature/partner-entity-A2-ui`,
+  Eric merges PR #3 to `main`, edge function untouched (OCR baseline `28c0965`
+  preserved). Close after merge. If any TF QA item fails, fix-forward on the
+  same PR (do NOT pollute main).
 
 ---
 
