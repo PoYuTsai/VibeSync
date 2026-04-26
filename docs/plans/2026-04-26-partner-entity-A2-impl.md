@@ -316,12 +316,17 @@ git push
 - Test: `test/unit/features/partner/partner_providers_test.dart`
 - Test: `test/unit/features/conversation/conversation_write_controller_test.dart`
 
-**Architecture decision (locked 2026-04-26 by Eric, post Codex P1)**:
-- Invalidation owner = `ConversationWriteController extends Notifier<void>`（Riverpod 2.x），集中持有所有 conversation 寫入（create / save / delete / reassign），由 controller 統一 `ref.invalidate(...)` partner-scoped providers。
+**Architecture decision (locked 2026-04-26 by Eric, post Codex P1; refined r3 post Codex r2 P1)**:
+- Invalidation owner = `ConversationWriteController extends Notifier<void>`（Riverpod 2.x），集中持有所有 conversation 寫入（create / save / delete / reassign），由 controller 統一 `ref.invalidate(...)`。
 - `ConversationRepository` **保持** A1 plain storage wrapper、**不**注入 Riverpod `Ref`（A1 stable baseline 不 poke）。
-- 9 個既有 UI invalidate 呼叫點（grep 2026-04-26 確認）全部改走 controller，由 controller 端做 narrow invalidate。
+- 9 個 conversation **write** invalidate 呼叫點全部改走 controller。
+- 4 個 **session-scope** invalidate 呼叫點（auth login / sign-out / delete-account）**保持原樣** — 它們不是 conversation write，是換用戶 / 帳號重置的 session boundary cleanup。
 
-**Codex C1 constraint**: `partnerAggregateProvider(partnerId)` 必須只訂閱 `conversationsByPartnerProvider(partnerId)`，**不**訂閱全 `conversationsProvider`。寫 conversation A → controller 只 invalidate `conversationsByPartnerProvider(A.partnerId)` + `partnerAggregateProvider(A.partnerId)`，其他 partner provider 不受影響。
+**Narrow contract definition (r3, refined)**:
+- ✅ 真正要防的是 **cross-partner fan-out**：寫 partner X 不該觸發 partner Y 的 aggregate / list / summary rebuild。
+- ✅ Partner-scoped providers (`conversationsByPartnerProvider` / `partnerAggregateProvider`) **不**直接訂閱 `conversationsProvider`，避免 global feed 連動到 partner aggregate。
+- ⚠️ Controller **仍然會** `ref.invalidate(conversationsProvider)`，因為 `reportDataProvider` (`lib/features/report/data/providers/report_providers.dart:13`) watch 它，My Report 需要每次寫入後 recompute。這是 **A2 transition contract**，**不**是 narrow violation — narrow 是針對 partner-scoped 同層之間的 fan-out 防火，不是禁止 global feeds 被 invalidate。
+- 📅 真正退役 `conversationsProvider`（含 reports 重構）作為 **post-A2 cleanup PR**（見本檔最後 §「Post-A2 cleanup」）。
 
 **Step 1: Failing tests**
 
@@ -353,10 +358,23 @@ test('save() persists via repository then invalidates partnerAggregateProvider f
 test('save() with previousPartnerId different from new partnerId invalidates BOTH partners', () { /* ... */ });
 test('create() invalidates the new partnerAggregateProvider', () { /* ... */ });
 test('delete() invalidates partnerAggregateProvider for the conversation\'s partnerId', () { /* ... */ });
-test('controller does NOT invalidate global conversationsProvider', () {
-  // narrow contract: assert no invalidate on conversationsProvider
+test('controller invalidates conversationsProvider on every write (legacy consumer freshness)', () {
+  // r3 contract: reportDataProvider watches conversationsProvider; controller must keep it fresh.
+  // Assert: ref.invalidate(conversationsProvider) called exactly once per save/create/delete.
 });
-test('controller no-ops invalidate when partnerId is null (legacy / unmigrated conversations)', () { /* ... */ });
+test('reportDataProvider recomputes after controller.save() (integration check)', () {
+  // ProviderContainer + listen on reportDataProvider; act controller.save(c);
+  // Assert: reportDataProvider rebuilt (computed value reflects new conversation).
+});
+test('cross-partner fan-out防火：write partner X does NOT rebuild partnerAggregateProvider(Y)', () {
+  // Subscribe both aggregateProvider(X) and aggregateProvider(Y).
+  // Act: controller.save(c) where c.partnerId == X.
+  // Assert: aggregateProvider(X) rebuilt; aggregateProvider(Y) UNCHANGED (rebuild count = 0).
+});
+test('controller no-ops partner-scoped invalidate when partnerId is null (legacy / unmigrated conversations)', () {
+  // null partnerId still invalidates conversationsProvider (reports stay fresh)
+  // but does NOT touch partner-scoped providers.
+});
 ```
 
 **Step 2: Run, expect FAIL**
@@ -410,6 +428,7 @@ class ConversationWriteController extends Notifier<void> {
     c.partnerId = partnerId;
     await c.save();
     _invalidatePartnerScope(partnerId);
+    _invalidateLegacyGlobal();
     return c;
   }
 
@@ -420,18 +439,32 @@ class ConversationWriteController extends Notifier<void> {
     if (previousPartnerId != null && previousPartnerId != c.partnerId) {
       _invalidatePartnerScope(previousPartnerId);
     }
+    _invalidateLegacyGlobal();
   }
 
   Future<void> delete(Conversation c) async {
     final repo = ref.read(conversationRepositoryProvider);
     await repo.deleteConversation(c.id);
     _invalidatePartnerScope(c.partnerId);
+    _invalidateLegacyGlobal();
   }
 
+  /// Narrow partner-scoped invalidate (r1 HS-A2-1 contract):
+  /// - Cross-partner fan-out防火：write partner X 不會 rebuild aggregate(Y)
+  /// - null partnerId = legacy / unmigrated conversation, no partner-scope to invalidate
   void _invalidatePartnerScope(String? partnerId) {
-    if (partnerId == null) return; // legacy / unmigrated conversation: no narrow scope to invalidate
+    if (partnerId == null) return;
     ref.invalidate(conversationsByPartnerProvider(partnerId));
     ref.invalidate(partnerAggregateProvider(partnerId));
+  }
+
+  /// A2 transition contract — keep legacy consumers fresh:
+  /// - `reportDataProvider` (lib/features/report/data/providers/report_providers.dart:13)
+  ///   watches `conversationsProvider`; My Report would go stale otherwise.
+  /// - Post-A2 cleanup PR will retire this method + `conversationsProvider` once
+  ///   reports migrate off the global feed. See §「Post-A2 cleanup」 at end of plan.
+  void _invalidateLegacyGlobal() {
+    ref.invalidate(conversationsProvider);
   }
 }
 
@@ -445,13 +478,15 @@ Plus: `ConversationRepository.listByPartner(String partnerId)` — pure storage 
 
 **Step 4: Run, expect PASS** — partner provider + write controller tests 全綠
 
-**Step 5: Migrate 9 UI invalidate 呼叫點**
+**Step 5: Migrate UI invalidate 呼叫點（13 處：9 write → controller，4 session-scope 保留）**
 
-Grep verified 2026-04-26:
+Grep verified 2026-04-26（含 r3 補的 4 處）。先區分性質再決定遷移：
+
+**Conversation write sites（9 處）→ 全部改走 controller：**
 
 | File | Line | Migration |
 |---|---|---|
-| `new_conversation_screen.dart` | 146 | new conversation flow → `controller.create(...)` (controller 內部已 invalidate；移除原行) |
+| `new_conversation_screen.dart` | 146 | new conversation flow → `controller.create(...)` |
 | `home_screen.dart` | 91 | conversation 刪除/操作 → `controller.delete(c)` 或 `controller.save(c)` |
 | `main_shell.dart` | 245 | 同上 |
 | `analysis_screen.dart` | 495 | analyze 完成存檔 → `controller.save(c)` |
@@ -460,10 +495,22 @@ Grep verified 2026-04-26:
 | `analysis_screen.dart` | 1000 | 同上 |
 | `analysis_screen.dart` | 1113 | analyze 完成存檔 → `controller.save(c)` |
 
+**Session-scope invalidate sites（4 處）→ 保持原樣，**不**走 controller：**
+
+| File | Line | 性質 | 為什麼保留 |
+|---|---|---|---|
+| `login_screen.dart` | 70 | `_invalidateSessionScopedProviders()` 內，登入後刷新 session-scoped data | 不是 conversation write — 是 auth boundary cleanup（同時 invalidate `subscriptionProvider` + `usageDataProvider`）。Controller 無對應 API。 |
+| `settings_screen.dart` | 568 | sign-out 部分失敗 fallback path | 同上：登出時 session 重置，跟 conversation write 語意無關 |
+| `settings_screen.dart` | 584 | sign-out happy path | 同上 |
+| `settings_screen.dart` | 690 | delete-account 後本機清理 | 同上：帳號刪除 = 全 session wipe |
+
+> **語意說明**：這 4 處的 `ref.invalidate(conversationsProvider)` 是「session 邊界 cleanup」的一部分（跟 `subscriptionProvider` / `usageDataProvider` 同 batch），不是 conversation 內容變更。它們在 r3 contract 下 **完全合法** — controller 寫入也會 invalidate `conversationsProvider`，但這 4 處有自己的觸發條件，不該由 controller 替換。
+
 **Verification gate**:
-- `grep -rn "ref.invalidate(conversationsProvider)" lib/` → 期望 0 hits
+- `grep -rn "ref.invalidate(conversationsProvider)" lib/` → 期望 **5 hits**：4 個 session-scope（保留）+ 1 個 controller 內部（`conversation_write_controller.dart` 的 `_invalidateLegacyGlobal()`）
+- 9 個 conversation write 呼叫點 grep 預期 **0 hits** of `ref.invalidate(conversationsProvider)`，全改 controller 呼叫
 - 跑 `flutter analyze` → 0 warnings
-- 手測 home → partner detail → analyze → back flow，UI 即時更新
+- 手測 home → partner detail → analyze → My Report flow，所有 UI 即時更新
 
 **Step 6: Commit (split 2 commits)**
 
@@ -500,14 +547,23 @@ test('all conversations no analysis snapshot: summary returns analysis-pending m
 test('unnamed partner: uses fallback "對象 #abc" with id last 4 chars', () { /* ... */ });
 test('user-set customNote 1000 chars: final summary still <= 1500 (truncation works)', () { /* ... */ });
 test('truncation preserves "[truncated]" suffix marker', () { /* ... */ });
-test('truncation does NOT split a non-ASCII character (boundary safety, Codex P2)', () {
-  // Build inputs so the truncation point lands exactly on a multi-codeunit char.
-  // Construct partner.customNote padded so the assembled buffer length is e.g. kHardCharCap+1
-  //   AND the codepoint at index (kHardCharCap - markerLen - 1) is a Chinese char or emoji
-  //   that occupies >1 UTF-16 code unit.
-  // Assert: result.length <= kHardCharCap.
-  // Assert: result is valid UTF-16 (no orphan surrogate; round-trip through `String.fromCharCodes(result.codeUnits)` equals result).
+test('truncation does NOT split a ZWJ emoji grapheme cluster (boundary safety, Codex r2 P2)', () {
+  // ZWJ family emoji 👨‍👩‍👧 = 4 grapheme clusters? No — 1 grapheme cluster composed of:
+  //   👨 (U+1F468, surrogate pair) + ZWJ (U+200D) + 👩 (U+1F469, surrogate pair) + ZWJ + 👧 (U+1F467)
+  //   = 7 codepoints / 11 UTF-16 code units / 1 grapheme cluster.
+  // Build partner.customNote padded so the assembled buffer length crosses kHardCharCap
+  //   exactly mid-ZWJ-sequence — naive substring would split the cluster, producing 一個👨 +
+  //   orphan surrogate + truncation marker.
+  // Assert: `s.characters` count <= kHardCharCap.
+  // Assert: result is well-formed UTF-16 (no orphan surrogate / lone ZWJ at end).
+  // Assert: the last grapheme cluster before the marker is whole — either the full 👨‍👩‍👧
+  //         survives intact OR is dropped entirely; never partially included.
   // Assert: result ends with the truncation marker.
+});
+test('truncation does NOT split a Chinese char (basic non-ASCII boundary)', () {
+  // Cheaper sanity: build customNote where boundary lands inside a CJK char (single UTF-16
+  // code unit each, but still tests `characters` vs raw `substring` divergence).
+  // Assert: result.length <= kHardCharCap; round-trip codeUnits intact.
 });
 ```
 
@@ -1193,6 +1249,49 @@ EOF
 - 若 A2 ship 改變了 ADR — 在 ADR-15 補 v2 段落（Task 16 已含）
 - 若新增 recurring trap → CLAUDE.md Common Pitfalls 補一條
 - 全部 OK → memory `reference_partner_refactor_in_flight.md` 翻 status: `A2 SHIPPED, awaiting code review`
+
+---
+
+## Post-A2 cleanup — `conversationsProvider` 退役 PR（NOT in A2 scope）
+
+> **這不是 A2 task**，是 A2 ship 之後獨立的 cleanup PR。寫在這裡是為了：
+> 1. 留住 r3 的「為什麼 A2 期間 controller 仍 invalidate 全 `conversationsProvider`」決定脈絡
+> 2. 給未來 / 排程 agent 一份可直接執行的 cleanup 規格
+
+### Why（為什麼要做）
+
+A2 r3 contract：`ConversationWriteController` 在 narrow partner-scoped invalidate 之外，**還呼叫** `_invalidateLegacyGlobal()` 去 invalidate `conversationsProvider`，原因是 `reportDataProvider` (`lib/features/report/data/providers/report_providers.dart:13`) 還 watch 它。這是 A2 transition contract，不是長期方案。Post-A2 cleanup PR 把 reports 從 global feed 遷離後，整個 `conversationsProvider` + `_invalidateLegacyGlobal()` 都可以拿掉。
+
+### Scope
+
+**Touch list（grep 為準）：**
+1. `lib/features/report/data/providers/report_providers.dart`：`reportDataProvider` 改 watch 一個新的「report-purpose conversation feed」（建議新增 `allConversationsForReportProvider`，由 controller 顯式 invalidate；或直接 watch `partnerListProvider` + 累加每個 partner 的 conversations）
+2. `lib/features/report/data/services/report_data_service.dart`：若 `generateReport()` 簽名要改（從 `List<Conversation>` 改成其他結構）連動更新
+3. `lib/features/conversation/data/providers/conversation_providers.dart`：移除 `conversationsProvider`
+4. `lib/features/conversation/data/providers/conversation_write_controller.dart`：刪除 `_invalidateLegacyGlobal()` + 三處呼叫
+5. `lib/features/conversation/presentation/screens/home_screen.dart:20`：A2 已改，這時應該已不用
+6. **保留不動**：`login_screen.dart:70` / `settings_screen.dart:568,584,690` 4 處 session-scope invalidate — 這些不是 conversation read/write，是 auth boundary cleanup；改用 `authConversationScopeProvider` 重發或保留現狀都可，**不**算這個 PR 的核心目標
+
+**Tests：**
+- 移除 r3 中 controller test「invalidates conversationsProvider on every write」
+- 加 `reportDataProvider` recompute 對應新 feed 的 test
+- `My Report` widget test：write a conversation → assert report value 即時更新
+
+**Acceptance gate：**
+- `grep -rn "conversationsProvider\b" lib/` → 0 hits（不含 `conversationsByPartnerProvider`）
+- `flutter test` 全綠
+- 手測 My Report：寫 / 改 / 刪 conversation 後分數即時更新
+
+### When
+
+**Default：A2 ship 後 ~2 週**（Codex code review 過 + TF soak 綠燈），由 Eric 觸發 / 或 schedule 一個 background agent 開 PR。
+
+> Eric, A2 ship 後可以喊 `/schedule` 排一個 ~2 週後的 background agent 來開這個 cleanup PR — task 列在這裡就是給該 agent 用的 spec。
+
+### Risk
+
+- **Low**：A2 已把 conversation write 路徑全集中到 controller，cleanup PR 只動 1 個 read 消費者（reports）+ 移除 1 個 legacy provider + 3 處 controller 呼叫。
+- **A2 stable baseline 撞擊**：cleanup 動到 reports 計算邏輯。應該獨立 commit，由 Codex review，避免跟 A2 混。
 
 ---
 
