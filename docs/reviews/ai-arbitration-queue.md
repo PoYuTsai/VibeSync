@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Plan Review
-Status: WAITING_ON_DAISY
+Status: IN_REVIEW
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `main` @ `2a1163d` (revision r3; r2 was `f89bec3`; r1 was `26b2f83`)
+Branch/Commit: `main` @ `f1c7f29` (revision r4; r3 was `2a1163d`; r2 was `f89bec3`; r1 was `26b2f83`)
 
 Question:
 - Does the A2 implementation plan now faithfully execute ADR-15 and the
@@ -176,6 +176,23 @@ Changed:
     grapheme cluster).
   - New §「Post-A2 cleanup」: spec for retiring `conversationsProvider` as a
     follow-up PR ~2 weeks post A2 ship (out of A2 scope).
+- r4 (`f1c7f29`) revised the plan per the third Codex verdict (Eric chose
+  option 1, the small doc patch path):
+  - Task 3 Step 5 migration table unit-of-analysis 校正：from "invalidate
+    site (9)" to "repo write site (13)". r3 used the wrong unit, missing 3
+    repo write sites that only invalidate per-id `conversationProvider(id)`
+    instead of global `conversationsProvider`.
+  - Added 3 missed sites to migration table: `analysis_screen.dart:541` /
+    `:613` / `:649` (message toggle / edit / delete; all `controller.save(c)`).
+  - Migration table now lists all 13 repo write sites with explicit Op +
+    paired invalidate column (per-id vs global vs none) for traceability.
+  - Verification gate restructured: primary gate now greps
+    `repository.{create,update,delete}Conversation` outside repo + controller
+    + tests (expects 0 hits, no legitimate exceptions); secondary gate keeps
+    the `ref.invalidate(conversationsProvider)` grep (still expects 5 hits).
+  - 4 session-scope sites unchanged.
+  - Manual smoke checklist adds: partner aggregate live updates after message
+    edit / delete (the r3 missed scenario).
 
 Evidence:
 - [A2 plan](../plans/2026-04-26-partner-entity-A2-impl.md)
@@ -183,14 +200,17 @@ Evidence:
 - `26b2f83` (r1 plan)
 - `f89bec3` (r2 plan)
 - `2a1163d` (r3 plan — narrow contract redefined + 4 missed sites + ZWJ + post-A2 cleanup §)
+- `f1c7f29` (r4 plan — migration unit fixed to repo-write-site; 3 missed sites added; primary gate改 repo-write grep)
 - [Codex review doc](./2026-04-26_partner-entity-A2-plan_codex-review.md)
 
 Open-Risks:
 - ~~Controller contract may be too narrow for remaining global consumers~~ —
-  closed in r3 by redefining narrow as cross-partner fan-out防火 and adding
-  `_invalidateLegacyGlobal()`.
+  closed in r3.
 - ~~Partner summary boundary test may still be weaker than the real ZWJ case~~ —
-  closed in r3 by upgrading test to explicit ZWJ emoji case.
+  closed in r3.
+- ~~Migration table may miss direct repo writes that only do per-id invalidate~~ —
+  closed in r4 by switching the unit-of-analysis to repo write sites and
+  adding the repo-write grep as the primary verification gate.
 - Deep-link/no-history route behavior still needs explicit test coverage
   (Task 6 — addressed in r1 plan, non-blocking per Codex).
 - Post-A2 cleanup PR (retire `conversationsProvider`) deferred to follow-up
@@ -217,6 +237,12 @@ Claude-Position:
       scale (O(50) conversations per user).
   (4) Truly retiring `conversationsProvider` lives in §「Post-A2 cleanup」, an
       independent follow-up PR scheduled ~2 weeks post A2 ship.
+- **r4 update (2026-04-26)** — Eric picked Codex's recommended option 1 (quick
+  doc patch) on r3's WAITING_ON_DAISY verdict. r4 closed the migration-unit
+  gap by switching the analysis basis from invalidate sites to repo write
+  sites and tightening the verification gate accordingly. Architecture
+  direction unchanged from r3 (controller / narrow contract / session-scope
+  distinction / post-A2 cleanup all preserved).
 
 Codex-Position:
 - **r3 latest**: architecture direction is acceptable, but one P1 execution-plan
@@ -266,16 +292,14 @@ Superseded r2 notes:
   - D1-D4: no override needed from Eric on this review round
 
 Verdict:
-- WAITING_ON_DAISY - r3 architecture is acceptable, but one P1 execution-plan
-  gap remains on direct repository writes.
+- r3: WAITING_ON_DAISY (architecture OK; migration-unit gap on direct repo
+  writes remained).
+- r4 (`f1c7f29`): pending Codex re-review.
 
 Eric-Decision:
-- Choose one:
-  1. require a quick r4 plan patch before `feature/partner-entity-A2`, or
-  2. allow A2 to start with a hard Task 3 implementation gate that covers all
-     direct repository writes.
-- Codex recommendation: choose option 1. This should be a small doc patch, not
-  another architecture debate.
+- 2026-04-26: chose Codex's recommended option 1 (quick r4 doc patch). Patch
+  was bounded to the migration table + verification gate; architecture from r3
+  preserved unchanged.
 
 Action-Items:
 - [x] Claude wrote the A2 plan
@@ -286,19 +310,24 @@ Action-Items:
 - [x] Codex re-reviewed r2
 - [x] Claude revised the plan again (commit `2a1163d`, r3):
       - Task 3 narrow contract redefined + `_invalidateLegacyGlobal()` added
-      - Task 3 test list rebuilt (dropped over-strict; added cross-partner
-        fan-out test + reportDataProvider freshness test)
-      - Task 3 migration table 9 → 13 sites (4 session-scope sites separated;
-        login_screen:70 / settings_screen:568,584,690 marked stay-as-is)
+      - Task 3 test list rebuilt
+      - Task 3 migration table 9 → 13 sites (4 session-scope separated)
       - Task 4 boundary test upgraded to explicit ZWJ emoji case
       - New §「Post-A2 cleanup」 spec added
-- [x] Codex re-reviewed r3 plan @ `2a1163d`
-- [ ] Eric decides quick r4 patch vs implementation-gate acceptance
-- [ ] If Eric accepts / plan passes, Claude cuts `feature/partner-entity-A2`
+- [x] Codex re-reviewed r3 plan @ `2a1163d` (verdict: WAITING_ON_DAISY,
+      migration-unit gap)
+- [x] Eric decided: do the small r4 patch (option 1)
+- [x] Claude shipped r4 plan patch (commit `f1c7f29`):
+      - migration table unit-of-analysis: invalidate site → repo write site
+      - 3 missed sites added (`analysis_screen.dart:541/613/649`)
+      - 13-site full table with Op + paired invalidate column
+      - primary verification gate: repo-write grep (0 hits expected)
+      - secondary gate kept: invalidate grep (5 hits expected)
+- [ ] **Codex re-reviews r4 plan @ `f1c7f29`** ← next action
+- [ ] If re-review passes, Claude cuts `feature/partner-entity-A2`
 
 Close-Condition:
-- Eric decision recorded and the remaining direct-write gate is covered before
-  or during Task 3 implementation.
+- Codex re-review verdict = PASS and the plan is approved for implementation.
 
 ## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
 Status: CLOSED
