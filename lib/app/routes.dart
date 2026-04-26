@@ -13,6 +13,8 @@ import '../features/opener/presentation/screens/opening_rescue_screen.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/conversation/presentation/screens/profile_card_screen.dart';
+import '../features/partner/presentation/screens/add_partner_screen.dart';
+import '../features/partner/presentation/screens/partner_detail_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 
 final _routerRefreshListenable =
@@ -50,12 +52,26 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/new',
-      builder: (context, state) => const NewConversationScreen(),
+      builder: (context, state) => NewConversationScreen(
+        partnerId: state.uri.queryParameters['partnerId'],
+      ),
     ),
     GoRoute(
       path: '/conversation/:id',
       builder: (context, state) => AnalysisScreen(
         conversationId: state.pathParameters['id']!,
+      ),
+    ),
+    // literal '/partner/new' MUST come before '/partner/:partnerId' so
+    // 'new' isn't matched as a partnerId by the parametric route.
+    GoRoute(
+      path: '/partner/new',
+      builder: (context, state) => const AddPartnerScreen(),
+    ),
+    GoRoute(
+      path: '/partner/:partnerId',
+      builder: (context, state) => PartnerDetailScreen(
+        partnerId: state.pathParameters['partnerId']!,
       ),
     ),
     GoRoute(

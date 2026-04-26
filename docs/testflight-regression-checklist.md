@@ -127,3 +127,11 @@
 3. 是否誤拆引用卡 / 誤放行錯圖
 4. warning / confidence 文案是什麼
 5. telemetry 數字
+## I. Partner Entity A2 soak
+
+- [ ] Home 第一個 tab 顯示 Partner list，而不是舊 Conversation list。
+- [ ] 從 Home FAB 建立新對象後，進入該對象 detail；按返回應回到 Partner list，不應回到新增對象表單。
+- [ ] 從 Partner detail 點「新增對話」→ 手動輸入，建立後該 conversation 的 `partnerId` 應掛在當前對象，回到 detail 後會出現在該對象的對話列表。
+- [ ] 從 Partner detail 點「新增對話」→ 截圖開始，建立的新 conversation 也應掛在當前對象。
+- [ ] Partner detail radar 在沒有分析資料時顯示 fallback，不應 crash；有分析資料時顯示 5 維 radar。
+- [ ] Partner detail 的 merge / edit / delete 選單項目前為 disabled，不可誤觸。

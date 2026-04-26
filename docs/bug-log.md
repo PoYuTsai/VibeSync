@@ -9,6 +9,39 @@
 ---
 
 ## 2026-04
+### [2026-04-26] Partner detail 新增對話未帶入 partnerId
+
+**症狀**:
+
+- A2 Phase 2 將 Home 改成 Partner-first，並在 Partner detail 顯示「新增對話」FAB。
+- 使用者從某個對象頁建立對話時，實作仍開啟 legacy `NewConversationSheet`，沒有傳入目前的 `partnerId`。
+- 新對話會被建立並可進入分析頁，但不會回到該對象的對話列表 / aggregate / AI partner context。
+
+**Root Cause**:
+
+1. `_NewConversationSheet` 從 `main_shell.dart` pure move 成共用 widget 時，仍維持 legacy 無 partner scope 行為。
+2. `PartnerDetailScreen` 把這個 action 暴露成看似 partner-scoped 的 UI，但沒有把 `partnerId` 傳進 sheet / `/new` / `ConversationWriteController.create`。
+
+**修復**:
+
+1. `NewConversationSheet` 新增 optional `partnerId`。
+2. 手動輸入路徑改成 `/new?partnerId=...`。
+3. `NewConversationScreen` 讀 route query 並在 create conversation 時寫入 `partnerId`。
+4. 截圖開始路徑直接把 `partnerId` 傳給 `ConversationWriteController.create`。
+5. `PartnerDetailScreen` 開 sheet 時傳入目前對象 id。
+
+**學到**:
+
+- 從 detail page 觸發的 create action 若看起來屬於某個 entity，就必須真的帶 entity scope；不能只靠後續 Phase 補。
+- UI 可以先 ship，但不能讓使用者建立「看似成功、實際上消失在該頁列表外」的資料。
+
+**相關檔案**:
+
+- `lib/features/partner/presentation/screens/partner_detail_screen.dart`
+- `lib/features/conversation/presentation/widgets/new_conversation_sheet.dart`
+- `lib/features/conversation/presentation/screens/new_conversation_screen.dart`
+- `lib/app/routes.dart`
+
 ### [2026-04-25] VibeSync Discord bridge session 還活著，但 bot 顯示離線不回訊息
 **症狀**:
 

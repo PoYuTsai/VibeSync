@@ -129,6 +129,311 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review + Code Review
+Status: AWAITING_TF_QA_BEFORE_MERGE
+Request-Type: review
+Raised-By: Claude
+Owner: Eric
+Scope: review
+Branch/Commit: `feature/partner-entity-A2-ui` @ `7cc2f52` — **PR #3 opened**: https://github.com/PoYuTsai/VibeSync/pull/3
+
+Question:
+- Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
+  partner detail) safely build on the A2 Phase 1 narrow-invalidation contract
+  without leaking back to `conversationsProvider`, breaking `/conversation/:id`
+  back-compat, or smuggling in copy / domain renames that belong to Phase 4?
+
+Context:
+- A2 Phase 1 (Tasks 1-5) merged via PR #2 (`f053a9c`) on 2026-04-26 afternoon,
+  in TF soak.
+- Eric chose Option B (整批做完再 ship) for the remaining 12 tasks; they're
+  split into Phase 2 (UI / IA) / Phase 3 (flows) / Phase 4 (polish + ship).
+- This item covers Phase 2 plan only. Phase 3 / 4 will get their own queue
+  items when started.
+- Plan path: `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
+- Parent A2 plan: `docs/plans/2026-04-26-partner-entity-A2-impl.md` Tasks 6-9
+- D1-D4 plan-defaults inherited verbatim; Phase 2 does NOT reopen them.
+
+Changed:
+- Cut new branch `feature/partner-entity-A2-ui` from `main` (`6e08fa3`).
+- Wrote Phase 2 sub-plan with bite-sized TDD steps for Tasks 6-9.
+- Verified ground truth before drafting: routes.dart shape, main_shell
+  IndexedStack wiring, partner_providers signatures, PartnerRepository
+  write surface (`upsertIfAbsent` only), PartnerAggregateView fields.
+
+Evidence:
+- Plan: [docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md](../plans/2026-04-26-partner-entity-A2-phase2-impl.md)
+- Branch HEAD: `58b22db` (r3 plan commit)
+- Codex-Review-Hot-Spots section in plan (six grep-able invariants)
+
+Open-Risks:
+- (R1) `/partner/new` vs `/partner/:partnerId` ordering — go_router resolves
+  first-match, must be literal-before-parametric in the live router AND
+  locked by router_test.dart.
+- (R2) `HomeContent` deferred-deletion (`@Deprecated`, removed in Phase 4
+  Task 15/16). Alternative: delete now and pay the import-cleanup cost
+  immediately. Codex call.
+- (R3) `_NewConversationSheet` extraction from `main_shell.dart` to
+  `conversation/presentation/widgets/new_conversation_sheet.dart`. Diff
+  must be a pure visibility flip + move; title string "新增對話" stays
+  unchanged here (Task 15 owns the global copy sweep including this title).
+- (R4) `PartnerRadarSummaryCard` reuses `lastAnalysisSnapshotJson` parser
+  from `analysis_screen.dart`. If the parser is currently private, Task 9
+  needs an extra extraction commit. Plan flags this.
+- (R5) Avatar picker deferred from Task 8 (parent A2 plan said "可選"). Plan
+  documents the deferral; potential Bruce-feedback risk.
+- (R6) `⋮` menu in Partner detail is visible-only in Phase 2 (no handlers
+  wired). Phase 4 Tasks 12-13 wire merge / edit / delete. Acceptable?
+
+Claude-Position:
+- (r1) Ship the plan as-is. Narrow-invalidation contract is the load-bearing
+  invariant from Phase 1 — every Phase 2 widget read goes through partner-
+  scoped providers; no widget watches `conversationsProvider`. Plan locks
+  this with a Codex grep hot-spot. Deferred work (avatar / merge handlers /
+  copy sweep) is intentional to keep Phase 2 PR reviewable.
+- (r2 — Round 2 after Codex `REVISE_BEFORE_IMPLEMENTATION`): All five Codex
+  findings patched in plan. No production code touched yet. Specifically:
+  - **P1.1 Package name**: every `package:vibe_sync/...` → `package:vibesync/...`
+    (single replace_all across plan).
+  - **P1.2 `context.go` → `context.replace`**: AddPartnerScreen submit now
+    uses `context.replace('/partner/${id}')` so Home root persists. New test
+    file `add_partner_navigation_test.dart` locks Home → /partner/new →
+    submit → detail → back → Home. Direct-entry no-history fallback is
+    documented as deliberately deferred (Phase 2 has no deep-link entry to
+    `/partner/:id` shipped).
+  - **P1.3 Hermetic widget tests**:
+    - Task 6 router test rewritten to use sentinel widgets
+      (`_PartnerDetailSentinel`, `_AddPartnerSentinel`, `_AnalysisSentinel`) —
+      no real screens mounted, no Hive / providers needed.
+    - Task 7 `PartnerListCard` API changed: card now accepts
+      `aggregate: PartnerAggregateView` instead of watching
+      `partnerAggregateProvider(id)`. `PartnerListScreen` does the per-row
+      watch. Tests override aggregate per id without per-row provider scope.
+    - Task 8 fake repo deleted; tests open a temp Hive box and pass it via
+      `PartnerRepository(box: partnerBox)`. Auth override uses the live
+      pattern `authConversationScopeProvider.overrideWith((ref) =>
+      Stream.value('u-test'))` (matches `test/unit/services/conversation_write_controller_test.dart:79`).
+  - **P1.4 Auth-null guard**: AddPartnerScreen watches
+    `authConversationScopeProvider`; submit disabled when `isLoading || valueOrNull == null`,
+    with hint "請先登入再建立對象". Two new tests cover null and loading paths.
+  - **P2.2 Radar parser reuse**: PartnerRadarSummaryCard explicitly calls
+    `AnalysisResult.fromJson(jsonDecode(snapshot)).dimensionScores` (public
+    surface at `lib/features/analysis/domain/entities/analysis_models.dart:556`,
+    keys: heat / engagement / topicDepth / replyWillingness /
+    emotionalConnection, default 50). New test file
+    `partner_radar_summary_card_test.dart` covers null / valid /
+    no-dimensions / malformed paths.
+  - **Hot-spot ⋮ menu**: Phase 2 ships items DISABLED (`enabled: false` +
+    "（即將推出）" label) instead of visible-no-op. Phase 4 Tasks 12-13
+    flip them to enabled with handlers. Codex's "acceptable only if Phase 2
+    doesn't ship independently" condition no longer required.
+- (r3 — Round 3 after Codex r2 scoped re-review at `6842bab`): Two remaining
+  P1 test-harness fixes patched. No production code touched. Specifically:
+  - **P1 navigation-test 假紅 fix**: `add_partner_navigation_test.dart`
+    previously overrode `partnerListProvider` to `const <Partner>[]` while
+    asserting `find.text('Alice')` after back-pop — that override is a static
+    function returning the empty list every time, so the post-submit assertion
+    was guaranteed to fail regardless of routing behavior. Picked the
+    **`_HomeSentinel` route** of Codex's two suggested fixes: replaced the real
+    `PartnerListScreen` at `/` with `_HomeSentinel` (a tiny widget that just
+    renders `'home-sentinel'`) and dropped the `partnerListProvider` override
+    entirely. The temp Hive box + repo override stay so `submit` actually
+    persists; the new assertion `partnerBox.values.single.name == 'Alice'` is a
+    cheap sanity check, with the full data-side coverage living in
+    `add_partner_screen_test.dart`'s "successful submit writes Partner with
+    ownerUserId from auth" test. Removed the now-unused
+    `partner_list_screen.dart` import.
+  - **P1 import fix**: Added `import 'dart:async';` to
+    `add_partner_screen_test.dart` (used by `StreamController<String?>()` in
+    the auth-loading test); removed unused `package:hive_ce_flutter/hive_flutter.dart`
+    and `package:path_provider_platform_interface/path_provider_platform_interface.dart`.
+    Same `dart:async` import added to `add_partner_navigation_test.dart` to
+    cover the `Stream.value(...)` use in the auth override.
+
+Codex-Position:
+- **REVISE_BEFORE_IMPLEMENTATION** — direction is correct, but the plan has
+  execution-level blockers that will produce false-red tests or a broken
+  navigation stack if Tasks 6-9 are executed literally.
+- Findings are recorded in
+  [2026-04-26_partner-entity-A2-phase2-plan_codex-review.md](./2026-04-26_partner-entity-A2-phase2-plan_codex-review.md):
+  - P1: plan snippets import `package:vibe_sync/...`, but the project package
+    is `vibesync`.
+  - P1: Add Partner submit uses `context.go`, which can drop the Home back
+    stack; use replace/pushReplacement and add a Home -> new -> detail -> back
+    test.
+  - P1: proposed widget tests are not hermetic: router test can hit real
+    `AnalysisScreen` providers, Partner list card tests can hit real aggregate
+    providers, Add Partner fake repo can touch real Hive, and auth override
+    should match the real `StreamProvider` pattern.
+  - P2: Add Partner should not create an ownerless Partner when auth scope is
+    null/loading, because `partnerListProvider` will hide it.
+  - P2: `PartnerRadarSummaryCard` parser reuse needs a concrete API path
+    (`AnalysisResult.fromJson` or a shared helper) to avoid duplicate JSON
+    parsing.
+- Hot spot judgments:
+  - C1 narrow-invalidation direction: acceptable; keep Phase 2 widget grep for
+    `conversationsProvider` at 0 hits.
+  - `/partner/new` before `/partner/:partnerId`: correct, but tests must compile
+    first.
+  - `HomeContent` deferred deletion: acceptable.
+  - `_NewConversationSheet` extraction: acceptable if pure move + visibility
+    flip.
+  - `⋮` visible-only menu: acceptable only if Phase 2 does not ship
+    independently before Phase 4 handlers land.
+- **r2 scoped re-review (`ca2581d`)**: still
+  `REVISE_BEFORE_IMPLEMENTATION`, but the remaining gap is now small and
+  limited to test harness correctness. See the r2 section in
+  [2026-04-26_partner-entity-A2-phase2-plan_codex-review.md](./2026-04-26_partner-entity-A2-phase2-plan_codex-review.md).
+  - r2 closed P1.1 package name, P1.2 `context.go` replacement in production
+    snippet, most P1.3 hermeticity fixes, P1.4 auth-null guard, and P2.2
+    parser reuse via `AnalysisResult.fromJson`.
+  - Remaining P1: `add_partner_navigation_test.dart` overrides
+    `partnerListProvider` to `const []` but later expects `Alice` after back
+    navigation. That test will fail independent of the actual back-stack
+    behavior.
+  - Remaining P1: `add_partner_screen_test.dart` uses
+    `StreamController<String?>()` but does not import `dart:async`; it also
+    includes unused Hive/path-provider imports that should be removed unless
+    actually used.
+- **r3 scoped re-review (`58b22db`)**: `APPROVED`. Reviewed only the two r2
+  remaining test-harness findings.
+  - Navigation test false-red is resolved: `/` now uses `_HomeSentinel`, the
+    const-empty `partnerListProvider` override is gone, the test asserts back
+    returns to `home-sentinel`, and a cheap Hive sanity check still proves the
+    submit persisted `Alice`.
+  - Import issue is resolved: `add_partner_screen_test.dart` now imports
+    `dart:async`, removes the unused Hive Flutter / path-provider imports, and
+    `add_partner_navigation_test.dart` also imports `dart:async` for
+    `Stream.value(...)`.
+  - No remaining blocker in the r3 scope. Claude can execute Tasks 6-9.
+- **implementation code review (`d9ce767`)**: `REVISED_BEFORE_MERGE`.
+  See
+  [2026-04-26_partner-entity-A2-phase2-code_codex-review.md](./2026-04-26_partner-entity-A2-phase2-code_codex-review.md).
+  - P1 fixed directly: Partner detail "新增對話" opened the legacy sheet without
+    current `partnerId`, so conversations created from Alice's detail could be
+    unscoped and disappear from Alice's list/aggregate/context. `partnerId` now
+    flows through `NewConversationSheet` -> `/new?partnerId=...` ->
+    `NewConversationScreen` -> `ConversationWriteController.create`, and the
+    screenshot-start path passes it directly.
+  - P2 fixed directly: Add Partner and screenshot-start create paths now have
+    user-visible snackbar fallback instead of leaving the UI locked or throwing
+    silently.
+  - Codex could not complete Flutter/Dart verification in this shell because
+    `flutter`, `dart`, `flutter test`, and `flutter analyze` all timed out.
+    Claude should rerun the touched tests/analyze before opening/merging PR.
+- **r2 final code review (`f9815b7`)**:
+  `APPROVED_WITH_TF_QA_NOTE` after one Codex P2 follow-up fix.
+  - The `partner_detail_screen_test.dart` surface-size adjustment is accepted
+    as a test-harness fix for an artificial 800x600 bottom-sheet overflow.
+  - The skipped AddPartner submit widget test is accepted as a temporary
+    Windows `flutter_test` harness gap, but it does not provide full automated
+    coverage for `AddPartnerScreen -> ownerUserId`. Keep the manual TF
+    submit/back-stack item.
+  - Radar "未分析" copy remains Phase 4 polish, not a Phase 2 blocker.
+  - P2 fixed directly: `NewConversationScreen._createConversation` now catches
+    create/save failure and shows a snackbar instead of only resetting loading.
+
+Verdict:
+- (r1) REVISE_BEFORE_IMPLEMENTATION
+- (r2) REVISE_BEFORE_IMPLEMENTATION — patch the two remaining test-harness
+  issues before executing Tasks 6-9
+- (r3) APPROVED — the two r2 remaining test-harness fixes are resolved
+
+Eric-Decision:
+- Not needed
+
+- (code review) REVISED_BEFORE_MERGE; Codex fixed one P1 and one P2, pending
+  Claude verification because Flutter/Dart tooling timed out in Codex
+- (r2 final) APPROVED_WITH_TF_QA_NOTE; pending Claude rerun of touched
+  tests/analyze after Codex's final P2 catch fix
+
+Action-Items:
+- [x] Codex reviews `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
+      with the six hot-spots called out at the bottom of the plan
+- [x] Codex flags 🔴 / 🟡 inline patches if needed, or 🟠 issues marked
+      `Verdict: Daisy-Decision-Needed`
+- [x] Claude patches the Phase 2 plan to r2 using the Codex review doc
+- [x] **Codex r2 scoped re-review** — verify the five r1 findings are resolved
+      in the patched plan; do NOT re-litigate hot-spots already judged
+      acceptable in r1. Plan revision header now includes a r2 changelog
+      pointer at the top.
+- [x] Claude patches the Phase 2 plan to r3:
+      - fix `add_partner_navigation_test.dart` so the Home assertion is
+        compatible with the provider overrides → `_HomeSentinel` route +
+        dropped `partnerListProvider` override + dropped
+        `partner_list_screen.dart` import
+      - add `dart:async` and remove unused imports in
+        `add_partner_screen_test.dart` → done; same `dart:async` added to
+        navigation test for `Stream.value`
+- [x] **Codex r3 scoped re-review** — verify ONLY the two r2 remaining
+      test-harness findings are resolved. Do NOT re-litigate r1 hot-spots or
+      r2-already-acceptable items. Plan revision header carries an r3 changelog.
+- [x] Claude executes Tasks 6-9 via `superpowers:executing-plans`
+      (commits `27481fd` / `d31103c` / `9be4cd2` / `637465f`)
+- [x] **Codex code review (NOT spec review)** — diff the 4 implementation
+      commits against `main`. Focus per the plan's `Codex Review Hot Spots`:
+      narrow-invalidation grep (zero hits on `conversationsProvider` in Phase 2
+      widgets), literal-before-parametric route order, auth-scope leakage check,
+      `HomeContent` `@Deprecated` not deleted, `NewConversationSheet`
+      extraction is pure move + visibility flip (title「新增對話」untouched —
+      Task 15 owns), `PartnerRadarSummaryCard` reuses `AnalysisResult.fromJson`
+      not duplicate parser. PLUS one item NOT in the plan: see
+      Implementation-Notes below for `add_partner_navigation_test.dart`
+      omission rationale.
+- [x] **Codex r2 final** — `APPROVED_WITH_TF_QA_NOTE` @ `7cc2f52` after one
+      P2 catch fix on `NewConversationScreen._createConversation` (manual-create
+      failure now surfaces a snackbar instead of silently resetting loading).
+- [x] Claude reruns touched widget tests + touched-file `flutter analyze` after
+      Codex r2 fix — analyze 0 issues; 5 widget test files **+20 ~1**
+      (router 3 / list 3 / add 4+1skip / detail 5 / radar 4).
+- [x] Claude opens PR `feature/partner-entity-A2-ui` → `main` — **PR #3** at
+      https://github.com/PoYuTsai/VibeSync/pull/3 (manual via web UI; gh CLI not
+      authenticated on this WSL host).
+- [ ] **Eric runs 5 manual TF QA items** (gate before merge per Codex
+      `_WITH_TF_QA_NOTE` suffix). Items, in priority order:
+      1. AddPartner submit ownerUserId/partner flow — fills the gap left by the
+         skipped `successful submit writes Partner with ownerUserId` widget test
+         (Codex 在 r2 final 明確點名要保留)
+      2. back-stack semantic — Home → 新增對象 → detail → back **回 Partner list**
+         (不是回 `/partner/new`)
+      3. PartnerDetail「+ 新增對話」(手動 + 截圖兩條路徑) → 新對話應掛回該 Partner
+         (data-side 已 source-trace 過，TF 是 user-visible 驗證)
+      4. 舊 `/conversation/:id` deep-link 仍可開（向後相容）
+      5. 手動建對話失敗時看到 snackbar（Codex r2 補的那行）
+- [ ] **Eric merges PR #3** once all 5 TF QA items pass.
+
+Implementation-Notes (Code Review round):
+- **Plan-required `add_partner_navigation_test.dart` was OMITTED.** Reproducible
+  failure: `pushReplacement` (and `go`) called from inside the screen's async
+  submit chain silently no-ops in `flutter test`, while the same router
+  accepts `go(...)` from outside the widget tree (verified via diagnostic
+  harness with full trace; logs in commit body of `9be4cd2`). Tried:
+  setState removal / `WidgetsBinding.instance.addPostFrameCallback` /
+  microtask defer / `Future.delayed(50ms)` / capture-router-pre-await — none
+  changed the outcome. Data-side contract (Partner persisted with owner) IS
+  covered by `add_partner_screen_test.dart`'s "successful submit writes
+  Partner" test. Back-stack semantic is covered by manual TF QA. If Codex
+  insists on this test, please specify the exact technique that should work
+  in this go_router 14.8.1 + flutter_test setup; happy to add a new round.
+- All other plan items implemented as specified. 19 hermetic widget tests
+  green (3 router + 3 list + 5 add + 5 detail + 4 radar). `flutter analyze`
+  shows 1 pre-existing info-level warning at
+  `conversation_repository.dart:110` (authored 2026-04-01, commit `f962168d`,
+  not touched by Phase 2) — zero NEW warnings.
+- `_NewConversationSheet` extraction shipped in Task 9 (commit `637465f`)
+  as a pure move + visibility flip; main_shell.dart no longer imports
+  `conversation_write_controller.dart` (removed with the sheet).
+- HomeContent in `home_screen.dart:14` marked `@Deprecated` — Phase 4
+  Task 15/16 will remove it.
+
+Close-Condition:
+- All 5 TF QA items pass on a TestFlight build off `feature/partner-entity-A2-ui`,
+  Eric merges PR #3 to `main`, edge function untouched (OCR baseline `28c0965`
+  preserved). Close after merge. If any TF QA item fails, fix-forward on the
+  same PR (do NOT pollute main).
+
+---
+
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Review
 Status: CLOSED
 Request-Type: review
