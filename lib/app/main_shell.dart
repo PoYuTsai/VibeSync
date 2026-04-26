@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../shared/widgets/warm_theme_widgets.dart';
-import '../features/conversation/data/providers/conversation_providers.dart';
+import '../features/conversation/data/providers/conversation_write_controller.dart';
 import '../features/conversation/presentation/screens/home_screen.dart';
 import '../features/report/presentation/screens/my_report_screen.dart';
 import '../features/learning/presentation/screens/learning_screen.dart';
@@ -237,12 +237,9 @@ class _NewConversationSheet extends ConsumerWidget {
             ),
             onTap: () async {
               Navigator.pop(context);
-              final repository = ref.read(conversationRepositoryProvider);
-              final conversation = await repository.createConversation(
-                name: '新對話',
-                messages: [],
-              );
-              ref.invalidate(conversationsProvider);
+              final conversation = await ref
+                  .read(conversationWriteControllerProvider.notifier)
+                  .create(name: '新對話', messages: []);
               if (context.mounted) {
                 context.push('/conversation/${conversation.id}');
               }

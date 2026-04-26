@@ -32,7 +32,7 @@ class ConversationWriteController extends Notifier<void> {
   Future<Conversation> create({
     required String name,
     required List<Message> messages,
-    required String partnerId,
+    String? partnerId,
   }) async {
     final repo = ref.read(conversationRepositoryProvider);
     final c = await repo.createConversation(

@@ -186,6 +186,27 @@ void main() {
 
       expect(container.read(partnerAggregateProvider('p-X')).totalMessages, 1);
     });
+
+    test('null partnerId path persists conversation without partner scope',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      // Prime partner data source so we can detect spurious invalidation.
+      container.read(conversationsByPartnerProvider('p-X'));
+      final xBefore = _fakeRepo.listByPartnerCalls['p-X']!;
+
+      final c = await container
+          .read(conversationWriteControllerProvider.notifier)
+          .create(name: 'legacy', messages: const []);
+
+      expect(c.partnerId, isNull,
+          reason: 'create without partnerId yields conversation with null partnerId');
+
+      container.read(conversationsByPartnerProvider('p-X'));
+      expect(_fakeRepo.listByPartnerCalls['p-X'], xBefore,
+          reason: 'null partnerId on create must not touch any partner scope');
+    });
   });
 
   group('ConversationWriteController.save', () {

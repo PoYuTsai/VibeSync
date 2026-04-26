@@ -20,6 +20,7 @@ import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/conversation_summary.dart';
@@ -491,8 +492,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ? null
             : jsonEncode(result.rawResponse);
 
-    await repository.updateConversation(conv);
-    ref.invalidate(conversationsProvider);
+    await ref
+        .read(conversationWriteControllerProvider.notifier)
+        .save(conv);
   }
 
   @override
@@ -510,8 +512,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     final conversation = repository.getConversation(widget.conversationId);
     try {
       if (conversation != null && conversation.messages.isEmpty) {
-        await repository.deleteConversation(conversation.id);
-        ref.invalidate(conversationsProvider);
+        await ref
+            .read(conversationWriteControllerProvider.notifier)
+            .delete(conversation);
       }
     } catch (_) {
       // Leaving the screen should not be blocked by best-effort cleanup.
@@ -537,8 +540,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       quotedReplyPreviewIsFromMe: message.quotedReplyPreviewIsFromMe,
     );
 
-    final repository = ref.read(conversationRepositoryProvider);
-    await repository.updateConversation(conversation);
+    await ref
+        .read(conversationWriteControllerProvider.notifier)
+        .save(conversation);
     ref.invalidate(conversationProvider(widget.conversationId));
     setState(() {});
   }
@@ -609,8 +613,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       quotedReplyPreviewIsFromMe: message.quotedReplyPreviewIsFromMe,
     );
 
-    final repository = ref.read(conversationRepositoryProvider);
-    await repository.updateConversation(conversation);
+    await ref
+        .read(conversationWriteControllerProvider.notifier)
+        .save(conversation);
     ref.invalidate(conversationProvider(widget.conversationId));
     setState(() {});
   }
@@ -645,8 +650,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     if (confirmed != true) return;
 
     conversation.messages.removeWhere((m) => m.id == message.id);
-    final repository = ref.read(conversationRepositoryProvider);
-    await repository.updateConversation(conversation);
+    await ref
+        .read(conversationWriteControllerProvider.notifier)
+        .save(conversation);
     ref.invalidate(conversationProvider(widget.conversationId));
     setState(() {});
   }
@@ -917,7 +923,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
 
     if (importMode == _importModeNewConversation) {
-      final createdConversation = await repository.createConversation(
+      final controller =
+          ref.read(conversationWriteControllerProvider.notifier);
+      final createdConversation = await controller.create(
         name: _resolveImportedConversationName(
           enteredName: newName,
           recognizedName: recognized.contactName,
@@ -931,8 +939,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           duration: duration,
         );
       }
-      await repository.updateConversation(createdConversation);
-      ref.invalidate(conversationsProvider);
+      await controller.save(createdConversation);
       ref.invalidate(conversationProvider(widget.conversationId));
 
       final messageCount = importedMessages.length;
@@ -996,8 +1003,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     conv.messages.addAll(importedMessages);
-    await repository.updateConversation(conv);
-    ref.invalidate(conversationsProvider);
+    await ref
+        .read(conversationWriteControllerProvider.notifier)
+        .save(conv);
     ref.invalidate(conversationProvider(widget.conversationId));
 
     final messageCount = importedMessages.length;
@@ -1107,10 +1115,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     // 更新對話
     conversation.messages.add(newMessage);
-    await repository.updateConversation(conversation);
-
-    // 刷新對話列表，確保返回首頁時能看到更新
-    ref.invalidate(conversationsProvider);
+    await ref
+        .read(conversationWriteControllerProvider.notifier)
+        .save(conversation);
 
     // 清空輸入框
     _messageController.clear();
