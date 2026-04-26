@@ -107,9 +107,7 @@ class ConversationRepository {
       throw StateError('Cannot update a conversation without an authenticated user.');
     }
 
-    if (conversation.ownerUserId == null) {
-      conversation.ownerUserId = currentUserId;
-    }
+    conversation.ownerUserId ??= currentUserId;
 
     if (conversation.ownerUserId != currentUserId) {
       throw StateError('Conversation does not belong to the current signed-in user.');
