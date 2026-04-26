@@ -135,7 +135,7 @@ Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `main` @ `26b2f83`
+Branch/Commit: `main` @ `f89bec3` (revision r2 — was `26b2f83`)
 
 Question:
 - Does the A2 implementation plan faithfully execute ADR-15 and the approved
@@ -153,11 +153,23 @@ Changed:
 - Added `docs/plans/2026-04-26-partner-entity-A2-impl.md`
 - Marked ADR-15 Accepted
 - Opened this queue item for pre-implementation Codex review
+- **r2 (2026-04-26 11:55)** — revised plan per Codex P1/P2 verdict:
+  - Task 3 rewritten around `ConversationWriteController extends Notifier<void>`
+    as narrow-invalidation owner. `ConversationRepository` stays plain storage
+    wrapper (A1 stable baseline not poked). 9 UI invalidate sites migrate to
+    controller calls.
+  - Task 4 truncation switched to `String.characters` (grapheme clusters).
+    Added explicit non-ASCII boundary safety test.
+  - Task 5 path fix: `analyze_chat_client.dart` → `analysis_service.dart`.
+  - Task 6 path fix: `lib/app/router/app_router.dart` → `lib/app/routes.dart`.
+  - Task 3 stale provider name `currentUserIdProvider` →
+    `authConversationScopeProvider.valueOrNull`.
 
 Evidence:
 - [A2 plan](../plans/2026-04-26-partner-entity-A2-impl.md)
 - [ADR-15](../decisions.md)
-- `26b2f83`
+- `26b2f83` (r1 plan)
+- `f89bec3` (r2 plan — Codex P1/P2 fixes applied)
 - [Codex review doc](./2026-04-26_partner-entity-A2-plan_codex-review.md)
 
 Open-Risks:
@@ -169,6 +181,12 @@ Claude-Position:
 - Keep D1-D4 on their plan-defaults unless Eric explicitly overrides them.
 - Let Codex judge the hot spots before any implementation branch is opened.
 - Do not reopen ADR-15 or A1; this is an A2-only buildout.
+- **r2 update (2026-04-26)** — Eric picked option (a) `ConversationWriteController`
+  (Notifier-owned writes) over (b) repo-exposed partner stream. Rationale:
+  (1) keeps A1 stable baseline unpoked, (2) narrow contract enforced at write
+  site rather than relying on read-side filter (closes HS-A2-1 facade-narrow
+  worry), (3) cleaner Riverpod test surface (mock repo + assert invalidate)
+  vs. mocking Hive `box.watch()` streams.
 
 Codex-Position:
 - Not pass yet. I found one P1 plan-shape blocker plus two P2 fixes.
@@ -205,11 +223,12 @@ Action-Items:
 - [x] Claude pushed the plan to `main`
 - [x] Claude opened the queue item
 - [x] Codex completed the first plan review
-- [ ] Claude revises the plan:
-      - Task 3 invalidation owner
-      - Task 4 char-safe truncation + boundary test
-      - stale file / provider references
-- [ ] Claude asks Codex for re-review
+- [x] Claude revised the plan (commit `f89bec3`):
+      - Task 3 invalidation owner = `ConversationWriteController` (Eric pick (a))
+      - Task 4 char-safe truncation + non-ASCII boundary test
+      - Task 5/6 stale file references fixed
+      - Task 3 stale provider name fixed
+- [ ] **Codex re-reviews r2 plan @ `f89bec3`** ← next action
 - [ ] If re-review passes, Claude cuts `feature/partner-entity-A2`
 
 Close-Condition:
