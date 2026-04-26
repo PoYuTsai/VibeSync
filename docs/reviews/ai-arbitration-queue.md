@@ -129,6 +129,93 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `feature/partner-entity-A2-ui` @ `e25cfce` (plan-only, no code yet)
+
+Question:
+- Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
+  partner detail) safely build on the A2 Phase 1 narrow-invalidation contract
+  without leaking back to `conversationsProvider`, breaking `/conversation/:id`
+  back-compat, or smuggling in copy / domain renames that belong to Phase 4?
+
+Context:
+- A2 Phase 1 (Tasks 1-5) merged via PR #2 (`f053a9c`) on 2026-04-26 afternoon,
+  in TF soak.
+- Eric chose Option B (整批做完再 ship) for the remaining 12 tasks; they're
+  split into Phase 2 (UI / IA) / Phase 3 (flows) / Phase 4 (polish + ship).
+- This item covers Phase 2 plan only. Phase 3 / 4 will get their own queue
+  items when started.
+- Plan path: `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
+- Parent A2 plan: `docs/plans/2026-04-26-partner-entity-A2-impl.md` Tasks 6-9
+- D1-D4 plan-defaults inherited verbatim; Phase 2 does NOT reopen them.
+
+Changed:
+- Cut new branch `feature/partner-entity-A2-ui` from `main` (`6e08fa3`).
+- Wrote Phase 2 sub-plan with bite-sized TDD steps for Tasks 6-9.
+- Verified ground truth before drafting: routes.dart shape, main_shell
+  IndexedStack wiring, partner_providers signatures, PartnerRepository
+  write surface (`upsertIfAbsent` only), PartnerAggregateView fields.
+
+Evidence:
+- Plan: [docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md](../plans/2026-04-26-partner-entity-A2-phase2-impl.md)
+- Branch HEAD: `e25cfce` (plan commit)
+- Codex-Review-Hot-Spots section in plan (six grep-able invariants)
+
+Open-Risks:
+- (R1) `/partner/new` vs `/partner/:partnerId` ordering — go_router resolves
+  first-match, must be literal-before-parametric in the live router AND
+  locked by router_test.dart.
+- (R2) `HomeContent` deferred-deletion (`@Deprecated`, removed in Phase 4
+  Task 15/16). Alternative: delete now and pay the import-cleanup cost
+  immediately. Codex call.
+- (R3) `_NewConversationSheet` extraction from `main_shell.dart` to
+  `conversation/presentation/widgets/new_conversation_sheet.dart`. Diff
+  must be a pure visibility flip + move; title string "新增對話" stays
+  unchanged here (Task 15 owns the global copy sweep including this title).
+- (R4) `PartnerRadarSummaryCard` reuses `lastAnalysisSnapshotJson` parser
+  from `analysis_screen.dart`. If the parser is currently private, Task 9
+  needs an extra extraction commit. Plan flags this.
+- (R5) Avatar picker deferred from Task 8 (parent A2 plan said "可選"). Plan
+  documents the deferral; potential Bruce-feedback risk.
+- (R6) `⋮` menu in Partner detail is visible-only in Phase 2 (no handlers
+  wired). Phase 4 Tasks 12-13 wire merge / edit / delete. Acceptable?
+
+Claude-Position:
+- Ship the plan as-is. Narrow-invalidation contract is the load-bearing
+  invariant from Phase 1 — every Phase 2 widget read goes through partner-
+  scoped providers; no widget watches `conversationsProvider`. Plan locks
+  this with a Codex grep hot-spot. Deferred work (avatar / merge handlers /
+  copy sweep) is intentional to keep Phase 2 PR reviewable.
+
+Codex-Position:
+- Pending
+
+Verdict:
+- Pending
+
+Eric-Decision:
+- Pending
+
+Action-Items:
+- [ ] Codex reviews `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
+      with the six hot-spots called out at the bottom of the plan
+- [ ] Codex flags 🔴 / 🟡 inline patches if needed, or 🟠 issues marked
+      `Verdict: Daisy-Decision-Needed`
+- [ ] If 🟢 or REVISED_AND_APPROVED, Claude executes Tasks 6-9 via
+      `superpowers:executing-plans`
+
+Close-Condition:
+- Codex returns `APPROVED` or `REVISED_AND_APPROVED` on the Phase 2 sub-plan
+  AND any Daisy-Decision items resolved by Eric. Plan execution starts only
+  after this item flips to APPROVED.
+
+---
+
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Review
 Status: CLOSED
 Request-Type: review
