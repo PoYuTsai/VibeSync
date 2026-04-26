@@ -130,77 +130,90 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Plan Review
-Status: OPEN
+Status: IN_REVIEW
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `main` (plan-only commit; impl branch `feature/partner-entity-A2` will be cut after Codex spec review pass)
+Branch/Commit: `main` @ `26b2f83`
 
 Question:
-- Does the A2 plan faithfully execute ADR-15 + design doc v2 §2/3/4/6? Any
-  missing risk before Claude opens the implementation branch and runs through
-  17 TDD tasks?
+- Does the A2 implementation plan faithfully execute ADR-15 and the approved
+  design doc without introducing a new architecture trap before
+  `feature/partner-entity-A2` is cut?
 
 Context:
-- A1 已 merge `919e034` + TF soak 雙綠燈通過 (Eric build 139 + Bruce
-  「Structure hasn't been changed, please proceed」)
-- ADR-15 翻 ✅ Accepted (2026-04-26)
-- A2 範圍 = Partner UI / merge UI / AI prompt summary / copy sweep /
-  routing — 7-8 dev days 上限保留
-- A1 hot spots HS1 (Sentry SDK) / HS2 (redo-rebackup) 帶到 A2 plan
-  Task 16 follow-up，不在 A2 主線執行
+- A1 shipped on `main` and TF soak passed; ADR-15 is now Accepted.
+- A2 scope is Partner UI / merge UI / AI prompt Partner summary / copy sweep /
+  routing.
+- Claude wrote a 17-task TDD implementation plan and asked for Codex plan
+  review before opening the implementation branch.
 
 Changed:
-- 新增 `docs/plans/2026-04-26-partner-entity-A2-impl.md`，17 個 TDD task
-- 4 個 Daisy-Decision-Needed 標記（D1 截圖 flow 掛 Partner / D2 domain
-  rename 範圍 / D3 conversation cell tap / D4 dedupe banner 顯示時機），
-  皆有 plan-default
-- Plan 末尾「Codex Review Hot Spots」5 項（HS-A2-1 ~ HS-A2-5）
+- Added `docs/plans/2026-04-26-partner-entity-A2-impl.md`
+- Marked ADR-15 Accepted
+- Opened this queue item for pre-implementation Codex review
 
 Evidence:
 - [A2 plan](../plans/2026-04-26-partner-entity-A2-impl.md)
-- [ADR-15 Accepted](../decisions.md)
-- A1 ship commit `919e034`
-- `grep -rn 'typeId:' lib/`（pre-flight 必再跑）
+- [ADR-15](../decisions.md)
+- `26b2f83`
+- [Codex review doc](./2026-04-26_partner-entity-A2-plan_codex-review.md)
 
 Open-Risks:
-1. Riverpod narrow invalidation contract 若實作層用 Hive box stream
-   listener，可能仍 fan-out（HS-A2-1）
-2. Partner summary truncate 邊界處理中文 surrogate 風險（HS-A2-2）
-3. D1 fallback path 是否真能避免 Bruce 同人多卡痛點（HS-A2-3）
-4. 7-8 dev day 工期估算（HS-A2-4）
-5. Routing deep-link 入口 back stack 缺 partner parent（HS-A2-5）
+- Partner-scoped invalidation may still collapse back into global fan-out
+- Partner summary truncation may break Unicode at the hard cap
+- A few task entrypoints still target stale files / provider names
 
 Claude-Position:
-- Plan 4 個 Daisy-Decision 都有 plan-default A，不阻塞執行
-- HS-A2-1 ~ HS-A2-5 是 Codex 應在 spec review 階段給 verdict 的重點
-- 17 task TDD granularity 對齊 A1 plan 的 13 task 風格 + spec §5 已寫死的測試列
-- A2 期間禁區（不 reopen ADR-15、不動 A1 schema、不混 testing-context build）已寫死於
-  memory `reference_partner_refactor_in_flight.md`
+- Keep D1-D4 on their plan-defaults unless Eric explicitly overrides them.
+- Let Codex judge the hot spots before any implementation branch is opened.
+- Do not reopen ADR-15 or A1; this is an A2-only buildout.
 
 Codex-Position:
-- Pending
+- Not pass yet. I found one P1 plan-shape blocker plus two P2 fixes.
+- P1: Task 3's narrow invalidation contract is not executable in the current
+  architecture. The plan asks repository save logic to call
+  `ref.invalidate(...)`, but the live `ConversationRepository` has no Riverpod
+  `Ref`, and current invalidation is still scattered across UI call sites.
+- P2: Task 4 still truncates with raw `substring`, even though HS-A2-2 already
+  flags Unicode-boundary risk. The plan should require char-safe truncation and
+  a true boundary test.
+- P2: Several task entrypoints are stale and should be corrected before
+  execution (`analysis_service.dart` vs `analyze_chat_client.dart`,
+  `lib/app/routes.dart` vs `lib/app/router/app_router.dart`,
+  current auth-scoping provider names).
+- HS judgments:
+  - HS-A2-1: revise before implementation
+  - HS-A2-2: fix in plan
+  - HS-A2-3: acceptable to keep ingest path non-deduping; banner/manual merge
+    is sufficient, no Daisy arbitration needed
+  - HS-A2-4: 7-8 dev days is tight but plausible after the Task 3 rewrite
+  - HS-A2-5: deep-link/no-history case needs explicit test coverage, but does
+    not block the plan
 
 Verdict:
-- Pending
+- Critical flaw - revise the A2 plan before opening
+  `feature/partner-entity-A2`.
 
 Eric-Decision:
-- Pending（Daisy-Decision-Needed 4 項可在此或 PR description 覆蓋預設值）
+- Pending only if Eric wants to override D1-D4 plan-defaults. Codex does not
+  require Daisy arbitration for this review round.
 
 Action-Items:
-- [x] Claude 寫 A2 plan
-- [x] Claude commit + push plan to `main`
-- [x] Claude 開本 queue item
-- [ ] Codex spec review（重點：HS-A2-1 ~ HS-A2-5 + Daisy-Decision-Needed 4 項是否合理）
-- [ ] Eric 拍板 Daisy-Decision-Needed 4 項（或維持 plan-default）
-- [ ] Codex verdict pass → Claude 切 `feature/partner-entity-A2` 開始執行
-- [ ] A2 ship 後另開新 queue item 做 code review，不 reopen 本 item
+- [x] Claude wrote the A2 plan
+- [x] Claude pushed the plan to `main`
+- [x] Claude opened the queue item
+- [x] Codex completed the first plan review
+- [ ] Claude revises the plan:
+      - Task 3 invalidation owner
+      - Task 4 char-safe truncation + boundary test
+      - stale file / provider references
+- [ ] Claude asks Codex for re-review
+- [ ] If re-review passes, Claude cuts `feature/partner-entity-A2`
 
 Close-Condition:
-- Codex spec review verdict = PASS（plan 可執行）→ Status flip APPROVED
-- 或 verdict = 🔴 / 🟠 → 於 docs/reviews/ 開 review doc，本 item 留 IN_REVIEW
-  直到 plan 修訂
+- Codex re-review verdict = PASS and the plan is approved for implementation.
 
 ## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
 Status: CLOSED
@@ -208,99 +221,62 @@ Request-Type: review
 Raised-By: Claude
 Owner: Claude
 Scope: review
-Branch/Commit: merged to `main` @ `919e034` (PR #1) — branch `feature/partner-entity-A1` retained per Eric for soak fallback
+Branch/Commit: merged to `main` @ `919e034` (PR #1); branch
+`feature/partner-entity-A1` retained during soak
 
 Question:
-- Does the A1 implementation faithfully execute the approved v2 spec? Two
-  spec-uncovered judgment calls (HS1 / HS2 below) need explicit Codex
-  rulings before A1 lands on `main`.
+- Did the A1 implementation faithfully execute the approved v2 spec, including
+  the two hot-spot judgments HS1 / HS2?
 
 Context:
-- A1 phase = schema + migration only (no UI). A2 ships Partner UI / merge /
-  AI prompt summary after A1's TF soak.
-- Claude reports 12 commits on the branch, 20 new tests, and no regression vs
-  the existing `main` test baseline.
-- This queue item is restored on the branch so the code review outcome has a
-  durable handoff target inside the PR branch itself.
+- A1 scope was schema + migration only.
+- Codex initially found two P1 issues, then patched them directly.
+- Claude completed clean-env verification after the patch.
 
 Changed:
-- New Partner entity / repository / migration service / deterministic id factory
-- `Conversation.partnerId` field added
-- `StorageService.initialize()` now opens the Partner box and runs migration
-- 20 new unit / integration tests around migration
-- Codex follow-up patch removes the direct `dart:io` import from the shared
-  startup path by moving backup I/O behind a conditional import helper
-- Codex follow-up patch changes migration completion semantics so partial-failure
-  passes stay retryable on next boot instead of writing the done flag
+- Added Partner entity / repository / migration service / deterministic id
+  factory
+- Added `Conversation.partnerId`
+- Wired startup migration
+- Added migration unit / integration coverage
+- Codex follow-up patch fixed web safety and migration done-flag semantics
 
 Evidence:
-- `53e7b85`
+- `ae54a7a`
+- `f6108c3`
 - [A1 implementation review doc](./2026-04-25_partner-entity-A1_codex-review.md)
-- `lib/core/services/storage_service.dart`
-- `lib/features/partner/data/services/partner_migration_service.dart`
-- `test/unit/services/partner_migration_service_test.dart`
-- `grep -rn 'typeId:' lib/`
 
 Open-Risks:
-1. Task 11 redo UI is still deferred to A2, so A1 cannot rely on manual redo as
-   the only recovery path
+- Redo UI was deferred to A2, so A1 relied on self-healing retry instead
 
 Claude-Position:
-- HS1: defer `sentry_flutter` until after TF soak; keep A1 on
-  `dart:developer.log`
-- HS2: keep redo-rebackup; user-triggered redo should treat current local state
-  as ground truth
-- Task 11 remains deferred to A2 per the blast-radius constraint
+- HS1: keep `dart:developer.log` for A1 soak; defer `sentry_flutter`
+- HS2: keep redo-rebackup
 
 Codex-Position:
-- `typeId = 8` remains valid; re-grep confirms `0..7` are occupied and `8` is
-  free on this branch.
-- HS1: approve defer. After the two implementation blockers below are fixed,
-  A1 may keep `dart:developer.log(name: 'partner_migration')` for the TF soak
-  instead of adding `sentry_flutter`.
-- HS2: keep the current redo-rebackup policy.
-- Codex directly patched the two original P1 findings:
-  1. `StorageService` now calls a conditional-import backup helper instead of
-     importing `dart:io` directly on the shared startup path.
-  2. `PartnerMigrationService.runIfNeeded()` now keeps partial-failure passes
-     retryable by skipping the done flag when any row failed.
-- Claude then ran the clean-env follow-up verification and reported:
-  - `test/unit/services/partner_migration_service_test.dart`: `6/6 PASS`
-  - `test/integration/partner_migration_integration_test.dart`: `3/3 PASS`
-  - `flutter analyze lib/core/services/ lib/features/partner/` + the two test
-    files: `No issues found`
-- With that validation in place, I am changing this item to PR-ready.
+- Approved after two direct fixes:
+  - move backup I/O behind conditional imports
+  - keep partial-failure migrations retryable by skipping the done flag
+- Claude then verified:
+  - unit migration tests pass
+  - integration migration tests pass
+  - targeted analyze on clean env passes
 
 Verdict:
-- APPROVED - branch may open PR and start TF soak after merge.
+- APPROVED_FOR_PR, later MERGED
 
 Eric-Decision:
-- MERGED via PR #1 → `main` @ `919e034` (2026-04-25)
+- Merged via PR #1; A1 entered TF soak and later passed
 
 Action-Items:
-- [x] Claude implemented A1 on `feature/partner-entity-A1`
+- [x] Claude implemented A1
 - [x] Codex reviewed HS1 / HS2
-- [x] Codex fixed the direct `dart:io` import in `StorageService`
-- [x] Codex fixed migration completion semantics so partial-failure runs stay
-      retryable
-- [x] Claude / CC ran the targeted branch tests in a clean env
-- [x] Codex confirmed the clean-env test result and gave PR go
-- [x] PR #1 opened by Codex against `main`
-- [x] Claude sanity-checked PR #1 diff against spec v2 / ADR-15 (no new blocker)
-- [x] Eric merged PR #1 (2026-04-25)
-- [x] TF soak started; ownership = Eric + testers (tracked outside this queue)
+- [x] Codex patched the two P1 blockers
+- [x] Claude ran clean-env verification
+- [x] Eric merged PR #1
 
 Close-Condition:
-- PR is merged and A1 moves into TF soak tracking. ✅ Met 2026-04-25.
-
-Follow-up:
-- Soak surface: cold-boot crash, lost conversations, same-name partner data
-  bleed, force-close + reopen stability, regression in list / chat / analyze.
-- If a soak bug surfaces, open a NEW queue item (do not reopen this one); CC
-  fixes by default, escalate to Codex only for review / hardening.
-- ADR-15 stays 🟡 Proposed until soak passes; flip to Accepted then.
-- Branch `feature/partner-entity-A1` retained until soak verdict.
-- A2 (UI / merge / prompt summary) is paused during soak.
+- Met. Durable record now lives in the review doc + ADR-15 ship note.
 
 ## [2026-04-25] Partner Entity Refactor - Design Spec Review
 Status: CLOSED
@@ -308,79 +284,46 @@ Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `5e10b86` → A1 plan on `feature/partner-entity-A1`
+Branch/Commit: `5e10b86`
 
 Question:
-- Does spec v2 fully close the v1 P1 / P2 findings, or does any blocker remain
-  before A1 implementation planning?
+- Did spec v2 fully close the v1 blockers before A1 implementation planning?
 
 Context:
-- v1 review verdict was `Critical flaw`; see
-  `docs/reviews/2026-04-25_partner-entity-design_codex-review.md`.
-- Eric authorized Claude to revise the spec without reopening the locked
-  brainstorm decisions.
-- Codex re-reviewed spec v2 against the original blockers plus the new v2
-  open-risk list.
+- v1 review was critical due to Hive `typeId` collision and non-rerun-safe
+  migration.
+- Claude revised the spec without reopening the locked brainstorm decisions.
 
 Changed:
-- Spec v2 moved `Partner` from `typeId=5` to `typeId=8`.
-- Migration was rewritten around deterministic UUID v5 +
-  `conversation.partnerId` as the idempotency marker.
-- Partner summary got a hard size cap and ranking rules.
-- Provider invalidation was narrowed from "any conversation change" to
-  partner-scoped invalidation.
-- A1 estimate was demoted from `1.5 day` to `TBD pending Codex re-review`.
+- Moved `Partner` to `typeId = 8`
+- Rewrote migration around deterministic UUID v5 + per-conversation marker
+- Added hard summary budget and narrower invalidation rules
 
 Evidence:
 - [Design doc v2](../plans/2026-04-25-partner-entity-design.md)
 - [Codex review doc](./2026-04-25_partner-entity-design_codex-review.md)
-- `grep -rn 'typeId:' lib/`
-- `lib/features/conversation/domain/entities/conversation.dart`
-- `supabase/functions/analyze-chat/index.ts`
 
 Open-Risks:
-1. `conversationsByPartnerProvider(partnerId)` must stay truly partner-scoped
-   and not reintroduce global provider fan-out via `conversationsProvider`
-2. A1 implementation plan should re-estimate coding work above the original
-   `1.5 day` number
+- Keep partner-scoped providers truly narrow during implementation
+- Re-estimate A1 above the original `1.5 day` number
 
 Claude-Position:
-- v2 closes v1 P1 blockers via algorithmic change, not cosmetic relabeling.
-- v2 turns token budget and invalidation from hopes into explicit rules.
-- A1 estimate was correctly reopened instead of being hand-waved.
+- v2 closes the true blockers and turns P2 hopes into explicit rules.
 
 Codex-Position:
-- v2 closes the v1 P1 blockers.
-- Verified by fresh repo grep: `typeId 0..7` are occupied and `typeId = 8` is
-  free, so the new `Partner` id no longer collides.
-- The migration design is now rerun-safe at spec level: deterministic UUID v5
-  from `conversation.id` + `conversation.partnerId` as the marker means partial
-  runs converge instead of duplicating Partner rows.
-- The token-budget risk is now bounded enough for planning: hard cap `1500`
-  chars, `N=8` ranking, and parsed-field assembly instead of raw JSON.
-- The Riverpod fan-out issue is reduced to an implementation constraint:
-  `conversationsByPartnerProvider(partnerId)` must stay truly partner-scoped and
-  not be backed by the full `conversationsProvider`.
-- A1 should be re-estimated above the original `1.5 day`; `2-3 dev days` plus
-  the planned TF soak is a more realistic planning baseline.
+- PASS for A1 implementation planning.
+- No remaining architecture-level blocker after the v2 rewrite.
 
 Verdict:
-- PASS - spec v2 is approved for A1 implementation planning.
+- APPROVED
 
 Eric-Decision:
-- Pending
+- Accepted; A1 planning and implementation proceeded.
 
 Action-Items:
-- [x] v1 Codex review completed and critical doc opened.
-- [x] Claude revised the spec to address v1 P1 / P2 findings.
-- [x] Codex re-reviewed spec v2.
-- [x] v2 approved for A1 implementation planning.
-- [x] A1-only implementation plan written: `docs/plans/2026-04-25-partner-entity-A1-impl.md`.
+- [x] Claude revised the spec
+- [x] Codex re-reviewed spec v2
+- [x] A1 implementation planning started
 
 Close-Condition:
-- Claude has started the A1-only implementation plan from the approved v2 spec. ✅ Met.
-
-Follow-up:
-- Plan baked in Codex constraints C1 (partner-scoped provider stays partner-scoped — A2 author responsibility),
-  C2 (A1 effort = 2–3 dev days + 1–2 day TF soak), C3 (first impl step re-greps typeId).
-- A1 execution + Codex A1 code review = a new queue item once A1 ships, not an append here.
+- Met. Durable record now lives in the review doc and subsequent A1 review item.
