@@ -11,7 +11,9 @@ import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
 
 class NewConversationScreen extends ConsumerStatefulWidget {
-  const NewConversationScreen({super.key});
+  final String? partnerId;
+
+  const NewConversationScreen({super.key, this.partnerId});
 
   @override
   ConsumerState<NewConversationScreen> createState() =>
@@ -130,6 +132,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       final conversation = await controller.create(
         name: name,
         messages: messages,
+        partnerId: widget.partnerId,
       );
 
       conversation.sessionContext = SessionContext(

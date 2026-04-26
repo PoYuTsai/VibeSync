@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review + Code Review
-Status: CODE_REVIEW_PENDING
+Status: WAITING_ON_CLAUDE_VERIFY
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ `637465f` (Tasks 6-9 implemented; PR pending)
+Branch/Commit: `feature/partner-entity-A2-ui` @ `d9ce767` + Codex review fixes
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -306,6 +306,21 @@ Codex-Position:
     `add_partner_navigation_test.dart` also imports `dart:async` for
     `Stream.value(...)`.
   - No remaining blocker in the r3 scope. Claude can execute Tasks 6-9.
+- **implementation code review (`d9ce767`)**: `REVISED_BEFORE_MERGE`.
+  See
+  [2026-04-26_partner-entity-A2-phase2-code_codex-review.md](./2026-04-26_partner-entity-A2-phase2-code_codex-review.md).
+  - P1 fixed directly: Partner detail "新增對話" opened the legacy sheet without
+    current `partnerId`, so conversations created from Alice's detail could be
+    unscoped and disappear from Alice's list/aggregate/context. `partnerId` now
+    flows through `NewConversationSheet` -> `/new?partnerId=...` ->
+    `NewConversationScreen` -> `ConversationWriteController.create`, and the
+    screenshot-start path passes it directly.
+  - P2 fixed directly: Add Partner and screenshot-start create paths now have
+    user-visible snackbar fallback instead of leaving the UI locked or throwing
+    silently.
+  - Codex could not complete Flutter/Dart verification in this shell because
+    `flutter`, `dart`, `flutter test`, and `flutter analyze` all timed out.
+    Claude should rerun the touched tests/analyze before opening/merging PR.
 
 Verdict:
 - (r1) REVISE_BEFORE_IMPLEMENTATION
@@ -315,6 +330,9 @@ Verdict:
 
 Eric-Decision:
 - Not needed
+
+- (code review) REVISED_BEFORE_MERGE; Codex fixed one P1 and one P2, pending
+  Claude verification because Flutter/Dart tooling timed out in Codex
 
 Action-Items:
 - [x] Codex reviews `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
@@ -339,8 +357,8 @@ Action-Items:
       r2-already-acceptable items. Plan revision header carries an r3 changelog.
 - [x] Claude executes Tasks 6-9 via `superpowers:executing-plans`
       (commits `27481fd` / `d31103c` / `9be4cd2` / `637465f`)
-- [ ] Claude opens PR `feature/partner-entity-A2-ui` → `main`
-- [ ] **Codex code review (NOT spec review)** — diff the 4 implementation
+- [ ] Claude opens PR after Codex fixes pass local verification
+- [x] **Codex code review (NOT spec review)** — diff the 4 implementation
       commits against `main`. Focus per the plan's `Codex Review Hot Spots`:
       narrow-invalidation grep (zero hits on `conversationsProvider` in Phase 2
       widgets), literal-before-parametric route order, auth-scope leakage check,
@@ -350,6 +368,9 @@ Action-Items:
       not duplicate parser. PLUS one item NOT in the plan: see
       Implementation-Notes below for `add_partner_navigation_test.dart`
       omission rationale.
+- [ ] Claude reruns touched widget tests + touched-file `flutter analyze` after
+      Codex fixes
+- [ ] If green, Claude opens PR `feature/partner-entity-A2-ui` → `main`
 
 Implementation-Notes (Code Review round):
 - **Plan-required `add_partner_navigation_test.dart` was OMITTED.** Reproducible

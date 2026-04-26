@@ -55,13 +55,24 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       updatedAt: now,
       ownerUserId: ownerId,
     );
-    await ref.read(partnerRepositoryProvider).upsertIfAbsent(partner);
-    if (!mounted) return;
-    ref.invalidate(partnerListProvider);
-    // pushReplacement (NOT go): swaps /partner/new with /partner/:id so
-    // back from detail returns to Home (Partner list) underneath, not to
-    // the add form. (Codex r1 P1.2)
-    GoRouter.of(context).pushReplacement('/partner/${partner.id}');
+    try {
+      await ref.read(partnerRepositoryProvider).upsertIfAbsent(partner);
+      if (!mounted) return;
+      ref.invalidate(partnerListProvider);
+      // pushReplacement (NOT go): swaps /partner/new with /partner/:id so
+      // back from detail returns to Home (Partner list) underneath, not to
+      // the add form. (Codex r1 P1.2)
+      GoRouter.of(context).pushReplacement('/partner/${partner.id}');
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('建立對象失敗，請再試一次')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   @override

@@ -99,7 +99,9 @@ class PartnerDetailScreen extends ConsumerWidget {
         onPressed: () => showModalBottomSheet(
           context: context,
           backgroundColor: Colors.transparent,
-          builder: (_) => const NewConversationSheet(),
+          // Keep conversations created from this screen attached to the
+          // current Partner, including the manual-entry route.
+          builder: (_) => NewConversationSheet(partnerId: partnerId),
         ),
         label: const Text('+ 新增對話'),
       ),

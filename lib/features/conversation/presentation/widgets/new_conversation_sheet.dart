@@ -13,7 +13,18 @@ import '../../../../core/theme/app_typography.dart';
 import '../../data/providers/conversation_write_controller.dart';
 
 class NewConversationSheet extends ConsumerWidget {
-  const NewConversationSheet({super.key});
+  final String? partnerId;
+
+  const NewConversationSheet({super.key, this.partnerId});
+
+  String get _manualEntryLocation {
+    final id = partnerId;
+    if (id == null) return '/new';
+    return Uri(
+      path: '/new',
+      queryParameters: {'partnerId': id},
+    ).toString();
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,8 +62,9 @@ class NewConversationSheet extends ConsumerWidget {
               style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
             ),
             onTap: () {
+              final router = GoRouter.of(context);
               Navigator.pop(context);
-              context.push('/new');
+              router.push(_manualEntryLocation);
             },
           ),
           const SizedBox(height: 8),
@@ -74,12 +86,22 @@ class NewConversationSheet extends ConsumerWidget {
               style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
             ),
             onTap: () async {
+              final router = GoRouter.of(context);
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
-              final conversation = await ref
-                  .read(conversationWriteControllerProvider.notifier)
-                  .create(name: '新對話', messages: []);
-              if (context.mounted) {
-                context.push('/conversation/${conversation.id}');
+              try {
+                final conversation = await ref
+                    .read(conversationWriteControllerProvider.notifier)
+                    .create(
+                      name: '新對話',
+                      messages: [],
+                      partnerId: partnerId,
+                    );
+                router.push('/conversation/${conversation.id}');
+              } catch (_) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('建立對話失敗，請再試一次')),
+                );
               }
             },
           ),

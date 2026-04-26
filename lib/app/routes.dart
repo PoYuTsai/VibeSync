@@ -52,7 +52,9 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/new',
-      builder: (context, state) => const NewConversationScreen(),
+      builder: (context, state) => NewConversationScreen(
+        partnerId: state.uri.queryParameters['partnerId'],
+      ),
     ),
     GoRoute(
       path: '/conversation/:id',

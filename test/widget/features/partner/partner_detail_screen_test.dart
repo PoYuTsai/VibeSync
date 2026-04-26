@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -73,6 +74,27 @@ void main() {
     expect(find.byType(PartnerTraitsCard), findsOneWidget);
     expect(find.byType(PartnerRadarSummaryCard), findsOneWidget);
     expect(find.text('+ 新增對話'), findsOneWidget);
+  });
+
+  testWidgets('new-conversation sheet receives current partnerId', (t) async {
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byType(FloatingActionButton));
+    await t.pumpAndSettle();
+
+    final sheet =
+        t.widget<NewConversationSheet>(find.byType(NewConversationSheet));
+    expect(sheet.partnerId, 'p1');
   });
 
   testWidgets('empty conversation list shows hint text', (t) async {
