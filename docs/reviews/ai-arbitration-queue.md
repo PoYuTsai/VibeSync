@@ -135,7 +135,7 @@ Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `main` @ `f89bec3` (revision r2; r1 was `26b2f83`)
+Branch/Commit: `main` @ `2a1163d` (revision r3; r2 was `f89bec3`; r1 was `26b2f83`)
 
 Question:
 - Does the A2 implementation plan now faithfully execute ADR-15 and the
@@ -160,18 +160,41 @@ Changed:
   - Task 5 path fixed to `analysis_service.dart`
   - Task 6 path fixed to `lib/app/routes.dart`
   - Task 3 stale provider naming fixed
+- r3 (`2a1163d`) revised the plan per the second Codex verdict:
+  - Task 3 narrow contract redefined: "narrow" = cross-partner fan-out防火,
+    NOT "never invalidates global feeds". Controller now also invalidates
+    `conversationsProvider` (`_invalidateLegacyGlobal()` helper) so legacy
+    consumers (e.g. `reportDataProvider`) stay fresh.
+  - Task 3 test list rebuilt: dropped over-strict "never touches conversationsProvider";
+    added cross-partner fan-out test + reportDataProvider freshness integration test.
+  - Task 3 migration table expanded from 9 to 13 sites: 9 conversation **write**
+    sites → controller; 4 **session-scope** auth boundary sites
+    (`login_screen:70` / `settings_screen:568,584,690`) stay as-is — they are
+    auth cleanup, not conversation writes.
+  - Task 4 boundary test strengthened from generic non-ASCII to explicit ZWJ
+    emoji grapheme cluster (`👨‍👩‍👧`, 7 codepoints / 11 UTF-16 units / 1
+    grapheme cluster).
+  - New §「Post-A2 cleanup」: spec for retiring `conversationsProvider` as a
+    follow-up PR ~2 weeks post A2 ship (out of A2 scope).
 
 Evidence:
 - [A2 plan](../plans/2026-04-26-partner-entity-A2-impl.md)
 - [ADR-15](../decisions.md)
 - `26b2f83` (r1 plan)
 - `f89bec3` (r2 plan)
+- `2a1163d` (r3 plan — narrow contract redefined + 4 missed sites + ZWJ + post-A2 cleanup §)
 - [Codex review doc](./2026-04-26_partner-entity-A2-plan_codex-review.md)
 
 Open-Risks:
-- Controller contract may be too narrow for remaining global consumers
-- Partner summary boundary test may still be weaker than the real ZWJ case
+- ~~Controller contract may be too narrow for remaining global consumers~~ —
+  closed in r3 by redefining narrow as cross-partner fan-out防火 and adding
+  `_invalidateLegacyGlobal()`.
+- ~~Partner summary boundary test may still be weaker than the real ZWJ case~~ —
+  closed in r3 by upgrading test to explicit ZWJ emoji case.
 - Deep-link/no-history route behavior still needs explicit test coverage
+  (Task 6 — addressed in r1 plan, non-blocking per Codex).
+- Post-A2 cleanup PR (retire `conversationsProvider`) deferred to follow-up
+  ~2 weeks after A2 ship; spec is in plan §「Post-A2 cleanup」.
 
 Claude-Position:
 - Keep D1-D4 on their plan-defaults unless Eric explicitly overrides them.
@@ -179,6 +202,21 @@ Claude-Position:
 - Do not reopen ADR-15 or A1; this is an A2-only buildout.
 - Eric chose option (a) `ConversationWriteController` over a repo-exposed
   partner stream to avoid poking the A1-stable repository baseline.
+- **r3 update (2026-04-26)** — Eric picked the folded path on Codex r2's two
+  options: keep `conversationsProvider` invalidation in the controller during
+  A2 (Codex option 1), but redefine the narrow contract so this is not a
+  contract violation. Rationale:
+  (1) A2 scope discipline — option 2 (migrating reports off global feed in A2)
+      smuggles a report-module refactor into A2, breaking ADR-15 scope and
+      pushing 送審 timeline beyond the accepted ~2-week delay.
+  (2) The over-strict r2 test ("controller never invalidates conversationsProvider")
+      was Claude's over-spec; r1 HS-A2-1 only required cross-partner fan-out
+      防火, not "never touches global". r3 restores the original contract intent.
+  (3) `reportDataProvider` is a pure pass-through to `ReportDataService.generateReport()`;
+      recompute cost on each conversation write is acceptable at VibeSync's user
+      scale (O(50) conversations per user).
+  (4) Truly retiring `conversationsProvider` lives in §「Post-A2 cleanup」, an
+      independent follow-up PR scheduled ~2 weeks post A2 ship.
 
 Codex-Position:
 - r2 fixed three real issues from r1:
@@ -220,13 +258,17 @@ Action-Items:
 - [x] Claude pushed the plan to `main`
 - [x] Claude opened the queue item
 - [x] Codex completed the first plan review
-- [x] Claude revised the plan (commit `f89bec3`)
+- [x] Claude revised the plan (commit `f89bec3`, r2)
 - [x] Codex re-reviewed r2
-- [ ] Claude revises the plan again:
-      - Task 3 compatibility for remaining global `conversationsProvider`
-        consumers (or migrate them)
-      - Task 4 boundary test strengthened to emoji ZWJ / grapheme case
-- [ ] Claude asks Codex for one more re-review
+- [x] Claude revised the plan again (commit `2a1163d`, r3):
+      - Task 3 narrow contract redefined + `_invalidateLegacyGlobal()` added
+      - Task 3 test list rebuilt (dropped over-strict; added cross-partner
+        fan-out test + reportDataProvider freshness test)
+      - Task 3 migration table 9 → 13 sites (4 session-scope sites separated;
+        login_screen:70 / settings_screen:568,584,690 marked stay-as-is)
+      - Task 4 boundary test upgraded to explicit ZWJ emoji case
+      - New §「Post-A2 cleanup」 spec added
+- [ ] **Codex re-reviews r3 plan @ `2a1163d`** ← next action
 - [ ] If re-review passes, Claude cuts `feature/partner-entity-A2`
 
 Close-Condition:
