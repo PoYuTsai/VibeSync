@@ -146,3 +146,75 @@ Patch the plan to r2, update the same queue item, then ask for a short Codex
 re-review focused only on the five findings above. I do not think Eric needs to
 decide anything yet; these are execution-plan correctness issues, not product
 taste tradeoffs.
+
+## r2 scoped re-review — 2026-04-26
+
+### Verdict
+
+**REVISE_BEFORE_IMPLEMENTATION.**
+
+r2 fixes the main architecture direction and closes most of the r1 findings:
+
+- `rg -n "vibe_sync" docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
+  returns no hits.
+- Add Partner submit now uses `context.replace(...)` instead of `context.go(...)`.
+- Task 6 router tests now use sentinel widgets.
+- Task 7 lifts the aggregate read to `PartnerListScreen` and keeps
+  `PartnerListCard` pure-render.
+- Task 8 blocks submit while auth is null/loading and uses the real
+  `StreamProvider` override pattern.
+- Task 9 has a concrete parser reuse path via `AnalysisResult.fromJson(...)`.
+- The `⋮` menu changed from visible-no-op to disabled "即將推出" items.
+
+Two scoped blockers remain in the plan's test harness, so implementation should
+not start yet.
+
+### [P1] Navigation test still cannot pass because the Home list is overridden
+to stay empty
+
+Task 8's navigation test is meant to prove:
+
+`Home -> /partner/new -> submit -> /partner/:id -> back -> Home with Alice shown`
+
+But the test overrides `partnerListProvider` to always return an empty list
+(`docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md:801`) and later
+expects `find.text('Alice')`
+(`docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md:829`). That assertion
+will fail even if `context.replace` is correct, because the Home screen is
+forced to render the empty state forever.
+
+Required r3 patch:
+
+- Either make the navigation test use a simple Home sentinel and only assert
+  that back returns to Home instead of `/partner/new`, or
+- Remove the `partnerListProvider` empty override and make the real
+  `PartnerListScreen` hermetic by overriding `partnerRepositoryProvider`,
+  `authConversationScopeProvider`, and `conversationRepositoryProvider` with a
+  fake repository whose `listByPartner(_)` returns an empty list for any id.
+
+The second option preserves the stronger "Alice appears after back" assertion.
+
+### [P1] Auth-loading test uses `StreamController` but the snippet lacks
+`dart:async`
+
+Task 8's add-partner screen test creates `StreamController<String?>()`
+(`docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md:617`) but the snippet
+imports only `dart:io`
+(`docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md:527`). The test will
+not compile.
+
+Required r3 patch:
+
+- Add `import 'dart:async';` to
+  `test/widget/features/partner/add_partner_screen_test.dart`.
+- Remove unused imports in that snippet, especially
+  `hive_ce_flutter/hive_flutter.dart` and
+  `path_provider_platform_interface/path_provider_platform_interface.dart`
+  (`docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md:532-533`), unless
+  the implementation actually uses them.
+
+### Scoped status
+
+No Eric decision is needed. The remaining issues are execution-plan correctness
+problems, not product tradeoffs. Patch r3, update the same queue item, and ask
+Codex to re-check only these two points.

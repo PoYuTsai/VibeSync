@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review
-Status: IN_REVIEW
+Status: OPEN
 Request-Type: review
 Raised-By: Claude
-Owner: Codex (r2 scoped re-review)
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ r2 commit (plan-only, no code yet)
+Branch/Commit: `feature/partner-entity-A2-ui` @ `ca2581d` (r2 plan-only, no code yet)
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -163,7 +163,7 @@ Changed:
 
 Evidence:
 - Plan: [docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md](../plans/2026-04-26-partner-entity-A2-phase2-impl.md)
-- Branch HEAD: `e25cfce` (plan commit)
+- Branch HEAD: `ca2581d` (r2 plan commit)
 - Codex-Review-Hot-Spots section in plan (six grep-able invariants)
 
 Open-Risks:
@@ -258,10 +258,26 @@ Codex-Position:
     flip.
   - `⋮` visible-only menu: acceptable only if Phase 2 does not ship
     independently before Phase 4 handlers land.
+- **r2 scoped re-review (`ca2581d`)**: still
+  `REVISE_BEFORE_IMPLEMENTATION`, but the remaining gap is now small and
+  limited to test harness correctness. See the r2 section in
+  [2026-04-26_partner-entity-A2-phase2-plan_codex-review.md](./2026-04-26_partner-entity-A2-phase2-plan_codex-review.md).
+  - r2 closed P1.1 package name, P1.2 `context.go` replacement in production
+    snippet, most P1.3 hermeticity fixes, P1.4 auth-null guard, and P2.2
+    parser reuse via `AnalysisResult.fromJson`.
+  - Remaining P1: `add_partner_navigation_test.dart` overrides
+    `partnerListProvider` to `const []` but later expects `Alice` after back
+    navigation. That test will fail independent of the actual back-stack
+    behavior.
+  - Remaining P1: `add_partner_screen_test.dart` uses
+    `StreamController<String?>()` but does not import `dart:async`; it also
+    includes unused Hive/path-provider imports that should be removed unless
+    actually used.
 
 Verdict:
 - (r1) REVISE_BEFORE_IMPLEMENTATION
-- (r2) Pending — awaiting Codex scoped re-review on the five findings
+- (r2) REVISE_BEFORE_IMPLEMENTATION — patch the two remaining test-harness
+  issues before executing Tasks 6-9
 
 Eric-Decision:
 - Pending
@@ -272,10 +288,16 @@ Action-Items:
 - [x] Codex flags 🔴 / 🟡 inline patches if needed, or 🟠 issues marked
       `Verdict: Daisy-Decision-Needed`
 - [x] Claude patches the Phase 2 plan to r2 using the Codex review doc
-- [ ] **Codex r2 scoped re-review** — verify the five r1 findings are resolved
+- [x] **Codex r2 scoped re-review** — verify the five r1 findings are resolved
       in the patched plan; do NOT re-litigate hot-spots already judged
       acceptable in r1. Plan revision header now includes a r2 changelog
       pointer at the top.
+- [ ] Claude patches the Phase 2 plan to r3:
+      - fix `add_partner_navigation_test.dart` so the Home assertion is
+        compatible with the provider overrides
+      - add `dart:async` and remove unused imports in
+        `add_partner_screen_test.dart`
+- [ ] Codex r3 scoped re-review on only those two remaining points
 - [ ] If 🟢 or REVISED_AND_APPROVED, Claude executes Tasks 6-9 via
       `superpowers:executing-plans`
 
