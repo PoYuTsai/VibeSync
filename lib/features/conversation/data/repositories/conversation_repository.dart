@@ -68,6 +68,7 @@ class ConversationRepository {
   Future<Conversation> createConversation({
     required String name,
     required List<Message> messages,
+    String? partnerId,
   }) async {
     final currentUserId = _currentUserId;
     if (currentUserId == null) {
@@ -83,10 +84,21 @@ class ConversationRepository {
       updatedAt: now,
       currentRound: _calculateRoundCount(messages),
       ownerUserId: currentUserId,
+      partnerId: partnerId,
     );
 
     await StorageService.conversationsBox.put(conversation.id, conversation);
     return conversation;
+  }
+
+  /// Returns all conversations attached to [partnerId], sorted by updatedAt
+  /// descending. partnerId is globally unique (UUID v5 derived from
+  /// conversationId, see PartnerIdFactory) so this is implicitly owner-safe.
+  List<Conversation> listByPartner(String partnerId) {
+    return StorageService.conversationsBox.values
+        .where((c) => c.partnerId == partnerId)
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
   Future<void> updateConversation(Conversation conversation) async {
