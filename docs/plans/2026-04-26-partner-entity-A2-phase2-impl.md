@@ -1,5 +1,14 @@
 # Partner Entity Refactor A2 — Phase 2 (UI / IA shift) Implementation Plan
 
+> **Revision history**
+> - r1 (2026-04-26 e25cfce): initial draft
+> - r2 (2026-04-26): patched after Codex `REVISE_BEFORE_IMPLEMENTATION` verdict
+>   in [`docs/reviews/2026-04-26_partner-entity-A2-phase2-plan_codex-review.md`](../reviews/2026-04-26_partner-entity-A2-phase2-plan_codex-review.md).
+>   Five fixes: (P1) package name `vibesync`, (P1) `context.replace` for submit
+>   + back-stack test, (P1) hermetic widget tests, (P1) auth-null guard,
+>   (P2) explicit `AnalysisResult.fromJson` reuse target. Plus ⋮ menu
+>   conditional from Hot-spot judgment.
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 >
 > **For Codex (spec review):** see `## Codex Review Hot Spots` near the end. Plan-default decisions D1-D4 are inherited from the parent A2 plan and **not** reopened here.
@@ -61,7 +70,7 @@ Expected:
 - Modify: `lib/app/routes.dart` (102 lines, current router lives here)
 - Test: `test/widget/router_test.dart` (NEW — no existing widget router tests)
 
-**Step 1: Write failing widget tests**
+**Step 1: Write failing widget tests (hermetic — sentinel widgets only)**
 
 ```dart
 // test/widget/router_test.dart
@@ -70,74 +79,102 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:vibe_sync/features/partner/presentation/screens/partner_detail_screen.dart';
-import 'package:vibe_sync/features/partner/presentation/screens/add_partner_screen.dart';
-import 'package:vibe_sync/features/analysis/presentation/screens/analysis_screen.dart';
+// SENTINEL widgets — we only verify the route TABLE shape (literal vs
+// parametric resolution + back-compat path), NOT the real screens. Mounting
+// the live PartnerDetailScreen / AddPartnerScreen / AnalysisScreen here would
+// pull in Hive boxes / authConversationScopeProvider / conversationProvider,
+// turning a route-shape test into an integration test that fails for
+// infrastructure reasons (Codex P1.3a).
+class _PartnerDetailSentinel extends StatelessWidget {
+  final String partnerId;
+  const _PartnerDetailSentinel(this.partnerId);
+  @override
+  Widget build(BuildContext context) =>
+      Scaffold(body: Text('partner-detail:$partnerId'));
+}
 
-// Build a minimal harness router with the same routes shape — we test the
-// route TABLE shape, not the auth redirect (auth tested elsewhere via
-// SupabaseService stubbing).
+class _AddPartnerSentinel extends StatelessWidget {
+  const _AddPartnerSentinel();
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Text('add-partner'));
+}
+
+class _AnalysisSentinel extends StatelessWidget {
+  final String conversationId;
+  const _AnalysisSentinel(this.conversationId);
+  @override
+  Widget build(BuildContext context) =>
+      Scaffold(body: Text('analysis:$conversationId'));
+}
+
 GoRouter _testRouter(String initialLocation) => GoRouter(
   initialLocation: initialLocation,
   routes: [
     GoRoute(
       path: '/partner/new',
-      builder: (c, s) => const AddPartnerScreen(),
+      builder: (c, s) => const _AddPartnerSentinel(),
     ),
     GoRoute(
       path: '/partner/:partnerId',
-      builder: (c, s) =>
-          PartnerDetailScreen(partnerId: s.pathParameters['partnerId']!),
+      builder: (c, s) => _PartnerDetailSentinel(s.pathParameters['partnerId']!),
     ),
     GoRoute(
       path: '/conversation/:id',
-      builder: (c, s) => AnalysisScreen(conversationId: s.pathParameters['id']!),
+      builder: (c, s) => _AnalysisSentinel(s.pathParameters['id']!),
     ),
   ],
 );
 
 void main() {
-  testWidgets('/partner/:partnerId routes to PartnerDetailScreen', (t) async {
+  testWidgets('/partner/:partnerId routes to partner detail (sentinel)',
+      (t) async {
     await t.pumpWidget(ProviderScope(
       child: MaterialApp.router(routerConfig: _testRouter('/partner/abc-123')),
     ));
     await t.pumpAndSettle();
-    expect(find.byType(PartnerDetailScreen), findsOneWidget);
+    expect(find.text('partner-detail:abc-123'), findsOneWidget);
   });
 
-  testWidgets('/partner/new routes to AddPartnerScreen', (t) async {
+  testWidgets('/partner/new routes to add-partner (literal beats parametric)',
+      (t) async {
     await t.pumpWidget(ProviderScope(
       child: MaterialApp.router(routerConfig: _testRouter('/partner/new')),
     ));
     await t.pumpAndSettle();
-    expect(find.byType(AddPartnerScreen), findsOneWidget);
-    expect(find.byType(PartnerDetailScreen), findsNothing);
+    expect(find.text('add-partner'), findsOneWidget);
+    // Critical guard: parametric must NOT match.
+    expect(find.text('partner-detail:new'), findsNothing);
   });
 
-  testWidgets('/conversation/:id keeps back-compat (still routes AnalysisScreen)',
-      (t) async {
+  testWidgets('/conversation/:id keeps back-compat (sentinel)', (t) async {
     await t.pumpWidget(ProviderScope(
       child: MaterialApp.router(routerConfig: _testRouter('/conversation/conv-1')),
     ));
     await t.pumpAndSettle();
-    expect(find.byType(AnalysisScreen), findsOneWidget);
+    expect(find.text('analysis:conv-1'), findsOneWidget);
   });
 }
 ```
 
+> **Why sentinels, not the real screens:** the router test's purpose is to lock the **route table shape** — literal-vs-parametric resolution and the `/conversation/:id` back-compat path. Mounting real screens drags in their provider graph (Hive `Box<Conversation>`, auth scope, etc.) and turns red bars into infrastructure noise. The real screens get their own widget tests in Tasks 7-9 (with proper provider overrides).
+>
 > **Note on order:** `/partner/new` is declared **before** `/partner/:partnerId` so the literal path wins over the parametric one. go_router resolves first match — invert and `new` becomes a partner id "new". This MUST be in the live `routes.dart` too.
 
-**Step 2: Run, expect FAIL** (PartnerDetailScreen / AddPartnerScreen don't exist yet)
+**Step 2: Run, expect 3 PASS immediately**
 
 ```bash
 flutter test test/widget/router_test.dart
 ```
-Expected: compile error `Undefined name 'PartnerDetailScreen' / 'AddPartnerScreen'`.
 
-**Step 3: Create stubs so the test compiles + still fails on the route assertions**
+Sentinel widgets are self-contained (no Hive / no providers needed beyond an empty `ProviderScope`), so this is the rare TDD case where the test passes on first run because it's a *contract* test against the GoRouter table shape. The "fail first" comes from Step 3 below: pointing the LIVE router at not-yet-existing screens.
+
+**Step 3: Create live screen stubs so `lib/app/routes.dart` can import them**
+
+These are NOT test fixtures — they exist so the live `routes.dart` (Step 4) compiles. Tasks 7-9 replace these stubs with the real implementations.
 
 ```dart
-// lib/features/partner/presentation/screens/partner_detail_screen.dart  (STUB ONLY for Task 6)
+// lib/features/partner/presentation/screens/partner_detail_screen.dart  (STUB — Task 9 replaces)
 import 'package:flutter/material.dart';
 class PartnerDetailScreen extends StatelessWidget {
   final String partnerId;
@@ -149,7 +186,7 @@ class PartnerDetailScreen extends StatelessWidget {
 ```
 
 ```dart
-// lib/features/partner/presentation/screens/add_partner_screen.dart  (STUB ONLY for Task 6)
+// lib/features/partner/presentation/screens/add_partner_screen.dart  (STUB — Task 8 replaces)
 import 'package:flutter/material.dart';
 class AddPartnerScreen extends StatelessWidget {
   const AddPartnerScreen({super.key});
@@ -158,8 +195,6 @@ class AddPartnerScreen extends StatelessWidget {
       const Scaffold(body: Center(child: Text('add partner')));
 }
 ```
-
-Re-run test — expect 3 PASS on the harness router (stubs are enough to satisfy the harness).
 
 **Step 4: Wire the live router (`lib/app/routes.dart`)**
 
@@ -225,7 +260,9 @@ git push -u origin feature/partner-entity-A2-ui
 - Modify: `lib/app/main_shell.dart:163-172` (FAB onPressed → `context.push('/partner/new')` instead of bottom sheet)
 - Test: `test/widget/features/partner/partner_list_screen_test.dart`
 
-**Step 1: Write failing widget tests**
+**Step 1: Write failing widget tests (hermetic — pass aggregate down, no per-partner overrides)**
+
+`PartnerListCard` accepts an already-computed `PartnerAggregateView` instead of watching `partnerAggregateProvider(id)` itself. This (a) keeps the card a pure render and (b) means tests only need to override `partnerListProvider` plus a single mapping from partner id → aggregate, not one Riverpod override per partner row (Codex P1.3b).
 
 ```dart
 // test/widget/features/partner/partner_list_screen_test.dart
@@ -233,9 +270,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:vibe_sync/features/partner/domain/entities/partner.dart';
-import 'package:vibe_sync/features/partner/presentation/providers/partner_providers.dart';
-import 'package:vibe_sync/features/partner/presentation/screens/partner_list_screen.dart';
+import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
+import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
 
 Partner _p(String id, String name) => Partner(
   id: id,
@@ -245,9 +283,18 @@ Partner _p(String id, String name) => Partner(
   ownerUserId: 'u1',
 );
 
+PartnerAggregateView _agg({int rounds = 0, int? heat}) => PartnerAggregateView(
+  unionInterests: const [],
+  unionTraits: const [],
+  unionNotes: null,
+  latestHeat: heat,
+  totalRounds: rounds,
+  totalMessages: 0,
+  lastInteraction: null,
+);
+
 void main() {
-  testWidgets('empty state: shows "還沒有對象，加一個開始" + 入口 hint',
-      (t) async {
+  testWidgets('empty state: shows "還沒有對象，加一個開始"', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerListProvider.overrideWith((_) => const <Partner>[]),
@@ -258,25 +305,30 @@ void main() {
     expect(find.textContaining('還沒有對象'), findsOneWidget);
   });
 
-  testWidgets('renders one PartnerListCard per partner', (t) async {
+  testWidgets('renders one PartnerListCard per partner with aggregate', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
-        partnerListProvider.overrideWith((_) => [_p('a', 'Alice'), _p('b', 'Bob')]),
+        partnerListProvider
+            .overrideWith((_) => [_p('a', 'Alice'), _p('b', 'Bob')]),
+        partnerAggregateProvider('a').overrideWith((_) => _agg(rounds: 3, heat: 70)),
+        partnerAggregateProvider('b').overrideWith((_) => _agg(rounds: 1)),
       ],
       child: const MaterialApp(home: PartnerListScreen()),
     ));
     await t.pumpAndSettle();
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('Bob'), findsOneWidget);
+    expect(find.textContaining('3 段對話'), findsOneWidget);
+    expect(find.textContaining('1 段對話'), findsOneWidget);
   });
 
-  testWidgets('list preserves the order returned by partnerListProvider',
-      (t) async {
-    // partnerListProvider is the source of truth for sort order (Phase 1).
-    // PartnerListScreen MUST NOT re-sort.
+  testWidgets('list preserves order from partnerListProvider', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
-        partnerListProvider.overrideWith((_) => [_p('z', 'Zoe'), _p('a', 'Alice')]),
+        partnerListProvider
+            .overrideWith((_) => [_p('z', 'Zoe'), _p('a', 'Alice')]),
+        partnerAggregateProvider('z').overrideWith((_) => _agg()),
+        partnerAggregateProvider('a').overrideWith((_) => _agg()),
       ],
       child: const MaterialApp(home: PartnerListScreen()),
     ));
@@ -288,7 +340,9 @@ void main() {
 }
 ```
 
-> **Why no test for tap → `/partner/:id`** here: that requires a router-aware harness. We cover the navigation behavior in Task 9's detail-screen test (entry path) and the router test (Task 6). Keep this widget test focused on rendering contract.
+> **Why aggregate is passed down, not watched in-card:** `partnerAggregateProvider` is `Provider.family<…, String>` — overriding for 50 partners would mean 50 override entries in every list test. Lifting the watch to `PartnerListScreen` (one override per id) keeps the card a pure render and aligns with Codex P1.3b. The narrow-invalidation contract still holds because `PartnerListScreen` itself watches `partnerAggregateProvider(p.id)` per row, which only re-evaluates that row when its partner's conversations change.
+>
+> **Why no test for tap → `/partner/:id`** here: that requires a router-aware harness. The router test (Task 6) and the detail-screen entry path (Task 9) already cover navigation.
 
 **Step 2: Run, expect FAIL** — `PartnerListScreen` undefined.
 
@@ -330,8 +384,13 @@ class PartnerListScreen extends ConsumerWidget {
       itemCount: partners.length,
       itemBuilder: (context, i) {
         final p = partners[i];
+        // Watch aggregate AT THE LIST LEVEL so each row re-evaluates only when
+        // its own partner's conversations change (narrow-invalidation
+        // contract). Card receives data, doesn't watch.
+        final agg = ref.watch(partnerAggregateProvider(p.id));
         return PartnerListCard(
           partner: p,
+          aggregate: agg,
           onTap: () => context.push('/partner/${p.id}'),
         );
       },
@@ -343,27 +402,34 @@ class PartnerListScreen extends ConsumerWidget {
 ```dart
 // lib/features/partner/presentation/widgets/partner_list_card.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/partner.dart';
-import '../providers/partner_providers.dart';
+import '../../domain/extensions/partner_aggregates.dart';
 
-class PartnerListCard extends ConsumerWidget {
+/// Pure render — receives aggregate, does NOT subscribe to providers.
+/// This keeps tests hermetic (no per-row provider overrides needed) and
+/// makes the card trivially reusable in non-list contexts.
+class PartnerListCard extends StatelessWidget {
   final Partner partner;
+  final PartnerAggregateView aggregate;
   final VoidCallback onTap;
-  const PartnerListCard({super.key, required this.partner, required this.onTap});
+  const PartnerListCard({
+    super.key,
+    required this.partner,
+    required this.aggregate,
+    required this.onTap,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final agg = ref.watch(partnerAggregateProvider(partner.id));
+  Widget build(BuildContext context) {
     return ListTile(
       onTap: onTap,
       title: Text(partner.name, style: AppTypography.titleSmall),
       subtitle: Text(
-        '${agg.totalRounds} 段對話'
-        '${agg.latestHeat != null ? ' · 熱度 ${agg.latestHeat}' : ''}',
+        '${aggregate.totalRounds} 段對話'
+        '${aggregate.latestHeat != null ? ' · 熱度 ${aggregate.latestHeat}' : ''}',
         style: AppTypography.bodySmall.copyWith(
           color: AppColors.onBackgroundSecondary,
         ),
@@ -452,72 +518,119 @@ If pre-flight `grep "uuid:" pubspec.yaml` was empty:
 flutter pub add uuid
 ```
 
-**Step 1: Write failing tests**
+**Step 1: Write failing tests (hermetic — opened temp Hive box, real auth override pattern)**
+
+`PartnerRepository`'s constructor accepts `Box<Partner>? box` (`lib/features/partner/data/repositories/partner_repository.dart:21`). Tests open a temp box and pass it through, so we never touch `StorageService.partnersBox` (Codex P1.3c). Auth override uses the live pattern from `test/unit/services/conversation_write_controller_test.dart:79` (Codex P1.3d).
 
 ```dart
 // test/widget/features/partner/add_partner_screen_test.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_ce/hive.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
-import 'package:vibe_sync/features/partner/data/repositories/partner_repository.dart';
-import 'package:vibe_sync/features/partner/domain/entities/partner.dart';
-import 'package:vibe_sync/features/partner/presentation/providers/partner_providers.dart';
-import 'package:vibe_sync/features/partner/presentation/screens/add_partner_screen.dart';
-
-class _FakeRepo extends PartnerRepository {
-  final inserted = <Partner>[];
-  @override
-  Future<bool> upsertIfAbsent(Partner partner) async {
-    inserted.add(partner);
-    return true;
-  }
-}
+import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
+import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/partner/presentation/screens/add_partner_screen.dart';
 
 void main() {
+  late Directory tmp;
+  late Box<Partner> partnerBox;
+  late PartnerRepository repo;
+
+  setUp(() async {
+    tmp = await Directory.systemTemp.createTemp('add_partner_test');
+    Hive.init(tmp.path);
+    if (!Hive.isAdapterRegistered(PartnerAdapter().typeId)) {
+      Hive.registerAdapter(PartnerAdapter());
+    }
+    partnerBox = await Hive.openBox<Partner>('partners_${tmp.path.hashCode}');
+    repo = PartnerRepository(box: partnerBox);
+  });
+
+  tearDown(() async {
+    await partnerBox.close();
+    await tmp.delete(recursive: true);
+  });
+
+  Widget _harness({Stream<String?>? authStream}) => ProviderScope(
+        overrides: [
+          partnerRepositoryProvider.overrideWithValue(repo),
+          authConversationScopeProvider.overrideWith(
+              (ref) => authStream ?? Stream.value('u-test')),
+        ],
+        child: const MaterialApp(home: AddPartnerScreen()),
+      );
+
   testWidgets('submit disabled while name empty', (t) async {
-    await t.pumpWidget(const ProviderScope(
-      child: MaterialApp(home: AddPartnerScreen()),
-    ));
+    await t.pumpWidget(_harness());
     await t.pumpAndSettle();
-    final btn = find.widgetWithText(FilledButton, '建立');
-    expect(tester.widget<FilledButton>(btn).onPressed, isNull);
-  }, skip: 'placeholder — replace `tester` ref before run');
+    final btn = t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
+    expect(btn.onPressed, isNull);
+  });
 
   testWidgets('submit enabled once name has non-whitespace', (t) async {
-    await t.pumpWidget(const ProviderScope(
-      child: MaterialApp(home: AddPartnerScreen()),
-    ));
-    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.pumpWidget(_harness());
     await t.pumpAndSettle();
+    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.pump();
     final btn = t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
     expect(btn.onPressed, isNotNull);
   });
 
-  testWidgets('successful submit writes Partner via repo + has ownerUserId',
+  testWidgets('successful submit writes Partner with ownerUserId from auth',
       (t) async {
-    final repo = _FakeRepo();
-    await t.pumpWidget(ProviderScope(
-      overrides: [
-        partnerRepositoryProvider.overrideWithValue(repo),
-        // authConversationScopeProvider is owned by conversation/data, override
-        // it to a known user id for this widget test.
-        // (executor: import the provider from its real path)
-      ],
-      child: const MaterialApp(home: AddPartnerScreen()),
-    ));
+    await t.pumpWidget(_harness());
+    await t.pumpAndSettle();
     await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.pump();
     await t.tap(find.widgetWithText(FilledButton, '建立'));
     await t.pumpAndSettle();
-    expect(repo.inserted.length, 1);
-    expect(repo.inserted.single.name, 'Alice');
-    expect(repo.inserted.single.ownerUserId, isNotNull,
-        reason: 'must inherit from authConversationScopeProvider');
+    expect(partnerBox.values.length, 1);
+    final p = partnerBox.values.single;
+    expect(p.name, 'Alice');
+    expect(p.ownerUserId, 'u-test');
+  });
+
+  testWidgets('submit BLOCKED when authConversationScopeProvider is null',
+      (t) async {
+    // Auth still resolving / signed out — Partner without ownerUserId would
+    // never appear in partnerListProvider (auth-gated). Codex P2/P1.4.
+    await t.pumpWidget(_harness(authStream: Stream.value(null)));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.pump();
+    final btn = t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
+    expect(btn.onPressed, isNull,
+        reason: 'must NOT create ownerless Partner that would be invisible');
+    expect(partnerBox.values, isEmpty);
+  });
+
+  testWidgets('submit BLOCKED while auth still loading (no value emitted yet)',
+      (t) async {
+    // StreamController never emits → AsyncLoading state. Submit must wait.
+    final controller = StreamController<String?>();
+    addTearDown(controller.close);
+    await t.pumpWidget(_harness(authStream: controller.stream));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.pump();
+    final btn = t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
+    expect(btn.onPressed, isNull, reason: 'must wait for auth resolution');
   });
 }
 ```
 
-> **Executor TODO before Step 2:** the first test references `tester` instead of `t` — fix typo. The third test requires overriding `authConversationScopeProvider` — find its exact import path in `lib/features/conversation/data/providers/conversation_providers.dart` and override with `AsyncData('u-test')` (or its real type).
+> **Hermetic checklist this satisfies:**
+> - Codex P1.3c: real `PartnerRepository(box: openedTestBox)` — no `StorageService` dependency.
+> - Codex P1.3d: `authConversationScopeProvider.overrideWith((ref) => Stream.value(...))` matches the real `StreamProvider<String?>` API.
+> - Codex P2/P1.4: explicit "auth null → submit blocked" + "auth loading → submit blocked" tests.
+> - `_FakeRepo` deleted entirely — calling the real constructor with `box: partnerBox` is enough.
 
 **Step 2: Run, expect FAIL** — current `AddPartnerScreen` is the Task 6 stub with no form.
 
@@ -550,11 +663,10 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit(String ownerId) async {
     final name = _name.text.trim();
     if (name.isEmpty || _busy) return;
     setState(() => _busy = true);
-    final ownerId = ref.read(authConversationScopeProvider).valueOrNull;
     final now = DateTime.now();
     final partner = Partner(
       id: const Uuid().v4(),
@@ -567,12 +679,23 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     await repo.upsertIfAbsent(partner);
     ref.invalidate(partnerListProvider);
     if (!mounted) return;
-    context.go('/partner/${partner.id}');
+    // context.replace (NOT .go): pop /partner/new off the stack and put
+    // /partner/:id in its place, so back from detail returns to the Home
+    // (Partner list) underneath. context.go would rebuild the entire stack
+    // and lose the Home root (Codex P1.2).
+    context.replace('/partner/${partner.id}');
   }
 
   @override
   Widget build(BuildContext context) {
-    final canSubmit = _name.text.trim().isNotEmpty && !_busy;
+    // Auth-scope gate (Codex P2/P1.4): if auth is loading or null, submit is
+    // disabled — never create an ownerless Partner that partnerListProvider
+    // would filter out.
+    final authAsync = ref.watch(authConversationScopeProvider);
+    final ownerId = authAsync.valueOrNull;
+    final authReady = !authAsync.isLoading && ownerId != null;
+    final canSubmit = authReady && _name.text.trim().isNotEmpty && !_busy;
+
     return Scaffold(
       appBar: AppBar(title: const Text('新增對象')),
       body: Padding(
@@ -591,9 +714,15 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
             ),
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: canSubmit ? _submit : null,
+              onPressed: canSubmit ? () => _submit(ownerId!) : null,
               child: const Text('建立'),
             ),
+            if (!authReady)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('請先登入再建立對象',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ),
           ],
         ),
       ),
@@ -602,33 +731,141 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
 }
 ```
 
+> **Why `context.replace` not `context.go`** (Codex P1.2): `context.go('/x')` rebuilds the route stack from scratch, losing the Home root underneath `/partner/new`. `context.replace('/x')` swaps the top stack entry — Home stays available so back from detail returns to the Partner list. Validated by the Home → /partner/new → submit → detail → back test in Step 4 below.
+>
+> **Why null auth disables submit** (Codex P2/P1.4): `partnerListProvider` returns `[]` when auth scope is null, AND filters by `ownerUserId == userId`. A Partner created with `ownerUserId == null` would never render in the list — silent data loss. The form blocks submit instead.
+>
 > **Avatar deferred**: A2 plan Task 8 says "avatar 可選 — submit 時不選也能建". Phase 2 ships **without** an avatar picker in this PR — `Partner.avatarPath` stays nullable and the field is not exposed in the form. Added in Phase 3/4 if Bruce flags it. Document this in the commit `Reviewer-Hint`.
+
+**Step 3b: Add Home → new → detail → back navigation test** (Codex P1.2)
+
+Add a separate test file to lock the back-stack contract after `context.replace`:
+
+```dart
+// test/widget/features/partner/add_partner_navigation_test.dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hive_ce/hive.dart';
+
+import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
+import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/partner/presentation/screens/add_partner_screen.dart';
+import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+
+void main() {
+  late Directory tmp;
+  late Box<Partner> partnerBox;
+  late PartnerRepository repo;
+
+  setUp(() async {
+    tmp = await Directory.systemTemp.createTemp('add_partner_nav');
+    Hive.init(tmp.path);
+    if (!Hive.isAdapterRegistered(PartnerAdapter().typeId)) {
+      Hive.registerAdapter(PartnerAdapter());
+    }
+    partnerBox = await Hive.openBox<Partner>('partners_${tmp.path.hashCode}');
+    repo = PartnerRepository(box: partnerBox);
+  });
+  tearDown(() async {
+    await partnerBox.close();
+    await tmp.delete(recursive: true);
+  });
+
+  // Sentinel detail to keep this test focused on routing — Task 9 covers the
+  // real PartnerDetailScreen.
+  testWidgets('Home → /partner/new → submit → /partner/:id → back → Home',
+      (t) async {
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (c, s) => const PartnerListScreen()),
+        GoRoute(path: '/partner/new', builder: (c, s) => const AddPartnerScreen()),
+        GoRoute(
+          path: '/partner/:id',
+          builder: (c, s) =>
+              Scaffold(body: Text('detail:${s.pathParameters['id']!}')),
+        ),
+      ],
+    );
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerRepositoryProvider.overrideWithValue(repo),
+        authConversationScopeProvider
+            .overrideWith((ref) => Stream.value('u-test')),
+        partnerListProvider.overrideWith((_) => const <Partner>[]),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await t.pumpAndSettle();
+
+    // Home — empty state visible
+    expect(find.textContaining('還沒有對象'), findsOneWidget);
+
+    // Push to /partner/new
+    router.push('/partner/new');
+    await t.pumpAndSettle();
+    expect(find.text('新增對象'), findsOneWidget);
+
+    // Submit creates partner + replaces /partner/new with /partner/:id
+    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.pump();
+    await t.tap(find.widgetWithText(FilledButton, '建立'));
+    await t.pumpAndSettle();
+
+    // We're on detail
+    expect(find.textContaining('detail:'), findsOneWidget);
+
+    // Critical: pop returns to Home, NOT back to /partner/new (which would
+    // happen if we used context.go and then push instead of replace).
+    expect(router.canPop(), isTrue, reason: 'Home stack root must persist');
+    router.pop();
+    await t.pumpAndSettle();
+    expect(find.text('Alice'), findsOneWidget,
+        reason: 'Back from detail must land on Home with new partner shown');
+    expect(find.text('新增對象'), findsNothing,
+        reason: '/partner/new must NOT be reachable via back');
+  });
+}
+```
+
+> **Direct-entry no-history fallback** (Codex P1.2 third bullet): if a user lands on `/partner/:id` cold (deep link / app reopened on detail page) and presses back, `Navigator.canPop` is false. Phase 2 deliberately defers this fallback because Phase 3 wires the Partner-list home as the only normal entry point — direct deep links to `/partner/:id` aren't shipped yet. Documented here as known limitation; Phase 4 polish can add an explicit "回首頁" affordance if Bruce/TF surfaces a real case.
 
 **Step 4: Run tests**
 
 ```bash
 flutter test test/widget/features/partner/add_partner_screen_test.dart
+flutter test test/widget/features/partner/add_partner_navigation_test.dart
 flutter analyze lib/features/partner/presentation/screens/add_partner_screen.dart
 ```
-Expected: 3 new tests PASS; analyze clean.
+Expected: 5 new tests PASS (4 from Step 1 + 1 from Step 3b); analyze clean.
 
 **Step 5: Commit**
 
 ```bash
 git add lib/features/partner/presentation/screens/add_partner_screen.dart \
         test/widget/features/partner/add_partner_screen_test.dart \
+        test/widget/features/partner/add_partner_navigation_test.dart \
         pubspec.yaml pubspec.lock          # only if Step 0 ran
 git commit -m "$(cat <<'EOF'
-[feat] AddPartnerScreen — name + 即時 enable + UUID + ownerUserId 寫 Hive
+[feat] AddPartnerScreen — name + auth-ready gate + UUID + context.replace
 
 - 用 PartnerRepository.upsertIfAbsent (A2 Phase 1 surface)，避免引入新 write API
-- ownerUserId 從 authConversationScopeProvider 抓，匿名/未登入 → null（與 partnerListProvider auth-gate 一致）
+- ownerUserId 從 authConversationScopeProvider 抓，null/loading 時 submit 禁用
+  （絕不建 ownerless Partner — partnerListProvider 會把它過濾掉）
 - 提交後 ref.invalidate(partnerListProvider) → MainShell 立即看到
-- 用 context.go 而非 push：/partner/new 在 stack 上不該被 back 回到
+- 用 context.replace 而非 context.go：/partner/new 換成 /partner/:id 同時保留
+  Home root，從 detail 按 back 會回到 Partner list（不是回到 /partner/new）
+- 加 add_partner_navigation_test.dart 鎖 Home → new → detail → back 行為
 - avatar picker 故意延後到 Phase 3（A2 plan Task 8 註明可選）
 
-Reviewer-Hint: avatar 延後是刻意決策，pre-flight 確認 uuid dep 已存在
-Next-Step: Task 9 PartnerDetailScreen 用 partnerAggregateProvider 把 traits / radar 攤開
+Reviewer-Hint: r2 修正項 P1.2/P1.3c/P1.3d/P1.4，avatar 延後不變
+Next-Step: Task 9 PartnerDetailScreen 用 AnalysisResult.fromJson 跑 radar 小卡
 EOF
 )"
 git push
@@ -654,13 +891,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:vibe_sync/features/partner/domain/entities/partner.dart';
-import 'package:vibe_sync/features/partner/domain/extensions/partner_aggregates.dart';
-import 'package:vibe_sync/features/partner/presentation/providers/partner_providers.dart';
-import 'package:vibe_sync/features/partner/presentation/screens/partner_detail_screen.dart';
-import 'package:vibe_sync/features/partner/presentation/widgets/partner_traits_card.dart';
-import 'package:vibe_sync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
-import 'package:vibe_sync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
+import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 
 Partner _p() => Partner(
   id: 'p1', name: 'Alice',
@@ -720,6 +957,87 @@ void main() {
 
 > **Tests on radar parsing** (`lastAnalysisSnapshotJson` → 5-dim) belong with `PartnerRadarSummaryCard` unit tests if logic is non-trivial. Pure widget rendering test above just asserts the card is present.
 
+**Step 1b: Add PartnerRadarSummaryCard parser test** (Codex P2.2)
+
+```dart
+// test/widget/features/partner/partner_radar_summary_card_test.dart
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
+
+Conversation _conv({String? snapshot}) => Conversation(
+  id: 'c1',
+  partnerId: 'p1',
+  name: '測試',
+  messages: const [],
+  createdAt: DateTime(2026, 4, 20),
+  updatedAt: DateTime(2026, 4, 20),
+  lastAnalysisSnapshotJson: snapshot,
+);
+
+void main() {
+  testWidgets('null conversation → fallback text', (t) async {
+    await t.pumpWidget(const MaterialApp(
+      home: Scaffold(body: PartnerRadarSummaryCard(latestConversation: null)),
+    ));
+    expect(find.text('最新對話尚未分析'), findsOneWidget);
+  });
+
+  testWidgets('snapshot with dimensions renders RadarChart', (t) async {
+    final snapshot = jsonEncode({
+      'enthusiasm': {'score': 70, 'level': 'warm'},
+      'dimensions': {
+        'heat': 70,
+        'engagement': 65,
+        'topicDepth': 55,
+        'replyWillingness': 80,
+        'emotionalConnection': 60,
+      },
+      // Other AnalysisResult.fromJson required-ish fields can be omitted —
+      // factory tolerates nullables and defaults dimensions per-key.
+    });
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerRadarSummaryCard(latestConversation: _conv(snapshot: snapshot)),
+      ),
+    ));
+    await t.pumpAndSettle();
+    expect(find.text('最新對話尚未分析'), findsNothing);
+    // RadarChart from fl_chart — verify the widget mounted (chart pixel
+    // assertions are brittle; presence check is the contract).
+    expect(find.byType(PartnerRadarSummaryCard), findsOneWidget);
+  });
+
+  testWidgets('snapshot without dimensions key → factory still returns null map → fallback',
+      (t) async {
+    final snapshot = jsonEncode({
+      'enthusiasm': {'score': 50, 'level': 'cool'},
+      // no 'dimensions' key — _parseDimensions returns null
+    });
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerRadarSummaryCard(latestConversation: _conv(snapshot: snapshot)),
+      ),
+    ));
+    expect(find.text('最新對話尚未分析'), findsOneWidget);
+  });
+
+  testWidgets('malformed snapshot → fallback (no throw)', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerRadarSummaryCard(
+          latestConversation: _conv(snapshot: 'not-json{{{'),
+        ),
+      ),
+    ));
+    expect(find.text('最新對話尚未分析'), findsOneWidget);
+  });
+}
+```
+
 **Step 2: Run, expect FAIL** — widgets / proper detail screen don't exist.
 
 **Step 3: Extract `_NewConversationSheet` for reuse**
@@ -771,14 +1089,24 @@ class PartnerDetailScreen extends ConsumerWidget {
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
+            // Phase 2 ships items DISABLED, not no-op (Codex Hot-spot judgment):
+            // visible-but-no-op confuses users if Phase 2 ships independently.
+            // Items become enabled in Phase 4 Tasks 12-13 with real handlers.
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'merge', child: Text('合併到其他對象')),
-              PopupMenuItem(value: 'edit', child: Text('編輯對象')),
-              PopupMenuItem(value: 'delete', child: Text('刪除對象')),
+              PopupMenuItem(
+                value: 'merge', enabled: false,
+                child: Text('合併到其他對象（即將推出）'),
+              ),
+              PopupMenuItem(
+                value: 'edit', enabled: false,
+                child: Text('編輯對象（即將推出）'),
+              ),
+              PopupMenuItem(
+                value: 'delete', enabled: false,
+                child: Text('刪除對象（即將推出）'),
+              ),
             ],
-            onSelected: (_) {
-              // Phase 4 Task 12-13 wires actual handlers. Phase 2 = visible-only.
-            },
+            onSelected: (_) {/* unreachable — all items disabled */},
           ),
         ],
       ),
@@ -822,7 +1150,63 @@ class PartnerDetailScreen extends ConsumerWidget {
 
 `PartnerTraitsCard` — pure render of `PartnerAggregateView` fields (`unionInterests`, `unionTraits`, `unionNotes`, `latestHeat`, `totalRounds`, `totalMessages`, `lastInteraction`). Simple chip rows + count footer.
 
-`PartnerRadarSummaryCard` — accepts a nullable `Conversation`. If `null` or `latestConversation.lastAnalysisSnapshotJson == null` → "最新對話尚未分析". Otherwise parse the JSON and render a small (~120-160 dp) `fl_chart` `RadarChart` with the existing 5-dim shape used in `analysis_screen.dart`. **Look up the existing parser** at `lib/features/analysis/...` rather than reinventing — extract to a shared helper if it isn't already public.
+`PartnerRadarSummaryCard` — accepts a nullable `Conversation`. If `null` or `latestConversation.lastAnalysisSnapshotJson == null` → "最新對話尚未分析". Otherwise:
+
+```dart
+// lib/features/partner/presentation/widgets/partner_radar_summary_card.dart
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+
+import '../../../analysis/domain/entities/analysis_models.dart' show AnalysisResult;
+import '../../../conversation/domain/entities/conversation.dart';
+
+class PartnerRadarSummaryCard extends StatelessWidget {
+  final Conversation? latestConversation;
+  const PartnerRadarSummaryCard({super.key, required this.latestConversation});
+
+  @override
+  Widget build(BuildContext context) {
+    final dims = _parseDimensions(latestConversation);
+    if (dims == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('最新對話尚未分析'),
+        ),
+      );
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: SizedBox(
+          height: 160,
+          child: RadarChart(/* shape mirrors analysis_screen.dart 5-dim */),
+        ),
+      ),
+    );
+  }
+
+  /// REUSE — call AnalysisResult.fromJson and consume dimensionScores.
+  /// AnalysisResult.fromJson is at:
+  ///   lib/features/analysis/domain/entities/analysis_models.dart:556
+  /// dimensionScores is Map<String, int>? with exactly these keys (default 50):
+  ///   heat / engagement / topicDepth / replyWillingness / emotionalConnection
+  /// (parsed by the package-private _parseDimensions at analysis_models.dart:632)
+  static Map<String, int>? _parseDimensions(Conversation? c) {
+    final raw = c?.lastAnalysisSnapshotJson;
+    if (raw == null) return null;
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      return AnalysisResult.fromJson(json).dimensionScores;
+    } catch (_) {
+      return null;  // malformed snapshot → render "尚未分析" fallback
+    }
+  }
+}
+```
+
+> **Why call `AnalysisResult.fromJson` instead of extracting a helper** (Codex P2.2): `_parseDimensions` is package-private inside `analysis_models.dart`, but the public surface — `AnalysisResult.fromJson` + the public `dimensionScores` field — already returns exactly what the radar card needs. Extracting a separate helper would (a) be a second commit and (b) duplicate the default-50 fallback logic. Calling the existing factory once per card render is cheap (no I/O, just `jsonDecode` + struct build) and keeps a single source of truth.
 
 `PartnerConversationTile` — name + last message timestamp + heat badge if `lastAnalysisSnapshotJson` parseable.
 
@@ -845,19 +1229,20 @@ git add lib/features/partner/presentation/screens/partner_detail_screen.dart \
         lib/features/partner/presentation/widgets/partner_conversation_tile.dart \
         lib/features/conversation/presentation/widgets/new_conversation_sheet.dart \
         lib/app/main_shell.dart \
-        test/widget/features/partner/partner_detail_screen_test.dart
+        test/widget/features/partner/partner_detail_screen_test.dart \
+        test/widget/features/partner/partner_radar_summary_card_test.dart
 git commit -m "$(cat <<'EOF'
 [feat] PartnerDetailScreen — header / traits / radar 小卡 / 對話列 / + 新增對話
 
 - 三個 narrow providers: partnerByIdProvider / partnerAggregateProvider / conversationsByPartnerProvider
 - partner 不存在（被合併/刪除）→ fallback 文案
 - PartnerRadarSummaryCard 重用 analysis_screen 既有 lastAnalysisSnapshotJson parser
-- ⋮ menu 三選項可見但未綁 handler（Phase 4 Task 12-13 才接）
+- ⋮ menu 三選項顯示但 disabled（即將推出 hint），Phase 4 Task 12-13 才開啟 handler
 - _NewConversationSheet 改 public NewConversationSheet 提到 conversation/widgets，PartnerDetail / MainShell 共用
 - 對話 cell tap → /conversation/:id（D3 plan-default A）
 - + 新增對話 FAB 仍用既有 sheet，partnerId 注入留給 Phase 3 Task 10
 
-Reviewer-Hint: ⋮ menu 故意 visible-only，避免本 phase blast radius
+Reviewer-Hint: ⋮ menu disabled 而非 no-op（Phase 2 若獨立 ship 不致誤點），radar 用 AnalysisResult.fromJson 公開 API
 Next-Step: Phase 3 接 D1 + D4，從新對話 partnerId 注入開始
 EOF
 )"
@@ -867,6 +1252,11 @@ git push
 ---
 
 ## Codex Review Hot Spots
+
+> **r2 scoped re-review:** focus only on whether the five r1 findings (P1
+> package name, P1 `context.replace` + back-stack test, P1 hermetic widget
+> tests, P1 auth-null guard, P2 `AnalysisResult.fromJson` reuse) are now
+> resolved. Hot spots below remain in scope for first-time reviewers.
 
 Tell Codex to focus on:
 

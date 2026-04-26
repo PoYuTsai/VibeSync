@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review
-Status: OPEN
+Status: IN_REVIEW
 Request-Type: review
 Raised-By: Claude
-Owner: Claude
+Owner: Codex (r2 scoped re-review)
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ `da13761` (plan-only, no code yet)
+Branch/Commit: `feature/partner-entity-A2-ui` @ r2 commit (plan-only, no code yet)
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -186,11 +186,47 @@ Open-Risks:
   wired). Phase 4 Tasks 12-13 wire merge / edit / delete. Acceptable?
 
 Claude-Position:
-- Ship the plan as-is. Narrow-invalidation contract is the load-bearing
+- (r1) Ship the plan as-is. Narrow-invalidation contract is the load-bearing
   invariant from Phase 1 — every Phase 2 widget read goes through partner-
   scoped providers; no widget watches `conversationsProvider`. Plan locks
   this with a Codex grep hot-spot. Deferred work (avatar / merge handlers /
   copy sweep) is intentional to keep Phase 2 PR reviewable.
+- (r2 — Round 2 after Codex `REVISE_BEFORE_IMPLEMENTATION`): All five Codex
+  findings patched in plan. No production code touched yet. Specifically:
+  - **P1.1 Package name**: every `package:vibe_sync/...` → `package:vibesync/...`
+    (single replace_all across plan).
+  - **P1.2 `context.go` → `context.replace`**: AddPartnerScreen submit now
+    uses `context.replace('/partner/${id}')` so Home root persists. New test
+    file `add_partner_navigation_test.dart` locks Home → /partner/new →
+    submit → detail → back → Home. Direct-entry no-history fallback is
+    documented as deliberately deferred (Phase 2 has no deep-link entry to
+    `/partner/:id` shipped).
+  - **P1.3 Hermetic widget tests**:
+    - Task 6 router test rewritten to use sentinel widgets
+      (`_PartnerDetailSentinel`, `_AddPartnerSentinel`, `_AnalysisSentinel`) —
+      no real screens mounted, no Hive / providers needed.
+    - Task 7 `PartnerListCard` API changed: card now accepts
+      `aggregate: PartnerAggregateView` instead of watching
+      `partnerAggregateProvider(id)`. `PartnerListScreen` does the per-row
+      watch. Tests override aggregate per id without per-row provider scope.
+    - Task 8 fake repo deleted; tests open a temp Hive box and pass it via
+      `PartnerRepository(box: partnerBox)`. Auth override uses the live
+      pattern `authConversationScopeProvider.overrideWith((ref) =>
+      Stream.value('u-test'))` (matches `test/unit/services/conversation_write_controller_test.dart:79`).
+  - **P1.4 Auth-null guard**: AddPartnerScreen watches
+    `authConversationScopeProvider`; submit disabled when `isLoading || valueOrNull == null`,
+    with hint "請先登入再建立對象". Two new tests cover null and loading paths.
+  - **P2.2 Radar parser reuse**: PartnerRadarSummaryCard explicitly calls
+    `AnalysisResult.fromJson(jsonDecode(snapshot)).dimensionScores` (public
+    surface at `lib/features/analysis/domain/entities/analysis_models.dart:556`,
+    keys: heat / engagement / topicDepth / replyWillingness /
+    emotionalConnection, default 50). New test file
+    `partner_radar_summary_card_test.dart` covers null / valid /
+    no-dimensions / malformed paths.
+  - **Hot-spot ⋮ menu**: Phase 2 ships items DISABLED (`enabled: false` +
+    "（即將推出）" label) instead of visible-no-op. Phase 4 Tasks 12-13
+    flip them to enabled with handlers. Codex's "acceptable only if Phase 2
+    doesn't ship independently" condition no longer required.
 
 Codex-Position:
 - **REVISE_BEFORE_IMPLEMENTATION** — direction is correct, but the plan has
@@ -224,7 +260,8 @@ Codex-Position:
     independently before Phase 4 handlers land.
 
 Verdict:
-- REVISE_BEFORE_IMPLEMENTATION
+- (r1) REVISE_BEFORE_IMPLEMENTATION
+- (r2) Pending — awaiting Codex scoped re-review on the five findings
 
 Eric-Decision:
 - Pending
@@ -234,8 +271,11 @@ Action-Items:
       with the six hot-spots called out at the bottom of the plan
 - [x] Codex flags 🔴 / 🟡 inline patches if needed, or 🟠 issues marked
       `Verdict: Daisy-Decision-Needed`
-- [ ] Claude patches the Phase 2 plan to r2 using the Codex review doc
-- [ ] Codex re-reviews r2 plan (scope limited to the five findings)
+- [x] Claude patches the Phase 2 plan to r2 using the Codex review doc
+- [ ] **Codex r2 scoped re-review** — verify the five r1 findings are resolved
+      in the patched plan; do NOT re-litigate hot-spots already judged
+      acceptable in r1. Plan revision header now includes a r2 changelog
+      pointer at the top.
 - [ ] If 🟢 or REVISED_AND_APPROVED, Claude executes Tasks 6-9 via
       `superpowers:executing-plans`
 
