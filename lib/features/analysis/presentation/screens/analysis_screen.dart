@@ -21,6 +21,7 @@ import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
+import '../../data/providers/analysis_providers.dart';
 import '../../../conversation/data/services/memory_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/conversation_summary.dart';
@@ -1287,6 +1288,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return formattedSummary.isEmpty ? null : formattedSummary;
   }
 
+  /// Build the per-call partner-context block for `analyze-chat`. Returns
+  /// null when the conversation has no partner attached, the partner row is
+  /// missing, or the summary builder yields empty (owner-mismatch defense).
+  /// Rebuilt every call — partner aggregate must reflect the latest snapshot.
+  String? _resolvePartnerSummary(Conversation conversation) {
+    return ref.read(partnerContextResolverProvider).resolve(conversation);
+  }
+
   Future<({List<Message> requestMessages, String? conversationSummary})>
       _buildSummaryAwareAnalysisContext({
     required Conversation conversation,
@@ -2050,6 +2059,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
+        partnerSummary: _resolvePartnerSummary(conversation),
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
           conversation.name,
@@ -2157,6 +2167,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
+        partnerSummary: _resolvePartnerSummary(conversation),
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
           conversation.name,
@@ -2213,6 +2224,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         analysisContext.requestMessages,
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
+        partnerSummary: _resolvePartnerSummary(conversation),
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
           conversation.name,

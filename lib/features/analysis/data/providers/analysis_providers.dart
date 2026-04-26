@@ -1,14 +1,53 @@
 // lib/features/analysis/data/providers/analysis_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
+import '../../../partner/domain/entities/partner.dart';
+import '../../../partner/domain/services/partner_summary_builder.dart';
+import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../services/analysis_service.dart';
+import '../services/partner_context_resolver.dart';
 
 /// Provider for AnalysisService
 final analysisServiceProvider = Provider<AnalysisService>((ref) {
   return AnalysisService();
 });
+
+/// Provider for the per-call partner-context resolver. Adapters keep
+/// `partner` and `analysis` features decoupled at the type level — the
+/// real repos do not implement the resolver-local view interfaces.
+final partnerContextResolverProvider =
+    Provider<PartnerContextResolver>((ref) {
+  final partnerRepo = ref.watch(partnerRepositoryProvider);
+  final conversationRepo = ref.watch(conversationRepositoryProvider);
+  return PartnerContextResolver(
+    partnerRepo: _PartnerRepoAdapter(partnerRepo.getById),
+    conversationRepo:
+        _ConversationListByPartnerAdapter(conversationRepo.listByPartner),
+    summaryBuilder: PartnerSummaryBuilder(),
+  );
+});
+
+class _PartnerRepoAdapter implements PartnerRepoView {
+  _PartnerRepoAdapter(this._getById);
+  final Partner? Function(String id) _getById;
+
+  @override
+  Partner? getById(String id) => _getById(id);
+}
+
+class _ConversationListByPartnerAdapter
+    implements ConversationListByPartnerView {
+  _ConversationListByPartnerAdapter(this._listByPartner);
+  final List<Conversation> Function(String partnerId) _listByPartner;
+
+  @override
+  List<Conversation> listByPartner(String partnerId) =>
+      _listByPartner(partnerId);
+}
 
 /// State for analysis operation
 sealed class AnalysisState {}

@@ -424,6 +424,7 @@ class AnalysisService {
     List<Uint8List>? images,
     SessionContext? sessionContext,
     String? conversationSummary,
+    String? partnerSummary,
     String? knownContactName,
     String? userDraft,
     String? analyzeMode,
@@ -469,6 +470,7 @@ class AnalysisService {
           images: images,
           sessionContext: sessionContext,
           conversationSummary: conversationSummary,
+          partnerSummary: partnerSummary,
           knownContactName: knownContactName,
           userDraft: userDraft,
           analyzeMode: analyzeMode,
@@ -547,6 +549,7 @@ class AnalysisService {
     List<Uint8List>? images,
     SessionContext? sessionContext,
     String? conversationSummary,
+    String? partnerSummary,
     String? knownContactName,
     String? userDraft,
     String? analyzeMode,
@@ -622,6 +625,8 @@ class AnalysisService {
         if (conversationSummary != null &&
             conversationSummary.trim().isNotEmpty)
           'conversationSummary': conversationSummary.trim(),
+        if (partnerSummary != null && partnerSummary.trim().isNotEmpty)
+          'partnerSummary': partnerSummary.trim(),
         if (knownContactName != null && knownContactName.trim().isNotEmpty)
           'knownContactName': knownContactName.trim(),
         if (hasUserDraft) 'userDraft': userDraft.trim(),
