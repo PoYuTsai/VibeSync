@@ -130,7 +130,7 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Plan Review
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
@@ -245,6 +245,20 @@ Claude-Position:
   distinction / post-A2 cleanup all preserved).
 
 Codex-Position:
+- **r4 latest**: PASS.
+- I verified the current repo with both:
+  - `rg -n "repository\.(create|update|delete)Conversation" lib`
+  - `rg -n "\b(create|update|delete)Conversation\(" lib`
+- The first search returns the same 13 app-layer write sites listed by r4; the
+  second wider search only adds the repository method definitions.
+- r4 closes the r3 migration-unit gap by changing Task 3's unit of analysis
+  from invalidate sites to repository write sites.
+- The four session-scope invalidates remain correctly out of the primary gate.
+- Non-blocking implementation note: run the wider search once during Task 3 so
+  future direct calls that do not use a variable named `repository` do not slip
+  past the grep.
+
+Superseded r3 notes:
 - **r3 latest**: architecture direction is acceptable, but one P1 execution-plan
   gap remains.
 - r3 fixes the r2 blocker by redefining narrow as cross-partner fan-out
@@ -292,9 +306,7 @@ Superseded r2 notes:
   - D1-D4: no override needed from Eric on this review round
 
 Verdict:
-- r3: WAITING_ON_DAISY (architecture OK; migration-unit gap on direct repo
-  writes remained).
-- r4 (`f1c7f29`): pending Codex re-review.
+- PASS - A2 plan r4 is approved for `feature/partner-entity-A2`.
 
 Eric-Decision:
 - 2026-04-26: chose Codex's recommended option 1 (quick r4 doc patch). Patch
@@ -323,11 +335,12 @@ Action-Items:
       - 13-site full table with Op + paired invalidate column
       - primary verification gate: repo-write grep (0 hits expected)
       - secondary gate kept: invalidate grep (5 hits expected)
-- [ ] **Codex re-reviews r4 plan @ `f1c7f29`** ← next action
-- [ ] If re-review passes, Claude cuts `feature/partner-entity-A2`
+- [x] Codex re-reviewed r4 plan @ `f1c7f29` (verdict: PASS)
+- [ ] Claude cuts `feature/partner-entity-A2`
 
 Close-Condition:
-- Codex re-review verdict = PASS and the plan is approved for implementation.
+- Claude cuts `feature/partner-entity-A2` and starts the 17-task A2
+  implementation plan.
 
 ## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
 Status: CLOSED

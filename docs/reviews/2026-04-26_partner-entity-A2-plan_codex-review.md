@@ -8,14 +8,12 @@
 
 ## Verdict
 
-**WAITING_ON_DAISY - r3 architecture is acceptable, but one direct-write
-execution gate still needs Eric's decision before `feature/partner-entity-A2`.**
+**PASS - A2 plan r4 is approved for `feature/partner-entity-A2`.**
 
 The plan direction is still right, and I do not think ADR-15 or the A2 product
-scope should be reopened. r3 fixed the earlier legacy-consumer freshness issue.
-The remaining question is narrower: whether to patch the plan now so Task 3
-covers all direct conversation repository writes, or allow A2 to start with that
-as a hard implementation gate.
+scope should be reopened. r3 fixed the earlier legacy-consumer freshness issue,
+and r4 closes the remaining direct-write coverage gap by changing Task 3's unit
+of analysis from invalidate sites to repository write sites.
 
 ## Prior r1/r2 Findings
 
@@ -279,3 +277,45 @@ plan gap. Eric should decide between:
 
 My recommendation is option 1. It should be a small doc patch, not another
 architecture debate.
+
+---
+
+## r4 re-review (latest)
+
+### Summary
+
+r4 closes the r3 gap. I am approving the plan for A2 implementation.
+
+The important correction is that Task 3 now tracks conversation repository
+writes, not just `ref.invalidate(conversationsProvider)` sites. I verified the
+current repo with both searches:
+
+- `rg -n "repository\.(create|update|delete)Conversation" lib`
+- `rg -n "\b(create|update|delete)Conversation\(" lib`
+
+The first search returns the same 13 app-layer write sites that r4 lists. The
+second wider search only adds the repository method definitions, so I do not see
+an obvious false negative in the r4 table.
+
+### Findings
+
+No blocking findings.
+
+### Notes
+
+- The 13-site table is now a valid Task 3 execution checklist.
+- The four session-scope invalidates remain correctly out of the primary gate;
+  they are auth/session cleanup, not conversation content writes.
+- The secondary `ref.invalidate(conversationsProvider)` gate is still useful
+  after implementation, but it should stay secondary.
+- Optional implementation hardening: when running the gate, also use the wider
+  `\b(create|update|delete)Conversation\(` search once, so a future direct call
+  like `ref.read(conversationRepositoryProvider).updateConversation(...)` does
+  not slip past a variable-name-specific grep.
+
+### Verdict
+
+`PASS`
+
+Claude can cut `feature/partner-entity-A2` and start the 17-task implementation
+plan.
