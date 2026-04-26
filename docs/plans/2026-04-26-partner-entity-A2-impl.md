@@ -306,32 +306,57 @@ git push
 
 ---
 
-## Task 3 — Riverpod providers（narrow invalidation contract）
+## Task 3 — Riverpod providers + ConversationWriteController（narrow invalidation contract）
 
 **Files:**
 - Create: `lib/features/partner/presentation/providers/partner_providers.dart`
+- Create: `lib/features/conversation/data/providers/conversation_write_controller.dart`（**new — invalidation owner**）
+- Modify: `lib/features/conversation/data/repositories/conversation_repository.dart`（**新增** `listByPartner(partnerId)`，read-only filter；**不**注入 `Ref`）
+- Modify (UI migration, 9 sites): `new_conversation_screen.dart` / `home_screen.dart` / `main_shell.dart` / `analysis_screen.dart`
 - Test: `test/unit/features/partner/partner_providers_test.dart`
+- Test: `test/unit/features/conversation/conversation_write_controller_test.dart`
 
-**Codex C1 constraint**: `partnerAggregateProvider(partnerId)` 必須只訂閱 `conversationsByPartnerProvider(partnerId)`，**不**訂閱全 `conversationsProvider`。寫 conversation A → 只 invalidate `partnerAggregateProvider(A.partnerId)`，其他 partner provider 不受影響。
+**Architecture decision (locked 2026-04-26 by Eric, post Codex P1)**:
+- Invalidation owner = `ConversationWriteController extends Notifier<void>`（Riverpod 2.x），集中持有所有 conversation 寫入（create / save / delete / reassign），由 controller 統一 `ref.invalidate(...)` partner-scoped providers。
+- `ConversationRepository` **保持** A1 plain storage wrapper、**不**注入 Riverpod `Ref`（A1 stable baseline 不 poke）。
+- 9 個既有 UI invalidate 呼叫點（grep 2026-04-26 確認）全部改走 controller，由 controller 端做 narrow invalidate。
+
+**Codex C1 constraint**: `partnerAggregateProvider(partnerId)` 必須只訂閱 `conversationsByPartnerProvider(partnerId)`，**不**訂閱全 `conversationsProvider`。寫 conversation A → controller 只 invalidate `conversationsByPartnerProvider(A.partnerId)` + `partnerAggregateProvider(A.partnerId)`，其他 partner provider 不受影響。
 
 **Step 1: Failing tests**
 
 ```dart
+// partner_providers_test.dart
 test('conversationsByPartnerProvider returns only conversations with matching partnerId', () { /* ... */ });
 test('conversationsByPartnerProvider does not depend on global conversationsProvider', () {
   // Critical: assert provider.dependencies does NOT include conversationsProvider
   // (use ProviderContainer + ref.read introspection or static analysis comment hint)
 });
 
-test('partnerAggregateProvider invalidates ONLY when its partner conversations change', () {
+test('partnerAggregateProvider invalidates ONLY when controller writes affect this partner', () {
   // Arrange: 2 partners X, Y; subscribe to both aggregates
-  // Act: write a conversation under X
+  // Act: ref.read(conversationWriteControllerProvider.notifier).save(c) where c.partnerId == X
   // Assert: aggregateProvider(X) rebuilt; aggregateProvider(Y) unchanged
 });
 
-test('reassigning conversation from X to Y invalidates BOTH X and Y', () { /* ... */ });
+test('reassigning conversation from X to Y invalidates BOTH X and Y', () {
+  // Act: controller.save(c, previousPartnerId: X) where c.partnerId == Y
+  // Assert: aggregateProvider(X) AND aggregateProvider(Y) both rebuilt
+});
 
 test('partnerListProvider sorts by max(conv.updatedAt) across each partner conversations', () { /* ... */ });
+
+// conversation_write_controller_test.dart
+test('save() persists via repository then invalidates partnerAggregateProvider for current partnerId', () {
+  // mock repo; assert repo.updateConversation called once; assert invalidate logged once
+});
+test('save() with previousPartnerId different from new partnerId invalidates BOTH partners', () { /* ... */ });
+test('create() invalidates the new partnerAggregateProvider', () { /* ... */ });
+test('delete() invalidates partnerAggregateProvider for the conversation\'s partnerId', () { /* ... */ });
+test('controller does NOT invalidate global conversationsProvider', () {
+  // narrow contract: assert no invalidate on conversationsProvider
+});
+test('controller no-ops invalidate when partnerId is null (legacy / unmigrated conversations)', () { /* ... */ });
 ```
 
 **Step 2: Run, expect FAIL**
@@ -341,20 +366,22 @@ test('partnerListProvider sorts by max(conv.updatedAt) across each partner conve
 ```dart
 // lib/features/partner/presentation/providers/partner_providers.dart
 final partnerListProvider = Provider<List<Partner>>((ref) {
+  final userId = ref.watch(authConversationScopeProvider).valueOrNull;
+  if (userId == null) return const <Partner>[];
   final repo = ref.watch(partnerRepositoryProvider);
-  final user = ref.watch(currentUserIdProvider);
-  return repo.listByOwner(user)
-    ..sort((a, b) {
-      final aLast = ref.watch(_partnerLastInteractionProvider(a.id));
-      final bLast = ref.watch(_partnerLastInteractionProvider(b.id));
-      return (bLast ?? a.createdAt).compareTo(aLast ?? a.createdAt);
-    });
+  final partners = repo.listByOwner(userId);
+  partners.sort((a, b) {
+    final aLast = ref.watch(_partnerLastInteractionProvider(a.id));
+    final bLast = ref.watch(_partnerLastInteractionProvider(b.id));
+    return (bLast ?? a.createdAt).compareTo(aLast ?? a.createdAt);
+  });
+  return partners;
 });
 
 // CRITICAL: scoped to partnerId — NOT subscribed to global conversationsProvider
 final conversationsByPartnerProvider =
     Provider.family<List<Conversation>, String>((ref, partnerId) {
-  // read-once snapshot from ConversationRepository, scoped query
+  ref.watch(authConversationScopeProvider); // bind to auth scope, not global conversation list
   final repo = ref.watch(conversationRepositoryProvider);
   return repo.listByPartner(partnerId);
 });
@@ -367,26 +394,82 @@ final partnerAggregateProvider =
 });
 ```
 
-Plus: `ConversationRepository.listByPartner(partnerId)` method (add as part of this task).
-
-Plus: invalidation hook in conversation save path:
 ```dart
-// in ConversationRepository.save (or wherever conversation persist happens)
-Future<void> saveConversation(Conversation c, {String? previousPartnerId}) async {
-  await c.save();
-  ref.invalidate(conversationsByPartnerProvider(c.partnerId));
-  if (previousPartnerId != null && previousPartnerId != c.partnerId) {
-    ref.invalidate(conversationsByPartnerProvider(previousPartnerId));
+// lib/features/conversation/data/providers/conversation_write_controller.dart
+class ConversationWriteController extends Notifier<void> {
+  @override
+  void build() {} // stateless write coordinator
+
+  Future<Conversation> create({
+    required String name,
+    required List<Message> messages,
+    required String partnerId,
+  }) async {
+    final repo = ref.read(conversationRepositoryProvider);
+    final c = await repo.createConversation(name: name, messages: messages);
+    c.partnerId = partnerId;
+    await c.save();
+    _invalidatePartnerScope(partnerId);
+    return c;
+  }
+
+  Future<void> save(Conversation c, {String? previousPartnerId}) async {
+    final repo = ref.read(conversationRepositoryProvider);
+    await repo.updateConversation(c);
+    _invalidatePartnerScope(c.partnerId);
+    if (previousPartnerId != null && previousPartnerId != c.partnerId) {
+      _invalidatePartnerScope(previousPartnerId);
+    }
+  }
+
+  Future<void> delete(Conversation c) async {
+    final repo = ref.read(conversationRepositoryProvider);
+    await repo.deleteConversation(c.id);
+    _invalidatePartnerScope(c.partnerId);
+  }
+
+  void _invalidatePartnerScope(String? partnerId) {
+    if (partnerId == null) return; // legacy / unmigrated conversation: no narrow scope to invalidate
+    ref.invalidate(conversationsByPartnerProvider(partnerId));
+    ref.invalidate(partnerAggregateProvider(partnerId));
   }
 }
+
+final conversationWriteControllerProvider =
+    NotifierProvider<ConversationWriteController, void>(
+  ConversationWriteController.new,
+);
 ```
 
-**Step 4: Run, expect PASS**
+Plus: `ConversationRepository.listByPartner(String partnerId)` — pure storage wrapper, owner-scoped, **no `Ref`**.
 
-**Step 5: Commit**
+**Step 4: Run, expect PASS** — partner provider + write controller tests 全綠
+
+**Step 5: Migrate 9 UI invalidate 呼叫點**
+
+Grep verified 2026-04-26:
+
+| File | Line | Migration |
+|---|---|---|
+| `new_conversation_screen.dart` | 146 | new conversation flow → `controller.create(...)` (controller 內部已 invalidate；移除原行) |
+| `home_screen.dart` | 91 | conversation 刪除/操作 → `controller.delete(c)` 或 `controller.save(c)` |
+| `main_shell.dart` | 245 | 同上 |
+| `analysis_screen.dart` | 495 | analyze 完成存檔 → `controller.save(c)` |
+| `analysis_screen.dart` | 514 | 同上 |
+| `analysis_screen.dart` | 935 | message 編輯後 → `controller.save(c)` |
+| `analysis_screen.dart` | 1000 | 同上 |
+| `analysis_screen.dart` | 1113 | analyze 完成存檔 → `controller.save(c)` |
+
+**Verification gate**:
+- `grep -rn "ref.invalidate(conversationsProvider)" lib/` → 期望 0 hits
+- 跑 `flutter analyze` → 0 warnings
+- 手測 home → partner detail → analyze → back flow，UI 即時更新
+
+**Step 6: Commit (split 2 commits)**
 
 ```bash
-git commit -m "[feat] Partner Riverpod 提供者 — narrow invalidation (Codex C1)"
+git commit -m "[feat] Partner narrow-invalidation providers + ConversationWriteController"
+git commit -m "[refactor] 9 UI invalidate 呼叫點改走 ConversationWriteController"
 git push
 ```
 
@@ -417,6 +500,15 @@ test('all conversations no analysis snapshot: summary returns analysis-pending m
 test('unnamed partner: uses fallback "對象 #abc" with id last 4 chars', () { /* ... */ });
 test('user-set customNote 1000 chars: final summary still <= 1500 (truncation works)', () { /* ... */ });
 test('truncation preserves "[truncated]" suffix marker', () { /* ... */ });
+test('truncation does NOT split a non-ASCII character (boundary safety, Codex P2)', () {
+  // Build inputs so the truncation point lands exactly on a multi-codeunit char.
+  // Construct partner.customNote padded so the assembled buffer length is e.g. kHardCharCap+1
+  //   AND the codepoint at index (kHardCharCap - markerLen - 1) is a Chinese char or emoji
+  //   that occupies >1 UTF-16 code unit.
+  // Assert: result.length <= kHardCharCap.
+  // Assert: result is valid UTF-16 (no orphan surrogate; round-trip through `String.fromCharCodes(result.codeUnits)` equals result).
+  // Assert: result ends with the truncation marker.
+});
 ```
 
 **Step 2: Run, expect FAIL**
@@ -493,9 +585,14 @@ class PartnerSummaryBuilder {
     buffer.writeln('- 注意：以上是整體背景，當前對話內容仍以本次訊息為主');
 
     var s = buffer.toString();
-    // 5. hard cap
-    if (s.length > kHardCharCap) {
-      s = '${s.substring(0, kHardCharCap - 14)}... [truncated]';
+    // 5. hard cap — char-safe truncation (Codex P2 fix 2026-04-26)
+    // Use `characters` (grapheme clusters) — never raw substring on UTF-16 code units,
+    // which can split a Chinese char's surrogate pair or an emoji ZWJ sequence.
+    const marker = '... [truncated]';
+    final cs = s.characters;
+    if (cs.length > kHardCharCap) {
+      final keep = kHardCharCap - marker.length;
+      s = '${cs.take(keep).toString()}$marker';
     }
     return s;
   }
@@ -518,8 +615,8 @@ git push
 ## Task 5 — AI prompt integration（client-side wiring）
 
 **Files:**
-- Modify: `lib/features/conversation/data/services/analyze_chat_client.dart`（or current call site — pre-flight 確認檔名）
-- Test: `test/unit/features/conversation/analyze_chat_client_test.dart`
+- Modify: `lib/features/analysis/data/services/analysis_service.dart`（live caller, verified 2026-04-26）
+- Test: `test/unit/features/analysis/analysis_service_partner_summary_test.dart`
 
 **Goal**: 「繼續對話」 / 「新對話首次分析」呼叫 `analyze-chat` Edge Function 前，由 client 組好 partner summary 塞進 request payload。
 
@@ -537,7 +634,7 @@ test('partnerSummary omitted when builder returns empty (ownerUserId mismatch fa
 **Step 3: Implement**
 
 ```dart
-// in AnalyzeChatClient (or current orchestrator)
+// in AnalysisService (lib/features/analysis/data/services/analysis_service.dart)
 Future<AnalysisResult> analyze(Conversation c) async {
   String? partnerSummary;
   if (c.partnerId != null) {
@@ -575,7 +672,7 @@ git push
 ## Task 6 — Routing（/partner/:partnerId）
 
 **Files:**
-- Modify: `lib/app/router/app_router.dart`（或 go_router config 所在處 — pre-flight 確認）
+- Modify: `lib/app/routes.dart`（live router, verified 2026-04-26）
 - Test: `test/widget/router_test.dart`
 
 **Step 1: Failing tests**
