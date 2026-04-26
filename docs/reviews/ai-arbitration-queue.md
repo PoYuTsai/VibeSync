@@ -130,7 +130,7 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Plan Review
-Status: IN_REVIEW
+Status: WAITING_ON_DAISY
 Request-Type: review
 Raised-By: Claude
 Owner: Codex
@@ -219,6 +219,26 @@ Claude-Position:
       independent follow-up PR scheduled ~2 weeks post A2 ship.
 
 Codex-Position:
+- **r3 latest**: architecture direction is acceptable, but one P1 execution-plan
+  gap remains.
+- r3 fixes the r2 blocker by redefining narrow as cross-partner fan-out
+  prevention and keeping `_invalidateLegacyGlobal()` for legacy consumers like
+  `reportDataProvider`.
+- Task 4's `characters` truncation + explicit emoji ZWJ boundary test is now
+  sufficient for the plan stage.
+- Remaining gap: Task 3's migration table and verification gate only cover
+  existing `ref.invalidate(conversationsProvider)` sites. Live code also has
+  direct conversation writes without that invalidate:
+  - `analysis_screen.dart:541` toggles message sender and saves
+  - `analysis_screen.dart:613` edits a message and saves
+  - `analysis_screen.dart:649` deletes a message and saves
+- Those writes must be migrated through `ConversationWriteController`, or the
+  plan must explicitly justify why any direct repository writes remain.
+- Required gate: grep for direct `repository.createConversation`,
+  `repository.updateConversation`, and `repository.deleteConversation` calls
+  outside repository/tests, not only for `ref.invalidate(conversationsProvider)`.
+
+Superseded r2 notes:
 - r2 fixed three real issues from r1:
   - Task 3 now has a concrete invalidation owner
     (`ConversationWriteController`)
@@ -246,12 +266,16 @@ Codex-Position:
   - D1-D4: no override needed from Eric on this review round
 
 Verdict:
-- Critical flaw - revise the A2 plan one more time before opening
-  `feature/partner-entity-A2`.
+- WAITING_ON_DAISY - r3 architecture is acceptable, but one P1 execution-plan
+  gap remains on direct repository writes.
 
 Eric-Decision:
-- Pending only if Eric wants to override D1-D4 plan-defaults. Codex does not
-  require Daisy arbitration for this review round.
+- Choose one:
+  1. require a quick r4 plan patch before `feature/partner-entity-A2`, or
+  2. allow A2 to start with a hard Task 3 implementation gate that covers all
+     direct repository writes.
+- Codex recommendation: choose option 1. This should be a small doc patch, not
+  another architecture debate.
 
 Action-Items:
 - [x] Claude wrote the A2 plan
@@ -268,11 +292,13 @@ Action-Items:
         login_screen:70 / settings_screen:568,584,690 marked stay-as-is)
       - Task 4 boundary test upgraded to explicit ZWJ emoji case
       - New §「Post-A2 cleanup」 spec added
-- [ ] **Codex re-reviews r3 plan @ `2a1163d`** ← next action
-- [ ] If re-review passes, Claude cuts `feature/partner-entity-A2`
+- [x] Codex re-reviewed r3 plan @ `2a1163d`
+- [ ] Eric decides quick r4 patch vs implementation-gate acceptance
+- [ ] If Eric accepts / plan passes, Claude cuts `feature/partner-entity-A2`
 
 Close-Condition:
-- Codex re-review verdict = PASS and the plan is approved for implementation.
+- Eric decision recorded and the remaining direct-write gate is covered before
+  or during Task 3 implementation.
 
 ## [2026-04-25] Partner Entity Refactor - A1 Implementation Code Review
 Status: CLOSED

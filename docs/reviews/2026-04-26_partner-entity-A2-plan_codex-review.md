@@ -8,14 +8,19 @@
 
 ## Verdict
 
-**Critical flaw - revise the A2 plan before opening `feature/partner-entity-A2`.**
+**WAITING_ON_DAISY - r3 architecture is acceptable, but one direct-write
+execution gate still needs Eric's decision before `feature/partner-entity-A2`.**
 
 The plan direction is still right, and I do not think ADR-15 or the A2 product
-scope should be reopened. The blocker is narrower than that: the current
-controller-centric invalidation rewrite still breaks existing non-Partner
-consumers.
+scope should be reopened. r3 fixed the earlier legacy-consumer freshness issue.
+The remaining question is narrower: whether to patch the plan now so Task 3
+covers all direct conversation repository writes, or allow A2 to start with that
+as a hard implementation gate.
 
-## Findings
+## Prior r1/r2 Findings
+
+These findings explain the first two review rounds. The current r3 verdict is
+recorded in the latest section below.
 
 ### [P1] r2 fixes the invalidation owner, but now drops required updates for
 existing non-Partner consumers
@@ -159,7 +164,7 @@ plan tightening pass.
 
 ---
 
-## r2 re-review (latest)
+## r2 re-review
 
 ### Summary
 
@@ -192,3 +197,85 @@ one important non-Partner consumer (`reportDataProvider`) hanging off
   (`lib/features/report/data/providers/report_providers.dart:12-14`)
 
 So this is not passable yet without one more plan edit.
+
+---
+
+## r3 re-review (latest)
+
+### Summary
+
+r3 resolves the r2 architecture blocker:
+
+1. The narrow invalidation contract is now correctly defined as cross-partner
+   fan-out prevention, not "never touch global feeds".
+2. The controller keeps `reportDataProvider` / My Report fresh during A2 via
+   `_invalidateLegacyGlobal()`.
+3. Task 4 now requires `characters` truncation plus an explicit emoji ZWJ /
+   grapheme boundary test.
+4. The post-A2 cleanup section is clear enough for a later cleanup PR.
+
+That said, I found one last execution-plan gap that is easier to fix before
+A2 starts than during implementation.
+
+### What improved
+
+- Task 3 now preserves legacy global consumers during A2
+  (`docs/plans/2026-04-26-partner-entity-A2-impl.md:328`,
+  `...:461-467`).
+- The cross-partner fan-out contract is testable:
+  write partner X must not rebuild `partnerAggregateProvider(Y)`
+  (`...:368-372`).
+- Task 4 now uses `characters.take(...)` and calls out the emoji ZWJ boundary
+  case (`...:550-558`, `...:646-652`).
+- Task 5 / 6 stale file references are fixed.
+
+### Remaining issue before implementation
+
+#### [P1] Task 3 only migrates invalidate sites, not all direct conversation writes
+
+r3's migration table and verification gate are centered on existing
+`ref.invalidate(conversationsProvider)` calls:
+
+- `docs/plans/2026-04-26-partner-entity-A2-impl.md:489-505`
+- `docs/plans/2026-04-26-partner-entity-A2-impl.md:509-511`
+
+But the live app has direct repository writes that do **not** currently
+invalidate `conversationsProvider`:
+
+- `lib/features/analysis/presentation/screens/analysis_screen.dart:541`
+  toggles message sender and saves the conversation
+- `lib/features/analysis/presentation/screens/analysis_screen.dart:613`
+  edits a message and saves the conversation
+- `lib/features/analysis/presentation/screens/analysis_screen.dart:649`
+  deletes a message and saves the conversation
+
+Those are still conversation writes. Under A2, they can change partner
+aggregates, last interaction, message-derived summary, and report data. If Task
+3 only migrates the invalidate call sites, these writes can bypass
+`ConversationWriteController` and leave partner-scoped providers stale.
+
+The plan should add one more implementation gate:
+
+- grep for direct calls to
+  `repository.createConversation`, `repository.updateConversation`, and
+  `repository.deleteConversation` outside repository/tests
+- require conversation content writes to go through `ConversationWriteController`
+- explicitly list or justify any remaining direct repository writes
+
+The existing `grep -rn "ref.invalidate(conversationsProvider)" lib/` gate is
+still useful, but it is not enough to prove write ownership.
+
+### Verdict
+
+`WAITING_ON_DAISY`
+
+I do not see a new A2 architecture problem. The r3 contract is acceptable.
+However, this is Codex's third review round and there is still one P1-level
+plan gap. Eric should decide between:
+
+1. require a quick r4 plan patch before `feature/partner-entity-A2`, or
+2. allow A2 to start with a hard Task 3 implementation gate that covers all
+   direct repository writes.
+
+My recommendation is option 1. It should be a small doc patch, not another
+architecture debate.
