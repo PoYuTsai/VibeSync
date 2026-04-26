@@ -129,6 +129,76 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-26] Partner Entity Refactor - A2 Implementation Review
+Status: APPROVED
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `feature/partner-entity-A2` @ working tree after Codex fixes
+
+Question:
+- Does the first A2 implementation batch safely inject Partner aggregate
+  context into `analyze-chat` without breaking OCR stability, Riverpod
+  invalidation, or prompt budget boundaries?
+
+Context:
+- Claude implemented the first A2 batch after the r4 plan was approved.
+- Batch scope: Partner repository/list/merge primitives, partner-scoped
+  providers, `ConversationWriteController` migration, PartnerSummaryBuilder,
+  client `partnerSummary` injection, and Edge Function prompt injection.
+
+Changed:
+- Codex found and patched two P1 issues plus one P2 test-safety issue:
+  - `partnerListProvider` now sorts by latest conversation interaction and
+    reacts to controller writes.
+  - Partner summary truncation now obeys both 1500 grapheme cap and the Edge
+    2000 UTF-16 code-unit cap.
+  - Overlong optional `partnerSummary` is dropped server-side instead of
+    rejecting the whole analysis.
+  - `PartnerContextResolver` test stub now extends `PartnerSummaryBuilder`
+    instead of implementing a concrete class with private members.
+
+Evidence:
+- [Codex implementation review](./2026-04-26_a2_codex-review.md)
+- `rg -n "repository\.(create|update|delete)Conversation" lib` -> no app-layer
+  direct repo write callers remain
+- `rg -n "ref\.invalidate\(conversationsProvider\)" lib` -> 5 expected hits
+- `deno check supabase/functions/analyze-chat/index.ts` -> pass
+- `dart analyze` touched Dart files -> pass
+- `flutter test --no-pub test/unit/services/conversation_write_controller_test.dart test/unit/services/partner_summary_builder_test.dart test/unit/services/partner_context_resolver_test.dart`
+  -> 30/30 pass
+
+Open-Risks:
+- Full client-to-edge prompt assertion remains deferred until post-merge/soak,
+  per the implementation handoff.
+- Partner summary telemetry remains deferred until TF soak signal says it is
+  worth adding.
+
+Claude-Position:
+- Pending post-fix sanity check.
+
+Codex-Position:
+- REVISED_AND_APPROVED. The blocking risks found during review were patched
+  directly, and targeted verification now passes.
+
+Verdict:
+- APPROVED after Codex fixes.
+
+Eric-Decision:
+- Pending merge/build timing.
+
+Action-Items:
+- [x] Claude implemented A2 first batch
+- [x] Codex reviewed the implementation
+- [x] Codex patched P1/P2 issues
+- [x] Codex ran targeted verification
+- [ ] Claude/Eric decide whether to continue next A2 tasks or open PR/checkpoint
+
+Close-Condition:
+- Claude acknowledges the Codex fix batch and either continues A2 implementation
+  or opens the next PR/checkpoint path.
+
 ## [2026-04-26] Partner Entity Refactor - A2 Implementation Plan Review
 Status: APPROVED
 Request-Type: review

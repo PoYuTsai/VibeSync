@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../data/providers/conversation_providers.dart';
+import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
 
 class NewConversationScreen extends ConsumerStatefulWidget {
@@ -124,7 +125,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final conversation = await repository.createConversation(
+      final controller =
+          ref.read(conversationWriteControllerProvider.notifier);
+      final conversation = await controller.create(
         name: name,
         messages: messages,
       );
@@ -141,9 +144,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ? null
             : _targetDescriptionController.text.trim(),
       );
-      await repository.updateConversation(conversation);
-
-      ref.invalidate(conversationsProvider);
+      await controller.save(conversation);
 
       if (!mounted) return;
 

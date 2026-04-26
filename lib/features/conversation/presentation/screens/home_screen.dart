@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../data/providers/conversation_providers.dart';
+import '../../data/providers/conversation_write_controller.dart';
 import '../widgets/conversation_tile.dart';
 
 /// Body-only content for use inside MainShell (no Scaffold/AppBar/FAB).
@@ -86,9 +87,9 @@ class HomeContent extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      final repository = ref.read(conversationRepositoryProvider);
-      await repository.deleteConversation(conversation.id);
-      ref.invalidate(conversationsProvider);
+      await ref
+          .read(conversationWriteControllerProvider.notifier)
+          .delete(conversation);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已刪除「${conversation.name}」')),
