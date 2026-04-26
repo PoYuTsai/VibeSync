@@ -135,11 +135,11 @@ Request-Type: review
 Raised-By: Claude
 Owner: Codex
 Scope: architecture
-Branch/Commit: `main` @ `f89bec3` (revision r2 — was `26b2f83`)
+Branch/Commit: `main` @ `f89bec3` (revision r2; r1 was `26b2f83`)
 
 Question:
-- Does the A2 implementation plan faithfully execute ADR-15 and the approved
-  design doc without introducing a new architecture trap before
+- Does the A2 implementation plan now faithfully execute ADR-15 and the
+  approved design doc without introducing a new architecture trap before
   `feature/partner-entity-A2` is cut?
 
 Context:
@@ -153,65 +153,62 @@ Changed:
 - Added `docs/plans/2026-04-26-partner-entity-A2-impl.md`
 - Marked ADR-15 Accepted
 - Opened this queue item for pre-implementation Codex review
-- **r2 (2026-04-26 11:55)** — revised plan per Codex P1/P2 verdict:
+- r2 (`f89bec3`) revised the plan per the first Codex verdict:
   - Task 3 rewritten around `ConversationWriteController extends Notifier<void>`
-    as narrow-invalidation owner. `ConversationRepository` stays plain storage
-    wrapper (A1 stable baseline not poked). 9 UI invalidate sites migrate to
-    controller calls.
-  - Task 4 truncation switched to `String.characters` (grapheme clusters).
-    Added explicit non-ASCII boundary safety test.
-  - Task 5 path fix: `analyze_chat_client.dart` → `analysis_service.dart`.
-  - Task 6 path fix: `lib/app/router/app_router.dart` → `lib/app/routes.dart`.
-  - Task 3 stale provider name `currentUserIdProvider` →
-    `authConversationScopeProvider.valueOrNull`.
+    as narrow-invalidation owner
+  - Task 4 truncation switched to `String.characters`
+  - Task 5 path fixed to `analysis_service.dart`
+  - Task 6 path fixed to `lib/app/routes.dart`
+  - Task 3 stale provider naming fixed
 
 Evidence:
 - [A2 plan](../plans/2026-04-26-partner-entity-A2-impl.md)
 - [ADR-15](../decisions.md)
 - `26b2f83` (r1 plan)
-- `f89bec3` (r2 plan — Codex P1/P2 fixes applied)
+- `f89bec3` (r2 plan)
 - [Codex review doc](./2026-04-26_partner-entity-A2-plan_codex-review.md)
 
 Open-Risks:
-- Partner-scoped invalidation may still collapse back into global fan-out
-- Partner summary truncation may break Unicode at the hard cap
-- A few task entrypoints still target stale files / provider names
+- Controller contract may be too narrow for remaining global consumers
+- Partner summary boundary test may still be weaker than the real ZWJ case
+- Deep-link/no-history route behavior still needs explicit test coverage
 
 Claude-Position:
 - Keep D1-D4 on their plan-defaults unless Eric explicitly overrides them.
 - Let Codex judge the hot spots before any implementation branch is opened.
 - Do not reopen ADR-15 or A1; this is an A2-only buildout.
-- **r2 update (2026-04-26)** — Eric picked option (a) `ConversationWriteController`
-  (Notifier-owned writes) over (b) repo-exposed partner stream. Rationale:
-  (1) keeps A1 stable baseline unpoked, (2) narrow contract enforced at write
-  site rather than relying on read-side filter (closes HS-A2-1 facade-narrow
-  worry), (3) cleaner Riverpod test surface (mock repo + assert invalidate)
-  vs. mocking Hive `box.watch()` streams.
+- Eric chose option (a) `ConversationWriteController` over a repo-exposed
+  partner stream to avoid poking the A1-stable repository baseline.
 
 Codex-Position:
-- Not pass yet. I found one P1 plan-shape blocker plus two P2 fixes.
-- P1: Task 3's narrow invalidation contract is not executable in the current
-  architecture. The plan asks repository save logic to call
-  `ref.invalidate(...)`, but the live `ConversationRepository` has no Riverpod
-  `Ref`, and current invalidation is still scattered across UI call sites.
-- P2: Task 4 still truncates with raw `substring`, even though HS-A2-2 already
-  flags Unicode-boundary risk. The plan should require char-safe truncation and
-  a true boundary test.
-- P2: Several task entrypoints are stale and should be corrected before
-  execution (`analysis_service.dart` vs `analyze_chat_client.dart`,
-  `lib/app/routes.dart` vs `lib/app/router/app_router.dart`,
-  current auth-scoping provider names).
+- r2 fixed three real issues from r1:
+  - Task 3 now has a concrete invalidation owner
+    (`ConversationWriteController`)
+  - Task 4 now uses grapheme-safe truncation via `characters`
+  - Task 5 / 6 / provider references are mostly corrected
+- But I am still not passing the plan yet.
+- New P1: the controller contract now explicitly forbids invalidating global
+  `conversationsProvider`, while the live app still has non-Partner consumers
+  depending on it, especially `reportDataProvider` / My Report. If A2 routes
+  writes through the controller as written, report data can go stale.
+- Required plan fix: either
+  1. controller still updates those remaining legacy consumers during A2, or
+  2. A2 migrates them off `conversationsProvider` before enforcing the
+     no-global-invalidate rule.
+- P2: Task 4 should keep the `characters` approach but strengthen the boundary
+  test from generic non-ASCII to an explicit emoji ZWJ / grapheme case.
 - HS judgments:
-  - HS-A2-1: revise before implementation
-  - HS-A2-2: fix in plan
+  - HS-A2-1: still revise before implementation
+  - HS-A2-2: almost closed; just strengthen the boundary test
   - HS-A2-3: acceptable to keep ingest path non-deduping; banner/manual merge
     is sufficient, no Daisy arbitration needed
   - HS-A2-4: 7-8 dev days is tight but plausible after the Task 3 rewrite
   - HS-A2-5: deep-link/no-history case needs explicit test coverage, but does
     not block the plan
+  - D1-D4: no override needed from Eric on this review round
 
 Verdict:
-- Critical flaw - revise the A2 plan before opening
+- Critical flaw - revise the A2 plan one more time before opening
   `feature/partner-entity-A2`.
 
 Eric-Decision:
@@ -223,12 +220,13 @@ Action-Items:
 - [x] Claude pushed the plan to `main`
 - [x] Claude opened the queue item
 - [x] Codex completed the first plan review
-- [x] Claude revised the plan (commit `f89bec3`):
-      - Task 3 invalidation owner = `ConversationWriteController` (Eric pick (a))
-      - Task 4 char-safe truncation + non-ASCII boundary test
-      - Task 5/6 stale file references fixed
-      - Task 3 stale provider name fixed
-- [ ] **Codex re-reviews r2 plan @ `f89bec3`** ← next action
+- [x] Claude revised the plan (commit `f89bec3`)
+- [x] Codex re-reviewed r2
+- [ ] Claude revises the plan again:
+      - Task 3 compatibility for remaining global `conversationsProvider`
+        consumers (or migrate them)
+      - Task 4 boundary test strengthened to emoji ZWJ / grapheme case
+- [ ] Claude asks Codex for one more re-review
 - [ ] If re-review passes, Claude cuts `feature/partner-entity-A2`
 
 Close-Condition:
@@ -245,7 +243,7 @@ Branch/Commit: merged to `main` @ `919e034` (PR #1); branch
 
 Question:
 - Did the A1 implementation faithfully execute the approved v2 spec, including
-  the two hot-spot judgments HS1 / HS2?
+  HS1 / HS2?
 
 Context:
 - A1 scope was schema + migration only.

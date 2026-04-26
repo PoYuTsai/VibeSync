@@ -11,40 +11,45 @@
 **Critical flaw - revise the A2 plan before opening `feature/partner-entity-A2`.**
 
 The plan direction is still right, and I do not think ADR-15 or the A2 product
-scope should be reopened. The blocker is narrower than that: one load-bearing
-part of the plan is not executable in the current codebase.
+scope should be reopened. The blocker is narrower than that: the current
+controller-centric invalidation rewrite still breaks existing non-Partner
+consumers.
 
 ## Findings
 
-### [P1] Task 3's narrow invalidation contract has no valid owner yet
+### [P1] r2 fixes the invalidation owner, but now drops required updates for
+existing non-Partner consumers
 
-- Task 3 says A2 must keep Partner invalidation narrow and then shows this
-  pseudocode in the conversation save path:
-  `docs/plans/2026-04-26-partner-entity-A2-impl.md:351-360`
-- That pseudocode calls `ref.invalidate(...)` from repository save logic
-  (`...:353-359`)
-- The live `ConversationRepository` is a plain storage wrapper with no
-  Riverpod `Ref`, notifier, or event bus
-  (`lib/features/conversation/data/repositories/conversation_repository.dart:11-110`)
-- Current invalidation is still scattered across UI entrypoints:
-  - `lib/features/conversation/presentation/screens/new_conversation_screen.dart:146`
-  - `lib/features/conversation/presentation/screens/home_screen.dart:91`
-  - `lib/app/main_shell.dart:245`
-  - `lib/features/analysis/presentation/screens/analysis_screen.dart:495-514,935-936,1000-1001,1113`
-- The current provider graph is also still coarse:
-  `conversationsProvider` is a plain `Provider<List<Conversation>>`
-  (`lib/features/conversation/data/providers/conversation_providers.dart:21-25`)
+- r2 correctly introduces `ConversationWriteController extends Notifier<void>`
+  as the write owner
+  (`docs/plans/2026-04-26-partner-entity-A2-impl.md:372-415`)
+- But the same task now explicitly asserts that the controller must **not**
+  invalidate global `conversationsProvider`
+  (`docs/plans/2026-04-26-partner-entity-A2-impl.md:330-332,356-357,438`)
+- In the live app, `conversationsProvider` still feeds non-Partner surfaces:
+  - `reportDataProvider` watches it directly
+    (`lib/features/report/data/providers/report_providers.dart:12-14`)
+  - `MyReportScreen` depends on that provider
+    (`lib/features/report/presentation/screens/my_report_screen.dart:17`)
+- The plan currently migrates the old UI invalidation calls into the controller,
+  but it does **not** replace or re-home those non-Partner consumers
 
-So the plan currently asks for a contract it has not actually assigned to any
-real layer. Before implementation starts, the plan must pick one concrete owner
-for Partner-scoped invalidation, for example:
+So r2 fixed the original "who owns invalidation?" question, but it introduced a
+new one: after A2 starts routing writes through the controller, report data can
+quietly go stale unless the plan also preserves updates for legacy global
+consumers.
 
-1. a dedicated Riverpod controller / notifier that owns conversation writes and
-   invalidates partner-scoped providers centrally, or
-2. a repository-exposed partner-scoped listenable / stream strategy that the
-   new providers subscribe to directly.
+This is still a blocker because it changes existing app behavior outside the
+Partner screens.
 
-Without that rewrite, Task 3 is not TDD-ready.
+The plan needs one explicit answer before implementation:
+
+1. either the controller also invalidates legacy consumers that still depend on
+   `conversationsProvider` during A2, or
+2. A2 must migrate those consumers off `conversationsProvider` before enforcing
+   the "no global invalidate" rule.
+
+Until one of those is written into the plan, Task 3 is still not TDD-safe.
 
 ### [P2] The summary truncation sketch is still unsafe at Unicode boundaries
 
@@ -86,8 +91,9 @@ false-red TDD steps and wasted debugging time if the plan is executed as-is.
 
 `REVISE_BEFORE_IMPLEMENTATION`
 
-This is the main blocker. The plan must name a real invalidation owner before
-Claude opens the feature branch.
+r2 successfully names a real invalidation owner, but it over-tightens the
+contract by forbidding global invalidation before all current global consumers
+have been migrated. That is the new blocker.
 
 ### HS-A2-2 - Partner summary worst-case / truncation
 
@@ -131,22 +137,58 @@ but this does not block the whole plan.
 
 ## Recommended plan edits before Claude starts implementation
 
-1. Rewrite Task 3 around one explicit invalidation owner.
-   - Remove the repository pseudocode that calls `ref.invalidate(...)`
-   - Replace it with a controller / notifier or equivalent concrete pattern
-2. Tighten Task 4:
+1. Amend Task 3 so the controller preserves correctness for remaining global
+   consumers.
+   - Either explicitly invalidate those legacy consumers during A2, or
+   - move them off `conversationsProvider` before the controller test forbids
+     global invalidation
+2. Keep Task 4's char-safe truncation fix, but strengthen the boundary test:
    - require char-safe truncation
-   - add a boundary test with non-ASCII text
-3. Repair stale task references:
-   - Task 5 -> `analysis_service.dart`
-   - Task 6 -> `lib/app/routes.dart`
-   - Task 3 -> current auth-scoping provider names
+   - add a boundary test with emoji ZWJ sequence, not only a generic
+     non-ASCII case
+3. Keep the stale-reference fixes from r2
 4. Keep D1/D2/D3/D4 plan-defaults unless Eric wants a product override.
 
 ## Recommended path
 
 Do **not** cut `feature/partner-entity-A2` yet.
 
-First revise the plan on the P1/P2 items above, then rerun Codex review. If the
-Task 3 architecture hole is closed cleanly, I expect the next review can move
-to `PASS` without reopening the whole A2 scope.
+First revise the plan on the P1/P2 items above, then rerun Codex review. I do
+not expect another product-level debate here; this should be one more execution
+plan tightening pass.
+
+---
+
+## r2 re-review (latest)
+
+### Summary
+
+r2 fixed three real issues from the first review:
+
+1. Task 3 now has a concrete invalidation owner
+2. Task 4 now proposes grapheme-safe truncation via `characters`
+3. Task 5 / 6 / provider naming references are mostly corrected
+
+That is good progress. The remaining blocker is specifically that the new
+controller contract forbids global invalidation while the app still has at least
+one important non-Partner consumer (`reportDataProvider`) hanging off
+`conversationsProvider`.
+
+### What improved
+
+- `ConversationWriteController` is the right direction for write ownership
+  (`docs/plans/2026-04-26-partner-entity-A2-impl.md:372-415`)
+- Task 4 now uses `characters.take(...)` instead of raw substring
+  (`...:561-569`)
+- Task 5 and Task 6 point at the live caller / router files
+  (`...:589`, `...:642`)
+
+### What still blocks PASS
+
+- Controller tests still assert "does NOT invalidate global
+  conversationsProvider"
+  (`docs/plans/2026-04-26-partner-entity-A2-impl.md:330-332,356-357`)
+- But `reportDataProvider` still watches that provider today
+  (`lib/features/report/data/providers/report_providers.dart:12-14`)
+
+So this is not passable yet without one more plan edit.
