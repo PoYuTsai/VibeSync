@@ -130,7 +130,7 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review + Code Review
-Status: AWAITING_TF_QA_BEFORE_MERGE
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Eric
@@ -389,18 +389,31 @@ Action-Items:
 - [x] Claude opens PR `feature/partner-entity-A2-ui` → `main` — **PR #3** at
       https://github.com/PoYuTsai/VibeSync/pull/3 (manual via web UI; gh CLI not
       authenticated on this WSL host).
-- [ ] **Eric runs 5 manual TF QA items** (gate before merge per Codex
-      `_WITH_TF_QA_NOTE` suffix). Items, in priority order:
-      1. AddPartner submit ownerUserId/partner flow — fills the gap left by the
-         skipped `successful submit writes Partner with ownerUserId` widget test
-         (Codex 在 r2 final 明確點名要保留)
-      2. back-stack semantic — Home → 新增對象 → detail → back **回 Partner list**
-         (不是回 `/partner/new`)
-      3. PartnerDetail「+ 新增對話」(手動 + 截圖兩條路徑) → 新對話應掛回該 Partner
-         (data-side 已 source-trace 過，TF 是 user-visible 驗證)
-      4. 舊 `/conversation/:id` deep-link 仍可開（向後相容）
-      5. 手動建對話失敗時看到 snackbar（Codex r2 補的那行）
-- [ ] **Eric merges PR #3** once all 5 TF QA items pass.
+- [x] **Eric runs 5 manual TF QA items** (gate before merge per Codex
+      `_WITH_TF_QA_NOTE` suffix) — **all 5 pass** on v141 TestFlight build off
+      `feature/partner-entity-A2-ui` (2026-04-27 凌晨):
+      1. ✅ AddPartner submit ownerUserId/partner flow — 「測試對象A」appears in
+         owner-scoped Partner list, ownerUserId implicitly verified by visibility
+         in `listByOwner` query result
+      2. ✅ Back-stack semantic — Home → 新增對象A → detail → back returns to
+         Partner list (with A visible); same flow with B confirms `pushReplacement`
+         drop of AddPartner from stack works in production runtime
+      3. ✅ PartnerDetail「+ 新增對話」(手動 + 截圖兩條路徑) — manual create on A
+         lands under A; screenshot create on B lands under B (cross-partner check
+         confirms partnerId chain correctness end-to-end)
+      4. ✅ 舊 `/conversation/:id` deep-link 仍可開 — structural pass: `/conversation/:id`
+         route is preserved in `routes.dart` (commit `27481fd` title), A1 has been
+         in TF soak ~2 days at Bruce's side without regression. Gold-standard
+         legacy-data verification not reproducible on Eric's fresh-install device
+         (Hive box wiped on app delete by design — privacy-first behaviour)
+      5. ✅ 手動建對話失敗時看到 snackbar — airplane-mode test surfaced
+         「網路連線不穩 請確認網路後再試」red snackbar exactly per Codex r2 fix
+         in `7cc2f52`
+- [x] **Eric merges PR #3** — merged via "Create a merge commit" (not squash) at
+      `004388e Merge pull request #3 from PoYuTsai/feature/partner-entity-A2-ui`.
+      Remote branch deleted via GitHub UI. Local branch deleted via
+      `git branch -d feature/partner-entity-A2-ui` (was at `44a8efd`). Working
+      tree clean on `main`.
 
 Implementation-Notes (Code Review round):
 - **Plan-required `add_partner_navigation_test.dart` was OMITTED.** Reproducible
