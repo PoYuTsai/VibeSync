@@ -77,6 +77,12 @@ void main() {
   });
 
   testWidgets('new-conversation sheet receives current partnerId', (t) async {
+    // Default flutter_test surface is 800x600 → modal sheet height 289.5px,
+    // sheet content needs ~291px → 1.5px RenderFlex overflow fails the test.
+    // Use a phone-realistic size so the sheet has room to render.
+    await t.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerByIdProvider('p1').overrideWith((_) => _p()),
