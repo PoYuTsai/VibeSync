@@ -12,6 +12,7 @@ import '../extensions/partner_aggregates.dart';
 /// the partner aggregate stays fresh with the latest conversation snapshot.
 class PartnerSummaryBuilder {
   static const int kHardCharCap = 1500;
+  static const int kServerCodeUnitCap = 2000;
   static const int kTopNotes = 5;
   static const String _truncationMarker = '... [truncated]';
 
@@ -110,17 +111,43 @@ class PartnerSummaryBuilder {
   }
 
   /// Truncate at grapheme-cluster boundaries — never on raw UTF-16 code
-  /// units. Uses the `characters` extension so a ZWJ emoji or CJK char is
-  /// kept whole or dropped whole, never split mid-codepoint.
+  /// units. The second code-unit cap mirrors the Edge Function sanitizer,
+  /// so emoji-heavy summaries cannot pass the client cap but fail server-side.
   String _capWithGraphemeSafeTruncation(String s) {
+    final charCapped = _capByGraphemeCount(s, kHardCharCap);
+    if (charCapped.length <= kServerCodeUnitCap) return charCapped;
+    return _capByCodeUnits(charCapped, kServerCodeUnitCap);
+  }
+
+  String _capByGraphemeCount(String s, int cap) {
     final cs = s.characters;
-    if (cs.length <= kHardCharCap) return s;
-    final keep = kHardCharCap - _truncationMarker.length;
+    if (cs.length <= cap) return s;
+    final keep = cap - _truncationMarker.characters.length;
     if (keep <= 0) {
-      return _truncationMarker.characters
-          .take(kHardCharCap)
-          .toString();
+      return _truncationMarker.characters.take(cap).toString();
     }
     return '${cs.take(keep)}$_truncationMarker';
+  }
+
+  String _capByCodeUnits(String s, int cap) {
+    if (s.length <= cap) return s;
+
+    final marker = _truncationMarker;
+    final keepLimit = cap - marker.length;
+    if (keepLimit <= 0) {
+      return marker.characters
+          .takeWhile((cluster) => cluster.length <= cap)
+          .join();
+    }
+
+    final buffer = StringBuffer();
+    var used = 0;
+    for (final cluster in s.characters) {
+      final next = used + cluster.length;
+      if (next > keepLimit) break;
+      buffer.write(cluster);
+      used = next;
+    }
+    return '${buffer.toString()}$marker';
   }
 }

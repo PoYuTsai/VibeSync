@@ -3205,10 +3205,11 @@ function sanitizePartnerSummary(
   }
 
   if (trimmed.length > MAX_PARTNER_SUMMARY_LENGTH) {
-    return {
-      error:
-        `partnerSummary too long (max ${MAX_PARTNER_SUMMARY_LENGTH} chars)`,
-    };
+    logWarn("partner_summary_too_long_dropped", {
+      length: trimmed.length,
+      max: MAX_PARTNER_SUMMARY_LENGTH,
+    });
+    return {};
   }
 
   return { partnerSummary: trimmed };

@@ -22,7 +22,7 @@ class _StubConversationListByPartner implements ConversationListByPartnerView {
       byPartner[partnerId] ?? const [];
 }
 
-class _CountingBuilder implements PartnerSummaryBuilder {
+class _CountingBuilder extends PartnerSummaryBuilder {
   _CountingBuilder({required this.returnValue});
   final String returnValue;
   int calls = 0;
@@ -37,7 +37,8 @@ class _CountingBuilder implements PartnerSummaryBuilder {
   }
 }
 
-Conversation _convo(String id, {String? partnerId, String ownerUserId = 'u-1'}) {
+Conversation _convo(String id,
+    {String? partnerId, String ownerUserId = 'u-1'}) {
   return Conversation(
     id: id,
     name: 'c-$id',
@@ -58,20 +59,24 @@ Partner _partner(String id) => Partner(
     );
 
 void main() {
-  test('resolve returns summary when conversation has partnerId + builder non-empty',
+  test(
+      'resolve returns summary when conversation has partnerId + builder non-empty',
       () {
     final partner = _partner('p-1');
     final convo = _convo('c-1', partnerId: 'p-1');
     final resolver = PartnerContextResolver(
       partnerRepo: _StubPartnerRepository({'p-1': partner}),
-      conversationRepo: _StubConversationListByPartner({'p-1': [convo]}),
+      conversationRepo: _StubConversationListByPartner({
+        'p-1': [convo]
+      }),
       summaryBuilder: _CountingBuilder(returnValue: 'SUMMARY'),
     );
 
     expect(resolver.resolve(convo), 'SUMMARY');
   });
 
-  test('resolve returns null when conversation.partnerId is null (legacy / unmigrated)',
+  test(
+      'resolve returns null when conversation.partnerId is null (legacy / unmigrated)',
       () {
     final builder = _CountingBuilder(returnValue: 'unused');
     final resolver = PartnerContextResolver(
@@ -91,7 +96,9 @@ void main() {
     final builder = _CountingBuilder(returnValue: 'SUMMARY');
     final resolver = PartnerContextResolver(
       partnerRepo: _StubPartnerRepository({'p-1': partner}),
-      conversationRepo: _StubConversationListByPartner({'p-1': [convo]}),
+      conversationRepo: _StubConversationListByPartner({
+        'p-1': [convo]
+      }),
       summaryBuilder: builder,
     );
 
@@ -100,24 +107,30 @@ void main() {
     resolver.resolve(convo);
 
     expect(builder.calls, 3,
-        reason: 'each resolve must rebuild — partner aggregate is fresh per call');
+        reason:
+            'each resolve must rebuild — partner aggregate is fresh per call');
   });
 
-  test('resolve returns null when builder returns empty (ownerUserId mismatch fallback)',
+  test(
+      'resolve returns null when builder returns empty (ownerUserId mismatch fallback)',
       () {
     final partner = _partner('p-1');
     final convo = _convo('c-1', partnerId: 'p-1');
     final resolver = PartnerContextResolver(
       partnerRepo: _StubPartnerRepository({'p-1': partner}),
-      conversationRepo: _StubConversationListByPartner({'p-1': [convo]}),
+      conversationRepo: _StubConversationListByPartner({
+        'p-1': [convo]
+      }),
       summaryBuilder: _CountingBuilder(returnValue: ''),
     );
 
     expect(resolver.resolve(convo), isNull,
-        reason: 'empty string from builder means owner-mismatch / unrenderable; treat as no context');
+        reason:
+            'empty string from builder means owner-mismatch / unrenderable; treat as no context');
   });
 
-  test('resolve returns null when partner is missing despite partnerId being set',
+  test(
+      'resolve returns null when partner is missing despite partnerId being set',
       () {
     // Defensive: stale partnerId pointing to a deleted partner.
     final convo = _convo('c-1', partnerId: 'missing');

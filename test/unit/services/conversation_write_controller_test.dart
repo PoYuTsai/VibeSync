@@ -76,8 +76,7 @@ Future<ProviderContainer> _makeContainer() async {
     conversationRepositoryProvider.overrideWithValue(_fakeRepo),
     partnerRepositoryProvider
         .overrideWithValue(PartnerRepository(box: partnerBox)),
-    authConversationScopeProvider
-        .overrideWith((ref) => Stream.value('u-1')),
+    authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
   ]);
   // Settle the StreamProvider loading→data transition before any partner
   // read, so the auth state change doesn't invalidate downstream providers
@@ -147,7 +146,52 @@ void main() {
 
   tearDown(() async {
     await partnerBox.deleteFromDisk();
-    await Hive.box<Conversation>(AppConstants.conversationsBox).deleteFromDisk();
+    await Hive.box<Conversation>(AppConstants.conversationsBox)
+        .deleteFromDisk();
+  });
+
+  group('partnerListProvider', () {
+    test('sorts partners by latest conversation interaction', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      final xOld = _convo('x-old', partnerId: 'p-X')
+        ..updatedAt = DateTime(2026, 4, 1);
+      final yNew = _convo('y-new', partnerId: 'p-Y')
+        ..updatedAt = DateTime(2026, 4, 3);
+      _fakeRepo.store[xOld.id] = xOld;
+      _fakeRepo.store[yNew.id] = yNew;
+
+      final partners = container.read(partnerListProvider);
+
+      expect(partners.map((p) => p.id), ['p-Y', 'p-X']);
+    });
+
+    test('reorders after controller save updates one partner activity',
+        () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      final x = _convo('x', partnerId: 'p-X')..updatedAt = DateTime(2026, 4, 1);
+      final y = _convo('y', partnerId: 'p-Y')..updatedAt = DateTime(2026, 4, 3);
+      _fakeRepo.store[x.id] = x;
+      _fakeRepo.store[y.id] = y;
+
+      expect(
+        container.read(partnerListProvider).map((p) => p.id),
+        ['p-Y', 'p-X'],
+      );
+
+      x.updatedAt = DateTime(2026, 4, 4);
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .save(x);
+
+      expect(
+        container.read(partnerListProvider).map((p) => p.id),
+        ['p-X', 'p-Y'],
+      );
+    });
   });
 
   group('ConversationWriteController.create', () {
@@ -169,9 +213,7 @@ void main() {
 
       expect(container.read(partnerAggregateProvider('p-X')).totalMessages, 0);
 
-      await container
-          .read(conversationWriteControllerProvider.notifier)
-          .create(
+      await container.read(conversationWriteControllerProvider.notifier).create(
             name: 'new',
             messages: [
               Message(
@@ -201,7 +243,8 @@ void main() {
           .create(name: 'legacy', messages: const []);
 
       expect(c.partnerId, isNull,
-          reason: 'create without partnerId yields conversation with null partnerId');
+          reason:
+              'create without partnerId yields conversation with null partnerId');
 
       container.read(conversationsByPartnerProvider('p-X'));
       expect(_fakeRepo.listByPartnerCalls['p-X'], xBefore,
@@ -224,8 +267,7 @@ void main() {
           .read(conversationWriteControllerProvider.notifier)
           .save(c);
 
-      expect(
-          container.read(partnerAggregateProvider('p-X')).totalRounds, 5,
+      expect(container.read(partnerAggregateProvider('p-X')).totalRounds, 5,
           reason: 'aggregate(X) must reflect updated round count');
     });
 

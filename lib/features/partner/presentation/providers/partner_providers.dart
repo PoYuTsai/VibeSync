@@ -25,7 +25,21 @@ final partnerListProvider = Provider<List<Partner>>((ref) {
   final userId = ref.watch(authConversationScopeProvider).valueOrNull;
   if (userId == null) return const <Partner>[];
   final repo = ref.watch(partnerRepositoryProvider);
-  return repo.listByOwner(userId);
+  final partners = [...repo.listByOwner(userId)];
+  partners.sort((a, b) {
+    final aLast =
+        ref.watch(_partnerLastInteractionProvider(a.id)) ?? a.updatedAt;
+    final bLast =
+        ref.watch(_partnerLastInteractionProvider(b.id)) ?? b.updatedAt;
+    return bLast.compareTo(aLast);
+  });
+  return partners;
+});
+
+final _partnerLastInteractionProvider =
+    Provider.family<DateTime?, String>((ref, partnerId) {
+  final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
+  return conversations.isEmpty ? null : conversations.first.updatedAt;
 });
 
 /// Conversations belonging to a specific Partner.

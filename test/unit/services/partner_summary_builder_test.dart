@@ -78,7 +78,10 @@ void main() {
   test('empty conversations returns header-only marker', () {
     final s = builder.build(partner: _partner(), conversations: const []);
     expect(s, contains('[對象背景：糖糖]'));
-    expect(s.characters.length, lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap));
+    expect(
+      s.characters.length,
+      lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap),
+    );
   });
 
   test('first-conversation partner: summary returns single-line marker', () {
@@ -92,7 +95,9 @@ void main() {
     expect(s, contains('這是你跟此對象的第一次對話'));
   });
 
-  test('all conversations no analysis snapshot: summary returns analysis-pending marker', () {
+  test(
+      'all conversations no analysis snapshot: summary returns analysis-pending marker',
+      () {
     final s = builder.build(
       partner: _partner(),
       conversations: [
@@ -120,7 +125,15 @@ void main() {
           updatedAt: DateTime(2026, 4, 20),
           lastEnthusiasmScore: 80,
           snapshotJson: _snapshot(interests: const [
-            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+            'A',
+            'B',
+            'C',
+            'D',
+            'E',
+            'F',
+            'G',
+            'H',
+            'I',
           ]),
         ),
       ],
@@ -141,7 +154,13 @@ void main() {
           updatedAt: DateTime(2026, 4, 1),
           lastEnthusiasmScore: 80,
           snapshotJson: _snapshot(notes: const [
-            'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7',
+            'n1',
+            'n2',
+            'n3',
+            'n4',
+            'n5',
+            'n6',
+            'n7',
           ]),
         ),
       ],
@@ -154,7 +173,8 @@ void main() {
     expect(s, contains('n7'));
   });
 
-  test('partner.ownerUserId != conversation.ownerUserId returns empty summary', () {
+  test('partner.ownerUserId != conversation.ownerUserId returns empty summary',
+      () {
     final s = builder.build(
       partner: _partner(ownerUserId: 'u-A'),
       conversations: [
@@ -170,7 +190,9 @@ void main() {
         reason: 'owner mismatch is an anti-bleed safeguard — return nothing');
   });
 
-  test('single conversation lastAnalysisSnapshotJson parse failure: builder still assembles', () {
+  test(
+      'single conversation lastAnalysisSnapshotJson parse failure: builder still assembles',
+      () {
     final s = builder.build(
       partner: _partner(),
       conversations: [
@@ -207,7 +229,9 @@ void main() {
     expect(s, contains('對象 #abcd'));
   });
 
-  test('user-set customNote 1000 chars: final summary still <= 1500 (truncation works)', () {
+  test(
+      'user-set customNote 1000 chars: final summary still <= 1500 (truncation works)',
+      () {
     final s = builder.build(
       partner: _partner(customNote: 'X' * 1000),
       conversations: [
@@ -223,7 +247,10 @@ void main() {
         ),
       ],
     );
-    expect(s.characters.length, lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap));
+    expect(
+      s.characters.length,
+      lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap),
+    );
   });
 
   test('truncation preserves "[truncated]" suffix marker', () {
@@ -240,10 +267,12 @@ void main() {
       ],
     );
     expect(s, endsWith('[truncated]'));
-    expect(s.characters.length, lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap));
+    expect(s.characters.length,
+        lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap));
   });
 
-  test('truncation does NOT split a ZWJ emoji grapheme cluster (Codex r2 P2)', () {
+  test('truncation does NOT split a ZWJ emoji grapheme cluster (Codex r2 P2)',
+      () {
     // ZWJ family: 1 grapheme cluster, 7 codepoints, 11 UTF-16 code units.
     const family = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}';
     // Tile enough families that the buffer crosses kHardCharCap mid-cluster.
@@ -262,7 +291,14 @@ void main() {
     );
 
     // Cap respected.
-    expect(s.characters.length, lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap));
+    expect(
+      s.characters.length,
+      lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap),
+    );
+    expect(
+      s.length,
+      lessThanOrEqualTo(PartnerSummaryBuilder.kServerCodeUnitCap),
+    );
 
     // No orphan surrogate / lone ZWJ — round-trip codeUnits must stay
     // valid UTF-16 (no unpaired high/low surrogate).
@@ -300,7 +336,14 @@ void main() {
         ),
       ],
     );
-    expect(s.characters.length, lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap));
+    expect(
+      s.characters.length,
+      lessThanOrEqualTo(PartnerSummaryBuilder.kHardCharCap),
+    );
+    expect(
+      s.length,
+      lessThanOrEqualTo(PartnerSummaryBuilder.kServerCodeUnitCap),
+    );
     expect(s, endsWith('[truncated]'));
   });
 
