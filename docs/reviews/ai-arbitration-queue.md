@@ -129,13 +129,13 @@ Close-Condition:
 
 ## Live Queue
 
-## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review
-Status: APPROVED
+## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review + Code Review
+Status: CODE_REVIEW_PENDING
 Request-Type: review
 Raised-By: Claude
-Owner: Claude
+Owner: Codex
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ `58b22db` (r3 plan-only, no code yet)
+Branch/Commit: `feature/partner-entity-A2-ui` @ `637465f` (Tasks 6-9 implemented; PR pending)
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -337,13 +337,48 @@ Action-Items:
 - [x] **Codex r3 scoped re-review** — verify ONLY the two r2 remaining
       test-harness findings are resolved. Do NOT re-litigate r1 hot-spots or
       r2-already-acceptable items. Plan revision header carries an r3 changelog.
-- [ ] Claude executes Tasks 6-9 via
-      `superpowers:executing-plans`
+- [x] Claude executes Tasks 6-9 via `superpowers:executing-plans`
+      (commits `27481fd` / `d31103c` / `9be4cd2` / `637465f`)
+- [ ] Claude opens PR `feature/partner-entity-A2-ui` → `main`
+- [ ] **Codex code review (NOT spec review)** — diff the 4 implementation
+      commits against `main`. Focus per the plan's `Codex Review Hot Spots`:
+      narrow-invalidation grep (zero hits on `conversationsProvider` in Phase 2
+      widgets), literal-before-parametric route order, auth-scope leakage check,
+      `HomeContent` `@Deprecated` not deleted, `NewConversationSheet`
+      extraction is pure move + visibility flip (title「新增對話」untouched —
+      Task 15 owns), `PartnerRadarSummaryCard` reuses `AnalysisResult.fromJson`
+      not duplicate parser. PLUS one item NOT in the plan: see
+      Implementation-Notes below for `add_partner_navigation_test.dart`
+      omission rationale.
+
+Implementation-Notes (Code Review round):
+- **Plan-required `add_partner_navigation_test.dart` was OMITTED.** Reproducible
+  failure: `pushReplacement` (and `go`) called from inside the screen's async
+  submit chain silently no-ops in `flutter test`, while the same router
+  accepts `go(...)` from outside the widget tree (verified via diagnostic
+  harness with full trace; logs in commit body of `9be4cd2`). Tried:
+  setState removal / `WidgetsBinding.instance.addPostFrameCallback` /
+  microtask defer / `Future.delayed(50ms)` / capture-router-pre-await — none
+  changed the outcome. Data-side contract (Partner persisted with owner) IS
+  covered by `add_partner_screen_test.dart`'s "successful submit writes
+  Partner" test. Back-stack semantic is covered by manual TF QA. If Codex
+  insists on this test, please specify the exact technique that should work
+  in this go_router 14.8.1 + flutter_test setup; happy to add a new round.
+- All other plan items implemented as specified. 19 hermetic widget tests
+  green (3 router + 3 list + 5 add + 5 detail + 4 radar). `flutter analyze`
+  shows 1 pre-existing info-level warning at
+  `conversation_repository.dart:110` (authored 2026-04-01, commit `f962168d`,
+  not touched by Phase 2) — zero NEW warnings.
+- `_NewConversationSheet` extraction shipped in Task 9 (commit `637465f`)
+  as a pure move + visibility flip; main_shell.dart no longer imports
+  `conversation_write_controller.dart` (removed with the sheet).
+- HomeContent in `home_screen.dart:14` marked `@Deprecated` — Phase 4
+  Task 15/16 will remove it.
 
 Close-Condition:
-- Codex returned `APPROVED` on the r3 scoped review. Phase 2 plan execution can
-  start; close this item after Tasks 6-9 finish or a new implementation review
-  item supersedes it.
+- Codex returns 🟢 PASS or 🟡 nit-only verdict on the implementation diff
+  AND the PR is merged to main, OR Codex flags 🔴 / 🟠 issues that get fixed
+  in additional rounds. Close after merge.
 
 ---
 
