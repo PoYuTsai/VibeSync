@@ -11,6 +11,8 @@ import '../../data/providers/conversation_write_controller.dart';
 import '../widgets/conversation_tile.dart';
 
 /// Body-only content for use inside MainShell (no Scaffold/AppBar/FAB).
+@Deprecated(
+    'Replaced by PartnerListScreen in Phase 2; remove in Phase 4 cleanup')
 class HomeContent extends ConsumerWidget {
   final VoidCallback? onNewConversation;
 

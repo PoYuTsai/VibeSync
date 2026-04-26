@@ -7,7 +7,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_typography.dart';
 import '../shared/widgets/warm_theme_widgets.dart';
 import '../features/conversation/data/providers/conversation_write_controller.dart';
-import '../features/conversation/presentation/screens/home_screen.dart';
+import '../features/partner/presentation/screens/partner_list_screen.dart';
 import '../features/report/presentation/screens/my_report_screen.dart';
 import '../features/learning/presentation/screens/learning_screen.dart';
 
@@ -37,31 +37,19 @@ class _MainShellState extends State<MainShell> {
             ),
           ],
         ),
-        body: Builder(
-          builder: (shellContext) => IndexedStack(
-            index: _currentIndex,
-            children: [
-              HomeContent(
-                onNewConversation: () => _showNewConversationOptions(shellContext),
-              ),
-              const MyReportScreen(),
-              const LearningScreen(),
-            ],
-          ),
+        body: IndexedStack(
+          index: _currentIndex,
+          children: const [
+            PartnerListScreen(),
+            MyReportScreen(),
+            LearningScreen(),
+          ],
         ),
         floatingActionButton: _currentIndex == 0
             ? _HomeFab()
             : null,
         bottomNavigationBar: _buildBottomNav(),
       ),
-    );
-  }
-
-  void _showNewConversationOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _NewConversationSheet(),
     );
   }
 
@@ -161,11 +149,7 @@ class _HomeFab extends ConsumerWidget {
         ],
       ),
       child: FloatingActionButton(
-        onPressed: () => showModalBottomSheet(
-          context: context,
-          backgroundColor: Colors.transparent,
-          builder: (ctx) => _NewConversationSheet(),
-        ),
+        onPressed: () => context.push('/partner/new'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         child: const Icon(Icons.add, color: Colors.white),
@@ -176,6 +160,12 @@ class _HomeFab extends ConsumerWidget {
 }
 
 /// Shared bottom sheet for creating new conversations.
+///
+/// Currently unused — Task 7 unwired the only callers. Task 9 extracts
+/// this to `lib/features/conversation/presentation/widgets/new_conversation_sheet.dart`
+/// (renamed `NewConversationSheet`) for reuse from `PartnerDetailScreen`.
+/// Leaving in place avoids two churn commits.
+// ignore: unused_element
 class _NewConversationSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
