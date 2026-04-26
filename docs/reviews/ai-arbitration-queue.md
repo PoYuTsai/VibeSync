@@ -133,9 +133,9 @@ Close-Condition:
 Status: OPEN
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-ui` @ `e25cfce` (plan-only, no code yet)
+Branch/Commit: `feature/partner-entity-A2-ui` @ `da13761` (plan-only, no code yet)
 
 Question:
 - Does the Phase 2 sub-plan (Tasks 6-9: routing → partner list → add form →
@@ -193,19 +193,49 @@ Claude-Position:
   copy sweep) is intentional to keep Phase 2 PR reviewable.
 
 Codex-Position:
-- Pending
+- **REVISE_BEFORE_IMPLEMENTATION** — direction is correct, but the plan has
+  execution-level blockers that will produce false-red tests or a broken
+  navigation stack if Tasks 6-9 are executed literally.
+- Findings are recorded in
+  [2026-04-26_partner-entity-A2-phase2-plan_codex-review.md](./2026-04-26_partner-entity-A2-phase2-plan_codex-review.md):
+  - P1: plan snippets import `package:vibe_sync/...`, but the project package
+    is `vibesync`.
+  - P1: Add Partner submit uses `context.go`, which can drop the Home back
+    stack; use replace/pushReplacement and add a Home -> new -> detail -> back
+    test.
+  - P1: proposed widget tests are not hermetic: router test can hit real
+    `AnalysisScreen` providers, Partner list card tests can hit real aggregate
+    providers, Add Partner fake repo can touch real Hive, and auth override
+    should match the real `StreamProvider` pattern.
+  - P2: Add Partner should not create an ownerless Partner when auth scope is
+    null/loading, because `partnerListProvider` will hide it.
+  - P2: `PartnerRadarSummaryCard` parser reuse needs a concrete API path
+    (`AnalysisResult.fromJson` or a shared helper) to avoid duplicate JSON
+    parsing.
+- Hot spot judgments:
+  - C1 narrow-invalidation direction: acceptable; keep Phase 2 widget grep for
+    `conversationsProvider` at 0 hits.
+  - `/partner/new` before `/partner/:partnerId`: correct, but tests must compile
+    first.
+  - `HomeContent` deferred deletion: acceptable.
+  - `_NewConversationSheet` extraction: acceptable if pure move + visibility
+    flip.
+  - `⋮` visible-only menu: acceptable only if Phase 2 does not ship
+    independently before Phase 4 handlers land.
 
 Verdict:
-- Pending
+- REVISE_BEFORE_IMPLEMENTATION
 
 Eric-Decision:
 - Pending
 
 Action-Items:
-- [ ] Codex reviews `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
+- [x] Codex reviews `docs/plans/2026-04-26-partner-entity-A2-phase2-impl.md`
       with the six hot-spots called out at the bottom of the plan
-- [ ] Codex flags 🔴 / 🟡 inline patches if needed, or 🟠 issues marked
+- [x] Codex flags 🔴 / 🟡 inline patches if needed, or 🟠 issues marked
       `Verdict: Daisy-Decision-Needed`
+- [ ] Claude patches the Phase 2 plan to r2 using the Codex review doc
+- [ ] Codex re-reviews r2 plan (scope limited to the five findings)
 - [ ] If 🟢 or REVISED_AND_APPROVED, Claude executes Tasks 6-9 via
       `superpowers:executing-plans`
 
