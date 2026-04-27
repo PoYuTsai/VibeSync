@@ -10,6 +10,17 @@
 
 ---
 
+## Codex r1 Patch (2026-04-27)
+
+- Branch merged latest `main` before implementation; PR-A is now merged, so PR-B is no longer a parallel branch against stale queue state.
+- Task 1 test snippets must use the real auth override shape: `authConversationScopeProvider.overrideWith((ref) => Stream.value('u1'))`, not an undefined `_StubAuthScope`.
+- Task 1 / Task 4 snippets now use the real `PartnerAggregateView` fields: `totalRounds` / `unionTraits` instead of nonexistent `count` / `traits`.
+- Task 3 / Task 4 must not pass async merge work into a `VoidCallback` that immediately pops the dialog. The dialog returns `bool`; `PartnerMergePickerScreen` awaits `PartnerWriteController.merge()` after confirmation and handles errors.
+- Task 6 reassign must roll back the in-memory `conversation.partnerId` if `ConversationWriteController.save()` fails.
+- Task 8 should update the partner CI subset to include `test/unit/features/partner/` because PR-B adds `PartnerWriteController` unit coverage.
+
+---
+
 ## ⚠️ Reality Check — Design Doc §5 Deviation
 
 讀 code 後發現 design doc §5「Confirm 後行為 → 3. Riverpod aggregate invalidation 由 repo 觸發（A1 已 tested）」**是錯的**：
@@ -114,7 +125,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           authConversationScopeProvider
-              .overrideWith(() => _StubAuthScope('u1')),
+              .overrideWith((ref) => Stream.value('u1')),
         ],
       );
       addTearDown(container.dispose);
@@ -124,6 +135,8 @@ void main() {
       await partnerRepo.upsertIfAbsent(_partner('A', 'u1'));
       await partnerRepo.upsertIfAbsent(_partner('B', 'u1'));
       // ...seed 2 conversations with partnerId='A' via ConversationRepository...
+      // Give each seeded conversation currentRound=1 so aggregate assertions
+      // can use the real PartnerAggregateView.totalRounds field.
 
       // Prime providers (force them to subscribe so we can detect invalidation)
       final aBefore = container.read(partnerByIdProvider('A'));
@@ -150,7 +163,7 @@ void main() {
       expect(container.read(partnerListProvider).length, 1);
       expect(container.read(conversationsByPartnerProvider('A')), isEmpty);
       expect(container.read(conversationsByPartnerProvider('B')).length, 2);
-      expect(container.read(partnerAggregateProvider('B')).count,
+      expect(container.read(partnerAggregateProvider('B')).totalRounds,
           greaterThanOrEqualTo(2));
       // legacy global invalidated as well (Phase 1 transition contract)
     });
@@ -181,7 +194,7 @@ Partner _partner(String id, String owner) => Partner(
     );
 ```
 
-**Codex-Review-Hot-Spot**：上面的 setUp/tearDown 用「temp Hive box per test」pattern。執行時 reuse `test/unit/features/partner/partner_repository_merge_test.dart` 已 ship 的 helper（A1 留下的）。若該 helper 不 export，就同檔複製成 `_setUpTempBoxes()` private fn —— 不要為了 DRY 改既有 A1 test 檔（PR-B 邊界外）。
+**Codex-Review-Hot-Spot**：上面的 setUp/tearDown 用「temp Hive box per test」pattern。執行時 reuse `test/unit/repositories/partner_repository_merge_test.dart` 已 ship 的 adapter/box setup pattern。若 helper 不 export，就同檔複製成 private setup fn —— 不要為了 DRY 改既有 A1 test 檔（PR-B 邊界外）。
 
 **Step 2：跑 test 確認 FAIL**
 
@@ -503,7 +516,7 @@ empty state 顯示 hint 指向首頁建立 Partner。"
 
 **Step 1：寫 failing widget tests**
 
-斷言：dialog 顯示 `N 對話` + `M traits` + 紅字「⚠️ 此操作無法復原」+ 取消/確認兩按鈕；確認 → onConfirm callback；取消 → onCancel callback；no merge call here（dialog 純 UI，merge 由 caller 串）。
+斷言：dialog 顯示 `N 對話` + `M traits` + 紅字「⚠️ 此操作無法復原」+ 取消/確認兩按鈕；確認 → `showDialog<bool>` 回傳 `true`；取消 → 回傳 `false`；no merge call here（dialog 純 UI，merge 由 caller 串）。
 
 ```dart
 testWidgets('dialog shows N convos + M traits + red 不可逆 warning', (t) async {
@@ -518,8 +531,6 @@ testWidgets('dialog shows N convos + M traits + red 不可逆 warning', (t) asyn
               toName: 'Bob',
               conversationCount: 3,
               traitCount: 7,
-              onConfirm: () {},
-              onCancel: () {},
             ),
           ),
           child: const Text('open'),
@@ -539,20 +550,20 @@ testWidgets('dialog shows N convos + M traits + red 不可逆 warning', (t) asyn
   expect(find.text('取消'), findsOneWidget);
 });
 
-testWidgets('confirm tap fires onConfirm exactly once', (t) async {
-  var confirmCount = 0;
-  /* ...show dialog with onConfirm: () => confirmCount++... */
+testWidgets('confirm tap returns true', (t) async {
+  bool? result;
+  /* ...show dialog and assign result = await showDialog<bool>(...)... */
   await t.tap(find.text('確認合併'));
   await t.pumpAndSettle();
-  expect(confirmCount, 1);
+  expect(result, isTrue);
 });
 
-testWidgets('cancel tap fires onCancel and dismisses', (t) async {
-  var cancelled = false;
+testWidgets('cancel tap returns false', (t) async {
+  bool? result;
   /* ...show dialog... */
   await t.tap(find.text('取消'));
   await t.pumpAndSettle();
-  expect(cancelled, isTrue);
+  expect(result, isFalse);
 });
 ```
 
@@ -574,8 +585,6 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
   final String toName;
   final int conversationCount;
   final int traitCount;
-  final VoidCallback onConfirm;
-  final VoidCallback onCancel;
 
   const PartnerMergeConfirmDialog({
     super.key,
@@ -583,8 +592,6 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
     required this.toName,
     required this.conversationCount,
     required this.traitCount,
-    required this.onConfirm,
-    required this.onCancel,
   });
 
   @override
@@ -610,15 +617,13 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () {
-            onCancel();
-            Navigator.of(context).pop();
+            Navigator.of(context).pop(false);
           },
           child: const Text('取消'),
         ),
         ElevatedButton(
           onPressed: () {
-            onConfirm();
-            Navigator.of(context).pop();
+            Navigator.of(context).pop(true);
           },
           child: const Text('確認合併'),
         ),
@@ -637,7 +642,7 @@ git add lib/features/partner/presentation/dialogs/partner_merge_confirm_dialog.d
         test/widget/features/partner/partner_merge_confirm_dialog_test.dart
 git commit -m "[feat] PartnerMergeConfirmDialog — D 版（具象 metric + 紅字不可逆）(Task 3)
 
-純 UI；onConfirm/onCancel callback 由 caller (merge picker screen) 串
+純 UI；dialog 只回傳 bool，merge 由 caller (merge picker screen) 在確認後 await 執行
 PartnerWriteController.merge + GoRouter 跳轉。dialog 自身只負責顯示
 與 dismiss。"
 ```
@@ -799,35 +804,40 @@ class PartnerMergePickerScreen extends ConsumerWidget {
     );
   }
 
-  void _confirm(BuildContext context, WidgetRef ref, Partner target) {
+  Future<void> _confirm(BuildContext context, WidgetRef ref, Partner target) async {
     final fromAgg = ref.read(partnerAggregateProvider(fromPartnerId));
     final convCount = ref
         .read(conversationsByPartnerProvider(fromPartnerId))
         .length;
     final fromPartner = ref.read(partnerByIdProvider(fromPartnerId));
     if (fromPartner == null) return;
-    final traitCount = fromAgg.traits.length;
-    showDialog(
+    final traitCount = fromAgg.unionTraits.length;
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => PartnerMergeConfirmDialog(
         fromName: fromPartner.name,
         toName: target.name,
         conversationCount: convCount,
         traitCount: traitCount,
-        onConfirm: () async {
-          await ref
-              .read(partnerWriteControllerProvider.notifier)
-              .merge(fromId: fromPartnerId, toId: target.id);
-          if (context.mounted) context.go('/partner/${target.id}');
-        },
-        onCancel: () {},
       ),
     );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await ref
+          .read(partnerWriteControllerProvider.notifier)
+          .merge(fromId: fromPartnerId, toId: target.id);
+      if (context.mounted) context.go('/partner/${target.id}');
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('合併失敗，請稍後再試')),
+      );
+    }
   }
 }
 ```
 
-**Codex-Review-Hot-Spot**：`fromAgg.traits.length` 假設 `PartnerAggregateView` 有 `traits` field。執行時先 `grep "traits" lib/features/partner/domain/extensions/partner_aggregates.dart` 確認 field 名（可能是 `traits` 或 `traitTags` 或 union 結構）。若名字不同，調整代入；若沒有同等 field，**unwind 為「對話數搬遷 + 自定義備註合併」單行**（接受 design doc D 版的精神，捨棄精確 trait count）。此 unwind 不影響 plan core，標 test reason 即可。
+**Codex r1 resolved**：`PartnerAggregateView` 實際欄位是 `unionTraits`（見 `lib/features/partner/domain/extensions/partner_aggregates.dart`），Task 4 使用 `fromAgg.unionTraits.length`。不再保留 `traits` / `traitTags` 不確定性。
 
 3c. 加路由（在 `lib/core/router/...` 或主 GoRouter config 處）：
 
@@ -1067,10 +1077,18 @@ Future<void> showConversationReassignPicker(
         onSelected: (target) async {
           final previousPartnerId = conversation.partnerId;
           conversation.partnerId = target.id;
-          await ref
-              .read(conversationWriteControllerProvider.notifier)
-              .save(conversation, previousPartnerId: previousPartnerId);
-          if (context.mounted) Navigator.of(context).pop();
+          try {
+            await ref
+                .read(conversationWriteControllerProvider.notifier)
+                .save(conversation, previousPartnerId: previousPartnerId);
+            if (context.mounted) Navigator.of(context).pop();
+          } catch (_) {
+            conversation.partnerId = previousPartnerId;
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('移動失敗，請稍後再試')),
+            );
+          }
         },
       ),
     ),
@@ -1179,6 +1197,13 @@ sheet 自動關。用戶不換頁，cell 從 list 自然消失。"
 cmd.exe /c "flutter.bat test test\widget\features\partner --reporter expanded"
 cmd.exe /c "flutter.bat test test\unit\features\partner --reporter expanded"
 cmd.exe /c "flutter.bat analyze --no-fatal-infos"
+```
+
+**Codex r1 CI gate patch**：PR-B 新增 `PartnerWriteController` unit coverage，更新 `.github/workflows/flutter-ci.yml` 的 partner subset，讓 PR checks 同時跑：
+
+```bash
+flutter test test/widget/features/partner/
+flutter test test/unit/features/partner/
 ```
 
 預期：
@@ -1336,7 +1361,7 @@ PR-B 真正完成的條件：
 - [ ] TF QA 4 項全綠（merge / reassign / 同名 partner merge / merged Partner detail navigation — per design doc §6 manual gate）
 - [ ] queue item Status: CLOSED
 - [ ] `reference_partner_refactor_in_flight.md` Phase 3 PR-B 段更新為 ✅
-- [ ] memory 補一筆「Phase 4 待議：showCreateNewAction inline + delete handler + traits-vs-traitTags 命名」issue tracker entry
+- [ ] memory 補一筆「Phase 4 待議：showCreateNewAction inline + delete handler」issue tracker entry
 
 ---
 
