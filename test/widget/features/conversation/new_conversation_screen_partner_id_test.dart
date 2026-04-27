@@ -101,4 +101,34 @@ void main() {
     expect(fake.capturedName, 'Alice');
     expect(fake.capturedMessageCount, greaterThanOrEqualTo(1));
   });
+
+  testWidgets('partnerId arg null (legacy entry) propagates as null', (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    final fake = RecordingConversationWriteController();
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        conversationWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: MaterialApp.router(routerConfig: _routerWith(null)),
+    ));
+    await _settle(t);
+
+    await _fillNameAndOneMessage(t);
+
+    // 同 Task 2：GradientButton + 文字「建立對話」（一條 her message 已入列）。
+    final cta = find.byType(GradientButton);
+    await t.ensureVisible(cta);
+    await _settle(t);
+    await t.tap(cta);
+    await _settle(t);
+
+    expect(fake.createCalled, isTrue);
+    expect(fake.capturedPartnerId, isNull,
+        reason: 'Legacy entry without partnerId arg should pass null to controller.create. '
+                'Auto-derive on create is NOT implemented in current architecture; '
+                'A1 migration backfills Partners on app start. Phase 4+ may revisit.');
+  });
 }
