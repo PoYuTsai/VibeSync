@@ -27,6 +27,19 @@
 
 ---
 
+## 🔁 r2 Patch — 修正 helper + CTA finder（2026-04-27）
+
+Codex spec review r1（`docs/reviews/2026-04-27_partner-entity-A2-phase3-pr-a-plan_codex-review.md`，HEAD `539950e`）抓到兩個 P1，皆是「test 看似驗 chain 但其實永遠 short-circuit 在 production 早 return / 找不到真實 widget」：
+
+| # | 問題 | r2 修法 |
+|---|---|---|
+| P1-A | `_fillNameAndOneMessage()` 只填名字，沒輸入 / tap 加號 → `_messages` 空 → `_createConversation()` 在 `if (_messages.isEmpty)` (line 116-121) snackbar return，永遠跑不到 `controller.create()` | helper 補：`enterText` 第二個 TextField + tap `Icons.add` first |
+| P1-B | CTA finder 用 `find.widgetWithText(ElevatedButton, RegExp('儲存\|建立').toString())`，問題雙殺：(1) production 是 `GradientButton` (line 481)，不是 `ElevatedButton`；(2) `RegExp.toString()` 產 `"RegExp: pattern=儲存\|建立 flags="` literal string，不是 regex matcher | 改 `find.byType(GradientButton)` + 額外 assert `find.text('建立對話')`（`_hasIncomingMessage=true` 後固定，line 46）|
+
+R1/R3/R4 Codex 全部 accept（不需 ADR-16 / Reality Check 維持原樣 / 加 Key 可接受但獨立 commit）。
+
+---
+
 ## Pre-flight（Task 0）
 
 執行：
@@ -147,6 +160,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/presentation/screens/new_conversation_screen.dart';
+import 'package:vibesync/shared/widgets/warm_theme_widgets.dart'; // GradientButton
 
 import '_fakes/recording_conversation_write_controller.dart';
 
@@ -165,15 +179,24 @@ GoRouter _routerWith(String? partnerId) => GoRouter(
     );
 
 Future<void> _fillNameAndOneMessage(WidgetTester t) async {
-  // 第一個 TextField = 對話對象暱稱；第二個 = 她的訊息（hint「貼上對話內容」）
-  // 用 enterText byType 取第一個，再用 specific finder 取第二個
-  await t.enterText(find.byType(TextField).first, 'Alice');
-  // 找「她的訊息」輸入欄 + 加號按鈕（_addHerMessage）
-  // 因 NewConversationScreen UI 結構複雜，這裡用 byKey 或 byTooltip 選最穩定 finder。
-  // 執行時若 finder 不準，先讀 lib/.../new_conversation_screen.dart 找 widget Key。
-  // FALLBACK：若 keys 沒設，動 production code 加 Key('her_message_input') / Key('her_message_add')，
-  //          這算「測試所需 minimal production hook」，不違反 PR-A 0-prod-code 原則。
+  // Production reality (`new_conversation_screen.dart`)：
+  //   - default state（personalization 未展開）TextField 順序：
+  //     [0] 對話對象 name (_nameController, line 270)
+  //     [1] 她的訊息 (_herMessageController, line 429)
+  //     [2] 我的訊息 (_myMessageController, line 448)
+  //   - 加號按鈕 = `_buildAddButton(_addHerMessage)` (line 435)，
+  //     內含 `Icons.add` (line 188)。第二顆相同 icon 是 _addMyMessage。
+  //   - 必須真的 _messages.add 一則，否則 _createConversation()
+  //     line 116-121 snackbar early return，controller.create 永遠不會被叫。
+  //   - 一條 her message 入列 → _hasIncomingMessage=true → CTA 文字固定「建立對話」(line 46)。
+  await t.enterText(find.byType(TextField).at(0), 'Alice');
+  await t.enterText(find.byType(TextField).at(1), '嗨');
+  await t.tap(find.byIcon(Icons.add).first);
   await t.pumpAndSettle();
+
+  // FALLBACK（only if Icons.add finder 不準）：在 production 加 `Key('her_message_add')`
+  // 等 stable Key，**獨立 commit** `[refactor] 補 widget test key`，不混 test commit。
+  // Codex r2 review acknowledge 此 minimal hook OK（review doc 539950e Findings§Patch）。
 }
 
 void main() {
@@ -190,10 +213,13 @@ void main() {
 
     await _fillNameAndOneMessage(t);
 
-    // 找「先儲存對話 / 建立對話」CTA（看是否有對方訊息決定 button text）
-    final cta = find.widgetWithText(ElevatedButton, RegExp('儲存|建立').toString());
+    // CTA = GradientButton (production line 481-485, NOT ElevatedButton).
+    // _hasIncomingMessage=true 後 text 固定「建立對話」(line 46)。
+    final cta = find.byType(GradientButton);
     expect(cta, findsOneWidget,
-        reason: 'CTA button should be present after filling name + message');
+        reason: 'GradientButton CTA renders after a「her message」 is added');
+    expect(find.text('建立對話'), findsOneWidget,
+        reason: '_hasIncomingMessage=true 應 render 文字「建立對話」(line 46)');
 
     await t.tap(cta);
     await t.pumpAndSettle();
@@ -253,7 +279,8 @@ testWidgets('partnerId arg null (legacy entry) propagates as null', (t) async {
 
   await _fillNameAndOneMessage(t);
 
-  final cta = find.widgetWithText(ElevatedButton, RegExp('儲存|建立').toString());
+  // 同 Task 2：GradientButton + 文字「建立對話」（一條 her message 已入列）。
+  final cta = find.byType(GradientButton);
   await t.tap(cta);
   await t.pumpAndSettle();
 
