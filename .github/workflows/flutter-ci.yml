@@ -59,5 +59,8 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
-      - name: Run tests (partner subset)
-        run: flutter test test/widget/features/partner/
+      - name: Run tests (partner + conversation subset)
+        run: |
+          flutter test test/widget/features/partner/
+          flutter test test/widget/features/conversation/
+          flutter test test/unit/features/partner/
