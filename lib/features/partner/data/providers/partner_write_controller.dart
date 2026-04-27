@@ -25,15 +25,13 @@ class PartnerWriteController extends Notifier<void> {
   }) async {
     if (fromId == toId) return;
     final repo = ref.read(partnerRepositoryProvider);
-    await repo.merge(fromId: fromId, toId: toId);
-    _invalidatePartner(fromId);
-    _invalidatePartner(toId);
-    _invalidatePartnerScopedConversations(fromId);
-    _invalidatePartnerScopedConversations(toId);
-    ref.invalidate(partnerListProvider);
-    // A2 transition contract — retired in the post-A2 cleanup PR once
-    // reportDataProvider migrates off the global feed.
-    ref.invalidate(conversationsProvider);
+    try {
+      await repo.merge(fromId: fromId, toId: toId);
+    } finally {
+      // Repo merge is multi-step Hive I/O. If it throws after a partial write,
+      // invalidate anyway so the UI reflects the real local state.
+      _invalidateMergeScopes(fromId, toId);
+    }
   }
 
   void _invalidatePartner(String id) {
@@ -43,6 +41,17 @@ class PartnerWriteController extends Notifier<void> {
 
   void _invalidatePartnerScopedConversations(String id) {
     ref.invalidate(conversationsByPartnerProvider(id));
+  }
+
+  void _invalidateMergeScopes(String fromId, String toId) {
+    _invalidatePartner(fromId);
+    _invalidatePartner(toId);
+    _invalidatePartnerScopedConversations(fromId);
+    _invalidatePartnerScopedConversations(toId);
+    ref.invalidate(partnerListProvider);
+    // A2 transition contract — retired in the post-A2 cleanup PR once
+    // reportDataProvider migrates off the global feed.
+    ref.invalidate(conversationsProvider);
   }
 }
 

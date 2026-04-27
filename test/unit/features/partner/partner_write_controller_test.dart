@@ -40,15 +40,37 @@ class _CountingConversationRepository extends ConversationRepository {
   }
 }
 
-late Box<Partner> partnerBox;
-late Box<Conversation> convoBox;
-late _CountingConversationRepository convoRepo;
+class _PartiallyFailingPartnerRepository extends PartnerRepository {
+  _PartiallyFailingPartnerRepository({
+    required Box<Partner> box,
+    required Box<Conversation> conversationBox,
+  })  : _conversationBox = conversationBox,
+        super(box: box, conversationBox: conversationBox);
+
+  final Box<Conversation> _conversationBox;
+
+  @override
+  Future<void> merge({
+    required String fromId,
+    required String toId,
+  }) async {
+    final firstMoved =
+        _conversationBox.values.firstWhere((c) => c.partnerId == fromId);
+    firstMoved.partnerId = toId;
+    await firstMoved.save();
+    throw StateError('simulated partial merge failure');
+  }
+}
+
+late Box<Partner> _partnerBox;
+late Box<Conversation> _convoBox;
+late _CountingConversationRepository _convoRepo;
 
 Future<ProviderContainer> _makeContainer() async {
   final container = ProviderContainer(overrides: [
-    conversationRepositoryProvider.overrideWithValue(convoRepo),
+    conversationRepositoryProvider.overrideWithValue(_convoRepo),
     partnerRepositoryProvider
-        .overrideWithValue(PartnerRepository(box: partnerBox)),
+        .overrideWithValue(PartnerRepository(box: _partnerBox)),
     authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
   ]);
   // Settle the StreamProvider loading→data transition before any partner
@@ -110,18 +132,18 @@ void main() {
 
   setUp(() async {
     final ts = DateTime.now().microsecondsSinceEpoch;
-    partnerBox = await Hive.openBox<Partner>('pwc_partner_$ts');
+    _partnerBox = await Hive.openBox<Partner>('pwc_partner_$ts');
     // Open the canonical conversations box because PartnerRepository.merge
     // and the real ConversationRepository both reach for
     // StorageService.conversationsBox = Hive.box(AppConstants.conversationsBox).
-    convoBox =
+    _convoBox =
         await Hive.openBox<Conversation>(AppConstants.conversationsBox);
-    convoRepo = _CountingConversationRepository();
+    _convoRepo = _CountingConversationRepository();
   });
 
   tearDown(() async {
-    await partnerBox.deleteFromDisk();
-    await convoBox.deleteFromDisk();
+    await _partnerBox.deleteFromDisk();
+    await _convoBox.deleteFromDisk();
   });
 
   group('PartnerWriteController.merge invalidations', () {
@@ -129,10 +151,10 @@ void main() {
         'merge invalidates both partner sides + their conversation scopes + '
         'partner list + legacy global', () async {
       // Seed: A with 2 conversations (1 round each), B with 0
-      await partnerBox.put('A', _partner('A', name: 'Alice'));
-      await partnerBox.put('B', _partner('B', name: 'Bob'));
-      await convoBox.put('c1', _convo('c1', partnerId: 'A'));
-      await convoBox.put('c2', _convo('c2', partnerId: 'A'));
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      await _partnerBox.put('B', _partner('B', name: 'Bob'));
+      await _convoBox.put('c1', _convo('c1', partnerId: 'A'));
+      await _convoBox.put('c2', _convo('c2', partnerId: 'A'));
 
       final container = await _makeContainer();
       addTearDown(container.dispose);
@@ -145,7 +167,7 @@ void main() {
       expect(container.read(partnerAggregateProvider('A')).totalRounds, 2);
       expect(container.read(partnerAggregateProvider('B')).totalRounds, 0);
       container.read(conversationsProvider);
-      final globalBefore = convoRepo.globalListCalls;
+      final globalBefore = _convoRepo.globalListCalls;
 
       // Action
       await container
@@ -167,13 +189,13 @@ void main() {
           reason: 'B aggregate must re-evaluate after invalidate');
 
       container.read(conversationsProvider);
-      expect(convoRepo.globalListCalls, greaterThan(globalBefore),
+      expect(_convoRepo.globalListCalls, greaterThan(globalBefore),
           reason: 'legacy global feed must be invalidated (A2 transition)');
     });
 
     test('same-id merge is a no-op (no throw, no provider thrash)', () async {
-      await partnerBox.put('A', _partner('A'));
-      await convoBox.put('c1', _convo('c1', partnerId: 'A'));
+      await _partnerBox.put('A', _partner('A'));
+      await _convoBox.put('c1', _convo('c1', partnerId: 'A'));
 
       final container = await _makeContainer();
       addTearDown(container.dispose);
@@ -181,7 +203,7 @@ void main() {
       // Prime
       container.read(partnerListProvider);
       container.read(conversationsByPartnerProvider('A'));
-      final aQueriesBefore = convoRepo.listByPartnerCalls['A'] ?? 0;
+      final aQueriesBefore = _convoRepo.listByPartnerCalls['A'] ?? 0;
 
       await container
           .read(partnerWriteControllerProvider.notifier)
@@ -189,14 +211,14 @@ void main() {
 
       // No throw. Force re-read; if no invalidation happened, count is unchanged.
       container.read(conversationsByPartnerProvider('A'));
-      expect(convoRepo.listByPartnerCalls['A'], aQueriesBefore,
+      expect(_convoRepo.listByPartnerCalls['A'], aQueriesBefore,
           reason: 'same-id merge must not invalidate any partner scope');
       expect(container.read(partnerByIdProvider('A')), isNotNull,
           reason: 'partner A still exists');
     });
 
     test('merge throws ArgumentError when source missing', () async {
-      await partnerBox.put('B', _partner('B'));
+      await _partnerBox.put('B', _partner('B'));
       final container = await _makeContainer();
       addTearDown(container.dispose);
 
@@ -209,7 +231,7 @@ void main() {
     });
 
     test('merge throws ArgumentError when target missing', () async {
-      await partnerBox.put('A', _partner('A'));
+      await _partnerBox.put('A', _partner('A'));
       final container = await _makeContainer();
       addTearDown(container.dispose);
 
@@ -219,6 +241,41 @@ void main() {
             .merge(fromId: 'A', toId: 'ghost'),
         throwsArgumentError,
       );
+    });
+
+    test('merge failure still invalidates scopes after partial repo write',
+        () async {
+      await _partnerBox.put('A', _partner('A'));
+      await _partnerBox.put('B', _partner('B'));
+      await _convoBox.put('c1', _convo('c1', partnerId: 'A'));
+
+      final container = ProviderContainer(overrides: [
+        conversationRepositoryProvider.overrideWithValue(_convoRepo),
+        partnerRepositoryProvider.overrideWithValue(
+          _PartiallyFailingPartnerRepository(
+            box: _partnerBox,
+            conversationBox: _convoBox,
+          ),
+        ),
+        authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
+      ]);
+      await container.read(authConversationScopeProvider.future);
+      addTearDown(container.dispose);
+
+      expect(container.read(conversationsByPartnerProvider('A')).length, 1);
+      expect(container.read(conversationsByPartnerProvider('B')), isEmpty);
+
+      await expectLater(
+        container
+            .read(partnerWriteControllerProvider.notifier)
+            .merge(fromId: 'A', toId: 'B'),
+        throwsStateError,
+      );
+
+      expect(container.read(conversationsByPartnerProvider('A')), isEmpty,
+          reason: 'failure path must not leave stale source-scope cache');
+      expect(container.read(conversationsByPartnerProvider('B')).length, 1,
+          reason: 'failure path must surface partial repo writes if they happen');
     });
   });
 }

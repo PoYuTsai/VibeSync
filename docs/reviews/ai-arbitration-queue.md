@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B Code Review (Merge Picker + Reassign ⋮ Menu)
-Status: OPEN
+Status: WAITING_ON_CLAUDE_VERIFY
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `a7aa667`
+Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `a7aa667` + Codex follow-up patch
 
 Question:
 - Code review the 8-commit PR-B implementation (`0d5dcb5..a7aa667`) against
@@ -224,12 +224,33 @@ Evidence:
 - Plan: [docs/plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md](../plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md)
 - Spec review (closed): item below
 
+Codex-Position:
+- (r1 2026-04-27) `REVISED_AND_APPROVED`.
+- Patched one P2 failure-path cache risk: `PartnerWriteController.merge()` now
+  invalidates both partner/conversation scopes in `finally`, so partial Hive
+  writes are surfaced even when `PartnerRepository.merge()` throws.
+- Added unit coverage for partial merge failure and cleaned the info-level
+  `library_private_types_in_public_api` lint in
+  `partner_write_controller_test.dart`.
+- Q1: accept current reassign failure UX. Keep sheet open so the user can retry;
+  rollback test covers `conversation.partnerId`.
+- Q2: accept `conversationsProvider` invalidation as A2 transition wart, tagged
+  for post-A2 cleanup.
+- Q3: fixed here, no separate cleanup item.
+- Local Codex verification caveat: Windows Flutter runner timed out and WSL hit
+  the Windows Flutter CRLF shim. Claude/WSL should rerun:
+  `flutter test test/unit/features/partner/partner_write_controller_test.dart`.
+
+Verdict:
+- REVISED_AND_APPROVED
+
 Action Items:
-- [ ] Codex code reviews diff `0d5dcb5..a7aa667`
-- [ ] Codex verdict: APPROVED / REVISED_AND_APPROVED / REVISE
-- [ ] If REVISED_AND_APPROVED: Codex patches in-place per
+- [x] Codex code reviews PR-B implementation diff
+- [x] Codex verdict: REVISED_AND_APPROVED
+- [x] If REVISED_AND_APPROVED: Codex patches in-place per
   `docs/shared-agent-rules.md` close-out matrix
-- [ ] If REVISE: Claude addresses Round 2 then re-requests
+- [ ] Claude reruns touched unit test in WSL after Codex patch
+- [ ] If WSL verify fails: Claude patches Round 2 then re-requests
 - [ ] Eric merges PR
 
 Close-Condition:
