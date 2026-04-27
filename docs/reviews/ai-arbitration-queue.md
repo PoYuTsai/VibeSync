@@ -129,6 +129,85 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-28] Partner Entity Refactor - A2 Phase 4 Implementation Plan Review
+Status: IN_REVIEW
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `feature/partner-entity-A2-polish` @ `825a5d2` (impl plan only; production code not yet started)
+
+Question:
+- Spec review the Phase 4 implementation plan covering Tasks 1-8 (mapped from
+  design doc Tasks 18a/18b/14a/14b/15/16a/16b/17). Verdict: APPROVED /
+  REVISED_AND_APPROVED (with patches) / REVISE.
+
+Context:
+- Design doc 已 REVISED_AND_APPROVED (Codex r1, `1c74722`)，5 patches 已落
+- Implementation plan 嚴格對齊 patched design contract：
+  · Task 1 repo guard 用 `_conversationBox.values`（無 listByPartner）
+  · Task 1 controller invalidate `partnerListProvider`（非 family）+
+    `partnerByIdProvider(id)` + `partnerAggregateProvider(id)` +
+    `conversationsByPartnerProvider(id)` + `conversationsProvider`
+  · Task 2 conversationCount from `conversationsByPartnerProvider(p.id).length`
+    （不是 aggregate.totalRounds）
+  · Task 3 `FutureProvider.family<bool, String>` for banner async state
+  · Task 4 merge picker `initialTargetId` 4-case contract（null / valid /
+    self / unknown）
+  · Task 2 `_previewTags` interleave interests/traits 再 cap 3
+- 預期 7 production commits + 1 queue update（不含 Codex code review patch）
+- Branch: `feature/partner-entity-A2-polish` 已切，從 main `1c74722`
+
+Changed:
+- `docs/plans/2026-04-28-partner-entity-A2-phase4-impl.md` (new, 926 lines, on branch only)
+
+Evidence:
+- Plan: [`docs/plans/2026-04-28-partner-entity-A2-phase4-impl.md`](../plans/2026-04-28-partner-entity-A2-phase4-impl.md) (read on branch `feature/partner-entity-A2-polish`)
+- Patched design doc: [`docs/plans/2026-04-28-partner-entity-A2-phase4-design.md`](../plans/2026-04-28-partner-entity-A2-phase4-design.md)
+- Codex spec review r1: [`docs/reviews/2026-04-28_partner-entity-A2-phase4-spec_codex-review.md`](2026-04-28_partner-entity-A2-phase4-spec_codex-review.md)
+
+Open-Risks (Codex Plan Review Hot Spots):
+- HP-P4-1 — Task 1 controller `delete()` 是否該也 invalidate `conversationsProvider`？
+  (Claude position: yes — 對齊 merge `_invalidateMergeScopes` line 54 既有
+  pattern，A2 transition 期間 reportDataProvider 還在讀 global feed)
+- HP-P4-2 — Task 2 `_previewTags` interleave 邊界 (interests=0 traits=5)
+  / (interests=5 traits=0) 是否都正確？
+  (Claude position: 已寫 max-len loop，0/n 兩端會 fallback 取 n side)
+- HP-P4-3 — Task 4 preselect mode 是否破壞 PR-B Task 12 既有 widget tests？
+  (Claude position: PR-B tests 都假設無 query param，preselect=null path 維持
+  原行為，向後相容)
+- HP-P4-4 — Task 6 砍 HomeContent 後，是否有 route fallback 回 `/home` 還活著？
+  (Claude position: pre-flight grep step 6.1 + verification step 6.3 雙 gate)
+- HP-P4-5 — Task 5 copy sweep 是否漏掉 banner 文案 / preselect CTA 文案？
+  (Claude position: Task 5 排在 banner + visual 之後，掃時應該都已 ship)
+
+Claude-Position:
+- Plan 對齊 Codex spec review 5 patches，TDD 紀律 RED → GREEN per task
+- 7 commits / atomic per task / push after each
+- Hot spots HP-P4-1 ~ HP-P4-5 已標出來，請 Codex 重點看 invalidation
+  surface、interleave 邊界、PR-B 相容性
+- 執行階段預期 1-2 dev days，code review 1-2 輪
+
+Codex-Position:
+- Pending
+
+Verdict:
+- Pending
+
+Action Items (post-verdict):
+- [ ] APPROVED → Claude execute Tasks 1-8 on branch，每 task push 完
+      flutter test + analyze 雙 gate
+- [ ] REVISED_AND_APPROVED → Codex 直接 patch plan or 寫 review doc r1，
+      Claude 同 queue item r2
+- [ ] REVISE → Codex 寫 review doc 標 issues，Claude 同 queue item r2
+
+Close-Condition:
+- Codex 寫 verdict + (若 REVISED) 提供 patches 或修改 plan
+- Claude 同步更新 queue item Status: APPROVED / REVISE_R2 / CLOSED
+- 之後再開 code review item（Task 8 step 8.4）
+
+---
+
 ## [2026-04-28] Partner Entity Refactor - A2 Phase 4 (Polish + Ship) Spec Review
 Status: APPROVED
 Request-Type: review
