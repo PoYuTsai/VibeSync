@@ -1043,7 +1043,7 @@ testWidgets('empty picker (only self exists) shows hint, no save', (t) async {
 });
 ```
 
-**Codex-Review-Hot-Spot**：reuse PR-A 的 `RecordingConversationWriteController`（路徑 `test/widget/features/conversation/_fakes/recording_conversation_write_controller.dart`）—— 但 PR-B 不該動 PR-A 領地。**解法：在 `test/widget/features/partner/_fakes/` 同檔複製**（10 行 fake），標 comment「duplicated from PR-A path; merge in Phase 4 cleanup PR」。Codex review 必 acknowledge 此複製。
+**Codex r1 note**：PR-A 已 merge 到 main；`test/widget/features/conversation/_fakes/recording_conversation_write_controller.dart` 不再是平行分支禁區。不過該 fake 目前只 capture `create()`，沒有 capture `save(previousPartnerId:)`，所以 PR-B 可以二選一：(a) 在 partner `_fakes/` 建 reassign 專用 fake；或 (b) 擴充既有 conversation fake 加 save capture。若選 (a)，註解寫明 Phase 4 cleanup 合併兩份 fake。
 
 **Step 2：跑 tests 確認 FAIL**
 
@@ -1261,7 +1261,7 @@ Plan scope（8 個 task，預估 ~15-20 widget tests + 3 unit tests + 5 新 prod
 2. **「+ 新建對象」inline action 暫不 ship** — design doc §5 提到 `showCreateNewAction: true`，plan 因複雜度（push + return 重接 reassign）暫不做，empty state 顯示 hint 引導用戶回首頁建立。是否接受？
 3. **`PartnerRepository.merge` 內部繞過 `ConversationWriteController`**（A1 既有實作，PR-B 不重寫 transaction 邊界）— controller post-hoc 雙端 invalidate 等價。Codex 必須 acknowledge。
 4. **PartnerConversationTile trailing 從 chevron 改 ⋮** — Phase 3 design doc §3 已決議偏離 master plan B 版（trailing ⋮）；plan 完整繼承。
-5. **Fake notifier 複製問題** — `RecordingConversationWriteController` 在 PR-A 已 ship 於 `test/widget/features/conversation/_fakes/`，PR-B 邊界規定不動 PR-A 領地，故複製到 partner 子目錄。Phase 4 cleanup 一起合一。
+5. **Fake notifier 選擇** — PR-A 已 merge，conversation fake 可被 PR-B 讀取；但既有 fake 只 capture `create()`。PR-B 可擴充既有 fake，或在 partner `_fakes/` 建 reassign 專用 fake 並於 Phase 4 cleanup 合一。
 
 預期 Verdict：APPROVED 或 REVISE（小調整）。最大風險點是 §1 PartnerWriteController 的範圍（會否擴張到 Phase 4 delete 的設計）。
 ```

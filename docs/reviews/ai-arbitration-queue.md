@@ -67,7 +67,7 @@ Copy this block for each new item:
 
 ```md
 ## [YYYY-MM-DD] Short Title
-Status: OPEN
+Status: APPROVED
 Request-Type: handoff | review | arbitration
 Raised-By: Claude | Codex | Eric
 Owner: Claude | Codex | Eric
@@ -133,9 +133,9 @@ Close-Condition:
 Status: OPEN
 Request-Type: spec-review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `c4d9474`
+Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `843d98f`
 
 Question:
 - Does the PR-B impl plan correctly cover Tasks 12+13 (merge picker + reassign
@@ -146,16 +146,20 @@ Context:
 - Phase 3 design doc: `docs/plans/2026-04-27-partner-entity-A2-phase3-design.md`
 - Master plan Tasks 12-13: `docs/plans/2026-04-26-partner-entity-A2-impl.md`
   lines 970-1028
-- PR-A (Tasks 10+11 — partnerId chain validation tests) in IN_REVIEW on
-  `feature/partner-entity-A2-flows-data`. PR-B is parallel (different
-  directories; no merge dependency on PR-A).
+- PR-A (Tasks 10+11 — partnerId chain validation tests) is merged to `main`
+  via PR #5. PR-B branch has merged latest `main` and is no longer reviewing
+  against stale queue state.
 - Plan path: `docs/plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md`
-- Branch cut from main `f2e791d` (含 PR #6 flutter-ci.yml partner-scoped CI gate).
+- Branch originally cut from main `f2e791d`; Codex merged latest `main` and
+  patched the plan at `843d98f`.
 
 Changed:
 - Cut new branch `feature/partner-entity-A2-flows-pickers` from main (`f2e791d`).
 - Wrote PR-B impl plan with bite-sized TDD steps for 8 tasks (~15-20 widget
   tests + 3 unit tests + 5 new prod files + 3 modify points).
+- Codex merged latest `main` into the branch and patched the plan to r2:
+  auth override shape, aggregate field names, async merge confirmation,
+  reassign rollback, and partner unit CI gate.
 - Verified ground truth before drafting: PartnerRepository.merge surface, no
   PartnerWriteController exists, ConversationWriteController.save signature
   takes previousPartnerId, PartnerConversationTile is StatelessWidget,
@@ -185,14 +189,11 @@ Open-Risks:
 - (R4) **Tile trailing chevron → ⋮.** Design doc §3 already locked B-variant
   trigger. Plan inherits. master plan line 1012 long-press test stays NOT
   implemented (master plan was pre-Phase 1).
-- (R5) **`PartnerAggregateView.traits` field name uncertainty.** Plan Task 4
-  uses `fromAgg.traits.length` for confirm dialog; if the field is named
-  differently, plan documents an unwind to abstract wording without count.
-  Codex review may want to lock the field name now.
-- (R6) **Fake notifier duplicated.** PR-A path
-  `test/widget/features/conversation/_fakes/recording_conversation_write_controller.dart`
-  is off-limits to PR-B (parallel branch boundary). Plan duplicates the fake
-  to `test/widget/features/partner/_fakes/`. Cleanup PR in Phase 4 will merge.
+- (R5) **Resolved by Codex r1.** `PartnerAggregateView` exposes
+  `unionTraits`; plan now uses `fromAgg.unionTraits.length`.
+- (R6) **Fake notifier choice.** PR-A is merged, so the conversation fake is
+  not off-limits. Existing fake only captures `create()`, so PR-B may either
+  extend it or add a reassign-specific partner fake and consolidate in Phase 4.
 
 Claude-Position:
 - (r1) Plan as-is is the right entry. PartnerWriteController is the correct
@@ -200,13 +201,25 @@ Claude-Position:
   amortizes future delete handler in Phase 4). showCreateNewAction deferral
   is pragmatic; functionality survives without it.
 
+Codex-Position:
+- (r1 2026-04-27) `REVISED_AND_APPROVED`.
+- Direction is approved after direct plan fixes in `843d98f`.
+- Fixed blockers: async merge hidden behind `VoidCallback`, nonexistent
+  `_StubAuthScope` / `count` / `traits` symbols, reassign failure rollback,
+  and missing partner unit CI gate.
+- Review doc:
+  [docs/reviews/2026-04-27_partner-entity-A2-phase3-pr-b-plan_codex-review.md](./2026-04-27_partner-entity-A2-phase3-pr-b-plan_codex-review.md)
+
+Verdict:
+- REVISED_AND_APPROVED
+
 Action Items:
-- [ ] Codex spec review verdict (APPROVED / REVISE_BEFORE_IMPLEMENTATION)
-- [ ] If REVISE: Claude patches plan, opens Round 2
-- [ ] If APPROVED: Claude switches to executing-plans + subagent-driven dev
+- [x] Codex spec review verdict: REVISED_AND_APPROVED
+- [x] Codex patched plan r2 at `843d98f`
+- [ ] Claude switches to executing-plans + subagent-driven dev
 
 Close-Condition:
-- Verdict APPROVED + plan execution starts → Status flips to IN_PROGRESS
+- Plan execution starts → Status flips to IN_PROGRESS
 
 ---
 
