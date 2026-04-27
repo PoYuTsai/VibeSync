@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
@@ -23,6 +24,14 @@ Partner _p() => Partner(
       ownerUserId: 'u1',
     );
 
+Partner _other(String id, String name) => Partner(
+      id: id,
+      name: name,
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      ownerUserId: 'u1',
+    );
+
 Conversation _conv(String id) => Conversation(
       id: id,
       name: '第 $id 段',
@@ -32,8 +41,7 @@ Conversation _conv(String id) => Conversation(
     );
 
 void main() {
-  testWidgets('header shows partner name + ⋮ menu (disabled items)',
-      (t) async {
+  testWidgets('⋮ menu: merge ENABLED, edit+delete still 即將推出', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerByIdProvider('p1').overrideWith((_) => _p()),
@@ -41,6 +49,8 @@ void main() {
             .overrideWith((_) => PartnerAggregateView.empty()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider
+            .overrideWith((_) => [_p(), _other('q1', 'Bob')]),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));
@@ -51,10 +61,73 @@ void main() {
 
     await t.tap(find.byIcon(Icons.more_vert));
     await t.pumpAndSettle();
-    // ⋮ items appear with the "即將推出" label
-    expect(find.text('合併到其他對象（即將推出）'), findsOneWidget);
+
+    expect(find.text('合併到其他對象'), findsOneWidget);
     expect(find.text('編輯對象（即將推出）'), findsOneWidget);
     expect(find.text('刪除對象（即將推出）'), findsOneWidget);
+  });
+
+  testWidgets('⋮ menu: merge DISABLED when only one partner exists',
+      (t) async {
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pumpAndSettle();
+
+    expect(find.text('合併到其他對象（需至少 2 個對象）'), findsOneWidget);
+    expect(find.text('合併到其他對象'), findsNothing);
+  });
+
+  testWidgets('⋮ merge tap navigates to /partner/p1/merge', (t) async {
+    final router = GoRouter(
+      initialLocation: '/partner/p1',
+      routes: [
+        GoRoute(
+          path: '/partner/:partnerId',
+          builder: (_, state) => PartnerDetailScreen(
+            partnerId: state.pathParameters['partnerId']!,
+          ),
+        ),
+        GoRoute(
+          path: '/partner/:partnerId/merge',
+          builder: (_, state) => Scaffold(
+            body: Text('merge-stub-${state.pathParameters['partnerId']}'),
+          ),
+        ),
+      ],
+    );
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider
+            .overrideWith((_) => [_p(), _other('q1', 'Bob')]),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pumpAndSettle();
+    await t.tap(find.text('合併到其他對象'));
+    await t.pumpAndSettle();
+
+    expect(find.text('merge-stub-p1'), findsOneWidget);
   });
 
   testWidgets('renders traits card + radar summary card + new-conversation FAB',

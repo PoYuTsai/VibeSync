@@ -7,9 +7,9 @@
 //   - partnerAggregateProvider(id)       → traits / counters
 //   - conversationsByPartnerProvider(id) → list of conversations
 //
-// ⋮ menu items are visible-but-DISABLED in Phase 2 ("即將推出"). Phase 4
-// Tasks 12-13 wire the real handlers (merge / edit / delete). The disabled
-// state avoids confusion if Phase 2 ships independently. (Codex Hot-spot)
+// ⋮ menu: Phase 3 PR-B wires the merge handler. edit / delete remain
+// disabled "即將推出" until Phase 4. Merge auto-disables when the user
+// has only one partner (no valid target).
 //
 // + 新增對話 FAB opens the shared `NewConversationSheet` (extracted from
 // main_shell.dart in this task). Phase 3 Task 10 wires partnerId into the
@@ -34,6 +34,8 @@ class PartnerDetailScreen extends ConsumerWidget {
     final partner = ref.watch(partnerByIdProvider(partnerId));
     final aggregate = ref.watch(partnerAggregateProvider(partnerId));
     final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
+    final partners = ref.watch(partnerListProvider);
+    final hasOtherPartner = partners.any((p) => p.id != partnerId);
 
     if (partner == null) {
       return const Scaffold(
@@ -47,24 +49,28 @@ class PartnerDetailScreen extends ConsumerWidget {
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            itemBuilder: (_) => const [
+            itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'merge',
-                enabled: false,
-                child: Text('合併到其他對象（即將推出）'),
+                enabled: hasOtherPartner,
+                child: Text(hasOtherPartner
+                    ? '合併到其他對象'
+                    : '合併到其他對象（需至少 2 個對象）'),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'edit',
                 enabled: false,
                 child: Text('編輯對象（即將推出）'),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'delete',
                 enabled: false,
                 child: Text('刪除對象（即將推出）'),
               ),
             ],
-            onSelected: (_) {/* unreachable — all items disabled */},
+            onSelected: (v) {
+              if (v == 'merge') context.push('/partner/$partnerId/merge');
+            },
           ),
         ],
       ),
