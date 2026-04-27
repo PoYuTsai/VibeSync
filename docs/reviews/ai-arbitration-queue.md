@@ -129,6 +129,112 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-28] Partner Entity Refactor - A2 Phase 4 Code Review (Polish + Ship)
+Status: IN_REVIEW
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `feature/partner-entity-A2-polish` @ `b5a1425` (PR #8)
+
+Question:
+- Code review the Phase 4 production diff (8 commits, Tasks 1-8 mapped from
+  design Tasks 18a/18b/14a/14b/15/16a/16b). Verdict options:
+  APPROVED / REVISED_AND_APPROVED (Codex pushes patch commit directly to
+  branch) / REVISE.
+
+Context:
+- 5 Daisy-Decisions D-P4-1 ~ D-P4-5 全 locked（design doc §4，cascade =
+  block / banner pre-fill = older→target / preview = interleave then cap 3 /
+  heat fallback `🌡️ 待分析` / banner flag per-uid SP key）
+- 9 patches 已驗證落地（5 spec + 4 plan）；Phase 4 incremental subset 109
+  pass / 1 skip / 0 fail
+- 8 commits 都是 atomic per task / push after each：`28d0746` (Task 1 repo
+  delete + cascade guard), `7585497` (Task 2 5-piece visual + delete dialog),
+  `6f73208` (Task 3 PartnerBannerService), `e9a7fcd` (Task 4 banner widget +
+  merge picker preselect), `e4bbc4f` (Task 4 polish dispose race guard),
+  `782d73a` (Task 5 copy sweep), `30a529d` (Task 6 砍 @Deprecated
+  HomeContent), `b5a1425` (Task 7 doc closeout)
+- Architectural invariants: card stays pure render / lifted-aggregate API /
+  try/finally invalidation pattern continues / `delete()` does NOT
+  invalidate global `conversationsProvider` (HP-P4-1) / owner-scoped merge
+  picker validation
+
+Changed:
+- `lib/features/partner/data/repositories/partner_repository.dart` (Task 1 delete + exception)
+- `lib/features/partner/presentation/controllers/partner_write_controller.dart` (Task 1 invalidation)
+- `lib/features/partner/presentation/widgets/partner_list_card.dart` (Task 2 NEW)
+- `lib/features/partner/presentation/screens/partner_list_screen.dart` (Task 2 delete dialog two-mode)
+- `lib/features/partner/data/services/partner_banner_service.dart` (Task 3 NEW)
+- `lib/features/partner/data/providers/partner_banner_providers.dart` (Task 3 NEW)
+- `lib/features/partner/presentation/widgets/same_name_dedupe_banner.dart` (Task 4 NEW)
+- `lib/features/partner/presentation/screens/partner_merge_picker_screen.dart` (Task 4 preselect)
+- `lib/screens/main_screen.dart` (Task 5 copy sweep)
+- `lib/screens/home_screen.dart` (Task 5 FAB tooltip + Task 6 砍 HomeContent)
+- `docs/testflight-regression-checklist.md` (Task 7 J section)
+- `docs/decisions.md` (Task 7 ADR-15 v2 ship section)
+- `docs/snapshot.md` (Task 7 refresh)
+- `CLAUDE.md` / `AGENTS.md` (Task 7 1 Pitfall + sync)
+
+Evidence:
+- PR: https://github.com/PoYuTsai/VibeSync/pull/8
+- Branch HEAD: `b5a1425`
+- Spec review: [`docs/reviews/2026-04-28_partner-entity-A2-phase4-spec_codex-review.md`](2026-04-28_partner-entity-A2-phase4-spec_codex-review.md)
+- Plan review: [`docs/reviews/2026-04-28_partner-entity-A2-phase4-impl_codex-review.md`](2026-04-28_partner-entity-A2-phase4-impl_codex-review.md)
+- Phase 4 incremental tests: 109 pass / 1 skip / 0 fail
+- Lint: `flutter analyze --no-fatal-infos lib test` → 0 issues
+
+Open-Risks (Code Review Hot Spots):
+- HS-Code-1 — `PartnerListCard._previewTags` interleave correctness on
+  edge inputs (interests=5 traits=0) / (interests=0 traits=5). Claude
+  position: max-len loop covers both ends, fallback takes remaining n side.
+- HS-Code-2 — Delete dialog two-mode race during dialog open: a
+  conversation gets created between `convCount` read and `delete()` call.
+  Claude position: defensive `try/catch PartnerHasConversationsException`
+  on the destructive path catches the race.
+- HS-Code-3 — Banner FutureProvider invalidate → re-render guarantee:
+  after dismiss, `ref.invalidate(partnerDedupeBannerDismissedProvider(uid))`
+  must trigger banner widget rebuild and hide. Claude position: PR-B
+  precedent `0187685` confirms invalidate triggers rebuild.
+- HS-Code-4 — Merge picker preselect tap-other-row no auto-open: tapping
+  a non-preselected row must NOT auto-open the destructive dialog. Claude
+  position: preselect only seeds bottom CTA state, dialog requires explicit
+  CTA tap.
+- HS-Code-5 — Copy sweep coverage gaps: any popup or dialog string still
+  mixing 對象/對話 vocabulary? Snapshot tests cover home FAB tooltip +
+  partner list empty + partner detail "+ 新增對話" but may miss dialogs.
+
+Claude-Position:
+- Self-review: 8 commits atomic / each push triggers CI / Phase 4
+  incremental test subset all green / 4 new file lint clean / 9
+  spec+plan patches verified shipped / no late drift
+- Patches I want Codex to specifically scrutinize:
+  · `delete()` invalidation surface (intentionally narrower than merge per HP-P4-1)
+  · Owner-scoped `partnerListProvider` validation in merge picker
+  · `convCount` source = `conversationsByPartnerProvider(p.id).length`
+    (NOT `aggregate.totalRounds`)
+- Deferred: 5-path manual smoke (Eric on TF build per plan §10.2)
+
+Codex-Position:
+- Pending
+
+Verdict:
+- Pending
+
+Eric-Decision:
+- Pending
+
+Action-Items:
+- [ ] Codex code reviews PR #8 diff
+- [ ] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
+- [ ] If APPROVED: Eric runs 5-path manual smoke on TF build
+- [ ] Merge to main once both gates pass
+
+Close-Condition:
+- PR #8 merged to main with Codex APPROVED/REVISED_AND_APPROVED + Eric manual smoke pass.
+
+---
+
 ## [2026-04-28] Partner Entity Refactor - A2 Phase 4 Implementation Plan Review
 Status: APPROVED
 Request-Type: review
