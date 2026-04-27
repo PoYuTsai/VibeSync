@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../domain/entities/partner.dart';
 import '../../presentation/providers/partner_providers.dart';
 
 /// Single invalidation owner for partner-level writes — mirrors Phase 1's
@@ -34,6 +35,21 @@ class PartnerWriteController extends Notifier<void> {
     }
   }
 
+  /// Deletes [partner] via the repo, then invalidates partner-scoped caches.
+  /// Mirrors merge's try/finally discipline so a thrown
+  /// `PartnerHasConversationsException` still refreshes UI state. Unlike
+  /// merge, this does NOT invalidate `conversationsProvider` — successful
+  /// delete only happens at zero conversations, so the global feed is
+  /// guaranteed unchanged.
+  Future<void> delete(Partner partner) async {
+    final repo = ref.read(partnerRepositoryProvider);
+    try {
+      await repo.delete(partner.id);
+    } finally {
+      _invalidateDeleteScopes(partner.id);
+    }
+  }
+
   void _invalidatePartner(String id) {
     ref.invalidate(partnerByIdProvider(id));
     ref.invalidate(partnerAggregateProvider(id));
@@ -52,6 +68,12 @@ class PartnerWriteController extends Notifier<void> {
     // A2 transition contract — retired in the post-A2 cleanup PR once
     // reportDataProvider migrates off the global feed.
     ref.invalidate(conversationsProvider);
+  }
+
+  void _invalidateDeleteScopes(String id) {
+    _invalidatePartner(id);
+    _invalidatePartnerScopedConversations(id);
+    ref.invalidate(partnerListProvider);
   }
 }
 
