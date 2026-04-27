@@ -79,6 +79,11 @@ final router = GoRouter(
       path: '/partner/:partnerId/merge',
       builder: (context, state) => PartnerMergePickerScreen(
         fromPartnerId: state.pathParameters['partnerId']!,
+        // Optional ?target= for the same-name dedupe banner CTA preselect.
+        // Validated owner-scoped against partnerListProvider candidates inside
+        // the screen — unknown / self / out-of-scope ids fall back to PR-B
+        // row-tap flow (Codex spec patch §6 / §7.5).
+        initialTargetId: state.uri.queryParameters['target'],
       ),
     ),
     GoRoute(

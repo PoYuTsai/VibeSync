@@ -47,15 +47,20 @@ PartnerAggregateView _aggWithTraits(int n) => PartnerAggregateView(
 
 GoRouter _routerForPicker({
   required String fromId,
+  String? targetId,
   Widget Function(BuildContext, String)? targetBuilder,
 }) {
+  final initial = targetId == null
+      ? '/partner/$fromId/merge'
+      : '/partner/$fromId/merge?target=$targetId';
   return GoRouter(
-    initialLocation: '/partner/$fromId/merge',
+    initialLocation: initial,
     routes: [
       GoRoute(
         path: '/partner/:partnerId/merge',
         builder: (_, state) => PartnerMergePickerScreen(
           fromPartnerId: state.pathParameters['partnerId']!,
+          initialTargetId: state.uri.queryParameters['target'],
         ),
       ),
       GoRoute(
@@ -195,6 +200,242 @@ void main() {
 
     expect(fake.mergeCalled, isFalse);
     expect(find.text('選擇要合併到的對象'), findsOneWidget);
+  });
+
+  // ─── Phase 4 Task 4: ?target= preselect contract (Codex spec §7.5) ──────
+
+  group('initialTargetId preselect contract', () {
+    testWidgets(
+      'no target query → preserves PR-B row-tap → confirm dialog flow',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(400, 1200));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            partnerListProvider.overrideWith(
+              (_) => [_p('A', 'Alice'), _p('B', 'Bob')],
+            ),
+            partnerByIdProvider('A').overrideWith((_) => _p('A', 'Alice')),
+            partnerAggregateProvider('A')
+                .overrideWith((_) => _aggWithTraits(0)),
+            conversationsByPartnerProvider('A')
+                .overrideWith((_) => const <Conversation>[]),
+          ],
+          child: MaterialApp.router(
+            routerConfig: _routerForPicker(fromId: 'A'),
+          ),
+        ));
+        await _settle(t);
+
+        // No bottom CTA when no preselect.
+        expect(find.textContaining('確認合併到'), findsNothing);
+
+        // Existing PR-B path: tap row → confirm dialog opens.
+        await t.tap(find.text('Bob'));
+        await _settle(t);
+        expect(find.text('確認合併'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'valid target → preselect target row, shows bottom "確認合併到 X" CTA, '
+      'no auto-open destructive',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(400, 1200));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            partnerListProvider.overrideWith(
+              (_) => [_p('A', 'Alice'), _p('B', 'Bob'), _p('C', 'Cara')],
+            ),
+            partnerByIdProvider('A').overrideWith((_) => _p('A', 'Alice')),
+            partnerAggregateProvider('A')
+                .overrideWith((_) => _aggWithTraits(0)),
+            conversationsByPartnerProvider('A')
+                .overrideWith((_) => const <Conversation>[]),
+          ],
+          child: MaterialApp.router(
+            routerConfig: _routerForPicker(fromId: 'A', targetId: 'B'),
+          ),
+        ));
+        await _settle(t);
+
+        // Bottom CTA visible with the preselected target name.
+        expect(find.text('確認合併到 Bob'), findsOneWidget);
+        // Confirm dialog must NOT have auto-opened.
+        expect(find.text('確認合併'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'valid target preselect → tap different row → switches preselect, '
+      'still no auto-open',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(400, 1200));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            partnerListProvider.overrideWith(
+              (_) => [_p('A', 'Alice'), _p('B', 'Bob'), _p('C', 'Cara')],
+            ),
+            partnerByIdProvider('A').overrideWith((_) => _p('A', 'Alice')),
+            partnerAggregateProvider('A')
+                .overrideWith((_) => _aggWithTraits(0)),
+            conversationsByPartnerProvider('A')
+                .overrideWith((_) => const <Conversation>[]),
+          ],
+          child: MaterialApp.router(
+            routerConfig: _routerForPicker(fromId: 'A', targetId: 'B'),
+          ),
+        ));
+        await _settle(t);
+        expect(find.text('確認合併到 Bob'), findsOneWidget);
+
+        await t.tap(find.text('Cara'));
+        await _settle(t);
+
+        expect(find.text('確認合併到 Cara'), findsOneWidget);
+        // Still no auto-open of confirm dialog.
+        expect(find.text('確認合併'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'preselect CTA tap → opens confirm dialog (manual continuation)',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(400, 1200));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            partnerListProvider.overrideWith(
+              (_) => [_p('A', 'Alice'), _p('B', 'Bob')],
+            ),
+            partnerByIdProvider('A').overrideWith((_) => _p('A', 'Alice')),
+            partnerAggregateProvider('A')
+                .overrideWith((_) => _aggWithTraits(2)),
+            conversationsByPartnerProvider('A').overrideWith(
+              (_) => [_conv('x')],
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: _routerForPicker(fromId: 'A', targetId: 'B'),
+          ),
+        ));
+        await _settle(t);
+
+        await t.tap(find.text('確認合併到 Bob'));
+        await _settle(t);
+
+        expect(find.text('確認合併'), findsOneWidget);
+        expect(find.text('取消'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'target = self id → query ignored, falls back to PR-B row-tap flow',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(400, 1200));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            partnerListProvider.overrideWith(
+              (_) => [_p('A', 'Alice'), _p('B', 'Bob')],
+            ),
+            partnerByIdProvider('A').overrideWith((_) => _p('A', 'Alice')),
+            partnerAggregateProvider('A')
+                .overrideWith((_) => _aggWithTraits(0)),
+            conversationsByPartnerProvider('A')
+                .overrideWith((_) => const <Conversation>[]),
+          ],
+          // target=A but A is excluded from candidates → fallback
+          child: MaterialApp.router(
+            routerConfig: _routerForPicker(fromId: 'A', targetId: 'A'),
+          ),
+        ));
+        await _settle(t);
+
+        expect(find.textContaining('確認合併到'), findsNothing);
+
+        // PR-B row-tap path still works.
+        await t.tap(find.text('Bob'));
+        await _settle(t);
+        expect(find.text('確認合併'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'target = unknown id → query ignored, falls back to PR-B row-tap flow',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(400, 1200));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            partnerListProvider.overrideWith(
+              (_) => [_p('A', 'Alice'), _p('B', 'Bob')],
+            ),
+            partnerByIdProvider('A').overrideWith((_) => _p('A', 'Alice')),
+            partnerAggregateProvider('A')
+                .overrideWith((_) => _aggWithTraits(0)),
+            conversationsByPartnerProvider('A')
+                .overrideWith((_) => const <Conversation>[]),
+          ],
+          child: MaterialApp.router(
+            routerConfig: _routerForPicker(fromId: 'A', targetId: 'ZZZ'),
+          ),
+        ));
+        await _settle(t);
+
+        expect(find.textContaining('確認合併到'), findsNothing);
+
+        await t.tap(find.text('Bob'));
+        await _settle(t);
+        expect(find.text('確認合併'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'target from outside partnerListProvider candidates is ignored '
+      '(owner-scoped enforcement)',
+      (t) async {
+        await t.binding.setSurfaceSize(const Size(400, 1200));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            // Owner sees only A, B. A foreign Partner C exists in raw repo
+            // (we DON'T override partnerByIdProvider('C') → it returns null
+            // by default, but even a non-null repo lookup must be ignored
+            // since C isn't in partnerListProvider candidates).
+            partnerListProvider.overrideWith(
+              (_) => [_p('A', 'Alice'), _p('B', 'Bob')],
+            ),
+            partnerByIdProvider('A').overrideWith((_) => _p('A', 'Alice')),
+            partnerAggregateProvider('A')
+                .overrideWith((_) => _aggWithTraits(0)),
+            conversationsByPartnerProvider('A')
+                .overrideWith((_) => const <Conversation>[]),
+          ],
+          child: MaterialApp.router(
+            routerConfig: _routerForPicker(fromId: 'A', targetId: 'C'),
+          ),
+        ));
+        await _settle(t);
+
+        // No bottom CTA — preselect ignored because C isn't in candidates.
+        expect(find.textContaining('確認合併到'), findsNothing);
+
+        // Bob still selectable via PR-B path.
+        await t.tap(find.text('Bob'));
+        await _settle(t);
+        expect(find.text('確認合併'), findsOneWidget);
+      },
+    );
   });
 
   testWidgets('merge failure shows snackbar and stays on picker', (t) async {

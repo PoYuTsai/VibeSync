@@ -17,11 +17,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../data/providers/partner_banner_providers.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../data/repositories/partner_repository.dart';
+import '../../data/services/partner_banner_service.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_list_card.dart';
+import '../widgets/same_name_dedupe_banner.dart';
 
 class PartnerListScreen extends ConsumerWidget {
   const PartnerListScreen({super.key});
@@ -43,11 +47,37 @@ class PartnerListScreen extends ConsumerWidget {
         ),
       );
     }
+
+    // Banner gating (Phase 4 Task 4):
+    //   uid null  → no banner (no scope to key dismissal)
+    //   no dup    → no banner
+    //   dismissed → no banner (loading/error also treated as "don't show")
+    final uid = ref.watch(authConversationScopeProvider).valueOrNull;
+    final dupPair = uid == null ? null : _findFirstDupPair(partners);
+    final dismissedAsync = uid == null
+        ? const AsyncValue<bool>.data(true)
+        : ref.watch(partnerDedupeBannerDismissedProvider(uid));
+    final showBanner = dupPair != null && dismissedAsync.value == false;
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: partners.length,
+      // +1 for the banner slot when shown.
+      itemCount: partners.length + (showBanner ? 1 : 0),
       itemBuilder: (context, i) {
-        final p = partners[i];
+        if (showBanner && i == 0) {
+          return SameNameDedupeBanner(
+            partnerName: dupPair.newer.name,
+            onMergeTap: () => context.push(
+              '/partner/${dupPair.newer.id}/merge?target=${dupPair.older.id}',
+            ),
+            onDismissTap: () async {
+              await PartnerBannerService.markDismissed(uid!);
+              ref.invalidate(partnerDedupeBannerDismissedProvider(uid));
+            },
+          );
+        }
+        final pIndex = showBanner ? i - 1 : i;
+        final p = partners[pIndex];
         final agg = ref.watch(partnerAggregateProvider(p.id));
         // Codex P1.2 — count real conversation rows, not aggregate.totalRounds
         // (zero-round conversations would otherwise be invisible to the
@@ -65,6 +95,25 @@ class PartnerListScreen extends ConsumerWidget {
         );
       },
     );
+  }
+
+  /// First same-name pair, ordered by createdAt ASC.
+  /// Returns null when no group of size ≥2 exists.
+  /// older=earliest createdAt (survivor); newer=second earliest (absorbed).
+  /// (D-P4-2: keep the older identity, absorb the newer duplicate into it.)
+  ({Partner older, Partner newer})? _findFirstDupPair(List<Partner> partners) {
+    final byName = <String, List<Partner>>{};
+    for (final p in partners) {
+      byName.putIfAbsent(p.name, () => []).add(p);
+    }
+    for (final entry in byName.entries) {
+      if (entry.value.length >= 2) {
+        final sorted = [...entry.value]
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        return (older: sorted[0], newer: sorted[1]);
+      }
+    }
+    return null;
   }
 
   Future<void> _onDelete(
