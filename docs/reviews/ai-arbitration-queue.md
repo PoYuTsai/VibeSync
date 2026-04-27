@@ -129,6 +129,77 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-28] Partner Entity Refactor - A2 Phase 4 (Polish + Ship) Spec Review
+Status: IN_REVIEW
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `main` @ `3ef3421` (design doc only; impl branch not yet cut)
+
+Question:
+- Spec review the Phase 4 design doc covering Tasks 14-18 + hidden Partner
+  delete API. Verdict: APPROVED / REVISED_AND_APPROVED (with patches) /
+  REVISE.
+
+Context:
+- A2 Phase 1-3 全 ship 在 main `1794371`，Phase 4 是 A2 收場（polish + ship）
+- 5 Daisy-Decision 已 locked 在 brainstorm（D-P4-1 ~ D-P4-5），design doc §4
+- Brainstorm 過 6 sections，Eric 全程 confirm，每段 OK
+- Tasks 14-18 sequencing：18 → 14 → 15 → 16 → 17（理由 design doc §5）
+- Hidden scope：Task 18 內含 Partner delete API（PR-B handoff "delete handler"
+  收下來，與視覺還原同 Task 拆 18a/18b）
+- 預估 7 commits、0 hotfix、CI partner-subset 自動跑（Phase 3 PR-B Task 8 已 ship）
+
+Changed:
+- `docs/plans/2026-04-28-partner-entity-A2-phase4-design.md` (new, 500 lines)
+
+Evidence:
+- Design doc: [`docs/plans/2026-04-28-partner-entity-A2-phase4-design.md`](../plans/2026-04-28-partner-entity-A2-phase4-design.md)
+- Master plan reference: [`docs/plans/2026-04-26-partner-entity-A2-impl.md`](../plans/2026-04-26-partner-entity-A2-impl.md) Tasks 14-17
+- ADR-15: [`docs/decisions.md`](../decisions.md)
+- Predecessor reviews: PR-A `5cf7cc5` queue close / PR-B `1794371` queue close
+
+Open-Risks (Codex Spec Review Hot Spots):
+- HS-P4-1 — `PartnerHasConversationsException` 是否需要 enum 而非單 exception？
+  (Claude 評估：YAGNI，Phase 4 只一種 failure reason)
+- HS-P4-2 — `try/finally` invalidation 在 delete 是否 over-applied？
+  (Claude 評估：保險，對齊 PR-B Codex r1 patch pattern)
+- HS-P4-3 — Banner detection 在 presentation 層 derive 是否該抽 domain extension？
+  (Claude 評估：純 presentation only，不污染 domain — 但值得 Codex 提意見)
+- HS-P4-4 — Merge picker route 加 `?target=` query param 是否破壞 Phase 3 PR-B 既有行為？
+  (Claude 評估：optional param，向後相容；但要 Codex 驗 init flow)
+- HS-P4-5 — Tag preview「興趣+特質前 3」順序 take vs interleave？
+  (Claude 評估：值得 Codex 提意見 — 用戶可能更想要至少 1 個 trait)
+
+Claude-Position:
+- Design 經 6 sections brainstorm + Eric 全段 confirm，5 Daisy-Decision 全 locked
+- Hidden scope (Partner delete API) 揭露在 §2，拆 18a/18b 因 cascade guard 是
+  獨立可測單元
+- 7 commits 預估 + Codex code review (post-execute) 預期 1-2 輪
+- Sequencing 18 → 14 → 15 → 16 → 17 因 (a) Bruce 視覺反饋優先 (b) Task 18
+  visual donor `@Deprecated HomeContent` 必須 Task 16 砍前還活著 (c) 文案掃在
+  banner + visual 後做避免重掃
+
+Codex-Position:
+- Pending
+
+Verdict:
+- Pending
+
+Action Items (post-verdict):
+- [ ] APPROVED → Claude 切 branch `feature/partner-entity-A2-polish` 寫 impl plan，
+      開新 queue item「A2 Phase 4 Implementation Plan Review」
+- [ ] REVISED_AND_APPROVED → Codex patch 直接寫進 design doc 或開 r2 review doc，
+      Claude 同 queue item 改 r2
+- [ ] REVISE → Codex 寫 review doc 標 issues，Claude 同 queue item r2
+
+Close-Condition:
+- Codex 寫 verdict + (若 REVISED) 提供 patches 或修改 design doc
+- Claude 同步更新 queue item Status: APPROVED / REVISE_R2 / CLOSED
+
+---
+
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B Code Review (Merge Picker + Reassign ⋮ Menu)
 Status: CLOSED
 Request-Type: review
