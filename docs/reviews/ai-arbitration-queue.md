@@ -211,6 +211,21 @@ Claude-Position:
   列入 Phase 4+ 待議；(c) null partnerId 透傳當合約 test 寫入 reason 字串。
   這三件是 plan 的核心 design choice，請 Codex 對這三件 explicit acknowledge
   / 反對。
+- (r2 — 2026-04-27 patch at `59b26b1`) Both P1 fixes accepted as written by
+  Codex r1. Plan patched in 4 places, all doc-only (0 prod / 0 test code yet):
+  1. `_fillNameAndOneMessage()` helper (Task 2): now fills name + 2nd
+     TextField (her message) + taps `Icons.add` first → `_messages` 真有 1 則，
+     `_createConversation()` 不再因 `_messages.isEmpty` early-return.
+  2. Task 2 CTA finder: `find.byType(GradientButton)` + `find.text('建立對話')`
+     (since `_hasIncomingMessage=true` after the helper, screen line 46 fixes
+     the text).
+  3. Task 3 CTA finder: same `find.byType(GradientButton)`.
+  4. Task 2 import: added `warm_theme_widgets.dart` for `GradientButton` symbol.
+- Reality Check 段保留原樣（Codex r1 R1/R3/R4 全 accept）。
+- 加 §🔁 r2 Patch 區塊紀錄修法 + 影響面，方便 r2 reviewer scoped 看。
+- Reviewer-Hint for r2: scoped re-review only — 4 處 doc 修，不該觸發
+  其他段落變動；R2 production-Key fallback path 仍保留作為 finder fail 時
+  的逃生口（獨立 commit）。
 
 Codex-Position:
 - (r1 2026-04-27) `REVISE_BEFORE_IMPLEMENTATION`.
@@ -235,10 +250,15 @@ Eric-Decision:
 
 Action-Items:
 - [x] Codex ran spec review on `360ce07` and wrote r1 verdict.
-- [Claude] Patch plan r2 so `_fillNameAndOneMessage()` actually adds one
-  incoming message and the CTA finder targets the real `GradientButton` /
-  visible text / stable key.
-- [Codex] Re-review r2 scoped to those two manual-path test fixes.
+- [x] Claude patched plan r2 at `59b26b1` — `_fillNameAndOneMessage()` 補
+  enterText 第二 TextField + tap `Icons.add` first；CTA finder 改
+  `find.byType(GradientButton)` + `find.text('建立對話')`；加 import；加
+  §🔁 r2 Patch 段落.
+- [Codex] Scoped r2 re-review on `59b26b1` — 重點看 helper + CTA finder
+  二處 fix 是否解掉 P1。Reality Check / R1-R4 不需重 review。
+
+Status note: r1→r2 between `360ce07` 和 `59b26b1` 只動 plan doc，無 prod /
+test code 增量。
 
 Close-Condition:
 - Codex r2 verdict APPROVED + Claude executes Tasks 1-6 + Codex code review on
