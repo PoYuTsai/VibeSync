@@ -90,4 +90,32 @@ void main() {
     expect(fake.capturedMessageCount, 0,
         reason: '截圖 path 在 sheet 階段不傳 messages — OCR 完才補');
   });
+
+  testWidgets('sheet partnerId=null + 截圖開始 → controller.create(partnerId: null)',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    final fake = RecordingConversationWriteController();
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        conversationWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: MaterialApp.router(routerConfig: _sheetTestRouter(null)),
+    ));
+    await _settle(t);
+
+    await t.tap(find.text('open sheet'));
+    await _settle(t);
+
+    await t.tap(find.text('截圖開始'));
+    await _settle(t);
+
+    expect(fake.createCalled, isTrue);
+    expect(fake.capturedPartnerId, isNull,
+        reason: 'Legacy entry: 從非 PartnerDetail 進入截圖 flow（例如未來新加的 home FAB '
+                '快捷），sheet 不帶 partnerId → controller.create(partnerId: null)。'
+                '與 manual entry path 一致：auto-derive on create 不在現行架構。');
+  });
 }
