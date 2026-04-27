@@ -45,7 +45,7 @@ class _MainShellState extends State<MainShell> {
           ],
         ),
         floatingActionButton: _currentIndex == 0
-            ? _HomeFab()
+            ? const HomeFab()
             : null,
         bottomNavigationBar: _buildBottomNav(),
       ),
@@ -129,8 +129,15 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-/// FAB extracted so it can access WidgetRef via Consumer
-class _HomeFab extends ConsumerWidget {
+/// FAB extracted so it can access WidgetRef via Consumer.
+///
+/// Public so it can be widget-tested in isolation without spinning up the
+/// full `MainShell` (which mounts Hive-backed tabs eagerly via IndexedStack).
+/// Tooltip 「新增對象」 follows ADR-15: home FAB is Partner-level — a tap
+/// opens the new-Partner flow, NOT a new-Conversation sheet.
+class HomeFab extends ConsumerWidget {
+  const HomeFab({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
@@ -151,6 +158,7 @@ class _HomeFab extends ConsumerWidget {
         onPressed: () => context.push('/partner/new'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        tooltip: '新增對象',
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
