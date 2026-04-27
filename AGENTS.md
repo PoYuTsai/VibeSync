@@ -148,7 +148,6 @@ Current OCR-stable baseline: 28c0965
 - Riverpod provider 未 dispose → 用 `autoDispose`
 - 外部 API 未 try-catch → **永遠**包 try-catch
 - Flutter Web 用 `dart:io` → 不支援，改字串檢查
-- Web 平台 secure storage 受限 → MVP 專注 mobile
 - Edge Function 冷啟動 → 加 loading state + timeout
 - Edge Function 新增變數前先 `grep "const\|let" <name>` 確認無同名
 - 錯誤訊息 minified → 開發時顯示完整錯誤類型，上線再簡化
@@ -156,6 +155,7 @@ Current OCR-stable baseline: 28c0965
 - **OCR 改動必須獨立 commit**，不混 security / cache / parser / prompt
 - Edge Function 呼叫 Claude API 用 `CLAUDE_API_KEY`，**不是** `ANTHROPIC_API_KEY`
 - 開場救星傳截圖必須用 `ImageData` 物件，**不能**用純 base64 字串
+- **Partner delete 必須先驗 conversation count**（用 `conversationsByPartnerProvider(p.id).length`，**不用** `aggregate.totalRounds`）；非空 throw `PartnerHasConversationsException`；UI 需切 informational vs confirm dialog（不可省略 guard，否則會誤刪有 0-round conversation 的 Partner）
 
 ---
 

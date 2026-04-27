@@ -135,3 +135,30 @@
 - [ ] 從 Partner detail 點「新增對話」→ 截圖開始，建立的新 conversation 也應掛在當前對象。
 - [ ] Partner detail radar 在沒有分析資料時顯示 fallback，不應 crash；有分析資料時顯示 5 維 radar。
 - [ ] Partner detail 的 merge / edit / delete 選單項目前為 disabled，不可誤觸。
+
+## J. Partner Entity A2 ship (Phase 4 — 2026-04-28)
+
+對應 ADR-15 v2 ship 段落 D-P4-1 ~ D-P4-5；含 PartnerListCard 5 件套、delete two-mode、per-account dedupe banner、merge picker preselect、PR-B 回歸驗。
+
+### J1 Partner delete（D-P4-1 cascade=block-when-non-empty）
+- [ ] Partner 對話數 = 0 → 點刪除 icon 跳 confirm dialog（destructive 樣式）→ 確認後 Partner 從 list 消失，跳成功 SnackBar。
+- [ ] Partner 對話數 ≥ 1（任何 round 數，含 0-round 對話）→ 點刪除 icon 跳 informational dialog（無 destructive action，僅關閉），Partner 仍存在。
+- [ ] Partner 對話數 ≥ 1 且該對話 totalRounds = 0 → 仍走 informational dialog（驗 conversationCount guard，不是 aggregate.totalRounds 判斷）。
+
+### J2 Same-name dedupe banner（D-P4-5 per-account dismissed key）
+- [ ] 兩個或以上 Partner 同名 → Partner list 頂部出現 dedupe banner（avatar + 名稱 + CTA）。
+- [ ] 點 banner CTA「立即合併」→ 跳 merge picker，較舊 partner 預選為 target，bottom CTA 可見、不會 auto-open destructive dialog。
+- [ ] 點 banner CTA「以後再說」→ banner 立即隱藏；殺 app 重開仍不出現（per-uid SharedPreferences 永久關）。
+- [ ] 切到另一個帳戶 → 該帳戶若也有同名 Partner，banner 仍會出現（A 帳戶「以後再說」不外洩到 B 帳戶）。
+
+### J3 Merge picker preselect（D-P4-2 newer=source / older=target）
+- [ ] Banner 帶 `?target=` → 點其他列改選擇 → preselect 切到新列，不會 auto-open destructive confirm。
+- [ ] Merge picker 直接從 Partner detail menu 進入（無 `?target=`）→ 維持 PR-B 原行為（user 自選 target，不預選）。
+
+### J4 PartnerListCard 視覺 5 件套（D-P4-3 / D-P4-4）
+- [ ] PartnerListCard 5 區塊全顯示：avatar、名稱+最後更新時間、熱度 indicator、興趣/特質 interleave 預覽 tag、刪除 icon。
+- [ ] 熱度 = null 時顯示「🌡️ 待分析」灰字 fallback（D-P4-4），不顯示 0 或空白。
+- [ ] Partner 同時有 interests 和 traits → 預覽 tag 為 interleave `[i0, t0, i1, t1, i2]` 取 3，至少保留 1 個 trait（D-P4-3，traits 不被餓死）。
+
+### J5 文案掃尾（Task 15 copy sweep）
+- [ ] Home FAB tooltip / popup 文案 = 「+ 新增對象」（對象 vocabulary）；Partner detail 內「+ 新增對話」維持原樣（對話 vocabulary, partner-scoped 語意正確）。
