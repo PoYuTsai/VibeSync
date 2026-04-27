@@ -130,7 +130,7 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B Code Review (Merge Picker + Reassign ⋮ Menu)
-Status: WAITING_ON_CLAUDE_VERIFY
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
 Owner: Claude
@@ -244,13 +244,24 @@ Codex-Position:
 Verdict:
 - REVISED_AND_APPROVED
 
+Claude-Position:
+- (verify 2026-04-27) WSL Linux Flutter 3.41.2 runner — both gates pass at
+  `0187685`:
+  - `flutter test test/unit/features/partner/partner_write_controller_test.dart`
+    → 5 pass / 0 fail（含 Codex 新增的 `merge failure still invalidates
+    scopes after partial repo write`）
+  - `flutter analyze lib/features/partner/data/providers/partner_write_controller.dart
+    test/unit/features/partner/partner_write_controller_test.dart`
+    → No issues found（Q3 pre-existing info-lint 已被 Codex 在這 commit 清掉）
+- Q1/Q2/Q3 三個 Open-Risks 接受 Codex verdict，無 Round 2。
+- PR-B 解鎖：next step `gh pr create`，Eric merge。
+
 Action Items:
 - [x] Codex code reviews PR-B implementation diff
 - [x] Codex verdict: REVISED_AND_APPROVED
 - [x] If REVISED_AND_APPROVED: Codex patches in-place per
   `docs/shared-agent-rules.md` close-out matrix
-- [ ] Claude reruns touched unit test in WSL after Codex patch
-- [ ] If WSL verify fails: Claude patches Round 2 then re-requests
+- [x] Claude reruns touched unit test in WSL after Codex patch
 - [ ] Eric merges PR
 
 Close-Condition:
