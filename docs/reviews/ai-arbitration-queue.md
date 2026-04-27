@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-A Spec Review (partnerId Chain Validation)
-Status: OPEN
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
 Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-data` @ `360ce07`
+Branch/Commit: `feature/partner-entity-A2-flows-data` @ `9c5df4d`
 
 Question:
 - Does the PR-A impl plan(`docs/plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md`)
@@ -241,9 +241,15 @@ Codex-Position:
   `RegExp(...).toString()`, but production renders `GradientButton`.
 - Review doc:
   [docs/reviews/2026-04-27_partner-entity-A2-phase3-pr-a-plan_codex-review.md](./2026-04-27_partner-entity-A2-phase3-pr-a-plan_codex-review.md)
+- (r2 2026-04-27) `APPROVED`.
+- Scoped review of `59b26b1` confirms both r1 blockers are fixed:
+  `_fillNameAndOneMessage()` now creates one incoming message before CTA tap,
+  and the CTA finder targets `GradientButton` plus visible text `建立對話`.
+- `warm_theme_widgets.dart` exports `gradient_button.dart`, so the planned
+  import is valid.
 
 Verdict:
-- REVISE_BEFORE_IMPLEMENTATION
+- APPROVED
 
 Eric-Decision:
 - Pending
@@ -254,8 +260,8 @@ Action-Items:
   enterText 第二 TextField + tap `Icons.add` first；CTA finder 改
   `find.byType(GradientButton)` + `find.text('建立對話')`；加 import；加
   §🔁 r2 Patch 段落.
-- [Codex] Scoped r2 re-review on `59b26b1` — 重點看 helper + CTA finder
-  二處 fix 是否解掉 P1。Reality Check / R1-R4 不需重 review。
+- [x] Codex scoped r2 re-review on `59b26b1` — APPROVED.
+- [Claude] Execute Tasks 1-6 from the approved PR-A plan.
 
 Status note: r1→r2 between `360ce07` 和 `59b26b1` 只動 plan doc，無 prod /
 test code 增量。

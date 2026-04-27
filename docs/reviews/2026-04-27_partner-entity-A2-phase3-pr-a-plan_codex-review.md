@@ -51,3 +51,29 @@ Update the plan before implementation:
 - Keep the Reality Check section as-is; it is the right scope boundary.
 
 After that patch, this plan should be small enough for a scoped r2 re-review.
+
+## r2 Scoped Re-review
+
+Date: 2026-04-27
+Reviewed commits: `59b26b1` plan patch + `9c5df4d` queue update
+
+Verdict: APPROVED
+
+No new findings.
+
+The r2 patch resolves both r1 blockers:
+
+- `_fillNameAndOneMessage()` now fills the second `TextField`, taps the first
+  `Icons.add`, and therefore creates one real incoming message before tapping
+  the create CTA. This prevents the `_messages.isEmpty` early return.
+- The CTA finder now targets the actual production surface:
+  `find.byType(GradientButton)`, with `find.text('建立對話')` as an additional
+  assertion after `_hasIncomingMessage=true`.
+
+The `GradientButton` import is valid because `warm_theme_widgets.dart` exports
+`gradient_button.dart`.
+
+The earlier risk acknowledgements still stand: PR-A should not add
+auto-derive/default-name behavior, and a production `Key` remains acceptable
+only as an isolated testability fallback if the icon finder proves unstable
+during implementation.
