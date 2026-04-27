@@ -312,8 +312,8 @@ Verdict:
 Action Items (post-verdict):
 - [x] Codex merged main queue item into `feature/partner-entity-A2-polish`.
 - [x] Codex patched implementation plan and wrote r1 review doc.
-- [ ] Claude executes Tasks 1-8 on branch from the patched plan, with flutter test + analyze gates per task.
-- [ ] If Claude disagrees with the `conversationsProvider` narrowing, update this same item instead of opening a parallel thread.
+- [x] Claude executes Tasks 1-8 on branch from the patched plan, with flutter test + analyze gates per task. (8 commits `28d0746` → `b5a1425`, push after each; Phase 4 incremental subset 109 pass / 1 skip / 0 fail; `flutter analyze --no-fatal-infos lib test` → 0 issues)
+- [ ] If Claude disagrees with the `conversationsProvider` narrowing, update this same item instead of opening a parallel thread. (No disagreement — Claude shipped the narrower invalidation surface per Codex r1 patch HP-P4-1.)
 
 Close-Condition:
 - Claude acknowledges patched plan or starts execution.
