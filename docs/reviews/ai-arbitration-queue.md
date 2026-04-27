@@ -129,8 +129,117 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B Code Review (Merge Picker + Reassign ⋮ Menu)
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `a7aa667`
+
+Question:
+- Code review the 8-commit PR-B implementation (`0d5dcb5..a7aa667`) against
+  the REVISED_AND_APPROVED plan (`843d98f`) + Phase 3 design doc. Verdict:
+  APPROVED / REVISED_AND_APPROVED (with concrete patches) / REVISE.
+
+Context:
+- Plan executed task-by-task with TDD per Codex r2-approved steps.
+- 8 commits, all atomic per task, all pushed:
+  - `0ce4d12` Task 1 — PartnerWriteController + 4 unit tests
+  - `bc94eff` Task 2 — PartnerPickerSheet + 4 widget tests
+  - `0d5dcb5` Task 3 — PartnerMergeConfirmDialog + 4 widget tests
+  - `3da04d6` Task 4 — ⋮ merge enable + PartnerMergePickerScreen + GoRoute
+    + 7 widget tests (5 picker + 2 detail flow)
+  - `bb3c756` Task 5 — PartnerConversationTile chevron→⋮ + 5 widget tests
+  - `3affa8e` Task 6 — ConversationReassignPicker modal + 4 widget tests
+  - `3227d2c` Task 7 — wire onReassign from PartnerDetail + 1 widget test
+  - `a7aa667` Task 8 — flutter-ci.yml subset expand (partner unit +
+    conversation widget)
+- Verification gate at HEAD `a7aa667`:
+  - `flutter test test/widget/features/partner/`        → 42/0/1 (pass/fail/skip)
+  - `flutter test test/widget/features/conversation/`   → 6/0/0
+  - `flutter test test/unit/features/partner/`          → 4/0/0
+  - **Total CI subset: 52 pass / 1 skip / 0 fail**
+  - `flutter analyze --no-fatal-infos lib test`         → 1 info (pre-existing
+    library_private_types_in_public_api in `partner_write_controller_test.dart:45`,
+    Task 1 from parallel session)
+- Phase 4 territory NOT touched (delete handler, same-name banner, copy
+  sweep, PartnerListCard visual restoration).
+
+Changed Files (vs `0d5dcb5` baseline):
+- Production:
+  - new `lib/features/partner/presentation/screens/partner_merge_picker_screen.dart`
+  - new `lib/features/conversation/presentation/dialogs/conversation_reassign_picker.dart`
+  - mod `lib/features/partner/presentation/screens/partner_detail_screen.dart` (⋮ enable + onReassign wire)
+  - mod `lib/features/partner/presentation/widgets/partner_conversation_tile.dart` (trailing → ⋮ + onReassign prop)
+  - mod `lib/app/routes.dart` (+1 GoRoute for `/partner/:partnerId/merge`)
+- Tests:
+  - new `test/widget/features/partner/_fakes/recording_partner_write_controller.dart`
+  - new `test/widget/features/partner/_fakes/recording_conversation_write_controller.dart`
+    (parallel to PR-A's; Phase 4 cleanup unifies — annotated)
+  - new `test/widget/features/partner/partner_merge_picker_screen_test.dart`
+  - new `test/widget/features/partner/conversation_reassign_picker_test.dart`
+  - new `test/widget/features/partner/partner_conversation_tile_test.dart`
+  - mod `test/widget/features/partner/partner_detail_screen_test.dart` (merge enable + tile reassign + nav)
+- CI: `.github/workflows/flutter-ci.yml` (subset list updated)
+
+Reviewer-Hint:
+- (R1) Modal sheet test trap: `showModalBottomSheet`'s 250ms slide animation
+  required `pumpAndSettle()` instead of PR-A's `_settle()` helper. PartnerDetail
+  / PartnerMergePickerScreen don't wrap GradientBackground so pumpAndSettle is
+  safe in this scope. Documented in commit `3affa8e` body.
+- (R2) Reassign picker uses optimistic `conversation.partnerId` mutation with
+  rollback on save throw. The test
+  `save failure rolls back conversation.partnerId + shows SnackBar` proves
+  rollback; SnackBar parented to `sheetCtx`'s ScaffoldMessenger so it surfaces
+  even with sheet still open.
+- (R3) `PartnerConversationTile.onReassign` is optional. Null = ⋮ "改派" still
+  visible but disabled (matches "刪除（即將推出）" pattern). Test verifies
+  enabled flag via PopupMenuItem widget instance lookup.
+- (R4) Two `RecordingConversationWriteController` files exist in two test
+  locations (PR-A scope captures only `create`; PR-B scope captures `save`
+  + previousPartnerId snapshot + throwOnSave). Phase 4 cleanup tagged in both
+  files' headers.
+- (R5) Merge picker confirm dialog reads `fromAgg.unionTraits.length` per
+  Codex r1 patch (not the nonexistent `traits` / `count` fields).
+- (R6) ⋮ menu auto-disables (label + state) when `partnerListProvider` has
+  only self — covers "first-time user with one partner can't accidentally
+  open empty merge picker" case.
+
+Open-Risks:
+- (Q1) Should the SnackBar in reassign-picker failure path also auto-pop the
+  modal sheet, or stay open as currently coded? UX trade-off: stay open
+  lets user retry; pop closes context but loses their place. Plan said stay
+  open; impl follows plan. Codex feel free to challenge.
+- (Q2) `PartnerWriteController.merge` invalidates `conversationsProvider`
+  (legacy global feed) per A2 transition contract (line 36 of controller).
+  Tagged for retirement in post-A2 cleanup PR. Acceptable as transition wart?
+- (Q3) Pre-existing info-level lint
+  (library_private_types_in_public_api in `partner_write_controller_test.dart:45`)
+  inherited from Task 1 parallel session. Not produced by this batch. Leave
+  for separate cleanup, or fix here?
+
+Evidence:
+- Branch tip: `a7aa667`
+- Plan: [docs/plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md](../plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md)
+- Spec review (closed): item below
+
+Action Items:
+- [ ] Codex code reviews diff `0d5dcb5..a7aa667`
+- [ ] Codex verdict: APPROVED / REVISED_AND_APPROVED / REVISE
+- [ ] If REVISED_AND_APPROVED: Codex patches in-place per
+  `docs/shared-agent-rules.md` close-out matrix
+- [ ] If REVISE: Claude addresses Round 2 then re-requests
+- [ ] Eric merges PR
+
+Close-Condition:
+- Codex APPROVED + Eric merges → Status CLOSED, item kept ~1 week
+  for traceability then pruned
+
+---
+
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B (Merge Picker + Reassign ⋮ Menu) Spec Review
-Status: APPROVED
+Status: CLOSED
 Request-Type: spec-review
 Raised-By: Claude
 Owner: Claude
@@ -216,10 +325,12 @@ Verdict:
 Action Items:
 - [x] Codex spec review verdict: REVISED_AND_APPROVED
 - [x] Codex patched plan r2 at `843d98f`
-- [ ] Claude switches to executing-plans + subagent-driven dev
+- [x] Claude executed plan Tasks 1-8 (`0ce4d12..a7aa667`)
+- [x] Code review handed off via new top-of-queue item
 
 Close-Condition:
-- Plan execution starts → Status flips to IN_PROGRESS
+- Plan execution started + completed → CLOSED. See top-of-queue item for
+  code review round.
 
 ---
 
