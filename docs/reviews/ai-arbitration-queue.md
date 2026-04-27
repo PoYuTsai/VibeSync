@@ -187,6 +187,11 @@ Evidence:
   `partner_merge_picker_screen_test.dart`, `same_name_banner_test.dart`) passed
   25/25.
 - Lint: `flutter analyze --no-fatal-infos lib test` → 0 issues
+- Claude post-Codex-patch local re-verify (WSL, post `77f93d4`, 2026-04-28 04:00ish GMT+8):
+  · `flutter analyze --no-fatal-infos lib test` → 0 issues
+  · partner widget subset 25/25 pass (`partner_list_screen_test.dart` + `partner_merge_picker_screen_test.dart` + `same_name_banner_test.dart`)
+  · Codex `debugPrint` breadcrumb visible in "merge failure shows snackbar" test stdout
+    (firing as designed, not a regression — TF console will now surface root cause instead of empty SnackBar)
 
 Open-Risks (Code Review Hot Spots):
 - HS-Code-1 — `PartnerListCard._previewTags` interleave correctness on
