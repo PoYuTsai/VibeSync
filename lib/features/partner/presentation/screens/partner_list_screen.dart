@@ -1,6 +1,7 @@
 // lib/features/partner/presentation/screens/partner_list_screen.dart
 //
-// Phase 2 Home tab body — replaces the old conversation-centric HomeContent.
+// Phase 2 Home tab body — partner-first replacement for the old
+// conversation-centric home (deprecated donor removed in Phase 4 Task 6).
 //
 // Aggregate is watched AT THE LIST LEVEL (not inside the card) so each row
 // re-evaluates only when its own partner's conversations change. This keeps
