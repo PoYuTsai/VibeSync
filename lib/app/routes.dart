@@ -15,6 +15,7 @@ import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/conversation/presentation/screens/profile_card_screen.dart';
 import '../features/partner/presentation/screens/add_partner_screen.dart';
 import '../features/partner/presentation/screens/partner_detail_screen.dart';
+import '../features/partner/presentation/screens/partner_merge_picker_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 
 final _routerRefreshListenable =
@@ -72,6 +73,12 @@ final router = GoRouter(
       path: '/partner/:partnerId',
       builder: (context, state) => PartnerDetailScreen(
         partnerId: state.pathParameters['partnerId']!,
+      ),
+    ),
+    GoRoute(
+      path: '/partner/:partnerId/merge',
+      builder: (context, state) => PartnerMergePickerScreen(
+        fromPartnerId: state.pathParameters['partnerId']!,
       ),
     ),
     GoRoute(

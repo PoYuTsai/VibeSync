@@ -66,6 +66,15 @@ If none apply:
 - leave docs untouched
 - let `git log` be the history
 
+## Test Responsibility Split
+
+Default testing owner is the implementation agent in the primary dev runtime.
+
+- Claude / WSL runs Flutter TDD loops, `flutter test`, and `flutter analyze` for implementation work, and includes exact commands plus pass/fail output in handoff summaries.
+- Codex does diff review, architecture / risk checks, grep contract checks, and targeted verification for touched or high-risk files only.
+- Codex should not rerun full Flutter test suites when Claude already supplied credible exact commands/results, unless the diff contradicts the result or a high-risk invariant needs independent verification.
+- If Codex does run Flutter locally, prefer the smallest relevant test scope; full-suite or repeated Flutter runs belong in WSL unless explicitly needed.
+
 ## Anti-Bloat Rules
 
 - One change should map to one primary shared document.
