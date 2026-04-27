@@ -48,7 +48,11 @@ GoRouter _sheetTestRouter(String? partnerId) {
       ),
       GoRoute(
         path: '/new',
-        builder: (_, __) => const Scaffold(body: Text('manual entry stub')),
+        builder: (_, state) => Scaffold(
+          body: Text(
+            'manual-entry:${state.uri.queryParameters['partnerId'] ?? 'null'}',
+          ),
+        ),
       ),
       GoRoute(
         path: '/opener',
@@ -59,6 +63,44 @@ GoRouter _sheetTestRouter(String? partnerId) {
 }
 
 void main() {
+  testWidgets('sheet partnerId="p-test" + manual entry routes with partnerId',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(
+      MaterialApp.router(routerConfig: _sheetTestRouter('p-test')),
+    );
+    await _settle(t);
+
+    await t.tap(find.text('open sheet'));
+    await _settle(t);
+
+    await t.tap(find.byIcon(Icons.edit_note));
+    await _settle(t);
+
+    expect(find.text('manual-entry:p-test'), findsOneWidget);
+  });
+
+  testWidgets('sheet partnerId=null + manual entry routes without partnerId',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(
+      MaterialApp.router(routerConfig: _sheetTestRouter(null)),
+    );
+    await _settle(t);
+
+    await t.tap(find.text('open sheet'));
+    await _settle(t);
+
+    await t.tap(find.byIcon(Icons.edit_note));
+    await _settle(t);
+
+    expect(find.text('manual-entry:null'), findsOneWidget);
+  });
+
   testWidgets('sheet partnerId="p-test" + 截圖開始 → controller.create(partnerId: "p-test")',
       (t) async {
     // Phase 2 已驗 sheet bottom sheet 在 800x600 default 有 1.5px overflow。
