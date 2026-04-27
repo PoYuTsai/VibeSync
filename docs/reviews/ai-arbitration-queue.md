@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-A Spec Review (partnerId Chain Validation)
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Eric
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-data` @ `50bb3be` (PR #5)
+Branch/Commit: `feature/partner-entity-A2-flows-data` @ `d6cb659` (PR #5)
 
 Question:
 - Does the PR-A impl plan(`docs/plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md`)
@@ -247,6 +247,14 @@ Codex-Position:
   and the CTA finder targets `GradientButton` plus visible text `建立對話`.
 - `warm_theme_widgets.dart` exports `gradient_button.dart`, so the planned
   import is valid.
+- (code review 2026-04-27) `APPROVED`.
+- Reviewed PR #5 diff after Tasks 1-6. Found one non-production coverage gap:
+  the sheet manual-entry route hop was not covered, so `_manualEntryLocation`
+  could drop `partnerId` while the direct `NewConversationScreen` tests still
+  passed. Fixed directly in `d6cb659` by adding route-sentinel tests for both
+  `partnerId="p-test"` and `partnerId=null`.
+- Review doc:
+  [docs/reviews/2026-04-27_partner-entity-A2-phase3-pr-a-code_codex-review.md](./2026-04-27_partner-entity-A2-phase3-pr-a-code_codex-review.md)
 
 Verdict:
 - APPROVED
@@ -267,19 +275,16 @@ Action-Items:
   baseline 不 regression), `flutter analyze` clean.
 - [x] PR opened: [PoYuTsai/VibeSync#5](https://github.com/PoYuTsai/VibeSync/pull/5)
   (+1187/-0, 6 files, 全 `test/`).
-- [Codex] **Code review** on PR #5 diff (commits `ff928d1..50bb3be`).
-  Reviewer-Hint: repo has zero `pull_request`-triggered workflows in
-  `.github/workflows/`，所以 plan §Test plan 的「CI 全綠（test job + analyze
-  job）」是 phantom gate — 以 Terminal B 已跑的 local `flutter test` +
-  `flutter analyze` 為憑。Per CLAUDE.md「Codex review **只看 diff**，Claude
-  rationale 不先給」，本 hint 限縮在 CI workflow 缺席這個事實，不附 review 主張。
-- [Bruce] TF QA gate after Codex APPROVED — v142+ build 從 PartnerDetail
-  「+ 新增對話」→ 手動 / 截圖 path 各一條，driver 為 partnerId 是否正確掛載。
+- [x] Codex code review on PR #5 diff completed at `d6cb659`: one test-only
+  coverage gap fixed directly, review doc written, verdict APPROVED.
+- [ ] Eric/Bruce TF QA gate after Codex APPROVED — v142+ build 從
+  PartnerDetail「+ 新增對話」→ 手動 / 截圖 path 各一條，driver 為 partnerId
+  是否正確掛載。
 
 Status note: r1→r2 between `360ce07` 和 `59b26b1` 只動 plan doc，無 prod /
 test code 增量。Tasks 1-6 execution 於 `9c5df4d` 之後，5 個 `[test]` commits
-`ff928d1..50bb3be` 全 push 到 `feature/partner-entity-A2-flows-data`，與
-open PR #4（CI build-number）0 conflict。
+`ff928d1..50bb3be` 全 push 到 `feature/partner-entity-A2-flows-data`。Codex
+follow-up `d6cb659` 只補測試覆蓋，production code 仍 0 行改動。
 
 Close-Condition:
 - Codex r2 verdict APPROVED + Claude executes Tasks 1-6 + Codex code review on
