@@ -72,7 +72,13 @@ class PartnerListScreen extends ConsumerWidget {
             ),
             onDismissTap: () async {
               await PartnerBannerService.markDismissed(uid!);
-              ref.invalidate(partnerDedupeBannerDismissedProvider(uid));
+              try {
+                // Guard against widget disposal during the await above —
+                // sign-out / nav-away invalidates ref before this lands.
+                ref.invalidate(partnerDedupeBannerDismissedProvider(uid));
+              } catch (_) {
+                // Widget disposed; invalidation is moot.
+              }
             },
           );
         }
