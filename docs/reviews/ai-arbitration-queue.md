@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-A Spec Review (partnerId Chain Validation)
-Status: APPROVED
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Eric
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-data` @ `d6cb659` (PR #5)
+Branch/Commit: `main` @ `f2ab222` (merged PR #5; review fix `d6cb659`)
 
 Question:
 - Does the PR-A impl plan(`docs/plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md`)
@@ -260,7 +260,9 @@ Verdict:
 - APPROVED
 
 Eric-Decision:
-- Pending
+- Merge PR-A after Codex APPROVED. Because PR-A is test/docs only and has 0
+  production-code changes, TF QA is moved to the downstream regression checklist
+  instead of blocking this PR-A merge.
 
 Action-Items:
 - [x] Codex ran spec review on `360ce07` and wrote r1 verdict.
@@ -277,9 +279,9 @@ Action-Items:
   (+1187/-0, 6 files, 全 `test/`).
 - [x] Codex code review on PR #5 diff completed at `d6cb659`: one test-only
   coverage gap fixed directly, review doc written, verdict APPROVED.
-- [ ] Eric/Bruce TF QA gate after Codex APPROVED — v142+ build 從
-  PartnerDetail「+ 新增對話」→ 手動 / 截圖 path 各一條，driver 為 partnerId
-  是否正確掛載。
+- [x] Eric chose to merge after Codex APPROVED; TF QA remains a downstream
+  regression check before/around the next build, not a PR-A blocker.
+- [x] PR #5 merged into `main` at `f2ab222`.
 
 Status note: r1→r2 between `360ce07` 和 `59b26b1` 只動 plan doc，無 prod /
 test code 增量。Tasks 1-6 execution 於 `9c5df4d` 之後，5 個 `[test]` commits
@@ -288,8 +290,9 @@ follow-up `d6cb659` 只補測試覆蓋，production code 仍 0 行改動。
 
 Close-Condition:
 - Codex r2 verdict APPROVED + Claude executes Tasks 1-6 + Codex code review on
-  resulting diff APPROVED + PR opened + TF QA gate passed + PR merged + branch
-  雙刪。
+  resulting diff APPROVED + PR opened + Eric merge decision + PR merged.
+- Closed by Eric merge decision at `f2ab222`; remote branch cleanup can be done
+  after confirming GitHub PR state.
 
 ---
 
