@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B (Merge Picker + Reassign ⋮ Menu) Spec Review
-Status: OPEN
+Status: APPROVED
 Request-Type: spec-review
 Raised-By: Claude
 Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `843d98f`
+Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `f3eba44`
 
 Question:
 - Does the PR-B impl plan correctly cover Tasks 12+13 (merge picker + reassign
