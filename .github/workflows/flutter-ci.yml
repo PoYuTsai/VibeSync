@@ -1,0 +1,51 @@
+# .github/workflows/flutter-ci.yml
+# PR-gate CI: blocks merge on red `flutter analyze` / `flutter test`.
+# 跟 distribute.yml 的差別：本 workflow 失敗會擋 PR merge；distribute.yml 對
+# `flutter test` 用 `|| echo` 是因為「ship build 比測試 pass 重要」，那條
+# 邏輯在 PR gate 不適用。
+#
+# Security note (per GitHub Actions injection guide):
+# 此 workflow 不消費任何 untrusted user input（issue title / PR body /
+# commit message / head_ref 等都未使用）。唯一 ${{ }} expression 是
+# concurrency.group 內的 `github.ref`，屬 controlled context，不進 run: shell。
+# 所以 command injection surface = 0。
+
+name: Flutter CI
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: flutter-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-analyze:
+    name: Test & Analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # build_runner 產生的 .g.dart / .freezed.dart 不在 git；少了會讓
+      # `flutter analyze` 報幾百個 phantom missing-import error。distribute.yml
+      # 走同一步驟（line 51-52）。
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
