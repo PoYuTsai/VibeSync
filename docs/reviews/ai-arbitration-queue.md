@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-A Spec Review (partnerId Chain Validation)
-Status: APPROVED
+Status: IN_REVIEW
 Request-Type: review
 Raised-By: Claude
-Owner: Claude
+Owner: Codex
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-data` @ `9c5df4d`
+Branch/Commit: `feature/partner-entity-A2-flows-data` @ `50bb3be` (PR #5)
 
 Question:
 - Does the PR-A impl plan(`docs/plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md`)
@@ -261,10 +261,25 @@ Action-Items:
   `find.byType(GradientButton)` + `find.text('建立對話')`；加 import；加
   §🔁 r2 Patch 段落.
 - [x] Codex scoped r2 re-review on `59b26b1` — APPROVED.
-- [Claude] Execute Tasks 1-6 from the approved PR-A plan.
+- [x] Claude executed Tasks 1-6 — 5 test commits `ff928d1..50bb3be` pushed
+  to `feature/partner-entity-A2-flows-data` (0 production code, all under
+  `test/`). Local verification: 21 widget tests pass / 1 skip (Phase 2
+  baseline 不 regression), `flutter analyze` clean.
+- [x] PR opened: [PoYuTsai/VibeSync#5](https://github.com/PoYuTsai/VibeSync/pull/5)
+  (+1187/-0, 6 files, 全 `test/`).
+- [Codex] **Code review** on PR #5 diff (commits `ff928d1..50bb3be`).
+  Reviewer-Hint: repo has zero `pull_request`-triggered workflows in
+  `.github/workflows/`，所以 plan §Test plan 的「CI 全綠（test job + analyze
+  job）」是 phantom gate — 以 Terminal B 已跑的 local `flutter test` +
+  `flutter analyze` 為憑。Per CLAUDE.md「Codex review **只看 diff**，Claude
+  rationale 不先給」，本 hint 限縮在 CI workflow 缺席這個事實，不附 review 主張。
+- [Bruce] TF QA gate after Codex APPROVED — v142+ build 從 PartnerDetail
+  「+ 新增對話」→ 手動 / 截圖 path 各一條，driver 為 partnerId 是否正確掛載。
 
 Status note: r1→r2 between `360ce07` 和 `59b26b1` 只動 plan doc，無 prod /
-test code 增量。
+test code 增量。Tasks 1-6 execution 於 `9c5df4d` 之後，5 個 `[test]` commits
+`ff928d1..50bb3be` 全 push 到 `feature/partner-entity-A2-flows-data`，與
+open PR #4（CI build-number）0 conflict。
 
 Close-Condition:
 - Codex r2 verdict APPROVED + Claude executes Tasks 1-6 + Codex code review on
