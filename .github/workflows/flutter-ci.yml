@@ -25,9 +25,20 @@ jobs:
     name: Test & Analyze
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Ubuntu runner 預設 en_US.UTF-8，Flutter `Intl` fallback 出英文 →
+    # 既有的中文斷言整批失敗。zh_TW.UTF-8 須先 locale-gen，env 才能真正生效。
+    env:
+      LANG: zh_TW.UTF-8
+      LC_ALL: zh_TW.UTF-8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Generate zh_TW locale
+        run: |
+          sudo locale-gen zh_TW.UTF-8
+          locale -a | grep -q '^zh_TW\.utf8$' || { echo "::error::zh_TW.UTF-8 not generated"; exit 1; }
+          echo "active locale:"; locale
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
