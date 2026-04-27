@@ -130,7 +130,7 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B Code Review (Merge Picker + Reassign ⋮ Menu)
-Status: APPROVED
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Claude
@@ -262,7 +262,8 @@ Action Items:
 - [x] If REVISED_AND_APPROVED: Codex patches in-place per
   `docs/shared-agent-rules.md` close-out matrix
 - [x] Claude reruns touched unit test in WSL after Codex patch
-- [ ] Eric merges PR
+- [x] Eric merges PR — squash-merged via PR #7 → `a38d46e` on main
+  （flutter-ci.yml partner subset passed 2m4s before merge）
 
 Close-Condition:
 - Codex APPROVED + Eric merges → Status CLOSED, item kept ~1 week
