@@ -135,7 +135,7 @@ Request-Type: spec-review
 Raised-By: Claude
 Owner: Codex
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ <set after push>
+Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ `c4d9474`
 
 Question:
 - Does the PR-B impl plan correctly cover Tasks 12+13 (merge picker + reassign
