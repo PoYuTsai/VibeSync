@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
@@ -97,6 +98,11 @@ class PartnerDetailScreen extends ConsumerWidget {
               (c) => PartnerConversationTile(
                 conversation: c,
                 onTap: () => context.push('/conversation/${c.id}'),
+                onReassign: () => showConversationReassignPicker(
+                  context,
+                  conversation: c,
+                  ref: ref,
+                ),
               ),
             ),
         ],

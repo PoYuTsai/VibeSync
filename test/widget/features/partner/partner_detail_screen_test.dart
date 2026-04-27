@@ -13,6 +13,7 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_conversation_tile.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
 
@@ -206,6 +207,56 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('第 a 段'), findsOneWidget);
     expect(find.text('第 b 段'), findsOneWidget);
+  });
+
+  testWidgets('tile ⋮ → 改派 opens reassign picker excluding current partner',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    final attachedConv = Conversation(
+      id: 'c1',
+      name: '第 a 段',
+      messages: const [],
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      partnerId: 'p1',
+    );
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [attachedConv]),
+        partnerListProvider
+            .overrideWith((_) => [_p(), _other('q1', 'Bob')]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    // Header ⋮ is also Icons.more_vert — scope to the tile.
+    final tileMenu = find.descendant(
+      of: find.byType(PartnerConversationTile),
+      matching: find.byIcon(Icons.more_vert),
+    );
+    expect(tileMenu, findsOneWidget);
+    await t.tap(tileMenu);
+    await t.pumpAndSettle();
+
+    await t.tap(find.text('改派到其他對象'));
+    await t.pumpAndSettle();
+
+    // Reassign sheet rendered: Bob visible (Alice = p1 excluded from picker;
+    // header still shows "Alice", so we scope to the picker subtree).
+    expect(find.text('Bob'), findsOneWidget);
+    final pickerSubtree = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.text('Alice'),
+    );
+    expect(pickerSubtree, findsNothing);
   });
 
   testWidgets('partner missing (deleted/merged) shows fallback', (t) async {
