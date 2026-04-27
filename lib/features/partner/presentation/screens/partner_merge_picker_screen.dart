@@ -126,8 +126,9 @@ class _PartnerMergePickerScreenState
           .read(partnerWriteControllerProvider.notifier)
           .merge(fromId: widget.fromPartnerId, toId: target.id);
       if (mounted) context.go('/partner/${target.id}');
-    } catch (_) {
+    } catch (e, st) {
       if (!mounted) return;
+      debugPrint('PartnerMergePickerScreen merge failed: $e\n$st');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('合併失敗，請稍後再試')),
       );

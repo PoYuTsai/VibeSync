@@ -77,8 +77,13 @@ class PartnerListScreen extends ConsumerWidget {
                 // Guard against widget disposal during the await above —
                 // sign-out / nav-away invalidates ref before this lands.
                 ref.invalidate(partnerDedupeBannerDismissedProvider(uid));
-              } catch (_) {
-                // Widget disposed; invalidation is moot.
+              } catch (e, st) {
+                // Widget disposed; invalidation is moot, but keep a breadcrumb
+                // in debug logs so real dismiss failures are not silent.
+                debugPrint(
+                  'PartnerListScreen banner dismiss invalidation skipped: '
+                  '$e\n$st',
+                );
               }
             },
           );
@@ -147,12 +152,12 @@ class PartnerListScreen extends ConsumerWidget {
         backgroundColor: AppColors.glassWhite,
         title: Text(
           '無法刪除',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+          style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         content: Text(
           '「${partner.name}」還有 $conversationCount 個對話，無法刪除。'
           '請先合併或改派對話到其他對象。',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+          style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [
           TextButton(
@@ -178,18 +183,18 @@ class PartnerListScreen extends ConsumerWidget {
         backgroundColor: AppColors.glassWhite,
         title: Text(
           '刪除對象',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+          style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         content: Text(
           '確定刪除「${partner.name}」？',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+          style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               '取消',
-              style: TextStyle(color: AppColors.unselectedText),
+              style: const TextStyle(color: AppColors.unselectedText),
             ),
           ),
           TextButton(
@@ -204,9 +209,7 @@ class PartnerListScreen extends ConsumerWidget {
     if (confirmed != true) return;
 
     try {
-      await ref
-          .read(partnerWriteControllerProvider.notifier)
-          .delete(partner);
+      await ref.read(partnerWriteControllerProvider.notifier).delete(partner);
       messenger.showSnackBar(
         SnackBar(content: Text('已刪除「${partner.name}」')),
       );
@@ -218,7 +221,8 @@ class PartnerListScreen extends ConsumerWidget {
           content: Text('刪除失敗：仍有 ${e.conversationCount} 個對話'),
         ),
       );
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('PartnerListScreen delete failed: $e\n$st');
       messenger.showSnackBar(
         const SnackBar(content: Text('刪除失敗，請稍後再試')),
       );

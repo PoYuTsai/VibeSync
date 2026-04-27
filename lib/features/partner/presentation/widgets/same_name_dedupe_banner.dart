@@ -52,7 +52,7 @@ class SameNameDedupeBanner extends StatelessWidget {
               children: [
                 TextButton(
                   onPressed: onDismissTap,
-                  child: Text(
+                  child: const Text(
                     '以後再說',
                     style: TextStyle(color: AppColors.glassTextSecondary),
                   ),

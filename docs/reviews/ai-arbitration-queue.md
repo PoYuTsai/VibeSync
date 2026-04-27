@@ -130,15 +130,15 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-28] Partner Entity Refactor - A2 Phase 4 Code Review (Polish + Ship)
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Eric
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-polish` @ `b5a1425` (PR #8)
+Branch/Commit: `feature/partner-entity-A2-polish` @ `f991359` reviewed + Codex patch (PR #8)
 
 Question:
-- Code review the Phase 4 production diff (8 commits, Tasks 1-8 mapped from
+- Code review the Phase 4 production diff (9 commits, Tasks 1-8 mapped from
   design Tasks 18a/18b/14a/14b/15/16a/16b). Verdict options:
   APPROVED / REVISED_AND_APPROVED (Codex pushes patch commit directly to
   branch) / REVISE.
@@ -162,15 +162,15 @@ Context:
 
 Changed:
 - `lib/features/partner/data/repositories/partner_repository.dart` (Task 1 delete + exception)
-- `lib/features/partner/presentation/controllers/partner_write_controller.dart` (Task 1 invalidation)
+- `lib/features/partner/data/providers/partner_write_controller.dart` (Task 1 invalidation)
 - `lib/features/partner/presentation/widgets/partner_list_card.dart` (Task 2 NEW)
 - `lib/features/partner/presentation/screens/partner_list_screen.dart` (Task 2 delete dialog two-mode)
 - `lib/features/partner/data/services/partner_banner_service.dart` (Task 3 NEW)
 - `lib/features/partner/data/providers/partner_banner_providers.dart` (Task 3 NEW)
 - `lib/features/partner/presentation/widgets/same_name_dedupe_banner.dart` (Task 4 NEW)
 - `lib/features/partner/presentation/screens/partner_merge_picker_screen.dart` (Task 4 preselect)
-- `lib/screens/main_screen.dart` (Task 5 copy sweep)
-- `lib/screens/home_screen.dart` (Task 5 FAB tooltip + Task 6 砍 HomeContent)
+- `lib/app/main_shell.dart` (Task 5 FAB tooltip)
+- `lib/features/conversation/presentation/screens/home_screen.dart` (Task 6 砍 HomeContent)
 - `docs/testflight-regression-checklist.md` (Task 7 J section)
 - `docs/decisions.md` (Task 7 ADR-15 v2 ship section)
 - `docs/snapshot.md` (Task 7 refresh)
@@ -178,10 +178,14 @@ Changed:
 
 Evidence:
 - PR: https://github.com/PoYuTsai/VibeSync/pull/8
-- Branch HEAD: `b5a1425`
+- Branch HEAD reviewed: `f991359`
 - Spec review: [`docs/reviews/2026-04-28_partner-entity-A2-phase4-spec_codex-review.md`](2026-04-28_partner-entity-A2-phase4-spec_codex-review.md)
 - Plan review: [`docs/reviews/2026-04-28_partner-entity-A2-phase4-impl_codex-review.md`](2026-04-28_partner-entity-A2-phase4-impl_codex-review.md)
 - Phase 4 incremental tests: 109 pass / 1 skip / 0 fail
+- Codex patch verification: targeted WSL `flutter analyze` on 3 touched Dart files
+  passed; hot spot widget tests (`partner_list_screen_test.dart`,
+  `partner_merge_picker_screen_test.dart`, `same_name_banner_test.dart`) passed
+  25/25.
 - Lint: `flutter analyze --no-fatal-infos lib test` → 0 issues
 
 Open-Risks (Code Review Hot Spots):
@@ -216,18 +220,19 @@ Claude-Position:
 - Deferred: 5-path manual smoke (Eric on TF build per plan §10.2)
 
 Codex-Position:
-- Pending
+- REVISED_AND_APPROVED. No remaining P1/P2 blockers. I patched the only actionable review concern: new Phase 4 generic catch paths now emit `debugPrint` breadcrumbs for banner dismiss invalidation, partner delete fallback, and merge fallback. Hot spots checked: `_previewTags` edge behavior OK, delete race handled by `PartnerHasConversationsException`, banner dismiss provider invalidation has widget coverage, merge preselect does not auto-open destructive flow, copy sweep stays inside ADR-15 vocabulary boundary.
+- Review doc: `docs/reviews/2026-04-28_partner-entity-A2-phase4-code_codex-review.md`
 
 Verdict:
-- Pending
+- REVISED_AND_APPROVED
 
 Eric-Decision:
-- Pending
+- Pending TF checklist J / merge gate
 
 Action-Items:
-- [ ] Codex code reviews PR #8 diff
-- [ ] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
-- [ ] If APPROVED: Eric runs 5-path manual smoke on TF build
+- [x] Codex code reviews PR #8 diff
+- [x] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
+- [ ] Eric runs 5-path manual smoke on TF build
 - [ ] Merge to main once both gates pass
 
 Close-Condition:
