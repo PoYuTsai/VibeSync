@@ -129,6 +129,87 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-B (Merge Picker + Reassign ⋮ Menu) Spec Review
+Status: OPEN
+Request-Type: spec-review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `feature/partner-entity-A2-flows-pickers` @ <set after push>
+
+Question:
+- Does the PR-B impl plan correctly cover Tasks 12+13 (merge picker + reassign
+  ⋮ menu) without leaking Phase 4 scope (delete handler / same-name banner /
+  copy sweep), AND are the design-doc deviations called out below acceptable?
+
+Context:
+- Phase 3 design doc: `docs/plans/2026-04-27-partner-entity-A2-phase3-design.md`
+- Master plan Tasks 12-13: `docs/plans/2026-04-26-partner-entity-A2-impl.md`
+  lines 970-1028
+- PR-A (Tasks 10+11 — partnerId chain validation tests) in IN_REVIEW on
+  `feature/partner-entity-A2-flows-data`. PR-B is parallel (different
+  directories; no merge dependency on PR-A).
+- Plan path: `docs/plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md`
+- Branch cut from main `f2e791d` (含 PR #6 flutter-ci.yml partner-scoped CI gate).
+
+Changed:
+- Cut new branch `feature/partner-entity-A2-flows-pickers` from main (`f2e791d`).
+- Wrote PR-B impl plan with bite-sized TDD steps for 8 tasks (~15-20 widget
+  tests + 3 unit tests + 5 new prod files + 3 modify points).
+- Verified ground truth before drafting: PartnerRepository.merge surface, no
+  PartnerWriteController exists, ConversationWriteController.save signature
+  takes previousPartnerId, PartnerConversationTile is StatelessWidget,
+  PartnerDetail uses plain Scaffold (no GradientBackground — pumpAndSettle OK
+  here).
+
+Evidence:
+- Plan: [docs/plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md](../plans/2026-04-27-partner-entity-A2-phase3-pr-b-impl.md)
+- Design doc reference: §3 / §5 / §7
+
+Open-Risks:
+- (R1) **Design doc §5 deviation — PartnerWriteController introduced.**
+  Design doc claimed "Riverpod aggregate invalidation 由 repo 觸發（A1 已
+  tested）". This is wrong: PartnerRepository has no Ref. Plan adds a new
+  PartnerWriteController (Notifier) mirroring Phase 1 ConversationWriteController
+  to own merge-side invalidation. **Needs explicit Codex acknowledge**.
+- (R2) **`showCreateNewAction: true` deferred.** Design doc §5 listed
+  `showCreateNewAction: true` for reassign picker. Plan ships without it
+  (push-and-return reassign flow non-trivial); empty state shows hint
+  pointing to home. Acceptable as Phase 3 scope, or push back?
+- (R3) **`PartnerRepository.merge` bypasses `ConversationWriteController`.**
+  Direct Hive write of `c.partnerId = toId` violates Phase 1 narrow-write
+  contract. PR-B does NOT rewrite merge to use the controller (would break
+  transaction boundary); instead PartnerWriteController post-hoc invalidates
+  both `conversationsByPartnerProvider(from)` + `conversationsByPartnerProvider(to)`
+  for equivalence. Codex must acknowledge.
+- (R4) **Tile trailing chevron → ⋮.** Design doc §3 already locked B-variant
+  trigger. Plan inherits. master plan line 1012 long-press test stays NOT
+  implemented (master plan was pre-Phase 1).
+- (R5) **`PartnerAggregateView.traits` field name uncertainty.** Plan Task 4
+  uses `fromAgg.traits.length` for confirm dialog; if the field is named
+  differently, plan documents an unwind to abstract wording without count.
+  Codex review may want to lock the field name now.
+- (R6) **Fake notifier duplicated.** PR-A path
+  `test/widget/features/conversation/_fakes/recording_conversation_write_controller.dart`
+  is off-limits to PR-B (parallel branch boundary). Plan duplicates the fake
+  to `test/widget/features/partner/_fakes/`. Cleanup PR in Phase 4 will merge.
+
+Claude-Position:
+- (r1) Plan as-is is the right entry. PartnerWriteController is the correct
+  response to the design-doc gap (consistency with Phase 1 architecture, also
+  amortizes future delete handler in Phase 4). showCreateNewAction deferral
+  is pragmatic; functionality survives without it.
+
+Action Items:
+- [ ] Codex spec review verdict (APPROVED / REVISE_BEFORE_IMPLEMENTATION)
+- [ ] If REVISE: Claude patches plan, opens Round 2
+- [ ] If APPROVED: Claude switches to executing-plans + subagent-driven dev
+
+Close-Condition:
+- Verdict APPROVED + plan execution starts → Status flips to IN_PROGRESS
+
+---
+
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review + Code Review
 Status: CLOSED
 Request-Type: review
