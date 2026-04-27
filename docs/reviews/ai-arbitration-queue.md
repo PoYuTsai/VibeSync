@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-28] Partner Entity Refactor - A2 Phase 4 (Polish + Ship) Spec Review
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `main` @ `3ef3421` (design doc only; impl branch not yet cut)
+Branch/Commit: `main` @ `cd7470e` + Codex spec patch (design doc + review doc; impl branch not yet cut)
 
 Question:
 - Spec review the Phase 4 design doc covering Tasks 14-18 + hidden Partner
@@ -153,6 +153,7 @@ Context:
 
 Changed:
 - `docs/plans/2026-04-28-partner-entity-A2-phase4-design.md` (new, 500 lines)
+- `docs/reviews/2026-04-28_partner-entity-A2-phase4-spec_codex-review.md` (Codex r1 verdict)
 
 Evidence:
 - Design doc: [`docs/plans/2026-04-28-partner-entity-A2-phase4-design.md`](../plans/2026-04-28-partner-entity-A2-phase4-design.md)
@@ -182,21 +183,24 @@ Claude-Position:
   banner + visual 後做避免重掃
 
 Codex-Position:
-- Pending
+- REVISED_AND_APPROVED. Phase 4 sequencing is sound, but I patched four contract gaps before implementation:
+  1. Partner delete API now matches shipped code: `PartnerRepository.delete()` scans `_conversationBox.values`; `PartnerWriteController.delete()` invalidates non-family `partnerListProvider` plus partner/id aggregate scopes.
+  2. Delete UI guard now uses `conversationCount` from `conversationsByPartnerProvider(partner.id).length`, not `aggregate.totalRounds`; zero-round conversations still block delete.
+  3. Same-name banner dismissed state now has a `FutureProvider.family<bool, uid>` contract, avoiding build-time await and SharedPreferences flicker.
+  4. Merge picker `?target=` semantics are locked: no query preserves PR-B behavior, valid target preselects without auto-opening a destructive dialog, self/unknown target ignored.
+- HS-P4-5 patched to interleave interests/traits before cap 3 so traits are not starved.
+- HS-P4-1 enum is YAGNI; HS-P4-2 try/finally invalidation acceptable after API correction; HS-P4-3 presentation duplicate detection acceptable.
 
 Verdict:
-- Pending
+- REVISED_AND_APPROVED
 
 Action Items (post-verdict):
-- [ ] APPROVED → Claude 切 branch `feature/partner-entity-A2-polish` 寫 impl plan，
-      開新 queue item「A2 Phase 4 Implementation Plan Review」
-- [ ] REVISED_AND_APPROVED → Codex patch 直接寫進 design doc 或開 r2 review doc，
-      Claude 同 queue item 改 r2
-- [ ] REVISE → Codex 寫 review doc 標 issues，Claude 同 queue item r2
+- [x] Codex patched design doc and wrote review doc.
+- [ ] Claude reads patched design doc, cuts `feature/partner-entity-A2-polish`, writes implementation plan, and opens a new queue item「A2 Phase 4 Implementation Plan Review」if needed.
+- [ ] If Claude disagrees with a patch, update this same item instead of opening a parallel thread.
 
 Close-Condition:
-- Codex 寫 verdict + (若 REVISED) 提供 patches 或修改 design doc
-- Claude 同步更新 queue item Status: APPROVED / REVISE_R2 / CLOSED
+- Claude acknowledges the patched spec or starts the Phase 4 implementation plan.
 
 ---
 

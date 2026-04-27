@@ -45,7 +45,7 @@ Ship A2 — 收齊所有 polish + 視覺還原 + ship gate，讓 A2 全集進入
 |---|---|---|---|
 | **D-P4-1** | Partner delete cascade 語意 | **A — block when conversations exist** | 資料安全 + 有 path（merge / reassign）替代 + 教育用戶走正確 flow |
 | **D-P4-2** | Banner pre-fill source/target | **A — newer-by-createdAt = source, older = target** | 心智模型：先建的是正本；對齊 Task 12 customNote `[from A]` tag |
-| **D-P4-3** | PartnerListCard preview 資料源 | **B — interests+traits 前 3 tag** | 產品定位（AI 拆解輪廓）+ 隱私（不曝對話原文）+ 0 行 aggregate 改動 |
+| **D-P4-3** | PartnerListCard preview 資料源 | **B — interests+traits interleave 後前 3 tag** | 產品定位（AI 拆解輪廓）+ 隱私（不曝對話原文）+ 0 行 aggregate 改動；Codex spec review 收斂為 interleave，避免 traits 被 interests 餓死 |
 | **D-P4-4** | Heat indicator fallback (latestHeat == null) | **B — 🌡️ 待分析 灰字** | 5 件套完整性 + 教學暗示 + 語意正確（null ≠ 0） |
 | **D-P4-5** | Banner dismissed flag scope | **A — per-account, key = `partner_dedupe_banner_dismissed_$uid`** | 多帳戶隔離一致性（A2 invariant） + Eric 自己會踩到 |
 
@@ -103,7 +103,11 @@ class PartnerHasConversationsException implements Exception {
 
 // PartnerRepository
 Future<void> delete(String partnerId) async {
-  final conversations = await listByPartner(partnerId);
+  // PartnerRepository has no public listByPartner surface; keep the guard
+  // inside the repo boundary by reading the injected/lazy conversation box.
+  final conversations = _conversationBox.values
+      .where((c) => c.partnerId == partnerId)
+      .toList(growable: false);
   if (conversations.isNotEmpty) {
     throw PartnerHasConversationsException(conversations.length);
   }
@@ -113,18 +117,21 @@ Future<void> delete(String partnerId) async {
 // PartnerWriteController
 Future<void> delete(Partner partner) async {
   try {
-    await _repo.delete(partner.id);
+    await ref.read(partnerRepositoryProvider).delete(partner.id);
   } finally {
-    _ref.invalidate(partnerListProvider(partner.ownerUserId));
-    _ref.invalidate(partnerAggregateProvider(partner.id));
+    ref.invalidate(partnerByIdProvider(partner.id));
+    ref.invalidate(partnerAggregateProvider(partner.id));
+    ref.invalidate(conversationsByPartnerProvider(partner.id));
+    ref.invalidate(partnerListProvider);
   }
 }
 ```
 
-**TDD 三條 RED → GREEN：**
+**TDD 四條 RED → GREEN：**
 1. `delete throws PartnerHasConversationsException when conversations exist`
 2. `delete removes partner from box when conversations is empty`
-3. `controller delete invalidates partnerListProvider + partnerAggregateProvider after success`
+3. `delete blocks when a zero-round conversation exists`（guard 看 conversation count，不看 aggregate.totalRounds）
+4. `controller delete invalidates partnerListProvider + partnerAggregateProvider + partnerByIdProvider after success`
 
 `try/finally` 對齊 PR-B Codex r1 patch（`0187685`）partial-fail invalidation 紀律。
 
@@ -143,19 +150,20 @@ Future<void> delete(Partner partner) async {
 | 黃字頭 avatar | `LinearGradient(avatarHerStart→avatarHerEnd)` + `partner.name[0]` | `Partner` |
 | 名稱+時間 header | `Row` 內 `partner.name` + `_formatDate(aggregate.lastInteraction)` | `Partner` + `aggregate.lastInteraction` |
 | 熱度 indicator | `latestHeat != null` → emoji+數字+顏色；null → `🌡️ 待分析` 灰字 | `aggregate.latestHeat` |
-| Preview + 刪除 | `(unionInterests + unionTraits).take(3).join(' · ')`；trailing `Icon(Icons.delete_outline)` | `aggregate.unionInterests` + `aggregate.unionTraits` |
+| Preview + 刪除 | `_previewTags(interests, traits).join(' · ')`；trailing `Icon(Icons.delete_outline)` | `aggregate.unionInterests` + `aggregate.unionTraits` |
 
 **Architecture invariant 不破**：
 - `PartnerListCard` 收 `(Partner partner, PartnerAggregateView aggregate, VoidCallback onTap, VoidCallback? onDelete)`
 - **不 ref.watch**，視覺從已傳入 aggregate derive，符合 Phase 2 lifted-aggregate API
 - `_formatDate` 直接 inline 進 card（與 ConversationTile 相同邏輯：今日 HH:mm / 昨天 / N天前 / MM/dd）
+- `_previewTags` 必須 interleave 興趣/特質再 cap 3：`interest0, trait0, interest1...`，避免興趣過多時 traits 永遠不顯示。
 
 **Delete dialog two-mode:**
 
 ```dart
 Future<void> _onDelete(BuildContext context, WidgetRef ref) async {
-  final aggregate = ...; // 從 PartnerListScreen 傳入
-  if (aggregate.totalRounds == 0) {
+  final conversationCount = ...; // 從 PartnerListScreen 的 conversationsByPartnerProvider(partner.id).length 傳入
+  if (conversationCount == 0) {
     // Confirm mode
     final confirmed = await showDialog<bool>(...AlertDialog with confirm action);
     if (confirmed == true) {
@@ -170,17 +178,22 @@ Future<void> _onDelete(BuildContext context, WidgetRef ref) async {
   } else {
     // Informational mode (no destructive action)
     await showDialog(...AlertDialog with single「我知道了」button,
-      content: '此對象有 ${aggregate.totalRounds} 段對話，請先合併或改派');
+      content: '此對象有 $conversationCount 段對話，請先合併或改派');
   }
 }
 ```
 
-**Widget tests（5 條）：**
+**Implementation note：**
+- `PartnerListScreen` row builder 必須同時 watch `partnerAggregateProvider(p.id)` 與 `conversationsByPartnerProvider(p.id)`，將 `conversationCount` capture 進 `onDelete` handler；`PartnerListCard` 本身仍只做 render + callback，不直接知道 guard 規則。
+- delete UI guard 與 repo guard 都以 conversation count 為準；`aggregate.totalRounds` 只代表回合數，不能代表是否有 conversation。
+
+**Widget tests（card + screen，共 6 條）：**
 1. `renders 5 visual pieces given Partner + non-empty aggregate`
 2. `falls back to 🌡️ 待分析 when latestHeat is null`
-3. `shows interests+traits joined by ' · ' as preview, capped at 3`
-4. `tapping delete with empty aggregate (totalRounds==0) shows confirm dialog`
-5. `tapping delete with totalRounds>0 shows informational dialog (no destructive action)`
+3. `shows interleaved interests+traits joined by ' · ' as preview, capped at 3`
+4. `keeps at least one trait when both interests and traits exist`
+5. `tapping delete with conversationCount==0 shows confirm dialog`
+6. `tapping delete with conversationCount>0 shows informational dialog even if aggregate.totalRounds==0`
 
 ## 7. Task 14 — Same-name dedupe banner
 
@@ -213,6 +226,19 @@ class PartnerBannerService {
 ```
 
 抄 `OnboardingService` pattern 加 uid 參數。
+
+**Async state contract（避免 build 內 await / banner flicker）：**
+
+```dart
+final partnerDedupeBannerDismissedProvider =
+    FutureProvider.family<bool, String>((ref, uid) {
+  return PartnerBannerService.isDismissed(uid);
+});
+```
+
+- `PartnerListScreen` 透過 `authConversationScopeProvider.valueOrNull` 取得 uid；uid null 時不顯示 banner。
+- dismissed provider loading / error 時先不顯示 banner，避免 SharedPreferences async 回來前閃一下。
+- `onDismissTap` 先 `await PartnerBannerService.markDismissed(uid)`，再 `ref.invalidate(partnerDedupeBannerDismissedProvider(uid))`。
 
 ### 7.3 Dedupe detection（presentation-layer derive）
 
@@ -249,14 +275,19 @@ class SameNameDedupeBanner extends StatelessWidget {
 ### 7.5 CTA flow
 
 「立即合併」tap → `context.push('/partner/${newer.id}/merge?target=${older.id}')`
-→ `PartnerMergePickerScreen` 從 query param 讀 `target` 並 pre-select 該 row（user 可手動切）
+→ `PartnerMergePickerScreen` 從 query param 讀 `target` 並 pre-select target（user 可手動切）
+
+**Pre-select contract（避免破壞 PR-B 既有 flow）：**
+- `initialTargetId == null`：完全維持 Phase 3 PR-B 行為，tap row → confirm dialog。
+- `initialTargetId` valid 且不是 `fromPartnerId`：picker 初始顯示「已預選：{target.name}」與 primary CTA「確認合併」，tap 其他 row 可換 target。
+- `initialTargetId` unknown 或等於 `fromPartnerId`：忽略 query param，回到原本手動選擇行為；不得 auto-open destructive dialog。
 
 **route 小改：**
 ```dart
 GoRoute(
   path: '/partner/:partnerId/merge',
   builder: (context, state) => PartnerMergePickerScreen(
-    sourceId: state.pathParameters['partnerId']!,
+    fromPartnerId: state.pathParameters['partnerId']!,
     initialTargetId: state.uri.queryParameters['target'], // ← new
   ),
 ),
@@ -264,12 +295,15 @@ GoRoute(
 
 ### 7.6 Tests
 
-**Widget tests（5 條）：**
+**Widget tests（8 條）：**
 1. `shows when ≥2 partners share same name and not dismissed`
 2. `does not show when all unique`
 3. `does not show when service.isDismissed returns true`
 4. `tap "以後再說" calls service.markDismissed(uid) and hides banner`
 5. `tap "立即合併" pushes /partner/{newer.id}/merge?target={older.id}`
+6. `merge route without target preserves original row-tap confirm flow`
+7. `merge route with valid target shows preselected target CTA without auto-opening confirm`
+8. `merge route ignores self/unknown target query param`
 
 **Service unit tests（3 條）：**
 1. `isDismissed returns false when key absent for uid`
@@ -347,7 +381,7 @@ A2 已 ship — Partner list / detail / merge / reassign / dedupe banner / AI su
 Phase 4 新增決策（D-P4-1 ~ D-P4-5）：
 - D-P4-1 Partner delete = block-when-non-empty
 - D-P4-2 Banner pre-fill = older-as-target / newer-as-source（依 createdAt）
-- D-P4-3 PartnerListCard preview = 興趣+特質前 3 tag
+- D-P4-3 PartnerListCard preview = 興趣/特質 interleave 後前 3 tag
 - D-P4-4 Heat fallback = 🌡️ 待分析 灰字
 - D-P4-5 Banner dismissed = per-account uid-scoped key
 
@@ -416,7 +450,7 @@ A2 ship 段落應含 13 項：
 7. 長按 conversation cell 改派 → 兩端 aggregates 都更新
 8. **Banner CTA「立即合併」帶到 merge picker，較舊 partner 預選為 target**
 9. **Partner 有對話時刪除按鈕跳 informational dialog，無對話時跳 confirm dialog**
-10. **PartnerListCard 5 件套全顯示**（avatar / 名稱+時間 / 熱度 or 🌡️待分析 / 興趣 traits 預覽 / 刪除 icon）
+10. **PartnerListCard 5 件套全顯示**（avatar / 名稱+時間 / 熱度 or 🌡️待分析 / 興趣 traits interleave 預覽 / 刪除 icon）
 11. 跨對話分析 prompt 含 partner summary（log 抽查 < 1500 char）
 12. 多帳戶切換不洩漏（A 帳戶 Partners 不入 B 帳戶 list；A 關 banner 不影響 B）
 13. 舊 `/conversation/:id` deep-link 仍可開（A1 兩天 soak 已驗，Phase 4 不應破）
@@ -447,25 +481,27 @@ A2 ship 段落應含 13 項：
 ### HS-P4-2 — `try/finally` invalidation 在 delete 是否 over-applied？
 - 對齊 PR-B Codex r1 patch pattern
 - 但 delete 失敗時 partner 沒被刪，invalidate `partnerListProvider` 真的有意義嗎？
+- Codex verdict：接受 try/finally，但 provider API 必須對齊現況：`partnerListProvider` 不是 family；delete 後 invalidate `partnerListProvider` + `partnerByIdProvider(id)` + `partnerAggregateProvider(id)`，不呼叫不存在的 owner-scoped provider。
 - 評估：保險。即使 box.delete 沒跑到，invalidate 不會錯顯（會 re-read 同一筆 partner），代價低
 
 ### HS-P4-3 — Banner detection 在 presentation 層 derive 是否該抽 domain extension？
 - 現設計：`_findFirstDupPair` 放在 `partner_list_screen.dart` private helper
 - Alternative：放 `partner_aggregates.dart` 旁邊作 collection-level extension
+- Codex verdict：presentation helper OK，但 dismissed state 必須走 `FutureProvider.family<bool, uid>`，不能在 build 內 await `SharedPreferences`。
 - 評估：detection 邏輯純 presentation（只 banner 用），不污染 domain
 
 ### HS-P4-4 — Merge picker route 加 `?target=` query param 是否破壞既有 URL 慣例？
 - 現有：`/partner/:partnerId/merge` (path param only)
 - 改後：`/partner/:partnerId/merge?target=...` (path + query)
 - Phase 3 PR-B 已 ship 既有 route，要驗 query param 不會破壞既有 init flow
+- Codex verdict：optional query param OK；需明確鎖定 no-target 維持原行為、valid target 只 preselect 不 auto-open destructive dialog、self/unknown target ignored。
 - 評估：query param 是 optional，沒帶就維持原本「user 自選」行為，向後相容
 
 ### HS-P4-5 — Tag preview「興趣+特質前 3」串接順序敏感嗎？
-- 現設計：`(interests + traits).take(3)` — interests 優先吃進 3 名額
+- 原設計：`(interests + traits).take(3)` — interests 優先吃進 3 名額
 - 邊界：partner 有 5 個 interests + 5 traits → 顯示 3 個 interests，0 個 traits
 - 用戶可能更想看「至少 1 個 trait」（因為 trait 比 interest 更具描述性）
-- Alternative：interleave - `[i0, t0, i1, t1, i2]`.take(3)
-- 評估：值得 Codex 提意見
+- Codex verdict：改為 interleave - `[i0, t0, i1, t1, i2]`.take(3)，並補 test cover traits 不被餓死。
 
 ## 14. Risks & Mitigations
 
