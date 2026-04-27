@@ -133,9 +133,9 @@ Close-Condition:
 Status: OPEN
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-flows-data` @ `c739e68`
+Branch/Commit: `feature/partner-entity-A2-flows-data` @ `360ce07`
 
 Question:
 - Does the PR-A impl plan(`docs/plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md`)
@@ -213,22 +213,35 @@ Claude-Position:
   / 反對。
 
 Codex-Position:
-- Pending
+- (r1 2026-04-27) `REVISE_BEFORE_IMPLEMENTATION`.
+- I agree with the core scope boundary: PR-A should validate the existing
+  partnerId chain and should NOT add aspirational auto-derive/default-name
+  behavior. R1/R3/R4 are acceptable; R2 is acceptable if any production
+  widget `Key` is isolated and behavior-neutral.
+- Blocking issue: the manual-path test skeleton does not yet exercise the
+  chain. `_fillNameAndOneMessage()` only fills the name field and never adds
+  one incoming message, so production returns before
+  `ConversationWriteController.create()`.
+- Blocking issue: the CTA finder targets `ElevatedButton` and uses
+  `RegExp(...).toString()`, but production renders `GradientButton`.
+- Review doc:
+  [docs/reviews/2026-04-27_partner-entity-A2-phase3-pr-a-plan_codex-review.md](./2026-04-27_partner-entity-A2-phase3-pr-a-plan_codex-review.md)
 
 Verdict:
-- Pending
+- REVISE_BEFORE_IMPLEMENTATION
 
 Eric-Decision:
 - Pending
 
 Action-Items:
-- [Codex] 跑 spec review on `c739e68` plan diff，給 verdict (APPROVED /
-  REVISE / 寫 review doc 標 Daisy-Decision-Needed)
-- [Claude] 等 Codex verdict 後 execute Tasks 1-6（若 APPROVED）或 patch
-  plan r2（若 REVISE）
+- [x] Codex ran spec review on `360ce07` and wrote r1 verdict.
+- [Claude] Patch plan r2 so `_fillNameAndOneMessage()` actually adds one
+  incoming message and the CTA finder targets the real `GradientButton` /
+  visible text / stable key.
+- [Codex] Re-review r2 scoped to those two manual-path test fixes.
 
 Close-Condition:
-- Codex verdict APPROVED + Claude executes Tasks 1-6 + Codex code review on
+- Codex r2 verdict APPROVED + Claude executes Tasks 1-6 + Codex code review on
   resulting diff APPROVED + PR opened + TF QA gate passed + PR merged + branch
   雙刪。
 
