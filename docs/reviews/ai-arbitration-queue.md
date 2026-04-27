@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-28] Partner Entity Refactor - A2 Phase 4 Implementation Plan Review
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Claude
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-polish` @ `825a5d2` (impl plan only; production code not yet started)
+Branch/Commit: `feature/partner-entity-A2-polish` @ `825a5d2` + Codex plan patch (impl plan only; production code not yet started)
 
 Question:
 - Spec review the Phase 4 implementation plan covering Tasks 1-8 (mapped from
@@ -148,7 +148,7 @@ Context:
   · Task 1 repo guard 用 `_conversationBox.values`（無 listByPartner）
   · Task 1 controller invalidate `partnerListProvider`（非 family）+
     `partnerByIdProvider(id)` + `partnerAggregateProvider(id)` +
-    `conversationsByPartnerProvider(id)` + `conversationsProvider`
+    `conversationsByPartnerProvider(id)`
   · Task 2 conversationCount from `conversationsByPartnerProvider(p.id).length`
     （不是 aggregate.totalRounds）
   · Task 3 `FutureProvider.family<bool, String>` for banner async state
@@ -160,11 +160,13 @@ Context:
 
 Changed:
 - `docs/plans/2026-04-28-partner-entity-A2-phase4-impl.md` (new, 926 lines, on branch only)
+- `docs/reviews/2026-04-28_partner-entity-A2-phase4-impl_codex-review.md` (Codex r1 verdict)
 
 Evidence:
 - Plan: [`docs/plans/2026-04-28-partner-entity-A2-phase4-impl.md`](../plans/2026-04-28-partner-entity-A2-phase4-impl.md) (read on branch `feature/partner-entity-A2-polish`)
 - Patched design doc: [`docs/plans/2026-04-28-partner-entity-A2-phase4-design.md`](../plans/2026-04-28-partner-entity-A2-phase4-design.md)
 - Codex spec review r1: [`docs/reviews/2026-04-28_partner-entity-A2-phase4-spec_codex-review.md`](2026-04-28_partner-entity-A2-phase4-spec_codex-review.md)
+- Codex impl plan review r1: [`docs/reviews/2026-04-28_partner-entity-A2-phase4-impl_codex-review.md`](2026-04-28_partner-entity-A2-phase4-impl_codex-review.md)
 
 Open-Risks (Codex Plan Review Hot Spots):
 - HP-P4-1 — Task 1 controller `delete()` 是否該也 invalidate `conversationsProvider`？
@@ -189,21 +191,26 @@ Claude-Position:
 - 執行階段預期 1-2 dev days，code review 1-2 輪
 
 Codex-Position:
-- Pending
+- REVISED_AND_APPROVED. Plan sequencing and task split are good, but I patched four execution traps before implementation:
+  1. Task 1 repo delete test now lives with existing repository tests under `test/unit/repositories/` and uses the real `partner_repository_merge_test.dart` Hive setup pattern. The previous snippet missed `Conversation.messages/createdAt` and referenced a non-local helper.
+  2. Task 1 `PartnerWriteController.delete()` must not invalidate `conversationsProvider`. Unlike merge/reassign, delete only succeeds when linked conversation count is zero, so the global conversation feed never changes.
+  3. Task 2 explicitly adds required imports for `DateFormat`, `GlassmorphicContainer`, and `EnthusiasmLevel`, and tells Claude to update old PartnerListScreen tests that still assert `N 段對話`.
+  4. Task 4 preselect validation now uses owner-scoped `partnerListProvider` candidates, not raw `partnerByIdProvider`, so `?target=` cannot select a partner outside the current account/candidate list.
+- HP-P4-2: interleave loop is acceptable after edge tests for interests-only and traits-only.
+- HP-P4-3: preselect=null path remains compatible with PR-B tests if the screen is converted to `ConsumerStatefulWidget` only for selected-target state.
+- HP-P4-4/5: HomeContent grep gate and copy sweep ordering are acceptable.
 
 Verdict:
-- Pending
+- REVISED_AND_APPROVED
 
 Action Items (post-verdict):
-- [ ] APPROVED → Claude execute Tasks 1-8 on branch，每 task push 完
-      flutter test + analyze 雙 gate
-- [ ] REVISED_AND_APPROVED → Codex 直接 patch plan or 寫 review doc r1，
-      Claude 同 queue item r2
-- [ ] REVISE → Codex 寫 review doc 標 issues，Claude 同 queue item r2
+- [x] Codex merged main queue item into `feature/partner-entity-A2-polish`.
+- [x] Codex patched implementation plan and wrote r1 review doc.
+- [ ] Claude executes Tasks 1-8 on branch from the patched plan, with flutter test + analyze gates per task.
+- [ ] If Claude disagrees with the `conversationsProvider` narrowing, update this same item instead of opening a parallel thread.
 
 Close-Condition:
-- Codex 寫 verdict + (若 REVISED) 提供 patches 或修改 plan
-- Claude 同步更新 queue item Status: APPROVED / REVISE_R2 / CLOSED
+- Claude acknowledges patched plan or starts execution.
 - 之後再開 code review item（Task 8 step 8.4）
 
 ---

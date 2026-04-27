@@ -32,6 +32,12 @@ Expected (from PR-B merge state):
 
 If baseline diverges → STOP and investigate before any task.
 
+**Codex plan-review patch:** Task 1 deliberately does **not** invalidate
+`conversationsProvider` on delete. Unlike merge/reassign, delete is only allowed
+when `conversationCount == 0`; successful delete does not mutate any
+Conversation row, and failed delete also does not mutate rows. Keep invalidation
+partner-scoped to preserve A2's narrow invalidation contract.
+
 ---
 
 ## Task 1 — Partner delete API（data layer, design doc §6.1 / Task 18a）
@@ -39,45 +45,83 @@ If baseline diverges → STOP and investigate before any task.
 **Files:**
 - Modify: `lib/features/partner/data/repositories/partner_repository.dart` (+ `delete()` + `PartnerHasConversationsException` class export)
 - Modify: `lib/features/partner/data/providers/partner_write_controller.dart` (+ `delete()` + `_invalidateDeleteScopes`)
-- Create: `test/unit/features/partner/partner_repository_delete_test.dart`
+- Create: `test/unit/repositories/partner_repository_delete_test.dart`
 - Modify: `test/unit/features/partner/partner_write_controller_test.dart` (+ delete test cases)
 
 ### Step 1.1 — Write failing repo tests
 
-Create `test/unit/features/partner/partner_repository_delete_test.dart`:
+Create `test/unit/repositories/partner_repository_delete_test.dart`:
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
-import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+
+Partner _partner(String id) {
+  final now = DateTime(2026, 4, 28);
+  return Partner(
+    id: id,
+    name: 'A',
+    ownerUserId: 'u1',
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
+Conversation _conversation(String id, {required String partnerId, int rounds = 1}) {
+  final now = DateTime(2026, 4, 28);
+  return Conversation(
+    id: id,
+    name: '對話 $id',
+    messages: const [],
+    createdAt: now,
+    updatedAt: now,
+    ownerUserId: 'u1',
+    partnerId: partnerId,
+    currentRound: rounds,
+  );
+}
 
 void main() {
   late Box<Partner> partnerBox;
   late Box<Conversation> conversationBox;
   late PartnerRepository repo;
 
+  setUpAll(() {
+    Hive.init('./.dart_tool/test_hive_partner_repo_delete');
+    if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ConversationAdapter());
+    if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(MessageAdapter());
+    if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(ConversationSummaryAdapter());
+    if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(MeetingContextAdapter());
+    if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(AcquaintanceDurationAdapter());
+    if (!Hive.isAdapterRegistered(5)) Hive.registerAdapter(UserGoalAdapter());
+    if (!Hive.isAdapterRegistered(6)) Hive.registerAdapter(SessionContextAdapter());
+    if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(UserStyleAdapter());
+    if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(PartnerAdapter());
+  });
+
+  tearDownAll(() async {
+    await Hive.close();
+  });
+
   setUp(() async {
-    final tmp = await Directory.systemTemp.createTemp('phase4_delete_');
-    Hive.init(tmp.path);
-    if (!Hive.isAdapterRegistered(0)) {
-      // Register adapters as the existing repo tests do.
-      // (Use the same registration block as merge tests.)
-    }
     partnerBox = await Hive.openBox<Partner>('partners_${DateTime.now().microsecondsSinceEpoch}');
     conversationBox = await Hive.openBox<Conversation>('conversations_${DateTime.now().microsecondsSinceEpoch}');
     repo = PartnerRepository(box: partnerBox, conversationBox: conversationBox);
   });
 
   tearDown(() async {
-    await partnerBox.close();
-    await conversationBox.close();
+    await conversationBox.deleteFromDisk();
+    await partnerBox.deleteFromDisk();
   });
 
   test('delete removes partner from box when no conversations linked', () async {
-    final p = Partner(id: 'p1', name: 'A', ownerUserId: 'u1', createdAt: DateTime.now(), updatedAt: DateTime.now());
+    final p = _partner('p1');
     await partnerBox.put(p.id, p);
 
     await repo.delete('p1');
@@ -86,9 +130,9 @@ void main() {
   });
 
   test('delete throws PartnerHasConversationsException when conversations exist', () async {
-    final p = Partner(id: 'p1', name: 'A', ownerUserId: 'u1', createdAt: DateTime.now(), updatedAt: DateTime.now());
+    final p = _partner('p1');
     await partnerBox.put(p.id, p);
-    final c = Conversation(id: 'c1', name: '對話 1', updatedAt: DateTime.now(), partnerId: 'p1');
+    final c = _conversation('c1', partnerId: 'p1');
     await conversationBox.put(c.id, c);
 
     expect(
@@ -100,9 +144,9 @@ void main() {
   });
 
   test('delete blocks even when conversation has currentRound == 0', () async {
-    final p = Partner(id: 'p1', name: 'A', ownerUserId: 'u1', createdAt: DateTime.now(), updatedAt: DateTime.now());
+    final p = _partner('p1');
     await partnerBox.put(p.id, p);
-    final c = Conversation(id: 'c0', name: '對話 0', updatedAt: DateTime.now(), partnerId: 'p1', currentRound: 0);
+    final c = _conversation('c0', partnerId: 'p1', rounds: 0);
     await conversationBox.put(c.id, c);
 
     expect(
@@ -113,12 +157,12 @@ void main() {
 }
 ```
 
-**Note**: 抄既有 `partner_repository_merge_test.dart` 的 Hive setup pattern；adapter 註冊段 import 同檔的 helper。
+**Note**: 抄既有 `test/unit/repositories/partner_repository_merge_test.dart` 的 Hive setup pattern；不要使用 per-test `Directory.systemTemp + Hive.init()`，避免 Hive global init 重複。
 
 ### Step 1.2 — Run tests, expect FAIL
 
 ```bash
-~/flutter/bin/flutter test test/unit/features/partner/partner_repository_delete_test.dart
+~/flutter/bin/flutter test test/unit/repositories/partner_repository_delete_test.dart
 ```
 
 Expected: 3 fail（`delete` undefined / `PartnerHasConversationsException` undefined）
@@ -157,7 +201,7 @@ Update class doc top comment：A2 surface `+ delete()`。
 ### Step 1.4 — Run repo tests, expect PASS
 
 ```bash
-~/flutter/bin/flutter test test/unit/features/partner/partner_repository_delete_test.dart
+~/flutter/bin/flutter test test/unit/repositories/partner_repository_delete_test.dart
 ```
 
 Expected: 3 pass
@@ -188,6 +232,9 @@ group('delete', () {
         .delete(testPartner);
 
     // Verify each provider was invalidated (assert read returns fresh value).
+    // conversationsProvider should NOT be invalidated: delete only succeeds
+    // when there are zero linked conversations, so the global conversation
+    // feed did not change.
   });
 
   test('controller delete still invalidates scopes when repo throws', () async {
@@ -226,26 +273,24 @@ Modify `lib/features/partner/data/providers/partner_write_controller.dart`，在
     _invalidatePartner(id);
     _invalidatePartnerScopedConversations(id);
     ref.invalidate(partnerListProvider);
-    // A2 transition contract — same surface as merge for global feed.
-    ref.invalidate(conversationsProvider);
   }
 ```
 
 ### Step 1.8 — Run all controller + repo tests, expect PASS
 
 ```bash
-~/flutter/bin/flutter test test/unit/features/partner/
+~/flutter/bin/flutter test test/unit/repositories/partner_repository_delete_test.dart test/unit/features/partner/partner_write_controller_test.dart
 ```
 
-Expected: all pass (existing merge tests + new 5 delete tests = 8+ total in this dir).
+Expected: all pass (3 repo delete tests + controller merge/delete tests).
 
 ### Step 1.9 — Lint + commit
 
 ```bash
-~/flutter/bin/flutter analyze --no-fatal-infos lib/features/partner/data/ test/unit/features/partner/
+~/flutter/bin/flutter analyze --no-fatal-infos lib/features/partner/data/ test/unit/features/partner/ test/unit/repositories/partner_repository_delete_test.dart
 git add lib/features/partner/data/repositories/partner_repository.dart \
         lib/features/partner/data/providers/partner_write_controller.dart \
-        test/unit/features/partner/partner_repository_delete_test.dart \
+        test/unit/repositories/partner_repository_delete_test.dart \
         test/unit/features/partner/partner_write_controller_test.dart
 git commit -m "[feat] PartnerRepository.delete() + cascade guard + controller invalidation
 
@@ -253,7 +298,7 @@ git commit -m "[feat] PartnerRepository.delete() + cascade guard + controller in
   references partnerId（依 conversation count，不依 aggregate.totalRounds）
 - PartnerWriteController.delete() try/finally invalidate
   partnerListProvider + partnerByIdProvider + partnerAggregateProvider
-  + conversationsByPartnerProvider + conversationsProvider
+  + conversationsByPartnerProvider
 - Codex spec review patched: 對齊 PartnerRepository._conversationBox 既有
   surface（無 listByPartner）、partnerListProvider 非 family
 
@@ -297,7 +342,14 @@ Expected: 5 fail（widget visual not yet restored）
 
 ### Step 2.3 — Restore PartnerListCard 5 件套
 
-Replace `lib/features/partner/presentation/widgets/partner_list_card.dart` body：
+Replace `lib/features/partner/presentation/widgets/partner_list_card.dart` body and update imports:
+
+```dart
+import 'package:intl/intl.dart';
+
+import '../../../../shared/widgets/glassmorphic_container.dart';
+import '../../../analysis/domain/entities/enthusiasm_level.dart';
+```
 
 ```dart
 class PartnerListCard extends StatelessWidget {
@@ -427,7 +479,11 @@ Expected: 5 pass
 
 ### Step 2.5 — Write failing screen delete dialog tests
 
-Modify `test/widget/features/partner/partner_list_screen_test.dart`，加：
+Modify `test/widget/features/partner/partner_list_screen_test.dart`：
+
+1. Update existing render tests that still expect old copy like `3 段對話` / `1 段對話`; the restored Phase 4 card now asserts avatar, name/date, heat or `待分析`, interleaved tag preview, and delete icon instead.
+2. Add `conversationsByPartnerProvider(id)` overrides for every row rendered by the screen; after Task 2 the screen watches this provider to capture `conversationCount`.
+3. Add the new delete-dialog tests：
 
 ```dart
 testWidgets('tapping delete with conversationCount==0 shows confirm dialog', ...);
@@ -605,36 +661,54 @@ testWidgets('valid target preselect → tap different row → switches preselect
 testWidgets('preselect CTA tap → opens confirm dialog (manual continuation of PR-B flow)', ...);
 testWidgets('target = self id → query ignored, falls back to PR-B row-tap flow', ...);
 testWidgets('target = unknown id → query ignored, falls back to PR-B row-tap flow', ...);
+testWidgets('target from outside partnerListProvider candidates is ignored', ...);
 ```
 
 ### Step 4.6 — Run, expect FAIL
 
 ### Step 4.7 — Implement preselect on PartnerMergePickerScreen + PartnerPickerSheet
 
-Modify `partner_merge_picker_screen.dart` — 加 `final String? initialTargetId`。
+Modify `partner_merge_picker_screen.dart` — convert to `ConsumerStatefulWidget`
+and add `final String? initialTargetId`。
 
 Logic（Codex spec patch §7.5 contract）：
 ```dart
-final preselectId = (() {
-  if (initialTargetId == null) return null;
-  if (initialTargetId == fromPartnerId) return null;
-  // candidate must exist in partner list (excluded source)
-  final candidate = ref.read(partnerByIdProvider(initialTargetId!));
-  if (candidate == null) return null;
-  return initialTargetId;
-})();
+Partner? _selectedTarget;
+bool _didApplyInitialTarget = false;
+
+Partner? _initialTargetFromCandidates(List<Partner> candidates) {
+  if (widget.initialTargetId == null) return null;
+  for (final p in candidates) {
+    if (p.id == widget.initialTargetId) return p;
+  }
+  return null;
+}
+
+// In build():
+final candidates = ref.watch(partnerListProvider)
+    .where((p) => p.id != widget.fromPartnerId)
+    .toList(growable: false);
+if (!_didApplyInitialTarget) {
+  _selectedTarget = _initialTargetFromCandidates(candidates);
+  _didApplyInitialTarget = true;
+}
 ```
 
-If `preselectId != null`：
-- `PartnerPickerSheet` 收 `selectedId: preselectId` 顯示 highlight
+If `_selectedTarget != null`：
+- `PartnerPickerSheet` 收 `selectedId: _selectedTarget?.id` 顯示 highlight
 - 顯示底部 CTA「確認合併到 ${preselectName}」按鈕
-- CTA tap → 跑既有 `_confirm(context, ref, target)` 進 confirm dialog
-- 仍允許 tap 其他 row 切換 preselect（無 auto-open）
+- CTA tap → 跑既有 `_confirm(context, ref, _selectedTarget!)` 進 confirm dialog
+- 仍允許 tap 其他 row `setState(() => _selectedTarget = target)` 切換 preselect（無 auto-open）
 
-If `preselectId == null`：
+If `_selectedTarget == null`：
 - Picker 行為 100% 維持 PR-B 既有 — `onSelected` row tap → confirm dialog
 
 `partner_picker_sheet.dart` 加 optional `selectedId` + `onSelectedChanged` callback for preselect-mode tap-to-switch（不 auto-open）。
+
+**Security / account boundary note:** Do not validate `initialTargetId` with
+`partnerByIdProvider(initialTargetId)` alone. `partnerByIdProvider` is a raw
+repository lookup and is not owner-scoped; the only valid target is one of the
+current `partnerListProvider` candidates after excluding `fromPartnerId`.
 
 ### Step 4.8 — Update route
 
