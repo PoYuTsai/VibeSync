@@ -129,6 +129,170 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-27] Partner Entity Refactor - A2 Phase 3 PR-A Spec Review (partnerId Chain Validation)
+Status: APPROVED
+Request-Type: review
+Raised-By: Claude
+Owner: Eric
+Scope: review
+Branch/Commit: `feature/partner-entity-A2-flows-data` @ `d6cb659` (PR #5)
+
+Question:
+- Does the PR-A impl plan(`docs/plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md`)
+  correctly scope to「驗 Phase 2 已接通的 partnerId chain」without smuggling
+  in production code that should belong to Phase 4? Specifically: is the
+  Reality Check section's choice to NOT test auto-derive-on-create + default
+  name behavior correct, given that those don't exist in current code and
+  master plan Task 11 wrote them as aspirational?
+
+Context:
+- Phase 3 design doc (commit `bc1017d` on `main`) split Phase 3 into two
+  sub-PRs: PR-A (Tasks 10+11 — partnerId chain validation) → PR-B
+  (Tasks 12+13 — picker handlers).
+- PR-A scope per design: pure validation work, ideally 0 production code,
+  unless tests reveal a real chain regression.
+- Reality check during plan-write found two master-plan assumptions that
+  contradict current code:
+  1. master plan Task 11 step 3 says「null fallback 走 PartnerIdFactory
+     自動建（A1 已存在）」— but `ConversationRepository.createConversation`
+     line 68-92 stores `partnerId: null` directly, no auto-derive.
+     `PartnerIdFactory.deriveFromConversationId` is only called by the A1
+     migration service on app start.
+  2. master plan Task 10 step 1 lists test for default name
+     `YYYY/MM/DD 新對話` — but current screen blank-name path is a snackbar
+     error (`new_conversation_screen.dart:109-114`).
+- Plan §⚠️ Reality Check explicitly chose NOT to test these aspirational
+  behaviors. Instead, the null-passing case is documented as a contract
+  test (`expect(capturedPartnerId, isNull, reason: ...)`), so any future
+  refactor toward auto-derive must explicit-revisit this assertion.
+- Auto-derive on create + default name are flagged as Phase 4+ open
+  questions in plan §⚠️.
+
+Changed:
+- Cut new branch `feature/partner-entity-A2-flows-data` from `main`
+  (`bc1017d`).
+- Wrote PR-A impl plan with 8 tasks: fake notifier (1) → 4 widget tests
+  (2-5) → full sweep + push (6) → spec review (7) → PR + TF QA gate (8).
+- Plan uses `RecordingConversationWriteController` subclass + Riverpod
+  override pattern (proven in Phase 2 `partner_detail_screen_test.dart`).
+
+Evidence:
+- Phase 3 design: [docs/plans/2026-04-27-partner-entity-A2-phase3-design.md](../plans/2026-04-27-partner-entity-A2-phase3-design.md)
+- PR-A plan: [docs/plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md](../plans/2026-04-27-partner-entity-A2-phase3-pr-a-impl.md)
+- Master plan reference: [docs/plans/2026-04-26-partner-entity-A2-impl.md](../plans/2026-04-26-partner-entity-A2-impl.md) Tasks 10-11 (lines 888-967)
+- Reality check anchors: `lib/features/conversation/data/repositories/conversation_repository.dart:68-92`,
+  `lib/features/conversation/presentation/screens/new_conversation_screen.dart:106-173`
+- Phase 2 hermetic pattern: `test/widget/features/partner/partner_detail_screen_test.dart`
+
+Open-Risks:
+- (R1) **Reality Check 偏離 master plan**：plan 故意跳過 master plan 的兩個
+  test。Codex spec review 必須 explicit acknowledge 這個 trade-off 是合理
+  的（test aspirational 行為等於測架構未來要做的事）vs 不合理（master plan
+  既然這樣寫就該堅持實作）。Claude position：合理，因為 master plan 寫於
+  Phase 1 之前，當時對 create path fallback 假設樂觀；A1 migration 已實際
+  cover 「null Partner 補建」，繼續疊 create-path auto-derive 屬於重複性能
+  路徑且需要 currentUserId/name 等額外輸入。
+- (R2) **Test finder fragility**：plan Task 2 step 2 提示 finder「她的訊息」
+  add button 可能找不到（NewConversationScreen UI 結構複雜）。Plan 提供
+  fallback：在 production 加 widget Key（這算 minimal test hook），單獨
+  commit。Codex spec review 對「為了測試加 widget Key」是否接受？
+- (R3) **GoRouter test harness**：plan 用 minimal `GoRouter` 提供 `context.go`
+  / `router.push` plumbing（Phase 2 沒用，因為 Phase 2 的 partner_detail
+  test 不觸發 navigation）。新引入的 pattern。
+- (R4) **Auto-derive on create 暫不做**：plan §⚠️ 把這個列為 Phase 4+
+  open question，但沒有 commit 到 ADR。是否需要在 PR-A merge 之前先寫
+  ADR-16 鎖定「auto-derive on create 不做」決定？Claude position：不必，
+  Phase 3 不引入新行為 = ADR 不需更新；Phase 4 真要決議時再寫 ADR。
+
+Claude-Position:
+- (r1) Ship the plan as-is. PR-A 是「Phase 2 已接通行為的 regression guard」
+  not「實作新功能」，scope 該保持嚴格小。Reality Check 三段：(a) 兩個 master
+  plan aspirational test 不寫；(b) auto-derive on create + default name
+  列入 Phase 4+ 待議；(c) null partnerId 透傳當合約 test 寫入 reason 字串。
+  這三件是 plan 的核心 design choice，請 Codex 對這三件 explicit acknowledge
+  / 反對。
+- (r2 — 2026-04-27 patch at `59b26b1`) Both P1 fixes accepted as written by
+  Codex r1. Plan patched in 4 places, all doc-only (0 prod / 0 test code yet):
+  1. `_fillNameAndOneMessage()` helper (Task 2): now fills name + 2nd
+     TextField (her message) + taps `Icons.add` first → `_messages` 真有 1 則，
+     `_createConversation()` 不再因 `_messages.isEmpty` early-return.
+  2. Task 2 CTA finder: `find.byType(GradientButton)` + `find.text('建立對話')`
+     (since `_hasIncomingMessage=true` after the helper, screen line 46 fixes
+     the text).
+  3. Task 3 CTA finder: same `find.byType(GradientButton)`.
+  4. Task 2 import: added `warm_theme_widgets.dart` for `GradientButton` symbol.
+- Reality Check 段保留原樣（Codex r1 R1/R3/R4 全 accept）。
+- 加 §🔁 r2 Patch 區塊紀錄修法 + 影響面，方便 r2 reviewer scoped 看。
+- Reviewer-Hint for r2: scoped re-review only — 4 處 doc 修，不該觸發
+  其他段落變動；R2 production-Key fallback path 仍保留作為 finder fail 時
+  的逃生口（獨立 commit）。
+
+Codex-Position:
+- (r1 2026-04-27) `REVISE_BEFORE_IMPLEMENTATION`.
+- I agree with the core scope boundary: PR-A should validate the existing
+  partnerId chain and should NOT add aspirational auto-derive/default-name
+  behavior. R1/R3/R4 are acceptable; R2 is acceptable if any production
+  widget `Key` is isolated and behavior-neutral.
+- Blocking issue: the manual-path test skeleton does not yet exercise the
+  chain. `_fillNameAndOneMessage()` only fills the name field and never adds
+  one incoming message, so production returns before
+  `ConversationWriteController.create()`.
+- Blocking issue: the CTA finder targets `ElevatedButton` and uses
+  `RegExp(...).toString()`, but production renders `GradientButton`.
+- Review doc:
+  [docs/reviews/2026-04-27_partner-entity-A2-phase3-pr-a-plan_codex-review.md](./2026-04-27_partner-entity-A2-phase3-pr-a-plan_codex-review.md)
+- (r2 2026-04-27) `APPROVED`.
+- Scoped review of `59b26b1` confirms both r1 blockers are fixed:
+  `_fillNameAndOneMessage()` now creates one incoming message before CTA tap,
+  and the CTA finder targets `GradientButton` plus visible text `建立對話`.
+- `warm_theme_widgets.dart` exports `gradient_button.dart`, so the planned
+  import is valid.
+- (code review 2026-04-27) `APPROVED`.
+- Reviewed PR #5 diff after Tasks 1-6. Found one non-production coverage gap:
+  the sheet manual-entry route hop was not covered, so `_manualEntryLocation`
+  could drop `partnerId` while the direct `NewConversationScreen` tests still
+  passed. Fixed directly in `d6cb659` by adding route-sentinel tests for both
+  `partnerId="p-test"` and `partnerId=null`.
+- Review doc:
+  [docs/reviews/2026-04-27_partner-entity-A2-phase3-pr-a-code_codex-review.md](./2026-04-27_partner-entity-A2-phase3-pr-a-code_codex-review.md)
+
+Verdict:
+- APPROVED
+
+Eric-Decision:
+- Pending
+
+Action-Items:
+- [x] Codex ran spec review on `360ce07` and wrote r1 verdict.
+- [x] Claude patched plan r2 at `59b26b1` — `_fillNameAndOneMessage()` 補
+  enterText 第二 TextField + tap `Icons.add` first；CTA finder 改
+  `find.byType(GradientButton)` + `find.text('建立對話')`；加 import；加
+  §🔁 r2 Patch 段落.
+- [x] Codex scoped r2 re-review on `59b26b1` — APPROVED.
+- [x] Claude executed Tasks 1-6 — 5 test commits `ff928d1..50bb3be` pushed
+  to `feature/partner-entity-A2-flows-data` (0 production code, all under
+  `test/`). Local verification: 21 widget tests pass / 1 skip (Phase 2
+  baseline 不 regression), `flutter analyze` clean.
+- [x] PR opened: [PoYuTsai/VibeSync#5](https://github.com/PoYuTsai/VibeSync/pull/5)
+  (+1187/-0, 6 files, 全 `test/`).
+- [x] Codex code review on PR #5 diff completed at `d6cb659`: one test-only
+  coverage gap fixed directly, review doc written, verdict APPROVED.
+- [ ] Eric/Bruce TF QA gate after Codex APPROVED — v142+ build 從
+  PartnerDetail「+ 新增對話」→ 手動 / 截圖 path 各一條，driver 為 partnerId
+  是否正確掛載。
+
+Status note: r1→r2 between `360ce07` 和 `59b26b1` 只動 plan doc，無 prod /
+test code 增量。Tasks 1-6 execution 於 `9c5df4d` 之後，5 個 `[test]` commits
+`ff928d1..50bb3be` 全 push 到 `feature/partner-entity-A2-flows-data`。Codex
+follow-up `d6cb659` 只補測試覆蓋，production code 仍 0 行改動。
+
+Close-Condition:
+- Codex r2 verdict APPROVED + Claude executes Tasks 1-6 + Codex code review on
+  resulting diff APPROVED + PR opened + TF QA gate passed + PR merged + branch
+  雙刪。
+
+---
+
 ## [2026-04-26] Partner Entity Refactor - A2 Phase 2 (UI / IA shift) Spec Review + Code Review
 Status: CLOSED
 Request-Type: review
