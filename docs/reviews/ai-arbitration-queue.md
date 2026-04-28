@@ -129,6 +129,74 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-04-28] AddPartner UI Redesign — Code Review (post-A2 follow-up)
+Status: IN_REVIEW
+Request-Type: review
+Raised-By: Claude
+Owner: Codex
+Scope: review
+Branch/Commit: `feature/add-partner-ui-redesign` @ `de351aa` (PR #9)
+
+Question:
+- Code review the AddPartner visual / hint redesign diff (1 production file + 1 test file). Verdict options: APPROVED / REVISED_AND_APPROVED (Codex pushes patch directly to branch) / REVISE.
+
+Context:
+- Spec source: Bruce Discord channel `1488034916481368147` msg `1498169446240616539` (2026-04-27 11:50) → final lock `1498172229853384856` (2026-04-27 12:01, A1 single free-text).
+- Eric 2026-04-28 三軌拍板：
+  · Q1b — 紫橘 brand 2-3 顆**靜態** bubble（不抄 IMG_1338 紅綠藍鮮豔）
+  · Q2b — 橘色 GradientButton CTA（跟 partner-list FAB 同 token / 動作色）
+  · Q3a — hint「例：Alice 🧚🏻‍♀️ / 咖啡廳的捲髮女孩 ☕」保留 emoji
+- Architecture invariants 不動：`PartnerRepository.upsertIfAbsent` (A2 唯一 public write) / auth-gate (Codex r1 P2/P1.4) / `pushReplacement` (Codex r1 P1.2) / owner-scoped `partnerListProvider.invalidate` / `_busy` 防 double-submit。
+
+Changed:
+- `lib/features/partner/presentation/screens/add_partner_screen.dart` (visual + hint, +146 / -32)
+- `test/widget/features/partner/add_partner_screen_test.dart` (finder upgrade + 1 NEW hint test, +21 / -13)
+
+Evidence:
+- PR: https://github.com/PoYuTsai/VibeSync/pull/9
+- `flutter test add_partner_screen_test.dart` → 5/5 pass + 1 skipped (pre-existing kernel cache hang on `pushReplacement`，not introduced by this PR)
+- `flutter test partner subset` (widget + unit + repositories) → 80/80 pass + 1 skip / 0 fail
+- `flutter analyze --no-fatal-infos lib test` → 0 issues
+
+Open-Risks (Code Review Hot Spots):
+- HS-AP-1 — `_name.addListener` lifecycle correctness: GlassmorphicTextField has no `onChanged` callback so CTA enable state listens on the controller. `initState` adds, `dispose` removes-then-disposes. Claude position: order is correct (remove BEFORE dispose), but Codex should confirm no edge case where listener fires after `mounted == false` despite the guard.
+- HS-AP-2 — Static bubble visual ≠ `GradientBackground`: 3 `Container + boxShadow` bubbles inside `IgnorePointer` instead of `GradientBackground`'s 3 `AnimationController`-driven `_AnimatedBokehOrb`. Reason: avoid `pumpAndSettle` hang in widget tests (memory id 703). Trade-off: no breathing/floating animation. Claude position: tradeoff documented inline; if Codex thinks animation is essential, must also rewrite all 4 active tests' pump strategy.
+- HS-AP-3 — `extendBodyBehindAppBar: true` + transparent AppBar: lets the gradient bg paint underneath the AppBar. Claude position: AppBar text + back arrow explicitly set to `onBackgroundPrimary` so they remain readable; no theme override leaks elsewhere.
+- HS-AP-4 — Hint emoji ZWJ chain (`🧚🏻‍♀️` = base + skin tone + ZWJ + female ♀️): test asserts via `find.text(...)` exact match. Claude position: literal copy from Bruce's message preserves codepoint sequence; cross-platform render parity is iOS/Android system font concern (out of scope for this PR).
+- HS-AP-5 — `GradientButton.isLoading: _busy` semantic: existing `_busy` mutex prevents double-submit; passing it to `isLoading` shows the spinner during async submit. Claude position: matches GradientButton's documented disable-when-loading contract; no behavioral change to submit chain.
+
+Claude-Position:
+- Self-review: 1 production file + 1 test file change / 0 architecture mod / existing brand widgets reused (GlassmorphicTextField + GradientButton + AppColors tokens) / static bubble pattern picks brand colors over IMG_1338 rainbow.
+- Patches I want Codex to specifically scrutinize:
+  · `_name.addListener` / `removeListener` lifecycle vs `setState` mounted guard
+  · Bubble Stack z-order (bubbles behind input via Stack children order + IgnorePointer)
+  · Test finder migration `FilledButton` → `GradientButton` and `TextFormField` → `TextField` (latter because GlassmorphicTextField uses TextField internally)
+- Deferred: TF visual smoke (Eric + Bruce on TF build from this branch — see Action-Items).
+
+Codex-Position:
+- Pending
+
+Verdict:
+- Pending
+
+Eric-Decision:
+- Pending TF visual confirmation + merge gate
+
+Action-Items:
+- [ ] Codex code reviews PR #9 diff
+- [ ] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
+- [ ] Eric / Bruce visually confirm on TF build from `feature/add-partner-ui-redesign`:
+  · hint emoji renders correctly (no broken glyphs)
+  · 3 bubbles do not overlap input field tap target
+  · 橘 CTA contrast on 紫底 sufficient
+  · GradientButton spinner visible during submit
+- [ ] Merge to main once both gates pass
+
+Close-Condition:
+- PR #9 merged to main with Codex APPROVED/REVISED_AND_APPROVED + Eric/Bruce visual smoke pass.
+
+---
+
 ## [2026-04-28] Partner Entity Refactor - A2 Phase 4 Code Review (Polish + Ship)
 Status: CLOSED
 Request-Type: review
