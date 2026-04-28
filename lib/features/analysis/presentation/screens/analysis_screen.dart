@@ -939,12 +939,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     if (importMode == _importModeNewConversation) {
       final controller =
           ref.read(conversationWriteControllerProvider.notifier);
+      // Inherit partnerId from the source conversation so the new "互動紀錄"
+      // shows up under the same Partner detail page. Pre-A2 this path
+      // created orphan conversations (partnerId=null) which silently
+      // disappeared from `conversationsByPartnerProvider(partnerId)`.
+      // (Bruce TF feedback 2026-04-28.)
+      final sourceConversation =
+          repository.getConversation(widget.conversationId);
       final createdConversation = await controller.create(
         name: _resolveImportedConversationName(
           enteredName: newName,
           recognizedName: recognized.contactName,
         ),
         messages: importedMessages,
+        partnerId: sourceConversation?.partnerId,
       );
 
       if (meeting != null && duration != null) {
