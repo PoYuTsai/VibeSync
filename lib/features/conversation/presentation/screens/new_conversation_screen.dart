@@ -104,9 +104,18 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   }
 
   Future<void> _createConversation() async {
-    final name = _nameController.text.trim();
+    // When entered from PartnerDetail (partnerId != null), the Partner
+    // already owns the relationship identity — the「對話對象」name field
+    // is hidden in the UI. Default to a calm placeholder name so the
+    // AnalysisScreen header still has something to show. Aligns with the
+    // 截圖開始 path (`new_conversation_sheet.dart` → `name: '新對話'`).
+    // (Bruce TF feedback 2026-04-28).
+    final typedName = _nameController.text.trim();
+    final name = widget.partnerId != null
+        ? (typedName.isEmpty ? '新對話' : typedName)
+        : typedName;
 
-    if (name.isEmpty) {
+    if (widget.partnerId == null && name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('請先輸入對方名稱。')),
       );
@@ -152,7 +161,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       if (!mounted) return;
 
       final messenger = ScaffoldMessenger.of(context);
-      context.go('/conversation/${conversation.id}');
+      // pushReplacement (NOT go): swap THIS screen with /conversation/{id}
+      // while keeping the underlying PartnerDetail (or wherever the user
+      // came from) in the stack. go() would reset the entire stack and
+      // strand back-navigation on home. (Bruce TF feedback 2026-04-28).
+      context.pushReplacement('/conversation/${conversation.id}');
       if (shouldShowDraftNotice) {
         messenger.showSnackBar(
           const SnackBar(
@@ -265,13 +278,20 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('對話對象', style: AppTypography.bodyLarge),
-              const SizedBox(height: 8),
-              GlassmorphicTextField(
-                controller: _nameController,
-                hintText: '例如：小安',
-              ),
-              const SizedBox(height: 24),
+              // 「對話對象」 input — only shown for legacy / orphan-conversation
+              // entries (partnerId == null). When entered from PartnerDetail
+              // (partnerId set) the Partner already owns the relationship
+              // identity, so re-typing the name here is redundant double-input.
+              // (Bruce TF feedback 2026-04-28.)
+              if (widget.partnerId == null) ...[
+                Text('對話對象', style: AppTypography.bodyLarge),
+                const SizedBox(height: 8),
+                GlassmorphicTextField(
+                  controller: _nameController,
+                  hintText: '例如：小安',
+                ),
+                const SizedBox(height: 24),
+              ],
               Text('認識情境', style: AppTypography.bodyLarge),
               const SizedBox(height: 8),
               GlassmorphicSegmentedButton<MeetingContext>(

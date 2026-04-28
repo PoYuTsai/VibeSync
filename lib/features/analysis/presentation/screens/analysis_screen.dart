@@ -508,6 +508,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   /// 退出時自動刪除空對話（沒有訊息的「新對話」）
+  ///
+  /// Navigation:
+  ///   - If there's a route underneath (push from PartnerDetail / list /
+  ///     anywhere), pop back to it so the user lands where they came from.
+  ///   - Only fall back to '/' when this screen is the navigation root
+  ///     (e.g. deep-link entry, no underlying stack).
+  ///   Pre-A2 this hardcoded `context.go('/')`, which broke
+  ///   PartnerDetail → 新增對話 → conversation → ← because go() resets
+  ///   the entire stack regardless of how the user arrived.
+  ///   (Bruce TF feedback 2026-04-28).
   Future<void> _cleanupAndGoBack() async {
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
@@ -520,7 +530,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     } catch (_) {
       // Leaving the screen should not be blocked by best-effort cleanup.
     }
-    if (mounted) {
+    if (!mounted) return;
+    if (context.canPop()) {
+      context.pop();
+    } else {
       context.go('/');
     }
   }
