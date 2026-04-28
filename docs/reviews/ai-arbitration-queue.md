@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-28] Partner Entity Refactor - A2 Phase 4 Code Review (Polish + Ship)
-Status: APPROVED
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Eric
 Scope: review
-Branch/Commit: `feature/partner-entity-A2-polish` @ `f991359` reviewed + Codex patch (PR #8)
+Branch/Commit: `feature/partner-entity-A2-polish` @ `8fb3e2f` (final HEAD) → squash-merged to main `f1b936e` 2026-04-28T03:54:56Z (PR #8)
 
 Question:
 - Code review the Phase 4 production diff (9 commits, Tasks 1-8 mapped from
@@ -232,16 +232,29 @@ Verdict:
 - REVISED_AND_APPROVED
 
 Eric-Decision:
-- Pending TF checklist J / merge gate
+- APPROVED + merged. TF smoke 13/13 pass (J1 delete cascade ✅ / J2 banner functional ✅ / J3 preselect ✅ — Eric clarified "not a bug, just UX exploration" / J4 visual ✅ / J5 copy ✅). Squash-merged `f1b936e` 2026-04-28T03:54:56Z.
 
 Action-Items:
 - [x] Codex code reviews PR #8 diff
-- [x] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
-- [ ] Eric runs 5-path manual smoke on TF build
-- [ ] Merge to main once both gates pass
+- [x] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch (`77f93d4`)
+- [x] Eric runs 5-path manual smoke on TF build (13/13 pass, J3 not-a-bug clarified)
+- [x] Merge to main once both gates pass (squash `f1b936e`)
 
 Close-Condition:
 - PR #8 merged to main with Codex APPROVED/REVISED_AND_APPROVED + Eric manual smoke pass.
+
+Closing Notes (Claude, 2026-04-28 ~12:00 GMT+8):
+- A2 Partner Refactor 全 ship — Phase 1-4 完整收尾，ADR-15 v2 ship 段落生效。
+- 9 source commits + 3 doc commits squashed into single ship commit `f1b936e`
+  (3241 insertions / 463 deletions across 31 files).
+- 5 Daisy-Decisions D-P4-1 ~ D-P4-5 全 untouched 落地。
+- Codex `77f93d4` patch（debugPrint × 3 + const TextStyle）兩環境 25/25。
+- Post-A2 testing queue items（**不歸 A2 phase**）:
+  · 新增對象 UI redesign（Bruce spec，待 Discord channel/時間從 Eric 提供）
+  · J2 product nudge — 合併成功 SnackBar 加引導到「我的報告」tab
+  · J3 anti-pattern observation — 連續 merge（合併後再從目標 detail 進第二輪 merge picker）
+    用戶實際是否會這樣使用，soak 期觀察
+- Next: TF soak ~2 週 → 送審。
 
 ---
 
