@@ -67,4 +67,10 @@ class AppColors {
   static const avatarHerEnd = Color(0xFFFFC107);
   static const avatarMeStart = Color(0xFF9D8DF7);
   static const avatarMeEnd = Color(0xFF6B4EE6);
+
+  // Partner detail dark backdrop (post-A2 visual polish 2026-04-28).
+  // Darker than the AddPartner gradient on purpose: detail page is
+  // "深夜陪你讀懂這段關係" mood, not action mood.
+  static const partnerDetailBgTop = Color(0xFF070812);
+  static const partnerDetailBgBottom = Color(0xFF0B0A14);
 }

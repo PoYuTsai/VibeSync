@@ -16,6 +16,7 @@ import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.d
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_conversation_tile.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_heat_hero_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
 
@@ -269,7 +270,7 @@ void main() {
     expect(find.text('merge-stub-p1'), findsOneWidget);
   });
 
-  testWidgets('renders traits card + radar summary card + new-conversation FAB',
+  testWidgets('renders hero + traits + radar + new-conversation FAB',
       (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
@@ -283,9 +284,17 @@ void main() {
     ));
     await t.pumpAndSettle();
 
+    // Post-A2 visual polish — hero comes BEFORE traits/radar.
+    expect(find.byType(PartnerHeatHeroCard), findsOneWidget);
     expect(find.byType(PartnerTraitsCard), findsOneWidget);
     expect(find.byType(PartnerRadarSummaryCard), findsOneWidget);
+    // FAB copy stays "+ 新增對話" verbatim per ADR-15 vocabulary lock
+    // (Path A 2026-04-28). Visual changed (pill + orange), copy did not.
     expect(find.text('+ 新增對話'), findsOneWidget);
+    // Empty-aggregate path → hero shows "待分析" (deterministic mapping,
+    // never a fake score).
+    expect(find.text('待分析'), findsOneWidget);
+    expect(find.text('--'), findsOneWidget);
   });
 
   testWidgets('new-conversation sheet receives current partnerId', (t) async {

@@ -1,26 +1,31 @@
 // lib/features/partner/presentation/screens/partner_detail_screen.dart
 //
-// Phase 2 Partner detail screen. Replaces the Task 6 stub.
+// Partner detail — post-A2 visual polish (2026-04-28).
+// Mood: 深夜陪你讀懂這段關係，不是冷冰冰的 dashboard。
 //
-// Reads three narrow providers from Phase 1:
-//   - partnerByIdProvider(id)            → null when partner deleted/merged
-//   - partnerAggregateProvider(id)       → traits / counters
-//   - conversationsByPartnerProvider(id) → list of conversations
+// Visual pattern:
+//  - Transparent Scaffold + extendBodyBehindAppBar so the dark navy
+//    backdrop sits under the AppBar (mirrors the AddPartner screen).
+//  - Background = vertical gradient (very dark navy) + 3 STATIC glow
+//    bubbles (no AnimationController — keeps widget tests pumpAndSettle-safe).
+//  - PartnerHeatHeroCard at top reads `aggregate.latestHeat` only —
+//    NO synthesized score, NO AI insight (per scope lock).
+//  - Existing PartnerTraitsCard / PartnerRadarSummaryCard / Tile keep
+//    their data sources; only their surface styling is upgraded.
 //
-// ⋮ menu: merge + edit are wired. delete remains disabled "即將推出"
-// pending #8b. Merge auto-disables when the user has only one partner
-// (no valid target).
-//
-// + 新增對話 FAB opens the shared `NewConversationSheet` (extracted from
-// main_shell.dart in this task). Phase 3 Task 10 wires partnerId into the
-// new-conversation flow; Phase 2 still creates conversations without
-// partnerId via the legacy path.
+// Behavior unchanged:
+//  - ⋮ menu (merge / edit / delete-即將推出) — see partner_detail_screen_test.
+//  - FAB still opens NewConversationSheet(partnerId).
+//  - FAB label STAYS "+ 新增對話" per ADR-15 vocabulary contract
+//    (see test/widget/features/copy_sweep_snapshot_test.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:intl/intl.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
@@ -31,6 +36,7 @@ import '../../domain/entities/partner.dart';
 import '../dialogs/partner_edit_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
+import '../widgets/partner_heat_hero_card.dart';
 import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
 
@@ -53,11 +59,24 @@ class PartnerDetailScreen extends ConsumerWidget {
     }
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text(partner.name),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(
+          color: AppColors.onBackgroundPrimary,
+        ),
+        title: Text(
+          partner.name,
+          style: const TextStyle(color: AppColors.onBackgroundPrimary),
+        ),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
+            icon: const Icon(
+              Icons.more_vert,
+              color: AppColors.onBackgroundPrimary,
+            ),
             itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'merge',
@@ -81,37 +100,53 @@ class PartnerDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Stack(
         children: [
-          PartnerTraitsCard(view: aggregate),
-          const SizedBox(height: 12),
-          PartnerRadarSummaryCard(
-            latestConversation:
-                conversations.isEmpty ? null : conversations.first,
-          ),
-          const SizedBox(height: 16),
-          if (conversations.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                '尚未有對話，從下方「+ 新增對話」開始',
-                textAlign: TextAlign.center,
-              ),
-            )
-          else
-            ...conversations.map(
-              (c) => PartnerConversationTile(
-                conversation: c,
-                onTap: () => context.push('/conversation/${c.id}'),
-                onReassign: () => showConversationReassignPicker(
-                  context,
-                  conversation: c,
-                  ref: ref,
+          const Positioned.fill(child: _PartnerDetailBackground()),
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+              children: [
+                PartnerHeatHeroCard(heat: aggregate.latestHeat),
+                const SizedBox(height: 16),
+                PartnerTraitsCard(view: aggregate),
+                const SizedBox(height: 12),
+                PartnerRadarSummaryCard(
+                  latestConversation:
+                      conversations.isEmpty ? null : conversations.first,
                 ),
-                onDelete: () => _confirmDeleteConversation(context, ref, c),
-              ),
+                const SizedBox(height: 16),
+                if (conversations.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      '尚未有對話 — 等待第一段互動建立',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                      ),
+                    ),
+                  )
+                else
+                  ...conversations.map(
+                    (c) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: PartnerConversationTile(
+                        conversation: c,
+                        onTap: () => context.push('/conversation/${c.id}'),
+                        onReassign: () => showConversationReassignPicker(
+                          context,
+                          conversation: c,
+                          ref: ref,
+                        ),
+                        onDelete: () =>
+                            _confirmDeleteConversation(context, ref, c),
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -122,7 +157,109 @@ class PartnerDetailScreen extends ConsumerWidget {
           // current Partner, including the manual-entry route.
           builder: (_) => NewConversationSheet(partnerId: partnerId),
         ),
-        label: const Text('+ 新增對話'),
+        backgroundColor: AppColors.ctaStart,
+        foregroundColor: Colors.white,
+        elevation: 8,
+        shape: const StadiumBorder(),
+        // ADR-15 vocabulary lock — copy stays "+ 新增對話" verbatim
+        // (Path A 2026-04-28). Visual is the only thing that changed:
+        // pill shape + warm orange + amplified elevation. Subtle warm
+        // glow comes from the bottom-left bubble in the backdrop.
+        label: const Text(
+          '+ 新增對話',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}
+
+/// Static dark-navy backdrop with 3 brand-colored glow bubbles.
+///
+/// Bubbles are intentionally STATIC (no AnimationController). This mirrors
+/// `AddPartnerScreen._AddPartnerBackground` for the same reason: animated
+/// controllers cause `pumpAndSettle` hangs in widget tests, and detail-screen
+/// tests rely on it. The mood is provided by gradient + tinted glows alone.
+class _PartnerDetailBackground extends StatelessWidget {
+  const _PartnerDetailBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.partnerDetailBgTop,
+            AppColors.partnerDetailBgBottom,
+          ],
+        ),
+      ),
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            // Top-right purple halo — sits behind the hero card.
+            Positioned(
+              top: -60,
+              right: -60,
+              child: _GlowBubble(
+                color: AppColors.primaryLight,
+                size: 220,
+                opacity: 0.32,
+              ),
+            ),
+            // Bottom-left warm-pink halo — sits near the FAB region.
+            Positioned(
+              bottom: -40,
+              left: -40,
+              child: _GlowBubble(
+                color: AppColors.ctaStart,
+                size: 180,
+                opacity: 0.22,
+              ),
+            ),
+            // Mid-right faint pink — ambient warmth between cards.
+            Positioned(
+              top: 320,
+              right: -80,
+              child: _GlowBubble(
+                color: AppColors.bokehPink,
+                size: 140,
+                opacity: 0.18,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GlowBubble extends StatelessWidget {
+  final Color color;
+  final double size;
+  final double opacity;
+  const _GlowBubble({
+    required this.color,
+    required this.size,
+    required this.opacity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: opacity),
+            blurRadius: 80,
+            spreadRadius: 30,
+          ),
+        ],
       ),
     );
   }
