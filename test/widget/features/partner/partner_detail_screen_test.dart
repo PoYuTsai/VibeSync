@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
+import 'package:vibesync/features/partner/data/providers/partner_write_controller.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -19,6 +20,7 @@ import 'package:vibesync/features/partner/presentation/widgets/partner_radar_sum
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
 
 import '_fakes/recording_conversation_write_controller.dart';
+import '_fakes/recording_partner_write_controller.dart';
 
 Partner _p() => Partner(
       id: 'p1',
@@ -87,7 +89,7 @@ void main() {
     expect(find.text('已刪除這段互動紀錄'), findsOneWidget);
   });
 
-  testWidgets('⋮ menu: merge ENABLED, edit+delete still 即將推出', (t) async {
+  testWidgets('⋮ menu: merge + edit ENABLED, delete still 即將推出', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerByIdProvider('p1').overrideWith((_) => _p()),
@@ -108,8 +110,102 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.text('合併重複對象'), findsOneWidget);
-    expect(find.text('編輯對象（即將推出）'), findsOneWidget);
+    expect(find.text('編輯對象'), findsOneWidget);
+    expect(find.text('編輯對象（即將推出）'), findsNothing);
     expect(find.text('刪除對象（即將推出）'), findsOneWidget);
+  });
+
+  testWidgets('⋮ edit → dialog → 儲存 calls updateName + success snackbar',
+      (t) async {
+    final fake = RecordingPartnerWriteController();
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+        partnerWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pumpAndSettle();
+    await t.tap(find.text('編輯對象'));
+    await t.pumpAndSettle();
+
+    expect(find.byType(TextField), findsOneWidget);
+    await t.enterText(find.byType(TextField), '  Alicia  ');
+    await t.tap(find.text('儲存'));
+    await t.pumpAndSettle();
+
+    expect(fake.updateNameCalled, isTrue);
+    expect(fake.updatedPartner?.id, 'p1');
+    expect(fake.updatedName, 'Alicia',
+        reason: 'dialog must trim before handing off to controller');
+    expect(find.text('已更新名稱'), findsOneWidget);
+  });
+
+  testWidgets('⋮ edit → 取消 does not call updateName', (t) async {
+    final fake = RecordingPartnerWriteController();
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+        partnerWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pumpAndSettle();
+    await t.tap(find.text('編輯對象'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('取消'));
+    await t.pumpAndSettle();
+
+    expect(fake.updateNameCalled, isFalse);
+    expect(find.text('已更新名稱'), findsNothing);
+  });
+
+  testWidgets('⋮ edit → controller throw shows error snackbar', (t) async {
+    final fake = RecordingPartnerWriteController()
+      ..throwOnUpdateName = StateError('boom');
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+        partnerWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pumpAndSettle();
+    await t.tap(find.text('編輯對象'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField), 'Alicia');
+    await t.tap(find.text('儲存'));
+    await t.pumpAndSettle();
+
+    expect(fake.updateNameCalled, isTrue);
+    expect(find.textContaining('更新失敗'), findsOneWidget);
   });
 
   testWidgets('⋮ menu: merge DISABLED when only one partner exists', (t) async {

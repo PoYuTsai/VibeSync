@@ -7,9 +7,9 @@
 //   - partnerAggregateProvider(id)       → traits / counters
 //   - conversationsByPartnerProvider(id) → list of conversations
 //
-// ⋮ menu: Phase 3 PR-B wires the merge handler. edit / delete remain
-// disabled "即將推出" until Phase 4. Merge auto-disables when the user
-// has only one partner (no valid target).
+// ⋮ menu: merge + edit are wired. delete remains disabled "即將推出"
+// pending #8b. Merge auto-disables when the user has only one partner
+// (no valid target).
 //
 // + 新增對話 FAB opens the shared `NewConversationSheet` (extracted from
 // main_shell.dart in this task). Phase 3 Task 10 wires partnerId into the
@@ -26,6 +26,9 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../conversation/presentation/dialogs/delete_conversation_confirm_dialog.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
+import '../../data/providers/partner_write_controller.dart';
+import '../../domain/entities/partner.dart';
+import '../dialogs/partner_edit_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_radar_summary_card.dart';
@@ -63,8 +66,7 @@ class PartnerDetailScreen extends ConsumerWidget {
               ),
               const PopupMenuItem(
                 value: 'edit',
-                enabled: false,
-                child: Text('編輯對象（即將推出）'),
+                child: Text('編輯對象'),
               ),
               const PopupMenuItem(
                 value: 'delete',
@@ -74,6 +76,7 @@ class PartnerDetailScreen extends ConsumerWidget {
             ],
             onSelected: (v) {
               if (v == 'merge') context.push('/partner/$partnerId/merge');
+              if (v == 'edit') _onEditPartner(context, ref, partner);
             },
           ),
         ],
@@ -121,6 +124,31 @@ class PartnerDetailScreen extends ConsumerWidget {
         ),
         label: const Text('+ 新增對話'),
       ),
+    );
+  }
+}
+
+Future<void> _onEditPartner(
+  BuildContext context,
+  WidgetRef ref,
+  Partner partner,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final controller = ref.read(partnerWriteControllerProvider.notifier);
+  final newName = await showDialog<String>(
+    context: context,
+    builder: (_) => PartnerEditDialog(initialName: partner.name),
+  );
+  if (newName == null) return;
+  try {
+    await controller.updateName(partner, newName);
+    if (!context.mounted) return;
+    messenger.showSnackBar(const SnackBar(content: Text('已更新名稱')));
+  } catch (e, st) {
+    debugPrint('PartnerDetailScreen edit failed: $e\n$st');
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('更新失敗，請稍後再試')),
     );
   }
 }

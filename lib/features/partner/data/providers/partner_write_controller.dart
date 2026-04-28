@@ -50,6 +50,40 @@ class PartnerWriteController extends Notifier<void> {
     }
   }
 
+  /// Renames [partner] to [newName] (whitespace trimmed). Throws
+  /// [ArgumentError] when the trimmed name is empty so callers don't have to
+  /// re-validate. Same try/finally discipline as merge/delete so partial
+  /// failures still surface in the UI; no conversation-scope invalidation
+  /// because a rename never mutates conversation rows.
+  ///
+  /// Builds a fresh [Partner] instead of mutating [partner] in place so a
+  /// repo throw can't leak the new name through Riverpod's cached reference
+  /// (HiveObject is shared by cache + box, so in-place mutation = silent
+  /// global write before the persistence step).
+  Future<void> updateName(Partner partner, String newName) async {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError(
+        'PartnerWriteController.updateName: name must be non-empty',
+      );
+    }
+    final repo = ref.read(partnerRepositoryProvider);
+    final renamed = Partner(
+      id: partner.id,
+      name: trimmed,
+      avatarPath: partner.avatarPath,
+      createdAt: partner.createdAt,
+      updatedAt: partner.updatedAt,
+      ownerUserId: partner.ownerUserId,
+      customNote: partner.customNote,
+    );
+    try {
+      await repo.update(renamed);
+    } finally {
+      _invalidateRenameScopes(partner.id);
+    }
+  }
+
   void _invalidatePartner(String id) {
     ref.invalidate(partnerByIdProvider(id));
     ref.invalidate(partnerAggregateProvider(id));
@@ -73,6 +107,14 @@ class PartnerWriteController extends Notifier<void> {
   void _invalidateDeleteScopes(String id) {
     _invalidatePartner(id);
     _invalidatePartnerScopedConversations(id);
+    ref.invalidate(partnerListProvider);
+  }
+
+  void _invalidateRenameScopes(String id) {
+    // Rename only mutates `partner.name` + `updatedAt`; conversation rows are
+    // unchanged. Keep invalidation tight so the global feed and per-partner
+    // conversation list don't re-query for nothing.
+    _invalidatePartner(id);
     ref.invalidate(partnerListProvider);
   }
 }

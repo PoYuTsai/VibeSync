@@ -20,6 +20,9 @@ import '../../domain/entities/partner.dart';
 ///   conversations still reference it. Throws
 ///   [PartnerHasConversationsException] otherwise; UI must surface this and
 ///   guide the user toward merge / reassign instead of cascade-delete.
+/// - [update] — overwrites an existing partner row and bumps `updatedAt`.
+///   Throws `ArgumentError` if the id is unknown (so a stale UI handle can't
+///   silently resurrect a deleted partner).
 class PartnerRepository {
   PartnerRepository({
     Box<Partner>? box,
@@ -82,6 +85,20 @@ class PartnerRepository {
     await to.save();
 
     await _box.delete(fromId);
+  }
+
+  /// Overwrites the existing row for [partner.id] and bumps `updatedAt` to
+  /// "now". Caller is responsible for any field-level validation (e.g. a
+  /// non-empty name); this method only enforces existence so a stale UI
+  /// handle can't silently resurrect a deleted partner.
+  Future<void> update(Partner partner) async {
+    if (!_box.containsKey(partner.id)) {
+      throw ArgumentError(
+        'PartnerRepository.update: partner ${partner.id} not found',
+      );
+    }
+    partner.updatedAt = DateTime.now();
+    await _box.put(partner.id, partner);
   }
 
   /// Deletes [partnerId] from the partners box, **only** when no conversation

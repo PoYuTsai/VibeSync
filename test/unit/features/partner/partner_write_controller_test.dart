@@ -55,6 +55,17 @@ class _ThrowingDeletePartnerRepository extends PartnerRepository {
   }
 }
 
+class _ThrowingUpdatePartnerRepository extends PartnerRepository {
+  _ThrowingUpdatePartnerRepository({
+    required Box<Partner> box,
+  }) : super(box: box);
+
+  @override
+  Future<void> update(Partner partner) async {
+    throw StateError('simulated update failure');
+  }
+}
+
 class _PartiallyFailingPartnerRepository extends PartnerRepository {
   _PartiallyFailingPartnerRepository({
     required Box<Partner> box,
@@ -379,6 +390,113 @@ void main() {
           reason: 'failure path must still invalidate conversation scope');
       expect(container.read(partnerByIdProvider('A')), isNotNull,
           reason: 'A still in box because delete threw before _box.delete');
+    });
+  });
+
+  group('PartnerWriteController.updateName invalidations', () {
+    test(
+        'updateName invalidates partnerByIdProvider + partnerListProvider; '
+        'leaves conversationsProvider + conversationsByPartner alone', () async {
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      await _convoBox.put('c1', _convo('c1', partnerId: 'A'));
+
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      // Prime
+      expect(container.read(partnerByIdProvider('A'))?.name, 'Alice');
+      expect(container.read(partnerListProvider).single.name, 'Alice');
+      expect(container.read(conversationsByPartnerProvider('A')).length, 1);
+      container.read(conversationsProvider);
+      final globalBefore = _convoRepo.globalListCalls;
+      final aScopeBefore = _convoRepo.listByPartnerCalls['A'] ?? 0;
+
+      final partner = container.read(partnerByIdProvider('A'))!;
+      await container
+          .read(partnerWriteControllerProvider.notifier)
+          .updateName(partner, 'Alicia');
+
+      // partnerById must reflect renamed value (cache busted).
+      expect(container.read(partnerByIdProvider('A'))?.name, 'Alicia',
+          reason: 'partnerByIdProvider(A) must be invalidated after rename');
+      expect(container.read(partnerListProvider).single.name, 'Alicia',
+          reason: 'partnerListProvider must be invalidated');
+
+      container.read(conversationsByPartnerProvider('A'));
+      expect(_convoRepo.listByPartnerCalls['A'] ?? 0, aScopeBefore,
+          reason: 'rename must NOT invalidate conversationsByPartner — '
+              'no conversation rows mutated');
+      container.read(conversationsProvider);
+      expect(_convoRepo.globalListCalls, globalBefore,
+          reason: 'rename must NOT invalidate the legacy global feed');
+    });
+
+    test('updateName trims whitespace before persisting', () async {
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      final partner = container.read(partnerByIdProvider('A'))!;
+      await container
+          .read(partnerWriteControllerProvider.notifier)
+          .updateName(partner, '  Alicia  ');
+
+      expect(container.read(partnerByIdProvider('A'))?.name, 'Alicia');
+    });
+
+    test('updateName throws ArgumentError on empty input', () async {
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      final partner = container.read(partnerByIdProvider('A'))!;
+
+      await expectLater(
+        container
+            .read(partnerWriteControllerProvider.notifier)
+            .updateName(partner, ''),
+        throwsArgumentError,
+      );
+      await expectLater(
+        container
+            .read(partnerWriteControllerProvider.notifier)
+            .updateName(partner, '   '),
+        throwsArgumentError,
+      );
+      // Original name preserved.
+      expect(container.read(partnerByIdProvider('A'))?.name, 'Alice');
+    });
+
+    test('updateName still invalidates scopes when repo throws', () async {
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+
+      final container = ProviderContainer(overrides: [
+        conversationRepositoryProvider.overrideWithValue(_convoRepo),
+        partnerRepositoryProvider.overrideWithValue(
+          _ThrowingUpdatePartnerRepository(box: _partnerBox),
+        ),
+        authConversationScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
+      ]);
+      await container.read(authConversationScopeProvider.future);
+      addTearDown(container.dispose);
+
+      // Prime so we can observe invalidation
+      expect(container.read(partnerByIdProvider('A'))?.name, 'Alice');
+      expect(container.read(partnerListProvider).single.name, 'Alice');
+
+      final partner = container.read(partnerByIdProvider('A'))!;
+      await expectLater(
+        container
+            .read(partnerWriteControllerProvider.notifier)
+            .updateName(partner, 'Alicia'),
+        throwsStateError,
+      );
+      // partnerById was invalidated even though repo threw — re-read picks
+      // up whatever Hive state actually exists. Because the failing repo
+      // never wrote, the box still has 'Alice'.
+      expect(container.read(partnerByIdProvider('A'))?.name, 'Alice',
+          reason: 'failure path must re-read box (no stale cache)');
     });
   });
 }
