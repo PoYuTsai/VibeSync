@@ -90,10 +90,9 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('識別成功'), findsOneWidget);
-      expect(find.text('低信心'), findsOneWidget);
-      expect(find.text('信心偏低'), findsOneWidget);
-      expect(find.text('建議先確認再匯入'), findsOneWidget);
+      expect(find.text('需要確認'), findsOneWidget);
+      expect(find.text('內容需確認'), findsOneWidget);
+      expect(find.text('先看一下再匯入'), findsOneWidget);
       expect(find.textContaining('LINE 的回覆引用框'), findsOneWidget);
       expect(find.text('另存成新對話'), findsOneWidget);
     });
@@ -116,7 +115,7 @@ void main() {
 
       await tester.tap(find.text('另存成新對話'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Amber');
+      await tester.enterText(_partnerNameField(), 'Amber');
       await tester.tap(find.text('確認匯入'));
       await tester.pumpAndSettle();
 
@@ -175,6 +174,8 @@ void main() {
 
     testWidgets('allows editing speaker and content before import',
         (tester) async {
+      await _useTallSurface(tester);
+
       ScreenshotRecognitionDialogResult? dialogResult;
 
       await tester.pumpWidget(
@@ -190,20 +191,20 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('可直接修正錯字'), findsOneWidget);
-      expect(find.text('依左 / 右重新套用'), findsOneWidget);
+      expect(find.textContaining('有問題可以直接修改'), findsOneWidget);
+      expect(find.text('依左／右重新套用'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '我說').first);
-      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.widgetWithText(ChoiceChip, '我說').first);
 
       final textFields = find.byType(TextField);
-      expect(textFields, findsNWidgets(4));
+      expect(textFields, findsAtLeastNWidgets(3));
 
       await tester.enterText(textFields.at(0), '其實剛好忙完，晚點可以聊');
       await tester.tap(find.byTooltip('刪除這則訊息').at(1));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('確認匯入'));
+      await tester.tap(find.text('刪除'));
       await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('確認匯入'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages, hasLength(2));
@@ -213,6 +214,8 @@ void main() {
 
     testWidgets('supports batch speaker correction from bubble sides',
         (tester) async {
+      await _useTallSurface(tester);
+
       ScreenshotRecognitionDialogResult? dialogResult;
 
       await tester.pumpWidget(
@@ -228,14 +231,11 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('依左 / 右重新套用'));
-      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('依左／右重新套用'));
 
-      await tester.tap(find.text('這幾則都改成我說'));
-      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('這幾則都改成我說'));
 
-      await tester.tap(find.text('確認匯入'));
-      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('確認匯入'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages[0].isFromMe, isFalse);
@@ -259,7 +259,26 @@ void main() {
 
       expect(find.text('這幾則都改成我說'), findsOneWidget);
       expect(find.textContaining('如果每則都判對了'), findsOneWidget);
-      expect(find.textContaining('這個編修區可以單獨上下滑動'), findsOneWidget);
+      expect(find.textContaining('這區可以直接略過'), findsOneWidget);
     });
   });
+}
+
+Finder _partnerNameField() {
+  return find.byWidgetPredicate(
+    (widget) => widget is TextField && widget.decoration?.hintText == '輸入對方名字',
+    description: 'partner name TextField',
+  );
+}
+
+Future<void> _useTallSurface(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(500, 1200));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+}
+
+Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
 }

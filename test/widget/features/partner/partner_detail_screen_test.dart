@@ -295,6 +295,12 @@ void main() {
     // never a fake score).
     expect(find.text('待分析'), findsOneWidget);
     expect(find.text('--'), findsOneWidget);
+    expect(
+      t.getTopLeft(find.byType(PartnerHeatHeroCard)).dy,
+      greaterThanOrEqualTo(kToolbarHeight),
+      reason: 'extendBodyBehindAppBar is only for the glow background; content '
+          'must clear the transparent AppBar toolbar.',
+    );
   });
 
   testWidgets('new-conversation sheet receives current partnerId', (t) async {

@@ -119,7 +119,8 @@ class _ScreenshotRecognitionDialogState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            child:
+                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
@@ -941,11 +942,10 @@ class _ScreenshotRecognitionDialogState
                     ],
                     const SizedBox(height: 10),
                     Container(
-                      constraints: BoxConstraints(
-                        maxHeight: _messageEditorHeight(
-                          context,
-                          _editableMessages.length,
-                        ),
+                      width: double.maxFinite,
+                      height: _messageEditorHeight(
+                        context,
+                        _editableMessages.length,
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
@@ -967,18 +967,18 @@ class _ScreenshotRecognitionDialogState
                           controller: _messageScrollController,
                           thumbVisibility: _editableMessages.length > 2,
                           child: ListView.builder(
-                          controller: _messageScrollController,
-                          padding: const EdgeInsets.all(8),
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          itemCount: _editableMessages.length,
-                          itemBuilder: (context, index) =>
-                              _buildEditableMessageCard(
-                            _editableMessages[index],
-                            index,
+                            controller: _messageScrollController,
+                            padding: const EdgeInsets.all(8),
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            itemCount: _editableMessages.length,
+                            itemBuilder: (context, index) =>
+                                _buildEditableMessageCard(
+                              _editableMessages[index],
+                              index,
+                            ),
                           ),
                         ),
-                      ),
                       ),
                     ),
                     if (_editValidationMessage != null)
