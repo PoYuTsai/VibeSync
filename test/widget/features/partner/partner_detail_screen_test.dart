@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -16,6 +17,8 @@ import 'package:vibesync/features/partner/presentation/screens/partner_detail_sc
 import 'package:vibesync/features/partner/presentation/widgets/partner_conversation_tile.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
+
+import '_fakes/recording_conversation_write_controller.dart';
 
 Partner _p() => Partner(
       id: 'p1',
@@ -42,6 +45,48 @@ Conversation _conv(String id) => Conversation(
     );
 
 void main() {
+  testWidgets('tile delete confirm calls ConversationWriteController.delete',
+      (t) async {
+    final fake = RecordingConversationWriteController();
+    final attachedConv = Conversation(
+      id: 'c1',
+      name: 'Alice',
+      messages: const [],
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      partnerId: 'p1',
+    );
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [attachedConv]),
+        partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
+        conversationWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    final tileMenu = find.descendant(
+      of: find.byType(PartnerConversationTile),
+      matching: find.byIcon(Icons.more_vert),
+    );
+    await t.tap(tileMenu);
+    await t.pumpAndSettle();
+    await t.tap(find.text('刪除對話'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('確認刪除'));
+    await t.pumpAndSettle();
+
+    expect(fake.deleteCalled, isTrue);
+    expect(fake.deletedConversation?.id, 'c1');
+    expect(find.text('已刪除這段互動紀錄'), findsOneWidget);
+  });
+
   testWidgets('⋮ menu: merge ENABLED, edit+delete still 即將推出', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
@@ -50,8 +95,7 @@ void main() {
             .overrideWith((_) => PartnerAggregateView.empty()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
-        partnerListProvider
-            .overrideWith((_) => [_p(), _other('q1', 'Bob')]),
+        partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));
@@ -68,8 +112,7 @@ void main() {
     expect(find.text('刪除對象（即將推出）'), findsOneWidget);
   });
 
-  testWidgets('⋮ menu: merge DISABLED when only one partner exists',
-      (t) async {
+  testWidgets('⋮ menu: merge DISABLED when only one partner exists', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerByIdProvider('p1').overrideWith((_) => _p()),
@@ -116,8 +159,7 @@ void main() {
             .overrideWith((_) => PartnerAggregateView.empty()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
-        partnerListProvider
-            .overrideWith((_) => [_p(), _other('q1', 'Bob')]),
+        partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
       ],
       child: MaterialApp.router(routerConfig: router),
     ));
@@ -206,8 +248,7 @@ void main() {
     ));
     await t.pumpAndSettle();
     expect(find.byType(PartnerConversationTile), findsNWidgets(2),
-        reason:
-            'Tile titles no longer carry conversation.name (per "人 vs 互動" '
+        reason: 'Tile titles no longer carry conversation.name (per "人 vs 互動" '
             'mental-model fix); verify by widget count instead.');
   });
 
@@ -232,8 +273,7 @@ void main() {
             .overrideWith((_) => PartnerAggregateView.empty()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => [attachedConv]),
-        partnerListProvider
-            .overrideWith((_) => [_p(), _other('q1', 'Bob')]),
+        partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));

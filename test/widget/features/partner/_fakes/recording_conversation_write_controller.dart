@@ -13,13 +13,15 @@ import 'package:vibesync/features/conversation/data/providers/conversation_write
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
-class RecordingConversationWriteController
-    extends ConversationWriteController {
+class RecordingConversationWriteController extends ConversationWriteController {
   bool saveCalled = false;
   Conversation? savedConversation;
   String? savedPartnerIdAtCallTime;
   String? savedPreviousPartnerId;
   Object? throwOnSave;
+  bool deleteCalled = false;
+  Conversation? deletedConversation;
+  Object? throwOnDelete;
 
   @override
   Future<void> save(Conversation c, {String? previousPartnerId}) async {
@@ -30,6 +32,13 @@ class RecordingConversationWriteController
     savedPartnerIdAtCallTime = c.partnerId;
     savedPreviousPartnerId = previousPartnerId;
     if (throwOnSave != null) throw throwOnSave!;
+  }
+
+  @override
+  Future<void> delete(Conversation c) async {
+    deleteCalled = true;
+    deletedConversation = c;
+    if (throwOnDelete != null) throw throwOnDelete!;
   }
 
   @override

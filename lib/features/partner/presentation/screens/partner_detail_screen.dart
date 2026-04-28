@@ -59,9 +59,7 @@ class PartnerDetailScreen extends ConsumerWidget {
               PopupMenuItem(
                 value: 'merge',
                 enabled: hasOtherPartner,
-                child: Text(hasOtherPartner
-                    ? '合併重複對象'
-                    : '合併重複對象（需至少 2 個對象）'),
+                child: Text(hasOtherPartner ? '合併重複對象' : '合併重複對象（需至少 2 個對象）'),
               ),
               const PopupMenuItem(
                 value: 'edit',
@@ -133,6 +131,8 @@ Future<void> _confirmDeleteConversation(
   Conversation c,
 ) async {
   final dateLabel = DateFormat('MM/dd').format(c.updatedAt);
+  final messenger = ScaffoldMessenger.of(context);
+  final controller = ref.read(conversationWriteControllerProvider.notifier);
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => DeleteConversationConfirmDialog(
@@ -141,10 +141,17 @@ Future<void> _confirmDeleteConversation(
     ),
   );
   if (confirmed != true) return;
-  await ref.read(conversationWriteControllerProvider.notifier).delete(c);
-  if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
+  try {
+    await controller.delete(c);
+    if (!context.mounted) return;
+    messenger.showSnackBar(
       const SnackBar(content: Text('已刪除這段互動紀錄')),
+    );
+  } catch (e, st) {
+    debugPrint('PartnerDetailScreen conversation delete failed: $e\n$st');
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('刪除失敗，請稍後再試')),
     );
   }
 }
