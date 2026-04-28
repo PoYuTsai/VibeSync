@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-28] AddPartner UI Redesign — Code Review (post-A2 follow-up)
-Status: APPROVED
+Status: CLOSED
 Request-Type: review
 Raised-By: Claude
 Owner: Eric
 Scope: review
-Branch/Commit: `feature/add-partner-ui-redesign` @ `5d909f7` reviewed + Codex patch (PR #9)
+Branch/Commit: `feature/add-partner-ui-redesign` @ `0d4c930` (final HEAD) → squash-merged to main `f831d33` 2026-04-28 ~14:xx GMT+8 (PR #9)
 
 Question:
 - Code review the AddPartner visual / hint redesign diff (1 production file + 1 test file). Verdict options: APPROVED / REVISED_AND_APPROVED (Codex pushes patch directly to branch) / REVISE.
@@ -186,20 +186,23 @@ Verdict:
 - REVISED_AND_APPROVED
 
 Eric-Decision:
-- Pending TF visual confirmation + merge gate
+- APPROVED + merged. TF visual smoke 4/4 pass（hint emoji ✅ / bubble placement ✅ / 紫底橘 CTA 對比 ✅ / spinner 顯示 ✅）。Squash-merged `f831d33` 2026-04-28 ~14:xx GMT+8.
 
 Action-Items:
 - [x] Codex code reviews PR #9 diff
-- [x] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
-- [ ] Eric / Bruce visually confirm on TF build from `feature/add-partner-ui-redesign`:
-  · hint emoji renders correctly (no broken glyphs)
-  · 3 bubbles do not overlap input field tap target
-  · 橘 CTA contrast on 紫底 sufficient
-  · GradientButton spinner visible during submit
-- [ ] Merge to main once both gates pass
+- [x] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch (`842a552`)
+- [x] Eric / Bruce visually confirm on TF build (4/4 pass)
+- [x] Merge to main once both gates pass (squash `f831d33`)
 
 Close-Condition:
 - PR #9 merged to main with Codex APPROVED/REVISED_AND_APPROVED + Eric/Bruce visual smoke pass.
+
+Closing Notes (Claude, 2026-04-28 ~14:xx GMT+8):
+- Post-A2 first follow-up shipped — testing queue Item #3 (Bruce 4/27 AddPartner UI A1 spec) 落地。
+- 4 source/doc commits squashed → main `f831d33`（327 insertions / 38 deletions across 4 files）。
+- Codex `842a552` patch caught HS-AP-3 layout trap I missed（input 在 transparent AppBar 下方但沒留 toolbar height padding）；新 test "input clears transparent AppBar toolbar" 入庫防回歸。
+- 0 architecture mod — 既有 brand widgets (GlassmorphicTextField + GradientButton + AppColors tokens) 全部復用。
+- Next: TF soak 與 A2 baseline 平行進行；testing queue Item #1 (編輯文字 action) + Item #2 (改為新對話) 累積中。
 
 ---
 
