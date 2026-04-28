@@ -16,6 +16,10 @@ import '../../domain/entities/partner.dart';
 ///   the source partner's `customNote` into the target with a `[from <name>]`
 ///   tag, then deletes the source partner. No-op on same id; throws
 ///   `ArgumentError` if either side is missing (no partial state).
+/// - [delete] — removes a partner row, but only after confirming zero
+///   conversations still reference it. Throws
+///   [PartnerHasConversationsException] otherwise; UI must surface this and
+///   guide the user toward merge / reassign instead of cascade-delete.
 class PartnerRepository {
   PartnerRepository({
     Box<Partner>? box,
@@ -79,4 +83,30 @@ class PartnerRepository {
 
     await _box.delete(fromId);
   }
+
+  /// Deletes [partnerId] from the partners box, **only** when no conversation
+  /// row still references it. Counts conversations directly from the box
+  /// (not via `aggregate.totalRounds`) so a zero-round conversation still
+  /// blocks the delete.
+  Future<void> delete(String partnerId) async {
+    final convCount = _conversationBox.values
+        .where((c) => c.partnerId == partnerId)
+        .length;
+    if (convCount > 0) {
+      throw PartnerHasConversationsException(convCount);
+    }
+    await _box.delete(partnerId);
+  }
+}
+
+/// Thrown by [PartnerRepository.delete] when the partner still has
+/// conversations linked. Caller must surface this as informational UI and
+/// guide the user toward merge / reassign instead of cascade-deleting.
+class PartnerHasConversationsException implements Exception {
+  PartnerHasConversationsException(this.conversationCount);
+  final int conversationCount;
+
+  @override
+  String toString() =>
+      'PartnerHasConversationsException(count=$conversationCount)';
 }

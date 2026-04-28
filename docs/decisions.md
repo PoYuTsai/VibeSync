@@ -24,7 +24,7 @@
 | 12 | UI 重構 — 溫暖粉紫漸層毛玻璃 | ✅ Active |
 | 13 | 截圖上傳 — Claude Vision | ✅ Active |
 | 14 | 開場救星 feature（2026-04） | ✅ Active |
-| 15 | Partner Entity Refactor（2026-04-25） — A1 schema-only ship + A2 UI/AI deferred | ✅ Active |
+| 15 | Partner Entity Refactor（2026-04-25） — A1 schema-only ship + A2 UI/AI deferred | ✅ Active（v2 Shipped 2026-04-28，含 D-P4-1~5） |
 
 ---
 
@@ -328,3 +328,56 @@
 **相關文件**:
 - 設計: `docs/plans/2026-04-25-partner-entity-design.md`
 - Live tracking: `docs/reviews/ai-arbitration-queue.md`
+
+---
+
+### ADR #15 v2 — Ship section（2026-04-28）
+
+**狀態**: ✅ Shipped（A1 + A2 全集 merge to main，TF soak 進行中）
+
+**Ship 範圍**: A1 schema (`919e034`) + A2 Phase 1-3 (`f053a9c` / `004388e` / `f2ab222` / `a38d46e`) + A2 Phase 4 polish + ship gate（branch `feature/partner-entity-A2-polish`）。
+
+#### 主決策（D1-D4，A2 brainstorm 鎖定）
+
+- **D1 — Partner detail 內 +新增對話 線性導向**：plan-default A，Partner detail page 提供 `+ 新增對話` CTA，建立後該 conversation 自動掛在當前 partner（`new_conversation_sheet.dart`）。對齊三大 Tab 既有層級，不引入額外 picker。
+- **D2 — domain `Conversation` class 命名保留**：plan-default A，不 rename 為 `Session` 或其他。理由：A2 scope 只動 data model，避免 ripple 到 analysis / opener / OCR layers；UI 文案改走「對話」（partner-scoped 仍語意正確），class 名保留以縮 diff 面積。
+- **D3 — conversation cell tap → analysis**：plan-default A，PartnerListCard 點擊進 partner detail，partner detail 內 conversation list cell 點擊直接進 analysis screen，不走中介 detail。
+- **D4 — Same-name dedupe banner = 一次性 + per-account**：plan-default A，banner 永久可關（不每次冷啟提醒），dismissed flag per-account 隔離（D-P4-5 落地）。
+
+#### Phase 4 新增決策（D-P4-1 ~ D-P4-5）
+
+- **D-P4-1 — Partner delete cascade = block-when-conversations-exist**
+  決定：Partner 對話數 ≥ 1 時禁止刪除，throw `PartnerHasConversationsException(conversationCount)`；用戶必須先 merge 或 reassign conversation。
+  理由：資料安全 + 已有 path（merge / reassign）替代 + 教育用戶走正確 flow。
+  實作位：`lib/features/partner/data/repositories/partner_repository.dart` `delete()` + `lib/features/partner/data/providers/partner_write_controller.dart` `delete()`；UI 切 informational vs confirm dialog。
+  Reviewer guard：count 必用 `conversationsByPartnerProvider(p.id).length`，**不可**用 `aggregate.totalRounds`（0-round 對話會被誤判為空 → 誤刪）。
+
+- **D-P4-2 — Banner pre-fill = newer-by-createdAt = source / older-by-createdAt = target**
+  決定：merge picker route 加 `?target=` query param 帶較舊 partner 的 id；source = 當前列被合進去的 partner。
+  理由：心智模型「先建的是正本」，對齊 Task 12 customNote `[from A]` tag 的 source/target 約定。
+  實作位：`lib/features/partner/presentation/widgets/same_name_dedupe_banner.dart` + merge picker route handler；無 `?target=` 時維持 PR-B 原行為（user 自選）。
+
+- **D-P4-3 — PartnerListCard preview = interests/traits interleave 前 3 tag (keep ≥1 trait when both exist)**
+  決定：preview 取 `[i0, t0, i1, t1, i2]` interleave 後 take(3)，不是 `(interests + traits).take(3)`。
+  理由：產品定位（AI 拆解輪廓）+ 隱私（不曝對話原文）+ 0 行 aggregate 改動；Codex spec review 發現純 concat 會讓 traits 被 interests 餓死，改 interleave 保證至少 1 個 trait。
+  實作位：`lib/features/partner/presentation/widgets/partner_list_card.dart` `_previewTags()`。
+
+- **D-P4-4 — Heat fallback = 🌡️ 待分析 灰字（latestHeat == null）**
+  決定：`latestHeat` 為 null 時 PartnerListCard 顯示「🌡️ 待分析」灰字，不顯示 0 / 空白 / hide 整塊。
+  理由：5 件套視覺完整性 + 教學暗示（提示用戶跑分析）+ 語意正確（null ≠ 0）。
+  實作位：`lib/features/partner/presentation/widgets/partner_list_card.dart` heat indicator block。
+
+- **D-P4-5 — Banner dismissed flag scope = per-account uid-scoped SharedPreferences key**
+  決定：dismissed key = `partner_dedupe_banner_dismissed_$uid`，uid 取自 `Supabase auth.currentUser?.id`。
+  理由：多帳戶隔離一致性（A2 invariant）；A 帳戶「以後再說」不外洩到 B 帳戶。
+  實作位：`lib/features/partner/data/services/partner_banner_service.dart` + `lib/features/partner/data/providers/partner_banner_providers.dart` (`FutureProvider.family<bool, String uid>`)。
+
+#### A2 後續 follow-up（ship 後另排）
+
+- HS1：Sentry SDK 整合（A2 ship 後再裝，避免污染 ship diff）
+- HS2：重做升級覆蓋舊備份（接受 trade-off）
+- 2 週後人工評估是否退役 `conversationsProvider` legacy global invalidation
+
+#### 相關 commits（Phase 4，branch `feature/partner-entity-A2-polish`）
+
+`28d0746` 18a delete API · `7585497` 18b 5 件套 + dialog · `6f73208` 14a banner service · `e9a7fcd` 14b banner widget · `e4bbc4f` banner dismiss guard · `782d73a` 15 copy sweep · `30a529d` 16a 砍 @Deprecated HomeContent

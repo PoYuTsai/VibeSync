@@ -40,6 +40,21 @@ class _CountingConversationRepository extends ConversationRepository {
   }
 }
 
+class _ThrowingDeletePartnerRepository extends PartnerRepository {
+  _ThrowingDeletePartnerRepository({
+    required Box<Partner> box,
+    required Box<Conversation> conversationBox,
+    required this.thrownCount,
+  }) : super(box: box, conversationBox: conversationBox);
+
+  final int thrownCount;
+
+  @override
+  Future<void> delete(String partnerId) async {
+    throw PartnerHasConversationsException(thrownCount);
+  }
+}
+
 class _PartiallyFailingPartnerRepository extends PartnerRepository {
   _PartiallyFailingPartnerRepository({
     required Box<Partner> box,
@@ -276,6 +291,94 @@ void main() {
           reason: 'failure path must not leave stale source-scope cache');
       expect(container.read(conversationsByPartnerProvider('B')).length, 1,
           reason: 'failure path must surface partial repo writes if they happen');
+    });
+  });
+
+  group('PartnerWriteController.delete invalidations', () {
+    test(
+        'delete invalidates partnerListProvider + partnerByIdProvider + '
+        'partnerAggregateProvider + conversationsByPartnerProvider after success',
+        () async {
+      // Seed: A with 0 conversations (delete is only allowed at zero).
+      // B exists too, just to prove the partner list re-fetches narrower.
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      await _partnerBox.put('B', _partner('B', name: 'Bob'));
+
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      // Prime: subscribe so invalidation has observable effect.
+      expect(container.read(partnerByIdProvider('A')), isNotNull);
+      expect(container.read(partnerListProvider).map((p) => p.id).toSet(),
+          {'A', 'B'});
+      expect(container.read(conversationsByPartnerProvider('A')), isEmpty);
+      expect(container.read(partnerAggregateProvider('A')).totalRounds, 0);
+      // Snapshot global feed call count BEFORE delete — we'll assert it does
+      // NOT increase (Codex plan patch HP-P4-1: delete keeps invalidation
+      // partner-scoped because no conversation row mutated).
+      container.read(conversationsProvider);
+      final globalBefore = _convoRepo.globalListCalls;
+      final aScopeBefore = _convoRepo.listByPartnerCalls['A'] ?? 0;
+
+      await container
+          .read(partnerWriteControllerProvider.notifier)
+          .delete(_partner('A', name: 'Alice'));
+
+      // Re-reads — values must reflect post-delete Hive state.
+      expect(container.read(partnerByIdProvider('A')), isNull,
+          reason: 'A is deleted; partnerByIdProvider(A) must not stale-cache');
+      expect(container.read(partnerListProvider).map((p) => p.id), ['B'],
+          reason: 'partner list must be invalidated');
+      expect(container.read(partnerAggregateProvider('A')).totalRounds, 0,
+          reason: 'aggregate(A) re-evaluates against empty Hive state');
+      // Force a re-read to surface invalidation of conversationsByPartner(A).
+      container.read(conversationsByPartnerProvider('A'));
+      expect((_convoRepo.listByPartnerCalls['A'] ?? 0), greaterThan(aScopeBefore),
+          reason: 'conversationsByPartner(A) must be invalidated');
+
+      container.read(conversationsProvider);
+      expect(_convoRepo.globalListCalls, globalBefore,
+          reason: 'delete must NOT invalidate the legacy global feed '
+              '(no conversation rows mutated)');
+    });
+
+    test('delete still invalidates scopes when repo throws', () async {
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      await _convoBox.put('c1', _convo('c1', partnerId: 'A'));
+
+      final container = ProviderContainer(overrides: [
+        conversationRepositoryProvider.overrideWithValue(_convoRepo),
+        partnerRepositoryProvider.overrideWithValue(
+          _ThrowingDeletePartnerRepository(
+            box: _partnerBox,
+            conversationBox: _convoBox,
+            thrownCount: 1,
+          ),
+        ),
+        authConversationScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
+      ]);
+      await container.read(authConversationScopeProvider.future);
+      addTearDown(container.dispose);
+
+      // Prime so we can observe invalidation.
+      expect(container.read(partnerByIdProvider('A')), isNotNull);
+      expect(container.read(conversationsByPartnerProvider('A')).length, 1);
+      final aScopeBefore = _convoRepo.listByPartnerCalls['A'] ?? 0;
+
+      await expectLater(
+        container
+            .read(partnerWriteControllerProvider.notifier)
+            .delete(_partner('A', name: 'Alice')),
+        throwsA(isA<PartnerHasConversationsException>()),
+      );
+
+      // Force re-read; invalidation must have happened in finally{}.
+      container.read(conversationsByPartnerProvider('A'));
+      expect((_convoRepo.listByPartnerCalls['A'] ?? 0), greaterThan(aScopeBefore),
+          reason: 'failure path must still invalidate conversation scope');
+      expect(container.read(partnerByIdProvider('A')), isNotNull,
+          reason: 'A still in box because delete threw before _box.delete');
     });
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
 
@@ -12,14 +13,29 @@ import '../providers/partner_providers.dart';
 /// a Partner from the picker. PR-B ships **without** that action — see PR-B
 /// plan §"Reality Check — Design Doc §5 Deviation". The empty state shows a
 /// hint pointing the user to the home Partner list.
+///
+/// Phase 4 Task 4 adds two optional named params:
+/// - [selectedId] — when non-null, that row renders highlighted (preselect
+///   visual cue used by the merge picker `?target=` flow).
+/// - [onSelectedChanged] — when non-null, row taps invoke this callback
+///   instead of [onSelected]. This is the "tap-to-switch preselect, no
+///   auto-open destructive dialog" contract from Codex spec patch §7.5.
+///
+/// Mode resolution: if [onSelectedChanged] is non-null the sheet is in
+/// preselect mode; tapping a row routes the Partner through that callback.
+/// Otherwise (PR-B path) row taps fire [onSelected] as before.
 class PartnerPickerSheet extends ConsumerStatefulWidget {
   final String? excludeId;
   final void Function(Partner)? onSelected;
+  final String? selectedId;
+  final void Function(Partner)? onSelectedChanged;
 
   const PartnerPickerSheet({
     super.key,
     this.excludeId,
     this.onSelected,
+    this.selectedId,
+    this.onSelectedChanged,
   });
 
   @override
@@ -75,9 +91,26 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
               shrinkWrap: true,
               children: [
                 for (final p in candidates)
-                  ListTile(
-                    title: Text(p.name),
-                    onTap: () => widget.onSelected?.call(p),
+                  Container(
+                    color: p.id == widget.selectedId
+                        ? AppColors.glassBorder
+                        : null,
+                    child: ListTile(
+                      title: Text(p.name),
+                      trailing: p.id == widget.selectedId
+                          ? const Icon(Icons.check)
+                          : null,
+                      onTap: () {
+                        // Preselect mode: route through onSelectedChanged so
+                        // the host can swap preselect WITHOUT opening the
+                        // destructive confirm dialog.
+                        if (widget.onSelectedChanged != null) {
+                          widget.onSelectedChanged!(p);
+                        } else {
+                          widget.onSelected?.call(p);
+                        }
+                      },
+                    ),
                   ),
               ],
             ),

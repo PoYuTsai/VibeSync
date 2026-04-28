@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-04-28
+
+### 階段
+**Partner Entity Refactor A1 + A2 全 ship**（branch `feature/partner-entity-A2-polish` Phase 4 收尾，含 PartnerListCard 5 件套、partner delete cascade guard、per-account dedupe banner、merge picker preselect、copy sweep、砍 `@Deprecated HomeContent`）→ TF soak 進行中，準備送審。詳見 ADR #15 v2 ship section。
+
+### Phase 4 ship 重點
+- D-P4-1 partner delete = block-when-non-empty（cascade guard 走 `conversationsByPartnerProvider.length`，非 `aggregate.totalRounds`）
+- D-P4-5 dedupe banner dismissed key per-account (`partner_dedupe_banner_dismissed_$uid`)
+- TF regression checklist 補 J 段落 13 項
+
+---
+
 ## 2026-04-24
 
 ### 階段

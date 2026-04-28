@@ -2,8 +2,12 @@
 //
 // Shared bottom sheet for creating new conversations. Pure move from
 // `lib/app/main_shell.dart` (`_NewConversationSheet`) — no behavior change.
-// Title string「新增對話」intentionally stays untouched here; Phase 4 Task 15
-// owns the global「對話」→「對象」copy sweep including this title.
+//
+// ADR-15 vocabulary contract (Phase 4 Task 5): the title「新增對話」STAYS.
+// This sheet is reached only from `PartnerDetailScreen` with `partnerId` set,
+// i.e. it always creates a Conversation under an existing Partner. That makes
+// it Conversation-level surface, where 「對話」 is the correct vocabulary.
+// Drift-protected by `test/widget/features/copy_sweep_snapshot_test.dart`.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
