@@ -7,6 +7,7 @@
 // discoverable. The tile stays pure (no routing / picker) — caller wires
 // onReassign with the actual picker + ConversationWriteController flow.
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -26,9 +27,10 @@ class PartnerConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final heat = conversation.lastEnthusiasmScore;
+    final dateLabel = DateFormat('MM/dd').format(conversation.updatedAt);
     return ListTile(
       onTap: onTap,
-      title: Text(conversation.name, style: AppTypography.titleSmall),
+      title: Text('$dateLabel 互動紀錄', style: AppTypography.titleSmall),
       subtitle: Text(
         '${conversation.currentRound} 輪 · ${conversation.messages.length} 則訊息'
         '${heat != null ? ' · 熱度 $heat' : ''}',

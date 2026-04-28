@@ -44,6 +44,12 @@ void main() {
     expect(find.textContaining('Bob'), findsWidgets);
     expect(find.textContaining('3'), findsWidgets); // N 對話
     expect(find.textContaining('7'), findsWidgets); // M traits
+    expect(find.textContaining('整合整個對象卡'), findsOneWidget,
+        reason: 'merge dialog must frame itself as a partner-dedupe tool '
+            '(integrates the whole partner card), not a conversation-continuation action.');
+    expect(find.textContaining('不是只接續目前這段對話'), findsOneWidget,
+        reason: 'dialog must explicitly contrast against conversation continuation '
+            'so users do not confuse 合併 with 接續.');
     expect(find.textContaining('不可復原'), findsOneWidget);
     expect(find.text('確認合併'), findsOneWidget);
     expect(find.text('取消'), findsOneWidget);

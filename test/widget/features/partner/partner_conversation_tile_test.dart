@@ -81,11 +81,28 @@ void main() {
         ),
       ),
     ));
-    await t.tap(find.text('第 a 段'));
+    await t.tap(find.text('04/20 互動紀錄'));
     await t.pumpAndSettle();
 
     expect(tapped, isTrue);
     expect(reassigned, isFalse);
+  });
+
+  testWidgets('title shows MM/dd 互動紀錄, not partner name', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerConversationTile(
+          conversation: _conv(),
+          onTap: () {},
+        ),
+      ),
+    ));
+
+    expect(find.text('04/20 互動紀錄'), findsOneWidget);
+    expect(find.text('第 a 段'), findsNothing,
+        reason:
+            'Conversation tile under Partner detail must NOT main-bill the partner name; '
+            'that breaks the "人 vs 互動" mental model.');
   });
 
   testWidgets('onReassign=null → 改派 item disabled', (t) async {

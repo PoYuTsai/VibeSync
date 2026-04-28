@@ -55,8 +55,8 @@ class PartnerDetailScreen extends ConsumerWidget {
                 value: 'merge',
                 enabled: hasOtherPartner,
                 child: Text(hasOtherPartner
-                    ? '合併到其他對象'
-                    : '合併到其他對象（需至少 2 個對象）'),
+                    ? '合併重複對象'
+                    : '合併重複對象（需至少 2 個對象）'),
               ),
               const PopupMenuItem(
                 value: 'edit',

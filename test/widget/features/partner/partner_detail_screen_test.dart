@@ -63,7 +63,7 @@ void main() {
     await t.tap(find.byIcon(Icons.more_vert));
     await t.pumpAndSettle();
 
-    expect(find.text('合併到其他對象'), findsOneWidget);
+    expect(find.text('合併重複對象'), findsOneWidget);
     expect(find.text('編輯對象（即將推出）'), findsOneWidget);
     expect(find.text('刪除對象（即將推出）'), findsOneWidget);
   });
@@ -86,8 +86,8 @@ void main() {
     await t.tap(find.byIcon(Icons.more_vert));
     await t.pumpAndSettle();
 
-    expect(find.text('合併到其他對象（需至少 2 個對象）'), findsOneWidget);
-    expect(find.text('合併到其他對象'), findsNothing);
+    expect(find.text('合併重複對象（需至少 2 個對象）'), findsOneWidget);
+    expect(find.text('合併重複對象'), findsNothing);
   });
 
   testWidgets('⋮ merge tap navigates to /partner/p1/merge', (t) async {
@@ -125,7 +125,7 @@ void main() {
 
     await t.tap(find.byIcon(Icons.more_vert));
     await t.pumpAndSettle();
-    await t.tap(find.text('合併到其他對象'));
+    await t.tap(find.text('合併重複對象'));
     await t.pumpAndSettle();
 
     expect(find.text('merge-stub-p1'), findsOneWidget);
@@ -205,8 +205,10 @@ void main() {
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
-    expect(find.text('第 a 段'), findsOneWidget);
-    expect(find.text('第 b 段'), findsOneWidget);
+    expect(find.byType(PartnerConversationTile), findsNWidgets(2),
+        reason:
+            'Tile titles no longer carry conversation.name (per "人 vs 互動" '
+            'mental-model fix); verify by widget count instead.');
   });
 
   testWidgets('tile ⋮ → 改派 opens reassign picker excluding current partner',

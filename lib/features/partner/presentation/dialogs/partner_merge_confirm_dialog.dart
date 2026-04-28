@@ -30,6 +30,23 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            '此功能會整合整個對象卡底下所有對話與特質，'
+            '不是只接續目前這段對話。',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.outline,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '請只在「同一個人被誤建為兩個對象」時使用。',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.outline,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 12),
           Text('$conversationCount 對話將搬遷'),
           const SizedBox(height: 4),
           Text('$traitCount 個特質聯集保留'),
