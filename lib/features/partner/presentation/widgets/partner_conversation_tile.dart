@@ -17,11 +17,13 @@ class PartnerConversationTile extends StatelessWidget {
   final Conversation conversation;
   final VoidCallback onTap;
   final VoidCallback? onReassign;
+  final VoidCallback? onDelete;
   const PartnerConversationTile({
     super.key,
     required this.conversation,
     required this.onTap,
     this.onReassign,
+    this.onDelete,
   });
 
   @override
@@ -42,6 +44,7 @@ class PartnerConversationTile extends StatelessWidget {
         icon: const Icon(Icons.more_vert),
         onSelected: (v) {
           if (v == 'reassign') onReassign?.call();
+          if (v == 'delete') onDelete?.call();
         },
         itemBuilder: (_) => [
           PopupMenuItem<String>(
@@ -49,10 +52,10 @@ class PartnerConversationTile extends StatelessWidget {
             enabled: onReassign != null,
             child: const Text('改派到其他對象'),
           ),
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'delete',
-            enabled: false,
-            child: Text('刪除對話（即將推出）'),
+            enabled: onDelete != null,
+            child: const Text('刪除對話'),
           ),
         ],
       ),

@@ -33,13 +33,14 @@ void main() {
     expect(find.byIcon(Icons.chevron_right), findsNothing);
   });
 
-  testWidgets('⋮ tap shows 改派 + 刪除（即將推出）items', (t) async {
+  testWidgets('⋮ tap shows 改派 + 刪除對話 items', (t) async {
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
         body: PartnerConversationTile(
           conversation: _conv(),
           onTap: () {},
           onReassign: () {},
+          onDelete: () {},
         ),
       ),
     ));
@@ -47,7 +48,7 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.text('改派到其他對象'), findsOneWidget);
-    expect(find.text('刪除對話（即將推出）'), findsOneWidget);
+    expect(find.text('刪除對話'), findsOneWidget);
   });
 
   testWidgets('改派 tap fires onReassign callback', (t) async {
@@ -103,6 +104,46 @@ void main() {
         reason:
             'Conversation tile under Partner detail must NOT main-bill the partner name; '
             'that breaks the "人 vs 互動" mental model.');
+  });
+
+  testWidgets('刪除 tap fires onDelete callback', (t) async {
+    var fired = false;
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerConversationTile(
+          conversation: _conv(),
+          onTap: () {},
+          onDelete: () => fired = true,
+        ),
+      ),
+    ));
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pumpAndSettle();
+    await t.tap(find.text('刪除對話'));
+    await t.pumpAndSettle();
+
+    expect(fired, isTrue);
+  });
+
+  testWidgets('onDelete=null → 刪除 item disabled', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerConversationTile(
+          conversation: _conv(),
+          onTap: () {},
+        ),
+      ),
+    ));
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pumpAndSettle();
+
+    final item = t.widget<PopupMenuItem<String>>(
+      find.ancestor(
+        of: find.text('刪除對話'),
+        matching: find.byType(PopupMenuItem<String>),
+      ),
+    );
+    expect(item.enabled, isFalse);
   });
 
   testWidgets('onReassign=null → 改派 item disabled', (t) async {

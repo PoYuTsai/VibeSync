@@ -19,7 +19,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:intl/intl.dart';
+
+import '../../../conversation/data/providers/conversation_write_controller.dart';
+import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
+import '../../../conversation/presentation/dialogs/delete_conversation_confirm_dialog.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
@@ -103,6 +108,7 @@ class PartnerDetailScreen extends ConsumerWidget {
                   conversation: c,
                   ref: ref,
                 ),
+                onDelete: () => _confirmDeleteConversation(context, ref, c),
               ),
             ),
         ],
@@ -117,6 +123,28 @@ class PartnerDetailScreen extends ConsumerWidget {
         ),
         label: const Text('+ 新增對話'),
       ),
+    );
+  }
+}
+
+Future<void> _confirmDeleteConversation(
+  BuildContext context,
+  WidgetRef ref,
+  Conversation c,
+) async {
+  final dateLabel = DateFormat('MM/dd').format(c.updatedAt);
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (_) => DeleteConversationConfirmDialog(
+      dateLabel: dateLabel,
+      messageCount: c.messages.length,
+    ),
+  );
+  if (confirmed != true) return;
+  await ref.read(conversationWriteControllerProvider.notifier).delete(c);
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已刪除這段互動紀錄')),
     );
   }
 }
