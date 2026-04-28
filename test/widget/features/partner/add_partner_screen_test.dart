@@ -33,6 +33,8 @@ import 'package:vibesync/features/partner/data/repositories/partner_repository.d
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/add_partner_screen.dart';
+import 'package:vibesync/shared/widgets/glassmorphic_text_field.dart';
+import 'package:vibesync/shared/widgets/gradient_button.dart';
 
 void main() {
   late Directory tmp;
@@ -45,8 +47,7 @@ void main() {
     if (!Hive.isAdapterRegistered(PartnerAdapter().typeId)) {
       Hive.registerAdapter(PartnerAdapter());
     }
-    partnerBox =
-        await Hive.openBox<Partner>('partners_${tmp.path.hashCode}');
+    partnerBox = await Hive.openBox<Partner>('partners_${tmp.path.hashCode}');
     repo = PartnerRepository(box: partnerBox);
   });
 
@@ -72,8 +73,8 @@ void main() {
     return ProviderScope(
       overrides: [
         partnerRepositoryProvider.overrideWithValue(repo),
-        authConversationScopeProvider.overrideWith(
-            (ref) => authStream ?? Stream.value('u-test')),
+        authConversationScopeProvider
+            .overrideWith((ref) => authStream ?? Stream.value('u-test')),
       ],
       child: MaterialApp.router(routerConfig: router),
     );
@@ -84,21 +85,45 @@ void main() {
   // disrupt the test framework's between-test cleanup in our setup; running
   // the non-mutating tests first guarantees they always execute.
 
+  testWidgets('hint shows free-text 範例 with emoji (post-redesign copy)',
+      (t) async {
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+    expect(
+      find.text('例：Alice 🧚🏻‍♀️ / 咖啡廳的捲髮女孩 ☕'),
+      findsOneWidget,
+      reason: 'hint must signal free-text intent (name OR description)',
+    );
+  });
+
+  testWidgets('input clears transparent AppBar toolbar', (t) async {
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+
+    final appBarBottom = t.getBottomLeft(find.byType(AppBar)).dy;
+    final inputTop = t.getTopLeft(find.byType(GlassmorphicTextField)).dy;
+
+    expect(
+      inputTop,
+      greaterThan(appBarBottom),
+      reason: 'extendBodyBehindAppBar should only affect the background; '
+          'the input must not sit underneath the transparent AppBar.',
+    );
+  });
+
   testWidgets('submit disabled while name empty', (t) async {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
-    final btn =
-        t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
+    final btn = t.widget<GradientButton>(find.byType(GradientButton));
     expect(btn.onPressed, isNull);
   });
 
   testWidgets('submit enabled once name has non-whitespace', (t) async {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.enterText(find.byType(TextField), 'Alice');
     await t.pump();
-    final btn =
-        t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
+    final btn = t.widget<GradientButton>(find.byType(GradientButton));
     expect(btn.onPressed, isNotNull);
   });
 
@@ -106,10 +131,9 @@ void main() {
       (t) async {
     await t.pumpWidget(harness(authStream: Stream.value(null)));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.enterText(find.byType(TextField), 'Alice');
     await t.pump();
-    final btn =
-        t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
+    final btn = t.widget<GradientButton>(find.byType(GradientButton));
     expect(btn.onPressed, isNull,
         reason: 'must NOT create ownerless Partner that would be invisible');
     expect(partnerBox.values, isEmpty);
@@ -121,10 +145,9 @@ void main() {
     addTearDown(controller.close);
     await t.pumpWidget(harness(authStream: controller.stream));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextFormField), 'Alice');
+    await t.enterText(find.byType(TextField), 'Alice');
     await t.pump();
-    final btn =
-        t.widget<FilledButton>(find.widgetWithText(FilledButton, '建立'));
+    final btn = t.widget<GradientButton>(find.byType(GradientButton));
     expect(btn.onPressed, isNull, reason: 'must wait for auth resolution');
   });
 
@@ -133,9 +156,9 @@ void main() {
     (t) async {
       await t.pumpWidget(harness());
       await t.pumpAndSettle();
-      await t.enterText(find.byType(TextFormField), 'Alice');
+      await t.enterText(find.byType(TextField), 'Alice');
       await t.pump();
-      await t.tap(find.widgetWithText(FilledButton, '建立'));
+      await t.tap(find.byType(GradientButton));
       await t.pump(const Duration(seconds: 1));
       expect(partnerBox.values.length, 1);
       final p = partnerBox.values.single;
