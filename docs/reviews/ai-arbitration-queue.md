@@ -130,12 +130,12 @@ Close-Condition:
 ## Live Queue
 
 ## [2026-04-28] AddPartner UI Redesign — Code Review (post-A2 follow-up)
-Status: IN_REVIEW
+Status: APPROVED
 Request-Type: review
 Raised-By: Claude
-Owner: Codex
+Owner: Eric
 Scope: review
-Branch/Commit: `feature/add-partner-ui-redesign` @ `de351aa` (PR #9)
+Branch/Commit: `feature/add-partner-ui-redesign` @ `5d909f7` reviewed + Codex patch (PR #9)
 
 Question:
 - Code review the AddPartner visual / hint redesign diff (1 production file + 1 test file). Verdict options: APPROVED / REVISED_AND_APPROVED (Codex pushes patch directly to branch) / REVISE.
@@ -157,6 +157,7 @@ Evidence:
 - `flutter test add_partner_screen_test.dart` → 5/5 pass + 1 skipped (pre-existing kernel cache hang on `pushReplacement`，not introduced by this PR)
 - `flutter test partner subset` (widget + unit + repositories) → 80/80 pass + 1 skip / 0 fail
 - `flutter analyze --no-fatal-infos lib test` → 0 issues
+- Codex patch verification: `add_partner_screen_test.dart` → 6 pass + 1 skip; partner subset → 81 pass + 1 skip; full `flutter analyze --no-fatal-infos lib test` → 0 issues.
 
 Open-Risks (Code Review Hot Spots):
 - HS-AP-1 — `_name.addListener` lifecycle correctness: GlassmorphicTextField has no `onChanged` callback so CTA enable state listens on the controller. `initState` adds, `dispose` removes-then-disposes. Claude position: order is correct (remove BEFORE dispose), but Codex should confirm no edge case where listener fires after `mounted == false` despite the guard.
@@ -174,17 +175,18 @@ Claude-Position:
 - Deferred: TF visual smoke (Eric + Bruce on TF build from this branch — see Action-Items).
 
 Codex-Position:
-- Pending
+- REVISED_AND_APPROVED. No remaining P1/P2 blockers. I patched the transparent-AppBar layout trap: `extendBodyBehindAppBar` now keeps the gradient under the AppBar while the form content clears `kToolbarHeight`; added a widget regression test for the input/AppBar spacing. Listener lifecycle, static bubbles, emoji hint, and `GradientButton.isLoading` all look acceptable for this visual-only follow-up.
+- Review doc: `docs/reviews/2026-04-28_addpartner-ui-redesign-code_codex-review.md`
 
 Verdict:
-- Pending
+- REVISED_AND_APPROVED
 
 Eric-Decision:
 - Pending TF visual confirmation + merge gate
 
 Action-Items:
-- [ ] Codex code reviews PR #9 diff
-- [ ] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
+- [x] Codex code reviews PR #9 diff
+- [x] If REVISED_AND_APPROVED: Codex pushes patch commit directly to branch
 - [ ] Eric / Bruce visually confirm on TF build from `feature/add-partner-ui-redesign`:
   · hint emoji renders correctly (no broken glyphs)
   · 3 bubbles do not overlap input field tap target

@@ -33,6 +33,7 @@ import 'package:vibesync/features/partner/data/repositories/partner_repository.d
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/add_partner_screen.dart';
+import 'package:vibesync/shared/widgets/glassmorphic_text_field.dart';
 import 'package:vibesync/shared/widgets/gradient_button.dart';
 
 void main() {
@@ -46,8 +47,7 @@ void main() {
     if (!Hive.isAdapterRegistered(PartnerAdapter().typeId)) {
       Hive.registerAdapter(PartnerAdapter());
     }
-    partnerBox =
-        await Hive.openBox<Partner>('partners_${tmp.path.hashCode}');
+    partnerBox = await Hive.openBox<Partner>('partners_${tmp.path.hashCode}');
     repo = PartnerRepository(box: partnerBox);
   });
 
@@ -73,8 +73,8 @@ void main() {
     return ProviderScope(
       overrides: [
         partnerRepositoryProvider.overrideWithValue(repo),
-        authConversationScopeProvider.overrideWith(
-            (ref) => authStream ?? Stream.value('u-test')),
+        authConversationScopeProvider
+            .overrideWith((ref) => authStream ?? Stream.value('u-test')),
       ],
       child: MaterialApp.router(routerConfig: router),
     );
@@ -93,6 +93,21 @@ void main() {
       find.text('例：Alice 🧚🏻‍♀️ / 咖啡廳的捲髮女孩 ☕'),
       findsOneWidget,
       reason: 'hint must signal free-text intent (name OR description)',
+    );
+  });
+
+  testWidgets('input clears transparent AppBar toolbar', (t) async {
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+
+    final appBarBottom = t.getBottomLeft(find.byType(AppBar)).dy;
+    final inputTop = t.getTopLeft(find.byType(GlassmorphicTextField)).dy;
+
+    expect(
+      inputTop,
+      greaterThan(appBarBottom),
+      reason: 'extendBodyBehindAppBar should only affect the background; '
+          'the input must not sit underneath the transparent AppBar.',
     );
   });
 

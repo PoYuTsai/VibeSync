@@ -124,7 +124,14 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
           const Positioned.fill(child: _AddPartnerBackground()),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              // `extendBodyBehindAppBar` lets the gradient sit under the
+              // transparent AppBar; content still needs to clear the toolbar.
+              padding: const EdgeInsets.fromLTRB(
+                24,
+                kToolbarHeight + 16,
+                24,
+                24,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
