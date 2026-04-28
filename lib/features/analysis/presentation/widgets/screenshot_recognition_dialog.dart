@@ -773,6 +773,7 @@ class _ScreenshotRecognitionDialogState
                           ScreenshotRecognitionHelper.importModeAppendCurrent;
                     });
                   },
+                  showCheckmark: false,
                   selectedColor: AppColors.primary.withValues(alpha: 0.2),
                   backgroundColor: Colors.white,
                   side: BorderSide(
@@ -799,6 +800,7 @@ class _ScreenshotRecognitionDialogState
                           ScreenshotRecognitionHelper.importModeNewConversation;
                     });
                   },
+                  showCheckmark: false,
                   selectedColor: AppColors.primary.withValues(alpha: 0.2),
                   backgroundColor: Colors.white,
                   side: BorderSide(
