@@ -158,6 +158,10 @@ Evidence:
 - `flutter test partner subset` (widget + unit + repositories) → 80/80 pass + 1 skip / 0 fail
 - `flutter analyze --no-fatal-infos lib test` → 0 issues
 - Codex patch verification: `add_partner_screen_test.dart` → 6 pass + 1 skip; partner subset → 81 pass + 1 skip; full `flutter analyze --no-fatal-infos lib test` → 0 issues.
+- Claude post-Codex-patch local re-verify (WSL, post `842a552`, 2026-04-28 ~13:xx GMT+8):
+  · `flutter test add_partner_screen_test.dart` → 6/6 pass + 1 skip (Codex 新加 "input clears transparent AppBar toolbar" test 過)
+  · `flutter analyze --no-fatal-infos lib test` → 0 issues
+  · 雙環境（Codex + WSL）一致 — patch 無 platform-dependent 副作用
 
 Open-Risks (Code Review Hot Spots):
 - HS-AP-1 — `_name.addListener` lifecycle correctness: GlassmorphicTextField has no `onChanged` callback so CTA enable state listens on the controller. `initState` adds, `dispose` removes-then-disposes. Claude position: order is correct (remove BEFORE dispose), but Codex should confirm no edge case where listener fires after `mounted == false` despite the guard.
