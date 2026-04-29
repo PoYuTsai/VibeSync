@@ -342,11 +342,14 @@ void main() {
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
-    expect(find.textContaining('尚未有對話'), findsOneWidget);
+    expect(find.textContaining('還沒有互動紀錄'), findsOneWidget);
   });
 
   testWidgets('renders one tile per conversation when list non-empty',
       (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerByIdProvider('p1').overrideWith((_) => _p()),
@@ -453,12 +456,13 @@ void main() {
     await t.tap(find.text('Bob'));
     await t.pumpAndSettle();
 
-    expect(find.text('改派到「Bob」？'), findsOneWidget);
+    expect(find.text('把這段移到「Bob」？'), findsOneWidget);
+    expect(find.textContaining('請確認這段聊天真的屬於「Bob」'), findsOneWidget);
     expect(find.textContaining('只會移動目前這一段互動紀錄'), findsOneWidget);
-    expect(find.textContaining('不會合併兩個對象'), findsOneWidget);
+    expect(find.textContaining('不會合併兩張對象卡'), findsOneWidget);
     expect(fake.saveCalled, isFalse);
 
-    await t.tap(find.text('確認改派'));
+    await t.tap(find.text('移過去'));
     await t.pumpAndSettle();
 
     expect(fake.saveCalled, isTrue);

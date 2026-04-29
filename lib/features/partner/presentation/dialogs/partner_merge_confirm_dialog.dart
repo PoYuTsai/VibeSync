@@ -30,13 +30,13 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('保留：$toName'),
+          Text('最後會留下：$toName'),
           const SizedBox(height: 4),
-          Text('移除：$fromName'),
+          Text('會被移除：$fromName'),
           const SizedBox(height: 8),
           Text(
-            '$fromName 底下的互動紀錄與特質會搬到 $toName。'
-            '這會整合整個對象卡，不是只接續目前這段對話。',
+            '$fromName 裡面的互動紀錄和特質，會全部移到 $toName。'
+            '這是整理同一個人的重複對象卡，不是接續某一段聊天。',
             style: TextStyle(
               color: Theme.of(context).colorScheme.outline,
               fontSize: 12,
@@ -44,7 +44,7 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '請只在「同一個人被誤建為兩個對象」時使用。',
+            '請確認這兩張卡真的是同一個人。',
             style: TextStyle(
               color: Theme.of(context).colorScheme.outline,
               fontSize: 12,

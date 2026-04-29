@@ -135,9 +135,27 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const Text(
+                    '先建立一張對象卡',
+                    style: TextStyle(
+                      color: AppColors.onBackgroundPrimary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '這張卡代表一個人。之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這張卡裡。',
+                    style: TextStyle(
+                      color: AppColors.onBackgroundSecondary,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   GlassmorphicTextField(
                     controller: _name,
-                    hintText: '例：Alice 🧚🏻‍♀️ / 咖啡廳的捲髮女孩 ☕',
+                    hintText: '例：Alice / Tinder 上的空姐 / 週五咖啡廳認識的人',
                   ),
                   const SizedBox(height: 24),
                   GradientButton(

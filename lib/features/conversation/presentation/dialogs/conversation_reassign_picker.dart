@@ -31,10 +31,11 @@ Future<void> showConversationReassignPicker(
           final confirmed = await showDialog<bool>(
             context: sheetCtx,
             builder: (dialogCtx) => AlertDialog(
-              title: Text('改派到「${target.name}」？'),
+              title: Text('把這段移到「${target.name}」？'),
               content: Text(
-                '這只會移動目前這一段互動紀錄，不會合併兩個對象。\n\n'
-                '移動後，這段互動紀錄會出現在「${target.name}」底下。',
+                '請確認這段聊天真的屬於「${target.name}」。\n\n'
+                '只會移動目前這一段互動紀錄，不會合併兩張對象卡，也不會改到其他聊天。\n\n'
+                '移動後，它會出現在「${target.name}」底下。',
               ),
               actions: [
                 TextButton(
@@ -43,7 +44,7 @@ Future<void> showConversationReassignPicker(
                 ),
                 ElevatedButton(
                   onPressed: () => Navigator.of(dialogCtx).pop(true),
-                  child: const Text('確認改派'),
+                  child: const Text('移過去'),
                 ),
               ],
             ),

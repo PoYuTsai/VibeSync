@@ -39,7 +39,7 @@ class PartnerListScreen extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Text(
-            '還沒有對象，從右下加一個開始',
+            '還沒有對象。\n先新增一個人。之後與同一個人的聊天，都會整理在同一張對象卡裡。',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),
@@ -151,13 +151,13 @@ class PartnerListScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
         title: Text(
-          '無法刪除',
+          '還不能刪除',
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         content: Text(
-          '「${partner.name}」底下還有 $conversationCount 段互動紀錄，暫時不能刪除。\n\n'
-          '請先進入對象頁，把互動紀錄刪除或改派到其他對象。'
-          '全部清空後，就可以刪除這個對象。',
+          '「${partner.name}」這張對象卡裡還有 $conversationCount 段互動紀錄。\n\n'
+          '請先打開對象頁，把紀錄刪掉或移到其他對象。'
+          '清空後就能刪除這張對象卡。',
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [

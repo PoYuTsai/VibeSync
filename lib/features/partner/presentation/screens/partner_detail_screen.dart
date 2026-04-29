@@ -115,6 +115,16 @@ class PartnerDetailScreen extends ConsumerWidget {
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
                 const SizedBox(height: 16),
                 PartnerTraitsCard(view: aggregate),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '這些特質會綜合同一張對象卡裡的互動紀錄。若某段聊天不是同一個人，請從該紀錄的 ⋮ 移到其他對象。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 PartnerRadarSummaryCard(
                   latestConversation:
@@ -125,14 +135,37 @@ class PartnerDetailScreen extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Text(
-                      '尚未有對話 — 等待第一段互動建立',
+                      '還沒有互動紀錄。\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始。',
                       textAlign: TextAlign.center,
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.onBackgroundSecondary,
                       ),
                     ),
                   )
-                else
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '互動紀錄',
+                          style: AppTypography.titleSmall.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '要接續同一段聊天，請點進原本那段紀錄；同一個人換日期或換平台，才建議再新增一段，保持對話的分析品質乾淨。',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   ...conversations.map(
                     (c) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
@@ -149,6 +182,7 @@ class PartnerDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                ],
               ],
             ),
           ),

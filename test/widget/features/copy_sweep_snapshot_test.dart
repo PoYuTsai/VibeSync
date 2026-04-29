@@ -91,7 +91,7 @@ void main() {
 
       // Exact string check — drift detector. Empty state was set by Phase 2/4.
       expect(
-        find.text('還沒有對象，從右下加一個開始'),
+        find.text('還沒有對象。\n先新增一個人。之後與同一個人的聊天，都會整理在同一張對象卡裡。'),
         findsOneWidget,
         reason: 'Partner list empty state must use 「對象」 vocabulary (ADR-15).',
       );
@@ -128,9 +128,10 @@ void main() {
         reason: 'Partner detail FAB creates a Conversation under the current '
             'Partner — string must stay 「新增對話」 per ADR-15.',
       );
-      // Empty conversation hint also stays 「對話」.
+      // Empty conversation hint stays Conversation-level, but uses plainer
+      // "互動紀錄" wording so first-time users understand the folder model.
       expect(
-        find.textContaining('尚未有對話'),
+        find.textContaining('還沒有互動紀錄'),
         findsOneWidget,
         reason: 'Partner detail empty conversation hint must stay '
             '「對話」 (Conversation-level).',

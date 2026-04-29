@@ -178,9 +178,8 @@ void main() {
 
       // Informational dialog: no "刪除" button, only "知道了" / OK.
       expect(find.textContaining('還有 2 段互動紀錄'), findsOneWidget);
-      expect(find.textContaining('暫時不能刪除'), findsOneWidget);
-      expect(find.textContaining('全部清空後'), findsOneWidget);
-      expect(find.text('無法刪除'), findsOneWidget);
+      expect(find.textContaining('清空後就能刪除'), findsOneWidget);
+      expect(find.text('還不能刪除'), findsOneWidget);
       expect(find.text('刪除'), findsNothing);
       expect(find.text('知道了'), findsOneWidget);
     });

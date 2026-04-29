@@ -90,7 +90,7 @@ void main() {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
     expect(
-      find.text('例：Alice 🧚🏻‍♀️ / 咖啡廳的捲髮女孩 ☕'),
+      find.text('例：Alice / Tinder 上的空姐 / 週五咖啡廳認識的人'),
       findsOneWidget,
       reason: 'hint must signal free-text intent (name OR description)',
     );

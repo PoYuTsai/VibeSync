@@ -47,6 +47,13 @@ class NewConversationSheet extends ConsumerWidget {
               color: AppColors.glassTextPrimary,
             ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            '在這張對象卡裡，新增同一個人的一段互動紀錄',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.unselectedText,
+            ),
+          ),
           const SizedBox(height: 20),
           ListTile(
             leading: Container(
@@ -62,7 +69,7 @@ class NewConversationSheet extends ConsumerWidget {
               style: TextStyle(color: AppColors.glassTextPrimary),
             ),
             subtitle: Text(
-              '輸入聊天內容並開始分析',
+              '貼上或輸入這個人的一段聊天',
               style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
             ),
             onTap: () {
@@ -86,7 +93,7 @@ class NewConversationSheet extends ConsumerWidget {
               style: TextStyle(color: AppColors.glassTextPrimary),
             ),
             subtitle: Text(
-              '從相簿選擇聊天截圖，AI 先幫你辨識再建立對話',
+              '選這個人的聊天截圖，AI 辨識後會建立一段互動紀錄',
               style: TextStyle(color: AppColors.unselectedText, fontSize: 12),
             ),
             onTap: () async {
