@@ -283,7 +283,7 @@ class _SplashScreenState extends State<SplashScreen>
                       return Opacity(
                         opacity: _subtitleOpacity.value,
                         child: Text(
-                          '你的AI專屬聊天教練',
+                          '有記憶的 AI 約會教練',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -305,7 +305,8 @@ class _SplashScreenState extends State<SplashScreen>
               right: 0,
               child: Center(
                 child: AnimatedBuilder(
-                  animation: Listenable.merge([_dotController, _dotPulseController]),
+                  animation:
+                      Listenable.merge([_dotController, _dotPulseController]),
                   builder: (context, child) {
                     final pulseScale = 1.0 + 0.3 * _dotPulseController.value;
                     final pulseGlow = 0.4 + 0.4 * _dotPulseController.value;
@@ -318,10 +319,12 @@ class _SplashScreenState extends State<SplashScreen>
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: const Color(0xFFA050FF).withValues(alpha: 0.6),
+                            color:
+                                const Color(0xFFA050FF).withValues(alpha: 0.6),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFA050FF).withValues(alpha: pulseGlow * 0.4),
+                                color: const Color(0xFFA050FF)
+                                    .withValues(alpha: pulseGlow * 0.4),
                                 blurRadius: 6 + 10 * _dotPulseController.value,
                                 spreadRadius: 2 * _dotPulseController.value,
                               ),
@@ -420,7 +423,10 @@ class _SplashScreenState extends State<SplashScreen>
       animation: controller,
       builder: (context, child) {
         final progress = math.sin(controller.value * math.pi * 2);
-        final breathe = 0.6 + 0.4 * math.sin(controller.value * math.pi * 2 * (9 / breatheDuration));
+        final breathe = 0.6 +
+            0.4 *
+                math.sin(
+                    controller.value * math.pi * 2 * (9 / breatheDuration));
         final dx = floatX * progress;
         final dy = floatY * progress;
         final scale = 1.0 + 0.08 * progress;
