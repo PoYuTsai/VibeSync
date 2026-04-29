@@ -91,7 +91,7 @@ void main() {
 
       // Exact string check — drift detector. Empty state was set by Phase 2/4.
       expect(
-        find.text('還沒有對象。\n先新增一個人。之後與同一個人的聊天，都會整理在同一張對象卡裡。'),
+        find.text('還沒有對象\n先新增一個人，之後與同一個人的聊天，都會整理在同一張對象卡裡'),
         findsOneWidget,
         reason: 'Partner list empty state must use 「對象」 vocabulary (ADR-15).',
       );

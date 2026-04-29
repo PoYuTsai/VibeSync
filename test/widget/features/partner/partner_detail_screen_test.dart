@@ -90,7 +90,7 @@ void main() {
     expect(find.text('已刪除這段互動紀錄'), findsOneWidget);
   });
 
-  testWidgets('⋮ menu: merge + edit ENABLED, delete still 即將推出', (t) async {
+  testWidgets('⋮ menu: merge + edit only, no disabled delete item', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerByIdProvider('p1').overrideWith((_) => _p()),
@@ -113,7 +113,7 @@ void main() {
     expect(find.text('合併重複對象'), findsOneWidget);
     expect(find.text('編輯對象'), findsOneWidget);
     expect(find.text('編輯對象（即將推出）'), findsNothing);
-    expect(find.text('刪除對象（即將推出）'), findsOneWidget);
+    expect(find.text('刪除對象（即將推出）'), findsNothing);
   });
 
   testWidgets('⋮ edit → dialog → 儲存 calls updateName + success snackbar',

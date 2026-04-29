@@ -75,9 +75,7 @@ Future<void> _pumpHarness(
 }
 
 void main() {
-  testWidgets(
-      'sheet opens with picker excluding current partnerId',
-      (t) async {
+  testWidgets('sheet opens with picker excluding current partnerId', (t) async {
     final fake = RecordingConversationWriteController();
     final c = _conv(partnerId: 'A');
     await _pumpHarness(
@@ -111,6 +109,10 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.text('Bob'));
     await t.pumpAndSettle();
+    expect(find.text('把這段移到「Bob」？'), findsOneWidget);
+    expect(find.textContaining('只會移動目前這一段互動紀錄'), findsOneWidget);
+    await t.tap(find.text('移過去'));
+    await t.pumpAndSettle();
 
     expect(fake.saveCalled, isTrue);
     expect(fake.savedConversation?.id, 'c1');
@@ -121,8 +123,7 @@ void main() {
     expect(find.text('Bob'), findsNothing);
   });
 
-  testWidgets(
-      'save failure rolls back conversation.partnerId + shows SnackBar',
+  testWidgets('save failure rolls back conversation.partnerId + shows SnackBar',
       (t) async {
     final fake = RecordingConversationWriteController()
       ..throwOnSave = StateError('boom');
@@ -137,6 +138,8 @@ void main() {
     await t.tap(find.text('open-picker'));
     await t.pumpAndSettle();
     await t.tap(find.text('Bob'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('移過去'));
     await t.pumpAndSettle();
 
     expect(fake.saveCalled, isTrue);

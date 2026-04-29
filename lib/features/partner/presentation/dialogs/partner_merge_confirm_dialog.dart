@@ -35,8 +35,8 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
           Text('會被移除：$fromName'),
           const SizedBox(height: 8),
           Text(
-            '$fromName 裡面的互動紀錄和特質，會全部移到 $toName。'
-            '這是整理同一個人的重複對象卡，不是接續某一段聊天。',
+            '$fromName 裡面的互動紀錄和特質會全部移到 $toName，'
+            '這是整理同一個人的重複對象卡，不是接續某一段聊天',
             style: TextStyle(
               color: Theme.of(context).colorScheme.outline,
               fontSize: 12,
@@ -44,16 +44,16 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '請確認這兩張卡真的是同一個人。',
+            '請確認這兩張卡真的是同一個人',
             style: TextStyle(
               color: Theme.of(context).colorScheme.outline,
               fontSize: 12,
             ),
           ),
           const SizedBox(height: 12),
-          Text('$conversationCount 對話將搬遷'),
+          Text('$conversationCount 段互動紀錄將搬遷'),
           const SizedBox(height: 4),
-          Text('$traitCount 個特質聯集保留'),
+          Text('$traitCount 個特質會保留'),
           const SizedBox(height: 12),
           Text(
             '⚠️ 此操作不可復原',

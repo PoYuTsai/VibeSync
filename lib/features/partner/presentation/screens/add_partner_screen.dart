@@ -145,7 +145,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    '這張卡代表一個人。之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這張卡裡。',
+                    '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
                     style: TextStyle(
                       color: AppColors.onBackgroundSecondary,
                       fontSize: 13,
@@ -155,7 +155,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                   const SizedBox(height: 20),
                   GlassmorphicTextField(
                     controller: _name,
-                    hintText: '例：Alice / Tinder 上的空姐 / 週五咖啡廳認識的人',
+                    hintText: '例：Alice / Tinder 上的空姐',
                   ),
                   const SizedBox(height: 24),
                   GradientButton(

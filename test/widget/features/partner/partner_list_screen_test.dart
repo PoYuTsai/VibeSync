@@ -97,9 +97,9 @@ void main() {
     // Names
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('Bob'), findsOneWidget);
-    // Avatar initials
-    expect(find.text('A'), findsOneWidget);
-    expect(find.text('B'), findsOneWidget);
+    // Avatar fallback labels
+    expect(find.text('AL'), findsOneWidget);
+    expect(find.text('BO'), findsOneWidget);
     // Heat indicator for Alice (70 → hot 🔥) AND fallback for Bob
     expect(find.text('🔥'), findsOneWidget);
     expect(find.text('70'), findsOneWidget);

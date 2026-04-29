@@ -49,7 +49,7 @@ class NewConversationSheet extends ConsumerWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '在這張對象卡裡，新增同一個人的一段互動紀錄',
+            '在這張對象卡裡新增同一個人的一段互動紀錄',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.unselectedText,
             ),

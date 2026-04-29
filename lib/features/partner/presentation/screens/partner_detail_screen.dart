@@ -87,11 +87,6 @@ class PartnerDetailScreen extends ConsumerWidget {
                 value: 'edit',
                 child: Text('編輯對象'),
               ),
-              const PopupMenuItem(
-                value: 'delete',
-                enabled: false,
-                child: Text('刪除對象（即將推出）'),
-              ),
             ],
             onSelected: (v) {
               if (v == 'merge') context.push('/partner/$partnerId/merge');
@@ -109,8 +104,7 @@ class PartnerDetailScreen extends ConsumerWidget {
               // under the transparent toolbar, but content still needs to
               // clear the toolbar hit area. SafeArea only accounts for the
               // status bar, not the AppBar height.
-              padding:
-                  const EdgeInsets.fromLTRB(16, kToolbarHeight + 12, 16, 96),
+              padding: const EdgeInsets.fromLTRB(16, kToolbarHeight, 16, 96),
               children: [
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
                 const SizedBox(height: 16),
@@ -118,7 +112,7 @@ class PartnerDetailScreen extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '這些特質會綜合同一張對象卡裡的互動紀錄。若某段聊天不是同一個人，請從該紀錄的 ⋮ 移到其他對象。',
+                    '這些特質會綜合同一張對象卡裡的互動紀錄；若某段聊天不是同一個人，請從該紀錄的 ⋮ 移到其他對象',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.onBackgroundSecondary,
                       height: 1.35,
@@ -135,7 +129,7 @@ class PartnerDetailScreen extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Text(
-                      '還沒有互動紀錄。\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始。',
+                      '還沒有互動紀錄\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始',
                       textAlign: TextAlign.center,
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.onBackgroundSecondary,
@@ -157,7 +151,7 @@ class PartnerDetailScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '要接續同一段聊天，請點進原本那段紀錄；同一個人換日期或換平台，才建議再新增一段，保持對話的分析品質乾淨。',
+                          '要接續同一段聊天，請點進原本那段紀錄；同一個人換日期或換平台，才建議再新增一段，保持對話的分析品質乾淨',
                           style: AppTypography.bodySmall.copyWith(
                             color: AppColors.onBackgroundSecondary,
                             height: 1.35,

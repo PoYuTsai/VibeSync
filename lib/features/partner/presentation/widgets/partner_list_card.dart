@@ -63,6 +63,24 @@ class PartnerListCard extends StatelessWidget {
     return out;
   }
 
+  String _avatarLabel(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '?';
+
+    final latinWords = RegExp(r'[A-Za-z]+')
+        .allMatches(trimmed)
+        .map((m) => m.group(0)!)
+        .toList();
+    if (latinWords.length >= 2) {
+      return '${latinWords[0][0]}${latinWords[1][0]}'.toUpperCase();
+    }
+    if (latinWords.length == 1 && trimmed.startsWith(latinWords.first)) {
+      return latinWords.first.characters.take(2).toString().toUpperCase();
+    }
+
+    return trimmed.characters.take(2).toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     final tags = _previewTags(aggregate.unionInterests, aggregate.unionTraits);
@@ -73,8 +91,7 @@ class PartnerListCard extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: ListTile(
         onTap: onTap,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           width: 48,
           height: 48,
@@ -88,9 +105,8 @@ class PartnerListCard extends StatelessWidget {
           ),
           child: Center(
             child: Text(
-              partner.name.isNotEmpty ? partner.name[0] : '?',
-              style:
-                  AppTypography.titleLarge.copyWith(color: Colors.black87),
+              _avatarLabel(partner.name),
+              style: AppTypography.titleLarge.copyWith(color: Colors.black87),
             ),
           ),
         ),
@@ -105,8 +121,8 @@ class PartnerListCard extends StatelessWidget {
           ),
           Text(
             _formatDate(aggregate.lastInteraction),
-            style: AppTypography.caption
-                .copyWith(color: AppColors.glassTextHint),
+            style:
+                AppTypography.caption.copyWith(color: AppColors.glassTextHint),
           ),
         ]),
         subtitle: Column(

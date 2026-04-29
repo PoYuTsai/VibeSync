@@ -39,7 +39,7 @@ class PartnerListScreen extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Text(
-            '還沒有對象。\n先新增一個人。之後與同一個人的聊天，都會整理在同一張對象卡裡。',
+            '還沒有對象\n先新增一個人，之後與同一個人的聊天，都會整理在同一張對象卡裡',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),
@@ -155,9 +155,8 @@ class PartnerListScreen extends ConsumerWidget {
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         content: Text(
-          '「${partner.name}」這張對象卡裡還有 $conversationCount 段互動紀錄。\n\n'
-          '請先打開對象頁，把紀錄刪掉或移到其他對象。'
-          '清空後就能刪除這張對象卡。',
+          '「${partner.name}」這張對象卡裡還有 $conversationCount 段互動紀錄\n\n'
+          '請先打開對象頁，把紀錄刪掉或移到其他對象，清空後就能刪除這張對象卡',
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [

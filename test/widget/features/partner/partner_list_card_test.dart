@@ -48,8 +48,7 @@ Future<void> _pump(WidgetTester t, Widget child) async {
 }
 
 void main() {
-  testWidgets(
-      'renders 5 visual pieces given Partner + non-empty aggregate',
+  testWidgets('renders 5 visual pieces given Partner + non-empty aggregate',
       (t) async {
     await _pump(
       t,
@@ -67,8 +66,8 @@ void main() {
       ),
     );
 
-    // Piece 1: avatar — first character of name
-    expect(find.text('A'), findsOneWidget);
+    // Piece 1: avatar — readable fallback label, not just first character.
+    expect(find.text('AL'), findsOneWidget);
     // Piece 2: name
     expect(find.text('Alice'), findsOneWidget);
     // Piece 3: relative date — > 7 days ago, fixed past date renders MM/dd
@@ -80,6 +79,42 @@ void main() {
     expect(find.text('咖啡 · 溫柔'), findsOneWidget);
     // Piece 6: trailing delete icon
     expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+  });
+
+  testWidgets('avatar fallback keeps names readable across languages',
+      (t) async {
+    await _pump(
+      t,
+      Column(
+        children: [
+          PartnerListCard(
+            partner: _p('a', '小明同學'),
+            aggregate: _agg(),
+            onTap: () {},
+          ),
+          PartnerListCard(
+            partner: _p('b', '王小明'),
+            aggregate: _agg(),
+            onTap: () {},
+          ),
+          PartnerListCard(
+            partner: _p('c', 'Bruce Chiang'),
+            aggregate: _agg(),
+            onTap: () {},
+          ),
+          PartnerListCard(
+            partner: _p('d', 'testa'),
+            aggregate: _agg(),
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('小明'), findsOneWidget);
+    expect(find.text('王小'), findsOneWidget);
+    expect(find.text('BC'), findsOneWidget);
+    expect(find.text('TE'), findsOneWidget);
   });
 
   testWidgets('falls back to "🌡️ 待分析" when latestHeat is null', (t) async {
@@ -116,8 +151,7 @@ void main() {
     expect(find.text('i0 · t0 · i1'), findsOneWidget);
   });
 
-  testWidgets(
-      'keeps at least one trait when both interests and traits exist',
+  testWidgets('keeps at least one trait when both interests and traits exist',
       (t) async {
     await _pump(
       t,
@@ -153,8 +187,7 @@ void main() {
     expect(fired, 1);
   });
 
-  testWidgets('does not render delete icon when onDelete is null',
-      (t) async {
+  testWidgets('does not render delete icon when onDelete is null', (t) async {
     await _pump(
       t,
       PartnerListCard(

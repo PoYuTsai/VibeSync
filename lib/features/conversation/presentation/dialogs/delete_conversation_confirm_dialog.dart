@@ -24,7 +24,7 @@ class DeleteConversationConfirmDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$dateLabel · $messageCount 則訊息將被永久刪除。',
+            '$dateLabel · $messageCount 則訊息會永久刪除',
           ),
           const SizedBox(height: 12),
           Text(
