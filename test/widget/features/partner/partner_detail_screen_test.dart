@@ -412,6 +412,60 @@ void main() {
     expect(pickerSubtree, findsNothing);
   });
 
+  testWidgets('reassign picker confirms single-record move before save',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    final fake = RecordingConversationWriteController();
+    final attachedConv = Conversation(
+      id: 'c1',
+      name: '第 a 段',
+      messages: const [],
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      partnerId: 'p1',
+    );
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [attachedConv]),
+        partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
+        conversationWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    final tileMenu = find.descendant(
+      of: find.byType(PartnerConversationTile),
+      matching: find.byIcon(Icons.more_vert),
+    );
+    await t.tap(tileMenu);
+    await t.pumpAndSettle();
+    await t.tap(find.text('改派到其他對象'));
+    await t.pumpAndSettle();
+
+    await t.tap(find.text('Bob'));
+    await t.pumpAndSettle();
+
+    expect(find.text('改派到「Bob」？'), findsOneWidget);
+    expect(find.textContaining('只會移動目前這一段互動紀錄'), findsOneWidget);
+    expect(find.textContaining('不會合併兩個對象'), findsOneWidget);
+    expect(fake.saveCalled, isFalse);
+
+    await t.tap(find.text('確認改派'));
+    await t.pumpAndSettle();
+
+    expect(fake.saveCalled, isTrue);
+    expect(fake.savedPartnerIdAtCallTime, 'q1');
+    expect(fake.savedPreviousPartnerId, 'p1');
+  });
+
   testWidgets('partner missing (deleted/merged) shows fallback', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [

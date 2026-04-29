@@ -30,9 +30,13 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text('保留：$toName'),
+          const SizedBox(height: 4),
+          Text('移除：$fromName'),
+          const SizedBox(height: 8),
           Text(
-            '此功能會整合整個對象卡底下所有對話與特質，'
-            '不是只接續目前這段對話。',
+            '$fromName 底下的互動紀錄與特質會搬到 $toName。'
+            '這會整合整個對象卡，不是只接續目前這段對話。',
             style: TextStyle(
               color: Theme.of(context).colorScheme.outline,
               fontSize: 12,

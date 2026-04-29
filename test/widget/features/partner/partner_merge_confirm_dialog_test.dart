@@ -34,8 +34,7 @@ Future<bool?> _show(BuildContext ctx,
     );
 
 void main() {
-  testWidgets('dialog shows N convos + M traits + red 不可逆 warning',
-      (t) async {
+  testWidgets('dialog shows N convos + M traits + red 不可逆 warning', (t) async {
     await t.pumpWidget(_harness((ctx) => _show(ctx)));
     await t.tap(find.text('open'));
     await t.pumpAndSettle();
@@ -44,11 +43,15 @@ void main() {
     expect(find.textContaining('Bob'), findsWidgets);
     expect(find.textContaining('3'), findsWidgets); // N 對話
     expect(find.textContaining('7'), findsWidgets); // M traits
+    expect(find.text('保留：Bob'), findsOneWidget);
+    expect(find.text('移除：Alice'), findsOneWidget);
+    expect(find.textContaining('Alice 底下的互動紀錄與特質會搬到 Bob'), findsOneWidget);
     expect(find.textContaining('整合整個對象卡'), findsOneWidget,
         reason: 'merge dialog must frame itself as a partner-dedupe tool '
             '(integrates the whole partner card), not a conversation-continuation action.');
     expect(find.textContaining('不是只接續目前這段對話'), findsOneWidget,
-        reason: 'dialog must explicitly contrast against conversation continuation '
+        reason:
+            'dialog must explicitly contrast against conversation continuation '
             'so users do not confuse 合併 with 接續.');
     expect(find.textContaining('不可復原'), findsOneWidget);
     expect(find.text('確認合併'), findsOneWidget);

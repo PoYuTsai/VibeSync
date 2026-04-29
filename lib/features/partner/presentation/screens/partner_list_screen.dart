@@ -155,8 +155,9 @@ class PartnerListScreen extends ConsumerWidget {
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         content: Text(
-          '「${partner.name}」還有 $conversationCount 個對話，無法刪除。'
-          '請先合併重複對象，或改派對話到其他對象。',
+          '「${partner.name}」底下還有 $conversationCount 段互動紀錄，暫時不能刪除。\n\n'
+          '請先進入對象頁，把互動紀錄刪除或改派到其他對象。'
+          '全部清空後，就可以刪除這個對象。',
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         actions: [

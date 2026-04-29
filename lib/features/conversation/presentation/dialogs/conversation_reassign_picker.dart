@@ -28,6 +28,28 @@ Future<void> showConversationReassignPicker(
         excludeId: conversation.partnerId,
         onSelected: (target) async {
           final previousPartnerId = conversation.partnerId;
+          final confirmed = await showDialog<bool>(
+            context: sheetCtx,
+            builder: (dialogCtx) => AlertDialog(
+              title: Text('改派到「${target.name}」？'),
+              content: Text(
+                '這只會移動目前這一段互動紀錄，不會合併兩個對象。\n\n'
+                '移動後，這段互動紀錄會出現在「${target.name}」底下。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(false),
+                  child: const Text('取消'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(true),
+                  child: const Text('確認改派'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed != true) return;
+
           conversation.partnerId = target.id;
           try {
             await ref

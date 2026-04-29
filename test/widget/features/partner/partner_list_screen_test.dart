@@ -133,8 +133,7 @@ void main() {
   // ─── Delete dialog two-mode coverage (Phase 4 Task 2) ────────────────────
 
   group('delete dialog two-mode', () {
-    testWidgets(
-        'tapping delete with conversationCount==0 shows confirm dialog',
+    testWidgets('tapping delete with conversationCount==0 shows confirm dialog',
         (t) async {
       await t.pumpWidget(ProviderScope(
         overrides: [
@@ -160,8 +159,7 @@ void main() {
 
     testWidgets(
         'tapping delete with conversationCount>0 shows informational dialog '
-        '(no destructive action) even if aggregate.totalRounds==0',
-        (t) async {
+        '(no destructive action) even if aggregate.totalRounds==0', (t) async {
       await t.pumpWidget(ProviderScope(
         overrides: [
           partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
@@ -179,15 +177,15 @@ void main() {
       await t.pumpAndSettle();
 
       // Informational dialog: no "刪除" button, only "知道了" / OK.
-      // "無法刪除" appears in both title + content sentence, so widgets > 1.
-      expect(find.textContaining('還有 2 個對話'), findsOneWidget);
-      expect(find.textContaining('無法刪除'), findsWidgets);
+      expect(find.textContaining('還有 2 段互動紀錄'), findsOneWidget);
+      expect(find.textContaining('暫時不能刪除'), findsOneWidget);
+      expect(find.textContaining('全部清空後'), findsOneWidget);
+      expect(find.text('無法刪除'), findsOneWidget);
       expect(find.text('刪除'), findsNothing);
       expect(find.text('知道了'), findsOneWidget);
     });
 
-    testWidgets(
-        'confirm dialog → controller.delete called → SnackBar success',
+    testWidgets('confirm dialog → controller.delete called → SnackBar success',
         (t) async {
       final fake = _FakePartnerRepo();
       await t.pumpWidget(ProviderScope(
