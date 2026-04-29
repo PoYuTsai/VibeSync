@@ -20,9 +20,14 @@ on:
 jobs:
   release-ios:
     if: inputs.platform == 'ios' || inputs.platform == 'both'
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify Xcode SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -E "iphoneos|iphonesimulator" || true
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

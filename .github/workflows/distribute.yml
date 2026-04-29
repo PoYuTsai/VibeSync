@@ -107,12 +107,17 @@ jobs:
           retention-days: 7
 
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-26
     env:
       GIT_REF: ${{ github.ref_name }}
       GIT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify Xcode SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -E "iphoneos|iphonesimulator" || true
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

@@ -9,6 +9,36 @@
 ---
 
 ## 2026-04
+### [2026-04-30] TestFlight upload 被 Apple 拒收：IPA 使用 iOS 18.5 SDK
+
+**症狀**:
+
+- GitHub Actions `release.yml` 可成功 build IPA，但 Fastlane `upload_to_testflight` 失敗。
+- App Store Connect 回 `Validation failed (409) SDK version issue`。
+- 錯誤訊息指出 app was built with iOS 18.5 SDK，必須改用 iOS 26 SDK / Xcode 26 或更新版本。
+
+**Root Cause**:
+
+- iOS workflow 使用 `runs-on: macos-latest`。
+- 2026-04-29 當次 run 被配置到 Xcode 16.4 / iOS 18.5 SDK 環境。
+- Apple 自 2026-04-28 起要求 App Store Connect 上傳必須使用 Xcode 26 / iOS 26 SDK。
+
+**修復**:
+
+1. `release.yml` 的 iOS job pin 到 `macos-26`。
+2. `distribute.yml` 的 iOS job 同步 pin 到 `macos-26`。
+3. 兩個 iOS job 加 `Verify Xcode SDK` step，輸出 `xcodebuild -version` 與 iPhone SDK 清單，避免下次只能從 upload error 反推。
+
+**預防**:
+
+- App Store / TestFlight 發佈 workflow 不要依賴 `macos-latest` 的漸進遷移；SDK deadline 後要 pin 到符合 Apple 要求的 macOS/Xcode runner。
+- 下次 Apple SDK requirement 更新時，先改 runner，再 debug Flutter / signing。
+
+**相關檔案**:
+
+- `.github/workflows/release.yml`
+- `.github/workflows/distribute.yml`
+
 ### [2026-04-26] Partner detail 新增對話未帶入 partnerId
 
 **症狀**:
