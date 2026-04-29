@@ -18,6 +18,7 @@ import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
+import '../../../../shared/widgets/score_action_hint.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
@@ -3787,7 +3788,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                               // previousScore: null for now
                             ),
 
-                            // 冰點放棄建議
+                            // 冰點放棄建議 vs 行動下一步（互斥，避免訊息衝突）
                             if (_shouldGiveUp) ...[
                               const SizedBox(height: 12),
                               Container(
@@ -3812,6 +3813,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                     ),
                                   ],
                                 ),
+                              ),
+                            ] else ...[
+                              const SizedBox(height: 12),
+                              ScoreActionHint(
+                                score: _enthusiasmScore!,
+                                gameStage: _gameStage,
+                                recommendation: _finalRecommendation,
                               ),
                             ],
                           ] else if (_isAnalyzing) ...[
