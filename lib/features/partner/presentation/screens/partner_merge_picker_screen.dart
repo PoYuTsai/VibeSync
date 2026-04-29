@@ -125,7 +125,9 @@ class _PartnerMergePickerScreenState
       await ref
           .read(partnerWriteControllerProvider.notifier)
           .merge(fromId: widget.fromPartnerId, toId: target.id);
-      if (mounted) context.go('/partner/${target.id}');
+      // The source partner is deleted after merge. Returning to the list avoids
+      // leaving users on a detail route with no meaningful back stack.
+      if (mounted) context.go('/');
     } catch (e, st) {
       if (!mounted) return;
       debugPrint('PartnerMergePickerScreen merge failed: $e\n$st');

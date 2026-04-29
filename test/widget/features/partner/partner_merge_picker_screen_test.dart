@@ -57,6 +57,10 @@ GoRouter _routerForPicker({
     initialLocation: initial,
     routes: [
       GoRoute(
+        path: '/',
+        builder: (_, __) => const Scaffold(body: Text('home-stub')),
+      ),
+      GoRoute(
         path: '/partner/:partnerId/merge',
         builder: (_, state) => PartnerMergePickerScreen(
           fromPartnerId: state.pathParameters['partnerId']!,
@@ -138,7 +142,7 @@ void main() {
   });
 
   testWidgets(
-      'confirm tap calls PartnerWriteController.merge(A → B) + navigates to /partner/B',
+      'confirm tap calls PartnerWriteController.merge(A → B) + returns to partner list',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
     addTearDown(() => t.binding.setSurfaceSize(null));
@@ -169,7 +173,7 @@ void main() {
     expect(fake.mergeCalled, isTrue);
     expect(fake.fromId, 'A');
     expect(fake.toId, 'B');
-    expect(find.text('target-stub-B'), findsOneWidget);
+    expect(find.text('home-stub'), findsOneWidget);
   });
 
   testWidgets('cancel tap does not call merge and stays on picker', (t) async {
