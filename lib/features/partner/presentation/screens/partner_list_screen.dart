@@ -38,12 +38,33 @@ class PartnerListScreen extends ConsumerWidget {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text(
-            '還沒有對象\n先新增一個人，之後與同一個人的聊天，都會整理在同一張對象卡裡',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.onBackgroundSecondary,
-            ),
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '先建立第一張對象卡',
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '一個人一張卡，不同日期、IG、Line 或交友軟體的聊天，都整理在同一張卡裡',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
       );

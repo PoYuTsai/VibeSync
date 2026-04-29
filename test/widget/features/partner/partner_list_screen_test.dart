@@ -58,7 +58,7 @@ Conversation _conv(String id, String partnerId) => Conversation(
     );
 
 void main() {
-  testWidgets('empty state: shows "還沒有對象" hint', (t) async {
+  testWidgets('empty state: explains memory coach positioning', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerListProvider.overrideWith((_) => const <Partner>[]),
@@ -66,7 +66,15 @@ void main() {
       child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
     ));
     await t.pumpAndSettle();
-    expect(find.textContaining('還沒有對象'), findsOneWidget);
+    expect(find.text('先建立第一張對象卡'), findsOneWidget);
+    expect(
+      find.text('VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('一個人一張卡，不同日期、IG、Line 或交友軟體的聊天，都整理在同一張卡裡'),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
