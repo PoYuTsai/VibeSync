@@ -75,6 +75,117 @@ Default testing owner is the implementation agent in the primary dev runtime.
 - Codex should not rerun full Flutter test suites when Claude already supplied credible exact commands/results, unless the diff contradicts the result or a high-risk invariant needs independent verification.
 - If Codex does run Flutter locally, prefer the smallest relevant test scope; full-suite or repeated Flutter runs belong in WSL unless explicitly needed.
 
+## Task Routing And Role Split
+
+Use this section when Eric, Bruce, Claude, or Codex are unsure who should handle the next step.
+
+Short rule:
+
+- Unclear direction -> Codex.
+- Clear implementation -> Claude.
+- Finished work review -> Codex.
+- Product feel / TF smoke -> Eric and Bruce.
+
+### Start With Codex
+
+Start with Codex before implementation when the question is about product direction, positioning, architecture, risk, or AI quality.
+
+Examples:
+
+- Product positioning changes, such as "reply consultant" -> "dating learning coach".
+- Category / differentiation questions, such as whether VibeSync is just a reply generator or a memory + review + next-step learning app.
+- Business / pricing / cost questions, especially second-layer AI, proactive review, long-term memory, or token cost.
+- Major IA or flow changes, such as reshaping "My Report" into a learning / review center.
+- Prompt, memory, user profile, partner profile, or AI-quality changes.
+- OCR, `analyze-chat`, Edge schema, Hive migration, auth, payment, or subscription changes.
+- Bruce or competitor research provides a broad product signal that must be converted into a testable spec.
+
+Codex output should clarify:
+
+- the core problem
+- product positioning
+- differentiation
+- scope boundary
+- roadmap / phase split
+- what to do now vs later
+- clear inputs for Claude to draft an executable plan
+
+### Start With Claude
+
+Start with Claude when Eric already knows what should change and the task is a clear Flutter/UI/hotfix execution item.
+
+Examples:
+
+- UI bugs: overflow, broken back navigation, dead buttons, blocked screens.
+- Visual polish: spacing, colors, glass/card feel, chip styling.
+- Copy tweaks that do not change product strategy.
+- Flutter-only screen or widget work.
+- Small TF dogfood regressions.
+- Hotfixes with a known root cause.
+
+Claude output should include:
+
+- commit hash
+- changed files
+- tests run
+- open risks
+- whether Codex review is needed
+
+### Standard Workflows
+
+Product strategy or high-risk feature:
+
+1. Eric + Codex strategy discovery.
+2. Codex writes direction, scope, and roadmap.
+3. Claude drafts executable spec / plan.
+4. Eric sanity-checks product intent.
+5. Codex reviews the spec.
+6. Claude executes.
+7. Codex reviews the code.
+8. Eric / Bruce run TF smoke.
+
+Routine UI / hotfix:
+
+1. Eric / Bruce report the issue.
+2. Claude writes a mini-spec and executes.
+3. Claude runs tests.
+4. Codex reviews if the change is risky or Eric wants another pass.
+5. Eric / Bruce run TF smoke.
+
+### High-Risk Changes Require Codex Review First
+
+Do not let one agent implement these end-to-end without Codex review:
+
+- OCR / `analyze-chat` prompt
+- Edge Function schema or response format
+- Hive schema or migration
+- auth, payment, or subscription
+- memory, partner aggregate, or conversation write path
+- user profile / partner profile prompt injection
+- changes affecting token cost, AI quality, OCR baseline, or App Review stability
+- IA changes spanning multiple features
+
+Required flow:
+
+`Codex strategy/spec -> Claude plan/execute -> Codex review -> TF smoke`
+
+### TF Build Gate
+
+After several hotfixes accumulate, pause before starting a larger feature.
+
+- Build from `main`.
+- Eric / Bruce dogfood in TestFlight.
+- If OK, start the next feature.
+- If regression appears, fix-forward first.
+- Do not mix a large feature with a hotfix batch.
+
+### Context Hygiene
+
+- Claude should open a new session for each major phase; long sessions are for short hotfixes, not architecture judgment.
+- Claude's new session should read the latest handoff / queue / git log before acting.
+- Codex should put review verdicts, risks, and durable decisions in `docs/reviews/`, queue, memory, or ADRs as appropriate.
+- Shared facts come from git log + docs + memory, not any single model's chat memory.
+
 ## Anti-Bloat Rules
 
 - One change should map to one primary shared document.
