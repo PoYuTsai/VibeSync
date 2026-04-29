@@ -10,7 +10,7 @@
 VibeSync 目前對「用戶自己」的描述只散落在兩處:
 
 1. **每個對話**的 `SessionContext` 收集 `userStyle` (chip 5 選 1) + `userInterests` (free text) + `targetDescription`
-2. **Edge Function 已宣告 schema** 接收這些欄位 (`analyze-chat/index.ts:248-255`), 但 client 端 `analysis_service.dart:619-624` **不傳送** userStyle / userInterests, 而 Edge prompt 也不使用 — 整條 dead signal pipeline
+2. **Edge Function 已宣告 schema 且 prompt 已會讀取**這些欄位 (`analyze-chat/index.ts:248-255`, session context block), 但 client 端 `analysis_service.dart:619-624` **不傳送** userStyle / userInterests — dead signal 主要卡在 Flutter → Edge payload 斷點
 
 Bruce 的 2026-04-29 spec lock 提出: 把使用者識別資料**搬位置 + 分層**:
 
@@ -225,14 +225,13 @@ Future<void> _maybeMigrateUserProfile() async {
 
   try {
     final convBox = Hive.box<Conversation>(AppConstants.conversationsBox);
-    final source = convBox.values
+    final candidates = convBox.values
         .where((c) =>
             c.sessionContext?.userStyle != null ||
             (c.sessionContext?.userInterests?.isNotEmpty ?? false))
-        .sortedBy((c) => c.updatedAt)
-        .reversed
-        .firstOrNull
-        ?.sessionContext;
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final source = candidates.isEmpty ? null : candidates.first.sessionContext;
 
     if (source != null) {
       await profileBox.put('main', UserProfile(
@@ -288,6 +287,15 @@ function buildUserProfileBlock(ctx: SessionContextInput): string {
 }
 ```
 
+### Existing prompt surface 去重
+
+現況 Edge prompt 已在 session context block 渲染 `userStyle` / `userInterests`。Phase 1 若新增 `buildUserProfileBlock`, 必須二選一:
+
+1. 讓新 helper 成為唯一「使用者背景」輸出面, 並移除/避開舊 block 中的 `userStyle` / `userInterests` 重複行。
+2. 不新增獨立 block, 只把既有 session context block 擴充 `selfDescription`。
+
+不可同時保留舊行又插入新 block, 否則 Phase 2 client 開始送 payload 後, 同一個使用者背景會在 prompt 出現兩次。Edge test 需加一條「非空 `userStyle` 只出現一次」防重複 regression。
+
 ### 插入位置
 
 既有 sessionContext block (meetingContext / duration / goal) **之後**, conversation messages **之前**. Identity context 先建立, Claude 才能用它解讀後面對話。
@@ -302,7 +310,7 @@ function buildUserProfileBlock(ctx: SessionContextInput): string {
 
 ### **關鍵保險: OCR-mode 短路**
 
-`analyzeMode === 'ocr'` 或 `'recognize-only'` 時 `buildUserProfileBlock` 直接 return ''. 理由:
+`recognizeOnly === true` 時 `buildUserProfileBlock` 直接 return ''. 現行 Edge code 沒有 `analyzeMode === 'ocr'` / `'recognize-only'` 字串模式; OCR-only 路徑以 `recognizeOnly` boolean 分流。理由:
 
 1. **零功能效益** — OCR 是字元辨識, user identity 對辨識「哈/呵」沒幫助
 2. **Baseline drift 是真實風險** — OCR-stable baseline 是 `28c0965`, prompt 任何變動 = 行為微飄, 而**沒有**自動 OCR 回歸測試
@@ -319,6 +327,7 @@ function buildUserProfileBlock(ctx: SessionContextInput): string {
 - 4 cases: 全空 / 單欄 / 雙欄 / 三欄
 - OCR mode short-circuit case
 - Regression: 全空時 prompt 與舊版 byte-equivalent
+- Regression: 非空 `userStyle` / `userInterests` 在 prompt 中各只出現一次, 防止新 block 與舊 session context 重複
 
 ## 9. Test Pyramid
 
@@ -326,6 +335,7 @@ function buildUserProfileBlock(ctx: SessionContextInput): string {
 |---|---|---|---|
 | Edge unit | `buildUserProfileBlock`, OCR short-circuit | Deno test | 4 cases (空/單/雙/三欄) + OCR mode = empty + 與舊版 byte-equivalent |
 | Domain unit | `resolve(user, partner)`, `ProfileOverride.isEmpty` | flutter test | per-field fallback chain 8 case 矩陣 (override null/has × user null/has) |
+| Hive adapter | `Partner` with/without `ProfileOverride` HiveField 7 | flutter test | 舊資料可讀、新資料 round-trip, 不只靠 dogfood 驗 forward-compat |
 | Migration unit | `_maybeMigrateUserProfile` | flutter test | 三 fixtures (空 conv box / 單筆 / 多筆取最新); flag idempotency; failure path 設 flag |
 | Widget | L1 card (empty/filled), L1 editor, L2 sheet (3 states), 「使用預設」 confirm | flutter test | UI 行為 + per-field clear affordance |
 | Integration | analysis_service payload contains effective values | flutter test | partner with/without override → payload 對應; partnerless → user-only |
@@ -351,7 +361,7 @@ function buildUserProfileBlock(ctx: SessionContextInput): string {
 ### Phase 3 — L2 per-partner override
 - Hive: ProfileOverride model + adapter, Partner HiveField 7 (forward-compat)
 - UI: PartnerDetail AppBar 👤 + bottom sheet (per-field clear, instant save, 「使用預設」 confirm)
-- **風險: 中-高** (動 Partner schema, 需確認 forward-compat 真不破壞舊資料 — Hive `unknown field` 行為要 dogfood 驗一次)
+- **風險: 中-高** (動 Partner schema, 需用 Hive adapter round-trip 測試確認 forward-compat 不破壞舊資料; dogfood 只做第二層驗證)
 
 ### Phase 4 — Migration + cleanup
 - `_maybeMigrateUserProfile` at startup

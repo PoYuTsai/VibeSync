@@ -19,7 +19,21 @@ class ScoreActionHint extends StatelessWidget {
     this.recommendation,
   });
 
-  static const _meetingKeywords = ['見面', '邀約', '約她', '約他', '約出來'];
+  static const _meetingKeywords = [
+    '見面',
+    '邀約',
+    '約她',
+    '約他',
+    '約出來',
+    '約出門',
+    '約會',
+    '吃飯',
+    '喝咖啡',
+    '看電影',
+    '一起去',
+    '碰面',
+    '見個面',
+  ];
 
   // Only allow meeting-suggesting payload when we're solidly in veryHot tier;
   // anything below stays defensive even if backend wrongly suggests meeting.
@@ -28,10 +42,20 @@ class ScoreActionHint extends StatelessWidget {
   bool _payloadSuggestsMeeting(String text) =>
       _meetingKeywords.any(text.contains);
 
+  bool get _canSurfaceMeetingHint => score >= _meetingHintMinScore;
+
+  String? _visibleIfSafe(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return null;
+    if (!_canSurfaceMeetingHint && _payloadSuggestsMeeting(trimmed)) {
+      return null;
+    }
+    return trimmed;
+  }
+
   String _resolveHeadline() {
-    final payload = (gameStage?.nextStep ?? '').trim();
-    if (payload.isNotEmpty &&
-        (score >= _meetingHintMinScore || !_payloadSuggestsMeeting(payload))) {
+    final payload = _visibleIfSafe(gameStage?.nextStep ?? '');
+    if (payload != null) {
       return payload;
     }
     return _tierFallback();
@@ -52,13 +76,11 @@ class ScoreActionHint extends StatelessWidget {
   }
 
   String? _bodyText() {
-    final reason = (recommendation?.reason ?? '').trim();
-    return reason.isEmpty ? null : reason;
+    return _visibleIfSafe(recommendation?.reason ?? '');
   }
 
   String? _exampleText() {
-    final content = (recommendation?.content ?? '').trim();
-    return content.isEmpty ? null : content;
+    return _visibleIfSafe(recommendation?.content ?? '');
   }
 
   @override
