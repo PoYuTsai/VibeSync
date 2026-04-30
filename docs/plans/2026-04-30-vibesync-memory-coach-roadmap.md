@@ -157,6 +157,7 @@ Scope:
 
 - Upgrade `ScoreActionHint` into concrete coaching tasks.
 - Example tasks: soft invite, lower-pressure reply, extend topic, emotional validation, explain less, stop chasing.
+- Add `extendTopic.storyFrame` as the learning/practice pattern for replacing Q&A mode with story framing.
 - Split into UI-only 4A, structured schema 4B, and learning deep link 4C.
 - Bind each coach action to one existing learning article or category.
 
@@ -170,6 +171,13 @@ Spec 4C note:
 
 ```text
 Coach Action should not only say what to do next; it should point users to the lesson that teaches the concept.
+```
+
+Example:
+
+```text
+extendTopic.storyFrame -> 故事框架代替問答
+Practice: pick a recent small life event and split it into Scene / Point / Pivot.
 ```
 
 ### Spec 5: Proactive Coach Loop

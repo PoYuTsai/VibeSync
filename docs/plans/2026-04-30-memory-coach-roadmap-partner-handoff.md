@@ -583,11 +583,21 @@ Spec 4C：Learning Deep Link / 學習文章綁定
 | softInvite | 邀約策略 | 模糊邀約 |
 | lowerPressureReply | 心態建設 / 訊息交流 | 降低壓迫感、不要追問 |
 | extendTopic | 訊息交流 | 延伸話題、開放式提問 |
+| extendTopic.storyFrame | 訊息交流 / 對話深度 | 故事框架代替問答 |
 | emotionalResonance | 關係加溫 | 情緒共鳴、先接住感受 |
 | explainLess | 訊息交流 | 少解釋一點、降低需求感 |
 | pausePursuit | 心態建設 | 停止追問、尊重冷卻 |
 
 如果目前 20 篇文章沒有 exact match，就 fallback 到分類頁。
+
+故事框架的互動練習：
+
+```text
+挑一件你最近發生的小事，我幫你拆成：
+1. 場景
+2. 觀點或情緒
+3. 開放式提問
+```
 
 ### 8.6 復盤入口
 

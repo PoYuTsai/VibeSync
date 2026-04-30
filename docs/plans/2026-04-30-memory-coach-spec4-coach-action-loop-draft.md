@@ -92,10 +92,35 @@ Use when:
 - Heat is medium.
 - 有可延伸素材，但還不到邀約時機。
 - 對方願意聊，但互動還沒升溫到可以推進。
+- 使用者正在陷入問答模式，需要把問題改成更有畫面的分享。
 
 Purpose:
 
 - 讓對話自然多跑幾輪。
+- 避免對話變成面試，改用「先給，再問」的故事框架。
+
+Sub-action:
+
+```text
+storyFrame
+```
+
+Story frame structure:
+
+1. Scene / 場景：具體時間、地點、事件。
+2. Point / 觀點或情緒：你從這件事裡的感受、發現或想法。
+3. Pivot / 開放式提問：把球踢給對方，讓她容易分享自己的故事。
+
+Example:
+
+```text
+不要只問「你喜歡旅行嗎？」
+
+可以改成：
+我上次去京都，本來以為會照表操課，結果迷路走進一間阿嬤開的小咖啡店，反而變成整趟最有記憶點的地方。
+所以我後來覺得旅行最好玩的常常是意外。
+你比較像規劃派，還是隨興走走派？
+```
 
 ### 3.4 Emotional Resonance / 情緒共鳴
 
@@ -173,12 +198,28 @@ Future structured response:
 ```json
 {
   "actionType": "softInvite",
+  "subType": null,
   "title": "今天練模糊邀約",
   "whyNow": "她有接住話題，而且互動熱度偏高，可以先用低壓力方式試探見面意願。",
   "instruction": "先提出一個活動方向，不急著約時間和地點。",
   "suggestedLine": "這間咖啡廳感覺你會喜歡，下次有機會一起去踩點。",
   "avoid": "不要馬上追問她哪天有空。",
   "followUpPrompt": "如果她回「好啊」，下一步再幫你轉成明確邀約。"
+}
+```
+
+Story frame example:
+
+```json
+{
+  "actionType": "extendTopic",
+  "subType": "storyFrame",
+  "title": "今天練故事框架",
+  "whyNow": "你現在有話題可以接，但如果只一直問問題，對方容易覺得像被面試。",
+  "instruction": "先分享一個小故事，再把問題自然丟回去。",
+  "suggestedLine": "我上次去京都，本來以為會照表操課，結果迷路走進一間阿嬤開的小咖啡店，反而變成整趟最有記憶點的地方。你旅行比較像規劃派，還是隨興走走派？",
+  "avoid": "不要連續問三個問題，也不要把故事講超過一分鐘。",
+  "followUpPrompt": "挑一件你最近發生的小事，我可以幫你拆成場景 / 觀點 / 開放式提問。"
 }
 ```
 
@@ -264,6 +305,7 @@ Suggested mapping:
 | `softInvite` | 邀約策略 | 模糊邀約 |
 | `lowerPressureReply` | 心態建設 / 訊息交流 | 降低壓迫感、不要追問 |
 | `extendTopic` | 訊息交流 | 延伸話題、開放式提問 |
+| `extendTopic.storyFrame` | 訊息交流 / 對話深度 | 故事框架代替問答 |
 | `emotionalResonance` | 關係加溫 | 情緒共鳴、先接住感受 |
 | `explainLess` | 訊息交流 | 少解釋一點、降低需求感 |
 | `pausePursuit` | 心態建設 | 停止追問、尊重冷卻 |
@@ -281,6 +323,7 @@ Suggested app-side model:
 ```dart
 class LearningRecommendation {
   final String actionType;
+  final String? subType;
   final String categoryId;
   final String? articleId;
   final String title;
@@ -300,7 +343,42 @@ LearningRecommendation(
 )
 ```
 
-### 7.4 Non-Goals For 4C
+Story frame example:
+
+```dart
+LearningRecommendation(
+  actionType: 'extendTopic',
+  subType: 'storyFrame',
+  categoryId: 'conversation_depth',
+  articleId: 'story_frame',
+  title: '故事框架代替問答',
+  ctaLabel: '看 3 分鐘教學',
+)
+```
+
+### 7.4 Interactive Practice Example
+
+Learning link is passive. Coach Action can also invite one immediate practice.
+
+For `extendTopic.storyFrame`:
+
+```text
+練習一下
+挑一件你最近發生的小事，我幫你拆成：
+1. 場景
+2. 觀點或情緒
+3. 開放式提問
+```
+
+This is still Spec 4B / 4C, not Spec 5.
+
+Reason:
+
+- It happens right after analysis.
+- It is user-initiated.
+- It does not require proactive reminder or push.
+
+### 7.5 Non-Goals For 4C
 
 Do not:
 
