@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../domain/entities/effective_style.dart';
 import '../../domain/entities/partner_style_override.dart';
+import '../../domain/services/resolve_effective_style.dart';
 import '../repositories/partner_style_repository.dart';
+import 'user_profile_providers.dart';
 
 final partnerStyleRepositoryProvider = Provider<PartnerStyleRepository>(
   (ref) => PartnerStyleRepository(),
@@ -37,3 +40,17 @@ class PartnerStyleOverrideController
     state = const AsyncValue.data(null);
   }
 }
+
+/// Per-field merge of the global About Me with the per-partner override.
+/// UI uses this for placeholder hints ("沿用全域：穩重") and a future
+/// prompt builder will read the same shape — keep this provider's output
+/// stable so prompt code can swap in without a UI refactor.
+final effectiveStyleProvider =
+    Provider.family<EffectiveStyle, String>((ref, partnerId) {
+  final globalAsync = ref.watch(userProfileControllerProvider);
+  final partnerAsync = ref.watch(partnerStyleOverrideProvider(partnerId));
+  return resolveEffectiveStyle(
+    global: globalAsync.valueOrNull,
+    partner: partnerAsync.valueOrNull,
+  );
+});
