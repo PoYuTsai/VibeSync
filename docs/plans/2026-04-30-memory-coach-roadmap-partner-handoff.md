@@ -562,6 +562,33 @@ Spec 4B：正式 structured loop
 - AI 生成內容。
 - 加復盤入口。
 
+Spec 4C：Learning Deep Link / 學習文章綁定
+
+- 依 `actionType` 綁定既有學習文章或分類。
+- 不讓 AI 自由產生文章標題。
+- 不重寫 20 篇文章。
+- 只是把「下一步任務」接到「學習這個技巧」。
+
+例如：
+
+```text
+今天練模糊邀約
+延伸學習：想練這一步？看 3 分鐘教學：模糊邀約
+```
+
+建議 mapping：
+
+| actionType | 學習分類 | 優先文章 |
+|---|---|---|
+| softInvite | 邀約策略 | 模糊邀約 |
+| lowerPressureReply | 心態建設 / 訊息交流 | 降低壓迫感、不要追問 |
+| extendTopic | 訊息交流 | 延伸話題、開放式提問 |
+| emotionalResonance | 關係加溫 | 情緒共鳴、先接住感受 |
+| explainLess | 訊息交流 | 少解釋一點、降低需求感 |
+| pausePursuit | 心態建設 | 停止追問、尊重冷卻 |
+
+如果目前 20 篇文章沒有 exact match，就 fallback 到分類頁。
+
 ### 8.6 復盤入口
 
 輕量入口：
@@ -679,8 +706,9 @@ Spec 5 涉及：
 | 3 | Spec 3：Data Quality Guard | 保護 Partner memory，避免污染長期建議 |
 | 4 | Spec 4A：Coach Action Card UI | 可以較早插隊，改善 dogfood 體感 |
 | 5 | Spec 4B：Structured Coach Action | 等記憶層穩定後，做正式 task loop |
-| 6 | Spec 5A：In-App Progress Nudge | 只做 app 內，不做 push |
-| 7 | Spec 5B/C：約會前 / 後 | 等前面跑順後再進 |
+| 6 | Spec 4C：Learning Deep Link | 把教練任務接到既有 20 篇學習文章 / 分類 |
+| 7 | Spec 5A：In-App Progress Nudge | 只做 app 內，不做 push |
+| 8 | Spec 5B/C：約會前 / 後 | 等前面跑順後再進 |
 
 明天實際建議只做一件事：
 

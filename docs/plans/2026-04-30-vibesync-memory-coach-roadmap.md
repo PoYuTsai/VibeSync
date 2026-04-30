@@ -157,12 +157,19 @@ Scope:
 
 - Upgrade `ScoreActionHint` into concrete coaching tasks.
 - Example tasks: soft invite, lower-pressure reply, extend topic, emotional validation, explain less, stop chasing.
-- Split into UI-only 4A and structured schema 4B.
+- Split into UI-only 4A, structured schema 4B, and learning deep link 4C.
+- Bind each coach action to one existing learning article or category.
 
 Why:
 
 ```text
 Advice should become practice, not just analysis.
+```
+
+Spec 4C note:
+
+```text
+Coach Action should not only say what to do next; it should point users to the lesson that teaches the concept.
 ```
 
 ### Spec 5: Proactive Coach Loop
@@ -196,8 +203,9 @@ Recommended:
 4. Spec 3: Partner data quality guard.
 5. Spec 4A: Coach Action Card UI.
 6. Spec 4B: Structured Coach Action.
-7. Spec 5A: In-app progress nudge.
-8. Spec 5B/C: Pre-date prep and post-date review.
+7. Spec 4C: Learning deep link from Coach Action to article/category.
+8. Spec 5A: In-app progress nudge.
+9. Spec 5B/C: Pre-date prep and post-date review.
 
 Possible swap:
 
