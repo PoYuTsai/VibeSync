@@ -17,6 +17,7 @@ import '../features/partner/presentation/screens/add_partner_screen.dart';
 import '../features/partner/presentation/screens/partner_detail_screen.dart';
 import '../features/partner/presentation/screens/partner_merge_picker_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
+import '../features/user_profile/presentation/screens/about_me_screen.dart';
 
 final _routerRefreshListenable =
     _GoRouterRefreshStream(SupabaseService.authStateChanges);
@@ -97,6 +98,12 @@ final router = GoRouter(
     GoRoute(
       path: '/opener',
       builder: (context, state) => const OpeningRescueScreen(),
+    ),
+    // literal '/profile/about-me' MUST come before '/profile/:id' so
+    // 'about-me' isn't matched as a conversationId by the parametric route.
+    GoRoute(
+      path: '/profile/about-me',
+      builder: (context, state) => const AboutMeScreen(),
     ),
     GoRoute(
       path: '/profile/:id',
