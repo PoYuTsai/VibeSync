@@ -1,16 +1,25 @@
 import 'package:flutter/foundation.dart';
+import 'package:hive_ce/hive_ce.dart';
 
 import 'user_profile.dart';
 
+part 'partner_style_override.g.dart';
+
 @immutable
+@HiveType(typeId: 13)
 class PartnerStyleOverride {
   static const int maxPracticeGoals = 3;
   static const int maxNotesLength = 100;
 
+  @HiveField(0)
   final String partnerId;
+  @HiveField(1)
   final InteractionStyle? interactionStyle;
+  @HiveField(2)
   final List<PracticeGoal> practiceGoals;
+  @HiveField(3)
   final String? notes;
+  @HiveField(4)
   final DateTime updatedAt;
 
   /// Permissive raw constructor — used by Hive codegen and trusted call sites.
