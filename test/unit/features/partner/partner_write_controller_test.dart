@@ -16,6 +16,8 @@ import 'package:vibesync/features/partner/data/providers/partner_write_controlle
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 /// Counting subclass — delegates to the real Hive-backed implementation but
 /// records call counts. We need real reads (so post-merge state surfaces) AND
@@ -90,6 +92,7 @@ class _PartiallyFailingPartnerRepository extends PartnerRepository {
 
 late Box<Partner> _partnerBox;
 late Box<Conversation> _convoBox;
+late Box<PartnerStyleOverride> _styleBox;
 late _CountingConversationRepository _convoRepo;
 
 Future<ProviderContainer> _makeContainer() async {
@@ -150,6 +153,15 @@ void main() {
     }
     if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(UserStyleAdapter());
     if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(PartnerAdapter());
+    if (!Hive.isAdapterRegistered(10)) {
+      Hive.registerAdapter(InteractionStyleAdapter());
+    }
+    if (!Hive.isAdapterRegistered(11)) {
+      Hive.registerAdapter(PracticeGoalAdapter());
+    }
+    if (!Hive.isAdapterRegistered(13)) {
+      Hive.registerAdapter(PartnerStyleOverrideAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -164,10 +176,16 @@ void main() {
     // StorageService.conversationsBox = Hive.box(AppConstants.conversationsBox).
     _convoBox =
         await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    // PartnerRepository.delete cascades into StorageService.partnerStyleOverridesBox
+    // via its lazy default PartnerStyleRepository — open canonical box name.
+    _styleBox = await Hive.openBox<PartnerStyleOverride>(
+      'partner_style_overrides',
+    );
     _convoRepo = _CountingConversationRepository();
   });
 
   tearDown(() async {
+    await _styleBox.deleteFromDisk();
     await _partnerBox.deleteFromDisk();
     await _convoBox.deleteFromDisk();
   });

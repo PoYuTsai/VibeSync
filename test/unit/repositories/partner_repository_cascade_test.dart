@@ -11,7 +11,7 @@ import 'package:vibesync/features/user_profile/domain/entities/partner_style_ove
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 Partner _partner(String id) {
-  final now = DateTime(2026, 4, 28);
+  final now = DateTime(2026, 5, 1);
   return Partner(
     id: id,
     name: 'A',
@@ -21,33 +21,15 @@ Partner _partner(String id) {
   );
 }
 
-Conversation _conversation(
-  String id, {
-  required String partnerId,
-  int rounds = 1,
-}) {
-  final now = DateTime(2026, 4, 28);
-  final c = Conversation(
-    id: id,
-    name: '對話 $id',
-    messages: const [],
-    createdAt: now,
-    updatedAt: now,
-    ownerUserId: 'u1',
-    partnerId: partnerId,
-  );
-  c.currentRound = rounds;
-  return c;
-}
-
 void main() {
   late Box<Partner> partnerBox;
   late Box<Conversation> conversationBox;
   late Box<PartnerStyleOverride> styleBox;
+  late PartnerStyleRepository styleRepo;
   late PartnerRepository repo;
 
   setUpAll(() {
-    Hive.init('./.dart_tool/test_hive_partner_repo_delete');
+    Hive.init('./.dart_tool/test_hive_partner_repo_cascade');
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(ConversationAdapter());
     }
@@ -84,14 +66,15 @@ void main() {
 
   setUp(() async {
     final ts = DateTime.now().microsecondsSinceEpoch;
-    partnerBox = await Hive.openBox<Partner>('partners_$ts');
+    partnerBox = await Hive.openBox<Partner>('partners_cascade_$ts');
     conversationBox =
-        await Hive.openBox<Conversation>('conversations_$ts');
-    styleBox = await Hive.openBox<PartnerStyleOverride>('pso_$ts');
+        await Hive.openBox<Conversation>('conversations_cascade_$ts');
+    styleBox = await Hive.openBox<PartnerStyleOverride>('pso_cascade_$ts');
+    styleRepo = PartnerStyleRepository(box: styleBox);
     repo = PartnerRepository(
       box: partnerBox,
       conversationBox: conversationBox,
-      styleRepo: PartnerStyleRepository(box: styleBox),
+      styleRepo: styleRepo,
     );
   });
 
@@ -101,41 +84,74 @@ void main() {
     await partnerBox.deleteFromDisk();
   });
 
-  test('delete removes partner from box when no conversations linked',
-      () async {
+  test('delete cascades to clear partner style override', () async {
     final p = _partner('p1');
     await partnerBox.put(p.id, p);
+    await styleRepo.save(PartnerStyleOverride.create(
+      partnerId: 'p1',
+      interactionStyle: InteractionStyle.humorous,
+      notes: '對方慢熟',
+      updatedAt: DateTime.utc(2026, 5, 1),
+    ));
+    expect(await styleRepo.load('p1'), isNotNull);
 
     await repo.delete('p1');
 
     expect(partnerBox.containsKey('p1'), isFalse);
+    expect(await styleRepo.load('p1'), isNull);
   });
 
   test(
-      'delete throws PartnerHasConversationsException when conversations exist',
+      'delete does NOT touch other partners style overrides',
+      () async {
+    final p1 = _partner('p1');
+    final p2 = _partner('p2');
+    await partnerBox.put(p1.id, p1);
+    await partnerBox.put(p2.id, p2);
+    await styleRepo.save(PartnerStyleOverride.create(
+      partnerId: 'p1',
+      interactionStyle: InteractionStyle.humorous,
+      updatedAt: DateTime.utc(2026, 5, 1),
+    ));
+    await styleRepo.save(PartnerStyleOverride.create(
+      partnerId: 'p2',
+      interactionStyle: InteractionStyle.gentle,
+      updatedAt: DateTime.utc(2026, 5, 1),
+    ));
+
+    await repo.delete('p1');
+
+    expect(await styleRepo.load('p1'), isNull);
+    expect((await styleRepo.load('p2'))?.interactionStyle,
+        InteractionStyle.gentle);
+  });
+
+  test('delete blocked by conversations does NOT clear style override',
       () async {
     final p = _partner('p1');
     await partnerBox.put(p.id, p);
-    final c = _conversation('c1', partnerId: 'p1');
-    await conversationBox.put(c.id, c);
-
-    expect(
-      () => repo.delete('p1'),
-      throwsA(isA<PartnerHasConversationsException>()
-          .having((e) => e.conversationCount, 'count', 1)),
+    final c = Conversation(
+      id: 'c1',
+      name: 'conv',
+      messages: const [],
+      createdAt: DateTime(2026, 5, 1),
+      updatedAt: DateTime(2026, 5, 1),
+      ownerUserId: 'u1',
+      partnerId: 'p1',
     );
-    expect(partnerBox.containsKey('p1'), isTrue);
-  });
-
-  test('delete blocks even when conversation has currentRound == 0', () async {
-    final p = _partner('p1');
-    await partnerBox.put(p.id, p);
-    final c = _conversation('c0', partnerId: 'p1', rounds: 0);
+    c.currentRound = 1;
     await conversationBox.put(c.id, c);
+    await styleRepo.save(PartnerStyleOverride.create(
+      partnerId: 'p1',
+      interactionStyle: InteractionStyle.humorous,
+      updatedAt: DateTime.utc(2026, 5, 1),
+    ));
 
     expect(
       () => repo.delete('p1'),
       throwsA(isA<PartnerHasConversationsException>()),
     );
+    // Override survives the failed delete — atomic-failure semantics.
+    expect(await styleRepo.load('p1'), isNotNull);
   });
 }

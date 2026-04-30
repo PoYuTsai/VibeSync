@@ -2,6 +2,7 @@
 import 'package:hive_ce/hive_ce.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../user_profile/data/repositories/partner_style_repository.dart';
 import '../../domain/entities/partner.dart';
 
 /// Hive-backed CRUD facade for `Partner` entities.
@@ -27,16 +28,24 @@ class PartnerRepository {
   PartnerRepository({
     Box<Partner>? box,
     Box<Conversation>? conversationBox,
+    PartnerStyleRepository? styleRepo,
   })  : _box = box ?? StorageService.partnersBox,
-        _injectedConversationBox = conversationBox;
+        _injectedConversationBox = conversationBox,
+        _injectedStyleRepo = styleRepo;
 
   final Box<Partner> _box;
   final Box<Conversation>? _injectedConversationBox;
+  final PartnerStyleRepository? _injectedStyleRepo;
 
   // Lazy so callers that never invoke `merge` (e.g. the A1 migration path
   // and its tests) don't pay for opening the conversations box.
   Box<Conversation> get _conversationBox =>
       _injectedConversationBox ?? StorageService.conversationsBox;
+
+  // Lazy for the same reason — partner_style_overrides box only needs to be
+  // open when delete() runs the Spec 2 cascade.
+  PartnerStyleRepository get _styleRepo =>
+      _injectedStyleRepo ?? PartnerStyleRepository();
 
   Partner? getById(String id) => _box.get(id);
 
@@ -105,6 +114,10 @@ class PartnerRepository {
   /// row still references it. Counts conversations directly from the box
   /// (not via `aggregate.totalRounds`) so a zero-round conversation still
   /// blocks the delete.
+  ///
+  /// On success, also cascades into the Spec 2 `PartnerStyleRepository` so
+  /// per-partner style overrides do not survive a deleted partner. If the
+  /// guard throws, no rows are touched (atomic-failure semantics).
   Future<void> delete(String partnerId) async {
     final convCount = _conversationBox.values
         .where((c) => c.partnerId == partnerId)
@@ -113,6 +126,7 @@ class PartnerRepository {
       throw PartnerHasConversationsException(convCount);
     }
     await _box.delete(partnerId);
+    await _styleRepo.delete(partnerId);
   }
 }
 
