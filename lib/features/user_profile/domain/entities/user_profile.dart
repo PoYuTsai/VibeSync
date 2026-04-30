@@ -1,45 +1,64 @@
 import 'package:flutter/foundation.dart';
+import 'package:hive_ce/hive_ce.dart';
+
+part 'user_profile.g.dart';
 
 /// 互動風格 — single select. Independent from legacy
 /// `SessionContext.UserStyle` (typeId=7) on purpose: §13 forbids silent
 /// migration from per-conversation data, and labels here drop the `型` suffix.
-enum InteractionStyle { steady, direct, humorous, gentle, playful }
+@HiveType(typeId: 10)
+enum InteractionStyle {
+  @HiveField(0) steady,
+  @HiveField(1) direct,
+  @HiveField(2) humorous,
+  @HiveField(3) gentle,
+  @HiveField(4) playful,
+}
 
 /// 練習目標 — multi select, max 3.
+@HiveType(typeId: 11)
 enum PracticeGoal {
-  softInvite,
-  reduceAnxiety,
-  humorousReply,
-  buildCloseness,
-  explainLess,
+  @HiveField(0) softInvite,
+  @HiveField(1) reduceAnxiety,
+  @HiveField(2) humorousReply,
+  @HiveField(3) buildCloseness,
+  @HiveField(4) explainLess,
 }
 
 /// 常聊話題 — multi select, max 5.
+@HiveType(typeId: 12)
 enum TopicSeed {
-  fitness,
-  travel,
-  coffee,
-  music,
-  movies,
-  photography,
-  food,
-  pets,
-  reading,
-  workLife,
+  @HiveField(0) fitness,
+  @HiveField(1) travel,
+  @HiveField(2) coffee,
+  @HiveField(3) music,
+  @HiveField(4) movies,
+  @HiveField(5) photography,
+  @HiveField(6) food,
+  @HiveField(7) pets,
+  @HiveField(8) reading,
+  @HiveField(9) workLife,
 }
 
 @immutable
+@HiveType(typeId: 9)
 class UserProfile {
   static const int maxPracticeGoals = 3;
   static const int maxTopicSeeds = 5;
   static const int maxCustomTopicsLength = 60;
   static const int maxNotesLength = 100;
 
+  @HiveField(0)
   final InteractionStyle? interactionStyle;
+  @HiveField(1)
   final List<PracticeGoal> practiceGoals;
+  @HiveField(2)
   final List<TopicSeed> topicSeeds;
+  @HiveField(3)
   final String? customTopics;
+  @HiveField(4)
   final String? notes;
+  @HiveField(5)
   final DateTime updatedAt;
 
   /// Public raw constructor — used by Hive codegen and trusted call sites.

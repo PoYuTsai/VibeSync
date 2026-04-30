@@ -9,6 +9,7 @@ import '../../features/conversation/domain/entities/session_context.dart';
 import '../../features/partner/data/repositories/partner_repository.dart';
 import '../../features/partner/data/services/partner_migration_service.dart';
 import '../../features/partner/domain/entities/partner.dart';
+import '../../features/user_profile/domain/entities/user_profile.dart';
 import '../constants/app_constants.dart';
 import 'conversation_box_backup.dart';
 
@@ -29,6 +30,10 @@ class StorageService {
     Hive.registerAdapter(UserStyleAdapter());
     Hive.registerAdapter(ConversationSummaryAdapter()); // v2.0: Memory feature
     Hive.registerAdapter(PartnerAdapter()); // A1: Partner Entity Refactor
+    Hive.registerAdapter(UserProfileAdapter()); // typeId=9, Spec 1 About Me
+    Hive.registerAdapter(InteractionStyleAdapter()); // typeId=10
+    Hive.registerAdapter(PracticeGoalAdapter()); // typeId=11
+    Hive.registerAdapter(TopicSeedAdapter()); // typeId=12
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -41,6 +46,11 @@ class StorageService {
 
     await Hive.openBox<Partner>(
       AppConstants.partnersBox,
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<UserProfile>(
+      'user_profile',
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -101,6 +111,9 @@ class StorageService {
 
   static Box<Partner> get partnersBox =>
       Hive.box<Partner>(AppConstants.partnersBox);
+
+  static Box<UserProfile> get userProfileBox =>
+      Hive.box<UserProfile>('user_profile');
 
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
