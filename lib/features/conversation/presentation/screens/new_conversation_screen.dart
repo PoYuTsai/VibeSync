@@ -24,7 +24,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final _nameController = TextEditingController();
   final _herMessageController = TextEditingController();
   final _myMessageController = TextEditingController();
-  final _userInterestsController = TextEditingController();
   final _targetDescriptionController = TextEditingController();
 
   final List<Map<String, dynamic>> _messages = [];
@@ -35,7 +34,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   MeetingContext _meetingContext = MeetingContext.datingApp;
   AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
   UserGoal _goal = UserGoal.dateInvite;
-  UserStyle? _userStyle;
 
   bool get _hasIncomingMessage =>
       _messages.any((message) => message['isFromMe'] == false);
@@ -66,7 +64,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     _nameController.dispose();
     _herMessageController.dispose();
     _myMessageController.dispose();
-    _userInterestsController.dispose();
     _targetDescriptionController.dispose();
     super.dispose();
   }
@@ -144,14 +141,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         partnerId: widget.partnerId,
       );
 
+      // Spec 1: userStyle / userInterests removed from manual input UI.
+      // Schema fields kept for backward compatibility with existing Hive
+      // records (design §13 forbids silent migration). New rows write null.
       conversation.sessionContext = SessionContext(
         meetingContext: _meetingContext,
         duration: _duration,
         goal: _goal,
-        userStyle: _userStyle,
-        userInterests: _userInterestsController.text.trim().isEmpty
-            ? null
-            : _userInterestsController.text.trim(),
+        userStyle: null,
+        userInterests: null,
         targetDescription: _targetDescriptionController.text.trim().isEmpty
             ? null
             : _targetDescriptionController.text.trim(),
@@ -241,21 +239,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         return '維持熱度';
       case UserGoal.justChat:
         return '自然聊天';
-    }
-  }
-
-  String _userStyleLabel(UserStyle style) {
-    switch (style) {
-      case UserStyle.humorous:
-        return '幽默';
-      case UserStyle.steady:
-        return '穩重';
-      case UserStyle.direct:
-        return '直接';
-      case UserStyle.gentle:
-        return '溫柔';
-      case UserStyle.playful:
-        return '俏皮';
     }
   }
 
@@ -360,36 +343,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               ),
               if (_showPersonalization) ...[
                 const SizedBox(height: 16),
-                Text('你的風格', style: AppTypography.bodyMedium),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: UserStyle.values.map((style) {
-                    final isSelected = _userStyle == style;
-                    return ChoiceChip(
-                      label: Text(_userStyleLabel(style)),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() => _userStyle = selected ? style : null);
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                Text('你的興趣', style: AppTypography.bodyMedium),
-                const SizedBox(height: 8),
-                GlassmorphicTextField(
-                  controller: _userInterestsController,
-                  hintText: '例如：健身、旅行、攝影、咖啡',
-                  isDense: true,
-                ),
-                const SizedBox(height: 16),
                 Text('對方特質', style: AppTypography.bodyMedium),
                 const SizedBox(height: 8),
                 GlassmorphicTextField(
                   controller: _targetDescriptionController,
                   hintText: '例如：活潑、慢熱、喜歡戶外活動',
                   isDense: true,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '想讓建議更像你的語氣？可到「我的報告 > 關於我」設定一次。',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
               const SizedBox(height: 24),
