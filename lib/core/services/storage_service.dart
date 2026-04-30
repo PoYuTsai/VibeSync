@@ -129,11 +129,13 @@ class StorageService {
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
 
-  /// Clear all stored data (conversations, partners, user profile, settings, usage)
+  /// Clear all stored data (conversations, partners, user profile,
+  /// partner style overrides, settings, usage).
   static Future<void> clearAll() async {
     await conversationsBox.clear();
     await partnersBox.clear();
     await userProfileBox.clear();
+    await partnerStyleOverridesBox.clear();
     await settingsBox.clear();
     await usageBox.clear();
   }

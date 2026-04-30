@@ -7,6 +7,7 @@ import 'package:vibesync/features/conversation/domain/entities/conversation_summ
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 void main() {
@@ -41,12 +42,16 @@ void main() {
       Hive.registerAdapter(PracticeGoalAdapter());
     }
     if (!Hive.isAdapterRegistered(12)) Hive.registerAdapter(TopicSeedAdapter());
+    if (!Hive.isAdapterRegistered(13)) {
+      Hive.registerAdapter(PartnerStyleOverrideAdapter());
+    }
   });
 
   tearDown(() async {
     await Hive.deleteBoxFromDisk(AppConstants.conversationsBox);
     await Hive.deleteBoxFromDisk(AppConstants.partnersBox);
     await Hive.deleteBoxFromDisk('user_profile');
+    await Hive.deleteBoxFromDisk('partner_style_overrides');
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await Hive.deleteBoxFromDisk(AppConstants.usageBox);
   });
@@ -59,6 +64,7 @@ void main() {
     await Hive.openBox<Conversation>(AppConstants.conversationsBox);
     await Hive.openBox<Partner>(AppConstants.partnersBox);
     await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -79,5 +85,29 @@ void main() {
     expect(StorageService.userProfileBox.isEmpty, isTrue);
     expect(StorageService.settingsBox.isEmpty, isTrue);
     expect(StorageService.usageBox.isEmpty, isTrue);
+  });
+
+  test('clearAll also clears the partner_style_overrides box (Spec 2)',
+      () async {
+    await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<Partner>(AppConstants.partnersBox);
+    await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox(AppConstants.settingsBox);
+    await Hive.openBox(AppConstants.usageBox);
+
+    await StorageService.partnerStyleOverridesBox.put(
+      'p1',
+      PartnerStyleOverride.create(
+        partnerId: 'p1',
+        interactionStyle: InteractionStyle.steady,
+        updatedAt: DateTime.utc(2026, 5, 1),
+      ),
+    );
+    expect(StorageService.partnerStyleOverridesBox.isNotEmpty, isTrue);
+
+    await StorageService.clearAll();
+
+    expect(StorageService.partnerStyleOverridesBox.isEmpty, isTrue);
   });
 }
