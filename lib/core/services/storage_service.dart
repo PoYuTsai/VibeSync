@@ -9,6 +9,7 @@ import '../../features/conversation/domain/entities/session_context.dart';
 import '../../features/partner/data/repositories/partner_repository.dart';
 import '../../features/partner/data/services/partner_migration_service.dart';
 import '../../features/partner/domain/entities/partner.dart';
+import '../../features/user_profile/domain/entities/partner_style_override.dart';
 import '../../features/user_profile/domain/entities/user_profile.dart';
 import '../constants/app_constants.dart';
 import 'conversation_box_backup.dart';
@@ -34,6 +35,7 @@ class StorageService {
     Hive.registerAdapter(InteractionStyleAdapter()); // typeId=10
     Hive.registerAdapter(PracticeGoalAdapter()); // typeId=11
     Hive.registerAdapter(TopicSeedAdapter()); // typeId=12
+    Hive.registerAdapter(PartnerStyleOverrideAdapter()); // typeId=13, Spec 2
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -51,6 +53,11 @@ class StorageService {
 
     await Hive.openBox<UserProfile>(
       'user_profile',
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<PartnerStyleOverride>(
+      'partner_style_overrides',
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -114,6 +121,9 @@ class StorageService {
 
   static Box<UserProfile> get userProfileBox =>
       Hive.box<UserProfile>('user_profile');
+
+  static Box<PartnerStyleOverride> get partnerStyleOverridesBox =>
+      Hive.box<PartnerStyleOverride>('partner_style_overrides');
 
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
