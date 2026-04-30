@@ -133,8 +133,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final controller =
-          ref.read(conversationWriteControllerProvider.notifier);
+      final controller = ref.read(conversationWriteControllerProvider.notifier);
       final conversation = await controller.create(
         name: name,
         messages: messages,
@@ -352,7 +351,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '想讓建議更像你的語氣？可到「我的報告 > 關於我」設定一次。',
+                  '想讓建議更像你的語氣？可到「報告 > 關於我」設定一次。',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.textSecondary,
                   ),

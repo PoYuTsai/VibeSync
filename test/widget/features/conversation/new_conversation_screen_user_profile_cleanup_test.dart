@@ -21,8 +21,7 @@ GoRouter _router() => GoRouter(
         ),
         GoRoute(
           path: '/conversation/:id',
-          builder: (_, __) =>
-              const Scaffold(body: Text('post-create-stub')),
+          builder: (_, __) => const Scaffold(body: Text('post-create-stub')),
         ),
       ],
     );
@@ -98,8 +97,9 @@ void main() {
     await tester.pumpWidget(_harness());
     await _settle(tester);
     await _expandPersonalization(tester);
-    final hint = find.textContaining('想讓建議更像你的語氣');
+    final hint = find.text('想讓建議更像你的語氣？可到「報告 > 關於我」設定一次。');
     expect(hint, findsOneWidget);
+    expect(find.textContaining('我的報告 > 關於我'), findsNothing);
     // Tappable check: must not be wrapped in InkWell / GestureDetector that
     // navigates somewhere — design §7.3 requires a plain text hint, no CTA.
     final ancestorTap = find.ancestor(

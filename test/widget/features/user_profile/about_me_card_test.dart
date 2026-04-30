@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/user_profile_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
@@ -38,8 +39,7 @@ Widget _harness({UserProfile? initial}) {
           ),
           GoRoute(
             path: '/profile/about-me',
-            builder: (_, __) =>
-                const Scaffold(body: Text('edit-page-stub')),
+            builder: (_, __) => const Scaffold(body: Text('edit-page-stub')),
           ),
         ],
       ),
@@ -53,7 +53,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('關於我'), findsOneWidget);
     expect(find.text('讓 VibeSync 更像你的教練'), findsOneWidget);
+    expect(find.textContaining('花 30 秒'), findsOneWidget);
     expect(find.text('開始設定'), findsOneWidget);
+
+    final title = tester.widget<Text>(find.text('關於我'));
+    final subtitle = tester.widget<Text>(find.text('讓 VibeSync 更像你的教練'));
+    final body = tester.widget<Text>(find.textContaining('花 30 秒'));
+    expect(title.style?.color, AppColors.glassTextPrimary);
+    expect(subtitle.style?.color, AppColors.glassTextPrimary);
+    expect(body.style?.color, AppColors.glassTextSecondary);
   });
 
   testWidgets('filled profile shows summary lines for filled fields only',

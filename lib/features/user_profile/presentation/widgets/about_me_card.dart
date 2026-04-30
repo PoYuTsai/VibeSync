@@ -53,7 +53,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             '關於我',
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.onBackgroundPrimary,
+              color: AppColors.glassTextPrimary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -61,7 +61,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             '讓 VibeSync 更像你的教練',
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.onBackgroundPrimary,
+              color: AppColors.glassTextPrimary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -69,7 +69,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             '花 30 秒填一下，之後 AI 會用更像你的節奏給建議。',
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
+              color: AppColors.glassTextSecondary,
             ),
           ),
           const SizedBox(height: 14),
@@ -142,7 +142,7 @@ class _FilledState extends StatelessWidget {
               Text(
                 '關於我',
                 style: AppTypography.titleMedium.copyWith(
-                  color: AppColors.onBackgroundPrimary,
+                  color: AppColors.glassTextPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -182,7 +182,7 @@ class _FilledState extends StatelessWidget {
             child: Text(
               label,
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
+                color: AppColors.glassTextSecondary,
               ),
             ),
           ),
@@ -190,7 +190,7 @@ class _FilledState extends StatelessWidget {
             child: Text(
               value,
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundPrimary,
+                color: AppColors.glassTextPrimary,
               ),
             ),
           ),
