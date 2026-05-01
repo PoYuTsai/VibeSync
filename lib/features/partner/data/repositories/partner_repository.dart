@@ -5,6 +5,7 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../../user_profile/data/repositories/partner_style_repository.dart';
 import '../../domain/entities/partner.dart';
+import '../services/partner_id_factory.dart';
 
 /// Hive-backed CRUD facade for `Partner` entities.
 ///
@@ -138,6 +139,78 @@ class PartnerRepository {
     await _box.delete(partnerId);
     await _styleRepo.delete(partnerId);
     await _qualityRepo.delete(partnerId);
+  }
+
+  /// Splits the conversations listed in [matchedConversationIds] off the
+  /// partner [sourcePartnerId] onto a freshly-created partner with
+  /// [newPartnerName]. Returns the new partner's id.
+  ///
+  /// Per Spec 3 §6.3 / §7.6:
+  ///   - Source partner KEEPS its name, [PartnerStyleOverride], and
+  ///     [PartnerDataQualityState] — confirmed "same person" pairs still
+  ///     describe the source's history, even after some conversations move.
+  ///   - The new partner gets NO style override (so it falls back to the
+  ///     global "About Me" defaults — the inline card's "沿用全域預設" state)
+  ///     and NO data-quality state (clean slate, no inherited confirmations).
+  ///   - Mixed-name / ambiguous conversations stay on source — caller
+  ///     pre-filters [matchedConversationIds] to contain only ids it is
+  ///     confident about. This method does NO AI judgment and NO name-distance
+  ///     filtering; it is a dumb mover, the caller decides what moves.
+  ///   - Conversations whose `partnerId` no longer points at [sourcePartnerId]
+  ///     are silently skipped (defensive against stale UI handles), so this
+  ///     method is safe to retry.
+  ///
+  /// Throws `ArgumentError` when [matchedConversationIds] is empty (no-op
+  /// guard — empty splits never make sense and almost always indicate a
+  /// caller bug) or when the source partner is missing (so a stale UI
+  /// handle can't silently create an orphaned partner).
+  ///
+  /// [idGenerator] is an optional test seam; production callers leave it
+  /// `null` and get [PartnerIdFactory.generate] (UUID v4).
+  Future<String> split({
+    required String sourcePartnerId,
+    required String newPartnerName,
+    required List<String> matchedConversationIds,
+    String Function()? idGenerator,
+  }) async {
+    if (matchedConversationIds.isEmpty) {
+      throw ArgumentError(
+        'PartnerRepository.split: matchedConversationIds must be non-empty',
+      );
+    }
+    final source = _box.get(sourcePartnerId);
+    if (source == null) {
+      throw ArgumentError(
+        'PartnerRepository.split: source partner $sourcePartnerId not found',
+      );
+    }
+
+    final generate = idGenerator ?? PartnerIdFactory.generate;
+    final newId = generate();
+    final now = DateTime.now();
+    final newPartner = Partner(
+      id: newId,
+      name: newPartnerName,
+      ownerUserId: source.ownerUserId,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await _box.put(newId, newPartner);
+
+    for (final convId in matchedConversationIds) {
+      final c = _conversationBox.get(convId);
+      if (c != null && c.partnerId == sourcePartnerId) {
+        c.partnerId = newId;
+        await c.save();
+      }
+    }
+
+    // Intentional non-cascade:
+    //   - Style override stays on source (per design G3 — override describes
+    //     the source's persona, the new partner starts on global defaults).
+    //   - Data-quality state stays on source (per §7.6 — confirmed pairs still
+    //     describe the source's history).
+    return newId;
   }
 }
 

@@ -24,4 +24,13 @@ class PartnerIdFactory {
   static String deriveFromConversationId(String conversationId) {
     return const Uuid().v5(_kPartnerNamespaceUuid, conversationId);
   }
+
+  /// Returns a fresh random UUID v4 for brand-new partners (e.g. the
+  /// freshly-created destination of [PartnerRepository.split]).
+  ///
+  /// Exposed as a static method so it can be passed by tear-off
+  /// (`PartnerIdFactory.generate`) into call-sites that accept a
+  /// `String Function()` test seam without forcing every caller to
+  /// instantiate a factory object.
+  static String generate() => const Uuid().v4();
 }
