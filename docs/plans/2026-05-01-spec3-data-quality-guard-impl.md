@@ -1200,27 +1200,7 @@ flutter test  # full suite
 **Files:**
 - Modify: `docs/plans/2026-05-01-spec3-data-quality-guard-impl.md`（本檔）
 
-**加入末段：**
-
-```markdown
----
-
-## Status: SHIPPED — 2026-05-01
-
-| Phase | Tasks | Final commits |
-|---|---|---|
-| 1. Resolver gating | 1–5 | <hashes> |
-| 2. Hive 整合 | 6–9 | <hashes> |
-| 3. Repository + cascade | 10–13 | <hashes> |
-| 4. 偵測引擎 | 14–17 | <hashes> |
-| 5. UI | 18–21 | <hashes> |
-| 6. Verification | 22–23 | <hashes> |
-
-**Verification**:
-- analyze: 0 issues
-- Spec 3 perimeter: <X>/<X> green
-- Full repo: <pass>/<stale> (baseline 76, 0 new regressions)
-```
+See Status block at bottom of file (filled in below).
 
 **Commit + push**
 
@@ -1251,3 +1231,28 @@ git push
 - §11.4 split atomic — 目前 split 不是原子；失敗 rollback 留 v2，v1 接受半搬狀態（用戶可手動再 split / merge 修正）
 - §11.6 OCR provenance marker — v1 不加；implementation 階段確認 `Conversation.name` 不論來源都走 placeholder filter
 - §11.7 in-memory cache — v1 不做；TF perf 數據後評估
+
+---
+
+## Status: SHIPPED — 2026-05-01
+
+| Phase | Tasks | Commit range (first..last) |
+|---|---|---|
+| 1. Resolver gating | 1–5 | `00e0fe3..7615cb7` |
+| 2. Hive 整合 | 6–9 | `1c5e1e0..2c5b0d6` |
+| 3. Repository + cascade | 10–13 | `60195ae..6ca40f2` |
+| 4. 偵測引擎 | 14–17 | `8c3f0fb..7dc3341` |
+| 5. UI | 18–21 | `dc84ebc..c4f2354` |
+| 6. Verification | 22–23 | `f5ce916..(this commit)` |
+
+**Verification**:
+- `flutter analyze --no-fatal-infos lib test`：0 issues
+- Spec 3 perimeter（`test/unit/features/{user_profile,partner}/` + `test/widget/features/partner/`）：215/215 green, 1 skip
+- Full repo: 604 pass, 1 skip, 76 fail = baseline 76 stale (post Spec 2)，**0 new regressions**
+
+**Path 變更摘要（vs Plan §5.x 原稿）**:
+- Task 20 widget test：原本嘗試用 real Hive-backed repo 跑 end-to-end re-eval，改為 hermetic fake recording — widget tests 在 FakeAsync zone 跑、Hive I/O 永不解 (`pumpAndSettle` 10-min timeout)。Banner re-eval leg 已被 `data_quality_flag_provider_test` 涵蓋。
+- Task 21 invocation path：原 plan 寫 `partnerRepoProvider.split(...)` 直接呼叫 + 兩條 invalidate；改走 `PartnerWriteController.split` 統一 invalidation discipline（與 merge/delete/updateName 一致），`_invalidateSplitScopes` 連帶刷新 source/new partner、conversations、partnerListProvider、conversationsProvider、dataQualityFlagProvider(source) 共 7 條 cache。
+- Task 22 perimeter command：plan 列了不存在的 `test/unit/features/analysis/`，已從實際指令移除（不影響覆蓋率）。
+
+**TF Smoke pending**（per checklist 上方 §1–8）— Bruce dogfood 驗收。
