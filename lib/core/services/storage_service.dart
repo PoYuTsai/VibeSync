@@ -9,6 +9,7 @@ import '../../features/conversation/domain/entities/session_context.dart';
 import '../../features/partner/data/repositories/partner_repository.dart';
 import '../../features/partner/data/services/partner_migration_service.dart';
 import '../../features/partner/domain/entities/partner.dart';
+import '../../features/user_profile/domain/entities/partner_data_quality_state.dart';
 import '../../features/user_profile/domain/entities/partner_style_override.dart';
 import '../../features/user_profile/domain/entities/user_profile.dart';
 import '../constants/app_constants.dart';
@@ -36,6 +37,8 @@ class StorageService {
     Hive.registerAdapter(PracticeGoalAdapter()); // typeId=11
     Hive.registerAdapter(TopicSeedAdapter()); // typeId=12
     Hive.registerAdapter(PartnerStyleOverrideAdapter()); // typeId=13, Spec 2
+    Hive.registerAdapter(PartnerDataQualityStateAdapter()); // typeId=14, Spec 3
+    Hive.registerAdapter(NamePairAdapter()); // typeId=15, Spec 3
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
