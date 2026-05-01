@@ -1,6 +1,6 @@
 import 'coach_action_type.dart';
 
-/// Spec 4 Phase 1 — actionType 對映「現有 20 篇文章」的 articleId（exact match only）。
+/// actionType 對映「現有 20 篇文章」的 articleId（exact match only）。
 /// 回傳 `null` 時 CoachActionCard 隱藏「看教學」CTA（無 fallback 分類頁）。
 class LearningLinkResolver {
   const LearningLinkResolver._();

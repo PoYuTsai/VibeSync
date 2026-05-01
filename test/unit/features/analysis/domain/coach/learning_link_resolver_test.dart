@@ -5,61 +5,66 @@ import 'package:vibesync/features/learning/data/articles_data.dart';
 
 void main() {
   group('LearningLinkResolver.resolve', () {
-    test('softInvite -> null (no exact article in current 20-set)', () {
+    test('should return null for softInvite when no exact article exists', () {
       expect(LearningLinkResolver.resolve(CoachActionType.softInvite), isNull);
     });
 
-    test('lowerPressureReply -> 10', () {
+    test('should return article 10 for lowerPressureReply', () {
       expect(
         LearningLinkResolver.resolve(CoachActionType.lowerPressureReply),
         '10',
       );
     });
 
-    test('extendTopicStoryFrame -> 14', () {
+    test('should return article 14 for extendTopicStoryFrame', () {
       expect(
         LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
         '14',
       );
     });
 
-    test('emotionalResonance -> 11', () {
+    test('should return article 11 for emotionalResonance', () {
       expect(
         LearningLinkResolver.resolve(CoachActionType.emotionalResonance),
         '11',
       );
     });
 
-    test('rightSizeReply -> 12', () {
+    test('should return article 12 for rightSizeReply', () {
       expect(
         LearningLinkResolver.resolve(CoachActionType.rightSizeReply),
         '12',
       );
     });
 
-    test('playfulReply -> 3', () {
+    test('should return article 3 for playfulReply', () {
       expect(
         LearningLinkResolver.resolve(CoachActionType.playfulReply),
         '3',
       );
     });
 
-    test('pausePursuit -> null (no exact article in current 20-set)', () {
-      expect(LearningLinkResolver.resolve(CoachActionType.pausePursuit), isNull);
+    test('should return null for pausePursuit when no exact article exists',
+        () {
+      expect(
+        LearningLinkResolver.resolve(CoachActionType.pausePursuit),
+        isNull,
+      );
     });
 
-    test('preferenceSignal -> 2', () {
+    test('should return article 2 for preferenceSignal', () {
       expect(
         LearningLinkResolver.resolve(CoachActionType.preferenceSignal),
         '2',
       );
     });
 
-    test('fitCheck -> 18', () {
+    test('should return article 18 for fitCheck', () {
       expect(LearningLinkResolver.resolve(CoachActionType.fitCheck), '18');
     });
 
-    test('every non-null resolver result references an existing article id',
+    test(
+        'should reference an existing article id whenever resolver returns non-null',
         () {
       for (final type in CoachActionType.values) {
         final id = LearningLinkResolver.resolve(type);

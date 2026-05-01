@@ -1,4 +1,4 @@
-/// Spec 4 Phase 1 — 教練動作卡可推薦的 9 種 actionType（單一 enum，扁平命名空間）。
+/// 教練動作卡可推薦的 9 種 actionType（單一 enum，扁平命名空間）。
 enum CoachActionType {
   /// 模糊邀約 — 給一個低門檻、可拒可改的邀約。
   softInvite,

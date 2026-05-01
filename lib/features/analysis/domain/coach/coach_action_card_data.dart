@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// Spec 4 Phase 1 — 教練動作卡 view model（transient，不入 Hive）。
+/// 教練動作卡 view model（transient，不入 Hive）。
 @immutable
 class CoachActionCardData {
   const CoachActionCardData({

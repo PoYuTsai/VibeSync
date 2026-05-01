@@ -4,7 +4,7 @@ import 'package:vibesync/features/analysis/domain/coach/coach_action_type.dart';
 
 void main() {
   group('CoachActionType', () {
-    test('has 9 distinct values matching spec', () {
+    test('should expose 9 distinct values matching spec', () {
       expect(CoachActionType.values.length, 9);
       expect(CoachActionType.values.toSet(), {
         CoachActionType.softInvite,
@@ -21,8 +21,8 @@ void main() {
   });
 
   group('CoachActionCardData', () {
-    test('is value-equal when all 6 fields match', () {
-      final a = CoachActionCardData(
+    test('should be value-equal when all 6 fields match', () {
+      const a = CoachActionCardData(
         actionLabel: '模糊邀約',
         whyNow: '熱度 88，可以給具體時間',
         task: '拋一個低門檻邀約',
@@ -30,7 +30,7 @@ void main() {
         avoid: '別問三題',
         learningLink: null,
       );
-      final b = CoachActionCardData(
+      const b = CoachActionCardData(
         actionLabel: '模糊邀約',
         whyNow: '熱度 88，可以給具體時間',
         task: '拋一個低門檻邀約',
@@ -42,8 +42,8 @@ void main() {
       expect(a.hashCode, b.hashCode);
     });
 
-    test('different suggestedLine -> not equal', () {
-      final a = CoachActionCardData(
+    test('should not be equal when suggestedLine differs', () {
+      const a = CoachActionCardData(
         actionLabel: 'x',
         whyNow: 'x',
         task: 'x',
@@ -51,7 +51,7 @@ void main() {
         avoid: 'x',
         learningLink: null,
       );
-      final b = CoachActionCardData(
+      const b = CoachActionCardData(
         actionLabel: 'x',
         whyNow: 'x',
         task: 'x',
