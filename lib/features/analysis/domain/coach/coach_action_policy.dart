@@ -1,5 +1,6 @@
 import '../../../../core/constants/app_constants.dart';
 import '../entities/analysis_models.dart';
+import '../entities/game_stage.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 import 'coach_action_card_data.dart';
@@ -31,6 +32,12 @@ class CoachActionPolicy {
   static bool _payloadSuggestsMeeting(String text) =>
       _meetingKeywords.any(text.contains);
 
+  static const Set<GameStage> _midGameStages = {
+    GameStage.premise,
+    GameStage.qualification,
+    GameStage.narrative,
+  };
+
   static CoachActionCardData evaluate({
     required int heatScore,
     required GameStageInfo gameStage,
@@ -44,6 +51,7 @@ class CoachActionPolicy {
       heatScore: heatScore,
       gameStage: gameStage,
       finalRecommendation: finalRecommendation,
+      practiceGoals: practiceGoals,
       isDataQualityFlagged: isDataQualityFlagged,
     );
     return _filterSuggestedLine(card, heatScore);
@@ -53,6 +61,7 @@ class CoachActionPolicy {
     required int heatScore,
     required GameStageInfo gameStage,
     required FinalRecommendation finalRecommendation,
+    required List<PracticeGoal> practiceGoals,
     required bool isDataQualityFlagged,
   }) {
     if (heatScore > AppConstants.hotMax) {
@@ -64,6 +73,18 @@ class CoachActionPolicy {
     if (heatScore <= AppConstants.coldMax &&
         _payloadSuggestsMeeting(gameStage.nextStep)) {
       return _buildPausePursuit(heatScore: heatScore);
+    }
+    if (!isDataQualityFlagged &&
+        heatScore >= 31 &&
+        heatScore <= AppConstants.hotMax &&
+        _midGameStages.contains(gameStage.current)) {
+      if (practiceGoals.contains(PracticeGoal.explainLess)) {
+        return _buildPreferenceSignal(heatScore: heatScore);
+      }
+      return _buildExtendTopicStoryFrame(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+      );
     }
     return _buildFitCheck(
       heatScore: heatScore,
@@ -114,6 +135,34 @@ class CoachActionPolicy {
       avoid: '別連發訊息追問結果',
       suggestedLine: null,
       learningLink: LearningLinkResolver.resolve(CoachActionType.pausePursuit),
+    );
+  }
+
+  static CoachActionCardData _buildExtendTopicStoryFrame({
+    required int heatScore,
+    required FinalRecommendation finalRecommendation,
+  }) {
+    final candidate = finalRecommendation.content.trim();
+    return CoachActionCardData(
+      actionLabel: '故事框架',
+      whyNow: '熱度 $heatScore，可以用故事框架往下展開',
+      task: '用「場景 + 觀點/情緒 + 開放式提問」這個框架延展話題',
+      avoid: '別只丟一個開放式問句',
+      suggestedLine: candidate.isEmpty ? null : candidate,
+      learningLink:
+          LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
+    );
+  }
+
+  static CoachActionCardData _buildPreferenceSignal({required int heatScore}) {
+    return CoachActionCardData(
+      actionLabel: '輕量表達偏好',
+      whyNow: '熱度 $heatScore，可以輕鬆露出自己的偏好',
+      task: '講一個自己的小喜好或觀點，不問問題',
+      avoid: '別把這當解釋自己',
+      suggestedLine: null,
+      learningLink:
+          LearningLinkResolver.resolve(CoachActionType.preferenceSignal),
     );
   }
 

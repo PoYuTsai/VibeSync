@@ -4,6 +4,7 @@ import 'package:vibesync/features/analysis/domain/coach/coach_action_policy.dart
 import 'package:vibesync/features/analysis/domain/coach/coach_action_type.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 void main() {
   group('CoachActionType', () {
@@ -220,6 +221,52 @@ void main() {
         isDataQualityFlagged: false,
       );
       expect(card.actionLabel, '暫停追問');
+    });
+
+    test(
+        'should pick extendTopicStoryFrame when heat is warm-hot and stage is mid-game without explainLess goal',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 50,
+        gameStage: const GameStageInfo(
+          current: GameStage.premise,
+          nextStep: '聊聊她最近在忙什麼',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '聽起來最近壓力大，是哪一塊？',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '故事框架');
+      expect(card.learningLink, '14');
+      expect(card.suggestedLine, '聽起來最近壓力大，是哪一塊？');
+    });
+
+    test('should switch to preferenceSignal when explainLess practice goal is set',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 50,
+        gameStage: const GameStageInfo(
+          current: GameStage.premise,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [PracticeGoal.explainLess],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '輕量表達偏好');
+      expect(card.learningLink, '2');
     });
   });
 }
