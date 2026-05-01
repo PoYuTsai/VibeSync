@@ -81,6 +81,7 @@ class _PartnerStyleEditScreenState
   }
 
   Future<void> _confirmResetAll(BuildContext context, String partnerName) async {
+    final navigator = Navigator.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -108,9 +109,7 @@ class _PartnerStyleEditScreenState
       _practiceGoals.clear();
       _notesController.clear();
     });
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
+    if (navigator.canPop()) navigator.pop();
   }
 
   @override
@@ -134,9 +133,10 @@ class _PartnerStyleEditScreenState
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
+        final navigator = Navigator.of(context);
         await _saveDraft();
         if (!mounted) return;
-        Navigator.of(context).pop();
+        navigator.pop();
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
