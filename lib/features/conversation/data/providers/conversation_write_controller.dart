@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
 import 'conversation_providers.dart';
@@ -64,10 +65,15 @@ class ConversationWriteController extends Notifier<void> {
 
   /// Narrow partner-scoped invalidate. Null partnerId = legacy / unmigrated
   /// conversation — no partner-scoped providers to invalidate.
+  ///
+  /// `dataQualityFlagProvider` (Spec 3 Task 17) is invalidated alongside the
+  /// other partner-scoped providers so the data-quality banner re-evaluates
+  /// after every save / delete / addNew touching this partner.
   void _invalidatePartnerScope(String? partnerId) {
     if (partnerId == null) return;
     ref.invalidate(conversationsByPartnerProvider(partnerId));
     ref.invalidate(partnerAggregateProvider(partnerId));
+    ref.invalidate(dataQualityFlagProvider(partnerId));
   }
 
   /// A2 transition contract; retired in the post-A2 cleanup PR once

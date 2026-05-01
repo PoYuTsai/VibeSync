@@ -9,9 +9,13 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
+import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 
 /// In-memory ConversationRepository stub. Subclasses the real type so
 /// `conversationRepositoryProvider.overrideWithValue(...)` accepts it.
@@ -125,6 +129,12 @@ void main() {
     }
     if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(UserStyleAdapter());
     if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(PartnerAdapter());
+    if (!Hive.isAdapterRegistered(14)) {
+      Hive.registerAdapter(NamePairAdapter());
+    }
+    if (!Hive.isAdapterRegistered(15)) {
+      Hive.registerAdapter(PartnerDataQualityStateAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -367,6 +377,62 @@ void main() {
           reason: 'X data source must be re-queried after invalidate');
       expect(_fakeRepo.listByPartnerCalls['p-Y'], yPrime,
           reason: 'Y data source must NOT be re-queried — narrow contract');
+    });
+  });
+
+  group('Spec 3 Task 17 — dataQualityFlagProvider invalidation', () {
+    test(
+        'create with new candidate name flips flag from unflagged to flagged',
+        () async {
+      // Use a real PartnerDataQualityRepository backed by an injected Hive
+      // box so `dataQualityFlagProvider` can read confirmed-pairs state
+      // without touching auth-gated StorageService boxes.
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final dqBox = await Hive.openBox<PartnerDataQualityState>('dq_$ts');
+      addTearDown(() async => dqBox.deleteFromDisk());
+      final dqRepo = PartnerDataQualityRepository(injectedBox: dqBox);
+
+      final container = ProviderContainer(overrides: [
+        conversationRepositoryProvider.overrideWithValue(_fakeRepo),
+        partnerRepositoryProvider
+            .overrideWithValue(PartnerRepository(box: partnerBox)),
+        authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
+        partnerDataQualityRepoProvider.overrideWithValue(dqRepo),
+      ]);
+      addTearDown(container.dispose);
+      await container.read(authConversationScopeProvider.future);
+
+      // Seed with one conversation whose name yields candidate "May".
+      final c1 = Conversation(
+        id: 'c1',
+        name: 'May',
+        messages: const [],
+        createdAt: DateTime(2026, 5, 1),
+        updatedAt: DateTime(2026, 5, 1),
+        ownerUserId: 'u-1',
+        partnerId: 'p-X',
+      );
+      _fakeRepo.store[c1.id] = c1;
+
+      // First read: 1 candidate → unflagged.
+      expect(container.read(dataQualityFlagProvider('p-X')).isFlagged, isFalse,
+          reason: 'baseline 1 candidate must be unflagged');
+
+      // Add a second conversation with a DIFFERENT candidate via the
+      // controller — this is the change under test (Task 17 invalidation).
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .create(name: 'Anna', messages: const [], partnerId: 'p-X');
+
+      // Second read: flag must re-evaluate and become flagged.
+      // If the controller did NOT invalidate dataQualityFlagProvider, the
+      // cached unflagged value would persist and this assertion would fail.
+      final flag = container.read(dataQualityFlagProvider('p-X'));
+      expect(flag.isFlagged, isTrue,
+          reason:
+              'controller.create must invalidate dataQualityFlagProvider so '
+              'the new candidate triggers re-evaluation');
+      expect(flag.conflictingPair, isNotNull);
     });
   });
 
