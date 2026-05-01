@@ -101,11 +101,10 @@ class PartnerDetailScreen extends ConsumerWidget {
           const Positioned.fill(child: _PartnerDetailBackground()),
           SafeArea(
             child: ListView(
-              // `extendBodyBehindAppBar` lets the glow background continue
-              // under the transparent toolbar, but content still needs to
-              // clear the toolbar hit area. SafeArea only accounts for the
-              // status bar, not the AppBar height.
-              padding: const EdgeInsets.fromLTRB(16, kToolbarHeight, 16, 96),
+              // SafeArea already keeps the content out of the transparent
+              // toolbar zone on device. Do not add another top inset here, or
+              // the hero card leaves a visible dead shelf under the title.
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
               children: [
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
                 const SizedBox(height: 16),

@@ -334,9 +334,10 @@ void main() {
     expect(find.text('--'), findsOneWidget);
     expect(
       t.getTopLeft(find.byType(PartnerHeatHeroCard)).dy,
-      greaterThanOrEqualTo(kToolbarHeight),
-      reason: 'extendBodyBehindAppBar is only for the glow background; content '
-          'must clear the transparent AppBar toolbar.',
+      lessThanOrEqualTo(kToolbarHeight),
+      reason:
+          'hero should sit close under the transparent title bar, not leave '
+          'a dead shelf above the heat card.',
     );
   });
 
