@@ -39,6 +39,7 @@ import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_heat_hero_card.dart';
 import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
+import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart';
 
 class PartnerDetailScreen extends ConsumerWidget {
   final String partnerId;
@@ -118,6 +119,11 @@ class PartnerDetailScreen extends ConsumerWidget {
                       height: 1.35,
                     ),
                   ),
+                ),
+                const SizedBox(height: 16),
+                PartnerStyleEntryCard(
+                  partnerId: partnerId,
+                  partnerName: partner.name,
                 ),
                 const SizedBox(height: 12),
                 PartnerRadarSummaryCard(

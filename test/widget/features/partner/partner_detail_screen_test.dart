@@ -19,6 +19,9 @@ import 'package:vibesync/features/partner/presentation/widgets/partner_conversat
 import 'package:vibesync/features/partner/presentation/widgets/partner_heat_hero_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
+import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
 import '_fakes/recording_conversation_write_controller.dart';
 import '_fakes/recording_partner_write_controller.dart';
@@ -47,9 +50,35 @@ Conversation _conv(String id) => Conversation(
       updatedAt: DateTime(2026, 4, 20),
     );
 
+class _FakeStyleRepo implements PartnerStyleRepository {
+  final Map<String, PartnerStyleOverride> byPartner = {};
+  @override
+  Future<PartnerStyleOverride?> load(String partnerId) async =>
+      byPartner[partnerId];
+  @override
+  Future<void> save(PartnerStyleOverride o) async {
+    if (o.isEmpty) {
+      byPartner.remove(o.partnerId);
+    } else {
+      byPartner[o.partnerId] = o;
+    }
+  }
+
+  @override
+  Future<void> delete(String partnerId) async => byPartner.remove(partnerId);
+  @override
+  Future<void> clearAll() async => byPartner.clear();
+}
+
 void main() {
   testWidgets('tile delete confirm calls ConversationWriteController.delete',
       (t) async {
+    // Tile lives below the new PartnerStyleEntryCard — give the surface
+    // enough height so ListView's cache extent reaches the tile (matches
+    // the reassign-tile tests' convention below).
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
     final fake = RecordingConversationWriteController();
     final attachedConv = Conversation(
       id: 'c1',
@@ -62,6 +91,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -93,6 +123,7 @@ void main() {
   testWidgets('⋮ menu: merge + edit only, no disabled delete item', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -122,6 +153,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -156,6 +188,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -185,6 +218,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -212,6 +246,7 @@ void main() {
   testWidgets('⋮ menu: merge DISABLED when only one partner exists', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -251,6 +286,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -274,6 +310,7 @@ void main() {
       (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -312,6 +349,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -333,6 +371,7 @@ void main() {
   testWidgets('empty conversation list shows hint text', (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -352,6 +391,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -382,6 +422,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -432,6 +473,7 @@ void main() {
 
     await t.pumpWidget(ProviderScope(
       overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
