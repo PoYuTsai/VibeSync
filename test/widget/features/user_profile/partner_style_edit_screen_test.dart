@@ -383,4 +383,133 @@ void main() {
       expect(tf.controller?.text ?? '', isEmpty);
     });
   });
+
+  group('Task 18 — auto-save on back + reset-all', () {
+    testWidgets('back gesture saves the draft override via notifier',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _StyleRepo();
+      // Use a router so we can drive system back via Navigator.maybePop.
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          partnerStyleRepositoryProvider.overrideWithValue(repo),
+          partnerByIdProvider('p1').overrideWith((_) => _alice()),
+          userProfileRepositoryProvider
+              .overrideWithValue(_ProfileRepo(null)),
+          authUserProfileScopeProvider
+              .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
+        ],
+        child: const MaterialApp(
+          home: PartnerStyleEditScreen(partnerId: 'p1'),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '幽默'));
+      await tester.pumpAndSettle();
+
+      // Trigger system back — PopScope should save before letting it pop.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(repo.byPartner['p1']?.interactionStyle,
+          InteractionStyle.humorous);
+    });
+
+    testWidgets(
+        'back with empty draft cascades to repo.delete (no leftover row)',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final initial = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        interactionStyle: InteractionStyle.humorous,
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      final repo = _StyleRepo({'p1': initial});
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          partnerStyleRepositoryProvider.overrideWithValue(repo),
+          partnerByIdProvider('p1').overrideWith((_) => _alice()),
+          userProfileRepositoryProvider
+              .overrideWithValue(_ProfileRepo(null)),
+          authUserProfileScopeProvider
+              .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
+        ],
+        child: const MaterialApp(
+          home: PartnerStyleEditScreen(partnerId: 'p1'),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // Reset the only field set.
+      await tester.tap(find.text('沿用全域'));
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(repo.byPartner.containsKey('p1'), isFalse);
+    });
+
+    testWidgets('重設整個對象風格 link opens confirm dialog', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice()),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('重設整個對象風格'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('重設整個對象風格'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('重設整個對象風格？'), findsOneWidget);
+      expect(find.text('確認重設'), findsOneWidget); // dialog button
+      expect(
+        find.textContaining('清空對 Alice 的所有自訂風格'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        '重設整個對象風格 confirm wipes repo row and closes screen',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final initial = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        interactionStyle: InteractionStyle.humorous,
+        practiceGoals: const [PracticeGoal.softInvite],
+        notes: 'something',
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      final repo = _StyleRepo({'p1': initial});
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          partnerStyleRepositoryProvider.overrideWithValue(repo),
+          partnerByIdProvider('p1').overrideWith((_) => _alice()),
+          userProfileRepositoryProvider
+              .overrideWithValue(_ProfileRepo(null)),
+          authUserProfileScopeProvider
+              .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
+        ],
+        child: const MaterialApp(
+          home: PartnerStyleEditScreen(partnerId: 'p1'),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('重設整個對象風格'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('重設整個對象風格'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('確認重設'));
+      await tester.pumpAndSettle();
+
+      expect(repo.byPartner.containsKey('p1'), isFalse);
+    });
+  });
 }

@@ -65,6 +65,54 @@ class _PartnerStyleEditScreenState
     setState(() => _practiceGoals.add(g));
   }
 
+  Future<void> _saveDraft() async {
+    if (!_draftInitialized) return;
+    final notes = _notesController.text.trim();
+    final draft = PartnerStyleOverride.create(
+      partnerId: widget.partnerId,
+      interactionStyle: _interactionStyle,
+      practiceGoals: _practiceGoals.toList(),
+      notes: notes.isEmpty ? null : notes,
+      updatedAt: DateTime.now(),
+    );
+    await ref
+        .read(partnerStyleOverrideProvider(widget.partnerId).notifier)
+        .save(draft);
+  }
+
+  Future<void> _confirmResetAll(BuildContext context, String partnerName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('重設整個對象風格？'),
+        content: Text('清空對 $partnerName 的所有自訂風格，回到使用全域預設？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('確認重設'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref
+        .read(partnerStyleOverrideProvider(widget.partnerId).notifier)
+        .clear();
+    if (!mounted) return;
+    setState(() {
+      _interactionStyle = null;
+      _practiceGoals.clear();
+      _notesController.clear();
+    });
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final partner = ref.watch(partnerByIdProvider(widget.partnerId));
@@ -79,9 +127,17 @@ class _PartnerStyleEditScreenState
         partner == null ? '我的風格' : '我的風格 · ${partner.name}';
 
     return PopScope(
-      // Auto-save plumbing lands in Task 18 — keeping the wrapper here so
-      // the future change touches behavior only, not the widget tree shape.
-      canPop: true,
+      // Save draft BEFORE the pop completes so the next screen reads the
+      // updated value. canPop=false blocks the default; we save then call
+      // Navigator.pop manually. Empty drafts cascade-delete via the
+      // notifier's `save(isEmpty → delete)` path.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _saveDraft();
+        if (!mounted) return;
+        Navigator.of(context).pop();
+      },
       child: Scaffold(
         backgroundColor: Colors.transparent,
         extendBodyBehindAppBar: true,
@@ -122,6 +178,17 @@ class _PartnerStyleEditScreenState
                     globalFallback: globalProfile?.notes,
                     onChanged: () => setState(() {}),
                     onReset: () => setState(_notesController.clear),
+                  ),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: TextButton(
+                      onPressed: () =>
+                          _confirmResetAll(context, partner?.name ?? '此對象'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.onBackgroundSecondary,
+                      ),
+                      child: const Text('重設整個對象風格'),
+                    ),
                   ),
                 ],
               ),
