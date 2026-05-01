@@ -18,6 +18,7 @@ import '../features/partner/presentation/screens/partner_detail_screen.dart';
 import '../features/partner/presentation/screens/partner_merge_picker_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 import '../features/user_profile/presentation/screens/about_me_screen.dart';
+import '../features/user_profile/presentation/screens/partner_style_edit_screen.dart';
 
 final _routerRefreshListenable =
     _GoRouterRefreshStream(SupabaseService.authStateChanges);
@@ -85,6 +86,12 @@ final router = GoRouter(
         // the screen — unknown / self / out-of-scope ids fall back to PR-B
         // row-tap flow (Codex spec patch §6 / §7.5).
         initialTargetId: state.uri.queryParameters['target'],
+      ),
+    ),
+    GoRoute(
+      path: '/partner/:partnerId/my-style',
+      builder: (context, state) => PartnerStyleEditScreen(
+        partnerId: state.pathParameters['partnerId']!,
       ),
     ),
     GoRoute(
