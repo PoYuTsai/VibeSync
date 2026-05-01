@@ -7,7 +7,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/services/partner_summary_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
-import '../../../user_profile/data/repositories/partner_data_quality_repo_view.dart';
+import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../services/analysis_service.dart';
 import '../services/partner_context_resolver.dart';
@@ -15,6 +15,14 @@ import '../services/partner_context_resolver.dart';
 /// Provider for AnalysisService
 final analysisServiceProvider = Provider<AnalysisService>((ref) {
   return AnalysisService();
+});
+
+/// Provider for the Spec 3 data-quality repository. Reads/writes to the
+/// `partner_data_quality_states` Hive box. Phase 4 Task 16 will introduce a
+/// `dataQualityFlagProvider` that wraps this repo for live flag detection.
+final partnerDataQualityRepoProvider =
+    Provider<PartnerDataQualityRepository>((ref) {
+  return PartnerDataQualityRepository();
 });
 
 /// Provider for the per-call partner-context resolver. Adapters keep
@@ -29,7 +37,7 @@ final partnerContextResolverProvider =
     conversationRepo:
         _ConversationListByPartnerAdapter(conversationRepo.listByPartner),
     summaryBuilder: PartnerSummaryBuilder(),
-    dataQualityRepo: _NoopDataQualityRepo(),
+    dataQualityRepo: ref.watch(partnerDataQualityRepoProvider),
   );
 });
 
@@ -49,13 +57,6 @@ class _ConversationListByPartnerAdapter
   @override
   List<Conversation> listByPartner(String partnerId) =>
       _listByPartner(partnerId);
-}
-
-/// Temporary stub — Phase 3 Task 10 replaces this with the real
-/// `PartnerDataQualityRepository` watched via a `Provider.family`.
-class _NoopDataQualityRepo implements PartnerDataQualityRepoView {
-  @override
-  bool isFlaggedUnresolved(String partnerId) => false;
 }
 
 /// State for analysis operation
