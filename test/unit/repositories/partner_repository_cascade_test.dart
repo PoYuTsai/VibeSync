@@ -6,7 +6,9 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repository.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
@@ -25,7 +27,9 @@ void main() {
   late Box<Partner> partnerBox;
   late Box<Conversation> conversationBox;
   late Box<PartnerStyleOverride> styleBox;
+  late Box<PartnerDataQualityState> qualityBox;
   late PartnerStyleRepository styleRepo;
+  late PartnerDataQualityRepository qualityRepo;
   late PartnerRepository repo;
 
   setUpAll(() {
@@ -58,6 +62,12 @@ void main() {
     if (!Hive.isAdapterRegistered(13)) {
       Hive.registerAdapter(PartnerStyleOverrideAdapter());
     }
+    if (!Hive.isAdapterRegistered(14)) {
+      Hive.registerAdapter(PartnerDataQualityStateAdapter());
+    }
+    if (!Hive.isAdapterRegistered(15)) {
+      Hive.registerAdapter(NamePairAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -70,15 +80,20 @@ void main() {
     conversationBox =
         await Hive.openBox<Conversation>('conversations_cascade_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('pso_cascade_$ts');
+    qualityBox =
+        await Hive.openBox<PartnerDataQualityState>('pdq_cascade_$ts');
     styleRepo = PartnerStyleRepository(box: styleBox);
+    qualityRepo = PartnerDataQualityRepository(injectedBox: qualityBox);
     repo = PartnerRepository(
       box: partnerBox,
       conversationBox: conversationBox,
       styleRepo: styleRepo,
+      qualityRepo: qualityRepo,
     );
   });
 
   tearDown(() async {
+    await qualityBox.deleteFromDisk();
     await styleBox.deleteFromDisk();
     await conversationBox.deleteFromDisk();
     await partnerBox.deleteFromDisk();
@@ -151,6 +166,74 @@ void main() {
     );
     // Override survives the failed delete — atomic-failure semantics.
     expect(await styleRepo.load('p1'), isNotNull);
+  });
+
+  test('delete cascades to PartnerDataQualityRepository', () async {
+    final p = _partner('p1');
+    await partnerBox.put(p.id, p);
+    await qualityRepo.markSamePerson(
+      'p1',
+      NamePair.canonical('May', 'Anna'),
+    );
+    expect(qualityBox.get('p1'), isNotNull);
+
+    await repo.delete('p1');
+
+    expect(partnerBox.containsKey('p1'), isFalse);
+    expect(qualityBox.get('p1'), isNull);
+  });
+
+  test('delete does NOT touch other partners quality state', () async {
+    final p1 = _partner('p1');
+    final p2 = _partner('p2');
+    await partnerBox.put(p1.id, p1);
+    await partnerBox.put(p2.id, p2);
+    await qualityRepo.markSamePerson(
+      'p1',
+      NamePair.canonical('May', 'Anna'),
+    );
+    await qualityRepo.markSamePerson(
+      'p2',
+      NamePair.canonical('Bob', 'Robert'),
+    );
+
+    await repo.delete('p1');
+
+    expect(qualityBox.get('p1'), isNull);
+    final p2State = qualityBox.get('p2');
+    expect(p2State, isNotNull);
+    expect(
+      p2State!.confirmsSamePerson(NamePair.canonical('Bob', 'Robert')),
+      isTrue,
+    );
+  });
+
+  test('delete blocked by conversations does NOT clear quality state',
+      () async {
+    final p = _partner('p1');
+    await partnerBox.put(p.id, p);
+    final c = Conversation(
+      id: 'c1',
+      name: 'conv',
+      messages: const [],
+      createdAt: DateTime(2026, 5, 1),
+      updatedAt: DateTime(2026, 5, 1),
+      ownerUserId: 'u1',
+      partnerId: 'p1',
+    );
+    c.currentRound = 1;
+    await conversationBox.put(c.id, c);
+    await qualityRepo.markSamePerson(
+      'p1',
+      NamePair.canonical('May', 'Anna'),
+    );
+
+    expect(
+      () => repo.delete('p1'),
+      throwsA(isA<PartnerHasConversationsException>()),
+    );
+    // Quality state survives the failed delete — atomic-failure semantics.
+    expect(qualityBox.get('p1'), isNotNull);
   });
 
   test('merge cascades to clear source partner style override only', () async {

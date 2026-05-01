@@ -17,6 +17,7 @@ import 'package:vibesync/features/partner/data/repositories/partner_repository.d
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
@@ -94,6 +95,7 @@ class _PartiallyFailingPartnerRepository extends PartnerRepository {
 late Box<Partner> _partnerBox;
 late Box<Conversation> _convoBox;
 late Box<PartnerStyleOverride> _styleBox;
+late Box<PartnerDataQualityState> _qualityBox;
 late _CountingConversationRepository _convoRepo;
 
 Future<ProviderContainer> _makeContainer() async {
@@ -163,6 +165,12 @@ void main() {
     if (!Hive.isAdapterRegistered(13)) {
       Hive.registerAdapter(PartnerStyleOverrideAdapter());
     }
+    if (!Hive.isAdapterRegistered(14)) {
+      Hive.registerAdapter(PartnerDataQualityStateAdapter());
+    }
+    if (!Hive.isAdapterRegistered(15)) {
+      Hive.registerAdapter(NamePairAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -181,10 +189,16 @@ void main() {
     _styleBox = await Hive.openBox<PartnerStyleOverride>(
       'partner_style_overrides',
     );
+    // Same lazy-default story for the Spec 3 quality cascade — open canonical
+    // box so PartnerDataQualityRepository's default getter resolves.
+    _qualityBox = await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
     _convoRepo = _CountingConversationRepository();
   });
 
   tearDown(() async {
+    await _qualityBox.deleteFromDisk();
     await _styleBox.deleteFromDisk();
     await _partnerBox.deleteFromDisk();
     await _convoBox.deleteFromDisk();

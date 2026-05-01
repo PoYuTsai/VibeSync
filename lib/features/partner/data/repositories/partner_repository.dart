@@ -2,6 +2,7 @@
 import 'package:hive_ce/hive_ce.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../../user_profile/data/repositories/partner_style_repository.dart';
 import '../../domain/entities/partner.dart';
 
@@ -30,13 +31,16 @@ class PartnerRepository {
     Box<Partner>? box,
     Box<Conversation>? conversationBox,
     PartnerStyleRepository? styleRepo,
+    PartnerDataQualityRepository? qualityRepo,
   })  : _box = box ?? StorageService.partnersBox,
         _injectedConversationBox = conversationBox,
-        _injectedStyleRepo = styleRepo;
+        _injectedStyleRepo = styleRepo,
+        _injectedQualityRepo = qualityRepo;
 
   final Box<Partner> _box;
   final Box<Conversation>? _injectedConversationBox;
   final PartnerStyleRepository? _injectedStyleRepo;
+  final PartnerDataQualityRepository? _injectedQualityRepo;
 
   // Lazy so callers that never invoke `merge` (e.g. the A1 migration path
   // and its tests) don't pay for opening the conversations box.
@@ -47,6 +51,11 @@ class PartnerRepository {
   // open when delete() runs the Spec 2 cascade.
   PartnerStyleRepository get _styleRepo =>
       _injectedStyleRepo ?? PartnerStyleRepository();
+
+  // Lazy for the same reason — partner_data_quality_states box only needs
+  // to be open when delete() runs the Spec 3 cascade.
+  PartnerDataQualityRepository get _qualityRepo =>
+      _injectedQualityRepo ?? PartnerDataQualityRepository();
 
   Partner? getById(String id) => _box.get(id);
 
@@ -127,6 +136,7 @@ class PartnerRepository {
     }
     await _box.delete(partnerId);
     await _styleRepo.delete(partnerId);
+    await _qualityRepo.delete(partnerId);
   }
 }
 

@@ -6,7 +6,9 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repository.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
@@ -44,6 +46,7 @@ void main() {
   late Box<Partner> partnerBox;
   late Box<Conversation> conversationBox;
   late Box<PartnerStyleOverride> styleBox;
+  late Box<PartnerDataQualityState> qualityBox;
   late PartnerRepository repo;
 
   setUpAll(() {
@@ -76,6 +79,12 @@ void main() {
     if (!Hive.isAdapterRegistered(13)) {
       Hive.registerAdapter(PartnerStyleOverrideAdapter());
     }
+    if (!Hive.isAdapterRegistered(14)) {
+      Hive.registerAdapter(PartnerDataQualityStateAdapter());
+    }
+    if (!Hive.isAdapterRegistered(15)) {
+      Hive.registerAdapter(NamePairAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -88,14 +97,17 @@ void main() {
     conversationBox =
         await Hive.openBox<Conversation>('conversations_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('pso_$ts');
+    qualityBox = await Hive.openBox<PartnerDataQualityState>('pdq_$ts');
     repo = PartnerRepository(
       box: partnerBox,
       conversationBox: conversationBox,
       styleRepo: PartnerStyleRepository(box: styleBox),
+      qualityRepo: PartnerDataQualityRepository(injectedBox: qualityBox),
     );
   });
 
   tearDown(() async {
+    await qualityBox.deleteFromDisk();
     await styleBox.deleteFromDisk();
     await conversationBox.deleteFromDisk();
     await partnerBox.deleteFromDisk();
