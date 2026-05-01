@@ -1,3 +1,4 @@
+import '../../../../core/constants/app_constants.dart';
 import '../entities/analysis_models.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
@@ -18,9 +19,30 @@ class CoachActionPolicy {
     required bool isDataQualityFlagged,
     PsychologyAnalysis? psychology,
   }) {
+    if (heatScore > AppConstants.hotMax) {
+      return _buildSoftInvite(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+      );
+    }
     return _buildFitCheck(
       heatScore: heatScore,
       isDataQualityFlagged: isDataQualityFlagged,
+    );
+  }
+
+  static CoachActionCardData _buildSoftInvite({
+    required int heatScore,
+    required FinalRecommendation finalRecommendation,
+  }) {
+    final candidate = finalRecommendation.content.trim();
+    return CoachActionCardData(
+      actionLabel: '模糊邀約',
+      whyNow: '熱度 $heatScore，互動穩定且對方有訊號，可以給具體選項',
+      task: '拋一個低門檻邀約，給具體時間和場景',
+      avoid: '別要對方立刻決定',
+      suggestedLine: candidate.isEmpty ? null : candidate,
+      learningLink: LearningLinkResolver.resolve(CoachActionType.softInvite),
     );
   }
 

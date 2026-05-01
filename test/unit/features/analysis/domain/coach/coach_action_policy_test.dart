@@ -121,5 +121,29 @@ void main() {
         );
       }
     });
+
+    test('should pick softInvite when heat is in veryHot range and stage is close',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 90,
+        gameStage: const GameStageInfo(
+          current: GameStage.close,
+          status: GameStageStatus.canAdvance,
+          nextStep: '提議週末一起去看那部電影',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '剛好我也想去，週六下午有空嗎？',
+          reason: '趁熱拋出具體時間能降低拒絕成本',
+          psychology: '具體選項比開放邀請更容易成行',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '模糊邀約');
+      expect(card.suggestedLine, '剛好我也想去，週六下午有空嗎？');
+      expect(card.learningLink, isNull);
+    });
   });
 }
