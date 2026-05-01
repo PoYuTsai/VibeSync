@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_type.dart';
 import 'package:vibesync/features/analysis/domain/coach/learning_link_resolver.dart';
+import 'package:vibesync/features/learning/data/articles_data.dart';
 
 void main() {
   group('LearningLinkResolver.resolve', () {
@@ -56,6 +57,21 @@ void main() {
 
     test('fitCheck -> 18', () {
       expect(LearningLinkResolver.resolve(CoachActionType.fitCheck), '18');
+    });
+
+    test('every non-null resolver result references an existing article id',
+        () {
+      for (final type in CoachActionType.values) {
+        final id = LearningLinkResolver.resolve(type);
+        if (id == null) continue;
+        final exists = articles.any((a) => a.id == id);
+        expect(
+          exists,
+          isTrue,
+          reason:
+              '$type maps to articleId "$id" but no such article in articles',
+        );
+      }
     });
   });
 }
