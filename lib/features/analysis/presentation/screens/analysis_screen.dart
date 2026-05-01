@@ -18,7 +18,7 @@ import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
-import '../../../../shared/widgets/score_action_hint.dart';
+import '../../../../shared/widgets/coach_action_card.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
@@ -32,12 +32,16 @@ import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
+import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
+import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
+import '../../../user_profile/data/providers/partner_style_providers.dart';
+import '../../../user_profile/domain/entities/user_profile.dart';
 
 class AnalysisScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -3814,12 +3818,46 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   ],
                                 ),
                               ),
-                            ] else ...[
+                            ] else if (_gameStage != null &&
+                                _finalRecommendation != null) ...[
                               const SizedBox(height: 12),
-                              ScoreActionHint(
-                                score: _enthusiasmScore!,
-                                gameStage: _gameStage,
-                                recommendation: _finalRecommendation,
+                              Builder(
+                                builder: (context) {
+                                  final conversation = ref.watch(
+                                      conversationProvider(
+                                          widget.conversationId));
+                                  final partnerId = conversation?.partnerId;
+                                  final flagged = partnerId != null
+                                      ? ref
+                                          .watch(dataQualityFlagProvider(
+                                              partnerId))
+                                          .isFlagged
+                                      : false;
+                                  final practiceGoals = partnerId != null
+                                      ? ref
+                                          .watch(effectiveStyleProvider(
+                                              partnerId))
+                                          .practiceGoals
+                                      : const <PracticeGoal>[];
+
+                                  final cardData =
+                                      CoachActionPolicy.evaluate(
+                                    heatScore: _enthusiasmScore!,
+                                    gameStage: _gameStage!,
+                                    finalRecommendation: _finalRecommendation!,
+                                    messages: conversation?.messages ??
+                                        const <Message>[],
+                                    practiceGoals: practiceGoals,
+                                    isDataQualityFlagged: flagged,
+                                    psychology: _psychology,
+                                  );
+
+                                  return CoachActionCard(
+                                    data: cardData,
+                                    onLearningLinkTap: (articleId) =>
+                                        context.push('/article/$articleId'),
+                                  );
+                                },
                               ),
                             ],
                           ] else if (_isAnalyzing) ...[
