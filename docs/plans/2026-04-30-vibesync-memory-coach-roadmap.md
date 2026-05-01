@@ -36,7 +36,7 @@ In Chinese product language:
 | 2. Partner Memory | Remember each person | Partner card, multi-record, aggregate memory | Mixed-person data can pollute memory |
 | 3. User Growth | Remember the user | Almost absent | About Me / practice goals / user rhythm |
 | 4. Coach Action | Turn analysis into practice | ScoreActionHint seed exists | Needs task card and review loop |
-| 5. Proactive Coach | Pull user back at key moments | Not started | Progress nudge, pre-date prep, post-date review |
+| 5. Relationship Rhythm Coach | Help user manage relationship rhythm and mindset at key moments | Not started | Progress nudge, pre-date prep, post-date review, intimacy-aftercare, short-term relationship maintenance |
 
 ## 3. Current Product Risk
 
@@ -180,7 +180,7 @@ extendTopic.storyFrame -> 故事框架代替問答
 Practice: pick a recent small life event and split it into Scene / Point / Pivot.
 ```
 
-### Spec 5: Proactive Coach Loop
+### Spec 5: Relationship Rhythm & Mindset Coach
 
 File:
 
@@ -193,12 +193,29 @@ Scope:
 - In-app progress nudge.
 - Pre-date prep.
 - Post-date review.
+- Intimacy-aftercare / close-after rhythm.
+- Short-term relationship maintenance.
+- Relationship expectation, boundary, and mindset management.
 - No push notification in v1.
 
 Why:
 
 ```text
-This is the step from reactive tool to active coach, but only after memory is safe.
+This is the step from reactive tool to relationship coach, but only after memory and Coach Action are safe.
+```
+
+Positioning note:
+
+```text
+VibeSync 不羞辱使用者想推進、見面、親密的真實動機，但也不讓使用者被慾望、焦慮、佔有慾或匱乏感帶著走。
+```
+
+Spec 5 should help users answer:
+
+```text
+這段關係現在走到哪？
+我的心態穩不穩？
+下一步要推進、維持、降溫，還是停止？
 ```
 
 ## 5. Execution Order
