@@ -32,6 +32,24 @@ class CoachActionPolicy {
   static bool _payloadSuggestsMeeting(String text) =>
       _meetingKeywords.any(text.contains);
 
+  static bool _userOverextendedReply(List<Message> messages) {
+    if (messages.length < 2) return false;
+    for (var i = messages.length - 1; i >= 0; i--) {
+      if (!messages[i].isFromMe) {
+        final partner = messages[i];
+        for (var j = i + 1; j < messages.length; j++) {
+          if (messages[j].isFromMe) {
+            final user = messages[j];
+            if (partner.content.isEmpty) return false;
+            return user.content.length > partner.content.length * 1.8;
+          }
+        }
+        return false;
+      }
+    }
+    return false;
+  }
+
   static const Set<GameStage> _midGameStages = {
     GameStage.premise,
     GameStage.qualification,
@@ -51,6 +69,7 @@ class CoachActionPolicy {
       heatScore: heatScore,
       gameStage: gameStage,
       finalRecommendation: finalRecommendation,
+      messages: messages,
       practiceGoals: practiceGoals,
       isDataQualityFlagged: isDataQualityFlagged,
       psychology: psychology,
@@ -62,6 +81,7 @@ class CoachActionPolicy {
     required int heatScore,
     required GameStageInfo gameStage,
     required FinalRecommendation finalRecommendation,
+    required List<Message> messages,
     required List<PracticeGoal> practiceGoals,
     required bool isDataQualityFlagged,
     PsychologyAnalysis? psychology,
@@ -75,6 +95,12 @@ class CoachActionPolicy {
     if (heatScore <= AppConstants.coldMax &&
         _payloadSuggestsMeeting(gameStage.nextStep)) {
       return _buildPausePursuit(heatScore: heatScore);
+    }
+    if (_userOverextendedReply(messages)) {
+      return _buildRightSizeReply(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+      );
     }
     final challengeSignal = psychology?.shitTest != null;
     final strongSubtext = (psychology?.subtext.trim().length ?? 0) >= 8;
@@ -174,6 +200,21 @@ class CoachActionPolicy {
       suggestedLine: null,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.preferenceSignal),
+    );
+  }
+
+  static CoachActionCardData _buildRightSizeReply({
+    required int heatScore,
+    required FinalRecommendation finalRecommendation,
+  }) {
+    final candidate = finalRecommendation.content.trim();
+    return CoachActionCardData(
+      actionLabel: '回得剛剛好',
+      whyNow: '熱度 $heatScore，這次回得有點長，下一句先精簡一點再展開',
+      task: '把回覆字數對齊對方上一句的 1.8 倍以內',
+      avoid: '別把所有想說的塞進一封',
+      suggestedLine: candidate.isEmpty ? null : candidate,
+      learningLink: LearningLinkResolver.resolve(CoachActionType.rightSizeReply),
     );
   }
 

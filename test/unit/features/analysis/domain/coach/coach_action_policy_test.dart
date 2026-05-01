@@ -4,6 +4,7 @@ import 'package:vibesync/features/analysis/domain/coach/coach_action_policy.dart
 import 'package:vibesync/features/analysis/domain/coach/coach_action_type.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 void main() {
@@ -319,6 +320,63 @@ void main() {
         psychology: const PsychologyAnalysis(subtext: '嗯'),
       );
       expect(card.actionLabel, isNot('情緒共鳴'));
+    });
+
+    test('should pick rightSizeReply when user reply exceeds partner length × 1.8', () {
+      final messages = [
+        Message(
+          id: 'm1',
+          content: '今天累',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 1, 10),
+        ),
+        Message(
+          id: 'm2',
+          content: '哎我也是欸今天從早到晚開會根本沒時間吃飯下班還被叫去處理一個爛攤子',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 11),
+        ),
+      ];
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 55,
+        gameStage: const GameStageInfo(current: GameStage.premise, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend', content: '', reason: '', psychology: '',
+        ),
+        messages: messages,
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '回得剛剛好');
+      expect(card.learningLink, '12');
+    });
+
+    test('should not pick rightSizeReply when ratio is at the threshold', () {
+      final messages = [
+        Message(
+          id: 'm1',
+          content: '今天好累',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 1, 10),
+        ),
+        Message(
+          id: 'm2',
+          content: '我也累',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 11),
+        ),
+      ];
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 55,
+        gameStage: const GameStageInfo(current: GameStage.premise, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend', content: '', reason: '', psychology: '',
+        ),
+        messages: messages,
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, isNot('回得剛剛好'));
     });
   });
 }
