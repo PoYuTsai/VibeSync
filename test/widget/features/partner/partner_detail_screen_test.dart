@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
@@ -22,6 +23,7 @@ import 'package:vibesync/features/partner/presentation/widgets/partner_radar_sum
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repository.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
@@ -71,6 +73,21 @@ class _FakeStyleRepo implements PartnerStyleRepository {
   Future<void> delete(String partnerId) async => byPartner.remove(partnerId);
   @override
   Future<void> clearAll() async => byPartner.clear();
+}
+
+/// Records markSamePerson calls for hermetic widget assertions. Overrides
+/// only the methods exercised by the action handler — load/save/etc. would
+/// hit `_box` (i.e. StorageService) and are intentionally left as `super`'s
+/// implementation so any accidental reach-through fails loudly.
+class _RecordingDataQualityRepo extends PartnerDataQualityRepository {
+  _RecordingDataQualityRepo() : super();
+
+  final List<({String partnerId, NamePair pair})> markSamePersonCalls = [];
+
+  @override
+  Future<void> markSamePerson(String partnerId, NamePair pair) async {
+    markSamePersonCalls.add((partnerId: partnerId, pair: pair));
+  }
 }
 
 void main() {
@@ -612,5 +629,57 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.byType(PartnerDataQualityBanner), findsNothing);
+  });
+
+  // Spec 3 Task 20 — 「這是同一人」action handler.
+  //
+  // Hermetic widget test: override `partnerDataQualityRepoProvider` with a
+  // fake that records markSamePerson calls, and override
+  // `dataQualityFlagProvider` directly to flagged so the banner renders
+  // (matching the working banner-render test above).
+  //
+  // We do NOT use a real Hive-backed repo here because widget tests run
+  // under FakeAsync, where real file I/O (Hive.openBox) never resolves and
+  // pumpAndSettle hangs to the 10-minute timeout. The reactive
+  // "banner disappears after the comparator re-runs" leg is already
+  // covered hermetically by data_quality_flag_provider_test
+  // (`returns unflagged when the two candidates are in confirmed pairs`),
+  // so the widget test only needs to prove the tap reaches the repo with
+  // the canonical pair.
+  testWidgets(
+      'tapping 這是同一人 calls markSamePerson with the canonical NamePair',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    final pair = NamePair.canonical('Anna', 'May');
+    final repo = _RecordingDataQualityRepo();
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => DataQualityFlag.flagged(pair)),
+        partnerDataQualityRepoProvider.overrideWithValue(repo),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    // Banner renders (override forces flagged state).
+    expect(find.byType(PartnerDataQualityBanner), findsOneWidget);
+
+    await t.tap(find.text('這是同一人'));
+    await t.pumpAndSettle();
+
+    expect(repo.markSamePersonCalls, hasLength(1));
+    expect(repo.markSamePersonCalls.single.partnerId, 'p1');
+    expect(repo.markSamePersonCalls.single.pair, pair);
   });
 }

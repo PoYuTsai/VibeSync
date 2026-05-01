@@ -30,6 +30,7 @@ import '../../../conversation/data/providers/conversation_write_controller.dart'
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../conversation/presentation/dialogs/delete_conversation_confirm_dialog.dart';
+import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
@@ -239,15 +240,13 @@ class PartnerDetailScreen extends ConsumerWidget {
     );
   }
 
-  // Stub — Spec 3 Task 20 implements markSamePerson + invalidate.
-  // Signature is stable; Task 20 fills the body in place (no caller change).
-  void _handleMarkSamePerson(
+  Future<void> _handleMarkSamePerson(
     WidgetRef ref,
     String partnerId,
     NamePair pair,
-  ) {
-    // ignore: avoid_print
-    debugPrint('[Spec3 Task 20 TODO] markSamePerson($partnerId, $pair)');
+  ) async {
+    await ref.read(partnerDataQualityRepoProvider).markSamePerson(partnerId, pair);
+    ref.invalidate(dataQualityFlagProvider(partnerId));
   }
 
   // Stub — Spec 3 Task 21 implements confirm dialog + repo.split + invalidation.
