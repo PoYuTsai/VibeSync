@@ -131,8 +131,7 @@ class CoachActionPolicy {
         challengeSignal: challengeSignal,
       );
     }
-    if (heatScore >= 31 &&
-        heatScore <= AppConstants.hotMax &&
+    if (heatScore <= AppConstants.hotMax &&
         _midGameStages.contains(gameStage.current)) {
       if (practiceGoals.contains(PracticeGoal.humorousReply)) {
         return _buildPlayfulReply(
@@ -154,7 +153,7 @@ class CoachActionPolicy {
     );
   }
 
-  // Flagged partners are restricted to a safe set: no邀約推進 / no 故事框架展開 /
+  // Flagged partners are restricted to a safe set: no 邀約推進 / no 故事框架展開 /
   // no humour goal / no preferenceSignal — practiceGoals is ignored entirely.
   static CoachActionCardData _selectFlaggedSafeSet({
     required int heatScore,
