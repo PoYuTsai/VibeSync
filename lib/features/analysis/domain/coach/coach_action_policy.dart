@@ -32,20 +32,34 @@ class CoachActionPolicy {
   static bool _payloadSuggestsMeeting(String text) =>
       _meetingKeywords.any(text.contains);
 
+  static bool _hasMeetingGameplaySignal(
+    GameStageInfo gameStage,
+    FinalRecommendation finalRecommendation,
+  ) {
+    return gameStage.current == GameStage.close ||
+        gameStage.status == GameStageStatus.canAdvance ||
+        _payloadSuggestsMeeting(gameStage.nextStep) ||
+        _payloadSuggestsMeeting(finalRecommendation.content) ||
+        _payloadSuggestsMeeting(finalRecommendation.reason);
+  }
+
   static bool _userOverextendedReply(List<Message> messages) {
     if (messages.length < 2) return false;
+    Message? latestUserReply;
     for (var i = messages.length - 1; i >= 0; i--) {
-      if (!messages[i].isFromMe) {
-        final partner = messages[i];
-        for (var j = i + 1; j < messages.length; j++) {
-          if (messages[j].isFromMe) {
-            final user = messages[j];
-            if (partner.content.isEmpty) return false;
-            return user.content.length > partner.content.length * 1.8;
-          }
-        }
+      final message = messages[i];
+      if (message.isFromMe) {
+        latestUserReply ??= message;
+        continue;
+      }
+
+      if (latestUserReply == null) {
         return false;
       }
+
+      final partnerLength = message.content.trim().length;
+      if (partnerLength == 0) return false;
+      return latestUserReply.content.trim().length > partnerLength * 1.8;
     }
     return false;
   }
@@ -94,7 +108,8 @@ class CoachActionPolicy {
         psychology: psychology,
       );
     }
-    if (heatScore > AppConstants.hotMax) {
+    if (heatScore > AppConstants.hotMax &&
+        _hasMeetingGameplaySignal(gameStage, finalRecommendation)) {
       return _buildSoftInvite(
         heatScore: heatScore,
         finalRecommendation: finalRecommendation,
@@ -230,9 +245,8 @@ class CoachActionPolicy {
     required bool flaggedPath,
   }) {
     final candidate = finalRecommendation.content.trim();
-    final whyNow = flaggedPath
-        ? '這位對象目前資料還不完整，先放慢一拍別追問'
-        : '熱度 $heatScore，先把溫度留住不要追問結果';
+    final whyNow =
+        flaggedPath ? '這位對象目前資料還不完整，先放慢一拍別追問' : '熱度 $heatScore，先把溫度留住不要追問結果';
     return CoachActionCardData(
       actionLabel: '降低壓力',
       whyNow: whyNow,
@@ -309,7 +323,8 @@ class CoachActionPolicy {
       task: '把回覆字數對齊對方上一句的 1.8 倍以內',
       avoid: '別把所有想說的塞進一封',
       suggestedLine: candidate.isEmpty ? null : candidate,
-      learningLink: LearningLinkResolver.resolve(CoachActionType.rightSizeReply),
+      learningLink:
+          LearningLinkResolver.resolve(CoachActionType.rightSizeReply),
     );
   }
 

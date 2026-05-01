@@ -129,7 +129,8 @@ void main() {
       }
     });
 
-    test('should pick softInvite when heat is in veryHot range and stage is close',
+    test(
+        'should pick softInvite when heat is in veryHot range and stage is close',
         () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 90,
@@ -151,6 +152,34 @@ void main() {
       expect(card.actionLabel, '模糊邀約');
       expect(card.suggestedLine, '剛好我也想去，週六下午有空嗎？');
       expect(card.learningLink, isNull);
+    });
+
+    test('should not pick softInvite on veryHot heat without meeting signal',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 90,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          status: GameStageStatus.normal,
+          nextStep: '延續她剛剛提到的週末活動',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '聽起來很放鬆，那你通常週末會怎麼安排？',
+          reason: '先接住她分享的生活節奏',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [PracticeGoal.softInvite],
+        isDataQualityFlagged: false,
+      );
+
+      expect(
+        card.actionLabel,
+        isNot('模糊邀約'),
+        reason:
+            'softInvite needs both veryHot heat and a meeting/close gameplay signal',
+      );
     });
 
     test(
@@ -248,7 +277,8 @@ void main() {
       expect(card.suggestedLine, '聽起來最近壓力大，是哪一塊？');
     });
 
-    test('should switch to preferenceSignal when explainLess practice goal is set',
+    test(
+        'should switch to preferenceSignal when explainLess practice goal is set',
         () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 50,
@@ -274,11 +304,14 @@ void main() {
       final card = CoachActionPolicy.evaluate(
         heatScore: 55,
         gameStage: const GameStageInfo(
-          current: GameStage.qualification, nextStep: '',
+          current: GameStage.qualification,
+          nextStep: '',
         ),
         finalRecommendation: const FinalRecommendation(
-          pick: 'resonate', content: '聽起來那天真的很累，先吃個飯再聊吧。',
-          reason: '', psychology: '',
+          pick: 'resonate',
+          content: '聽起來那天真的很累，先吃個飯再聊吧。',
+          reason: '',
+          psychology: '',
         ),
         messages: const [],
         practiceGoals: const [],
@@ -295,9 +328,13 @@ void main() {
     test('should pick emotionalResonance when subtext signal is strong', () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 55,
-        gameStage: const GameStageInfo(current: GameStage.qualification, nextStep: ''),
+        gameStage:
+            const GameStageInfo(current: GameStage.qualification, nextStep: ''),
         finalRecommendation: const FinalRecommendation(
-          pick: 'resonate', content: '', reason: '', psychology: '',
+          pick: 'resonate',
+          content: '',
+          reason: '',
+          psychology: '',
         ),
         messages: const [],
         practiceGoals: const [],
@@ -310,9 +347,13 @@ void main() {
     test('should not pick emotionalResonance when subtext is short noise', () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 50,
-        gameStage: const GameStageInfo(current: GameStage.opening, nextStep: ''),
+        gameStage:
+            const GameStageInfo(current: GameStage.opening, nextStep: ''),
         finalRecommendation: const FinalRecommendation(
-          pick: 'extend', content: '', reason: '', psychology: '',
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
         ),
         messages: const [],
         practiceGoals: const [],
@@ -322,7 +363,9 @@ void main() {
       expect(card.actionLabel, isNot('情緒共鳴'));
     });
 
-    test('should pick rightSizeReply when user reply exceeds partner length × 1.8', () {
+    test(
+        'should pick rightSizeReply when user reply exceeds partner length × 1.8',
+        () {
       final messages = [
         Message(
           id: 'm1',
@@ -339,9 +382,13 @@ void main() {
       ];
       final card = CoachActionPolicy.evaluate(
         heatScore: 55,
-        gameStage: const GameStageInfo(current: GameStage.premise, nextStep: ''),
+        gameStage:
+            const GameStageInfo(current: GameStage.premise, nextStep: ''),
         finalRecommendation: const FinalRecommendation(
-          pick: 'extend', content: '', reason: '', psychology: '',
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
         ),
         messages: messages,
         practiceGoals: const [],
@@ -349,6 +396,48 @@ void main() {
       );
       expect(card.actionLabel, '回得剛剛好');
       expect(card.learningLink, '12');
+    });
+
+    test(
+        'should compare against the latest user reply after the partner message',
+        () {
+      final messages = [
+        Message(
+          id: 'm1',
+          content: '今天累',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 1, 10),
+        ),
+        Message(
+          id: 'm2',
+          content: '我懂',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 11),
+        ),
+        Message(
+          id: 'm3',
+          content: '我今天也是一路從早忙到晚，還一直想著昨天那件事到底怎麼收尾比較好',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 12),
+        ),
+      ];
+
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 55,
+        gameStage:
+            const GameStageInfo(current: GameStage.premise, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: messages,
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+
+      expect(card.actionLabel, '回得剛剛好');
     });
 
     test('should not pick rightSizeReply when ratio is at the threshold', () {
@@ -368,9 +457,13 @@ void main() {
       ];
       final card = CoachActionPolicy.evaluate(
         heatScore: 55,
-        gameStage: const GameStageInfo(current: GameStage.premise, nextStep: ''),
+        gameStage:
+            const GameStageInfo(current: GameStage.premise, nextStep: ''),
         finalRecommendation: const FinalRecommendation(
-          pick: 'extend', content: '', reason: '', psychology: '',
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
         ),
         messages: messages,
         practiceGoals: const [],
@@ -379,7 +472,8 @@ void main() {
       expect(card.actionLabel, isNot('回得剛剛好'));
     });
 
-    test('should pick lowerPressureReply when heat is cold without meeting keyword',
+    test(
+        'should pick lowerPressureReply when heat is cold without meeting keyword',
         () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 25,
@@ -401,7 +495,8 @@ void main() {
       expect(card.learningLink, '10');
     });
 
-    test('should pick playfulReply when humorousReply practice goal is set in warm-hot',
+    test(
+        'should pick playfulReply when humorousReply practice goal is set in warm-hot',
         () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 55,
@@ -491,8 +586,8 @@ void main() {
         // pausePursuit (cold + meeting keyword)
         {
           'heatScore': 20,
-          'gameStage':
-              const GameStageInfo(current: GameStage.opening, nextStep: '想約她出來'),
+          'gameStage': const GameStageInfo(
+              current: GameStage.opening, nextStep: '想約她出來'),
         },
         // lowerPressureReply (cold without meeting keyword)
         {
@@ -578,16 +673,14 @@ void main() {
           expect(
             card.task.contains(word),
             isFalse,
-            reason:
-                '${card.actionLabel} task leaked forbidden token "$word"',
+            reason: '${card.actionLabel} task leaked forbidden token "$word"',
           );
         }
         for (final word in forbiddenInAvoid) {
           expect(
             card.avoid.contains(word),
             isFalse,
-            reason:
-                '${card.actionLabel} avoid leaked forbidden token "$word"',
+            reason: '${card.actionLabel} avoid leaked forbidden token "$word"',
           );
         }
       }
