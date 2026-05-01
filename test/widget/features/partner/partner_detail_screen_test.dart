@@ -604,9 +604,10 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.byType(PartnerDataQualityBanner), findsOneWidget);
-    // Both names from the conflicting pair surface in the banner copy.
-    expect(find.textContaining(pair.first), findsOneWidget);
-    expect(find.textContaining(pair.second), findsOneWidget);
+    // Display names are title-cased for UX; canonical lower-case names stay
+    // inside NamePair for matching/storage only.
+    expect(find.textContaining('Anna'), findsOneWidget);
+    expect(find.textContaining('May'), findsOneWidget);
   });
 
   testWidgets(
@@ -702,12 +703,13 @@ void main() {
       required RecordingPartnerWriteController fakeController,
       required List<Conversation> conversations,
       required Widget child,
+      Partner? partner,
     }) {
       final pair = NamePair.canonical('Anna', 'May');
       return ProviderScope(
         overrides: [
           partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-          partnerByIdProvider('p1').overrideWith((_) => _p()),
+          partnerByIdProvider('p1').overrideWith((_) => partner ?? _p()),
           partnerAggregateProvider('p1')
               .overrideWith((_) => PartnerAggregateView.empty()),
           dataQualityFlagProvider('p1')
@@ -740,10 +742,8 @@ void main() {
       await t.pumpAndSettle();
 
       expect(find.text('拆成新對象？'), findsOneWidget);
-      // Dialog content names both sides — canonicalised (lowercase + trimmed),
-      // matching the banner's display contract.
-      expect(find.textContaining('anna'), findsWidgets);
-      expect(find.textContaining('may'), findsWidgets);
+      expect(find.textContaining('Anna'), findsWidgets);
+      expect(find.textContaining('May'), findsWidgets);
       expect(find.text('取消'), findsOneWidget);
       expect(find.text('確認拆卡'), findsOneWidget);
       expect(fake.splitCalled, isFalse, reason: 'showing the dialog must not call split');
@@ -797,11 +797,43 @@ void main() {
 
       expect(fake.splitCalled, isTrue);
       expect(fake.splitSourceId, 'p1');
-      // pair.second is the lowercased+trimmed form ("may"), since
-      // NamePair.canonical normalises both sides.
-      expect(fake.splitNewName, 'may');
+      expect(fake.splitNewName, 'May');
       expect(fake.splitMatchedIds, equals(['c1', 'c3']));
       expect(find.textContaining('已把'), findsOneWidget);
+    });
+
+    testWidgets(
+        'dialog 確認拆卡 keeps conversations matching current partner name on source',
+        (t) async {
+      await t.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+
+      final fake = RecordingPartnerWriteController();
+      await t.pumpWidget(scope(
+        fakeController: fake,
+        partner: _other('p1', 'May'),
+        conversations: [
+          convNamed('c1', 'May'),
+          convNamed('c2', 'Anna'),
+          convNamed('c3', 'Anna'),
+        ],
+        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      ));
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('拆成新對象'));
+      await t.pumpAndSettle();
+
+      expect(find.textContaining('「May」會留在這張卡'), findsOneWidget);
+      expect(find.textContaining('含「Anna」的對話'), findsOneWidget);
+
+      await t.tap(find.text('確認拆卡'));
+      await t.pumpAndSettle();
+
+      expect(fake.splitCalled, isTrue);
+      expect(fake.splitSourceId, 'p1');
+      expect(fake.splitNewName, 'Anna');
+      expect(fake.splitMatchedIds, equals(['c2', 'c3']));
     });
 
     testWidgets(

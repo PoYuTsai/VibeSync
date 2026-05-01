@@ -134,8 +134,20 @@ class PartnerDetailScreen extends ConsumerWidget {
                 if (dataQualityFlag.isFlagged &&
                     dataQualityFlag.conflictingPair != null) ...[
                   PartnerDataQualityBanner(
-                    nameA: dataQualityFlag.conflictingPair!.first,
-                    nameB: dataQualityFlag.conflictingPair!.second,
+                    nameA: _displayNameForCanonical(
+                      conversations,
+                      dataQualityFlag.conflictingPair!.first,
+                      fallback: _fallbackDisplayName(
+                        dataQualityFlag.conflictingPair!.first,
+                      ),
+                    ),
+                    nameB: _displayNameForCanonical(
+                      conversations,
+                      dataQualityFlag.conflictingPair!.second,
+                      fallback: _fallbackDisplayName(
+                        dataQualityFlag.conflictingPair!.second,
+                      ),
+                    ),
                     onMarkSamePerson: () => _handleMarkSamePerson(
                       ref,
                       partner.id,
@@ -256,13 +268,16 @@ class PartnerDetailScreen extends ConsumerWidget {
     Partner partner,
     NamePair pair,
   ) async {
-    final confirmed = await _showSplitConfirmDialog(context, pair);
+    final conversations = ref.read(conversationsByPartnerProvider(partner.id));
+    final splitTarget = _resolveSplitTarget(partner, conversations, pair);
+    final confirmed = await _showSplitConfirmDialog(context, splitTarget);
     if (!confirmed) return;
     if (!context.mounted) return;
 
-    final conversations =
-        ref.read(conversationsByPartnerProvider(partner.id));
-    final matchedIds = _filterConvIdsMatchingName(conversations, pair.second);
+    final matchedIds = _filterConvIdsMatchingName(
+      conversations,
+      splitTarget.movingCanonicalName,
+    );
     // Defensive: extractor mapping changed since the banner was rendered, or
     // the matching conversation was just deleted. No-op rather than create an
     // empty new partner.
@@ -274,11 +289,11 @@ class PartnerDetailScreen extends ConsumerWidget {
           .read(partnerWriteControllerProvider.notifier)
           .split(
             sourcePartnerId: partner.id,
-            newPartnerName: pair.second,
+            newPartnerName: splitTarget.movingDisplayName,
             matchedConversationIds: matchedIds,
           );
       messenger.showSnackBar(
-        SnackBar(content: Text('已把「${pair.second}」拆成新對象')),
+        SnackBar(content: Text('已把「${splitTarget.movingDisplayName}」拆成新對象')),
       );
     } catch (_) {
       messenger.showSnackBar(
@@ -306,16 +321,83 @@ class PartnerDetailScreen extends ConsumerWidget {
     return ids;
   }
 
+  _SplitTarget _resolveSplitTarget(
+    Partner partner,
+    List<Conversation> conversations,
+    NamePair pair,
+  ) {
+    final currentPartnerName = _canonicalName(partner.name);
+    final keepCanonicalName = currentPartnerName == pair.second
+        ? pair.second
+        : pair.first;
+    final movingCanonicalName = keepCanonicalName == pair.first
+        ? pair.second
+        : pair.first;
+    final partnerDisplayName = partner.name.trim();
+
+    return _SplitTarget(
+      keptDisplayName: currentPartnerName == keepCanonicalName
+          ? partnerDisplayName
+          : _displayNameForCanonical(
+              conversations,
+              keepCanonicalName,
+              fallback: _fallbackDisplayName(keepCanonicalName),
+            ),
+      movingCanonicalName: movingCanonicalName,
+      movingDisplayName: _displayNameForCanonical(
+        conversations,
+        movingCanonicalName,
+        fallback: _fallbackDisplayName(movingCanonicalName),
+      ),
+    );
+  }
+
+  String _displayNameForCanonical(
+    List<Conversation> conversations,
+    String canonicalName, {
+    required String fallback,
+  }) {
+    final extractor = NameCandidateExtractor();
+    for (final c in conversations) {
+      final conversationName = c.name.trim();
+      final fromConversationName =
+          extractor.fromConversationName(conversationName);
+      if (fromConversationName != null &&
+          _canonicalName(fromConversationName) == canonicalName) {
+        return conversationName;
+      }
+
+      final fromMessages = extractor.fromMessages(c.messages);
+      if (fromMessages != null &&
+          _canonicalName(fromMessages) == canonicalName) {
+        return _fallbackDisplayName(fromMessages);
+      }
+    }
+    return fallback;
+  }
+
+  String _canonicalName(String name) => name.trim().toLowerCase();
+
+  String _fallbackDisplayName(String canonicalName) {
+    final s = canonicalName.trim();
+    if (!RegExp(r'^[a-z ]+$').hasMatch(s)) return s;
+    return s
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
   Future<bool> _showSplitConfirmDialog(
     BuildContext context,
-    NamePair pair,
+    _SplitTarget splitTarget,
   ) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('拆成新對象？'),
         content: Text(
-          '「${pair.first}」會留在這張卡；含「${pair.second}」的對話會搬到新的對象卡。',
+          '「${splitTarget.keptDisplayName}」會留在這張卡；含「${splitTarget.movingDisplayName}」的對話會搬到新的對象卡。',
         ),
         actions: [
           TextButton(
@@ -331,6 +413,18 @@ class PartnerDetailScreen extends ConsumerWidget {
     );
     return result ?? false;
   }
+}
+
+class _SplitTarget {
+  final String keptDisplayName;
+  final String movingCanonicalName;
+  final String movingDisplayName;
+
+  const _SplitTarget({
+    required this.keptDisplayName,
+    required this.movingCanonicalName,
+    required this.movingDisplayName,
+  });
 }
 
 /// Static dark-navy backdrop with 3 brand-colored glow bubbles.

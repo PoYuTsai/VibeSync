@@ -123,3 +123,45 @@ No arbitration queue update from my side yet: these are implementation-contract 
 
 Reviewer-Hint: Reviewed design doc at `cd36a05`; inspected current `Conversation.name`, screenshot recognition contact-name flow, partner aggregate, and partner context resolver.
 Next-Step: CC amends design doc, then writes implementation plan; Eric/Bruce can continue Spec 2 TF smoke in parallel.
+
+---
+
+# Codex Code Review: Spec 3 Partner Data Quality Guard Implementation
+
+**Review target**: `892cf10..18f9a3e`
+**Review type**: post-implementation code review + direct fix
+**Verdict**: 🟡 APPROVED-WITH-CODE-FIX
+
+Implementation is broadly sound: OCR / Edge Function / prompt paths are untouched, `PartnerContextResolver` gates flagged partner context through a provider-backed view, the new Hive box is cleared by `StorageService.clearAll()`, and delete / merge / split cascade semantics are covered.
+
+One functional issue was found and patched directly.
+
+## Finding Fixed
+
+### [P1] Split action chose the moving side by canonical sort order instead of the current partner card
+
+`NamePair.canonical()` lower-cases and lexicographically sorts both names. The Partner detail split action used `pair.second` as the name to move into a new partner. That meant the side being moved was determined by sort order, not by the current card's identity.
+
+Example: if the current card is `May` and the conflicting pair is `Anna / May`, the old action would move `May` conversations into a new card and leave `Anna` on the original `May` card.
+
+Patch:
+- Resolve the split target from `partner.name` first.
+- Keep conversations matching the current partner card name on the source card.
+- Move the other name into the new partner.
+- Fall back to deterministic behavior only when the current partner name is not one of the detected names.
+- Preserve user-facing display casing where possible instead of showing canonical lower-case names.
+
+Files patched:
+- `lib/features/partner/presentation/screens/partner_detail_screen.dart`
+- `test/widget/features/partner/partner_detail_screen_test.dart`
+
+## Verification
+
+- `flutter analyze --no-fatal-infos lib test` → 0 issues
+- `flutter test test/widget/features/partner/partner_detail_screen_test.dart` → 22/22 green
+- Spec 3 risk surface subset → 107/107 green
+- Spec 3 perimeter (`test/unit/features/user_profile/ test/unit/features/partner/ test/widget/features/partner/`) → 216 pass, 1 skip, 0 fail
+- Full suite → 605 pass, 1 skip, 76 fail; matches known baseline stale failures, 0 new Spec 3 regressions observed
+
+Reviewer-Hint: Full suite still has the existing stale failures (message booster copy, widget pumpAndSettle timeouts, etc.); this review only patches the Spec 3 split-direction bug.
+Next-Step: Commit + push Codex fix; Eric/Bruce TF smoke should include a card named `May` with conversations named `May` and `Anna`, then verify `May` stays on the original card after split.
