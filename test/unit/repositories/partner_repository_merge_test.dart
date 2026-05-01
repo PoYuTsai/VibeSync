@@ -6,13 +6,17 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repository.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 late Box<Conversation> convoBox;
 late Box<Partner> partnerBox;
 late Box<PartnerStyleOverride> styleBox;
+late Box<PartnerDataQualityState> qualityBox;
+late PartnerDataQualityRepository qualityRepo;
 late PartnerRepository repo;
 
 Partner _partner({
@@ -80,6 +84,12 @@ void main() {
     if (!Hive.isAdapterRegistered(13)) {
       Hive.registerAdapter(PartnerStyleOverrideAdapter());
     }
+    if (!Hive.isAdapterRegistered(14)) {
+      Hive.registerAdapter(PartnerDataQualityStateAdapter());
+    }
+    if (!Hive.isAdapterRegistered(15)) {
+      Hive.registerAdapter(NamePairAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -91,14 +101,19 @@ void main() {
     convoBox = await Hive.openBox<Conversation>('merge_conv_$ts');
     partnerBox = await Hive.openBox<Partner>('merge_partner_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('merge_style_$ts');
+    qualityBox =
+        await Hive.openBox<PartnerDataQualityState>('merge_quality_$ts');
+    qualityRepo = PartnerDataQualityRepository(injectedBox: qualityBox);
     repo = PartnerRepository(
       box: partnerBox,
       conversationBox: convoBox,
       styleRepo: PartnerStyleRepository(box: styleBox),
+      qualityRepo: qualityRepo,
     );
   });
 
   tearDown(() async {
+    await qualityBox.deleteFromDisk();
     await styleBox.deleteFromDisk();
     await convoBox.deleteFromDisk();
     await partnerBox.deleteFromDisk();
@@ -246,6 +261,33 @@ void main() {
       await repo.merge(fromId: 'p-a', toId: 'p-b');
 
       expect(partnerBox.get('p-b')!.updatedAt.isAfter(old), isTrue);
+    });
+
+    test('cascades quality state cleanup on source partner only', () async {
+      await partnerBox.put('p-a', _partner(id: 'p-a', name: 'A'));
+      await partnerBox.put('p-b', _partner(id: 'p-b', name: 'B'));
+      await qualityRepo.markSamePerson(
+        'p-a',
+        NamePair.canonical('May', 'Anna'),
+      );
+      await qualityRepo.markSamePerson(
+        'p-b',
+        NamePair.canonical('Bob', 'Robert'),
+      );
+      expect(qualityBox.get('p-a'), isNotNull);
+      expect(qualityBox.get('p-b'), isNotNull);
+
+      await repo.merge(fromId: 'p-a', toId: 'p-b');
+
+      // Source A's quality state cleared.
+      expect(qualityBox.get('p-a'), isNull);
+      // Target B's quality state preserved (B survives the merge).
+      final pBState = qualityBox.get('p-b');
+      expect(pBState, isNotNull);
+      expect(
+        pBState!.confirmsSamePerson(NamePair.canonical('Bob', 'Robert')),
+        isTrue,
+      );
     });
   });
 }

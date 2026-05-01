@@ -104,6 +104,7 @@ class PartnerRepository {
 
     await _box.delete(fromId);
     await _styleRepo.delete(fromId);
+    await _qualityRepo.delete(fromId);
   }
 
   /// Overwrites the existing row for [partner.id] and bumps `updatedAt` to
