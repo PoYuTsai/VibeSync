@@ -378,5 +378,219 @@ void main() {
       );
       expect(card.actionLabel, isNot('回得剛剛好'));
     });
+
+    test('should pick lowerPressureReply when heat is cold without meeting keyword',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 25,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '聊聊她最近怎樣',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '降低壓力');
+      expect(card.learningLink, '10');
+    });
+
+    test('should pick playfulReply when humorousReply practice goal is set in warm-hot',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 55,
+        gameStage: const GameStageInfo(
+          current: GameStage.qualification,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'humor',
+          content: '我看妳今天比咖啡因還清醒',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [PracticeGoal.humorousReply],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '輕鬆幽默');
+      expect(card.learningLink, '3');
+    });
+
+    test('should restrict actionType to safe set when partner is flagged', () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 90,
+        gameStage: const GameStageInfo(
+          current: GameStage.close,
+          nextStep: '提議週末一起去看電影',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '週六下午有空嗎？',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: true,
+      );
+      expect(card.actionLabel, isNot('模糊邀約'));
+      const safeLabels = ['情緒共鳴', '回得剛剛好', '降低壓力', '互動品質觀察'];
+      expect(
+        safeLabels.contains(card.actionLabel),
+        isTrue,
+        reason:
+            'flagged path produced "${card.actionLabel}" which is outside the safe set',
+      );
+    });
+
+    test('should ignore practiceGoals input entirely when flagged', () {
+      CoachActionCardData runWith(List<PracticeGoal> goals) =>
+          CoachActionPolicy.evaluate(
+            heatScore: 55,
+            gameStage: const GameStageInfo(
+              current: GameStage.qualification,
+              nextStep: '',
+            ),
+            finalRecommendation: const FinalRecommendation(
+              pick: 'extend',
+              content: '',
+              reason: '',
+              psychology: '',
+            ),
+            messages: const [],
+            practiceGoals: goals,
+            isDataQualityFlagged: true,
+          );
+      final cardA = runWith(const [PracticeGoal.softInvite]);
+      final cardB = runWith(const [PracticeGoal.reduceAnxiety]);
+      expect(
+        cardA.actionLabel,
+        cardB.actionLabel,
+        reason:
+            'flagged path must ignore practiceGoals — same flagged input should give same actionType regardless of practiceGoals',
+      );
+    });
+
+    test(
+        'should never produce forbidden phrases in any task or avoid field across all 9 actionTypes',
+        () {
+      final triggers = <Map<String, dynamic>>[
+        // softInvite
+        {
+          'heatScore': 90,
+          'gameStage':
+              const GameStageInfo(current: GameStage.close, nextStep: ''),
+        },
+        // pausePursuit (cold + meeting keyword)
+        {
+          'heatScore': 20,
+          'gameStage':
+              const GameStageInfo(current: GameStage.opening, nextStep: '想約她出來'),
+        },
+        // lowerPressureReply (cold without meeting keyword)
+        {
+          'heatScore': 25,
+          'gameStage':
+              const GameStageInfo(current: GameStage.opening, nextStep: ''),
+        },
+        // rightSizeReply
+        {
+          'heatScore': 55,
+          'gameStage':
+              const GameStageInfo(current: GameStage.premise, nextStep: ''),
+          'messages': [
+            Message(
+              id: 'm1',
+              content: '累',
+              isFromMe: false,
+              timestamp: DateTime(2026, 5, 1, 10),
+            ),
+            Message(
+              id: 'm2',
+              content: '今天從早忙到晚根本沒空喝水',
+              isFromMe: true,
+              timestamp: DateTime(2026, 5, 1, 11),
+            ),
+          ],
+        },
+        // emotionalResonance
+        {
+          'heatScore': 55,
+          'gameStage': const GameStageInfo(
+              current: GameStage.qualification, nextStep: ''),
+          'psychology': const PsychologyAnalysis(subtext: '她其實希望被多了解一點'),
+        },
+        // playfulReply
+        {
+          'heatScore': 55,
+          'gameStage': const GameStageInfo(
+              current: GameStage.qualification, nextStep: ''),
+          'practiceGoals': const [PracticeGoal.humorousReply],
+        },
+        // extendTopicStoryFrame
+        {
+          'heatScore': 50,
+          'gameStage':
+              const GameStageInfo(current: GameStage.premise, nextStep: ''),
+        },
+        // preferenceSignal
+        {
+          'heatScore': 50,
+          'gameStage':
+              const GameStageInfo(current: GameStage.premise, nextStep: ''),
+          'practiceGoals': const [PracticeGoal.explainLess],
+        },
+        // fitCheck (default fallback)
+        {
+          'heatScore': 50,
+          'gameStage':
+              const GameStageInfo(current: GameStage.opening, nextStep: ''),
+        },
+      ];
+
+      const forbiddenInTask = ['推拉', '製造焦慮', '反差', '人格', '型', '是 ... 的人'];
+      const forbiddenInAvoid = ['消失', '不回', '已讀不回'];
+
+      for (final t in triggers) {
+        final card = CoachActionPolicy.evaluate(
+          heatScore: t['heatScore'] as int,
+          gameStage: t['gameStage'] as GameStageInfo,
+          finalRecommendation: const FinalRecommendation(
+            pick: 'extend',
+            content: '',
+            reason: '',
+            psychology: '',
+          ),
+          messages: (t['messages'] as List<Message>?) ?? const [],
+          practiceGoals:
+              (t['practiceGoals'] as List<PracticeGoal>?) ?? const [],
+          isDataQualityFlagged: false,
+          psychology: t['psychology'] as PsychologyAnalysis?,
+        );
+        for (final word in forbiddenInTask) {
+          expect(
+            card.task.contains(word),
+            isFalse,
+            reason:
+                '${card.actionLabel} task leaked forbidden token "$word"',
+          );
+        }
+        for (final word in forbiddenInAvoid) {
+          expect(
+            card.avoid.contains(word),
+            isFalse,
+            reason:
+                '${card.actionLabel} avoid leaked forbidden token "$word"',
+          );
+        }
+      }
+    });
   });
 }

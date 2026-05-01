@@ -86,15 +86,35 @@ class CoachActionPolicy {
     required bool isDataQualityFlagged,
     PsychologyAnalysis? psychology,
   }) {
+    if (isDataQualityFlagged) {
+      return _selectFlaggedSafeSet(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+        messages: messages,
+        psychology: psychology,
+      );
+    }
     if (heatScore > AppConstants.hotMax) {
       return _buildSoftInvite(
         heatScore: heatScore,
         finalRecommendation: finalRecommendation,
       );
     }
-    if (heatScore <= AppConstants.coldMax &&
-        _payloadSuggestsMeeting(gameStage.nextStep)) {
-      return _buildPausePursuit(heatScore: heatScore);
+    if (heatScore <= AppConstants.coldMax) {
+      if (_payloadSuggestsMeeting(gameStage.nextStep)) {
+        return _buildPausePursuit(heatScore: heatScore);
+      }
+      // tie-breaker: reduceAnxiety practice goal → keep on pausePursuit even
+      // without a meeting-keyword nextStep, since the user already opted in
+      // to "step back from pressure".
+      if (practiceGoals.contains(PracticeGoal.reduceAnxiety)) {
+        return _buildPausePursuit(heatScore: heatScore);
+      }
+      return _buildLowerPressureReply(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+        flaggedPath: false,
+      );
     }
     if (_userOverextendedReply(messages)) {
       return _buildRightSizeReply(
@@ -111,10 +131,15 @@ class CoachActionPolicy {
         challengeSignal: challengeSignal,
       );
     }
-    if (!isDataQualityFlagged &&
-        heatScore >= 31 &&
+    if (heatScore >= 31 &&
         heatScore <= AppConstants.hotMax &&
         _midGameStages.contains(gameStage.current)) {
+      if (practiceGoals.contains(PracticeGoal.humorousReply)) {
+        return _buildPlayfulReply(
+          heatScore: heatScore,
+          finalRecommendation: finalRecommendation,
+        );
+      }
       if (practiceGoals.contains(PracticeGoal.explainLess)) {
         return _buildPreferenceSignal(heatScore: heatScore);
       }
@@ -126,6 +151,42 @@ class CoachActionPolicy {
     return _buildFitCheck(
       heatScore: heatScore,
       isDataQualityFlagged: isDataQualityFlagged,
+    );
+  }
+
+  // Flagged partners are restricted to a safe set: no邀約推進 / no 故事框架展開 /
+  // no humour goal / no preferenceSignal — practiceGoals is ignored entirely.
+  static CoachActionCardData _selectFlaggedSafeSet({
+    required int heatScore,
+    required FinalRecommendation finalRecommendation,
+    required List<Message> messages,
+    PsychologyAnalysis? psychology,
+  }) {
+    if (_userOverextendedReply(messages)) {
+      return _buildRightSizeReply(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+      );
+    }
+    final challengeSignal = psychology?.shitTest != null;
+    final strongSubtext = (psychology?.subtext.trim().length ?? 0) >= 8;
+    if (challengeSignal || strongSubtext) {
+      return _buildEmotionalResonance(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+        challengeSignal: challengeSignal,
+      );
+    }
+    if (heatScore <= AppConstants.coldMax) {
+      return _buildLowerPressureReply(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+        flaggedPath: true,
+      );
+    }
+    return _buildFitCheck(
+      heatScore: heatScore,
+      isDataQualityFlagged: true,
     );
   }
 
@@ -161,6 +222,41 @@ class CoachActionPolicy {
       avoid: '別要對方立刻決定',
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink: LearningLinkResolver.resolve(CoachActionType.softInvite),
+    );
+  }
+
+  static CoachActionCardData _buildLowerPressureReply({
+    required int heatScore,
+    required FinalRecommendation finalRecommendation,
+    required bool flaggedPath,
+  }) {
+    final candidate = finalRecommendation.content.trim();
+    final whyNow = flaggedPath
+        ? '這位對象目前資料還不完整，先放慢一拍別追問'
+        : '熱度 $heatScore，先把溫度留住不要追問結果';
+    return CoachActionCardData(
+      actionLabel: '降低壓力',
+      whyNow: whyNow,
+      task: '這次只回一句，把追問留到下次',
+      avoid: '別連發三題、不要追問結果',
+      suggestedLine: candidate.isEmpty ? null : candidate,
+      learningLink:
+          LearningLinkResolver.resolve(CoachActionType.lowerPressureReply),
+    );
+  }
+
+  static CoachActionCardData _buildPlayfulReply({
+    required int heatScore,
+    required FinalRecommendation finalRecommendation,
+  }) {
+    final candidate = finalRecommendation.content.trim();
+    return CoachActionCardData(
+      actionLabel: '輕鬆幽默',
+      whyNow: '熱度 $heatScore，可以丟一個 playful 卡點維持張力',
+      task: '拋一個 playful 卡點，留半步空白',
+      avoid: '別讓玩笑變嘲弄',
+      suggestedLine: candidate.isEmpty ? null : candidate,
+      learningLink: LearningLinkResolver.resolve(CoachActionType.playfulReply),
     );
   }
 
