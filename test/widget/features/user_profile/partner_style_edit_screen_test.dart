@@ -324,7 +324,7 @@ void main() {
   });
 
   group('Task 17 — Notes section', () {
-    Finder _notesField() =>
+    Finder notesField() =>
         find.byKey(const Key('partner-style-notes-field'));
 
     testWidgets(
@@ -350,7 +350,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('沿用全域'), findsNothing);
-      await tester.enterText(_notesField(), '對 Alice 多用幽默');
+      await tester.enterText(notesField(), '對 Alice 多用幽默');
       await tester.pumpAndSettle();
       expect(find.text('沿用全域'), findsOneWidget);
     });
@@ -379,7 +379,7 @@ void main() {
 
       expect(find.text('對 Alice 多用幽默'), findsNothing);
       expect(find.text('沿用全域'), findsNothing);
-      final tf = tester.widget<TextField>(_notesField());
+      final tf = tester.widget<TextField>(notesField());
       expect(tf.controller?.text ?? '', isEmpty);
     });
   });

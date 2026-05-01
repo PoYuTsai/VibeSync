@@ -1098,3 +1098,26 @@ git push
 8. 設定 → 清除帳號 → 重新登入 → 所有 partner 從零、AboutMeCard 也回空（驗 Spec 1 + Spec 2 雙清）
 
 如 1-8 全綠 = Spec 2 TF smoke PASS。
+
+---
+
+## Status: SHIPPED — 2026-05-01
+
+**全 20 tasks 通過 TDD red→green→refactor，分七批 push 完成。**
+
+| Phase | Tasks | Hashes |
+|-------|-------|--------|
+| 1 Domain | 1 | `9f77c1c` |
+| 2 Hive | 2-4 | `54ba98e` `62ac45f` `8bb410b` |
+| 3 Data | 5-7 | `9b1a357` `907e418` `2f904cb` |
+| 4 Resolver | 8-10 | `4cbf18e` `cad333b` |
+| 5 Inline UI | 11-13 | `330e72f` `981dbb9` `80bea4c` |
+| 6 Edit Screen | 14-18 | `a0a14e6` `33892d5` `aa2ed18` `537b273` `a161cd2` `ca713a1` |
+| 7 Verification | 19-20 | `5a34b93` + this commit |
+
+**Verification:**
+- `flutter analyze --no-fatal-infos lib test` → 0 issues
+- Spec 2 perimeter (`test/integration` + `test/widget/features/{user_profile,partner}` + `test/widget/app` + relevant unit tests) → **210/210 green**
+- Full repo `flutter test` → 540 pass, 76 pre-existing stale failures (none touching Spec 2 code, baseline 86 per `reference_vibesync_test_suite_health.md`)
+
+**Next:** Bruce / Eric run TF smoke checklist §1–8 above; if green → Codex code review handoff via `docs/shared-agent-rules.md` queue.
