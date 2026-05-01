@@ -80,6 +80,7 @@ void main() {
         'p-1': [convo]
       }),
       summaryBuilder: _CountingBuilder(returnValue: 'SUMMARY'),
+      dataQualityRepo: _StubDataQualityRepo(),
     );
 
     expect(resolver.resolve(convo), 'SUMMARY');
@@ -93,6 +94,7 @@ void main() {
       partnerRepo: _StubPartnerRepository({}),
       conversationRepo: _StubConversationListByPartner({}),
       summaryBuilder: builder,
+      dataQualityRepo: _StubDataQualityRepo(),
     );
 
     expect(resolver.resolve(_convo('c-1', partnerId: null)), isNull);
@@ -110,6 +112,7 @@ void main() {
         'p-1': [convo]
       }),
       summaryBuilder: builder,
+      dataQualityRepo: _StubDataQualityRepo(),
     );
 
     resolver.resolve(convo);
@@ -132,6 +135,7 @@ void main() {
         'p-1': [convo]
       }),
       summaryBuilder: _CountingBuilder(returnValue: ''),
+      dataQualityRepo: _StubDataQualityRepo(),
     );
 
     expect(resolver.resolve(convo), isNull,
@@ -149,6 +153,7 @@ void main() {
       partnerRepo: _StubPartnerRepository({}),
       conversationRepo: _StubConversationListByPartner({}),
       summaryBuilder: builder,
+      dataQualityRepo: _StubDataQualityRepo(),
     );
 
     expect(resolver.resolve(convo), isNull);
