@@ -34,6 +34,7 @@ import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
+import '../../../user_profile/domain/services/name_candidate_extractor.dart';
 import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
@@ -249,15 +250,86 @@ class PartnerDetailScreen extends ConsumerWidget {
     ref.invalidate(dataQualityFlagProvider(partnerId));
   }
 
-  // Stub — Spec 3 Task 21 implements confirm dialog + repo.split + invalidation.
-  // Signature is stable; Task 21 fills the body in place (no caller change).
   Future<void> _handleSplit(
     BuildContext context,
     WidgetRef ref,
     Partner partner,
     NamePair pair,
   ) async {
-    debugPrint('[Spec3 Task 21 TODO] _handleSplit(${partner.id}, $pair)');
+    final confirmed = await _showSplitConfirmDialog(context, pair);
+    if (!confirmed) return;
+    if (!context.mounted) return;
+
+    final conversations =
+        ref.read(conversationsByPartnerProvider(partner.id));
+    final matchedIds = _filterConvIdsMatchingName(conversations, pair.second);
+    // Defensive: extractor mapping changed since the banner was rendered, or
+    // the matching conversation was just deleted. No-op rather than create an
+    // empty new partner.
+    if (matchedIds.isEmpty) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(partnerWriteControllerProvider.notifier)
+          .split(
+            sourcePartnerId: partner.id,
+            newPartnerName: pair.second,
+            matchedConversationIds: matchedIds,
+          );
+      messenger.showSnackBar(
+        SnackBar(content: Text('已把「${pair.second}」拆成新對象')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('拆卡失敗，稍後再試')),
+      );
+    }
+  }
+
+  /// [canonicalName] is the lowercased + trimmed form (i.e. `pair.second`),
+  /// since `NamePair.canonical` normalises both sides. Extractor output is
+  /// raw, so we normalise here for comparison.
+  List<String> _filterConvIdsMatchingName(
+    List<Conversation> convs,
+    String canonicalName,
+  ) {
+    final extractor = NameCandidateExtractor();
+    final ids = <String>[];
+    for (final c in convs) {
+      final name = extractor.fromConversationName(c.name) ??
+          extractor.fromMessages(c.messages);
+      if (name != null && name.trim().toLowerCase() == canonicalName) {
+        ids.add(c.id);
+      }
+    }
+    return ids;
+  }
+
+  Future<bool> _showSplitConfirmDialog(
+    BuildContext context,
+    NamePair pair,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('拆成新對象？'),
+        content: Text(
+          '「${pair.first}」會留在這張卡；含「${pair.second}」的對話會搬到新的對象卡。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('確認拆卡'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 }
 

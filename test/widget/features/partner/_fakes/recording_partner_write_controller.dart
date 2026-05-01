@@ -17,6 +17,12 @@ class RecordingPartnerWriteController extends PartnerWriteController {
   String? updatedName;
   Object? throwOnUpdateName;
 
+  bool splitCalled = false;
+  String? splitSourceId;
+  String? splitNewName;
+  List<String>? splitMatchedIds;
+  Object? throwOnSplit;
+
   @override
   Future<void> merge({
     required String fromId,
@@ -34,5 +40,18 @@ class RecordingPartnerWriteController extends PartnerWriteController {
     updatedPartner = partner;
     updatedName = newName;
     if (throwOnUpdateName != null) throw throwOnUpdateName!;
+  }
+
+  @override
+  Future<void> split({
+    required String sourcePartnerId,
+    required String newPartnerName,
+    required List<String> matchedConversationIds,
+  }) async {
+    splitCalled = true;
+    splitSourceId = sourcePartnerId;
+    splitNewName = newPartnerName;
+    splitMatchedIds = matchedConversationIds;
+    if (throwOnSplit != null) throw throwOnSplit!;
   }
 }

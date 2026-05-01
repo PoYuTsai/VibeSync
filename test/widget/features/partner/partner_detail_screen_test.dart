@@ -682,4 +682,149 @@ void main() {
     expect(repo.markSamePersonCalls.single.partnerId, 'p1');
     expect(repo.markSamePersonCalls.single.pair, pair);
   });
+
+  // Spec 3 Task 21 — 「拆成新對象」action handler.
+  //
+  // Flow: tap banner button → confirm dialog → on confirm filter conversations
+  // by candidate name (== pair.second) → PartnerWriteController.split.
+  // Defensive guard: empty match list → no split call.
+  group('拆成新對象 action', () {
+    Conversation _convNamed(String id, String name) => Conversation(
+          id: id,
+          name: name,
+          messages: const [],
+          createdAt: DateTime(2026, 4, 20),
+          updatedAt: DateTime(2026, 4, 20),
+          partnerId: 'p1',
+        );
+
+    ProviderScope scope({
+      required RecordingPartnerWriteController fakeController,
+      required List<Conversation> conversations,
+      required Widget child,
+    }) {
+      final pair = NamePair.canonical('Anna', 'May');
+      return ProviderScope(
+        overrides: [
+          partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+          partnerByIdProvider('p1').overrideWith((_) => _p()),
+          partnerAggregateProvider('p1')
+              .overrideWith((_) => PartnerAggregateView.empty()),
+          dataQualityFlagProvider('p1')
+              .overrideWith((_) => DataQualityFlag.flagged(pair)),
+          partnerDataQualityRepoProvider
+              .overrideWithValue(_RecordingDataQualityRepo()),
+          conversationsByPartnerProvider('p1')
+              .overrideWith((_) => conversations),
+          partnerListProvider.overrideWith((_) => [_p()]),
+          partnerWriteControllerProvider.overrideWith(() => fakeController),
+        ],
+        child: child,
+      );
+    }
+
+    testWidgets('tapping 拆成新對象 shows confirm dialog with both names',
+        (t) async {
+      await t.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+
+      final fake = RecordingPartnerWriteController();
+      await t.pumpWidget(scope(
+        fakeController: fake,
+        conversations: [_convNamed('c1', 'May')],
+        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      ));
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('拆成新對象'));
+      await t.pumpAndSettle();
+
+      expect(find.text('拆成新對象？'), findsOneWidget);
+      // Dialog content names both sides — canonicalised (lowercase + trimmed),
+      // matching the banner's display contract.
+      expect(find.textContaining('anna'), findsWidgets);
+      expect(find.textContaining('may'), findsWidgets);
+      expect(find.text('取消'), findsOneWidget);
+      expect(find.text('確認拆卡'), findsOneWidget);
+      expect(fake.splitCalled, isFalse, reason: 'showing the dialog must not call split');
+    });
+
+    testWidgets('dialog 取消 dismisses and does not call split', (t) async {
+      await t.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+
+      final fake = RecordingPartnerWriteController();
+      await t.pumpWidget(scope(
+        fakeController: fake,
+        conversations: [_convNamed('c1', 'May')],
+        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      ));
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('拆成新對象'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('取消'));
+      await t.pumpAndSettle();
+
+      expect(find.text('拆成新對象？'), findsNothing);
+      expect(fake.splitCalled, isFalse);
+    });
+
+    testWidgets(
+        'dialog 確認拆卡 calls split with matched conv ids and shows snackbar',
+        (t) async {
+      await t.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+
+      final fake = RecordingPartnerWriteController();
+      // Three convs: two extract to 'May' (the moving side), one to 'Anna'
+      // (stays). Only 'May' ids should be in matchedConversationIds.
+      await t.pumpWidget(scope(
+        fakeController: fake,
+        conversations: [
+          _convNamed('c1', 'May'),
+          _convNamed('c2', 'Anna'),
+          _convNamed('c3', 'May'),
+        ],
+        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      ));
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('拆成新對象'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('確認拆卡'));
+      await t.pumpAndSettle();
+
+      expect(fake.splitCalled, isTrue);
+      expect(fake.splitSourceId, 'p1');
+      // pair.second is the lowercased+trimmed form ("may"), since
+      // NamePair.canonical normalises both sides.
+      expect(fake.splitNewName, 'may');
+      expect(fake.splitMatchedIds, equals(['c1', 'c3']));
+      expect(find.textContaining('已把'), findsOneWidget);
+    });
+
+    testWidgets(
+        'dialog 確認拆卡 with no matching conversations is a no-op (defensive guard)',
+        (t) async {
+      await t.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+
+      final fake = RecordingPartnerWriteController();
+      // No conv extracts to "May" — guard short-circuits before split.
+      await t.pumpWidget(scope(
+        fakeController: fake,
+        conversations: [_convNamed('c1', 'Anna')],
+        child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+      ));
+      await t.pumpAndSettle();
+
+      await t.tap(find.text('拆成新對象'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('確認拆卡'));
+      await t.pumpAndSettle();
+
+      expect(fake.splitCalled, isFalse);
+    });
+  });
 }

@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../domain/entities/partner.dart';
 import '../../presentation/providers/partner_providers.dart';
+import '../services/partner_id_factory.dart';
 
 /// Single invalidation owner for partner-level writes — mirrors Phase 1's
 /// `ConversationWriteController` for the conversation domain.
@@ -85,6 +87,31 @@ class PartnerWriteController extends Notifier<void> {
     }
   }
 
+  /// Splits [sourcePartnerId] by reparenting [matchedConversationIds] to a
+  /// fresh partner named [newPartnerName]. Same try/finally invalidation
+  /// discipline as merge/delete so a thrown ArgumentError (empty list, missing
+  /// source) still refreshes UI state.
+  ///
+  /// Spec 3 Phase 5 Task 21 — backs the "拆成新對象" banner action.
+  Future<void> split({
+    required String sourcePartnerId,
+    required String newPartnerName,
+    required List<String> matchedConversationIds,
+  }) async {
+    final repo = ref.read(partnerRepositoryProvider);
+    String? newId;
+    try {
+      newId = await repo.split(
+        sourcePartnerId: sourcePartnerId,
+        newPartnerName: newPartnerName,
+        matchedConversationIds: matchedConversationIds,
+        idGenerator: PartnerIdFactory.generate,
+      );
+    } finally {
+      _invalidateSplitScopes(sourcePartnerId, newId);
+    }
+  }
+
   void _invalidatePartner(String id) {
     ref.invalidate(partnerByIdProvider(id));
     ref.invalidate(partnerAggregateProvider(id));
@@ -116,6 +143,20 @@ class PartnerWriteController extends Notifier<void> {
     _invalidatePartnerScopedConversations(id);
     _invalidatePartnerStyle(id);
     ref.invalidate(partnerListProvider);
+  }
+
+  void _invalidateSplitScopes(String sourceId, String? newId) {
+    _invalidatePartner(sourceId);
+    _invalidatePartnerScopedConversations(sourceId);
+    if (newId != null) {
+      _invalidatePartner(newId);
+      _invalidatePartnerScopedConversations(newId);
+    }
+    ref.invalidate(partnerListProvider);
+    // A2 transition contract — same as merge.
+    ref.invalidate(conversationsProvider);
+    // Banner re-evaluates with one fewer conflicting candidate on source.
+    ref.invalidate(dataQualityFlagProvider(sourceId));
   }
 
   void _invalidateRenameScopes(String id) {
