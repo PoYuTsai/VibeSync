@@ -1,3 +1,5 @@
+import '../../../conversation/domain/entities/message.dart';
+
 /// Heuristic extractor that decides whether a free-form `Conversation.name`
 /// looks like a person-name worth surfacing as the partner's display name,
 /// or is a placeholder / date / sentence we should silently ignore.
@@ -5,7 +7,9 @@
 /// Pure local Dart — no async, no Hive, no Riverpod. Same input → same output.
 ///
 /// Spec 3 Task 14: Conversation.name placeholder filter only.
-/// Task 15 will add `fromMessages()` (regex over incoming messages) and
+/// Spec 3 Task 15: `fromMessages()` — narrow regex fallback over 前 5 + 後 5
+/// incoming messages. No full-text NER; only matches explicit self-intros
+/// (`我叫 X` / `Hi I'm X` / `Call me X`).
 /// Task 16 wires both into `dataQualityFlagProvider`.
 class NameCandidateExtractor {
   /// Exact-match placeholders the app (or a defensive UI default) uses when no
@@ -50,5 +54,60 @@ class NameCandidateExtractor {
     // filters miss.
     if (!RegExp(r'[A-Za-z一-鿿]').hasMatch(s)) return null;
     return s.toLowerCase();
+  }
+
+  /// Narrow self-introduction regex patterns. Order matters — match-first-wins.
+  ///
+  /// Each requires an explicit self-intro marker (我叫 / I'm / Call me) so the
+  /// false-positive rate stays near zero. Speaking ABOUT a third person
+  /// (`她是 May`, `我跟 May 聊天`) does NOT match because there is no marker.
+  static final _selfIntroPatterns = <RegExp>[
+    // Chinese: 我叫 X (CJK or Latin given/surname, 2-10 chars).
+    RegExp(r'我叫\s*([一-龥A-Za-z]{2,10})'),
+    // English: optional "Hi, " + I + (straight ' or curly ‘ ’) + m, then
+    // 2-15 letters. caseSensitive false → matches "i'm" / "I'M" too.
+    // ‘ = left single quotation mark ‘, ’ = right single quotation mark ’.
+    RegExp(
+      "(?:Hi,?\\s*)?I['‘’]?m\\s+([A-Za-z]{2,15})",
+      caseSensitive: false,
+    ),
+    // English: "Call me X" (2-15 letters).
+    RegExp(r'Call\s+me\s+([A-Za-z]{2,15})', caseSensitive: false),
+  ];
+
+  /// Returns a lowercase candidate name extracted from [messages] using narrow
+  /// self-introduction regex over the first [n] + last [n] **incoming** msgs
+  /// (outgoing/`isFromMe` messages are skipped — those are the user, not the
+  /// partner). Returns `null` if no pattern matches.
+  ///
+  /// Sample window:
+  /// - `incoming` = messages where `!isFromMe`, in original order.
+  /// - If `incoming.length <= 2 * n` → use ALL incoming messages.
+  /// - Otherwise → first `n` + last `n` (no overlap because length > 2n).
+  ///
+  /// This intentionally does NOT do full-text NER over middle-of-list
+  /// messages: it would balloon false positives. Spec 3 Task 15.
+  String? fromMessages(List<Message> messages, {int n = 5}) {
+    final incoming = messages.where((m) => !m.isFromMe).toList();
+    if (incoming.isEmpty) return null;
+
+    final sample = incoming.length <= 2 * n
+        ? incoming
+        : <Message>[
+            ...incoming.take(n),
+            ...incoming.skip(incoming.length - n),
+          ];
+
+    for (final m in sample) {
+      for (final p in _selfIntroPatterns) {
+        final match = p.firstMatch(m.content);
+        if (match != null) {
+          // CJK has no case; .toLowerCase() is a no-op for CJK characters
+          // and applies cleanly to Latin captures.
+          return match.group(1)!.toLowerCase();
+        }
+      }
+    }
+    return null;
   }
 }
