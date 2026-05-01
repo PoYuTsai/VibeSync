@@ -11,8 +11,6 @@ import 'learning_link_resolver.dart';
 class CoachActionPolicy {
   const CoachActionPolicy._();
 
-  // Mirror of ScoreActionHint._meetingKeywords. Must stay byte-identical until
-  // the legacy widget retires; the regression contract spans both surfaces.
   static const List<String> _meetingKeywords = [
     '見面',
     '邀約',
