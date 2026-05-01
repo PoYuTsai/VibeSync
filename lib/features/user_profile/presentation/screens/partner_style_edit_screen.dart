@@ -30,6 +30,7 @@ class _PartnerStyleEditScreenState
   bool _draftInitialized = false;
   InteractionStyle? _interactionStyle;
   final List<PracticeGoal> _practiceGoals = [];
+  final TextEditingController _notesController = TextEditingController();
 
   void _ensureInit(PartnerStyleOverride? loaded) {
     if (_draftInitialized) return;
@@ -38,6 +39,13 @@ class _PartnerStyleEditScreenState
     _practiceGoals
       ..clear()
       ..addAll(loaded?.practiceGoals ?? const []);
+    _notesController.text = loaded?.notes ?? '';
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
   }
 
   void _toggleGoal(PracticeGoal g) {
@@ -109,7 +117,12 @@ class _PartnerStyleEditScreenState
                     onReset: () => setState(_practiceGoals.clear),
                   ),
                   const SizedBox(height: 16),
-                  const _SectionPlaceholder(title: '備註'),
+                  _NotesSection(
+                    controller: _notesController,
+                    globalFallback: globalProfile?.notes,
+                    onChanged: () => setState(() {}),
+                    onReset: () => setState(_notesController.clear),
+                  ),
                 ],
               ),
             ),
@@ -302,32 +315,83 @@ class _PracticeGoalsSection extends StatelessWidget {
   }
 }
 
-class _SectionPlaceholder extends StatelessWidget {
-  const _SectionPlaceholder({required this.title});
+class _NotesSection extends StatelessWidget {
+  const _NotesSection({
+    required this.controller,
+    required this.globalFallback,
+    required this.onChanged,
+    required this.onReset,
+  });
 
-  final String title;
+  final TextEditingController controller;
+  final String? globalFallback;
+  final VoidCallback onChanged;
+  final VoidCallback onReset;
+
+  String? _placeholderHint() {
+    if (controller.text.trim().isNotEmpty) return null;
+    if (globalFallback != null && globalFallback!.trim().isNotEmpty) {
+      return '（沿用全域：$globalFallback）';
+    }
+    return '（尚未設定）';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hint = _placeholderHint();
+    final hasOverride = controller.text.trim().isNotEmpty;
     return GlassmorphicContainer(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            '備註',
             style: AppTypography.titleMedium.copyWith(
               color: AppColors.glassTextPrimary,
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (hint != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              hint,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
-          Text(
-            '即將上線',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
+          TextField(
+            key: const Key('partner-style-notes-field'),
+            controller: controller,
+            maxLength: PartnerStyleOverride.maxNotesLength,
+            maxLines: 3,
+            onChanged: (_) => onChanged(),
+            decoration: const InputDecoration(
+              hintText: '寫一句你希望 AI 對這個對象記住的事',
+              border: OutlineInputBorder(),
             ),
           ),
+          if (hasOverride) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: onReset,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.glassTextSecondary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('沿用全域'),
+              ),
+            ),
+          ],
         ],
       ),
     );

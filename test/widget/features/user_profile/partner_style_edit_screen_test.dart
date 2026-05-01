@@ -322,4 +322,65 @@ void main() {
       );
     });
   });
+
+  group('Task 17 — Notes section', () {
+    Finder _notesField() =>
+        find.byKey(const Key('partner-style-notes-field'));
+
+    testWidgets(
+        'placeholder hint shows 沿用全域：<text> when partner notes null AND global notes set',
+        (tester) async {
+      final global = UserProfile.create(
+        notes: '我慢熟，避免太快邀約',
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice(), globalProfile: global),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('（沿用全域：我慢熟，避免太快邀約）'), findsOneWidget);
+    });
+
+    testWidgets('typing in notes makes the reset link appear', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('沿用全域'), findsNothing);
+      await tester.enterText(_notesField(), '對 Alice 多用幽默');
+      await tester.pumpAndSettle();
+      expect(find.text('沿用全域'), findsOneWidget);
+    });
+
+    testWidgets('tapping notes reset clears the TextField + reset link',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final initial = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        notes: '對 Alice 多用幽默',
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      await tester.pumpWidget(_harness(
+        partnerId: 'p1',
+        partner: _alice(),
+        override: initial,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('對 Alice 多用幽默'), findsOneWidget);
+      expect(find.text('沿用全域'), findsOneWidget);
+
+      await tester.tap(find.text('沿用全域'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('對 Alice 多用幽默'), findsNothing);
+      expect(find.text('沿用全域'), findsNothing);
+      final tf = tester.widget<TextField>(_notesField());
+      expect(tf.controller?.text ?? '', isEmpty);
+    });
+  });
 }
