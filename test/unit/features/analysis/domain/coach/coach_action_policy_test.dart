@@ -268,5 +268,57 @@ void main() {
       expect(card.actionLabel, '輕量表達偏好');
       expect(card.learningLink, '2');
     });
+
+    test('should pick emotionalResonance when challengeSignal is detected', () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 55,
+        gameStage: const GameStageInfo(
+          current: GameStage.qualification, nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'resonate', content: '聽起來那天真的很累，先吃個飯再聊吧。',
+          reason: '', psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+        psychology: const PsychologyAnalysis(
+          subtext: '',
+          shitTest: '她在試你會不會推回去',
+        ),
+      );
+      expect(card.actionLabel, '情緒共鳴');
+      expect(card.learningLink, '11');
+    });
+
+    test('should pick emotionalResonance when subtext signal is strong', () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 55,
+        gameStage: const GameStageInfo(current: GameStage.qualification, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'resonate', content: '', reason: '', psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+        psychology: const PsychologyAnalysis(subtext: '她其實在等你主動關心一下'),
+      );
+      expect(card.actionLabel, '情緒共鳴');
+    });
+
+    test('should not pick emotionalResonance when subtext is short noise', () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 50,
+        gameStage: const GameStageInfo(current: GameStage.opening, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend', content: '', reason: '', psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+        psychology: const PsychologyAnalysis(subtext: '嗯'),
+      );
+      expect(card.actionLabel, isNot('情緒共鳴'));
+    });
   });
 }

@@ -53,6 +53,7 @@ class CoachActionPolicy {
       finalRecommendation: finalRecommendation,
       practiceGoals: practiceGoals,
       isDataQualityFlagged: isDataQualityFlagged,
+      psychology: psychology,
     );
     return _filterSuggestedLine(card, heatScore);
   }
@@ -63,6 +64,7 @@ class CoachActionPolicy {
     required FinalRecommendation finalRecommendation,
     required List<PracticeGoal> practiceGoals,
     required bool isDataQualityFlagged,
+    PsychologyAnalysis? psychology,
   }) {
     if (heatScore > AppConstants.hotMax) {
       return _buildSoftInvite(
@@ -73,6 +75,15 @@ class CoachActionPolicy {
     if (heatScore <= AppConstants.coldMax &&
         _payloadSuggestsMeeting(gameStage.nextStep)) {
       return _buildPausePursuit(heatScore: heatScore);
+    }
+    final challengeSignal = psychology?.shitTest != null;
+    final strongSubtext = (psychology?.subtext.trim().length ?? 0) >= 8;
+    if (challengeSignal || strongSubtext) {
+      return _buildEmotionalResonance(
+        heatScore: heatScore,
+        finalRecommendation: finalRecommendation,
+        challengeSignal: challengeSignal,
+      );
     }
     if (!isDataQualityFlagged &&
         heatScore >= 31 &&
@@ -163,6 +174,26 @@ class CoachActionPolicy {
       suggestedLine: null,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.preferenceSignal),
+    );
+  }
+
+  static CoachActionCardData _buildEmotionalResonance({
+    required int heatScore,
+    required FinalRecommendation finalRecommendation,
+    required bool challengeSignal,
+  }) {
+    final candidate = finalRecommendation.content.trim();
+    final whyNow = challengeSignal
+        ? '熱度 $heatScore，她拋了一個試探訊號，先接住情緒比較穩'
+        : '熱度 $heatScore，從字裡行間讀到她在傳訊號，先接住再說';
+    return CoachActionCardData(
+      actionLabel: '情緒共鳴',
+      whyNow: whyNow,
+      task: '先用一句接住她的情緒，再決定要不要展開',
+      avoid: '別急著給建議或解釋',
+      suggestedLine: candidate.isEmpty ? null : candidate,
+      learningLink:
+          LearningLinkResolver.resolve(CoachActionType.emotionalResonance),
     );
   }
 
