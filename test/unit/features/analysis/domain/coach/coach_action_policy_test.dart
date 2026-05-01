@@ -145,5 +145,76 @@ void main() {
       expect(card.suggestedLine, '剛好我也想去，週六下午有空嗎？');
       expect(card.learningLink, isNull);
     });
+
+    test(
+        'should pick pausePursuit when heat is cold and nextStep contains meeting keyword',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 20,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '直接約她出來吃飯',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '暫停追問');
+      expect(card.suggestedLine, isNull);
+    });
+
+    test(
+        'should suppress suggestedLine when heat is below 81 and content contains meeting keyword',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 35,
+        gameStage: const GameStageInfo(
+          current: GameStage.premise,
+          nextStep: '提議週末一起去看電影',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '週末要不要一起去喝咖啡？',
+          reason: '趁熱邀約會讓關係升溫',
+          psychology: '低門檻邀請降低壓力',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(
+        card.suggestedLine,
+        isNull,
+        reason: 'meeting-keyword content must not surface below heat 81',
+      );
+    });
+
+    test(
+        'should pick pausePursuit (not softInvite) when heat is cold and nextStep contains 見個面',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 25,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '找機會見個面',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '想約她出來吃飯',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '暫停追問');
+    });
   });
 }
