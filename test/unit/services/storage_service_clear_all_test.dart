@@ -7,6 +7,7 @@ import 'package:vibesync/features/conversation/domain/entities/conversation_summ
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
@@ -45,6 +46,12 @@ void main() {
     if (!Hive.isAdapterRegistered(13)) {
       Hive.registerAdapter(PartnerStyleOverrideAdapter());
     }
+    if (!Hive.isAdapterRegistered(14)) {
+      Hive.registerAdapter(PartnerDataQualityStateAdapter());
+    }
+    if (!Hive.isAdapterRegistered(15)) {
+      Hive.registerAdapter(NamePairAdapter());
+    }
   });
 
   tearDown(() async {
@@ -52,6 +59,7 @@ void main() {
     await Hive.deleteBoxFromDisk(AppConstants.partnersBox);
     await Hive.deleteBoxFromDisk('user_profile');
     await Hive.deleteBoxFromDisk('partner_style_overrides');
+    await Hive.deleteBoxFromDisk('partner_data_quality_states');
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await Hive.deleteBoxFromDisk(AppConstants.usageBox);
   });
@@ -65,6 +73,9 @@ void main() {
     await Hive.openBox<Partner>(AppConstants.partnersBox);
     await Hive.openBox<UserProfile>('user_profile');
     await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -93,6 +104,9 @@ void main() {
     await Hive.openBox<Partner>(AppConstants.partnersBox);
     await Hive.openBox<UserProfile>('user_profile');
     await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -109,5 +123,30 @@ void main() {
     await StorageService.clearAll();
 
     expect(StorageService.partnerStyleOverridesBox.isEmpty, isTrue);
+  });
+
+  test('clearAll() purges partner_data_quality_states box', () async {
+    await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<Partner>(AppConstants.partnersBox);
+    await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
+    await Hive.openBox(AppConstants.settingsBox);
+    await Hive.openBox(AppConstants.usageBox);
+
+    await StorageService.partnerDataQualityStatesBox.put(
+      'p1',
+      PartnerDataQualityState.empty(
+        'p1',
+        updatedAt: DateTime.utc(2026, 5, 1),
+      ),
+    );
+    expect(StorageService.partnerDataQualityStatesBox.isNotEmpty, isTrue);
+
+    await StorageService.clearAll();
+
+    expect(StorageService.partnerDataQualityStatesBox.isEmpty, isTrue);
   });
 }

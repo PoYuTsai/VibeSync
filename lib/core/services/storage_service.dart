@@ -64,6 +64,11 @@ class StorageService {
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
     await Hive.openBox(
       AppConstants.settingsBox,
       encryptionCipher: HiveAesCipher(encryptionKey),
@@ -128,6 +133,9 @@ class StorageService {
   static Box<PartnerStyleOverride> get partnerStyleOverridesBox =>
       Hive.box<PartnerStyleOverride>('partner_style_overrides');
 
+  static Box<PartnerDataQualityState> get partnerDataQualityStatesBox =>
+      Hive.box<PartnerDataQualityState>('partner_data_quality_states');
+
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
@@ -139,6 +147,7 @@ class StorageService {
     await partnersBox.clear();
     await userProfileBox.clear();
     await partnerStyleOverridesBox.clear();
+    await partnerDataQualityStatesBox.clear();
     await settingsBox.clear();
     await usageBox.clear();
   }
