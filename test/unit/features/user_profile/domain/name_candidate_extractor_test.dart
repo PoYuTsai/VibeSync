@@ -138,6 +138,14 @@ void main() {
         reason:
             'outgoing self-intros must be filtered; partner never introduced themselves',
       );
+
+      // Sanity: flipping ONE outgoing → incoming proves the regex itself works.
+      // If THIS returned null, the test's null assertion above would be a false-positive.
+      expect(
+        extractor.fromMessages([_msg("Hi I'm Bob", fromMe: false)]),
+        'bob',
+        reason: 'sanity: same self-intro string with fromMe:false DOES match',
+      );
     });
 
     test('matches "我叫 X" / "Hi I\'m X" / "Call me X"', () {

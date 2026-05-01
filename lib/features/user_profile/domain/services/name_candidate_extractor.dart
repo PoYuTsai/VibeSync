@@ -63,7 +63,9 @@ class NameCandidateExtractor {
   /// (`她是 May`, `我跟 May 聊天`) does NOT match because there is no marker.
   static final _selfIntroPatterns = <RegExp>[
     // Chinese: 我叫 X (CJK or Latin given/surname, 2-10 chars).
-    RegExp(r'我叫\s*([一-龥A-Za-z]{2,10})'),
+    // CJK range U+4E00..U+9FFF matches Task 14's content filter — keeps
+    // fromConversationName and fromMessages consistent on CJK Extension-A names.
+    RegExp(r'我叫\s*([一-鿿A-Za-z]{2,10})'),
     // English: optional "Hi, " + I + (straight ' or curly ‘ ’) + m, then
     // 2-15 letters. caseSensitive false → matches "i'm" / "I'M" too.
     // ‘ = left single quotation mark ‘, ’ = right single quotation mark ’.
