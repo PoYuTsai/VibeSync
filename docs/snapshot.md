@@ -8,7 +8,7 @@
 ## 2026-05-02
 
 ### 階段
-**Spec 4 Phase 1 — Coach Action Card + Learning Deep Link** 全 ship 至 main（HEAD `2ca0257`），等 TF dogfood smoke。`ScoreActionHint` 在 production 已停用，但檔案 + 4 個 widget test 保留作 rollback 安全網（per Codex amendment 3，TF smoke 綠後再 cleanup commit 刪）。Spec 3 (Partner Data Quality Guard) 已 dogfood 通過。
+**Spec 4 Phase 1 — Coach Action Card + Learning Deep Link** 全 ship 至 main，TF dogfood smoke 已過（Eric 回報「還可以」）。`ScoreActionHint` rollback 安全網已於 cleanup commit `0d7ff06` 移除，production path 只剩 `CoachActionCard`。Spec 3 (Partner Data Quality Guard) 已 dogfood 通過。
 
 ### Phase 1 ship 重點
 - 9 個 deterministic actionType（softInvite / lowerPressureReply / extendTopicStoryFrame / emotionalResonance / rightSizeReply / playfulReply / pausePursuit / preferenceSignal / fitCheck）
@@ -16,14 +16,14 @@
 - Spec 3 flagged-partner gating 走 safe-set {emotionalResonance / rightSizeReply / lowerPressureReply / fitCheck}，flagged 時 practiceGoals 完全忽略
 - ScoreActionHint 的 13-keyword meeting suppression 契約 byte-for-byte 遷移到 policy
 - LearningLinkResolver 對 7/9 actionType 提供 exact articleId（softInvite / pausePursuit 沒對到文章 → CTA 隱藏；無 category fallback）
-- 35 新測試（31 unit + 4 widget），regression sweep `+640 ~1 -76` vs baseline `+605 ~1 -76` 零退化
+- 37 個 Spec 4 policy/widget tests，cleanup 後 full-suite sweep `+638 ~1 -76`，baseline `-76` 不變
 
 ### Phase 1 不做（保留 Phase 1.5+）
 - 不改 analyze-chat schema / prompt / OCR
 - 不新增 Edge endpoint，不做 AI practice generation
 - 不重寫 20 篇文章；softInvite/pausePursuit 文章補上是 Phase 1.5
 - 沒 Learning tab 真實 route → 沒對到文章時 CTA 直接隱藏（Codex amendment 2）
-- ScoreActionHint cleanup PR 等 TF smoke 綠
+- `ScoreActionHint` cleanup 已完成；下一步若要補強，走 Phase 1.5（softInvite/pausePursuit 文章或 Learning tab 真實 route）
 
 詳見 ADR #16。
 

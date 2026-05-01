@@ -25,7 +25,7 @@
 | 13 | 截圖上傳 — Claude Vision | ✅ Active |
 | 14 | 開場救星 feature（2026-04） | ✅ Active |
 | 15 | Partner Entity Refactor（2026-04-25） — A1 schema-only ship + A2 UI/AI deferred | ✅ Active（v2 Shipped 2026-04-28，含 D-P4-1~5） |
-| 16 | Spec 4 Phase 1 — Coach Action Card 取代 ScoreActionHint（2026-05-01） | ✅ Active（Shipped 2026-05-02 HEAD `2ca0257`，legacy widget 保留待 TF smoke 後 cleanup） |
+| 16 | Spec 4 Phase 1 — Coach Action Card 取代 ScoreActionHint（2026-05-01） | ✅ Active（Shipped + cleanup complete 2026-05-02 HEAD `0d7ff06`） |
 
 ---
 
@@ -386,7 +386,7 @@
 ---
 
 ## ADR #16 — [2026-05-01] Spec 4 Phase 1 — Coach Action Card 取代 ScoreActionHint
-**狀態**: ✅ Active（Shipped 2026-05-02 HEAD `2ca0257`）
+**狀態**: ✅ Active（Shipped + cleanup complete 2026-05-02 HEAD `0d7ff06`）
 
 **決定**: 把 `analysis_screen.dart` 上原本由 `ScoreActionHint` 提供的「下一步提示」升級成 `CoachActionCard`，由 app-side deterministic `CoachActionPolicy` 決定每回合練哪個互動能力。9 個 actionType（softInvite / lowerPressureReply / extendTopicStoryFrame / emotionalResonance / rightSizeReply / playfulReply / pausePursuit / preferenceSignal / fitCheck），10 條 top-down 優先序規則。Spec 3 flagged-partner 走 safe-set 子集。
 
@@ -398,7 +398,7 @@
 
 **Codex review 7 條 amendments 全納入**:
 - 不假 category fallback（沒對到 article 就隱藏 CTA，無 `/` 假 deep link）
-- ScoreActionHint 本輪不刪，保留 rollback 安全網（cleanup PR 等 TF smoke 綠）
+- ScoreActionHint 先保留 rollback 安全網；TF smoke 綠後已於 `0d7ff06` cleanup 移除
 - 新 code 一律用 `challengeSignal`，不引入 `shitTest` 詞彙到 Spec 4 surface
 - TF gate：等 Spec 3 smoke 綠才動 lib/test/
 - 6-field card / feature-mirror test 路徑 / Q1-Q5 全鎖
@@ -407,14 +407,16 @@
 - 新 lib：`coach_action_type.dart`, `coach_action_card_data.dart`, `coach_action_policy.dart`, `learning_link_resolver.dart`, `coach_action_card.dart`（5 檔）
 - 新 test：35 個（31 unit + 4 widget）
 - analysis_screen.dart 一處改動（line 3819 swap，加 5 個 import）
-- regression sweep 零退化（`+640 ~1 -76` vs baseline `+605 ~1 -76`）
+- regression sweep 零退化；cleanup 後 full-suite `+638 ~1 -76`，baseline `-76` 不變
+- post-review fix `d918888`：補 softInvite meeting/close signal gate + 1.8x 最新回覆判斷
+- cleanup `0d7ff06`：移除 legacy `ScoreActionHint` widget + 舊 widget tests + stale comment
 
 **不在範圍**:
 - 不改 analyze-chat schema / prompt / OCR
 - 不新增 Edge endpoint，不做 AI practice generation
 - 不重寫 20 篇 Learning 文章
 - softInvite / pausePursuit 沒對應到現有文章 → CTA 隱藏（Phase 1.5 補文章或補 Learning route）
-- ScoreActionHint cleanup PR 等 TF dogfood smoke 綠後再做
+- `ScoreActionHint` cleanup 已完成；Phase 1.5 再評估 softInvite / pausePursuit 文章或 Learning tab 真實 route
 
 **相關文件**:
 - `docs/plans/2026-05-01-spec4-phase1-coach-action-card-impl.md` — 實作計畫（Codex APPROVED-WITH-AMENDMENTS）
