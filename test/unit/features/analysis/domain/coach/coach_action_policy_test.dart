@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_card_data.dart';
+import 'package:vibesync/features/analysis/domain/coach/coach_action_policy.dart';
 import 'package:vibesync/features/analysis/domain/coach/coach_action_type.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
+import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 
 void main() {
   group('CoachActionType', () {
@@ -60,6 +63,63 @@ void main() {
         learningLink: null,
       );
       expect(a, isNot(equals(b)));
+    });
+  });
+
+  group('CoachActionPolicy.evaluate', () {
+    test('should return fitCheck card when no upstream rule matches', () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 50,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+      expect(card.actionLabel, '互動品質觀察');
+      expect(card.suggestedLine, isNull);
+      expect(card.learningLink, '18');
+    });
+
+    test('should not surface long-term-trait phrases when partner is flagged',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 50,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: true,
+      );
+      for (final forbidden in const [
+        '你們之前',
+        '上次',
+        '通常她',
+        '她總是',
+        '從歷史看',
+      ]) {
+        expect(
+          card.whyNow.contains(forbidden),
+          isFalse,
+          reason: 'flagged whyNow leaked long-term-trait token "$forbidden"',
+        );
+      }
     });
   });
 }
