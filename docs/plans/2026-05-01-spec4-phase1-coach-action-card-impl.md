@@ -1,7 +1,7 @@
 # Spec 4 Phase 1 — Coach Action Card + Learning Deep Link Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-> **Status:** APPROVED-WITH-AMENDMENTS (Codex review 2026-05-01, this revision incorporates all 7 amendments). Plan locked. **Unblocked for implementation on 2026-05-01 after Eric dogfood-smoked Spec 3 as acceptable** — see §9.
+> **Status:** ✅ SHIPPED 2026-05-02 at HEAD `2ca0257` (Tasks 0-15 all green; Task 16 doc closeout in this commit; Final Codex code review pending). Manual web smoke (heat 20/50/90 + flagged partner screenshots) is Eric's TF-side responsibility.
 > **Source:** `VibeSync_Spec4_Coach_Action_Loop_Bruce.docx` + verbal alignment 2026-05-01.
 > **Supersedes (Phase 1 only):** `2026-04-30-memory-coach-spec4-coach-action-loop-draft.md`. Draft was 7 actionTypes, this plan is 9 + adds Spec 3 gating that didn't exist when the draft was written.
 > **Codex amendments applied:** see §10 for the diff log.

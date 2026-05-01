@@ -25,6 +25,7 @@
 | 13 | 截圖上傳 — Claude Vision | ✅ Active |
 | 14 | 開場救星 feature（2026-04） | ✅ Active |
 | 15 | Partner Entity Refactor（2026-04-25） — A1 schema-only ship + A2 UI/AI deferred | ✅ Active（v2 Shipped 2026-04-28，含 D-P4-1~5） |
+| 16 | Spec 4 Phase 1 — Coach Action Card 取代 ScoreActionHint（2026-05-01） | ✅ Active（Shipped 2026-05-02 HEAD `2ca0257`，legacy widget 保留待 TF smoke 後 cleanup） |
 
 ---
 
@@ -381,3 +382,43 @@
 #### 相關 commits（Phase 4，branch `feature/partner-entity-A2-polish`）
 
 `28d0746` 18a delete API · `7585497` 18b 5 件套 + dialog · `6f73208` 14a banner service · `e9a7fcd` 14b banner widget · `e4bbc4f` banner dismiss guard · `782d73a` 15 copy sweep · `30a529d` 16a 砍 @Deprecated HomeContent
+
+---
+
+## ADR #16 — [2026-05-01] Spec 4 Phase 1 — Coach Action Card 取代 ScoreActionHint
+**狀態**: ✅ Active（Shipped 2026-05-02 HEAD `2ca0257`）
+
+**決定**: 把 `analysis_screen.dart` 上原本由 `ScoreActionHint` 提供的「下一步提示」升級成 `CoachActionCard`，由 app-side deterministic `CoachActionPolicy` 決定每回合練哪個互動能力。9 個 actionType（softInvite / lowerPressureReply / extendTopicStoryFrame / emotionalResonance / rightSizeReply / playfulReply / pausePursuit / preferenceSignal / fitCheck），10 條 top-down 優先序規則。Spec 3 flagged-partner 走 safe-set 子集。
+
+**原因**:
+1. 「下一步提示」太被動 — 用戶只看到一句話，不知道在練什麼。CoachActionCard 把「本回合練什麼」做成顯性焦點，每次分析後幫用戶選一個最值得練的互動能力。
+2. 走 deterministic policy（非 AI generated）= 可測試、可仲裁、可離線 fallback。Phase 1 不動 analyze-chat schema、不動 prompt、不新增 Edge endpoint，全部在 app 端決定。
+3. ScoreActionHint 的 13-keyword meeting-language suppression 是已驗證 product red line，policy 直接繼承並在所有 actionType 上一致地 enforce（不只 softInvite）。
+4. Spec 3 dataQualityFlag 已就緒；flagged 時 policy 強制 safe-set + 完全忽略 practiceGoals，避免長期人格資料污染當下對話建議。
+
+**Codex review 7 條 amendments 全納入**:
+- 不假 category fallback（沒對到 article 就隱藏 CTA，無 `/` 假 deep link）
+- ScoreActionHint 本輪不刪，保留 rollback 安全網（cleanup PR 等 TF smoke 綠）
+- 新 code 一律用 `challengeSignal`，不引入 `shitTest` 詞彙到 Spec 4 surface
+- TF gate：等 Spec 3 smoke 綠才動 lib/test/
+- 6-field card / feature-mirror test 路徑 / Q1-Q5 全鎖
+
+**ship 範圍**:
+- 新 lib：`coach_action_type.dart`, `coach_action_card_data.dart`, `coach_action_policy.dart`, `learning_link_resolver.dart`, `coach_action_card.dart`（5 檔）
+- 新 test：35 個（31 unit + 4 widget）
+- analysis_screen.dart 一處改動（line 3819 swap，加 5 個 import）
+- regression sweep 零退化（`+640 ~1 -76` vs baseline `+605 ~1 -76`）
+
+**不在範圍**:
+- 不改 analyze-chat schema / prompt / OCR
+- 不新增 Edge endpoint，不做 AI practice generation
+- 不重寫 20 篇 Learning 文章
+- softInvite / pausePursuit 沒對應到現有文章 → CTA 隱藏（Phase 1.5 補文章或補 Learning route）
+- ScoreActionHint cleanup PR 等 TF dogfood smoke 綠後再做
+
+**相關文件**:
+- `docs/plans/2026-05-01-spec4-phase1-coach-action-card-impl.md` — 實作計畫（Codex APPROVED-WITH-AMENDMENTS）
+- `docs/plans/2026-04-30-memory-coach-spec4-coach-action-loop-draft.md` — 早期 brainstorm draft（已 superseded）
+
+**相關 commits（main 線性）**:
+`20722d4` Task 1 enum · `cdf3c9d` Task 2 view model · `dda2715` Task 3 resolver · `3294bfc` Task 4 drift guard · `41d9496` review fixes · `2854bcb` Task 5 policy 骨架 · `1ee1d81` Task 6 softInvite · `c96f9e0` Task 7 meeting suppression · `b257d90` flagged whyNow 強化 · `cd844da` Task 8 storyFrame · `bdd9216` Task 9 emotionalResonance · `954346b` Task 10 rightSizeReply · `6ded284` Task 11 tie-breakers + safe set · `7dd7318` cosmetic · `5cad69d` Task 12 widget · `2ca0257` Task 13 wiring
