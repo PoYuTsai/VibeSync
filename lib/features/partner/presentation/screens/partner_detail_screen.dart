@@ -31,15 +31,18 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../conversation/presentation/dialogs/delete_conversation_confirm_dialog.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
+import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
+import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
+import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../dialogs/partner_edit_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
+import '../widgets/partner_data_quality_banner.dart';
 import '../widgets/partner_heat_hero_card.dart';
 import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
-import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart';
 
 class PartnerDetailScreen extends ConsumerWidget {
   final String partnerId;
@@ -58,6 +61,12 @@ class PartnerDetailScreen extends ConsumerWidget {
         body: Center(child: Text('找不到對象（可能已被合併或刪除）')),
       );
     }
+
+    // Read AFTER the null-check: when the partner has been deleted/merged,
+    // there's no surface to show the banner on, so we avoid touching the
+    // data-quality repo (and the Hive box) entirely. Mirrors the no-op
+    // shape of the partnerStyleEntryCard placement.
+    final dataQualityFlag = ref.watch(dataQualityFlagProvider(partnerId));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -120,6 +129,25 @@ class PartnerDetailScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (dataQualityFlag.isFlagged &&
+                    dataQualityFlag.conflictingPair != null) ...[
+                  PartnerDataQualityBanner(
+                    nameA: dataQualityFlag.conflictingPair!.first,
+                    nameB: dataQualityFlag.conflictingPair!.second,
+                    onMarkSamePerson: () => _handleMarkSamePerson(
+                      ref,
+                      partner.id,
+                      dataQualityFlag.conflictingPair!,
+                    ),
+                    onSplit: () => _handleSplit(
+                      context,
+                      ref,
+                      partner,
+                      dataQualityFlag.conflictingPair!,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 PartnerStyleEntryCard(
                   partnerId: partnerId,
                   partnerName: partner.name,
@@ -209,6 +237,28 @@ class PartnerDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  // Stub — Spec 3 Task 20 implements markSamePerson + invalidate.
+  // Signature is stable; Task 20 fills the body in place (no caller change).
+  void _handleMarkSamePerson(
+    WidgetRef ref,
+    String partnerId,
+    NamePair pair,
+  ) {
+    // ignore: avoid_print
+    debugPrint('[Spec3 Task 20 TODO] markSamePerson($partnerId, $pair)');
+  }
+
+  // Stub — Spec 3 Task 21 implements confirm dialog + repo.split + invalidation.
+  // Signature is stable; Task 21 fills the body in place (no caller change).
+  Future<void> _handleSplit(
+    BuildContext context,
+    WidgetRef ref,
+    Partner partner,
+    NamePair pair,
+  ) async {
+    debugPrint('[Spec3 Task 21 TODO] _handleSplit(${partner.id}, $pair)');
   }
 }
 

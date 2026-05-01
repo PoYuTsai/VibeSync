@@ -10,6 +10,7 @@ import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.d
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
+import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
@@ -56,6 +57,10 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        // Spec 3 Task 19 — PartnerDetailScreen now watches dataQualityFlag.
+        // Default to unflagged so the banner doesn't render in this test.
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));

@@ -25,6 +25,7 @@ import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.d
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 
 Partner _p(String id, String name) => Partner(
       id: id,
@@ -123,6 +124,10 @@ void main() {
           conversationsByPartnerProvider('p1')
               .overrideWith((_) => const <Conversation>[]),
           partnerListProvider.overrideWith((_) => [_p('p1', 'Alice')]),
+          // Spec 3 Task 19 — PartnerDetailScreen now watches dataQualityFlag.
+          // Default to unflagged so this snapshot test stays vocabulary-only.
+          dataQualityFlagProvider('p1')
+              .overrideWith((_) => const DataQualityFlag.unflagged()),
         ],
         child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
       ));

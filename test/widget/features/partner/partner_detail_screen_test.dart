@@ -16,11 +16,14 @@ import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.d
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_conversation_tile.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_data_quality_banner.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_heat_hero_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_radar_summary_card.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_traits_card.dart';
+import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 
 import '_fakes/recording_conversation_write_controller.dart';
@@ -95,6 +98,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => [attachedConv]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
@@ -127,6 +132,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
@@ -157,6 +164,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
@@ -192,6 +201,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
@@ -222,6 +233,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
@@ -250,6 +263,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
@@ -290,6 +305,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
@@ -314,6 +331,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
       ],
@@ -354,6 +373,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
       ],
@@ -376,6 +397,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => const <Conversation>[]),
       ],
@@ -396,6 +419,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => [_conv('a'), _conv('b')]),
       ],
@@ -427,6 +452,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => [attachedConv]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
@@ -478,6 +505,8 @@ void main() {
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
         conversationsByPartnerProvider('p1')
             .overrideWith((_) => [attachedConv]),
         partnerListProvider.overrideWith((_) => [_p(), _other('q1', 'Bob')]),
@@ -526,5 +555,62 @@ void main() {
     ));
     await t.pumpAndSettle();
     expect(find.textContaining('找不到對象'), findsOneWidget);
+  });
+
+  // Spec 3 Task 19 — PartnerDataQualityBanner integration on PartnerDetailScreen.
+  // The banner sits between PartnerTraitsCard and PartnerStyleEntryCard and
+  // only renders when the dataQualityFlagProvider returns a flagged result
+  // with a non-null conflictingPair. Action handlers are STUBS in this task
+  // (Tasks 20/21 fill them in); these tests verify rendering only.
+  testWidgets(
+      'PartnerDataQualityBanner appears when dataQualityFlagProvider is flagged',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    final pair = NamePair.canonical('May', 'Anna');
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => DataQualityFlag.flagged(pair)),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.byType(PartnerDataQualityBanner), findsOneWidget);
+    // Both names from the conflicting pair surface in the banner copy.
+    expect(find.textContaining(pair.first), findsOneWidget);
+    expect(find.textContaining(pair.second), findsOneWidget);
+  });
+
+  testWidgets(
+      'PartnerDataQualityBanner is NOT rendered when flag is unflagged',
+      (t) async {
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.byType(PartnerDataQualityBanner), findsNothing);
   });
 }
