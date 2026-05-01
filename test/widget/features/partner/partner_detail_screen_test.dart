@@ -689,7 +689,7 @@ void main() {
   // by candidate name (== pair.second) → PartnerWriteController.split.
   // Defensive guard: empty match list → no split call.
   group('拆成新對象 action', () {
-    Conversation _convNamed(String id, String name) => Conversation(
+    Conversation convNamed(String id, String name) => Conversation(
           id: id,
           name: name,
           messages: const [],
@@ -731,7 +731,7 @@ void main() {
       final fake = RecordingPartnerWriteController();
       await t.pumpWidget(scope(
         fakeController: fake,
-        conversations: [_convNamed('c1', 'May')],
+        conversations: [convNamed('c1', 'May')],
         child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
@@ -756,7 +756,7 @@ void main() {
       final fake = RecordingPartnerWriteController();
       await t.pumpWidget(scope(
         fakeController: fake,
-        conversations: [_convNamed('c1', 'May')],
+        conversations: [convNamed('c1', 'May')],
         child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
@@ -782,9 +782,9 @@ void main() {
       await t.pumpWidget(scope(
         fakeController: fake,
         conversations: [
-          _convNamed('c1', 'May'),
-          _convNamed('c2', 'Anna'),
-          _convNamed('c3', 'May'),
+          convNamed('c1', 'May'),
+          convNamed('c2', 'Anna'),
+          convNamed('c3', 'May'),
         ],
         child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
       ));
@@ -814,7 +814,7 @@ void main() {
       // No conv extracts to "May" — guard short-circuits before split.
       await t.pumpWidget(scope(
         fakeController: fake,
-        conversations: [_convNamed('c1', 'Anna')],
+        conversations: [convNamed('c1', 'Anna')],
         child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
       ));
       await t.pumpAndSettle();
