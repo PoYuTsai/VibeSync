@@ -5,22 +5,47 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/glassmorphic_container.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../data/providers/partner_style_providers.dart';
+import '../../data/providers/user_profile_providers.dart';
+import '../../domain/entities/partner_style_override.dart';
+import '../../domain/entities/user_profile.dart';
 
 /// Edit screen for per-partner style overrides — Spec 2 Phase 6.
 ///
-/// Phase progression:
-///  - Task 14 (this commit): scaffold + dynamic title + section headers
-///    only. Section bodies are placeholders; PopScope is wired but no-op.
-///  - Tasks 15-17: fill in chip / textfield bodies + reset links.
-///  - Task 18: PopScope auto-save + 重設整個對象風格 action.
-class PartnerStyleEditScreen extends ConsumerWidget {
+/// Local draft state seeded from the provider's loaded override; chip taps
+/// mutate the draft without touching the repo. Repo `save` (with isEmpty
+/// cascade-delete) is wired by Task 18's PopScope.
+class PartnerStyleEditScreen extends ConsumerStatefulWidget {
   const PartnerStyleEditScreen({super.key, required this.partnerId});
 
   final String partnerId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final partner = ref.watch(partnerByIdProvider(partnerId));
+  ConsumerState<PartnerStyleEditScreen> createState() =>
+      _PartnerStyleEditScreenState();
+}
+
+class _PartnerStyleEditScreenState
+    extends ConsumerState<PartnerStyleEditScreen> {
+  bool _draftInitialized = false;
+  InteractionStyle? _interactionStyle;
+
+  void _ensureInit(PartnerStyleOverride? loaded) {
+    if (_draftInitialized) return;
+    _draftInitialized = true;
+    _interactionStyle = loaded?.interactionStyle;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final partner = ref.watch(partnerByIdProvider(widget.partnerId));
+    final overrideAsync =
+        ref.watch(partnerStyleOverrideProvider(widget.partnerId));
+    final globalProfile =
+        ref.watch(userProfileControllerProvider).valueOrNull;
+
+    overrideAsync.whenData(_ensureInit);
+
     final title =
         partner == null ? '我的風格' : '我的風格 · ${partner.name}';
 
@@ -48,12 +73,17 @@ class PartnerStyleEditScreen extends ConsumerWidget {
             SafeArea(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, kToolbarHeight, 16, 32),
-                children: const [
-                  _SectionPlaceholder(title: '互動風格'),
-                  SizedBox(height: 16),
-                  _SectionPlaceholder(title: '練習目標'),
-                  SizedBox(height: 16),
-                  _SectionPlaceholder(title: '備註'),
+                children: [
+                  _InteractionStyleSection(
+                    selected: _interactionStyle,
+                    globalFallback: globalProfile?.interactionStyle,
+                    onSelect: (s) => setState(() => _interactionStyle = s),
+                    onReset: () => setState(() => _interactionStyle = null),
+                  ),
+                  const SizedBox(height: 16),
+                  const _SectionPlaceholder(title: '練習目標'),
+                  const SizedBox(height: 16),
+                  const _SectionPlaceholder(title: '備註'),
                 ],
               ),
             ),
@@ -63,6 +93,97 @@ class PartnerStyleEditScreen extends ConsumerWidget {
     );
   }
 }
+
+class _InteractionStyleSection extends StatelessWidget {
+  const _InteractionStyleSection({
+    required this.selected,
+    required this.globalFallback,
+    required this.onSelect,
+    required this.onReset,
+  });
+
+  final InteractionStyle? selected;
+  final InteractionStyle? globalFallback;
+  final ValueChanged<InteractionStyle> onSelect;
+  final VoidCallback onReset;
+
+  String? _placeholderHint() {
+    if (selected != null) return null;
+    if (globalFallback != null) {
+      return '（沿用全域：${_styleLabel(globalFallback!)}）';
+    }
+    return '（尚未設定）';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = _placeholderHint();
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '互動風格',
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (hint != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              hint,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: InteractionStyle.values.map((s) {
+              return ChoiceChip(
+                label: Text(_styleLabel(s)),
+                selected: selected == s,
+                showCheckmark: false,
+                onSelected: (_) => onSelect(s),
+              );
+            }).toList(),
+          ),
+          if (selected != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: onReset,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.glassTextSecondary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('沿用全域'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _styleLabel(InteractionStyle s) => switch (s) {
+      InteractionStyle.steady => '穩重',
+      InteractionStyle.direct => '直接',
+      InteractionStyle.humorous => '幽默',
+      InteractionStyle.gentle => '溫柔',
+      InteractionStyle.playful => '俏皮',
+    };
 
 class _SectionPlaceholder extends StatelessWidget {
   const _SectionPlaceholder({required this.title});
