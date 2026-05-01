@@ -1,7 +1,7 @@
 # Spec 4 Phase 1 — Coach Action Card + Learning Deep Link Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-> **Status:** APPROVED-WITH-AMENDMENTS (Codex review 2026-05-01, this revision incorporates all 7 amendments). Plan locked. **Code work blocked until Spec 3 TF smoke is green** — see §9.
+> **Status:** APPROVED-WITH-AMENDMENTS (Codex review 2026-05-01, this revision incorporates all 7 amendments). Plan locked. **Unblocked for implementation on 2026-05-01 after Eric dogfood-smoked Spec 3 as acceptable** — see §9.
 > **Source:** `VibeSync_Spec4_Coach_Action_Loop_Bruce.docx` + verbal alignment 2026-05-01.
 > **Supersedes (Phase 1 only):** `2026-04-30-memory-coach-spec4-coach-action-loop-draft.md`. Draft was 7 actionTypes, this plan is 9 + adds Spec 3 gating that didn't exist when the draft was written.
 > **Codex amendments applied:** see §10 for the diff log.
@@ -491,7 +491,7 @@ Originally posed as open questions; locked by Codex review 2026-05-01:
 2. **Q2 (file location) — LOCKED: `lib/features/analysis/domain/coach/`.** Policy reads `AnalysisResult`-shaped input, so colocating with `analysis/` is correct for Phase 1. If Spec 4 grows past Phase 1 we can extract a sibling `coach/` feature directory; until then, no premature feature carve-out.
 3. **Q3 (`learningLink == null`) — LOCKED: nullable, hide CTA when null.** `LearningLinkResolver.resolve` returns `String?` (the articleId). When null, `CoachActionCard` omits the entire CTA row. No category-deep-link fallback in Phase 1 (no real route exists; pushing `/` would land on the home tab, not learning — see §5.2).
 4. **Q4 (emoji) — LOCKED: no emoji on `CoachActionCard` header.** Bruce's "less is more" stance preserved. The actionLabel text alone is the headline.
-5. **Q5 (TF gate) — LOCKED: amend plan now, no code yet.** Code work blocked until Spec 3 TF smoke is green (Eric / Bruce confirms via TF dogfood). When unblocked, Phase 1 ships via direct commits to `main` (consistent with project workflow); a separate feature branch is NOT used. See §9 for the trigger.
+5. **Q5 (TF gate) — LOCKED: gate cleared 2026-05-01.** Eric dogfood-smoked Spec 3 as acceptable and explicitly asked CC to proceed. Phase 1 ships via direct commits to `main` (consistent with project workflow); a separate feature branch is NOT used. See §9 for the trigger record.
 
 ---
 
@@ -510,7 +510,7 @@ These are encoded as policy tests, not just code review notes:
 
 **Hard gate before any code work begins on this plan:**
 
-> Spec 3 (Partner Data Quality Guard) TF smoke must be green from Eric/Bruce dogfood. Until then, this plan is amend-only — no `lib/` or `test/` files for Spec 4 may be created or modified.
+> Spec 3 (Partner Data Quality Guard) gate cleared on 2026-05-01. Eric dogfood-smoked the current Spec 3 flow as acceptable (`還可以`) and asked CC to continue. Bruce broader dogfood feedback is still welcome, but it no longer blocks Spec 4 Phase 1 execution.
 
 Once the gate clears, Phase 1 ships via direct commits to `main` (project default workflow — no feature branch). Two execution options:
 
@@ -519,7 +519,7 @@ Once the gate clears, Phase 1 ships via direct commits to `main` (project defaul
 
 **Recommendation:** Subagent-driven — Tasks 1–13 are tight TDD loops (5–15 min each) and benefit from inline review.
 
-**Trigger for unblocking:** Eric explicitly says "Spec 3 TF smoke OK，Spec 4 Phase 1 開工" (or equivalent). Until that signal, this plan stays in plan-only mode.
+**Trigger record:** Eric explicitly said Spec 3 is acceptable in dogfood and asked CC to proceed on 2026-05-01. This satisfies the "Spec 3 TF smoke OK，Spec 4 Phase 1 開工" trigger.
 
 ---
 
@@ -531,6 +531,6 @@ Once the gate clears, Phase 1 ships via direct commits to `main` (project defaul
 | 2 | Forbid `context.push('/')` learning fallback | `LearningLinkResolver.resolve` now returns `String?`; CTA hidden when null; no category-route navigation in Phase 1 | Architecture bullet 3, §4 learningLink row, §5.2 (full rewrite + mapping table simplified), Task 3 (test list + return type), Task 12 (tap behavior) |
 | 3 | Don't delete ScoreActionHint this PR | Flipped recommendation; legacy widget + tests stay in-tree as rollback safety net; cleanup deferred to follow-up commit post TF smoke | Architecture bullet 5, §2 Delete → Deferred, §5.3 (full flip), §5.5 (legacy test stays), Task 14 (verify-only, no commit), Task 16 (ADR wording) |
 | 4 | Rename `shitTest` to `challengeSignal` in new code | Naming note added to §3; Task 9 explicitly forbids legacy token in Spec 4 surfaces; upstream field name unchanged (out of scope) | §3 rule 7 + naming note, Task 9 |
-| 5 | TF gate workflow inconsistency | Locked: amend plan now, no code; once Spec 3 TF smoke green, ship Spec 4 via direct main commits (option A from Codex) | Header status line, §7 Q5, §9 (rewrite) |
+| 5 | TF gate workflow inconsistency | Locked: once Spec 3 smoke is acceptable, ship Spec 4 via direct main commits (option A from Codex). Gate cleared 2026-05-01 by Eric dogfood signal. | Header status line, §7 Q5, §9 (rewrite) |
 | 6 | Goal said 5-field, §4 had 6 | Goal sentence rewritten to explicitly say 6-field with the field list | Goal line |
 | 7 | Test paths should mirror feature structure | All test paths updated: `test/unit/features/analysis/domain/coach/` and `test/widget/shared/` | §2 Create list, Task 1, Task 3, Task 12 |

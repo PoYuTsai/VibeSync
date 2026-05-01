@@ -4,7 +4,7 @@
 > Reviewed plan: `docs/plans/2026-05-01-spec4-phase1-coach-action-card-impl.md`  
 > Plan commit after amendments: `e8d525d`  
 > Verdict: `APPROVED-WITH-AMENDMENTS`, amendments accepted by Claude / CC  
-> Current gate: plan-only, implementation blocked until Spec 3 TF smoke is green and Eric explicitly says `Spec 4 Phase 1 開工`
+> Current gate: cleared 2026-05-01. Eric dogfood-smoked Spec 3 as acceptable and explicitly asked CC to proceed with Spec 4 Phase 1.
 
 ## Summary
 
@@ -40,7 +40,7 @@ The plan direction is approved:
 
 5. Resolve the TF gate contradiction.
    - Reason: current workflow commits directly to `main`, so "write now, hold merge" is not true unless a feature branch is used.
-   - Resolution: no production code until Spec 3 TF smoke is green and Eric gives go signal.
+   - Resolution: no production code until Spec 3 TF smoke is acceptable and Eric gives go signal. Gate cleared on 2026-05-01.
 
 6. Card field count corrected from 5 to 6.
    - `actionLabel / whyNow / task / suggestedLine / avoid / learningLink`
@@ -54,13 +54,13 @@ The plan direction is approved:
 
 ## Current Status
 
-Implementation should not start yet.
+Implementation may start.
 
 Next allowed step:
 
 ```text
-Eric / Bruce finish Spec 3 TF smoke
--> Eric says "Spec 4 Phase 1 開工"
+Eric dogfood smoke accepted Spec 3 as OK
+-> Eric asked CC to proceed
 -> CC executes the locked implementation plan
 -> Codex reviews code diff
 ```
