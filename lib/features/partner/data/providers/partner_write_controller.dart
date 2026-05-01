@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../domain/entities/partner.dart';
 import '../../presentation/providers/partner_providers.dart';
 
@@ -93,11 +94,17 @@ class PartnerWriteController extends Notifier<void> {
     ref.invalidate(conversationsByPartnerProvider(id));
   }
 
+  void _invalidatePartnerStyle(String id) {
+    ref.invalidate(partnerStyleOverrideProvider(id));
+    ref.invalidate(effectiveStyleProvider(id));
+  }
+
   void _invalidateMergeScopes(String fromId, String toId) {
     _invalidatePartner(fromId);
     _invalidatePartner(toId);
     _invalidatePartnerScopedConversations(fromId);
     _invalidatePartnerScopedConversations(toId);
+    _invalidatePartnerStyle(fromId);
     ref.invalidate(partnerListProvider);
     // A2 transition contract — retired in the post-A2 cleanup PR once
     // reportDataProvider migrates off the global feed.
@@ -107,6 +114,7 @@ class PartnerWriteController extends Notifier<void> {
   void _invalidateDeleteScopes(String id) {
     _invalidatePartner(id);
     _invalidatePartnerScopedConversations(id);
+    _invalidatePartnerStyle(id);
     ref.invalidate(partnerListProvider);
   }
 

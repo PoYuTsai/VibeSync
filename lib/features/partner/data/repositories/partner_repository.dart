@@ -15,7 +15,8 @@ import '../../domain/entities/partner.dart';
 /// - [listByOwner] — owner-scoped query for the home Partner list.
 /// - [merge] — re-points all conversations of `fromId` to `toId`, appends
 ///   the source partner's `customNote` into the target with a `[from <name>]`
-///   tag, then deletes the source partner. No-op on same id; throws
+///   tag, then deletes the source partner and its style override. No-op on
+///   same id; throws
 ///   `ArgumentError` if either side is missing (no partial state).
 /// - [delete] — removes a partner row, but only after confirming zero
 ///   conversations still reference it. Throws
@@ -49,9 +50,8 @@ class PartnerRepository {
 
   Partner? getById(String id) => _box.get(id);
 
-  List<Partner> listByOwner(String ownerUserId) => _box.values
-      .where((p) => p.ownerUserId == ownerUserId)
-      .toList();
+  List<Partner> listByOwner(String ownerUserId) =>
+      _box.values.where((p) => p.ownerUserId == ownerUserId).toList();
 
   /// Inserts [partner] only if no partner with the same id exists.
   /// Returns `true` if inserted, `false` if a row already existed.
@@ -94,6 +94,7 @@ class PartnerRepository {
     await to.save();
 
     await _box.delete(fromId);
+    await _styleRepo.delete(fromId);
   }
 
   /// Overwrites the existing row for [partner.id] and bumps `updatedAt` to
@@ -119,9 +120,8 @@ class PartnerRepository {
   /// per-partner style overrides do not survive a deleted partner. If the
   /// guard throws, no rows are touched (atomic-failure semantics).
   Future<void> delete(String partnerId) async {
-    final convCount = _conversationBox.values
-        .where((c) => c.partnerId == partnerId)
-        .length;
+    final convCount =
+        _conversationBox.values.where((c) => c.partnerId == partnerId).length;
     if (convCount > 0) {
       throw PartnerHasConversationsException(convCount);
     }

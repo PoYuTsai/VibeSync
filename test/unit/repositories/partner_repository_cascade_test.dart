@@ -101,9 +101,7 @@ void main() {
     expect(await styleRepo.load('p1'), isNull);
   });
 
-  test(
-      'delete does NOT touch other partners style overrides',
-      () async {
+  test('delete does NOT touch other partners style overrides', () async {
     final p1 = _partner('p1');
     final p2 = _partner('p2');
     await partnerBox.put(p1.id, p1);
@@ -153,5 +151,29 @@ void main() {
     );
     // Override survives the failed delete — atomic-failure semantics.
     expect(await styleRepo.load('p1'), isNotNull);
+  });
+
+  test('merge cascades to clear source partner style override only', () async {
+    final source = _partner('p1');
+    final target = _partner('p2');
+    await partnerBox.put(source.id, source);
+    await partnerBox.put(target.id, target);
+    await styleRepo.save(PartnerStyleOverride.create(
+      partnerId: 'p1',
+      interactionStyle: InteractionStyle.humorous,
+      updatedAt: DateTime.utc(2026, 5, 1),
+    ));
+    await styleRepo.save(PartnerStyleOverride.create(
+      partnerId: 'p2',
+      interactionStyle: InteractionStyle.gentle,
+      updatedAt: DateTime.utc(2026, 5, 1),
+    ));
+
+    await repo.merge(fromId: 'p1', toId: 'p2');
+
+    expect(partnerBox.containsKey('p1'), isFalse);
+    expect(await styleRepo.load('p1'), isNull);
+    expect((await styleRepo.load('p2'))?.interactionStyle,
+        InteractionStyle.gentle);
   });
 }

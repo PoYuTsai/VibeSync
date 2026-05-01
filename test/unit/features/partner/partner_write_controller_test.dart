@@ -16,6 +16,7 @@ import 'package:vibesync/features/partner/data/providers/partner_write_controlle
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
@@ -174,8 +175,7 @@ void main() {
     // Open the canonical conversations box because PartnerRepository.merge
     // and the real ConversationRepository both reach for
     // StorageService.conversationsBox = Hive.box(AppConstants.conversationsBox).
-    _convoBox =
-        await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    _convoBox = await Hive.openBox<Conversation>(AppConstants.conversationsBox);
     // PartnerRepository.delete cascades into StorageService.partnerStyleOverridesBox
     // via its lazy default PartnerStyleRepository — open canonical box name.
     _styleBox = await Hive.openBox<PartnerStyleOverride>(
@@ -261,6 +261,38 @@ void main() {
           reason: 'partner A still exists');
     });
 
+    test('merge invalidates source partner style override after cascade delete',
+        () async {
+      await _partnerBox.put('A', _partner('A', name: 'Alice'));
+      await _partnerBox.put('B', _partner('B', name: 'Bob'));
+      await _styleBox.put(
+        'A',
+        PartnerStyleOverride.create(
+          partnerId: 'A',
+          interactionStyle: InteractionStyle.humorous,
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      expect(
+        await container.read(partnerStyleOverrideProvider('A').future),
+        isNotNull,
+      );
+
+      await container
+          .read(partnerWriteControllerProvider.notifier)
+          .merge(fromId: 'A', toId: 'B');
+
+      expect(
+        await container.read(partnerStyleOverrideProvider('A').future),
+        isNull,
+        reason: 'source style override must not stale-cache after merge',
+      );
+    });
+
     test('merge throws ArgumentError when source missing', () async {
       await _partnerBox.put('B', _partner('B'));
       final container = await _makeContainer();
@@ -301,7 +333,8 @@ void main() {
             conversationBox: _convoBox,
           ),
         ),
-        authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
+        authConversationScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
       ]);
       await container.read(authConversationScopeProvider.future);
       addTearDown(container.dispose);
@@ -319,7 +352,8 @@ void main() {
       expect(container.read(conversationsByPartnerProvider('A')), isEmpty,
           reason: 'failure path must not leave stale source-scope cache');
       expect(container.read(conversationsByPartnerProvider('B')).length, 1,
-          reason: 'failure path must surface partial repo writes if they happen');
+          reason:
+              'failure path must surface partial repo writes if they happen');
     });
   });
 
@@ -362,7 +396,8 @@ void main() {
           reason: 'aggregate(A) re-evaluates against empty Hive state');
       // Force a re-read to surface invalidation of conversationsByPartner(A).
       container.read(conversationsByPartnerProvider('A'));
-      expect((_convoRepo.listByPartnerCalls['A'] ?? 0), greaterThan(aScopeBefore),
+      expect(
+          (_convoRepo.listByPartnerCalls['A'] ?? 0), greaterThan(aScopeBefore),
           reason: 'conversationsByPartner(A) must be invalidated');
 
       container.read(conversationsProvider);
@@ -404,7 +439,8 @@ void main() {
 
       // Force re-read; invalidation must have happened in finally{}.
       container.read(conversationsByPartnerProvider('A'));
-      expect((_convoRepo.listByPartnerCalls['A'] ?? 0), greaterThan(aScopeBefore),
+      expect(
+          (_convoRepo.listByPartnerCalls['A'] ?? 0), greaterThan(aScopeBefore),
           reason: 'failure path must still invalidate conversation scope');
       expect(container.read(partnerByIdProvider('A')), isNotNull,
           reason: 'A still in box because delete threw before _box.delete');
@@ -414,7 +450,8 @@ void main() {
   group('PartnerWriteController.updateName invalidations', () {
     test(
         'updateName invalidates partnerByIdProvider + partnerListProvider; '
-        'leaves conversationsProvider + conversationsByPartner alone', () async {
+        'leaves conversationsProvider + conversationsByPartner alone',
+        () async {
       await _partnerBox.put('A', _partner('A', name: 'Alice'));
       await _convoBox.put('c1', _convo('c1', partnerId: 'A'));
 

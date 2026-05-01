@@ -6,9 +6,13 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 late Box<Conversation> convoBox;
 late Box<Partner> partnerBox;
+late Box<PartnerStyleOverride> styleBox;
 late PartnerRepository repo;
 
 Partner _partner({
@@ -67,6 +71,15 @@ void main() {
     }
     if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(UserStyleAdapter());
     if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(PartnerAdapter());
+    if (!Hive.isAdapterRegistered(10)) {
+      Hive.registerAdapter(InteractionStyleAdapter());
+    }
+    if (!Hive.isAdapterRegistered(11)) {
+      Hive.registerAdapter(PracticeGoalAdapter());
+    }
+    if (!Hive.isAdapterRegistered(13)) {
+      Hive.registerAdapter(PartnerStyleOverrideAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -77,10 +90,16 @@ void main() {
     final ts = DateTime.now().microsecondsSinceEpoch;
     convoBox = await Hive.openBox<Conversation>('merge_conv_$ts');
     partnerBox = await Hive.openBox<Partner>('merge_partner_$ts');
-    repo = PartnerRepository(box: partnerBox, conversationBox: convoBox);
+    styleBox = await Hive.openBox<PartnerStyleOverride>('merge_style_$ts');
+    repo = PartnerRepository(
+      box: partnerBox,
+      conversationBox: convoBox,
+      styleRepo: PartnerStyleRepository(box: styleBox),
+    );
   });
 
   tearDown(() async {
+    await styleBox.deleteFromDisk();
     await convoBox.deleteFromDisk();
     await partnerBox.deleteFromDisk();
   });
@@ -137,23 +156,21 @@ void main() {
     test(
         'appends A.customNote into B.customNote with [from A] tag '
         '(B already has note → join with newline)', () async {
-      await partnerBox.put('p-a',
-          _partner(id: 'p-a', name: 'A', customNote: '永春附近'));
-      await partnerBox.put('p-b',
-          _partner(id: 'p-b', name: 'B', customNote: '台大附近'));
+      await partnerBox.put(
+          'p-a', _partner(id: 'p-a', name: 'A', customNote: '永春附近'));
+      await partnerBox.put(
+          'p-b', _partner(id: 'p-b', name: 'B', customNote: '台大附近'));
 
       await repo.merge(fromId: 'p-a', toId: 'p-b');
 
-      expect(partnerBox.get('p-b')!.customNote,
-          '台大附近\n[from A] 永春附近');
+      expect(partnerBox.get('p-b')!.customNote, '台大附近\n[from A] 永春附近');
     });
 
-    test('B has no note → tag + A.customNote becomes the new note',
-        () async {
-      await partnerBox.put('p-a',
-          _partner(id: 'p-a', name: 'A', customNote: '永春附近'));
-      await partnerBox.put('p-b',
-          _partner(id: 'p-b', name: 'B', customNote: null));
+    test('B has no note → tag + A.customNote becomes the new note', () async {
+      await partnerBox.put(
+          'p-a', _partner(id: 'p-a', name: 'A', customNote: '永春附近'));
+      await partnerBox.put(
+          'p-b', _partner(id: 'p-b', name: 'B', customNote: null));
 
       await repo.merge(fromId: 'p-a', toId: 'p-b');
 
@@ -161,10 +178,10 @@ void main() {
     });
 
     test('A has no note → B.customNote unchanged', () async {
-      await partnerBox.put('p-a',
-          _partner(id: 'p-a', name: 'A', customNote: null));
-      await partnerBox.put('p-b',
-          _partner(id: 'p-b', name: 'B', customNote: '台大附近'));
+      await partnerBox.put(
+          'p-a', _partner(id: 'p-a', name: 'A', customNote: null));
+      await partnerBox.put(
+          'p-b', _partner(id: 'p-b', name: 'B', customNote: '台大附近'));
 
       await repo.merge(fromId: 'p-a', toId: 'p-b');
 
@@ -172,8 +189,8 @@ void main() {
     });
 
     test('merge is no-op when from and to are the same id', () async {
-      await partnerBox.put('p-a',
-          _partner(id: 'p-a', name: 'A', customNote: 'note'));
+      await partnerBox.put(
+          'p-a', _partner(id: 'p-a', name: 'A', customNote: 'note'));
       await convoBox.put('c-1', _convo(id: 'c-1', partnerId: 'p-a'));
 
       await repo.merge(fromId: 'p-a', toId: 'p-a');
@@ -209,11 +226,21 @@ void main() {
       final old = DateTime(2026, 1, 1);
       await partnerBox.put(
         'p-a',
-        Partner(id: 'p-a', name: 'A', createdAt: old, updatedAt: old, ownerUserId: 'u-1'),
+        Partner(
+            id: 'p-a',
+            name: 'A',
+            createdAt: old,
+            updatedAt: old,
+            ownerUserId: 'u-1'),
       );
       await partnerBox.put(
         'p-b',
-        Partner(id: 'p-b', name: 'B', createdAt: old, updatedAt: old, ownerUserId: 'u-1'),
+        Partner(
+            id: 'p-b',
+            name: 'B',
+            createdAt: old,
+            updatedAt: old,
+            ownerUserId: 'u-1'),
       );
 
       await repo.merge(fromId: 'p-a', toId: 'p-b');
