@@ -7,6 +7,8 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/services/partner_summary_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
+import '../../../user_profile/data/repositories/partner_data_quality_repo_view.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../services/analysis_service.dart';
@@ -18,12 +20,34 @@ final analysisServiceProvider = Provider<AnalysisService>((ref) {
 });
 
 /// Provider for the Spec 3 data-quality repository. Reads/writes to the
-/// `partner_data_quality_states` Hive box. Phase 4 Task 16 will introduce a
-/// `dataQualityFlagProvider` that wraps this repo for live flag detection.
+/// `partner_data_quality_states` Hive box. Used by Task 20's `markSamePerson`
+/// action handler for writes, and by [dataQualityFlagProvider] for read-only
+/// access to the confirmed-pairs list.
 final partnerDataQualityRepoProvider =
     Provider<PartnerDataQualityRepository>((ref) {
   return PartnerDataQualityRepository();
 });
+
+/// Read-only [PartnerDataQualityRepoView] backed by [dataQualityFlagProvider].
+///
+/// The resolver is synchronous (`PartnerContextResolver.resolve()` is a one-
+/// shot call, not a reactive watcher), so the adapter uses `_ref.read` to
+/// fetch the current flag value on demand. Switching to this view replaces
+/// the placeholder always-false behaviour in `PartnerDataQualityRepository`
+/// with real cross-conversation flag detection (Spec 3 Phase 4 Task 16).
+final partnerDataQualityRepoViewProvider =
+    Provider<PartnerDataQualityRepoView>((ref) {
+  return _ProviderBackedDataQualityRepoView(ref);
+});
+
+class _ProviderBackedDataQualityRepoView implements PartnerDataQualityRepoView {
+  _ProviderBackedDataQualityRepoView(this._ref);
+  final Ref _ref;
+
+  @override
+  bool isFlaggedUnresolved(String partnerId) =>
+      _ref.read(dataQualityFlagProvider(partnerId)).isFlagged;
+}
 
 /// Provider for the per-call partner-context resolver. Adapters keep
 /// `partner` and `analysis` features decoupled at the type level — the
@@ -37,7 +61,7 @@ final partnerContextResolverProvider =
     conversationRepo:
         _ConversationListByPartnerAdapter(conversationRepo.listByPartner),
     summaryBuilder: PartnerSummaryBuilder(),
-    dataQualityRepo: ref.watch(partnerDataQualityRepoProvider),
+    dataQualityRepo: ref.watch(partnerDataQualityRepoViewProvider),
   );
 });
 
