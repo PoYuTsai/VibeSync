@@ -48,5 +48,34 @@ void main() {
     test('trims surrounding whitespace before accepting', () {
       expect(extractor.fromConversationName('  Anna  '), 'anna');
     });
+
+    test('accepts Japanese-surname-style names containing 和 (e.g. 和田)', () {
+      expect(
+        extractor.fromConversationName('和田'),
+        '和田',
+        reason:
+            '和 is a common Japanese surname character; must NOT be rejected as sentence particle',
+      );
+      expect(extractor.fromConversationName('和泉'), '和泉');
+      expect(extractor.fromConversationName('和久'), '和久');
+    });
+
+    test('rejects number-only / emoji-only / punctuation-only inputs', () {
+      for (final s in ['12345', '🐶', '!!!', '...', '???']) {
+        expect(
+          extractor.fromConversationName(s),
+          isNull,
+          reason: '"$s" has no letter/CJK char; not a candidate name',
+        );
+      }
+    });
+
+    test('accepts mixed alphanumeric like Bob123', () {
+      expect(
+        extractor.fromConversationName('Bob123'),
+        'bob123',
+        reason: 'has letter content even with digits — accept',
+      );
+    });
   });
 }

@@ -29,9 +29,9 @@ class NameCandidateExtractor {
   /// extremely rarely contain these characters, so the false-positive risk is
   /// low and the heuristic catches short-CJK sentences that slip past
   /// [_maxNameLen]. See plan Task 14 (Option A) for rationale.
-  static final _cjkSentenceParticlePattern = RegExp(
-    r'[跟和與是在把對於從到]',
-  );
+  ///
+  /// `和` excluded — common Japanese surname character (和田/和泉/和久).
+  static final _cjkSentenceParticlePattern = RegExp(r'[跟與是在把對於從到]');
 
   /// Returns the canonical lowercase name for [raw], or `null` if [raw] looks
   /// like a placeholder, segment marker, date, or sentence rather than a
@@ -45,6 +45,10 @@ class NameCandidateExtractor {
     if (_datePattern.hasMatch(s)) return null;
     if (s.length > _maxNameLen) return null;
     if (_cjkSentenceParticlePattern.hasMatch(s)) return null;
+    // Must contain at least one letter (Latin) OR CJK ideograph — rejects
+    // number-only, emoji-only, punctuation-only inputs that the earlier
+    // filters miss.
+    if (!RegExp(r'[A-Za-z一-鿿]').hasMatch(s)) return null;
     return s.toLowerCase();
   }
 }
