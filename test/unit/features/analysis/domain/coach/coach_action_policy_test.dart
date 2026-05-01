@@ -107,6 +107,11 @@ void main() {
         practiceGoals: const [],
         isDataQualityFlagged: true,
       );
+      // Positive assertion pins the flagged code path — without it the
+      // denylist below is true-by-construction (the unflagged template
+      // also happens not to contain those tokens). If a future refactor
+      // routes flagged inputs through unflagged copy, this fails first.
+      expect(card.whyNow, contains('資料還不完整'));
       for (final forbidden in const [
         '你們之前',
         '上次',
