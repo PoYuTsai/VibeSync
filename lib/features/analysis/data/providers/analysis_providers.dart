@@ -7,6 +7,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/services/partner_summary_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../user_profile/data/repositories/partner_data_quality_repo_view.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../services/analysis_service.dart';
 import '../services/partner_context_resolver.dart';
@@ -28,6 +29,7 @@ final partnerContextResolverProvider =
     conversationRepo:
         _ConversationListByPartnerAdapter(conversationRepo.listByPartner),
     summaryBuilder: PartnerSummaryBuilder(),
+    dataQualityRepo: _NoopDataQualityRepo(),
   );
 });
 
@@ -47,6 +49,13 @@ class _ConversationListByPartnerAdapter
   @override
   List<Conversation> listByPartner(String partnerId) =>
       _listByPartner(partnerId);
+}
+
+/// Temporary stub — Phase 3 Task 10 replaces this with the real
+/// `PartnerDataQualityRepository` watched via a `Provider.family`.
+class _NoopDataQualityRepo implements PartnerDataQualityRepoView {
+  @override
+  bool isFlaggedUnresolved(String partnerId) => false;
 }
 
 /// State for analysis operation
