@@ -29,11 +29,32 @@ class _PartnerStyleEditScreenState
     extends ConsumerState<PartnerStyleEditScreen> {
   bool _draftInitialized = false;
   InteractionStyle? _interactionStyle;
+  final List<PracticeGoal> _practiceGoals = [];
 
   void _ensureInit(PartnerStyleOverride? loaded) {
     if (_draftInitialized) return;
     _draftInitialized = true;
     _interactionStyle = loaded?.interactionStyle;
+    _practiceGoals
+      ..clear()
+      ..addAll(loaded?.practiceGoals ?? const []);
+  }
+
+  void _toggleGoal(PracticeGoal g) {
+    if (_practiceGoals.contains(g)) {
+      setState(() => _practiceGoals.remove(g));
+      return;
+    }
+    if (_practiceGoals.length >= PartnerStyleOverride.maxPracticeGoals) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('最多選 3 個'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+      return;
+    }
+    setState(() => _practiceGoals.add(g));
   }
 
   @override
@@ -81,7 +102,12 @@ class _PartnerStyleEditScreenState
                     onReset: () => setState(() => _interactionStyle = null),
                   ),
                   const SizedBox(height: 16),
-                  const _SectionPlaceholder(title: '練習目標'),
+                  _PracticeGoalsSection(
+                    selected: _practiceGoals,
+                    globalFallback: globalProfile?.practiceGoals ?? const [],
+                    onToggle: _toggleGoal,
+                    onReset: () => setState(_practiceGoals.clear),
+                  ),
                   const SizedBox(height: 16),
                   const _SectionPlaceholder(title: '備註'),
                 ],
@@ -184,6 +210,97 @@ String _styleLabel(InteractionStyle s) => switch (s) {
       InteractionStyle.gentle => '溫柔',
       InteractionStyle.playful => '俏皮',
     };
+
+String _goalLabel(PracticeGoal g) => switch (g) {
+      PracticeGoal.softInvite => '自然邀約',
+      PracticeGoal.reduceAnxiety => '降低焦慮',
+      PracticeGoal.humorousReply => '幽默回覆',
+      PracticeGoal.buildCloseness => '培養親近',
+      PracticeGoal.explainLess => '減少解釋',
+    };
+
+class _PracticeGoalsSection extends StatelessWidget {
+  const _PracticeGoalsSection({
+    required this.selected,
+    required this.globalFallback,
+    required this.onToggle,
+    required this.onReset,
+  });
+
+  final List<PracticeGoal> selected;
+  final List<PracticeGoal> globalFallback;
+  final ValueChanged<PracticeGoal> onToggle;
+  final VoidCallback onReset;
+
+  String? _placeholderHint() {
+    if (selected.isNotEmpty) return null;
+    if (globalFallback.isNotEmpty) {
+      return '（沿用全域：${globalFallback.map(_goalLabel).join('、')}）';
+    }
+    return '（尚未設定）';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = _placeholderHint();
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '練習目標',
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (hint != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              hint,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: PracticeGoal.values.map((g) {
+              return ChoiceChip(
+                label: Text(_goalLabel(g)),
+                selected: selected.contains(g),
+                showCheckmark: false,
+                onSelected: (_) => onToggle(g),
+              );
+            }).toList(),
+          ),
+          if (selected.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: onReset,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.glassTextSecondary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('沿用全域'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _SectionPlaceholder extends StatelessWidget {
   const _SectionPlaceholder({required this.title});

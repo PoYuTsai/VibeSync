@@ -188,4 +188,138 @@ void main() {
       expect(chip.selected, isFalse);
     });
   });
+
+  group('Task 16 — PracticeGoals section', () {
+    testWidgets(
+        'placeholder hint shows 沿用全域：X、Y when partner goals empty AND global has goals',
+        (tester) async {
+      final global = UserProfile.create(
+        practiceGoals: const [
+          PracticeGoal.softInvite,
+          PracticeGoal.reduceAnxiety,
+        ],
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice(), globalProfile: global),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('（沿用全域：自然邀約、降低焦慮）'), findsOneWidget);
+    });
+
+    testWidgets(
+        'placeholder hint shows 尚未設定 when both partner AND global goals empty',
+        (tester) async {
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice()),
+      );
+      await tester.pumpAndSettle();
+      // Two sections (style + goals) both render 尚未設定 — verify ≥2.
+      expect(find.text('（尚未設定）'), findsAtLeastNWidgets(2));
+    });
+
+    testWidgets('tapping a goal chip adds it; tapping again removes it',
+        (tester) async {
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice()),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '自然邀約'))
+            .selected,
+        isTrue,
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '自然邀約'))
+            .selected,
+        isFalse,
+      );
+    });
+
+    testWidgets('selecting a 4th goal is rejected with a snackbar',
+        (tester) async {
+      // Surface big enough to expose snackbar in the same frame.
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice()),
+      );
+      await tester.pumpAndSettle();
+
+      for (final label in const ['自然邀約', '降低焦慮', '幽默回覆']) {
+        await tester.tap(find.widgetWithText(ChoiceChip, label));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.widgetWithText(ChoiceChip, '培養親近'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('最多選 3 個'), findsOneWidget);
+      expect(
+        tester
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '培養親近'))
+            .selected,
+        isFalse,
+      );
+    });
+
+    testWidgets('沿用全域 reset link visible only when goals.isNotEmpty',
+        (tester) async {
+      await tester.pumpWidget(
+        _harness(partnerId: 'p1', partner: _alice()),
+      );
+      await tester.pumpAndSettle();
+
+      // No goals → no reset (and no style override → also no reset there).
+      expect(find.text('沿用全域'), findsNothing);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '自然邀約'));
+      await tester.pumpAndSettle();
+      // Goals reset link appears (style still null → only one reset link).
+      expect(find.text('沿用全域'), findsOneWidget);
+    });
+
+    testWidgets('tapping goals reset link clears goals back to empty',
+        (tester) async {
+      final initial = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        practiceGoals: const [
+          PracticeGoal.softInvite,
+          PracticeGoal.reduceAnxiety,
+        ],
+        updatedAt: DateTime.utc(2026, 5, 1),
+      );
+      await tester.pumpWidget(_harness(
+        partnerId: 'p1',
+        partner: _alice(),
+        override: initial,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('沿用全域'), findsOneWidget);
+      await tester.tap(find.text('沿用全域'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('沿用全域'), findsNothing);
+      expect(
+        tester
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '自然邀約'))
+            .selected,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '降低焦慮'))
+            .selected,
+        isFalse,
+      );
+    });
+  });
 }
