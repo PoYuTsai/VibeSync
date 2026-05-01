@@ -67,7 +67,8 @@ Widget _harness({
         _StyleRepo(override == null ? null : {partnerId: override}),
       ),
       partnerByIdProvider(partnerId).overrideWith((_) => partner),
-      userProfileRepositoryProvider.overrideWithValue(_ProfileRepo(globalProfile)),
+      userProfileRepositoryProvider
+          .overrideWithValue(_ProfileRepo(globalProfile)),
       authUserProfileScopeProvider
           .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
     ],
@@ -324,8 +325,7 @@ void main() {
   });
 
   group('Task 17 — Notes section', () {
-    Finder notesField() =>
-        find.byKey(const Key('partner-style-notes-field'));
+    Finder notesField() => find.byKey(const Key('partner-style-notes-field'));
 
     testWidgets(
         'placeholder hint shows 沿用全域：<text> when partner notes null AND global notes set',
@@ -395,8 +395,7 @@ void main() {
         overrides: [
           partnerStyleRepositoryProvider.overrideWithValue(repo),
           partnerByIdProvider('p1').overrideWith((_) => _alice()),
-          userProfileRepositoryProvider
-              .overrideWithValue(_ProfileRepo(null)),
+          userProfileRepositoryProvider.overrideWithValue(_ProfileRepo(null)),
           authUserProfileScopeProvider
               .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
         ],
@@ -413,8 +412,36 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
-      expect(repo.byPartner['p1']?.interactionStyle,
-          InteractionStyle.humorous);
+      expect(repo.byPartner['p1']?.interactionStyle, InteractionStyle.humorous);
+    });
+
+    testWidgets('完成 button saves the draft override via notifier',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _StyleRepo();
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          partnerStyleRepositoryProvider.overrideWithValue(repo),
+          partnerByIdProvider('p1').overrideWith((_) => _alice()),
+          userProfileRepositoryProvider.overrideWithValue(_ProfileRepo(null)),
+          authUserProfileScopeProvider
+              .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
+        ],
+        child: const MaterialApp(
+          home: PartnerStyleEditScreen(partnerId: 'p1'),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '幽默'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('完成'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+
+      expect(repo.byPartner['p1']?.interactionStyle, InteractionStyle.humorous);
     });
 
     testWidgets(
@@ -432,8 +459,7 @@ void main() {
         overrides: [
           partnerStyleRepositoryProvider.overrideWithValue(repo),
           partnerByIdProvider('p1').overrideWith((_) => _alice()),
-          userProfileRepositoryProvider
-              .overrideWithValue(_ProfileRepo(null)),
+          userProfileRepositoryProvider.overrideWithValue(_ProfileRepo(null)),
           authUserProfileScopeProvider
               .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
         ],
@@ -453,7 +479,7 @@ void main() {
       expect(repo.byPartner.containsKey('p1'), isFalse);
     });
 
-    testWidgets('重設整個對象風格 link opens confirm dialog', (tester) async {
+    testWidgets('清除這個對象的自訂風格 link opens confirm dialog', (tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -461,21 +487,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('重設整個對象風格'));
+      await tester.ensureVisible(find.text('清除這個對象的自訂風格'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('重設整個對象風格'));
+      await tester.tap(find.text('清除這個對象的自訂風格'));
       await tester.pumpAndSettle();
 
-      expect(find.text('重設整個對象風格？'), findsOneWidget);
-      expect(find.text('確認重設'), findsOneWidget); // dialog button
+      expect(find.text('清除這個對象的自訂風格？'), findsOneWidget);
+      expect(find.text('確認清除'), findsOneWidget); // dialog button
       expect(
-        find.textContaining('清空對 Alice 的所有自訂風格'),
+        find.textContaining('清空對 Alice 的自訂風格'),
         findsOneWidget,
       );
     });
 
-    testWidgets(
-        '重設整個對象風格 confirm wipes repo row and closes screen',
+    testWidgets('清除這個對象的自訂風格 confirm wipes repo row and closes screen',
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -491,8 +516,7 @@ void main() {
         overrides: [
           partnerStyleRepositoryProvider.overrideWithValue(repo),
           partnerByIdProvider('p1').overrideWith((_) => _alice()),
-          userProfileRepositoryProvider
-              .overrideWithValue(_ProfileRepo(null)),
+          userProfileRepositoryProvider.overrideWithValue(_ProfileRepo(null)),
           authUserProfileScopeProvider
               .overrideWith((ref) => Stream.value(_ProfileRepo._uid)),
         ],
@@ -502,11 +526,11 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('重設整個對象風格'));
+      await tester.ensureVisible(find.text('清除這個對象的自訂風格'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('重設整個對象風格'));
+      await tester.tap(find.text('清除這個對象的自訂風格'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('確認重設'));
+      await tester.tap(find.text('確認清除'));
       await tester.pumpAndSettle();
 
       expect(repo.byPartner.containsKey('p1'), isFalse);

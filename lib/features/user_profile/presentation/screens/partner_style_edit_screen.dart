@@ -80,13 +80,21 @@ class _PartnerStyleEditScreenState
         .save(draft);
   }
 
-  Future<void> _confirmResetAll(BuildContext context, String partnerName) async {
+  Future<void> _saveAndPop({bool forcePop = false}) async {
+    final navigator = Navigator.of(context);
+    await _saveDraft();
+    if (!mounted) return;
+    if (forcePop || navigator.canPop()) navigator.pop();
+  }
+
+  Future<void> _confirmResetAll(
+      BuildContext context, String partnerName) async {
     final navigator = Navigator.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('重設整個對象風格？'),
-        content: Text('清空對 $partnerName 的所有自訂風格，回到使用全域預設？'),
+        title: const Text('清除這個對象的自訂風格？'),
+        content: Text('清空對 $partnerName 的自訂風格，之後會改回沿用全域預設。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -94,7 +102,7 @@ class _PartnerStyleEditScreenState
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('確認重設'),
+            child: const Text('確認清除'),
           ),
         ],
       ),
@@ -117,13 +125,11 @@ class _PartnerStyleEditScreenState
     final partner = ref.watch(partnerByIdProvider(widget.partnerId));
     final overrideAsync =
         ref.watch(partnerStyleOverrideProvider(widget.partnerId));
-    final globalProfile =
-        ref.watch(userProfileControllerProvider).valueOrNull;
+    final globalProfile = ref.watch(userProfileControllerProvider).valueOrNull;
 
     overrideAsync.whenData(_ensureInit);
 
-    final title =
-        partner == null ? '我的風格' : '我的風格 · ${partner.name}';
+    final title = partner == null ? '我的風格' : '我的風格 · ${partner.name}';
 
     return PopScope(
       // Save draft BEFORE the pop completes so the next screen reads the
@@ -133,10 +139,7 @@ class _PartnerStyleEditScreenState
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        final navigator = Navigator.of(context);
-        await _saveDraft();
-        if (!mounted) return;
-        navigator.pop();
+        await _saveAndPop(forcePop: true);
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -180,6 +183,28 @@ class _PartnerStyleEditScreenState
                     onReset: () => setState(_notesController.clear),
                   ),
                   const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _saveAndPop,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.ctaStart,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('完成'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      '點「完成」或返回，都會保存這個對象的設定',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.glassTextSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Center(
                     child: TextButton(
                       onPressed: () =>
@@ -187,7 +212,7 @@ class _PartnerStyleEditScreenState
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.onBackgroundSecondary,
                       ),
-                      child: const Text('重設整個對象風格'),
+                      child: const Text('清除這個對象的自訂風格'),
                     ),
                   ),
                 ],
