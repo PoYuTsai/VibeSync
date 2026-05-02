@@ -1,20 +1,32 @@
 # Spec 5 — Coach Follow-up v1 Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-> **Status:** drafted 2026-05-02; awaiting Codex spec review verdict before coding.
+> **Status:** Revision 1 — applied Codex NEEDS-FIX amendments. Awaiting Codex re-review verdict before coding.
 > **Source:** `docs/plans/2026-05-02-spec5-coach-follow-up-v1-design.md` @ `a66ca5b` (REVISED_AND_APPROVED).
-> **Codex review (design):** `docs/reviews/2026-05-02_spec5-coach-follow-up-design_codex-review.md` @ `3d8dd3a`.
-> **Authors:** Claude (draft) → Codex (plan review) → Eric (final ACK)
+> **Codex reviews:**
+> - Design review: `docs/reviews/2026-05-02_spec5-coach-follow-up-design_codex-review.md` @ `3d8dd3a`
+> - Plan review (Rev 0): `docs/reviews/2026-05-02_spec5-coach-follow-up-impl-plan_codex-review.md` @ `146b8e3` — verdict NEEDS-FIX, all 7 items addressed in this revision
+> **Authors:** Claude (draft) → Codex (plan review) → Claude (revision) → Eric (final ACK)
 
-**Goal:** Ship Coach Follow-up v1 — three user-triggered phases (`prepareInvite` / `preDateReminder` / `postDateReflection`) rendered as a single 5-field result card on the partner detail screen, powered by an **independent** `coach-follow-up` Supabase Edge Function with its own prompt builder, schema, validator, telemetry, and CI/CD deploy step. Latest result is persisted in a dedicated local Hive box; each successful generation costs 1 message credit.
+**Goal:** Ship Coach Follow-up v1 — three user-triggered phases (`prepareInvite` / `preDateReminder` / `postDateReflection`) rendered as a single 5-field result card on the partner detail screen, powered by an **independent** `coach-follow-up` Supabase Edge Function with its own prompt builder, schema, validator (incl. response-level banned-token enforcement), telemetry, and CI/CD deploy step. Latest result is persisted in a dedicated local Hive box wired into `StorageService.clearAll()`; each successful generation costs 1 message credit.
 
 **Architecture:**
 
-1. **Backend** — New independent Edge Function `supabase/functions/coach-follow-up/` (sibling to `analyze-chat`, **NOT** a sub-mode). Files: `index.ts` / `prompts.ts` / `schemas.ts` / `validate.ts` / `README.md` / `index_test.ts`. **Zero imports** from `analyze-chat`. JWT-verified (default), rejects `images`. Cost = 1 credit, deducted only on successful response that passes schema validation (incl. `boundaryReminder` non-null check).
-2. **Local data** — New Hive entity `CoachFollowUpResult` (typeId 16), repo `CoachFollowUpRepository` (CRUD + `clearAll()`), wired into `SupabaseService.deleteAccount()` / `signOut()` and partner-delete cascade. Privacy regression test mirrors Spec 1 about-me clear test.
-3. **UI** — New `CoachFollowUpSection` widget inserted into `partner_detail_screen.dart` between `PartnerTraitsCard` and conversations list. Three phase chips (always visible, AI hint highlights one based on stable enum keys). Click → phase-specific input sheet → Edge call → result card. Phase enums use stable string keys (`prepareInvite` / `preDateReminder` / `postDateReflection`); GameStage matching uses `GameStage.close` enum (NOT 繁中 label string).
+1. **Backend** — New independent Edge Function `supabase/functions/coach-follow-up/` (sibling to `analyze-chat`, **NOT** a sub-mode). Files: `index.ts` / `prompts.ts` / `schemas.ts` / `validate.ts` / `logger.ts` / `README.md` + tests. **Zero imports** from `analyze-chat`. JWT-verified (default), rejects `images`. Cost = 1 credit, deducted only after **both** schema validation AND product red-line vocabulary validation pass. Quota gate covers the full edge-case matrix from `analyze-chat:3296-3604` (subscription self-heal, daily/monthly reset, test account skip, RevenueCat tier refresh, unknown tier fallback).
+2. **Local data** — New Hive entity `CoachFollowUpResult` (typeId 16), repo `CoachFollowUpRepository` (CRUD + `clearAll()`), wired into `StorageService.clearAll()` (the existing privacy seam used by `SettingsScreen.deleteAccount` flow), and into partner-delete cascade. Privacy regression added to `test/unit/services/storage_service_clear_all_test.dart` (mirroring the existing test, not a parallel file).
+3. **UI** — New `CoachFollowUpSection` widget inserted into `partner_detail_screen.dart` between `PartnerTraitsCard` and conversations list. Three phase chips (always visible, AI hint highlights one based on stable enum keys via pure-Dart resolver). `partnerHint.lastConversationSummary` is built by a dedicated tested helper that reads ONLY the current conversation's `ConversationSummary.content` (capped at 200 chars, omitted when Spec 3 flagged); it never touches `PartnerContextResolver`, partner traits, or raw messages.
 
 **Tech Stack:** Deno + TypeScript (Edge), zod (request/response validation), Flutter 3 + Riverpod + Hive CE (client). Tests: Deno `Deno.test` (Edge), `flutter test` (unit + widget).
+
+---
+
+## 0. Open Questions (Eric must resolve before Phase B T13 lands)
+
+| # | Question | Recommended | Why it matters |
+|---|----------|-------------|----------------|
+| OQ-Sign-1 | Should `signOut()` also clear `coach_follow_up_results` (and other local Hive boxes)? Currently `signOut()` does NOT clear any local data — only `deleteAccount` does. | **(a) Keep current behavior**: signOut does NOT clear local follow-up results. Matches existing semantics for Conversation / Partner / UserProfile boxes. | Changing sign-out semantics is a product behavior change that affects ALL local data, not just this feature. If Eric wants signOut to also clear, that's an independent product decision that should be its own ticket and span all boxes uniformly. |
+
+If Eric picks (a), Phase B T13 wires `coach_follow_up_results` only into `StorageService.clearAll()` (called by the existing `deleteAccount` flow at `settings_screen.dart:686-688`). If Eric picks (b), a separate ticket changes sign-out semantics for ALL local boxes uniformly — that's out of Spec 5 scope.
 
 ---
 
@@ -26,23 +38,30 @@ Before writing any code, the implementer must read these to internalize current 
 |------|-----|
 | `docs/plans/2026-05-02-spec5-coach-follow-up-v1-design.md` | The binding spec; this plan implements it byte-for-byte |
 | `docs/reviews/2026-05-02_spec5-coach-follow-up-design_codex-review.md` | Codex amendments that shaped the design — non-negotiable |
-| `supabase/functions/analyze-chat/index.ts:3296-3604` | Subscription self-heal + daily/monthly cap check pattern. **Copy minimal subset only**, do NOT import |
+| `docs/reviews/2026-05-02_spec5-coach-follow-up-impl-plan_codex-review.md` | The 7 NEEDS-FIX items this revision addresses; understand each before touching the related task |
+| `supabase/functions/analyze-chat/index.ts:3296-3604` | Subscription self-heal + daily/monthly cap check + reset + test-account skip + RevenueCat refresh + unknown tier fallback. **Copy minimal subset only**, do NOT import. The full edge-case matrix is enforced via tests (T7) |
 | `supabase/functions/analyze-chat/index.ts:3606-3736` | Opener cost + deduct flow (cost gate before invoke, deduct after success). Pattern reference only |
-| `supabase/functions/analyze-chat/logger.ts` | `logInfo` / `logWarn` / `logError` helpers — **may be re-implemented locally** in `coach-follow-up/`, do NOT import (preserve OCR isolation) |
+| `supabase/functions/analyze-chat/logger.ts` | Local logger SHAPE reference; **DO NOT IMPORT**. Re-implement minimal helpers in `coach-follow-up/logger.ts` to preserve OCR baseline isolation |
+| `lib/core/services/storage_service.dart:145-153` | `StorageService.clearAll()` is the privacy seam. T13 adds `coach_follow_up_results` box to this list |
+| `lib/features/subscription/presentation/screens/settings_screen.dart:686-688` | The `deleteAccount → StorageService.clearAll() → clearLocalSessionAfterDeletion()` chain. Confirms StorageService is the right seam |
+| `test/unit/services/storage_service_clear_all_test.dart` | Existing privacy regression test — T15 ADDS to this file (or mirrors its exact pattern), does NOT create parallel test |
+| `test/unit/services/storage_service_partner_box_test.dart` | Existing Hive unit-test pattern (`Hive.init('./.dart_tool/test_hive_*')`, manual register, deleteFromDisk teardown). T12 mirrors this — **NOT** `Hive.initFlutter()` |
 | `lib/features/user_profile/data/repositories/partner_style_repository.dart` | Reference repo pattern: Hive box open + CRUD + `clearAll()` |
 | `lib/features/user_profile/data/repositories/partner_data_quality_repository.dart` | Same pattern, additional cascade delete reference |
+| `lib/features/conversation/domain/entities/conversation.dart` + `conversation_summary.dart` | `Conversation.summaries: List<ConversationSummary>` — source for `lastConversationSummary` (latest summary's `.content`); needed by T17 helper |
+| `lib/features/conversation/data/services/memory_service.dart` | How `ConversationSummary` is generated — verify shape so T17 helper consumes correctly |
+| `lib/features/user_profile/data/providers/data_quality_flag_provider.dart` | `dataQualityFlagProvider(partnerId).isFlagged` — drives Spec 3 omit rule in T17 |
 | `lib/features/analysis/domain/entities/game_stage.dart` | `GameStage` enum stable keys: `opening / premise / qualification / narrative / close`. **Hint resolver matches `GameStage.close`, NOT the 繁中 label '準備邀約'** |
 | `lib/features/partner/domain/entities/partner.dart` | Partner entity is typeId=8; `Partner.id` is the key for new box |
 | `lib/features/partner/presentation/screens/partner_detail_screen.dart` | Insertion point for `CoachFollowUpSection` widget |
-| `lib/features/user_profile/data/providers/data_quality_flag_provider.dart` | `dataQualityFlagProvider(partnerId).isFlagged` — drives Spec 3 `lastConversationSummary` omit rule |
-| `lib/core/services/supabase_service.dart:157-220` | `deleteAccount()` and `signOut()` — wire `clearAll()` into these |
-| `lib/hive_registrar.g.dart` | Generated; re-run `dart run build_runner build --delete-conflicting-outputs` after adding new entity |
-| `.github/workflows/deploy-edge-function.yml` | Add `coach-follow-up` deploy line; **must NOT** use `--no-verify-jwt`; **must NOT** be merged into a `deploy all` step that strips analyze-chat's `--no-verify-jwt` |
+| `lib/hive_registrar.g.dart` | Generated; re-run `dart run build_runner build --delete-conflicting-outputs` after adding new entity. Verify typeIds 0-15 currently used → 16 next free |
+| `.github/workflows/deploy-edge-function.yml` | Add `coach-follow-up` deploy line in T9 (Phase A); **must NOT** use `--no-verify-jwt`; **must NOT** consolidate into a `deploy --all` step that strips analyze-chat's `--no-verify-jwt` |
 
 **Stable-key discipline (Eric explicit constraint)**:
 - `phase` everywhere = `prepareInvite` / `preDateReminder` / `postDateReflection` (enum `.name` serialization).
-- `gameStage` matching uses `GameStage.close` (enum value), NOT `'邀約'` or `'準備邀約'` (繁中 label strings).
+- `gameStage` matching uses `GameStage.close` enum, NOT `'邀約'` or `'準備邀約'` label strings.
 - Telemetry event names = English snake_case (`coach_follow_up_*`).
+- Input sheet option values = English keys (`fuzzy / concrete / undecided / proactive / polite / cooling / stillUnclear`...), not 繁中.
 - Hive field stored values = enum `.name` strings (stable across rename refactors).
 
 ---
@@ -56,11 +75,11 @@ supabase/functions/coach-follow-up/
   index.ts
   prompts.ts
   schemas.ts
-  validate.ts
+  validate.ts                         # request validate + truncateCard + assertCardSafe (banned-token)
   logger.ts                           # local copy of minimal log helpers (NO import from analyze-chat)
   README.md
-  index_test.ts                       # request validation / response validation / image rejection / cost-on-success
-  validate_test.ts                    # boundaryReminder required / truncation / Spec 3 flagged omit
+  index_test.ts                       # request validation / response validation / image rejection / cost-on-success / quota edge matrix
+  validate_test.ts                    # boundaryReminder required / truncation / banned-token rejection
   prompts_test.ts                     # phase-specific prompt assembly snapshot tests
 ```
 
@@ -74,6 +93,7 @@ lib/features/coach_follow_up/
       coach_follow_up_result.dart                 # Hive @HiveType(typeId: 16)
     services/
       coach_follow_up_hint_resolver.dart          # pure function: PartnerState → CoachFollowUpPhase?
+      coach_follow_up_partner_hint_builder.dart   # NEW per Codex P2: builds partnerHint with Spec 3 omit + 200-char cap, ZERO PartnerContextResolver / traits / raw message access
     repositories/
       coach_follow_up_repository.dart             # abstract interface
   data/
@@ -104,11 +124,10 @@ test/unit/features/coach_follow_up/
   domain/
     entities/coach_follow_up_phase_test.dart
     services/coach_follow_up_hint_resolver_test.dart
+    services/coach_follow_up_partner_hint_builder_test.dart    # NEW per Codex P2
   data/
-    repositories/coach_follow_up_repository_impl_test.dart    # CRUD + clearAll + cascade
-    services/coach_follow_up_api_service_test.dart             # request shape, error mapping, debounce
-  privacy/
-    coach_follow_up_clear_all_regression_test.dart             # mirrors Spec 1 about-me clear test
+    repositories/coach_follow_up_repository_impl_test.dart    # CRUD + clearAll + cascade (temp Hive path, NOT initFlutter)
+    services/coach_follow_up_api_service_test.dart             # request shape, error mapping, debounce, banned-token client guard
 
 test/widget/features/coach_follow_up/
   coach_follow_up_section_test.dart
@@ -120,21 +139,24 @@ test/widget/features/coach_follow_up/
 ### Modify
 
 ```text
-lib/features/partner/presentation/screens/partner_detail_screen.dart   # insert CoachFollowUpSection between traits card & conversations list
-lib/core/services/supabase_service.dart                                 # call CoachFollowUpRepository.clearAll() in deleteAccount() + signOut()
+lib/core/services/storage_service.dart                                  # add coachFollowUpResultsBox open + clearAll() entry (per Codex P1 #2)
+lib/features/partner/presentation/screens/partner_detail_screen.dart    # insert CoachFollowUpSection between traits card & conversations list
 lib/features/partner/data/providers/partner_write_controller.dart       # cascade delete: when partner deleted → CoachFollowUpRepository.delete(partnerId)
 lib/hive_registrar.g.dart                                                # regenerated after build_runner
-.github/workflows/deploy-edge-function.yml                              # add: supabase functions deploy coach-follow-up
+test/unit/services/storage_service_clear_all_test.dart                  # add coach_follow_up_results to existing privacy regression (per Codex P1 #2 + P2 #6)
+.github/workflows/deploy-edge-function.yml                              # add: supabase functions deploy coach-follow-up (in T9, Phase A — per Codex P1 #1)
 ```
 
 ### Out-of-scope (DO NOT touch)
 
 ```text
-supabase/functions/analyze-chat/**       # OCR baseline — zero edits this PR
-lib/features/analysis/**                  # Spec 4 surface — zero edits
-lib/features/learning/**                  # v1 doesn't deep-link
-lib/features/user_profile/data/repositories/partner_summary_*.dart      # NEVER write to partnerSummary
-lib/features/about_me/**                  # NEVER write to long-term memory
+supabase/functions/analyze-chat/**                                # OCR baseline — zero edits this PR
+lib/core/services/supabase_service.dart                            # NOT the cleanup seam — do NOT add CoachFollowUpRepository here
+lib/features/analysis/**                                            # Spec 4 surface — zero edits
+lib/features/learning/**                                            # v1 doesn't deep-link
+lib/features/user_profile/data/repositories/partner_summary_*.dart  # NEVER write to partnerSummary
+lib/features/about_me/**                                            # NEVER write to long-term memory
+lib/features/analysis/data/services/partner_context_resolver.dart   # NEVER read for Edge payload (per Codex P2 #7)
 ```
 
 ---
@@ -143,16 +165,18 @@ lib/features/about_me/**                  # NEVER write to long-term memory
 
 | Phase | Tasks | Outcome | Mergeable? |
 |-------|-------|---------|------------|
-| **A. Backend Edge function** | T1-T9 | `coach-follow-up` deployable + tested via curl | Yes (server-only PR) |
-| **B. Local data layer** | T10-T15 | Repo + entity + clearAll + cascade + privacy regression | Yes (no UI) |
-| **C. UI surface** | T16-T22 | Section widget + input sheet + result card wired into partner detail | Yes (full feature live) |
-| **X. Cross-cutting** | T23-T25 | CI/CD, telemetry verify, smoke test | Yes (final polish) |
+| **A. Backend Edge function + CI deploy** | T1-T10 | `coach-follow-up` deployed to Supabase via CI; tested via curl | **Yes — CI deploy IS in this phase** (Codex P1 #1 fix) |
+| **B. Local data layer** | T11-T16 | Repo + entity + StorageService wire + cascade + privacy regression in existing test file | Yes (no UI) |
+| **C. UI surface** | T17-T24 | Hint helper + Section widget + input sheet + result card wired into partner detail | Yes (full feature live) |
+| **X. Cross-cutting polish** | T25-T26 | Telemetry verify on staging + TF smoke 9 scenarios | Yes (final polish) |
 
-Each task = one commit. Phase boundaries = natural PR breakpoints. Recommended: ship Phase A as standalone PR first (zero client risk), then B+C bundled, then X polish.
+Each task = one commit. Phase boundaries = natural PR breakpoints. Recommended: ship Phase A as standalone PR first (now genuinely deployable end-to-end), then B+C bundled, then X polish.
+
+**Total: 26 tasks** (was 25; +1 for new T17 hint helper, CI deploy moved from X into A so net +1 not +2).
 
 ---
 
-## 4. Phase A: Backend Edge Function
+## 4. Phase A: Backend Edge Function + CI Deploy
 
 ### Task A1: Bootstrap `coach-follow-up/` skeleton
 
@@ -179,7 +203,7 @@ serve(async (req) => {
 });
 ```
 
-**Step 2: Write README.md** documenting the function's contract: phase semantics, tone rules, boundary rules (copy from design §1.3 / §2.4 / §2.5).
+**Step 2: Write README.md** documenting the function's contract: phase semantics, tone rules, boundary rules, banned-token list (copy from design §1.3 / §2.4 / §2.5).
 
 **Step 3: Manual local sanity** — `deno run --allow-net index.ts` and `curl localhost:8000/` returns 200.
 
@@ -199,42 +223,46 @@ git commit -m "[feat] Spec 5 Phase A T1 — coach-follow-up Edge function 骨架
 - Create: `supabase/functions/coach-follow-up/validate.ts`
 - Create: `supabase/functions/coach-follow-up/validate_test.ts`
 
-**Step 1: Write failing test `validate_test.ts`**
+**Step 1: Write failing test `validate_test.ts`** — all `assertRejects` calls **must** be `await`ed inside `async` test callbacks (Codex P1 #4 fix):
 
 ```typescript
 import { assertEquals, assertRejects } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { validateRequest } from "./validate.ts";
 
-Deno.test("rejects missing phase", () => {
-  assertRejects(() => validateRequest({ answers: { q1: "x" } }), Error, "phase");
+Deno.test("rejects missing phase", async () => {
+  await assertRejects(
+    () => validateRequest({ answers: { q1: "x" } }),
+    Error,
+    "phase",
+  );
 });
 
-Deno.test("rejects unknown phase", () => {
-  assertRejects(
+Deno.test("rejects unknown phase", async () => {
+  await assertRejects(
     () => validateRequest({ phase: "invalid", answers: { q1: "x" } }),
     Error,
     "phase",
   );
 });
 
-Deno.test("rejects images field (v1 prohibited)", () => {
-  assertRejects(
+Deno.test("rejects images field (v1 prohibited)", async () => {
+  await assertRejects(
     () => validateRequest({ phase: "prepareInvite", answers: { q1: "x" }, images: [] }),
     Error,
     "invalid_input_for_mode",
   );
 });
 
-Deno.test("rejects q3 over 80 chars", () => {
-  assertRejects(
+Deno.test("rejects q3 over 80 chars", async () => {
+  await assertRejects(
     () => validateRequest({ phase: "prepareInvite", answers: { q1: "x", q3: "a".repeat(81) } }),
     Error,
     "q3",
   );
 });
 
-Deno.test("rejects lastConversationSummary over 200 chars", () => {
-  assertRejects(
+Deno.test("rejects lastConversationSummary over 200 chars", async () => {
+  await assertRejects(
     () => validateRequest({
       phase: "prepareInvite",
       answers: { q1: "x" },
@@ -293,7 +321,7 @@ export const ResponseSchema = z.object({
 ```
 
 ```typescript
-// validate.ts
+// validate.ts (subset — full file expanded in T3)
 import { RequestSchema, ResponseCardSchema, ResponseSchema } from "./schemas.ts";
 
 export async function validateRequest(payload: unknown) {
@@ -323,45 +351,84 @@ git commit -m "[feat] Spec 5 Phase A T2 — request/response zod schemas + valid
 
 ---
 
-### Task A3: Truncation + boundaryReminder enforcement helpers
+### Task A3: Truncation + boundaryReminder enforcement + banned-token validator
 
 **Files:**
 - Modify: `supabase/functions/coach-follow-up/validate.ts`
 - Modify: `supabase/functions/coach-follow-up/validate_test.ts`
 
-**Step 1: Add failing tests**
+**Step 1: Add failing tests** (all `assertRejects` async/await per Codex P1 #4):
 
 ```typescript
 Deno.test("truncateCard caps headline to 30 chars", () => {
-  const r = truncateCard({ headline: "a".repeat(50), observation: "x", task: "y", boundaryReminder: "z" });
+  const r = truncateCard({
+    headline: "a".repeat(50), observation: "x", task: "y", boundaryReminder: "z",
+  });
   assertEquals(r.headline.length, 30);
 });
 
 Deno.test("truncateCard caps boundaryReminder to 60 chars", () => {
-  const r = truncateCard({ headline: "a", observation: "x", task: "y", boundaryReminder: "b".repeat(100) });
+  const r = truncateCard({
+    headline: "a", observation: "x", task: "y", boundaryReminder: "b".repeat(100),
+  });
   assertEquals(r.boundaryReminder.length, 60);
 });
 
-Deno.test("validateFullResponse fails when boundaryReminder is null", () => {
-  assertRejects(() => Promise.resolve(validateFullResponse({
-    phase: "prepareInvite",
-    card: { headline: "h", observation: "o", task: "t", boundaryReminder: null },
-    model: "m", generatedAt: "g",
-  })), Error, "boundaryReminder");
+Deno.test("validateFullResponse fails when boundaryReminder is null", async () => {
+  await assertRejects(
+    () => Promise.resolve(validateFullResponse({
+      phase: "prepareInvite",
+      card: { headline: "h", observation: "o", task: "t", boundaryReminder: null },
+      model: "m", generatedAt: "g",
+    })),
+    Error,
+    "boundaryReminder",
+  );
 });
 
-Deno.test("validateFullResponse fails when boundaryReminder is missing", () => {
-  assertRejects(() => Promise.resolve(validateFullResponse({
-    phase: "prepareInvite",
-    card: { headline: "h", observation: "o", task: "t" },
-    model: "m", generatedAt: "g",
-  })), Error, "boundaryReminder");
+Deno.test("validateFullResponse fails when boundaryReminder is missing", async () => {
+  await assertRejects(
+    () => Promise.resolve(validateFullResponse({
+      phase: "prepareInvite",
+      card: { headline: "h", observation: "o", task: "t" },
+      model: "m", generatedAt: "g",
+    })),
+    Error,
+    "boundaryReminder",
+  );
+});
+
+// Codex P1 #5 — banned-token validation at response level
+Deno.test("assertCardSafe rejects card containing PUA", () => {
+  assertThrows(() => assertCardSafe({
+    headline: "教你 PUA 技巧", observation: "o", task: "t", boundaryReminder: "b",
+  }), Error, "banned_token");
+});
+
+Deno.test("assertCardSafe rejects 收割 in observation", () => {
+  assertThrows(() => assertCardSafe({
+    headline: "h", observation: "她準備被收割", task: "t", boundaryReminder: "b",
+  }), Error, "banned_token");
+});
+
+Deno.test.each([
+  "PUA", "收割", "控住", "攻略", "壞女人", "高分妹", "玩咖",
+])("assertCardSafe rejects banned token: %s", (token) => {
+  assertThrows(() => assertCardSafe({
+    headline: token, observation: "o", task: "t", boundaryReminder: "b",
+  }), Error, "banned_token");
+});
+
+Deno.test("assertCardSafe accepts clean card", () => {
+  assertCardSafe({
+    headline: "節奏優先", observation: "她的回應穩定", task: "今晚先不傳", boundaryReminder: "別承諾你做不到的",
+  });  // does not throw
 });
 ```
 
 **Step 2: Run** — fails.
 
-**Step 3: Implement `truncateCard`** in `validate.ts`:
+**Step 3: Implement** in `validate.ts`:
 
 ```typescript
 const FIELD_CAPS = { headline: 30, observation: 80, task: 30, suggestedLine: 80, boundaryReminder: 60 };
@@ -376,6 +443,22 @@ export function truncateCard<T extends Record<string, string | null | undefined>
   }
   return out;
 }
+
+// Codex P1 #5 — product red-line vocabulary enforced at response level
+const BANNED_TOKENS = ["PUA", "收割", "控住", "攻略", "壞女人", "高分妹", "玩咖"] as const;
+const VISIBLE_FIELDS = ["headline", "observation", "task", "suggestedLine", "boundaryReminder"] as const;
+
+export function assertCardSafe(card: Record<string, string | null | undefined>): void {
+  for (const field of VISIBLE_FIELDS) {
+    const value = card[field];
+    if (typeof value !== "string") continue;
+    for (const token of BANNED_TOKENS) {
+      if (value.includes(token)) {
+        throw new Error(`banned_token: ${token} found in ${field}`);
+      }
+    }
+  }
+}
 ```
 
 **Step 4: Run** — pass.
@@ -383,7 +466,7 @@ export function truncateCard<T extends Record<string, string | null | undefined>
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase A T3 — truncateCard + boundaryReminder hard-required enforcement"
+git commit -am "[feat] Spec 5 Phase A T3 — truncateCard + boundaryReminder hard-required + assertCardSafe banned-token validator (Codex P1 #5)"
 ```
 
 ---
@@ -394,19 +477,18 @@ git commit -am "[feat] Spec 5 Phase A T3 — truncateCard + boundaryReminder har
 - Create: `supabase/functions/coach-follow-up/prompts.ts`
 - Create: `supabase/functions/coach-follow-up/prompts_test.ts`
 
-**Step 1: Write failing tests**
+**Step 1: Write failing tests** (synchronous; no `assertRejects` here):
 
 ```typescript
 Deno.test("prepareInvite prompt includes phase + boundary instruction", () => {
   const p = buildCoachFollowUpPrompt("prepareInvite", { q1: "fuzzy" }, { name: "C" });
   assertStringIncludes(p, "準備邀約");
-  assertStringIncludes(p, "boundaryReminder");      // mention required field
-  assertStringIncludes(p, "≤ 60");                   // cap mention
+  assertStringIncludes(p, "boundaryReminder");
+  assertStringIncludes(p, "≤ 60");
 });
 
 Deno.test("preDateReminder prompt does NOT mention partner name in inference instructions", () => {
   const p = buildCoachFollowUpPrompt("preDateReminder", { q1: "今天" }, { name: "Candy" });
-  // Name may appear as display label only; prompt must not say "based on name X infer..."
   assertEquals(p.includes("根據對方名字"), false);
 });
 
@@ -416,20 +498,22 @@ Deno.test("postDateReflection includes 還看不出來 handling", () => {
 });
 
 Deno.test("partnerHint.lastConversationSummary appears verbatim when provided", () => {
-  const p = buildCoachFollowUpPrompt("preDateReminder", { q1: "明天" }, { name: "X", lastConversationSummary: "對話氣氛輕鬆，最近聊到週末有空" });
+  const p = buildCoachFollowUpPrompt("preDateReminder", { q1: "明天" }, {
+    name: "X", lastConversationSummary: "對話氣氛輕鬆，最近聊到週末有空",
+  });
   assertStringIncludes(p, "對話氣氛輕鬆");
 });
 
 Deno.test("prompt forbids 物化 vocabulary list", () => {
   const p = buildCoachFollowUpPrompt("prepareInvite", { q1: "fuzzy" }, { name: "X" });
-  assertStringIncludes(p, "收割");        // banned word listed in prohibition
+  assertStringIncludes(p, "收割");
   assertStringIncludes(p, "PUA");
 });
 ```
 
 **Step 2: Run** — fails.
 
-**Step 3: Implement `prompts.ts`** (length: ~120 lines):
+**Step 3: Implement `prompts.ts`** (length: ~120 lines). Note: prompt-level guardrails are still needed (defense in depth), but the **enforcement** lives in T3's `assertCardSafe` (Codex P1 #5). Both layers together = belt + suspenders.
 
 ```typescript
 const SYSTEM_PROMPT_BASE = `
@@ -438,6 +522,7 @@ const SYSTEM_PROMPT_BASE = `
 [硬規則]
 - 絕不教用戶裝冷淡 / 用話術逃避責任 / 用承諾綁住對方。
 - 絕不出現以下字眼：收割 / 控住 / 壞女人 / 玩咖 / 高分妹 / 攻略 / PUA。
+  (此規則同時由 server validator 強制；含這些字眼的回應會被拒絕、用戶不被扣額度。)
 - 失敗 / 拒絕 / 對方變淡情境必須降低焦慮、不製造焦慮、不催促重訊息轟炸。
 - partnerHint.name 只是顯示用，不可從名字推測對方性格 / 文化背景 / 任何屬性。
 - 必須輸出 5 個欄位：headline (≤30字) / observation (≤80字) / task (≤30字) / suggestedLine (≤80字, optional) / boundaryReminder (≤60字, **REQUIRED, 永不可為 null**)。
@@ -482,7 +567,7 @@ export function buildCoachFollowUpPrompt(
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase A T4 — phase-specific prompt builder（boundaryReminder enforced, 物化字眼黑名單）"
+git commit -am "[feat] Spec 5 Phase A T4 — phase-specific prompt builder（boundaryReminder required + 物化字眼黑名單；validator 也擋）"
 ```
 
 ---
@@ -517,35 +602,76 @@ git commit -am "[feat] Spec 5 Phase A T5 — local logger（無 analyze-chat imp
 
 ---
 
-### Task A6: index.ts — auth + quota gate + dispatch (failure paths)
+### Task A6: index.ts — auth + quota gate (full edge-case matrix)
 
 **Files:**
 - Modify: `supabase/functions/coach-follow-up/index.ts`
 - Modify: `supabase/functions/coach-follow-up/index_test.ts` (create)
 
-**Step 1: Write failing tests** for the failure paths first (no Claude call yet):
+**Step 1: Write failing tests** covering the **full quota edge-case matrix** from `analyze-chat:3370-3565` (Codex P1 #3 fix). Each `assertRejects` is async/awaited (Codex P1 #4):
 
 ```typescript
+// Auth + input validation
 Deno.test("POST without auth returns 401", async () => { /* fetch with no Authorization */ });
 Deno.test("POST with invalid phase returns 400", async () => { /* ... */ });
 Deno.test("POST with images returns 400 invalid_input_for_mode", async () => { /* ... */ });
-Deno.test("POST when monthly cap reached returns 429", async () => { /* mock subscriptions row */ });
-Deno.test("POST when daily cap reached returns 429", async () => { /* ... */ });
+
+// Quota self-heal & resets (Codex P1 #3)
+Deno.test("missing subscription row self-heals to free tier and proceeds", async () => {
+  // Pre-condition: subscriptions has no row for user.id
+  // Expectation: a row is inserted with tier=free, monthly_messages_used=0, daily_messages_used=0,
+  //              and the request continues into quota gate (NOT 403)
+});
+
+Deno.test("daily reset triggers when daily_reset_at is yesterday", async () => {
+  // Pre-condition: sub.daily_reset_at = yesterday, sub.daily_messages_used = dailyLimit
+  // Expectation: counter is reset to 0 BEFORE cap evaluation; request proceeds
+});
+
+Deno.test("monthly reset triggers when monthly_reset_at is last month", async () => {
+  // Same shape as above, monthly window
+});
+
+// Cap behavior
+Deno.test("POST when monthly cap reached → 429 (after RC refresh attempted)", async () => { /* ... */ });
+Deno.test("POST when daily cap reached → 429 (after RC refresh attempted)", async () => { /* ... */ });
+
+// RevenueCat refresh path
+Deno.test("RevenueCat tier refresh on monthly cap exceeded → if upgraded, request proceeds", async () => {
+  // Pre-condition: sub.tier=free, monthly_messages_used >= 30
+  // Mock: RC refresh returns essential tier (limit 800)
+  // Expectation: request proceeds, NOT 429
+});
+
+Deno.test("RevenueCat tier refresh on daily cap exceeded → if upgraded, request proceeds", async () => { /* ... */ });
+
+// Test account bypass (Codex P1 #3)
+Deno.test("test account email skips quota gate entirely", async () => {
+  // Pre-condition: user.email in TEST_EMAILS list (vibesync.test@gmail.com)
+  // Expectation: cap check is bypassed even when monthly_messages_used >> limit
+});
+
+// Unknown / null tier fallback (Codex P1 #3)
+Deno.test("unknown tier value falls back to free limits", async () => {
+  // Pre-condition: sub.tier = 'mystery_tier'
+  // Expectation: monthlyLimit = TIER_MONTHLY_LIMITS.free, dailyLimit = TIER_DAILY_LIMITS.free
+});
+
+Deno.test("null tier falls back to free limits", async () => { /* ... */ });
 ```
 
 **Step 2: Run** — fails.
 
-**Step 3: Implement** the auth + cap check skeleton in `index.ts`. Inline (do NOT import) a minimal subscription self-heal, daily/monthly reset, and cap check — pattern mirrors `analyze-chat/index.ts:3354-3604` but **copy + adapt minimally** for cost = 1.
+**Step 3: Implement** the auth + cap check in `index.ts`. Inline (do NOT import) a minimal subscription self-heal + reset + RC refresh + test-account skip + unknown-tier fallback. Pattern mirrors `analyze-chat/index.ts:3370-3565` but **adapt** for cost = 1.
 
 ```typescript
-// Pseudocode shape; full implementation copies the minimum subset needed.
+// Pseudocode shape; full implementation copies the minimum subset needed AND mirrors the analyze-chat tests.
 serve(async (req) => {
   if (req.method !== "POST") return notImplemented();
 
   const auth = req.headers.get("Authorization");
   if (!auth) return jsonResponse({ error: "unauthorized" }, 401);
 
-  // Auth check via supabase.auth.getUser(jwt)
   const { user } = await getAuthenticatedUser(auth);
   if (!user) return jsonResponse({ error: "unauthorized" }, 401);
 
@@ -556,65 +682,110 @@ serve(async (req) => {
     return jsonResponse({ error: getErrorMessage(e) }, 400);
   }
 
-  // Subscription self-heal + cap check (cost=1)
-  const sub = await fetchOrCreateSubscription(user.id);
-  const [monthlyLimit, dailyLimit] = [TIER_MONTHLY_LIMITS[sub.tier], TIER_DAILY_LIMITS[sub.tier]];
+  // Test account bypass
+  const accountIsTest = TEST_EMAILS.includes(user.email || "");
+
+  // Subscription self-heal
+  let sub = await fetchSubscription(user.id);
+  if (!sub) sub = await selfHealSubscription(user.id);
+  if (!sub) return jsonResponse({ error: "No subscription found" }, 403);
+
+  // Daily / monthly reset
+  sub = await applyDailyResetIfNeeded(sub);
+  sub = await applyMonthlyResetIfNeeded(sub);
+
+  // Tier resolution with unknown fallback
+  const tier = sub.tier && (sub.tier in TIER_MONTHLY_LIMITS) ? sub.tier : "free";
+  const monthlyLimit = TIER_MONTHLY_LIMITS[tier];
+  const dailyLimit = TIER_DAILY_LIMITS[tier];
+
+  // Cap check (test account bypass)
   const cost = 1;
-  if (sub.monthly_messages_used + cost > monthlyLimit ||
-      sub.daily_messages_used + cost > dailyLimit) {
-    return jsonResponse({ error: "額度不足", quotaNeeded: cost }, 429);
+  if (!accountIsTest) {
+    if (sub.monthly_messages_used + cost > monthlyLimit ||
+        sub.daily_messages_used + cost > dailyLimit) {
+      // RevenueCat refresh attempt before 429
+      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(user.id);
+      if (refreshed) {
+        sub = await fetchSubscription(user.id);
+        // Re-evaluate against refreshed tier
+        if (sub.monthly_messages_used + cost > TIER_MONTHLY_LIMITS[sub.tier] ||
+            sub.daily_messages_used + cost > TIER_DAILY_LIMITS[sub.tier]) {
+          return jsonResponse({ error: "額度不足", quotaNeeded: cost }, 429);
+        }
+      } else {
+        return jsonResponse({ error: "額度不足", quotaNeeded: cost }, 429);
+      }
+    }
   }
 
-  // ... Task A7 will add Claude call
+  // ... T7 will add Claude call + post-validation deduct using the SAME sub object
   return jsonResponse({ error: "not_implemented" }, 501);
 });
 ```
 
-**Step 4: Run** — failure-path tests pass.
+**Important**: the deduct in T7 must use the **same `sub` object** updated by the gate (already-applied resets), so counters don't drift.
+
+**Step 4: Run** — failure-path + edge-case tests pass.
 
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase A T6 — index.ts auth + quota gate + 400/401/429 paths（無 Claude call）"
+git commit -am "[feat] Spec 5 Phase A T6 — auth + quota gate with full edge-case matrix（self-heal / resets / test account / RC refresh / unknown tier fallback）— Codex P1 #3"
 ```
 
 ---
 
-### Task A7: Claude API invocation + response validation + credit deduct
+### Task A7: Claude API invocation + response validation + safety check + credit deduct
 
 **Files:**
 - Modify: `supabase/functions/coach-follow-up/index.ts`
 - Modify: `supabase/functions/coach-follow-up/index_test.ts`
 
-**Step 1: Add failing tests** (mock Claude response):
+**Step 1: Add failing tests** (mock Claude response; all `assertRejects` async/await per Codex P1 #4):
 
 ```typescript
-Deno.test("successful generation deducts 1 credit", async () => { /* assert subscriptions.monthly_messages_used += 1 */ });
+Deno.test("successful generation deducts 1 credit", async () => { /* assert subscriptions.monthly_messages_used += 1 AND daily += 1 */ });
 Deno.test("Claude returning card with null boundaryReminder → 5xx, credit NOT deducted", async () => { /* ... */ });
 Deno.test("Claude returning card with missing boundaryReminder → 5xx, credit NOT deducted", async () => { /* ... */ });
+Deno.test("Claude returning card containing 'PUA' → 5xx, credit NOT deducted (Codex P1 #5)", async () => {
+  // Mock Claude returning {headline:'h', observation:'o', task:'t', boundaryReminder:'PUA話術'}
+  // Expectation: 500, error=banned_token, sub.monthly_messages_used unchanged
+});
+Deno.test("Claude returning card containing '收割' → 5xx, credit NOT deducted", async () => { /* ... */ });
 Deno.test("Claude API timeout → 5xx, credit NOT deducted", async () => { /* ... */ });
 Deno.test("over-cap headline (50 chars) → truncated to 30, credit deducted", async () => { /* ... */ });
+Deno.test("test account success deducts NOTHING (cap bypass)", async () => {
+  // Pre-condition: user.email in TEST_EMAILS
+  // Expectation: monthly_messages_used unchanged after success
+});
 ```
 
 **Step 2: Run** — fails.
 
-**Step 3: Implement** the Claude call path:
+**Step 3: Implement** the Claude call path. **Critical sequence**: validate shape → assertCardSafe (banned tokens) → deduct credit → return. If any step fails, NO deduct.
 
 ```typescript
 const apiKey = Deno.env.get("CLAUDE_API_KEY");  // NOT ANTHROPIC_API_KEY (CLAUDE.md pitfall)
 if (!apiKey) return jsonResponse({ error: "config_missing" }, 500);
 
-const model = sub.tier === "free"
+const model = tier === "free"
   ? "claude-haiku-4-5-20251001"
   : "claude-sonnet-4-20250514";
 
 const prompt = buildCoachFollowUpPrompt(payload.phase, payload.answers, payload.partnerHint);
 
+logInfo("coach_follow_up_invoked", {
+  phase: payload.phase, tier,
+  hasOptionalText: !!(payload.answers.q3 && payload.answers.q3.length > 0),
+});
+
 let claudeData;
+const startedAt = Date.now();
 try {
   claudeData = await callClaudeAPI({ model, prompt, max_tokens: 1024, timeout: 60000 });
 } catch (e) {
-  logWarn("coach_follow_up_failed", { phase: payload.phase, tier: sub.tier, errorClass: classifyError(e) });
+  logWarn("coach_follow_up_failed", { phase: payload.phase, tier, errorClass: classifyError(e) });
   return jsonResponse({ error: `AI 生成失敗：${getErrorMessage(e)}` }, 500);
 }
 
@@ -622,19 +793,27 @@ let card;
 try {
   const parsed = parseClaudeJSON(claudeData);
   card = truncateCard(parsed);
-  validateResponseCard(card);  // throws on missing/null boundaryReminder
+  validateResponseCard(card);             // throws on missing/null boundaryReminder
+  assertCardSafe(card);                    // throws on banned tokens (Codex P1 #5)
 } catch (e) {
-  logWarn("coach_follow_up_failed", { phase: payload.phase, tier: sub.tier, errorClass: "schema_invalid" });
-  return jsonResponse({ error: "response_invalid" }, 500);
+  const errorClass = e.message.startsWith("banned_token") ? "banned_token" : "schema_invalid";
+  logWarn("coach_follow_up_failed", { phase: payload.phase, tier, errorClass });
+  return jsonResponse({ error: errorClass }, 500);
 }
 
-// Deduct ONLY after successful validation
-await supabase.from("subscriptions").update({
-  monthly_messages_used: (sub.monthly_messages_used || 0) + 1,
-  daily_messages_used: (sub.daily_messages_used || 0) + 1,
-}).eq("user_id", user.id);
+// Deduct ONLY after BOTH schema and safety validation pass — and ONLY if not test account
+if (!accountIsTest) {
+  await supabase.from("subscriptions").update({
+    monthly_messages_used: (sub.monthly_messages_used || 0) + 1,
+    daily_messages_used: (sub.daily_messages_used || 0) + 1,
+  }).eq("user_id", user.id);
+}
 
-logInfo("coach_follow_up_succeeded", { phase: payload.phase, tier: sub.tier, model, latencyMs, costDeducted: 1 });
+logInfo("coach_follow_up_succeeded", {
+  phase: payload.phase, tier, model,
+  latencyMs: Date.now() - startedAt,
+  costDeducted: accountIsTest ? 0 : 1,
+});
 
 return jsonResponse({
   phase: payload.phase,
@@ -649,7 +828,7 @@ return jsonResponse({
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase A T7 — Claude call + boundaryReminder enforcement + credit deduct on success only"
+git commit -am "[feat] Spec 5 Phase A T7 — Claude call + boundaryReminder + assertCardSafe + credit deduct on success only（test account bypass）"
 ```
 
 ---
@@ -660,39 +839,66 @@ git commit -am "[feat] Spec 5 Phase A T7 — Claude call + boundaryReminder enfo
 - Modify: `supabase/functions/coach-follow-up/index.ts`
 - Modify: `supabase/functions/coach-follow-up/index_test.ts`
 
-Verify all 5 telemetry events from design §7 fire correctly:
+Verify all server-side telemetry events from design §7 fire correctly:
 
 ```text
 coach_follow_up_invoked       { phase, tier, hasOptionalText: bool }
-coach_follow_up_succeeded     { phase, tier, model, latencyMs, costDeducted: 1 }
-coach_follow_up_failed        { phase, tier, errorClass }     // errorClass = enum, NOT errorMessage
+coach_follow_up_succeeded     { phase, tier, model, latencyMs, costDeducted: 0|1 }
+coach_follow_up_failed        { phase, tier, errorClass }     // errorClass enum, NOT errorMessage / NOT free-text
 ```
 
-`regenerated` and `phase_switched` are client-side events (deferred to Phase C T20).
+Client-side `regenerated` and `phase_switched` are deferred to Phase C T22/T24.
 
-**Step 1: Add tests** that capture stdout/stderr and assert event names + fields shape.
+**Step 1: Add tests** capturing stdout/stderr; assert event names + fields shape; assert NO free-text answers, NO prompt content, NO Claude raw response in any log line.
 
 **Step 2-4: Implement, run, verify.**
 
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase A T8 — telemetry events 全覆蓋（不 log free-text / prompt 全文）"
+git commit -am "[feat] Spec 5 Phase A T8 — telemetry events 全覆蓋（不 log free-text / prompt 全文 / AI 原始 response）"
 ```
 
 ---
 
-### Task A9: Edge function manual smoke + deploy verification
+### Task A9: CI/CD deploy step (moved into Phase A per Codex P1 #1)
+
+**Files:**
+- Modify: `.github/workflows/deploy-edge-function.yml`
+
+**Step 1:** Add a **separate** deploy line for `coach-follow-up`:
+
+```yaml
+- name: Deploy Edge Functions
+  run: |
+    supabase functions deploy analyze-chat --no-verify-jwt
+    supabase functions deploy delete-account
+    supabase functions deploy sync-subscription
+    supabase functions deploy submit-feedback
+    supabase functions deploy revenuecat-webhook --no-verify-jwt
+    supabase functions deploy coach-follow-up                    # NEW: JWT-verified, NO --no-verify-jwt
+```
+
+**Hard rules**:
+- **NEVER** consolidate into a `supabase functions deploy --all` (would strip analyze-chat's `--no-verify-jwt`).
+- coach-follow-up explicitly OMITS `--no-verify-jwt` (it requires authenticated user to deduct credit).
+- This task lands BEFORE A10 manual smoke so the production deploy path is what's verified end-to-end.
+
+**Step 2:** Push and verify GH Actions run completes for both `analyze-chat` (still with `--no-verify-jwt`) and `coach-follow-up` (without).
+
+**Step 3: Commit**
+
+```bash
+git commit -am "[chore] Spec 5 Phase A T9 — CI/CD deploy step for coach-follow-up（JWT-verified，獨立 line；移進 Phase A 才能 standalone merge — Codex P1 #1）"
+```
+
+---
+
+### Task A10: Edge function manual smoke + production deploy verification
 
 **Step 1: Local Deno test full pass** — `deno test supabase/functions/coach-follow-up/` all green.
 
-**Step 2: Deploy preview** (Eric runs this):
-
-```bash
-SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy coach-follow-up \
-  --project-ref fcmwrmwdoqiqdnbisdpg
-# NOTE: NO --no-verify-jwt flag (this function REQUIRES JWT)
-```
+**Step 2: Verify CI deploy on staging** completed successfully (from T9's push) — function visible at `https://fcmwrmwdoqiqdnbisdpg.supabase.co/functions/v1/coach-follow-up`.
 
 **Step 3: Curl smoke** with a real JWT:
 
@@ -703,19 +909,22 @@ curl -X POST https://fcmwrmwdoqiqdnbisdpg.supabase.co/functions/v1/coach-follow-
   -d '{"phase":"prepareInvite","answers":{"q1":"fuzzy"},"partnerHint":{"name":"Test"}}'
 ```
 
-Expected: 200 with valid card JSON; cost deducted; logs show `coach_follow_up_succeeded`.
+Expected: 200 with valid card JSON; cost deducted; logs show `coach_follow_up_invoked` then `coach_follow_up_succeeded`.
 
-**Step 4: Negative smoke**: try `images: []` → 400 `invalid_input_for_mode`.
+**Step 4: Negative smoke**:
+- `images: []` → 400 `invalid_input_for_mode`.
+- Send Claude a mocked response with `boundaryReminder: null` (via test fixture or skip if not feasible) → 5xx, credit unchanged.
+- Send Claude a mocked banned-token response → 5xx, credit unchanged.
 
-**Step 5: Commit + push** (no code changes; just confirmation).
+**Step 5: Commit + push** (no code changes; just `[docs]` confirmation if needed).
 
-> **Phase A complete — backend deployable in isolation. Open PR if shipping in stages.**
+> **Phase A complete — backend is genuinely standalone-mergeable: function + CI deploy + smoke all in one phase.**
 
 ---
 
 ## 5. Phase B: Local Data Layer
 
-### Task B10: `CoachFollowUpPhase` enum
+### Task B11: `CoachFollowUpPhase` enum
 
 **Files:**
 - Create: `lib/features/coach_follow_up/domain/entities/coach_follow_up_phase.dart`
@@ -768,22 +977,26 @@ enum CoachFollowUpPhase {
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase B T10 — CoachFollowUpPhase enum（stable .name keys + display label 分離）"
+git commit -am "[feat] Spec 5 Phase B T11 — CoachFollowUpPhase enum（stable .name keys + display label 分離）"
 ```
 
 ---
 
-### Task B11: `CoachFollowUpResult` Hive entity (typeId 16)
+### Task B12: `CoachFollowUpResult` Hive entity (typeId 16)
 
 **Files:**
 - Create: `lib/features/coach_follow_up/domain/entities/coach_follow_up_result.dart`
 
 **Step 1: Verify next free typeId is 16** by greping `@HiveType(typeId:` (current top: 15 = `partner_data_quality_state`). If a subsequent PR has claimed 16, escalate.
 
+```bash
+grep -rn "@HiveType(typeId:" lib/ | sort -t: -k4 -n -k2
+```
+
 **Step 2: Write entity**
 
 ```dart
-@HiveType(typeId: 16)  // verified free at 2026-05-02
+@HiveType(typeId: 16)  // verified free at 2026-05-02; reserved here
 class CoachFollowUpResult extends HiveObject {
   @HiveField(0) final String partnerId;
   @HiveField(1) final String phase;            // CoachFollowUpPhase.name
@@ -825,40 +1038,60 @@ Expect `coach_follow_up_result.g.dart` created and `hive_registrar.g.dart` updat
 git add lib/features/coach_follow_up/domain/entities/coach_follow_up_result.dart \
         lib/features/coach_follow_up/domain/entities/coach_follow_up_result.g.dart \
         lib/hive_registrar.g.dart
-git commit -m "[feat] Spec 5 Phase B T11 — CoachFollowUpResult Hive entity（typeId 16）"
+git commit -m "[feat] Spec 5 Phase B T12 — CoachFollowUpResult Hive entity（typeId 16）"
 ```
 
 ---
 
-### Task B12: `CoachFollowUpRepository` (interface + Hive impl)
+### Task B13: `CoachFollowUpRepository` (interface + Hive impl) — temp Hive path tests (Codex P2 #6)
 
 **Files:**
 - Create: `lib/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart`
 - Create: `lib/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart`
 - Create: `test/unit/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl_test.dart`
 
-**Step 1: Write failing tests** covering the full surface:
+**Step 1: Write failing tests** mirroring `test/unit/services/storage_service_partner_box_test.dart` pattern — **temp Hive path, NOT `Hive.initFlutter()`** (Codex P2 #6 fix):
 
 ```dart
-group('CoachFollowUpRepositoryImpl', () {
+import 'dart:io';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_ce/hive_ce.dart';
+
+void main() {
+  const testHivePath = './.dart_tool/test_hive_coach_follow_up_repo';
+  const testBoxName = 'test_coach_follow_up_results';
+
+  setUpAll(() {
+    Hive.init(testHivePath);                                // NOT initFlutter
+    if (!Hive.isAdapterRegistered(16)) {
+      Hive.registerAdapter(CoachFollowUpResultAdapter());
+    }
+  });
+
   late Box<CoachFollowUpResult> box;
   late CoachFollowUpRepositoryImpl repo;
 
   setUp(() async {
-    await Hive.initFlutter();
-    Hive.registerAdapter(CoachFollowUpResultAdapter());
-    box = await Hive.openBox<CoachFollowUpResult>('test_coach_follow_up_results');
+    box = await Hive.openBox<CoachFollowUpResult>(testBoxName);
     repo = CoachFollowUpRepositoryImpl(box);
   });
 
-  tearDown(() async => await box.deleteFromDisk());
+  tearDown(() async {
+    await box.deleteFromDisk();
+  });
+
+  tearDownAll(() async {
+    await Hive.close();
+    final dir = Directory(testHivePath);
+    if (await dir.exists()) await dir.delete(recursive: true);
+  });
 
   test('put + get returns latest', () async { /* ... */ });
   test('put twice for same partner overwrites (latest only)', () async { /* ... */ });
   test('delete removes entry', () async { /* ... */ });
   test('clearAll wipes box completely', () async { /* ... */ });
   test('get for unknown partnerId returns null', () async { /* ... */ });
-});
+}
 ```
 
 **Step 2: Run** — fails.
@@ -898,34 +1131,72 @@ class CoachFollowUpRepositoryImpl implements CoachFollowUpRepository {
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase B T12 — CoachFollowUpRepository（CRUD + clearAll，鏡射 PartnerStyleRepository pattern）"
+git commit -am "[feat] Spec 5 Phase B T13 — CoachFollowUpRepository（CRUD + clearAll；temp Hive path test pattern — Codex P2 #6）"
 ```
 
 ---
 
-### Task B13: Wire `clearAll()` into account-clear paths
+### Task B14: Wire `coach_follow_up_results` into `StorageService.clearAll()` (Codex P1 #2)
 
 **Files:**
-- Modify: `lib/core/services/supabase_service.dart` (deleteAccount + signOut)
-- Modify: `test/unit/.../supabase_service_test.dart` (or new) to verify clearAll fires
+- Modify: `lib/core/services/storage_service.dart`
+- Modify: `test/unit/services/storage_service_clear_all_test.dart` (ADD to existing file, do NOT create parallel)
 
-**Step 1: Read `supabase_service.dart:157-220`** to understand existing pattern. Look for how Spec 1 about-me box is cleared (it should already be in the chain — match that pattern).
+**Pre-condition**: Eric has resolved OQ-Sign-1 (§0). This task assumes recommended verdict (a) — sign-out does NOT clear local data; only `deleteAccount → StorageService.clearAll()` chain wipes follow-up results.
 
-**Step 2: Write failing test** asserting that calling `signOut()` triggers `CoachFollowUpRepository.clearAll()`.
+**Step 1: Add the new box constant + getter** in `storage_service.dart` (mirror `partnerStyleOverridesBox` pattern):
 
-**Step 3: Wire in** — inject `CoachFollowUpRepository` (via Riverpod or service locator pattern matching what's there).
+```dart
+// In storage_service.dart, alongside other boxes:
+static Box<CoachFollowUpResult> get coachFollowUpResultsBox =>
+    Hive.box<CoachFollowUpResult>('coach_follow_up_results');
 
-**Step 4: Run** — pass.
+// In initialize() — register adapter and openBox alongside others:
+Hive.registerAdapter(CoachFollowUpResultAdapter());
+await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+
+// In clearAll() — append to the existing list:
+static Future<void> clearAll() async {
+  await conversationsBox.clear();
+  await partnersBox.clear();
+  await userProfileBox.clear();
+  await partnerStyleOverridesBox.clear();
+  await partnerDataQualityStatesBox.clear();
+  await coachFollowUpResultsBox.clear();   // NEW
+  await settingsBox.clear();
+  await usageBox.clear();
+}
+```
+
+**Step 2: Add failing test in existing file `storage_service_clear_all_test.dart`** — extend the open-box list and assert the new box is also cleared:
+
+```dart
+// In existing setUp / openBox block (around lines 72-80):
+await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+
+// Add a new test asserting clearAll() empties the new box too:
+test('clearAll wipes coach_follow_up_results box (Spec 5)', () async {
+  final box = Hive.box<CoachFollowUpResult>('coach_follow_up_results');
+  await box.put('partner-1', CoachFollowUpResult(/* fixture */));
+  expect(box.length, 1);
+  await StorageService.clearAll();
+  expect(box.length, 0);
+});
+```
+
+**Step 3: Run** — implement → pass.
+
+**Step 4: Verify** existing tests in `storage_service_clear_all_test.dart` still pass.
 
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase B T13 — 帳號清理路徑接 CoachFollowUpRepository.clearAll()"
+git commit -am "[feat] Spec 5 Phase B T14 — coach_follow_up_results 接 StorageService.clearAll()（Codex P1 #2）"
 ```
 
 ---
 
-### Task B14: Partner-delete cascade
+### Task B15: Partner-delete cascade
 
 **Files:**
 - Modify: `lib/features/partner/data/providers/partner_write_controller.dart`
@@ -942,41 +1213,170 @@ git commit -am "[feat] Spec 5 Phase B T13 — 帳號清理路徑接 CoachFollowU
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase B T14 — partner delete cascade clears coach_follow_up_results entry"
+git commit -am "[feat] Spec 5 Phase B T15 — partner delete cascade clears coach_follow_up_results entry"
 ```
 
 ---
 
-### Task B15: Privacy regression test (mirror Spec 1)
+### Task B16: Privacy regression test consolidation
 
 **Files:**
-- Create: `test/unit/features/coach_follow_up/privacy/coach_follow_up_clear_all_regression_test.dart`
+- Verify: `test/unit/services/storage_service_clear_all_test.dart` (already extended in T14)
+- Add: any missing fixture helpers
 
-**Step 1: Read Spec 1 about-me clearAll regression test** (find via grep `clearAll.*about_me` or similar) to mirror its shape exactly — the test asserts the box file is gone or empty after the account-clear flow runs.
+**Step 1: Verify the test added in T14** asserts:
+- After populating box with N entries, `StorageService.clearAll()` empties it.
+- After `deleteFromDisk()` (simulated account deletion path), box file is gone.
 
-**Step 2: Write equivalent test** for `coach_follow_up_results` box: pre-populate with N entries, run `signOut()` (or `deleteAccount()`), assert box is empty / file absent.
+**Step 2: Add second test** for the integration: simulate the `SettingsScreen.deleteAccount` chain (`deleteAccount → clearAll → clearLocalSessionAfterDeletion`) by calling them in sequence and verify ALL boxes (existing + new) are empty.
 
-**Step 3: Run** — pass (because B13 wired it).
+**Step 3: Run full `flutter test test/unit/services/storage_service_clear_all_test.dart`** — all pass.
 
-**Step 5: Commit**
+**Step 4: Commit**
 
 ```bash
-git commit -am "[test] Spec 5 Phase B T15 — privacy regression：clearAll 後 box 空（鏡射 Spec 1 about-me test）"
+git commit -am "[test] Spec 5 Phase B T16 — 隱私 regression 補完整 deleteAccount 鏈（鏡射既有 storage_service_clear_all_test pattern — Codex P2 #6）"
 ```
 
-> **Phase B complete — local data layer self-tested. Open PR if shipping with Phase A separately.**
+> **Phase B complete — local data layer self-tested via existing privacy seam.**
 
 ---
 
 ## 6. Phase C: UI Surface
 
-### Task C16: AI hint resolver (pure Dart)
+### Task C17: `buildCoachFollowUpPartnerHint` source helper (Codex P2 #7)
+
+**Files:**
+- Create: `lib/features/coach_follow_up/domain/services/coach_follow_up_partner_hint_builder.dart`
+- Create: `test/unit/features/coach_follow_up/domain/services/coach_follow_up_partner_hint_builder_test.dart`
+
+**Why this exists (Codex P2 #7)**: design Q3 says `lastConversationSummary` must be conversation-level only, ≤ 200 chars, omitted when Spec 3 flagged, and never sourced from `PartnerContextResolver` / partner traits / raw messages. Without an explicit helper, the implementer might accidentally pipe in cross-conversation aggregate or partner summary. This helper IS the contract.
+
+**Step 1: Write failing tests** covering EACH constraint:
+
+```dart
+group('buildCoachFollowUpPartnerHint', () {
+  test('uses ONLY current conversation latest summary content', () {
+    final conv = Conversation(/* summaries: [s1(content:"old"), s2(content:"latest summary text")] */);
+    final hint = buildCoachFollowUpPartnerHint(
+      partner: Partner(name: 'C', /* ... */),
+      currentConversation: conv,
+      isDataQualityFlagged: false,
+    );
+    expect(hint.lastConversationSummary, equals('latest summary text'));
+  });
+
+  test('caps lastConversationSummary at 200 chars', () {
+    final longSummary = 'a' * 300;
+    final conv = Conversation(/* summaries: [Summary(content: longSummary)] */);
+    final hint = buildCoachFollowUpPartnerHint(
+      partner: Partner(name: 'C'), currentConversation: conv, isDataQualityFlagged: false,
+    );
+    expect(hint.lastConversationSummary?.length, equals(200));
+  });
+
+  test('returns null lastConversationSummary when conversation has no summaries', () {
+    final conv = Conversation(/* summaries: [] */);
+    final hint = buildCoachFollowUpPartnerHint(
+      partner: Partner(name: 'C'), currentConversation: conv, isDataQualityFlagged: false,
+    );
+    expect(hint.lastConversationSummary, isNull);
+  });
+
+  test('returns null lastConversationSummary when no current conversation', () {
+    final hint = buildCoachFollowUpPartnerHint(
+      partner: Partner(name: 'C'), currentConversation: null, isDataQualityFlagged: false,
+    );
+    expect(hint.lastConversationSummary, isNull);
+  });
+
+  test('omits lastConversationSummary when Spec 3 flagged (Codex P2 #7)', () {
+    final conv = Conversation(/* summaries: [Summary(content: "good content")] */);
+    final hint = buildCoachFollowUpPartnerHint(
+      partner: Partner(name: 'C'), currentConversation: conv, isDataQualityFlagged: true,
+    );
+    expect(hint.lastConversationSummary, isNull);
+  });
+
+  test('NEVER reads PartnerContextResolver, partnerSummary, partnerTraits, or raw messages', () {
+    // Compile-time guard: helper signature accepts Conversation + Partner + bool only.
+    // Runtime guard: this test asserts the function body does not import those modules.
+    // Enforcement: code review + import-graph linter rule.
+    // We add a static-analysis guard via grep in CI:
+    //   grep -E "PartnerContextResolver|partnerSummary|partnerTraits" \
+    //     lib/features/coach_follow_up/domain/services/coach_follow_up_partner_hint_builder.dart \
+    //     | grep -v "^//"   # exclude comments
+    //   should be empty.
+  });
+
+  test('hint includes partner.name (display only) and heatScore + gameStage if provided', () {
+    /* ... */
+  });
+});
+```
+
+**Step 2: Implement** — pure function, no Riverpod, no async, no providers:
+
+```dart
+class CoachFollowUpPartnerHint {
+  final String name;
+  final int? heatScore;
+  final GameStage? gameStage;
+  final String? lastConversationSummary;
+  const CoachFollowUpPartnerHint({...});
+
+  Map<String, dynamic> toEdgePayload() => {
+    'name': name,
+    if (heatScore != null) 'heatScore': heatScore,
+    if (gameStage != null) 'gameStage': gameStage!.name,    // stable enum key, not displayLabel
+    if (lastConversationSummary != null) 'lastConversationSummary': lastConversationSummary,
+  };
+}
+
+CoachFollowUpPartnerHint buildCoachFollowUpPartnerHint({
+  required Partner partner,
+  required Conversation? currentConversation,
+  required bool isDataQualityFlagged,
+  int? heatScore,
+  GameStage? gameStage,
+}) {
+  String? summary;
+  if (!isDataQualityFlagged && currentConversation != null) {
+    final latest = currentConversation.summaries?.lastOrNull;
+    if (latest != null && latest.content.isNotEmpty) {
+      summary = latest.content.length > 200
+          ? latest.content.substring(0, 200)
+          : latest.content;
+    }
+  }
+  return CoachFollowUpPartnerHint(
+    name: partner.name,
+    heatScore: heatScore,
+    gameStage: gameStage,
+    lastConversationSummary: summary,
+  );
+}
+```
+
+**Step 3: Run** — pass.
+
+**Step 4: Add CI grep guard** (single-line check, can be a pre-commit hook or CI step) ensuring the file does not import `PartnerContextResolver`, `partnerSummary*`, `partnerTraits*`, or any raw message accessor. Document the guard in `coach_follow_up_partner_hint_builder.dart`'s top comment.
+
+**Step 5: Commit**
+
+```bash
+git commit -am "[feat] Spec 5 Phase C T17 — buildCoachFollowUpPartnerHint helper（conv-level summary ≤200 字 + Spec 3 omit + 0 PartnerContextResolver — Codex P2 #7）"
+```
+
+---
+
+### Task C18: AI hint resolver (pure Dart)
 
 **Files:**
 - Create: `lib/features/coach_follow_up/domain/services/coach_follow_up_hint_resolver.dart`
 - Create: `test/unit/features/coach_follow_up/domain/services/coach_follow_up_hint_resolver_test.dart`
 
-**Step 1: Define input shape** — pure data class `CoachFollowUpHintInput` containing only stable enum/scalar values:
+**Step 1: Define input shape** — pure data class containing only stable enum/scalar values:
 
 ```dart
 class CoachFollowUpHintInput {
@@ -1013,7 +1413,6 @@ test('hint resolver matches GameStage.close enum, not 繁中 label', () {
   // explicit guard: '準備邀約' as a string must NOT trigger anything
   final r = CoachFollowUpHintResolver.resolve(CoachFollowUpHintInput(
     gameStage: null, heatScore: 70, recentMessageBodies: ['準備邀約'], ...));
-  // resolver should NOT match this as gameStage signal
   expect(r, isNot(CoachFollowUpPhase.prepareInvite));
 });
 ```
@@ -1025,42 +1424,45 @@ test('hint resolver matches GameStage.close enum, not 繁中 label', () {
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase C T16 — CoachFollowUpHintResolver pure function（GameStage.close enum，不用繁中字串）"
+git commit -am "[feat] Spec 5 Phase C T18 — CoachFollowUpHintResolver pure function（GameStage.close enum，不用繁中字串）"
 ```
 
 ---
 
-### Task C17: API service (Edge HTTP client)
+### Task C19: API service (Edge HTTP client)
 
 **Files:**
 - Create: `lib/features/coach_follow_up/data/services/coach_follow_up_api_service.dart`
 - Create: corresponding test
 
-**Step 1: Write failing tests** (mock `http.Client`):
+**Step 1: Write failing tests** (mock `http.Client` or Supabase functions invoke):
 
 ```dart
 test('builds request with stable phase key', () async { /* assert body.phase == 'prepareInvite' */ });
-test('omits lastConversationSummary when Spec 3 flagged', () async {
-  // Pass isFlagged=true → assert payload.partnerHint.lastConversationSummary is absent
+test('uses partnerHint from buildCoachFollowUpPartnerHint helper', () async {
+  // assert body.partnerHint matches the helper's toEdgePayload output exactly
 });
 test('400 invalid_input_for_mode surfaces as ApiException', () async { /* ... */ });
 test('429 surfaces as QuotaExceededException', () async { /* ... */ });
 test('5xx surfaces as GenerationFailedException', () async { /* ... */ });
 test('parses success response into CoachFollowUpResult', () async { /* ... */ });
-test('rejects response with null boundaryReminder', () async { /* ... */ });
+test('rejects response with null boundaryReminder (client-side guard)', () async { /* ... */ });
+test('rejects response containing banned token (client-side guard)', () async {
+  // Even though server should reject, client double-checks for defense in depth
+});
 ```
 
-**Step 2-4:** Implement service. Use `SupabaseService.client.functions.invoke('coach-follow-up', body: ...)` (matches existing pattern for `analyze-chat`, `delete-account`). Parse response, validate `boundaryReminder` non-null, hard-truncate strings, construct `CoachFollowUpResult` (with `partnerId` and `phase` injected client-side).
+**Step 2-4:** Implement service using `SupabaseService.client.functions.invoke('coach-follow-up', body: ...)`. The hint payload comes from T17 helper output (do NOT build inline). Parse response, validate `boundaryReminder` non-null AND `assertCardSafe` client-side, hard-truncate strings if needed, construct `CoachFollowUpResult` (with `partnerId` and `phase` injected client-side).
 
 **Step 5: Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase C T17 — CoachFollowUpApiService（Spec 3 flagged omit + boundaryReminder client-side guard）"
+git commit -am "[feat] Spec 5 Phase C T19 — CoachFollowUpApiService（消費 hint helper + boundaryReminder + assertCardSafe client guard）"
 ```
 
 ---
 
-### Task C18: Riverpod providers + state controller
+### Task C20: Riverpod providers + state controller
 
 **Files:**
 - Create: `lib/features/coach_follow_up/data/providers/coach_follow_up_providers.dart`
@@ -1068,7 +1470,8 @@ git commit -am "[feat] Spec 5 Phase C T17 — CoachFollowUpApiService（Spec 3 f
 Providers:
 - `coachFollowUpRepositoryProvider` — Repository (singleton)
 - `coachFollowUpResultProvider(partnerId)` — current stored result
-- `coachFollowUpHintProvider(partnerId)` — derives `CoachFollowUpHintInput` from existing partner state, calls resolver
+- `coachFollowUpHintProvider(partnerId)` — derives `CoachFollowUpHintInput` from existing partner state, calls hint resolver
+- `coachFollowUpPartnerHintProvider(partnerId)` — uses T17 helper, depends on current conversation + Spec 3 flag
 - `coachFollowUpControllerProvider(partnerId)` — `AsyncNotifier` managing generate / regenerate / phase-switch + debounce + persistence after success
 
 **Steps 1-5:** Standard Riverpod pattern; tests assert generate flow, debounce blocks 2nd call, regenerate overwrites box, error states don't persist.
@@ -1076,12 +1479,12 @@ Providers:
 **Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase C T18 — Riverpod providers + AsyncNotifier controller（debounce + persist on success）"
+git commit -am "[feat] Spec 5 Phase C T20 — Riverpod providers + AsyncNotifier controller（debounce + persist on success）"
 ```
 
 ---
 
-### Task C19: Result card widget
+### Task C21: Result card widget
 
 **Files:**
 - Create: `lib/features/coach_follow_up/presentation/widgets/coach_follow_up_result_card.dart`
@@ -1099,12 +1502,12 @@ git commit -am "[feat] Spec 5 Phase C T18 — Riverpod providers + AsyncNotifier
 **Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase C T19 — CoachFollowUpResultCard 5-field widget"
+git commit -am "[feat] Spec 5 Phase C T21 — CoachFollowUpResultCard 5-field widget"
 ```
 
 ---
 
-### Task C20: Phase chip row + AI hint
+### Task C22: Phase chip row + AI hint
 
 **Files:**
 - Create: `lib/features/coach_follow_up/presentation/widgets/coach_follow_up_chip_row.dart`
@@ -1120,12 +1523,12 @@ Behavior:
 **Steps 1-5** standard. **Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase C T20 — phase chip row + AI hint + 生成額度文字"
+git commit -am "[feat] Spec 5 Phase C T22 — phase chip row + AI hint + 生成額度文字"
 ```
 
 ---
 
-### Task C21: Input sheet (3 phase variants)
+### Task C23: Input sheet (3 phase variants)
 
 **Files:**
 - Create: `lib/features/coach_follow_up/presentation/widgets/coach_follow_up_input_sheet.dart`
@@ -1133,7 +1536,7 @@ git commit -am "[feat] Spec 5 Phase C T20 — phase chip row + AI hint + 生成�
 
 Implements design §1.2 input flows. Required fields enforce button-disabled until all answered. Free-text Q3 limited to 80 chars by `TextField.maxLength`. "產生跟進建議" button disabled while controller is in loading state (debounce).
 
-**Important**: All option values stored as **stable English keys** internally (e.g., `'fuzzy' / 'concrete' / 'undecided'` for prepareInvite Q1), with Chinese labels rendered for the user. The Edge function receives the stable keys.
+**Important**: All option values stored as **stable English keys** internally, with Chinese labels rendered for the user. The Edge function receives the stable keys.
 
 ```dart
 const _Q1_OPTIONS_PREPARE_INVITE = [
@@ -1152,12 +1555,12 @@ const _Q2_OPTIONS_POST_DATE = [
 **Steps 1-5.** **Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase C T21 — phase input sheet（stable English option keys + 中文 label 分離）"
+git commit -am "[feat] Spec 5 Phase C T23 — phase input sheet（stable English option keys + 中文 label 分離）"
 ```
 
 ---
 
-### Task C22: Section widget + insert into partner detail
+### Task C24: Section widget + insert into partner detail
 
 **Files:**
 - Create: `lib/features/coach_follow_up/presentation/widgets/coach_follow_up_section.dart`
@@ -1171,62 +1574,33 @@ Telemetry: `coach_follow_up_invoked` on input sheet submit; `coach_follow_up_reg
 **Steps 1-5.** **Commit**
 
 ```bash
-git commit -am "[feat] Spec 5 Phase C T22 — CoachFollowUpSection 接上 partner_detail_screen"
+git commit -am "[feat] Spec 5 Phase C T24 — CoachFollowUpSection 接上 partner_detail_screen"
 ```
 
 > **Phase C complete — full feature live.**
 
 ---
 
-## 7. Cross-Cutting Tasks
+## 7. Phase X: Cross-Cutting Polish
 
-### Task X23: CI/CD deploy step
+### Task X25: Telemetry verification on staging
 
-**Files:**
-- Modify: `.github/workflows/deploy-edge-function.yml`
+After Phase A+B+C deploy, run a manual end-to-end pass and verify all telemetry events appear in Supabase Edge logs + Flutter console:
 
-**Step 1:** Add a **separate** deploy line for `coach-follow-up`:
-
-```yaml
-- name: Deploy Edge Functions
-  run: |
-    supabase functions deploy analyze-chat --no-verify-jwt
-    supabase functions deploy delete-account
-    supabase functions deploy sync-subscription
-    supabase functions deploy submit-feedback
-    supabase functions deploy revenuecat-webhook --no-verify-jwt
-    supabase functions deploy coach-follow-up                    # NEW: JWT-verified, NO --no-verify-jwt
-```
-
-**Hard rules**:
-- **NEVER** consolidate into a `supabase functions deploy --all` (would strip analyze-chat's `--no-verify-jwt`).
-- coach-follow-up explicitly OMITS `--no-verify-jwt` (it requires authenticated user to deduct credit).
-
-**Step 2:** Push and verify GH Actions run completes for both functions.
-
-**Step 3: Commit**
-
-```bash
-git commit -am "[chore] Spec 5 X23 — CI/CD deploy step for coach-follow-up（JWT-verified，獨立 line）"
-```
-
----
-
-### Task X24: Telemetry verification on staging
-
-After deploy, run a manual end-to-end pass and verify the 5 telemetry events appear in Supabase Edge logs:
-
+Server side:
 - `coach_follow_up_invoked` (Edge logs on receive)
 - `coach_follow_up_succeeded` (Edge logs on 200)
 - `coach_follow_up_failed` (Edge logs on any 4xx/5xx with errorClass enum)
-- `coach_follow_up_regenerated` (client log; needs separate Flutter telemetry hook)
-- `coach_follow_up_phase_switched` (client log)
+
+Client side:
+- `coach_follow_up_regenerated`
+- `coach_follow_up_phase_switched`
 
 Verify **none** of the events contain free-text answers (q3), prompt full text, or Claude raw response. If any violation found → block merge.
 
 ---
 
-### Task X25: TF smoke + close Phase 1 v1
+### Task X26: TF smoke + close v1
 
 Eric runs on TestFlight:
 1. New partner → tap 教練跟進 → 3 chips visible → AI hint absent (clean state).
@@ -1234,10 +1608,10 @@ Eric runs on TestFlight:
 3. Tap 約會前提醒 → fill answers → 產生 → result card renders 5 fields including required `boundaryReminder`.
 4. Tap 重新生成 → second card overwrites first; `monthly_messages_used` += 2 from start.
 5. Tap 換情境 → return to chip row → tap 約會後復盤 → fill including `stillUnclear` Q2 → result card renders.
-6. Force tier cap (test account in Free with cap 30, generate until 429) → paywall sheet shown.
+6. Force tier cap (Free with cap 30, generate until 429) → paywall sheet shown.
 7. Force network failure (airplane mode) → 「生成失敗，credit 未扣，請再試」 → `monthly_messages_used` unchanged.
 8. Delete partner → re-enter via partner picker → `coach_follow_up_results` for that partner gone (no carryover).
-9. Sign out → sign in → `coach_follow_up_results` cleared.
+9. Delete account → re-create → no follow-up results carry over (StorageService.clearAll seam validated end-to-end).
 
 If all pass → ADR + snapshot update (post-ship doc closeout, separate commit).
 
@@ -1261,30 +1635,41 @@ If all pass → ADR + snapshot update (post-ship doc closeout, separate commit).
 - ❌ Importing anything from `supabase/functions/analyze-chat/`
 - ❌ Editing `analyze-chat/` source files (OCR baseline frozen)
 - ❌ Using 繁中 strings as enum / phase / gameStage matching keys
+- ❌ Adding `CoachFollowUpRepository` to `SupabaseService` (cleanup goes through `StorageService.clearAll()` only)
+- ❌ Reading `PartnerContextResolver`, `partnerSummary`, `partnerTraits`, or raw message bodies in `buildCoachFollowUpPartnerHint`
+- ❌ Changing `signOut()` semantics in this PR (gated by OQ-Sign-1; if Eric picks (b), it's a separate ticket spanning ALL boxes)
 
 ---
 
 ## 9. Validation Checklist (Before Each Phase Merge)
 
 ### Before Phase A merge
-- [ ] `deno test supabase/functions/coach-follow-up/` all green
+- [ ] `deno test supabase/functions/coach-follow-up/` all green (incl. quota edge-case matrix from T7)
 - [ ] No imports from `analyze-chat/` (verify: `grep -r "from.*analyze-chat" supabase/functions/coach-follow-up/`)
+- [ ] All `assertRejects` calls use `await` inside `async` test bodies
+- [ ] **CI deploy line in `deploy-edge-function.yml` is committed AND verified green on GH Actions** (Codex P1 #1)
 - [ ] Curl smoke: 200 success, 400 image rejection, 401 unauthenticated, 429 cap exceeded
 - [ ] Boundary check: response with null `boundaryReminder` → 5xx + credit not deducted
+- [ ] Banned-token check: response with `PUA` / `收割` etc. → 5xx + credit not deducted (Codex P1 #5)
 - [ ] No free-text or prompt content in any log line
 
 ### Before Phase B merge
 - [ ] `flutter test test/unit/features/coach_follow_up/` all green
+- [ ] `flutter test test/unit/services/storage_service_clear_all_test.dart` all green (incl. new coach_follow_up_results assertion)
 - [ ] `flutter analyze` clean
 - [ ] `dart run build_runner build` re-run; no orphan `.g.dart` files
-- [ ] `clearAll()` regression test passes (mirror Spec 1)
+- [ ] Repo unit tests use **temp Hive path**, NOT `Hive.initFlutter()` (Codex P2 #6)
+- [ ] `clearAll()` regression added to **existing** `storage_service_clear_all_test.dart`, not parallel file (Codex P1 #2)
 - [ ] Partner-delete cascade test passes
-- [ ] No imports from analysis / partnerSummary / about_me writes
+- [ ] No imports from `SupabaseService` for cleanup wiring
+- [ ] OQ-Sign-1 has been resolved by Eric
 
 ### Before Phase C merge
 - [ ] `flutter test test/widget/features/coach_follow_up/` all green
 - [ ] All option values are stable English keys (not 繁中) — `grep "options.*中文"` audit
 - [ ] Hint resolver test asserts `GameStage.close` enum (not '邀約' / '準備邀約' string)
+- [ ] `buildCoachFollowUpPartnerHint` tests pass for all 6 scenarios from C17 (Codex P2 #7)
+- [ ] CI grep guard confirms `coach_follow_up_partner_hint_builder.dart` does NOT import `PartnerContextResolver` / `partnerSummary*` / `partnerTraits*`
 - [ ] Result card always renders `boundaryReminder` (required field)
 - [ ] "生成會使用 1 則額度" caption present at every credit-spending entry point
 - [ ] `flutter test --coverage` baseline maintained
@@ -1292,25 +1677,42 @@ If all pass → ADR + snapshot update (post-ship doc closeout, separate commit).
 ### Before Phase X merge
 - [ ] CI/CD: analyze-chat still deploys with `--no-verify-jwt`
 - [ ] CI/CD: coach-follow-up deploys WITHOUT `--no-verify-jwt`
-- [ ] Telemetry events all 5 verified in staging logs
-- [ ] TF smoke passes all 9 scenarios
+- [ ] All 5 telemetry events verified in staging logs
+- [ ] TF smoke passes all 9 scenarios (incl. account-delete cleanup)
 
 ---
 
 ## 10. Codex Amendments Log
 
-(Empty — populated after Codex spec review of this plan.)
+### Rev 0 → Rev 1 — applied 2026-05-02
+
+Codex plan review verdict NEEDS-FIX (see review file referenced above) raised 7 items. All addressed:
+
+1. **P1 #1 — Phase A standalone-merge claim**: Moved CI/CD deploy step from old §X23 into new Task A9 (Phase A). Old A9 manual smoke renamed to A10. Phase A is now genuinely standalone-mergeable end to end. §3 Phase Plan table updated.
+2. **P1 #2 — Wrong cleanup seam**: Removed all references to wiring through `SupabaseService.deleteAccount` / `signOut`. New T14 wires `coach_follow_up_results` into `StorageService.clearAll()` (called by `SettingsScreen.deleteAccount` chain at `settings_screen.dart:686-688`). Privacy regression added to **existing** `storage_service_clear_all_test.dart`, not a parallel file. New §0 OPEN Q OQ-Sign-1 surfaces the sign-out semantics decision to Eric explicitly (recommend keep current behavior).
+3. **P1 #3 — Quota edge-case test matrix expanded**: Task A6 + A7 test list expanded to cover (a) subscription self-heal, (b) daily reset, (c) monthly reset, (d) test account skip, (e) RevenueCat tier refresh on cap, (f) unknown / null tier fallback to free, (g) deduct uses same updated counters as gate.
+4. **P1 #4 — Deno assertRejects fix**: ALL `assertRejects` examples in the plan are now `await`ed inside `async` test bodies. Audit comment added to §9 Validation Checklist (Phase A).
+5. **P1 #5 — Banned-token enforcement at validator**: Task A3 expanded to include `assertCardSafe(card)` function rejecting `PUA / 收割 / 控住 / 攻略 / 壞女人 / 高分妹 / 玩咖`. Task A7 calls it after `validateResponseCard`; failure → 5xx + NO credit deduct (same contract as missing `boundaryReminder`). Client-side double-check added to T19 for defense in depth.
+6. **P2 #6 — Hive temp path**: Task B13 test sample rewritten to use `Hive.init('./.dart_tool/test_hive_*')` + manual register + `deleteFromDisk` teardown, mirroring `storage_service_partner_box_test.dart`. NOT `Hive.initFlutter()`.
+7. **P2 #7 — `lastConversationSummary` source helper**: New Task C17 introduces `buildCoachFollowUpPartnerHint` pure helper with 6 unit tests covering: conversation-level only / 200-char cap / null when no summary / null when no current conversation / Spec 3 flagged omit / no PartnerContextResolver/traits/raw access. CI grep guard added. Helper output is the ONLY thing C19 API service may pass to Edge.
+
+Net task count change: 25 → 26 (+1 for new C17, CI moved A↔X balances out).
 
 ---
 
 ## 11. References
 
 - **Design (binding)**: `docs/plans/2026-05-02-spec5-coach-follow-up-v1-design.md` @ `a66ca5b`
-- **Design Codex review**: `docs/reviews/2026-05-02_spec5-coach-follow-up-design_codex-review.md`
+- **Design Codex review**: `docs/reviews/2026-05-02_spec5-coach-follow-up-design_codex-review.md` @ `3d8dd3a`
+- **Plan Rev 0 Codex review**: `docs/reviews/2026-05-02_spec5-coach-follow-up-impl-plan_codex-review.md` @ `146b8e3`
 - **Pattern reference (cost machinery)**: `supabase/functions/analyze-chat/index.ts:3296-3736` (DO NOT IMPORT)
 - **Pattern reference (Hive box repo)**: `lib/features/user_profile/data/repositories/partner_style_repository.dart`, `partner_data_quality_repository.dart`
-- **Account-clear hooks**: `lib/core/services/supabase_service.dart:157-220`
+- **Pattern reference (Hive unit-test temp path)**: `test/unit/services/storage_service_partner_box_test.dart`
+- **Privacy seam (cleanup)**: `lib/core/services/storage_service.dart:145-153`, `test/unit/services/storage_service_clear_all_test.dart`
+- **Account-deletion chain caller**: `lib/features/subscription/presentation/screens/settings_screen.dart:686-688`
 - **Partner detail insertion site**: `lib/features/partner/presentation/screens/partner_detail_screen.dart`
+- **Conversation summary source**: `lib/features/conversation/domain/entities/conversation.dart` + `conversation_summary.dart` + `lib/features/conversation/data/services/memory_service.dart`
+- **Spec 3 flagged provider**: `lib/features/user_profile/data/providers/data_quality_flag_provider.dart`
 - **Hive typeId map**: `lib/hive_registrar.g.dart` (typeIds 0-15 used; 16 is next free)
 - **GameStage enum stable keys**: `lib/features/analysis/domain/entities/game_stage.dart`
 - **CI/CD workflow**: `.github/workflows/deploy-edge-function.yml`
@@ -1318,16 +1720,13 @@ If all pass → ADR + snapshot update (post-ship doc closeout, separate commit).
 
 ---
 
-## 12. Next Step (after this plan ACK'd)
+## 12. Next Step (after this Rev 1 ACK'd)
 
-1. **Codex** spec review on this plan → verdict in `docs/reviews/2026-05-02_spec5-coach-follow-up-impl-plan_codex-review.md`. Areas to scrutinize:
-   - Cost machinery copy: did we miss any quota edge case from `analyze-chat:3296-3604`?
-   - typeId 16 collision check
-   - CI/CD deploy ordering
-   - Phase boundary mergeability claim (Phase A ships standalone?)
-2. **Eric** final read-through after Codex amendments applied.
-3. Open worktree (per `superpowers:using-git-worktrees`) for the implementation branch.
-4. Choose execution mode: subagent-driven (this session) or parallel session (separate).
-5. Begin Phase A T1; commit + push every task per CLAUDE.md rule.
+1. **Eric** resolves OQ-Sign-1 (§0). Recommended: option (a) — keep sign-out behavior unchanged.
+2. **Codex** re-review on this Rev 1 → expect verdict `REVISED_AND_APPROVED` per the review's closing line ("unless the amendment introduces new scope"). Verdict file: same path, append to existing `*_codex-review.md` or new `*_codex-review-rev1.md`.
+3. **Eric** final ACK after Codex verdict.
+4. Open worktree (per `superpowers:using-git-worktrees`) for the implementation branch.
+5. Choose execution mode: subagent-driven (this session) or parallel session (separate).
+6. Begin Phase A T1; commit + push every task per CLAUDE.md rule.
 
-Plan does NOT begin code until Codex + Eric ACK.
+Plan does NOT begin code until Codex Rev 1 verdict + Eric ACK.
