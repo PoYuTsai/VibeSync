@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -96,6 +97,7 @@ late Box<Partner> _partnerBox;
 late Box<Conversation> _convoBox;
 late Box<PartnerStyleOverride> _styleBox;
 late Box<PartnerDataQualityState> _qualityBox;
+late Box<CoachFollowUpResult> _followUpBox;
 late _CountingConversationRepository _convoRepo;
 
 Future<ProviderContainer> _makeContainer() async {
@@ -171,6 +173,9 @@ void main() {
     if (!Hive.isAdapterRegistered(15)) {
       Hive.registerAdapter(NamePairAdapter());
     }
+    if (!Hive.isAdapterRegistered(16)) {
+      Hive.registerAdapter(CoachFollowUpResultAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -194,10 +199,17 @@ void main() {
     _qualityBox = await Hive.openBox<PartnerDataQualityState>(
       'partner_data_quality_states',
     );
+    // Same lazy-default story for the Spec 5 B15 cascade — open canonical box
+    // so PartnerRepository._followUpRepo getter resolves via
+    // CoachFollowUpRepositoryImpl(StorageService.coachFollowUpResultsBox).
+    _followUpBox = await Hive.openBox<CoachFollowUpResult>(
+      'coach_follow_up_results',
+    );
     _convoRepo = _CountingConversationRepository();
   });
 
   tearDown(() async {
+    await _followUpBox.deleteFromDisk();
     await _qualityBox.deleteFromDisk();
     await _styleBox.deleteFromDisk();
     await _partnerBox.deleteFromDisk();

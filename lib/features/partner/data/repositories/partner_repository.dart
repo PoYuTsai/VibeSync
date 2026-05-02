@@ -1,6 +1,8 @@
 // lib/features/partner/data/repositories/partner_repository.dart
 import 'package:hive_ce/hive_ce.dart';
 import '../../../../core/services/storage_service.dart';
+import '../../../coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
+import '../../../coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../../user_profile/data/repositories/partner_style_repository.dart';
@@ -17,9 +19,11 @@ import '../services/partner_id_factory.dart';
 /// - [listByOwner] — owner-scoped query for the home Partner list.
 /// - [merge] — re-points all conversations of `fromId` to `toId`, appends
 ///   the source partner's `customNote` into the target with a `[from <name>]`
-///   tag, then deletes the source partner and its style override. No-op on
-///   same id; throws
-///   `ArgumentError` if either side is missing (no partial state).
+///   tag, then deletes the source partner and cascades cleanup of its style
+///   override (Spec 2), data-quality state (Spec 3), and coach follow-up
+///   card (Spec 5). The target partner's per-partner state is never cloned
+///   or overwritten. No-op on same id; throws `ArgumentError` if either side
+///   is missing (no partial state).
 /// - [delete] — removes a partner row, but only after confirming zero
 ///   conversations still reference it. Throws
 ///   [PartnerHasConversationsException] otherwise; UI must surface this and
@@ -33,15 +37,18 @@ class PartnerRepository {
     Box<Conversation>? conversationBox,
     PartnerStyleRepository? styleRepo,
     PartnerDataQualityRepository? qualityRepo,
+    CoachFollowUpRepository? followUpRepo,
   })  : _box = box ?? StorageService.partnersBox,
         _injectedConversationBox = conversationBox,
         _injectedStyleRepo = styleRepo,
-        _injectedQualityRepo = qualityRepo;
+        _injectedQualityRepo = qualityRepo,
+        _injectedFollowUpRepo = followUpRepo;
 
   final Box<Partner> _box;
   final Box<Conversation>? _injectedConversationBox;
   final PartnerStyleRepository? _injectedStyleRepo;
   final PartnerDataQualityRepository? _injectedQualityRepo;
+  final CoachFollowUpRepository? _injectedFollowUpRepo;
 
   // Lazy so callers that never invoke `merge` (e.g. the A1 migration path
   // and its tests) don't pay for opening the conversations box.
@@ -57,6 +64,12 @@ class PartnerRepository {
   // to be open when delete() runs the Spec 3 cascade.
   PartnerDataQualityRepository get _qualityRepo =>
       _injectedQualityRepo ?? PartnerDataQualityRepository();
+
+  // Lazy for the same reason — coach_follow_up_results box only needs to be
+  // open when delete() runs the Spec 5 cascade (B15).
+  CoachFollowUpRepository get _followUpRepo =>
+      _injectedFollowUpRepo ??
+      CoachFollowUpRepositoryImpl(StorageService.coachFollowUpResultsBox);
 
   Partner? getById(String id) => _box.get(id);
 
@@ -106,6 +119,7 @@ class PartnerRepository {
     await _box.delete(fromId);
     await _styleRepo.delete(fromId);
     await _qualityRepo.delete(fromId);
+    await _followUpRepo.delete(fromId);
   }
 
   /// Overwrites the existing row for [partner.id] and bumps `updatedAt` to
@@ -127,9 +141,12 @@ class PartnerRepository {
   /// (not via `aggregate.totalRounds`) so a zero-round conversation still
   /// blocks the delete.
   ///
-  /// On success, also cascades into the Spec 2 `PartnerStyleRepository` so
-  /// per-partner style overrides do not survive a deleted partner. If the
-  /// guard throws, no rows are touched (atomic-failure semantics).
+  /// On success, also cascades into:
+  ///   - Spec 2 `PartnerStyleRepository` — per-partner style overrides
+  ///   - Spec 3 `PartnerDataQualityRepository` — name-pair confirmation state
+  ///   - Spec 5 `CoachFollowUpRepository` — last generated follow-up card
+  /// so none of those rows survive a deleted partner. If the guard throws,
+  /// no rows are touched (atomic-failure semantics).
   Future<void> delete(String partnerId) async {
     final convCount =
         _conversationBox.values.where((c) => c.partnerId == partnerId).length;
@@ -139,6 +156,7 @@ class PartnerRepository {
     await _box.delete(partnerId);
     await _styleRepo.delete(partnerId);
     await _qualityRepo.delete(partnerId);
+    await _followUpRepo.delete(partnerId);
   }
 
   /// Splits the conversations listed in [matchedConversationIds] off the

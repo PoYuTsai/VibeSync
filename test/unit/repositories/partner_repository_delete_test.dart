@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
+import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -47,6 +49,7 @@ void main() {
   late Box<Conversation> conversationBox;
   late Box<PartnerStyleOverride> styleBox;
   late Box<PartnerDataQualityState> qualityBox;
+  late Box<CoachFollowUpResult> followUpBox;
   late PartnerRepository repo;
 
   setUpAll(() {
@@ -85,6 +88,9 @@ void main() {
     if (!Hive.isAdapterRegistered(15)) {
       Hive.registerAdapter(NamePairAdapter());
     }
+    if (!Hive.isAdapterRegistered(16)) {
+      Hive.registerAdapter(CoachFollowUpResultAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -98,15 +104,18 @@ void main() {
         await Hive.openBox<Conversation>('conversations_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('pso_$ts');
     qualityBox = await Hive.openBox<PartnerDataQualityState>('pdq_$ts');
+    followUpBox = await Hive.openBox<CoachFollowUpResult>('cfu_$ts');
     repo = PartnerRepository(
       box: partnerBox,
       conversationBox: conversationBox,
       styleRepo: PartnerStyleRepository(box: styleBox),
       qualityRepo: PartnerDataQualityRepository(injectedBox: qualityBox),
+      followUpRepo: CoachFollowUpRepositoryImpl(followUpBox),
     );
   });
 
   tearDown(() async {
+    await followUpBox.deleteFromDisk();
     await qualityBox.deleteFromDisk();
     await styleBox.deleteFromDisk();
     await conversationBox.deleteFromDisk();
