@@ -30,11 +30,17 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy Edge Functions
+        # 硬規則：每條 deploy 獨立一行，禁止 `supabase functions deploy --all`
+        # （--all 會把 analyze-chat 的 --no-verify-jwt 拔掉，導致 OCR 整批壞掉，
+        #   詳 docs/2026-04-05-ocr-rollback-note.md）
+        # coach-follow-up 必須 JWT-verified（用戶授權後才扣額度），所以**不**加
+        # --no-verify-jwt。
         run: |
           supabase functions deploy analyze-chat --no-verify-jwt
           supabase functions deploy delete-account
           supabase functions deploy sync-subscription
           supabase functions deploy submit-feedback
           supabase functions deploy revenuecat-webhook --no-verify-jwt
+          supabase functions deploy coach-follow-up
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
