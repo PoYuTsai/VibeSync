@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/storage_service.dart';
+import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -52,6 +53,9 @@ void main() {
     if (!Hive.isAdapterRegistered(15)) {
       Hive.registerAdapter(NamePairAdapter());
     }
+    if (!Hive.isAdapterRegistered(16)) {
+      Hive.registerAdapter(CoachFollowUpResultAdapter());
+    }
   });
 
   tearDown(() async {
@@ -60,6 +64,7 @@ void main() {
     await Hive.deleteBoxFromDisk('user_profile');
     await Hive.deleteBoxFromDisk('partner_style_overrides');
     await Hive.deleteBoxFromDisk('partner_data_quality_states');
+    await Hive.deleteBoxFromDisk('coach_follow_up_results');
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await Hive.deleteBoxFromDisk(AppConstants.usageBox);
   });
@@ -76,6 +81,7 @@ void main() {
     await Hive.openBox<PartnerDataQualityState>(
       'partner_data_quality_states',
     );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -107,6 +113,7 @@ void main() {
     await Hive.openBox<PartnerDataQualityState>(
       'partner_data_quality_states',
     );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -133,6 +140,7 @@ void main() {
     await Hive.openBox<PartnerDataQualityState>(
       'partner_data_quality_states',
     );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -148,5 +156,37 @@ void main() {
     await StorageService.clearAll();
 
     expect(StorageService.partnerDataQualityStatesBox.isEmpty, isTrue);
+  });
+
+  test('clearAll() purges coach_follow_up_results box (Spec 5)', () async {
+    await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<Partner>(AppConstants.partnersBox);
+    await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox(AppConstants.settingsBox);
+    await Hive.openBox(AppConstants.usageBox);
+
+    await StorageService.coachFollowUpResultsBox.put(
+      'p1',
+      CoachFollowUpResult(
+        partnerId: 'p1',
+        phase: 'postDateReflection',
+        headline: 'h',
+        observation: 'o',
+        task: 't',
+        boundaryReminder: 'b',
+        generatedAt: DateTime.utc(2026, 5, 2, 16),
+        modelUsed: 'claude-sonnet-4-20250514',
+      ),
+    );
+    expect(StorageService.coachFollowUpResultsBox.isNotEmpty, isTrue);
+
+    await StorageService.clearAll();
+
+    expect(StorageService.coachFollowUpResultsBox.isEmpty, isTrue);
   });
 }
