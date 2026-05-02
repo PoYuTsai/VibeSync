@@ -16,6 +16,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import { validateRequest } from "./validate.ts";
+import { callClaudeAPI, runCoachFollowUp } from "./generation.ts";
 import {
   applyResetsIfNeeded,
   checkQuota,
@@ -377,17 +378,40 @@ export async function handleRequest(req: Request): Promise<Response> {
     );
   }
 
-  // ── T7 will pick up here: prompt → Claude → validate/safety → deduct → response. ──
-  // Stash gate-validated context on a "request scope" log line so live deploys
-  // show the gate is wiring through correctly.
-  logInfo("coach_follow_up_gate_passed", {
-    user: summarizeUser(user.id),
-    tier: normalizeTier(sub.tier),
-    phase: payload.phase,
-    accountIsTest,
-  });
+  // ── T7: generate via Claude, validate + safety check, deduct on success. ──
+  const apiKey = Deno.env.get("CLAUDE_API_KEY");
+  if (!apiKey) {
+    logError("coach_follow_up_config_missing", { user: summarizeUser(user.id) });
+    return jsonResponse({ error: "config_missing" }, 500);
+  }
 
-  return jsonResponse({ error: "not_implemented" }, 501);
+  const tier = normalizeTier(sub.tier);
+  const subAtCall = sub;
+  const result = await runCoachFollowUp(
+    {
+      userId: user.id,
+      phase: payload.phase,
+      answers: payload.answers,
+      partnerHint: payload.partnerHint,
+      tier,
+      accountIsTest,
+      apiKey,
+    },
+    {
+      callClaude: callClaudeAPI,
+      deductCredit: async ({ userId }) => {
+        await supabase
+          .from("subscriptions")
+          .update({
+            monthly_messages_used: (subAtCall.monthly_messages_used || 0) + 1,
+            daily_messages_used: (subAtCall.daily_messages_used || 0) + 1,
+          })
+          .eq("user_id", userId);
+      },
+      logger: { info: logInfo, warn: logWarn },
+    },
+  );
+  return jsonResponse(result.body, result.status);
 }
 
 serve(handleRequest);

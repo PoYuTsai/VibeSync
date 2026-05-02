@@ -1,0 +1,232 @@
+// supabase/functions/coach-follow-up/generation_test.ts
+//
+// T7 — full generation pipeline edge-case matrix.
+// Pure helper pattern (T5/T6 precedent, Codex-ACK'd): runCoachFollowUp takes
+// pre-validated context (gate already passed in index.ts) and DI'd
+// {callClaude, deductCredit, logger}. No Supabase mock surface here — the
+// orchestrator does the row update.
+//
+// Critical invariant under test:
+//   parseClaudeJSON → truncateCard → validateResponseCard → assertCardSafe →
+//   deduct → respond
+// If ANY step before deduct throws, deductCredit MUST NOT fire.
+
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  runCoachFollowUp,
+  type ClaudeCallArgs,
+  type GenerationDeps,
+  type GenerationInput,
+} from "./generation.ts";
+
+// ---------------------------------------------------------------------------
+// Test harness
+// ---------------------------------------------------------------------------
+
+interface CapturedLog {
+  level: "info" | "warn";
+  event: string;
+  data: Record<string, unknown>;
+}
+
+interface Harness {
+  deps: GenerationDeps;
+  logs: CapturedLog[];
+  deductCalls: Array<{ userId: string }>;
+  claudeCalls: ClaudeCallArgs[];
+}
+
+function makeHarness(claudeBehavior: () => Promise<unknown>): Harness {
+  const logs: CapturedLog[] = [];
+  const deductCalls: Array<{ userId: string }> = [];
+  const claudeCalls: ClaudeCallArgs[] = [];
+
+  const deps: GenerationDeps = {
+    callClaude: async (args) => {
+      claudeCalls.push(args);
+      return await claudeBehavior();
+    },
+    deductCredit: async ({ userId }) => {
+      deductCalls.push({ userId });
+    },
+    logger: {
+      info: (event, data = {}) => logs.push({ level: "info", event, data }),
+      warn: (event, data = {}) => logs.push({ level: "warn", event, data }),
+    },
+    now: () => 1700000000000, // deterministic
+  };
+
+  return { deps, logs, deductCalls, claudeCalls };
+}
+
+function claudeWrapped(card: Record<string, unknown>): unknown {
+  return { content: [{ text: JSON.stringify(card) }] };
+}
+
+const VALID_CARD = {
+  headline: "今晚先別發訊息",
+  observation: "她回得慢一定是你太急——其實是你在想結果",
+  task: "今晚不傳訊息，去吃個飯",
+  suggestedLine: null,
+  boundaryReminder: "她的節奏跟你的不安是兩件事",
+};
+
+const BASE_INPUT: GenerationInput = {
+  userId: "user-abc-123",
+  phase: "postDateReflection",
+  answers: { q1: "卡卡的", q2: null, q3: null },
+  partnerHint: { name: "Mia" },
+  tier: "starter",
+  accountIsTest: false,
+  apiKey: "sk-test-key",
+};
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+Deno.test("T7: successful generation deducts 1 credit and returns 200", async () => {
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 200);
+  assertEquals(h.deductCalls.length, 1);
+  assertEquals(h.deductCalls[0].userId, "user-abc-123");
+  assertEquals((result.body as Record<string, unknown>).phase, "postDateReflection");
+});
+
+Deno.test("T7: tier=starter selects sonnet model in response", async () => {
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals((result.body as Record<string, unknown>).model, "claude-sonnet-4-20250514");
+});
+
+Deno.test("T7: tier=free selects haiku model", async () => {
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  const result = await runCoachFollowUp({ ...BASE_INPUT, tier: "free" }, h.deps);
+
+  assertEquals((result.body as Record<string, unknown>).model, "claude-haiku-4-5-20251001");
+});
+
+Deno.test("T7: null boundaryReminder → 5xx, credit NOT deducted", async () => {
+  const h = makeHarness(async () =>
+    claudeWrapped({ ...VALID_CARD, boundaryReminder: null })
+  );
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals((result.body as Record<string, unknown>).error, "schema_invalid");
+  assertEquals(h.deductCalls.length, 0);
+});
+
+Deno.test("T7: missing boundaryReminder → 5xx, credit NOT deducted", async () => {
+  const h = makeHarness(async () => {
+    const { boundaryReminder: _, ...rest } = VALID_CARD;
+    return claudeWrapped(rest);
+  });
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals((result.body as Record<string, unknown>).error, "schema_invalid");
+  assertEquals(h.deductCalls.length, 0);
+});
+
+Deno.test("T7: banned token 'PUA' → 5xx errorClass=banned_token, credit NOT deducted", async () => {
+  const h = makeHarness(async () =>
+    claudeWrapped({
+      ...VALID_CARD,
+      boundaryReminder: "別用 PUA 話術——對方有自己節奏",
+    })
+  );
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals((result.body as Record<string, unknown>).error, "banned_token");
+  assertEquals(h.deductCalls.length, 0);
+
+  const failed = h.logs.find((l) => l.event === "coach_follow_up_failed");
+  assertEquals(failed?.data.errorClass, "banned_token");
+});
+
+Deno.test("T7: banned token '收割' in task → 5xx, credit NOT deducted", async () => {
+  const h = makeHarness(async () =>
+    claudeWrapped({ ...VALID_CARD, task: "練習收割節奏" })
+  );
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals((result.body as Record<string, unknown>).error, "banned_token");
+  assertEquals(h.deductCalls.length, 0);
+});
+
+Deno.test("T7: Claude API timeout → 5xx, credit NOT deducted", async () => {
+  const h = makeHarness(async () => {
+    throw new Error("timeout: claude api after 60000ms");
+  });
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertStringIncludes(
+    String((result.body as Record<string, unknown>).error),
+    "AI 生成失敗",
+  );
+  assertEquals(h.deductCalls.length, 0);
+
+  const failed = h.logs.find((l) => l.event === "coach_follow_up_failed");
+  assertEquals(failed?.data.errorClass, "claude_timeout");
+});
+
+Deno.test("T7: over-cap headline (50 chars) → truncated to 30, credit deducted", async () => {
+  const longHeadline = "今晚先別發訊息因為你還在想結果而不是想她".padEnd(50, "X");
+  const h = makeHarness(async () =>
+    claudeWrapped({ ...VALID_CARD, headline: longHeadline })
+  );
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 200);
+  const body = result.body as Record<string, unknown>;
+  const card = body.card as Record<string, string>;
+  assertEquals(card.headline.length, 30);
+  assertEquals(h.deductCalls.length, 1);
+});
+
+Deno.test("T7: test account success → 200 but credit NOT deducted (cap bypass)", async () => {
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  const result = await runCoachFollowUp(
+    { ...BASE_INPUT, accountIsTest: true },
+    h.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(h.deductCalls.length, 0);
+
+  const succeeded = h.logs.find((l) => l.event === "coach_follow_up_succeeded");
+  assertEquals(succeeded?.data.costDeducted, 0);
+});
+
+Deno.test("T7: deduct order — validate + safety pass BEFORE deductCredit fires", async () => {
+  // Sequence guard: if deductCredit threw, success log path would still fire.
+  // We assert the order by checking deductCredit is invoked BEFORE the
+  // succeeded telemetry event lands in the log capture.
+  const events: string[] = [];
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = async () => {
+    events.push("deduct");
+  };
+  h.deps.logger = {
+    info: (event) => events.push(`info:${event}`),
+    warn: (event) => events.push(`warn:${event}`),
+  };
+  await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  // Order: invoked → deduct → succeeded
+  assertEquals(events, [
+    "info:coach_follow_up_invoked",
+    "deduct",
+    "info:coach_follow_up_succeeded",
+  ]);
+});
