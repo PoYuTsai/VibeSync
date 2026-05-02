@@ -31,6 +31,7 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../conversation/presentation/dialogs/delete_conversation_confirm_dialog.dart';
 import '../../../analysis/data/providers/analysis_providers.dart';
+import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
@@ -170,6 +171,15 @@ class PartnerDetailScreen extends ConsumerWidget {
                 PartnerRadarSummaryCard(
                   latestConversation:
                       conversations.isEmpty ? null : conversations.first,
+                ),
+                const SizedBox(height: 16),
+                // Spec 5 C24 — coach-follow-up entry block. Anchor B: sits
+                // between the profile cluster (Style + Radar) and the
+                // conversations list. Telemetry events are stubbed at the
+                // screen layer until X25 wires a real sink.
+                CoachFollowUpSection(
+                  partnerId: partnerId,
+                  onTelemetry: _logCoachFollowUpTelemetry,
                 ),
                 const SizedBox(height: 16),
                 if (conversations.isEmpty)
@@ -515,6 +525,30 @@ class _GlowBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Stub telemetry sink for Spec 5 coach-follow-up events. Phase X25 will
+/// swap this for a real analytics SDK call; until then we log in debug so
+/// the contract is exercised end-to-end without leaking free-text answers.
+void _logCoachFollowUpTelemetry(CoachFollowUpTelemetryEvent event) {
+  switch (event) {
+    case CoachFollowUpInvokedEvent(:final phase, :final hasOptionalText):
+      debugPrint(
+        'coach_follow_up_invoked phase=${phase.name} hasOptionalText=$hasOptionalText',
+      );
+    case CoachFollowUpRegeneratedEvent(:final phase, :final sinceLast):
+      debugPrint(
+        'coach_follow_up_regenerated phase=${phase.name} secondsSinceLast=${sinceLast.inSeconds}',
+      );
+    case CoachFollowUpPhaseSwitchedEvent(
+        :final fromPhase,
+        :final toPhase,
+        :final hadResultBefore,
+      ):
+      debugPrint(
+        'coach_follow_up_phase_switched from=${fromPhase.name} to=${toPhase.name} hadResultBefore=$hadResultBefore',
+      );
   }
 }
 

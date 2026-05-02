@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
+import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
@@ -15,6 +18,20 @@ import 'package:vibesync/features/user_profile/data/providers/partner_style_prov
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/presentation/widgets/partner_style_entry_card.dart';
+
+/// Spec 5 C24 — minimal fake; PartnerDetailScreen now mounts
+/// CoachFollowUpSection which reads StorageService unless overridden.
+class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
+  final Map<String, CoachFollowUpResult> _store = {};
+  @override
+  CoachFollowUpResult? get(String id) => _store[id];
+  @override
+  Future<void> put(CoachFollowUpResult r) async => _store[r.partnerId] = r;
+  @override
+  Future<void> delete(String id) async => _store.remove(id);
+  @override
+  Future<void> clearAll() async => _store.clear();
+}
 
 class _FakeStyleRepo implements PartnerStyleRepository {
   final Map<String, PartnerStyleOverride> byPartner = {};
@@ -57,6 +74,8 @@ void main() {
             .overrideWith((_) => const <Conversation>[]),
         partnerListProvider.overrideWith((_) => [_p()]),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         // Spec 3 Task 19 — PartnerDetailScreen now watches dataQualityFlag.
         // Default to unflagged so the banner doesn't render in this test.
         dataQualityFlagProvider('p1')

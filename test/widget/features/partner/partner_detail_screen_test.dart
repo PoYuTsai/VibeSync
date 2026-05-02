@@ -8,6 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
+import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
+import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import 'package:vibesync/features/coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/new_conversation_sheet.dart';
@@ -54,6 +57,22 @@ Conversation _conv(String id) => Conversation(
       createdAt: DateTime(2026, 4, 20),
       updatedAt: DateTime(2026, 4, 20),
     );
+
+/// Spec 5 C24 — minimal in-memory CoachFollowUpRepository for hermetic
+/// widget tests. The real repo reaches StorageService.coachFollowUpResultsBox
+/// which isn't open in test env. PartnerDetailScreen now mounts the
+/// CoachFollowUpSection so every ProviderScope here needs this override.
+class _FakeCoachFollowUpRepo implements CoachFollowUpRepository {
+  final Map<String, CoachFollowUpResult> _store = {};
+  @override
+  CoachFollowUpResult? get(String id) => _store[id];
+  @override
+  Future<void> put(CoachFollowUpResult r) async => _store[r.partnerId] = r;
+  @override
+  Future<void> delete(String id) async => _store.remove(id);
+  @override
+  Future<void> clearAll() async => _store.clear();
+}
 
 class _FakeStyleRepo implements PartnerStyleRepository {
   final Map<String, PartnerStyleOverride> byPartner = {};
@@ -112,6 +131,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -146,6 +167,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -178,6 +201,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -215,6 +240,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -247,6 +274,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -277,6 +306,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -319,6 +350,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -345,6 +378,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -387,6 +422,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -408,9 +445,17 @@ void main() {
   });
 
   testWidgets('empty conversation list shows hint text', (t) async {
+    // The CoachFollowUpSection (Spec 5 C24) lands above this hint inside
+    // the same ListView; default surface keeps the hint outside the lazy
+    // build cache. Match the tall-surface convention used by tile tests.
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -433,6 +478,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -466,6 +513,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -519,6 +568,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -590,6 +641,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -616,6 +669,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -659,6 +714,8 @@ void main() {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
         partnerAggregateProvider('p1')
             .overrideWith((_) => PartnerAggregateView.empty()),
@@ -709,6 +766,8 @@ void main() {
       return ProviderScope(
         overrides: [
           partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
           partnerByIdProvider('p1').overrideWith((_) => partner ?? _p()),
           partnerAggregateProvider('p1')
               .overrideWith((_) => PartnerAggregateView.empty()),
