@@ -39,10 +39,20 @@ const MAX_REQUEST_BODY_BYTES = 32 * 1024; // 32 KB — coach-follow-up has no im
 // Helpers
 // ---------------------------------------------------------------------------
 
-function jsonResponse(data: unknown, status = 200): Response {
+// CORS headers — mirrors analyze-chat:3256-3260. Browsers issue preflight
+// OPTIONS for cross-origin POSTs from web/iOS, so every response (preflight,
+// auth-fail, body-error, quota, success) MUST carry these.
+export const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Authorization, Content-Type, x-client-info, apikey",
+};
+
+export function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...corsHeaders },
   });
 }
 
@@ -235,7 +245,12 @@ async function maybeRefreshTierFromRevenueCat(
 // Request handler
 // ---------------------------------------------------------------------------
 
-serve(async (req: Request) => {
+export async function handleRequest(req: Request): Promise<Response> {
+  // CORS preflight — must return CORS headers without auth (browser fires this
+  // before any cross-origin POST from web/iOS clients).
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method === "GET") {
     return jsonResponse({ status: "ok", function: "coach-follow-up" });
   }
@@ -373,4 +388,6 @@ serve(async (req: Request) => {
   });
 
   return jsonResponse({ error: "not_implemented" }, 501);
-});
+}
+
+serve(handleRequest);
