@@ -168,6 +168,7 @@ ProviderContainer _container({
     coachFollowUpRepositoryProvider.overrideWithValue(repo),
     coachFollowUpApiServiceProvider
         .overrideWithValue(CoachFollowUpApiService(invoker: invoker)),
+    coachFollowUpNowProvider.overrideWithValue(() => DateTime(2026, 5, 2, 18)),
     partnerByIdProvider(partnerId).overrideWithValue(partner),
     conversationsByPartnerProvider(partnerId).overrideWithValue(conversations),
     dataQualityFlagProvider(partnerId).overrideWithValue(flag),
@@ -246,10 +247,34 @@ void main() {
         CoachFollowUpPhase.preDateReminder,
       );
     });
+
+    test(
+        'returns postDateReflection when post-date keyword appears after a '
+        'long quiet gap', () {
+      final convo = _convo(
+        messages: [
+          _msg('昨天見完覺得氣氛還不錯', at: DateTime(2026, 5, 1, 18)),
+          _msg('我也覺得蠻自然的', fromMe: true, at: DateTime(2026, 5, 2, 0)),
+        ],
+      );
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _stubInvoker(_okResponse()),
+        partner: _partner(),
+        conversations: [convo],
+      );
+      addTearDown(c.dispose);
+
+      expect(
+        c.read(coachFollowUpHintProvider('p-1')),
+        CoachFollowUpPhase.postDateReflection,
+      );
+    });
   });
 
   group('coachFollowUpPartnerHintProvider — API payload (T17 helper)', () {
-    test('returns null when partner does not exist (deleted / merged away)', () {
+    test('returns null when partner does not exist (deleted / merged away)',
+        () {
       final c = _container(
         repo: _FakeRepo(),
         invoker: _stubInvoker(_okResponse()),
@@ -260,7 +285,8 @@ void main() {
       expect(c.read(coachFollowUpPartnerHintProvider('p-1')), isNull);
     });
 
-    test('builds hint with name + heatScore + gameStage from current conversation',
+    test(
+        'builds hint with name + heatScore + gameStage from current conversation',
         () {
       final convo = _convo(
         gameStage: GameStage.qualification.name,
@@ -356,7 +382,8 @@ void main() {
     });
 
     test('initial state is null when no card stored', () async {
-      final c = _container(repo: _FakeRepo(), invoker: _stubInvoker(_okResponse()));
+      final c =
+          _container(repo: _FakeRepo(), invoker: _stubInvoker(_okResponse()));
       addTearDown(c.dispose);
 
       final value = await c.read(coachFollowUpControllerProvider('p-1').future);
@@ -378,12 +405,9 @@ void main() {
       addTearDown(c.dispose);
 
       await c.read(coachFollowUpControllerProvider('p-1').future);
-      await c
-          .read(coachFollowUpControllerProvider('p-1').notifier)
-          .generate(
+      await c.read(coachFollowUpControllerProvider('p-1').notifier).generate(
             phase: CoachFollowUpPhase.prepareInvite,
-            answers:
-                const CoachFollowUpAnswers(q1: 'fuzzy'),
+            answers: const CoachFollowUpAnswers(q1: 'fuzzy'),
           );
 
       final state = c.read(coachFollowUpControllerProvider('p-1'));
@@ -443,8 +467,7 @@ void main() {
 
       await c.read(coachFollowUpControllerProvider('p-1').future);
 
-      final notifier =
-          c.read(coachFollowUpControllerProvider('p-1').notifier);
+      final notifier = c.read(coachFollowUpControllerProvider('p-1').notifier);
       // Fire two without awaiting the first — second must not reach the API.
       final first = notifier.generate(
         phase: CoachFollowUpPhase.prepareInvite,
@@ -544,8 +567,7 @@ void main() {
 
       await c.read(coachFollowUpControllerProvider('p-1').future);
 
-      final notifier =
-          c.read(coachFollowUpControllerProvider('p-1').notifier);
+      final notifier = c.read(coachFollowUpControllerProvider('p-1').notifier);
       await notifier.generate(
         phase: CoachFollowUpPhase.prepareInvite,
         answers: const CoachFollowUpAnswers(q1: 'fuzzy'),
@@ -574,9 +596,7 @@ void main() {
       addTearDown(c.dispose);
 
       await c.read(coachFollowUpControllerProvider('p-1').future);
-      await c
-          .read(coachFollowUpControllerProvider('p-1').notifier)
-          .regenerate(
+      await c.read(coachFollowUpControllerProvider('p-1').notifier).regenerate(
             phase: CoachFollowUpPhase.prepareInvite,
             answers: const CoachFollowUpAnswers(q1: 'fuzzy'),
           );

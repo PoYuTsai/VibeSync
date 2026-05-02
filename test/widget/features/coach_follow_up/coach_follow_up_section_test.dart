@@ -122,6 +122,18 @@ CoachFollowUpInvoker _stubInvoker({
   };
 }
 
+CoachFollowUpInvoker _errorInvoker({
+  int status = 500,
+  String error = 'schema_invalid',
+}) {
+  return (String _, {required Map<String, dynamic> body}) async {
+    return CoachFollowUpInvokeResponse(
+      status: status,
+      data: <String, dynamic>{'error': error},
+    );
+  };
+}
+
 // ── Pump helper ───────────────────────────────────────────────────────────
 
 Future<void> _pump(
@@ -230,8 +242,7 @@ void main() {
       expect(btn.onPressed, isNull);
     });
 
-    testWidgets(
-        '換情境 returns to chip row but does NOT delete the Hive result',
+    testWidgets('換情境 returns to chip row but does NOT delete the Hive result',
         (t) async {
       final repo = _FakeRepo()..seed(_stored());
       await _pump(t, repo: repo, partner: _partner());
@@ -280,8 +291,7 @@ void main() {
       expect(find.text('換情境'), findsOneWidget);
     });
 
-    testWidgets('重新生成 enabled after a fresh same-session generate',
-        (t) async {
+    testWidgets('重新生成 enabled after a fresh same-session generate', (t) async {
       await _pump(t, repo: _FakeRepo(), partner: _partner());
 
       await t.tap(find.text('準備邀約'));
@@ -296,11 +306,30 @@ void main() {
       );
       expect(btn.onPressed, isNotNull);
     });
+
+    testWidgets('shows a low-pressure error message when generation fails',
+        (t) async {
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        invoker: _errorInvoker(),
+      );
+
+      await t.tap(find.text('準備邀約'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('還沒想好'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('產生跟進建議'));
+      await t.pumpAndSettle();
+
+      expect(find.textContaining('未扣額度'), findsOneWidget);
+      expect(find.text('GEN_HEADLINE'), findsNothing);
+    });
   });
 
   group('CoachFollowUpSection — telemetry contract', () {
-    testWidgets('emits Invoked event after successful sheet submit',
-        (t) async {
+    testWidgets('emits Invoked event after successful sheet submit', (t) async {
       final events = <CoachFollowUpTelemetryEvent>[];
       await _pump(
         t,
@@ -367,8 +396,7 @@ void main() {
       await t.tap(find.text('重新生成'));
       await t.pumpAndSettle();
 
-      final regen =
-          events.whereType<CoachFollowUpRegeneratedEvent>().toList();
+      final regen = events.whereType<CoachFollowUpRegeneratedEvent>().toList();
       expect(regen, hasLength(1));
       expect(regen.first.phase, CoachFollowUpPhase.prepareInvite);
     });

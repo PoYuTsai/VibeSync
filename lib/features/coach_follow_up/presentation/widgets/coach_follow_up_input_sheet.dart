@@ -159,63 +159,61 @@ class _CoachFollowUpInputSheetState extends State<CoachFollowUpInputSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            widget.phase.displayLabel,
-            style: AppTypography.titleMedium.copyWith(
-              fontWeight: FontWeight.w700,
-              color: AppColors.onBackgroundPrimary,
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.phase.displayLabel,
+              style: AppTypography.titleMedium.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.onBackgroundPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          _QuestionGroup(
-            question: _spec.q1Question,
-            required: true,
-            options: _spec.q1Options,
-            selectedKey: _q1,
-            onSelected: (k) => setState(() {
-              _q1 = (_q1 == k) ? null : k;
-            }),
-          ),
-          const SizedBox(height: 16),
-
-          _QuestionGroup(
-            question: _spec.q2Question,
-            required: _spec.q2Required,
-            options: _spec.q2Options,
-            selectedKey: _q2,
-            onSelected: (k) => setState(() {
-              _q2 = (_q2 == k) ? null : k;
-            }),
-          ),
-          const SizedBox(height: 16),
-
-          TextField(
-            controller: _q3Ctrl,
-            maxLength: 80,
-            maxLines: 3,
-            minLines: 1,
-            decoration: InputDecoration(
-              hintText: _spec.q3Hint,
-              border: const OutlineInputBorder(),
+            const SizedBox(height: 16),
+            _QuestionGroup(
+              question: _spec.q1Question,
+              required: true,
+              options: _spec.q1Options,
+              selectedKey: _q1,
+              onSelected: (k) => setState(() {
+                _q1 = (_q1 == k) ? null : k;
+              }),
             ),
-          ),
-          const SizedBox(height: 12),
-
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _canSubmit ? _submit : null,
-              child: const Text('產生跟進建議'),
+            const SizedBox(height: 16),
+            _QuestionGroup(
+              question: _spec.q2Question,
+              required: _spec.q2Required,
+              options: _spec.q2Options,
+              selectedKey: _q2,
+              onSelected: (k) => setState(() {
+                _q2 = (_q2 == k) ? null : k;
+              }),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            TextField(
+              controller: _q3Ctrl,
+              maxLength: 80,
+              maxLines: 3,
+              minLines: 1,
+              decoration: InputDecoration(
+                hintText: _spec.q3Hint,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _canSubmit ? _submit : null,
+                child: const Text('產生跟進建議'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

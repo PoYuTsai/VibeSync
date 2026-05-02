@@ -20,6 +20,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../conversation/domain/entities/message.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../domain/entities/coach_follow_up_phase.dart';
@@ -34,7 +35,8 @@ import '../services/coach_follow_up_api_service.dart';
 
 /// Hive-backed repo. Single instance; box is opened once by StorageService
 /// at app startup and closed on account-clear (B14 wires `clearAll`).
-final coachFollowUpRepositoryProvider = Provider<CoachFollowUpRepository>((ref) {
+final coachFollowUpRepositoryProvider =
+    Provider<CoachFollowUpRepository>((ref) {
   return CoachFollowUpRepositoryImpl(StorageService.coachFollowUpResultsBox);
 });
 
@@ -43,6 +45,12 @@ final coachFollowUpRepositoryProvider = Provider<CoachFollowUpRepository>((ref) 
 final coachFollowUpApiServiceProvider = Provider<CoachFollowUpApiService>(
   (ref) => CoachFollowUpApiService(),
 );
+
+/// Time source for local-only hint derivation. Tests override this so the
+/// post-date "long quiet" heuristic does not depend on wall-clock time.
+final coachFollowUpNowProvider = Provider<DateTime Function()>((ref) {
+  return DateTime.now;
+});
 
 // ── Read-only derived providers ──────────────────────────────────────────
 
@@ -84,6 +92,8 @@ final coachFollowUpHintProvider =
       .skip(convo.messages.length > 5 ? convo.messages.length - 5 : 0)
       .map((m) => m.content)
       .toList(growable: false);
+  final lastMessage = convo.lastMessage;
+  final averageInterval = _averageMessageInterval(convo.messages);
 
   return CoachFollowUpHintResolver.resolve(CoachFollowUpHintInput(
     gameStage: convo.currentGameStage != null
@@ -91,8 +101,31 @@ final coachFollowUpHintProvider =
         : null,
     heatScore: convo.lastEnthusiasmScore,
     recentMessageBodies: recent,
+    timeSinceLastMessage: lastMessage == null
+        ? null
+        : ref.watch(coachFollowUpNowProvider)().difference(
+              lastMessage.timestamp,
+            ),
+    averageMessageInterval: averageInterval,
   ));
 });
+
+Duration? _averageMessageInterval(List<Message> messages) {
+  if (messages.length < 2) return null;
+
+  final sorted = [...messages]
+    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  int totalMs = 0;
+  var gaps = 0;
+  for (var i = 1; i < sorted.length; i++) {
+    final gap = sorted[i].timestamp.difference(sorted[i - 1].timestamp);
+    if (gap <= Duration.zero) continue;
+    totalMs += gap.inMilliseconds;
+    gaps++;
+  }
+  if (gaps == 0) return null;
+  return Duration(milliseconds: totalMs ~/ gaps);
+}
 
 /// API-bound `partnerHint` — the SOLE place this payload is built. The
 /// controller reads this and forwards it to the API service verbatim. The

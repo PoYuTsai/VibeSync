@@ -14,6 +14,28 @@ export const PhaseEnum = z.enum([
   "postDateReflection",
 ]);
 
+const ANSWER_KEY_RULES = {
+  prepareInvite: {
+    q1: ["fuzzy", "concrete", "undecided"],
+    q2: ["fearRejection", "fearTooEager", "noReason", "noOpener"],
+    q2Required: false,
+  },
+  preDateReminder: {
+    q1: ["today", "tomorrow", "withinThreeDays", "withinWeek"],
+    q2: ["meal", "drink", "activity", "undecided"],
+    q2Required: false,
+  },
+  postDateReflection: {
+    q1: ["betterThanExpected", "okay", "awkward", "unsure"],
+    q2: ["proactive", "polite", "cooling", "stillUnclear"],
+    q2Required: true,
+  },
+} as const;
+
+function containsKey(list: readonly string[], value: string): boolean {
+  return list.includes(value);
+}
+
 export const RequestSchema = z.object({
   phase: PhaseEnum,
   answers: z.object({
@@ -29,7 +51,34 @@ export const RequestSchema = z.object({
       lastConversationSummary: z.string().max(200).nullable().optional(),
     })
     .optional(),
-}).strict();
+}).strict().superRefine((payload, ctx) => {
+  const rules = ANSWER_KEY_RULES[payload.phase];
+  if (!containsKey(rules.q1, payload.answers.q1)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["answers", "q1"],
+      message: `invalid q1 for ${payload.phase}`,
+    });
+  }
+
+  const q2 = payload.answers.q2;
+  if (rules.q2Required && (q2 == null || q2 === "")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["answers", "q2"],
+      message: `q2 required for ${payload.phase}`,
+    });
+    return;
+  }
+
+  if (q2 != null && q2 !== "" && !containsKey(rules.q2, q2)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["answers", "q2"],
+      message: `invalid q2 for ${payload.phase}`,
+    });
+  }
+});
 
 // Response card schema — boundaryReminder REQUIRED (Codex P1 #3 boundary contract).
 // Caps: headline 30 / observation 80 / task 30 / suggestedLine 80 / boundaryReminder 60.

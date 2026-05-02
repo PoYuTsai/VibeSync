@@ -256,15 +256,20 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
     );
     final hint = ref.watch(coachFollowUpHintProvider(widget.partnerId));
     final isLoading = controllerState.isLoading;
+    final error = controllerState.whenOrNull(error: (e, _) => e);
 
     final showWithResult = _displayedResult != null && !_showSwitcher;
     if (showWithResult) {
-      return _buildWithResult(_displayedResult!, isLoading);
+      return _buildWithResult(_displayedResult!, isLoading, error);
     }
-    return _buildDefault(hint, isLoading);
+    return _buildDefault(hint, isLoading, error);
   }
 
-  Widget _buildDefault(CoachFollowUpPhase? hinted, bool isLoading) {
+  Widget _buildDefault(
+    CoachFollowUpPhase? hinted,
+    bool isLoading,
+    Object? error,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -291,11 +296,23 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
           isLoading: isLoading,
           onPhaseSelected: _onChipTap,
         ),
+        if (isLoading) ...[
+          const SizedBox(height: 10),
+          _StatusText.loading(),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 10),
+          _StatusText.error(error),
+        ],
       ],
     );
   }
 
-  Widget _buildWithResult(CoachFollowUpResult result, bool isLoading) {
+  Widget _buildWithResult(
+    CoachFollowUpResult result,
+    bool isLoading,
+    Object? error,
+  ) {
     final canRegenerate =
         !isLoading && _lastPhase != null && _lastAnswers != null;
     return Column(
@@ -335,7 +352,54 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
             color: AppColors.glassTextSecondary,
           ),
         ),
+        if (isLoading) ...[
+          const SizedBox(height: 10),
+          _StatusText.loading(),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 10),
+          _StatusText.error(error),
+        ],
       ],
+    );
+  }
+}
+
+class _StatusText extends StatelessWidget {
+  final String text;
+  final Color color;
+
+  const _StatusText._({
+    required this.text,
+    required this.color,
+  });
+
+  factory _StatusText.loading() => const _StatusText._(
+        text: '正在產生跟進建議...',
+        color: AppColors.glassTextSecondary,
+      );
+
+  factory _StatusText.error(Object error) {
+    final message = switch (error) {
+      QuotaExceededException() => '今天的額度已用完，明天再試或調整方案',
+      GenerationFailedException() => '這次沒有產生可用建議，未扣額度，請再試一次',
+      ApiException() => '目前無法送出，請稍後再試',
+      _ => '目前無法產生建議，請稍後再試',
+    };
+    return _StatusText._(
+      text: message,
+      color: AppColors.error,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: AppTypography.bodySmall.copyWith(
+        color: color,
+        height: 1.35,
+      ),
     );
   }
 }
