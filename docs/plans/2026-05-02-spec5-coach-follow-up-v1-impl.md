@@ -1,7 +1,7 @@
 # Spec 5 — Coach Follow-up v1 Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-> **Status:** Revision 1 — applied Codex NEEDS-FIX amendments. Awaiting Codex re-review verdict before coding.
+> **Status:** Revision 1 — Codex Rev 1 verdict `REVISED_AND_APPROVED` (2026-05-02); OQ-Sign-1 resolved (a); B16 contract refined. **Cleared for implementation.**
 > **Source:** `docs/plans/2026-05-02-spec5-coach-follow-up-v1-design.md` @ `a66ca5b` (REVISED_AND_APPROVED).
 > **Codex reviews:**
 > - Design review: `docs/reviews/2026-05-02_spec5-coach-follow-up-design_codex-review.md` @ `3d8dd3a`
@@ -20,13 +20,12 @@
 
 ---
 
-## 0. Open Questions (Eric must resolve before Phase B T13 lands)
+## 0. Resolved Decisions (binding)
 
-| # | Question | Recommended | Why it matters |
-|---|----------|-------------|----------------|
-| OQ-Sign-1 | Should `signOut()` also clear `coach_follow_up_results` (and other local Hive boxes)? Currently `signOut()` does NOT clear any local data — only `deleteAccount` does. | **(a) Keep current behavior**: signOut does NOT clear local follow-up results. Matches existing semantics for Conversation / Partner / UserProfile boxes. | Changing sign-out semantics is a product behavior change that affects ALL local data, not just this feature. If Eric wants signOut to also clear, that's an independent product decision that should be its own ticket and span all boxes uniformly. |
-
-If Eric picks (a), Phase B T13 wires `coach_follow_up_results` only into `StorageService.clearAll()` (called by the existing `deleteAccount` flow at `settings_screen.dart:686-688`). If Eric picks (b), a separate ticket changes sign-out semantics for ALL local boxes uniformly — that's out of Spec 5 scope.
+| # | Question | Verdict (2026-05-02, Eric) | Implementation impact |
+|---|----------|----------------------------|----------------------|
+| OQ-Sign-1 | Should `signOut()` also clear `coach_follow_up_results` (and other local Hive boxes)? | **(a) Keep current behavior** — `signOut()` does NOT clear local Hive data. Only the `deleteAccount → StorageService.clearAll()` chain wipes `coach_follow_up_results`. Matches existing semantics for Conversation / Partner / UserProfile boxes. | Phase B T14 wires `coach_follow_up_results` into `StorageService.clearAll()` ONLY; **must not touch `signOut()`**. Any future change to sign-out semantics is a separate cross-box ticket, out of Spec 5 scope. |
+| B16 contract | What does the privacy regression test assert? | Box is **logically empty** (`box.length == 0`) after `StorageService.clearAll()`. **Do NOT** assert the Hive file is physically gone unless implementation actually calls `deleteFromDisk()`. | T16 test is value-clear-based, not file-existence-based. Avoids brittle false negatives from Hive's lazy file management. |
 
 ---
 
@@ -1224,9 +1223,9 @@ git commit -am "[feat] Spec 5 Phase B T15 — partner delete cascade clears coac
 - Verify: `test/unit/services/storage_service_clear_all_test.dart` (already extended in T14)
 - Add: any missing fixture helpers
 
-**Step 1: Verify the test added in T14** asserts:
-- After populating box with N entries, `StorageService.clearAll()` empties it.
-- After `deleteFromDisk()` (simulated account deletion path), box file is gone.
+**Step 1: Verify the test added in T14** asserts (per OQ B16 contract — see §0):
+- After populating box with N entries, `StorageService.clearAll()` makes `box.length == 0` (logically empty).
+- **Do NOT** assert physical file absence (`File(boxPath).existsSync() == false`) unless the implementation actually invokes `deleteFromDisk()` — Hive's lazy file management can leave the file on disk after a logical `clear()`, and asserting otherwise creates brittle false negatives.
 
 **Step 2: Add second test** for the integration: simulate the `SettingsScreen.deleteAccount` chain (`deleteAccount → clearAll → clearLocalSessionAfterDeletion`) by calling them in sequence and verify ALL boxes (existing + new) are empty.
 
@@ -1720,13 +1719,18 @@ Net task count change: 25 → 26 (+1 for new C17, CI moved A↔X balances out).
 
 ---
 
-## 12. Next Step (after this Rev 1 ACK'd)
+## 12. Status & Next Step
 
-1. **Eric** resolves OQ-Sign-1 (§0). Recommended: option (a) — keep sign-out behavior unchanged.
-2. **Codex** re-review on this Rev 1 → expect verdict `REVISED_AND_APPROVED` per the review's closing line ("unless the amendment introduces new scope"). Verdict file: same path, append to existing `*_codex-review.md` or new `*_codex-review-rev1.md`.
-3. **Eric** final ACK after Codex verdict.
-4. Open worktree (per `superpowers:using-git-worktrees`) for the implementation branch.
-5. Choose execution mode: subagent-driven (this session) or parallel session (separate).
-6. Begin Phase A T1; commit + push every task per CLAUDE.md rule.
+**Status as of 2026-05-02:**
+- Codex Rev 1 verdict: **REVISED_AND_APPROVED** ✅
+- OQ-Sign-1: **resolved (a) keep current behavior** — see §0 ✅
+- B16 contract: **logical empty (`box.length == 0`), not file-existence** — see §0 ✅
+- Eric ACK to begin: ✅
 
-Plan does NOT begin code until Codex Rev 1 verdict + Eric ACK.
+**Next step:**
+1. Open isolated worktree per `superpowers:using-git-worktrees` for branch `feature/spec5-coach-follow-up-v1`.
+2. Execute Phase A T1 → T10 (CI deploy verified live before phase merge).
+3. After Phase A merged: Phase B T11 → T16, then C T17 → T24, then X T25 → T26.
+4. Commit + push **every task** per CLAUDE.md rule.
+5. Each task = TDD step-by-step (write failing test → run → implement → verify → commit).
+6. Pause at every Phase boundary for Eric review / TF smoke before opening next phase.
