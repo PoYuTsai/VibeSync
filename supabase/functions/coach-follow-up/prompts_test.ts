@@ -65,8 +65,7 @@ Deno.test("postDateReflection includes 還看不出來 handling", () => {
   );
   // Either 太早判斷 or 還看不出來 must appear in the phase instructions so the
   // model knows to defuse instead of catastrophising
-  const hasSoftHandling =
-    p.includes("太早判斷") || p.includes("還看不出來");
+  const hasSoftHandling = p.includes("太早判斷") || p.includes("還看不出來");
   assertEquals(hasSoftHandling, true);
 });
 
@@ -134,6 +133,29 @@ Deno.test("answers q3 free-text passes through verbatim", () => {
     { name: "X" },
   );
   assertStringIncludes(p, "我怕她已讀不回");
+});
+
+Deno.test("q3 is marked as priority context, not buried beside q1/q2", () => {
+  const p = buildCoachFollowUpPrompt(
+    "postDateReflection",
+    { q1: "unsure", q2: "cooling", q3: "我想跟她打炮" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "[用戶補充 - 必須優先回應]");
+  assertStringIncludes(p, "我想跟她打炮");
+  assertStringIncludes(p, "不可只根據 q1/q2 泛泛回答");
+});
+
+Deno.test("prompt tells model how to handle explicit / rude / incoherent q3 safely", () => {
+  const p = buildCoachFollowUpPrompt(
+    "postDateReflection",
+    { q1: "awkward", q2: "polite", q3: "她很白癡 ???" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "露骨詞");
+  assertStringIncludes(p, "辱罵或人格標籤");
+  assertStringIncludes(p, "亂碼、打錯字或語意不足");
+  assertStringIncludes(p, "不要照抄粗話");
 });
 
 Deno.test("prompt lists every banned token (mirrors validate.ts BANNED_TOKENS)", () => {

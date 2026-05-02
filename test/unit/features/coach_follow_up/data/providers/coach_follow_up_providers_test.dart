@@ -163,12 +163,14 @@ ProviderContainer _container({
   List<Conversation> conversations = const [],
   DataQualityFlag flag = const DataQualityFlag.unflagged(),
   String partnerId = 'p-1',
+  Future<void> Function()? usageSync,
 }) {
   final container = ProviderContainer(overrides: [
     coachFollowUpRepositoryProvider.overrideWithValue(repo),
     coachFollowUpApiServiceProvider
         .overrideWithValue(CoachFollowUpApiService(invoker: invoker)),
     coachFollowUpNowProvider.overrideWithValue(() => DateTime(2026, 5, 2, 18)),
+    coachFollowUpUsageSyncProvider.overrideWithValue(usageSync ?? () async {}),
     partnerByIdProvider(partnerId).overrideWithValue(partner),
     conversationsByPartnerProvider(partnerId).overrideWithValue(conversations),
     dataQualityFlagProvider(partnerId).overrideWithValue(flag),
@@ -419,6 +421,31 @@ void main() {
       expect(calls.single.body['phase'], 'prepareInvite');
     });
 
+    test('success refreshes subscription usage snapshot for paywall UI',
+        () async {
+      final repo = _FakeRepo();
+      var syncCalls = 0;
+      final c = _container(
+        repo: repo,
+        invoker: _stubInvoker(_okResponse()),
+        partner: _partner(),
+        usageSync: () async {
+          syncCalls++;
+        },
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachFollowUpControllerProvider('p-1').future);
+      await c.read(coachFollowUpControllerProvider('p-1').notifier).generate(
+            phase: CoachFollowUpPhase.prepareInvite,
+            answers: const CoachFollowUpAnswers(q1: 'fuzzy'),
+          );
+
+      expect(syncCalls, 1,
+          reason: 'successful Edge deduction must be reflected in paywall UI');
+      expect(repo.putCalls, 1);
+    });
+
     test(
         'forwards partnerHint from coachFollowUpPartnerHintProvider into the '
         'API call (no inline rebuild — privacy contract)', () async {
@@ -514,6 +541,33 @@ void main() {
           reason: 'failed generation must never write to the box');
       expect(repo.get('p-1')?.headline, '保留我',
           reason: 'previous card stays intact on error');
+    });
+
+    test('API failure does not refresh usage snapshot', () async {
+      final repo = _FakeRepo();
+      var syncCalls = 0;
+      final c = _container(
+        repo: repo,
+        invoker: _stubInvoker(const CoachFollowUpInvokeResponse(
+          status: 500,
+          data: {'error': 'schema_invalid'},
+        )),
+        partner: _partner(),
+        usageSync: () async {
+          syncCalls++;
+        },
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachFollowUpControllerProvider('p-1').future);
+      await c.read(coachFollowUpControllerProvider('p-1').notifier).generate(
+            phase: CoachFollowUpPhase.prepareInvite,
+            answers: const CoachFollowUpAnswers(q1: 'fuzzy'),
+          );
+
+      expect(syncCalls, 0,
+          reason: 'failed generation is not charged and must not alter usage');
+      expect(repo.putCalls, 0);
     });
 
     test('quota exceeded: state goes error with QuotaExceededException',

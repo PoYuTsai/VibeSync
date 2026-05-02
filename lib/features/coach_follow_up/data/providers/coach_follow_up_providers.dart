@@ -22,6 +22,7 @@ import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../domain/entities/coach_follow_up_phase.dart';
 import '../../domain/entities/coach_follow_up_result.dart';
@@ -50,6 +51,18 @@ final coachFollowUpApiServiceProvider = Provider<CoachFollowUpApiService>(
 /// post-date "long quiet" heuristic does not depend on wall-clock time.
 final coachFollowUpNowProvider = Provider<DateTime Function()>((ref) {
   return DateTime.now;
+});
+
+/// Refreshes the subscription/usage snapshot after a successful generation.
+///
+/// The Edge function performs the authoritative deduction; this hook only makes
+/// the paywall/remaining-quota UI catch up immediately. Tests override it with
+/// a no-op/recorder so provider tests do not instantiate the real subscription
+/// graph.
+final coachFollowUpUsageSyncProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    await ref.read(subscriptionProvider.notifier).refresh();
+  };
 });
 
 // ── Read-only derived providers ──────────────────────────────────────────
@@ -192,6 +205,7 @@ class CoachFollowUpController
           partnerHint: hint,
         );
         await repo.put(result);
+        await _syncUsageSnapshot();
         state = AsyncValue.data(result);
       } catch (e, st) {
         state = AsyncValue.error(e, st);
@@ -209,4 +223,15 @@ class CoachFollowUpController
     required CoachFollowUpAnswers answers,
   }) =>
       generate(phase: phase, answers: answers);
+
+  Future<void> _syncUsageSnapshot() async {
+    final syncUsage = ref.read(coachFollowUpUsageSyncProvider);
+    try {
+      await syncUsage();
+    } catch (_) {
+      // The card generation already succeeded and was persisted. A failed
+      // UI-only usage refresh must not turn a valid card into an error state;
+      // the next subscription refresh/paywall open will catch up from DB.
+    }
+  }
 }
