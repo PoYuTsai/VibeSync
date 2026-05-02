@@ -281,6 +281,36 @@ Deno.test("T8 privacy: Claude error message detail NEVER appears in failed log",
   );
 });
 
+Deno.test("T8 privacy: deduct failure uses stable bucket, NOT raw Supabase error", async () => {
+  // Codex P1 follow-up: when index.ts's deductCredit closure throws because
+  // Supabase update returned {error}, the underlying Supabase message MUST
+  // NOT enter the failed log. errorClass must be the stable string
+  // "credit_deduct_failed" so dashboards can alert on it without coupling to
+  // Supabase's error format.
+  const RAW_SUPABASE_LEAK = "supabase-raw-detail-row-not-found-xyz";
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = async () => {
+    throw new Error(RAW_SUPABASE_LEAK);
+  };
+  await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  const allLogJson = JSON.stringify(h.logs);
+  assertEquals(
+    allLogJson.includes(RAW_SUPABASE_LEAK),
+    false,
+    "raw Supabase error message leaked into telemetry",
+  );
+
+  const failed = h.logs.find((l) => l.event === "coach_follow_up_failed");
+  assertEquals(failed?.data.errorClass, "credit_deduct_failed");
+  // Field shape: only stable trio
+  assertEquals(Object.keys(failed!.data).sort(), [
+    "errorClass",
+    "phase",
+    "tier",
+  ]);
+});
+
 Deno.test("T8 privacy: schema-invalid path does NOT leak Claude raw card text", async () => {
   // When validation rejects a card, the bad card's text fields must not
   // appear in the failed log either.

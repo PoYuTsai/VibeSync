@@ -141,8 +141,25 @@ export async function runCoachFollowUp(
 
   // Deduct ONLY after BOTH schema and safety validation pass — and ONLY if not
   // a test account. Plan §A7 step 3: "If any step fails, NO deduct."
+  //
+  // Codex P1 (post-T7): Supabase update returning {error} doesn't throw, so
+  // the wrapper in index.ts MUST check {error} and throw "credit_deduct_failed".
+  // We catch here, emit the stable bucket, and 500 — never silently 200 a
+  // generation the user wasn't actually charged for.
   if (!input.accountIsTest) {
-    await deps.deductCredit({ userId: input.userId });
+    try {
+      await deps.deductCredit({ userId: input.userId });
+    } catch (e) {
+      deps.logger.warn("coach_follow_up_failed", {
+        phase: input.phase,
+        tier: input.tier,
+        errorClass: "credit_deduct_failed",
+      });
+      // Suppress raw error message; user gets the stable bucket name. The
+      // detailed error is intentionally unused — log and response stay clean.
+      void e;
+      return { status: 500, body: { error: "credit_deduct_failed" } };
+    }
   }
 
   deps.logger.info("coach_follow_up_succeeded", {

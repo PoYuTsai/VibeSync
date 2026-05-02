@@ -400,13 +400,25 @@ export async function handleRequest(req: Request): Promise<Response> {
     {
       callClaude: callClaudeAPI,
       deductCredit: async ({ userId }) => {
-        await supabase
+        // Codex P1: Supabase update on {error} doesn't throw — must surface
+        // explicitly or generation.ts will treat it as success and the user
+        // gets a free card. Internal Supabase error message stays here in a
+        // warn log; only the stable bucket name "credit_deduct_failed"
+        // propagates upward to telemetry / response.
+        const { error } = await supabase
           .from("subscriptions")
           .update({
             monthly_messages_used: (subAtCall.monthly_messages_used || 0) + 1,
             daily_messages_used: (subAtCall.daily_messages_used || 0) + 1,
           })
           .eq("user_id", userId);
+        if (error) {
+          logWarn("coach_follow_up_deduct_db_error", {
+            user: summarizeUser(userId),
+            error: error.message,
+          });
+          throw new Error("credit_deduct_failed");
+        }
       },
       logger: { info: logInfo, warn: logWarn },
     },

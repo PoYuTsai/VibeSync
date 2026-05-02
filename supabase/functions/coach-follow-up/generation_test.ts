@@ -208,6 +208,50 @@ Deno.test("T7: test account success → 200 but credit NOT deducted (cap bypass)
   assertEquals(succeeded?.data.costDeducted, 0);
 });
 
+Deno.test("T7: deductCredit failure → 5xx credit_deduct_failed, NO succeeded log", async () => {
+  // Codex P1: Supabase update returning {error} doesn't throw — index.ts
+  // wrapper now checks {error} and throws "credit_deduct_failed". generation.ts
+  // catches and emits stable bucket. Without this, a deduct miss would silently
+  // give the user a free card.
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = async () => {
+    throw new Error("credit_deduct_failed");
+  };
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 500);
+  assertEquals(
+    (result.body as Record<string, unknown>).error,
+    "credit_deduct_failed",
+  );
+
+  // No succeeded event — generation never reached the success log
+  const succeeded = h.logs.find((l) => l.event === "coach_follow_up_succeeded");
+  assertEquals(succeeded, undefined);
+
+  // Failed event with stable bucket (NOT raw error message)
+  const failed = h.logs.find((l) => l.event === "coach_follow_up_failed");
+  assertEquals(failed?.data.errorClass, "credit_deduct_failed");
+});
+
+Deno.test("T7: test account skips deductCredit even when it would fail", async () => {
+  // Sanity: test-account bypass MUST short-circuit before deductCredit is
+  // called, so a broken deduct path can't accidentally lock out test accounts.
+  let deductCalled = false;
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = async () => {
+    deductCalled = true;
+    throw new Error("credit_deduct_failed");
+  };
+  const result = await runCoachFollowUp(
+    { ...BASE_INPUT, accountIsTest: true },
+    h.deps,
+  );
+
+  assertEquals(result.status, 200);
+  assertEquals(deductCalled, false);
+});
+
 Deno.test("T7: deduct order — validate + safety pass BEFORE deductCredit fires", async () => {
   // Sequence guard: if deductCredit threw, success log path would still fire.
   // We assert the order by checking deductCredit is invoked BEFORE the
