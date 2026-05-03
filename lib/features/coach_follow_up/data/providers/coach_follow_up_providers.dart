@@ -205,8 +205,8 @@ class CoachFollowUpController
           partnerHint: hint,
         );
         await repo.put(result);
-        await _syncUsageSnapshot();
         state = AsyncValue.data(result);
+        await _syncUsageSnapshot();
       } catch (e, st) {
         state = AsyncValue.error(e, st);
       }

@@ -6,6 +6,8 @@
 // the API hint is built (via the C17 helper), and the controller is the
 // SOLE writer to the local Hive box.
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
@@ -444,6 +446,39 @@ void main() {
       expect(syncCalls, 1,
           reason: 'successful Edge deduction must be reflected in paywall UI');
       expect(repo.putCalls, 1);
+    });
+
+    test('success exposes card before usage refresh completes', () async {
+      final repo = _FakeRepo();
+      final syncStarted = Completer<void>();
+      final syncGate = Completer<void>();
+      final c = _container(
+        repo: repo,
+        invoker: _stubInvoker(_okResponse()),
+        partner: _partner(),
+        usageSync: () {
+          if (!syncStarted.isCompleted) syncStarted.complete();
+          return syncGate.future;
+        },
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachFollowUpControllerProvider('p-1').future);
+      final generateFuture =
+          c.read(coachFollowUpControllerProvider('p-1').notifier).generate(
+                phase: CoachFollowUpPhase.prepareInvite,
+                answers: const CoachFollowUpAnswers(q1: 'fuzzy'),
+              );
+
+      await syncStarted.future;
+
+      final state = c.read(coachFollowUpControllerProvider('p-1'));
+      expect(state.value?.headline, '主動提一次',
+          reason: 'usage refresh is paywall-only and must not hide the card');
+      expect(repo.putCalls, 1);
+
+      syncGate.complete();
+      await generateFuture;
     });
 
     test(
