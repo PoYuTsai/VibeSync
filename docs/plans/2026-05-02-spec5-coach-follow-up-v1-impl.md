@@ -1734,3 +1734,19 @@ Net task count change: 25 → 26 (+1 for new C17, CI moved A↔X balances out).
 4. Commit + push **every task** per CLAUDE.md rule.
 5. Each task = TDD step-by-step (write failing test → run → implement → verify → commit).
 6. Pause at every Phase boundary for Eric review / TF smoke before opening next phase.
+
+---
+
+## 13. Ship Status
+
+**Status as of 2026-05-03: SHIPPED ✅**
+
+- Implementation branch `feature/spec5-coach-follow-up-v1` fast-forward merged to `main` at `8431205`.
+- CI-only workflow cleanup landed at `6e140e5`; `Deploy Edge Function #150` completed successfully.
+- Verification before push: Deno `coach-follow-up` suite 146/146 green; Flutter scoped tests 186/186 green; `flutter analyze` 0 issues.
+- Final review verdict: APPROVED after CC/SU3 ACK; non-blocker ordering suggestion was accepted in `8431205`.
+- Eric deep TF smoke: **PASSED**. 30 manual prompt-quality cases tested; output quality exceeded expectation and all checked responses were satisfactory.
+
+**Residual follow-up:**
+- Next main build should spot-check the app-side ordering polish from `8431205` with 3-5 cases.
+- Future maturity work should focus on Spec 5 golden cases / quality rubric before expanding Spec 4 Learning/Practice.

@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-05-03
+
+### 階段
+**Spec 5 Coach Follow-up v1 已 merge main 並完成 TF smoke。** Branch `feature/spec5-coach-follow-up-v1` fast-forward merge 到 `main`，HEAD 後續 CI-only 修正為 `6e140e5`，`coach-follow-up` Edge Function deploy green。
+
+### Ship 重點
+- Partner detail 新增「教練跟進」區塊，三個 phase：準備邀約 / 約會前提醒 / 約會後復盤。
+- 新增獨立 Supabase Edge Function `coach-follow-up`，JWT-verified，不碰 `analyze-chat` / OCR baseline。
+- Result card 固定 5 欄：headline / observation / task / suggestedLine / boundaryReminder。
+- q3 補充文字納入高優先 prompt context，支援露骨、辱罵、打錯字、語意不足等真實輸入，原則是「不控制用戶輸入，只收斂 AI 輸出」。
+- hard banned output tokens 維持 7 個：`PUA / 收割 / 控住 / 攻略 / 壞女人 / 高分妹 / 玩咖`。
+- 成功生成後立即 refresh usage snapshot；已修正 ordering，卡片先顯示，再刷新額度，避免 subscription refresh hang 擋住成功卡片。
+
+### 驗證
+- Deno `coach-follow-up` suite：146/146 green。
+- Flutter scoped tests：186/186 green。
+- `flutter analyze`：0 issues。
+- GitHub Actions `Deploy Edge Function #150`：success。
+- Eric 深度 TF smoke：30 題人工測試效果優於預期，回覆皆滿意，標記 **TF SMOKE PASSED**。
+
+### 下步
+- 下一次 main build 補測 app-side ordering polish（抽 3-5 題即可，不需重跑 30 題）。
+- 後續若擴充，優先做 Spec 5 golden cases / quality rubric，再把 Spec 4 Learning / Practice 接回真實情境。
+
+---
+
 ## 2026-05-02
 
 ### 階段
