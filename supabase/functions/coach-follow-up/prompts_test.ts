@@ -158,6 +158,20 @@ Deno.test("prompt tells model how to handle explicit / rude / incoherent q3 safe
   assertStringIncludes(p, "不要照抄粗話");
 });
 
+Deno.test("prompt tells model to reason internally before concise coach output", () => {
+  const p = buildCoachFollowUpPrompt(
+    "postDateReflection",
+    { q1: "unsure", q2: "cooling", q3: "我約完一直想確認她到底喜不喜歡我" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "表層事件");
+  assertStringIncludes(p, "背後情緒/不安");
+  assertStringIncludes(p, "目前互動卡點");
+  assertStringIncludes(p, "最小下一步");
+  assertStringIncludes(p, "不要寫分析過程");
+  assertStringIncludes(p, "observation / task / boundaryReminder");
+});
+
 Deno.test("prompt lists every banned token (mirrors validate.ts BANNED_TOKENS)", () => {
   const p = buildCoachFollowUpPrompt(
     "prepareInvite",
