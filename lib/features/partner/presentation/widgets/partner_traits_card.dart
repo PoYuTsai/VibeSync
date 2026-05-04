@@ -13,10 +13,22 @@ import '../../domain/extensions/partner_aggregates.dart';
 
 class PartnerTraitsCard extends StatelessWidget {
   final PartnerAggregateView view;
-  const PartnerTraitsCard({super.key, required this.view});
+  final String? customNote;
+  final VoidCallback? onEditNote;
+
+  const PartnerTraitsCard({
+    super.key,
+    required this.view,
+    this.customNote,
+    this.onEditNote,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final trimmedCustomNote = customNote?.trim();
+    final hasCustomNote =
+        trimmedCustomNote != null && trimmedCustomNote.isNotEmpty;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
@@ -29,13 +41,44 @@ class PartnerTraitsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '對方特質',
-            style: AppTypography.titleSmall.copyWith(
-              color: AppColors.onBackgroundPrimary,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '對方特質',
+                  style: AppTypography.titleSmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                  ),
+                ),
+              ),
+              if (onEditNote != null)
+                IconButton(
+                  tooltip: '設定對方資訊',
+                  onPressed: onEditNote,
+                  icon: const Icon(Icons.settings_outlined, size: 20),
+                  color: AppColors.onBackgroundSecondary,
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
           ),
           const SizedBox(height: 10),
+          if (hasCustomNote) ...[
+            Text(
+              '你的設定',
+              style: AppTypography.titleSmall.copyWith(
+                color: AppColors.onBackgroundPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              trimmedCustomNote,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (view.unionInterests.isEmpty && view.unionTraits.isEmpty)
             Text(
               '尚未抽出特質',
@@ -75,7 +118,8 @@ class PartnerTraitsCard extends StatelessWidget {
             children: [
               _CounterText('${view.totalRounds} 段對話'),
               _CounterText('${view.totalMessages} 則訊息'),
-              if (view.latestHeat != null) _CounterText('最新熱度 ${view.latestHeat}'),
+              if (view.latestHeat != null)
+                _CounterText('最新熱度 ${view.latestHeat}'),
             ],
           ),
         ],

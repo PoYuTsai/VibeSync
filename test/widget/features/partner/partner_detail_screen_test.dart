@@ -34,12 +34,13 @@ import 'package:vibesync/features/user_profile/domain/entities/partner_style_ove
 import '_fakes/recording_conversation_write_controller.dart';
 import '_fakes/recording_partner_write_controller.dart';
 
-Partner _p() => Partner(
+Partner _p({String? customNote}) => Partner(
       id: 'p1',
       name: 'Alice',
       createdAt: DateTime(2026, 4, 20),
       updatedAt: DateTime(2026, 4, 20),
       ownerUserId: 'u1',
+      customNote: customNote,
     );
 
 Partner _other(String id, String name) => Partner(
@@ -300,6 +301,67 @@ void main() {
 
     expect(fake.updateNameCalled, isTrue);
     expect(find.textContaining('更新失敗'), findsOneWidget);
+  });
+
+  testWidgets('traits gear edits partner-level custom note', (t) async {
+    final fake = RecordingPartnerWriteController();
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+        partnerWriteControllerProvider.overrideWith(() => fake),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byTooltip('設定對方資訊'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField), '  慢熱，喜歡戶外活動  ');
+    await t.tap(find.text('儲存'));
+    await t.pumpAndSettle();
+
+    expect(fake.updateCustomNoteCalled, isTrue);
+    expect(fake.notePartner?.id, 'p1');
+    expect(fake.updatedCustomNote, '慢熱，喜歡戶外活動');
+    expect(find.text('已更新對方資訊'), findsOneWidget);
+  });
+
+  testWidgets('traits card renders existing partner-level custom note',
+      (t) async {
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
+        partnerByIdProvider('p1')
+            .overrideWith((_) => _p(customNote: '慢熱，喜歡戶外活動')),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+        partnerListProvider.overrideWith(
+          (_) => [_p(customNote: '慢熱，喜歡戶外活動')],
+        ),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.text('你的設定'), findsOneWidget);
+    expect(find.text('慢熱，喜歡戶外活動'), findsOneWidget);
   });
 
   testWidgets('⋮ menu: merge DISABLED when only one partner exists', (t) async {
@@ -663,8 +725,7 @@ void main() {
     expect(find.textContaining('May'), findsOneWidget);
   });
 
-  testWidgets(
-      'PartnerDataQualityBanner is NOT rendered when flag is unflagged',
+  testWidgets('PartnerDataQualityBanner is NOT rendered when flag is unflagged',
       (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
@@ -702,8 +763,7 @@ void main() {
   // (`returns unflagged when the two candidates are in confirmed pairs`),
   // so the widget test only needs to prove the tap reaches the repo with
   // the canonical pair.
-  testWidgets(
-      'tapping 這是同一人 calls markSamePerson with the canonical NamePair',
+  testWidgets('tapping 這是同一人 calls markSamePerson with the canonical NamePair',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1400));
     addTearDown(() => t.binding.setSurfaceSize(null));
@@ -766,8 +826,8 @@ void main() {
       return ProviderScope(
         overrides: [
           partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
-        coachFollowUpRepositoryProvider
-            .overrideWithValue(_FakeCoachFollowUpRepo()),
+          coachFollowUpRepositoryProvider
+              .overrideWithValue(_FakeCoachFollowUpRepo()),
           partnerByIdProvider('p1').overrideWith((_) => partner ?? _p()),
           partnerAggregateProvider('p1')
               .overrideWith((_) => PartnerAggregateView.empty()),
@@ -805,7 +865,8 @@ void main() {
       expect(find.textContaining('May'), findsWidgets);
       expect(find.text('取消'), findsOneWidget);
       expect(find.text('確認拆卡'), findsOneWidget);
-      expect(fake.splitCalled, isFalse, reason: 'showing the dialog must not call split');
+      expect(fake.splitCalled, isFalse,
+          reason: 'showing the dialog must not call split');
     });
 
     testWidgets('dialog 取消 dismisses and does not call split', (t) async {

@@ -81,7 +81,8 @@ Future<void> _fillOnlyOneMessage(WidgetTester t) async {
 }
 
 void main() {
-  testWidgets('partnerId arg "p-test" propagates to controller.create', (t) async {
+  testWidgets('partnerId arg "p-test" propagates to controller.create',
+      (t) async {
     // 用較大 surface 避開 800x600 預設導致的 SingleChildScrollView 折疊；
     // 沿用 Phase 2 partner_detail_screen_test.dart 的 setSurfaceSize pattern。
     await t.binding.setSurfaceSize(const Size(400, 1200));
@@ -117,12 +118,14 @@ void main() {
     expect(fake.createCalled, isTrue);
     expect(fake.capturedPartnerId, 'p-test');
     expect(fake.capturedName, '新對話',
-        reason: 'partnerId set → name field hidden → default to 新對話 placeholder. '
-                'Partner already owns the identity; re-typing it is redundant double-input.');
+        reason:
+            'partnerId set → name field hidden → default to 新對話 placeholder. '
+            'Partner already owns the identity; re-typing it is redundant double-input.');
     expect(fake.capturedMessageCount, greaterThanOrEqualTo(1));
   });
 
-  testWidgets('partnerId arg null (legacy entry) propagates as null', (t) async {
+  testWidgets('partnerId arg null (legacy entry) propagates as null',
+      (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -147,12 +150,14 @@ void main() {
 
     expect(fake.createCalled, isTrue);
     expect(fake.capturedPartnerId, isNull,
-        reason: 'Legacy entry without partnerId arg should pass null to controller.create. '
-                'Auto-derive on create is NOT implemented in current architecture; '
-                'A1 migration backfills Partners on app start. Phase 4+ may revisit.');
+        reason:
+            'Legacy entry without partnerId arg should pass null to controller.create. '
+            'Auto-derive on create is NOT implemented in current architecture; '
+            'A1 migration backfills Partners on app start. Phase 4+ may revisit.');
   });
 
-  testWidgets('partnerId set hides 對話對象 input (avoid double-identity)', (t) async {
+  testWidgets('partnerId set hides 對話對象 input (avoid double-identity)',
+      (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -163,12 +168,30 @@ void main() {
 
     expect(find.text('對話對象'), findsNothing,
         reason: 'partnerId != null → 對話對象 label is hidden because Partner '
-                'already owns the relationship identity. Bruce TF feedback 2026-04-28.');
+            'already owns the relationship identity. Bruce TF feedback 2026-04-28.');
     expect(find.text('例如：小安'), findsNothing,
         reason: 'partnerId != null → name placeholder hidden too.');
   });
 
-  testWidgets('partnerId null still shows 對話對象 input (legacy entry)', (t) async {
+  testWidgets('partnerId set hides per-conversation personalization block',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      child: MaterialApp.router(routerConfig: _routerWith('p-test')),
+    ));
+    await _settle(t);
+
+    expect(find.text('個人化資訊（選填）'), findsNothing,
+        reason: 'Partner-level 對方資訊 should be set once from PartnerDetail, '
+            'not repeated every time a new conversation is manually entered.');
+    expect(find.text('對方特質'), findsNothing);
+    expect(find.text('例如：活潑、慢熱、喜歡戶外活動'), findsNothing);
+  });
+
+  testWidgets('partnerId null still shows 對話對象 input (legacy entry)',
+      (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
@@ -179,5 +202,20 @@ void main() {
 
     expect(find.text('對話對象'), findsOneWidget,
         reason: 'Legacy entry without partnerId still needs the name input.');
+  });
+
+  testWidgets('partnerId null keeps personalization block for legacy entry',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      child: MaterialApp.router(routerConfig: _routerWith(null)),
+    ));
+    await _settle(t);
+
+    expect(find.text('個人化資訊（選填）'), findsOneWidget,
+        reason: 'Orphan / legacy manual input still has no Partner card, so '
+            'the old per-conversation note escape hatch stays available.');
   });
 }

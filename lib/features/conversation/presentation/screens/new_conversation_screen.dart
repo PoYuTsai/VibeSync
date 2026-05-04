@@ -318,44 +318,46 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 selected: _goal,
                 onChanged: (value) => setState(() => _goal = value),
               ),
-              const SizedBox(height: 24),
-              InkWell(
-                onTap: () => setState(
-                    () => _showPersonalization = !_showPersonalization),
-                child: Row(
-                  children: [
-                    Icon(
-                      _showPersonalization
-                          ? Icons.expand_less
-                          : Icons.expand_more,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '個人化資訊（選填）',
-                      style: AppTypography.bodyLarge.copyWith(
+              if (widget.partnerId == null) ...[
+                const SizedBox(height: 24),
+                InkWell(
+                  onTap: () => setState(
+                      () => _showPersonalization = !_showPersonalization),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _showPersonalization
+                            ? Icons.expand_less
+                            : Icons.expand_more,
                         color: AppColors.textSecondary,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_showPersonalization) ...[
-                const SizedBox(height: 16),
-                Text('對方特質', style: AppTypography.bodyMedium),
-                const SizedBox(height: 8),
-                GlassmorphicTextField(
-                  controller: _targetDescriptionController,
-                  hintText: '例如：活潑、慢熱、喜歡戶外活動',
-                  isDense: true,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '想讓建議更像你的語氣？可到「報告 > 關於我」設定一次。',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
+                      const SizedBox(width: 8),
+                      Text(
+                        '個人化資訊（選填）',
+                        style: AppTypography.bodyLarge.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                if (_showPersonalization) ...[
+                  const SizedBox(height: 16),
+                  Text('對方特質', style: AppTypography.bodyMedium),
+                  const SizedBox(height: 8),
+                  GlassmorphicTextField(
+                    controller: _targetDescriptionController,
+                    hintText: '例如：活潑、慢熱、喜歡戶外活動',
+                    isDense: true,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '這些對方資訊可到對象卡的「對方特質」齒輪設定一次。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
               ],
               const SizedBox(height: 24),
               Text('對話內容', style: AppTypography.bodyLarge),

@@ -40,6 +40,7 @@ import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../dialogs/partner_edit_dialog.dart';
+import '../dialogs/partner_note_edit_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_data_quality_banner.dart';
@@ -120,7 +121,11 @@ class PartnerDetailScreen extends ConsumerWidget {
               children: [
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
                 const SizedBox(height: 16),
-                PartnerTraitsCard(view: aggregate),
+                PartnerTraitsCard(
+                  view: aggregate,
+                  customNote: partner.customNote,
+                  onEditNote: () => _onEditPartnerNote(context, ref, partner),
+                ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
@@ -268,7 +273,9 @@ class PartnerDetailScreen extends ConsumerWidget {
     String partnerId,
     NamePair pair,
   ) async {
-    await ref.read(partnerDataQualityRepoProvider).markSamePerson(partnerId, pair);
+    await ref
+        .read(partnerDataQualityRepoProvider)
+        .markSamePerson(partnerId, pair);
     ref.invalidate(dataQualityFlagProvider(partnerId));
   }
 
@@ -295,9 +302,7 @@ class PartnerDetailScreen extends ConsumerWidget {
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await ref
-          .read(partnerWriteControllerProvider.notifier)
-          .split(
+      await ref.read(partnerWriteControllerProvider.notifier).split(
             sourcePartnerId: partner.id,
             newPartnerName: splitTarget.movingDisplayName,
             matchedConversationIds: matchedIds,
@@ -337,12 +342,10 @@ class PartnerDetailScreen extends ConsumerWidget {
     NamePair pair,
   ) {
     final currentPartnerName = _canonicalName(partner.name);
-    final keepCanonicalName = currentPartnerName == pair.second
-        ? pair.second
-        : pair.first;
-    final movingCanonicalName = keepCanonicalName == pair.first
-        ? pair.second
-        : pair.first;
+    final keepCanonicalName =
+        currentPartnerName == pair.second ? pair.second : pair.first;
+    final movingCanonicalName =
+        keepCanonicalName == pair.first ? pair.second : pair.first;
     final partnerDisplayName = partner.name.trim();
 
     return _SplitTarget(
@@ -570,6 +573,33 @@ Future<void> _onEditPartner(
     messenger.showSnackBar(const SnackBar(content: Text('已更新名稱')));
   } catch (e, st) {
     debugPrint('PartnerDetailScreen edit failed: $e\n$st');
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('更新失敗，請稍後再試')),
+    );
+  }
+}
+
+Future<void> _onEditPartnerNote(
+  BuildContext context,
+  WidgetRef ref,
+  Partner partner,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final controller = ref.read(partnerWriteControllerProvider.notifier);
+  final newNote = await showDialog<String>(
+    context: context,
+    builder: (_) => PartnerNoteEditDialog(
+      initialNote: partner.customNote ?? '',
+    ),
+  );
+  if (newNote == null) return;
+  try {
+    await controller.updateCustomNote(partner, newNote);
+    if (!context.mounted) return;
+    messenger.showSnackBar(const SnackBar(content: Text('已更新對方資訊')));
+  } catch (e, st) {
+    debugPrint('PartnerDetailScreen note edit failed: $e\n$st');
     if (!context.mounted) return;
     messenger.showSnackBar(
       const SnackBar(content: Text('更新失敗，請稍後再試')),

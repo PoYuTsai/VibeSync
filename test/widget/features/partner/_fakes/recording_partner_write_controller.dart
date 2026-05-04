@@ -17,6 +17,11 @@ class RecordingPartnerWriteController extends PartnerWriteController {
   String? updatedName;
   Object? throwOnUpdateName;
 
+  bool updateCustomNoteCalled = false;
+  Partner? notePartner;
+  String? updatedCustomNote;
+  Object? throwOnUpdateCustomNote;
+
   bool splitCalled = false;
   String? splitSourceId;
   String? splitNewName;
@@ -40,6 +45,14 @@ class RecordingPartnerWriteController extends PartnerWriteController {
     updatedPartner = partner;
     updatedName = newName;
     if (throwOnUpdateName != null) throw throwOnUpdateName!;
+  }
+
+  @override
+  Future<void> updateCustomNote(Partner partner, String note) async {
+    updateCustomNoteCalled = true;
+    notePartner = partner;
+    updatedCustomNote = note;
+    if (throwOnUpdateCustomNote != null) throw throwOnUpdateCustomNote!;
   }
 
   @override

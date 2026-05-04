@@ -87,6 +87,28 @@ class PartnerWriteController extends Notifier<void> {
     }
   }
 
+  /// Updates the partner-level free-form note used by PartnerSummaryBuilder.
+  /// Empty / whitespace-only input clears the note. This is partner-scoped
+  /// context, not per-conversation session context.
+  Future<void> updateCustomNote(Partner partner, String note) async {
+    final trimmed = note.trim();
+    final repo = ref.read(partnerRepositoryProvider);
+    final updated = Partner(
+      id: partner.id,
+      name: partner.name,
+      avatarPath: partner.avatarPath,
+      createdAt: partner.createdAt,
+      updatedAt: partner.updatedAt,
+      ownerUserId: partner.ownerUserId,
+      customNote: trimmed.isEmpty ? null : trimmed,
+    );
+    try {
+      await repo.update(updated);
+    } finally {
+      _invalidatePartnerNoteScopes(partner.id);
+    }
+  }
+
   /// Splits [sourcePartnerId] by reparenting [matchedConversationIds] to a
   /// fresh partner named [newPartnerName]. Same try/finally invalidation
   /// discipline as merge/delete so a thrown ArgumentError (empty list, missing
@@ -163,6 +185,11 @@ class PartnerWriteController extends Notifier<void> {
     // Rename only mutates `partner.name` + `updatedAt`; conversation rows are
     // unchanged. Keep invalidation tight so the global feed and per-partner
     // conversation list don't re-query for nothing.
+    _invalidatePartner(id);
+    ref.invalidate(partnerListProvider);
+  }
+
+  void _invalidatePartnerNoteScopes(String id) {
     _invalidatePartner(id);
     ref.invalidate(partnerListProvider);
   }
