@@ -30,6 +30,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   bool _isLoading = false;
   bool _showPersonalization = false;
+  bool _showAnalysisSettings = false;
 
   MeetingContext _meetingContext = MeetingContext.datingApp;
   AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
@@ -241,6 +242,245 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     }
   }
 
+  List<Widget> _buildSessionContextSettings() {
+    return [
+      Text('認識情境', style: AppTypography.bodyLarge),
+      const SizedBox(height: 8),
+      GlassmorphicSegmentedButton<MeetingContext>(
+        segments: MeetingContext.values
+            .map(
+              (value) => GlassSegment(
+                value: value,
+                label: _meetingContextLabel(value),
+              ),
+            )
+            .toList(),
+        selected: _meetingContext,
+        onChanged: (value) => setState(() => _meetingContext = value),
+      ),
+      const SizedBox(height: 16),
+      Text('認識多久', style: AppTypography.bodyLarge),
+      const SizedBox(height: 8),
+      GlassmorphicSegmentedButton<AcquaintanceDuration>(
+        segments: AcquaintanceDuration.values
+            .map(
+              (value) => GlassSegment(
+                value: value,
+                label: _durationLabel(value),
+              ),
+            )
+            .toList(),
+        selected: _duration,
+        onChanged: (value) => setState(() => _duration = value),
+      ),
+      const SizedBox(height: 16),
+      Text('目前目標', style: AppTypography.bodyLarge),
+      const SizedBox(height: 8),
+      GlassmorphicSegmentedButton<UserGoal>(
+        segments: UserGoal.values
+            .map(
+              (value) => GlassSegment(
+                value: value,
+                label: _goalLabel(value),
+              ),
+            )
+            .toList(),
+        selected: _goal,
+        onChanged: (value) => setState(() => _goal = value),
+      ),
+    ];
+  }
+
+  List<Widget> _buildPartnerScopedAnalysisSettings() {
+    return [
+      const SizedBox(height: 24),
+      InkWell(
+        onTap: () => setState(
+          () => _showAnalysisSettings = !_showAnalysisSettings,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _showAnalysisSettings ? Icons.expand_less : Icons.expand_more,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '這次分析設定（可不改）',
+                style: AppTypography.bodyLarge.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        '只影響這次分析，不會改對象資料。',
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.textSecondary,
+        ),
+      ),
+      if (_showAnalysisSettings) ...[
+        const SizedBox(height: 16),
+        ..._buildSessionContextSettings(),
+      ],
+    ];
+  }
+
+  List<Widget> _buildLegacyPersonalizationBlock() {
+    return [
+      const SizedBox(height: 24),
+      InkWell(
+        onTap: () =>
+            setState(() => _showPersonalization = !_showPersonalization),
+        child: Row(
+          children: [
+            Icon(
+              _showPersonalization ? Icons.expand_less : Icons.expand_more,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '個人化資訊（選填）',
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (_showPersonalization) ...[
+        const SizedBox(height: 16),
+        Text('對方特質', style: AppTypography.bodyMedium),
+        const SizedBox(height: 8),
+        GlassmorphicTextField(
+          controller: _targetDescriptionController,
+          hintText: '例如：活潑、慢熱、喜歡戶外活動',
+          isDense: true,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '這些對方資訊可到對象卡的「對方特質」齒輪設定一次。',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _buildConversationContentInput() {
+    return [
+      Text('對話內容', style: AppTypography.bodyLarge),
+      const SizedBox(height: 8),
+      if (_messages.isNotEmpty) ...[
+        GlassmorphicContainer(
+          borderRadius: 12,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final msg = _messages[index];
+                final isFromMe = msg['isFromMe'] as bool;
+                return ListTile(
+                  dense: true,
+                  textColor: AppColors.glassTextPrimary,
+                  iconColor: AppColors.glassTextHint,
+                  leading: BubbleAvatar(
+                    label: isFromMe ? '我' : '她',
+                    isMe: isFromMe,
+                    size: 28,
+                  ),
+                  title: Text(
+                    msg['content'] as String,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.glassTextPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  trailing: IconButton(
+                    icon: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: AppColors.glassTextHint,
+                    ),
+                    onPressed: () => _removeMessage(index),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+      Row(
+        children: [
+          const BubbleAvatar(
+            label: '她',
+            isMe: false,
+            size: 32,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GlassmorphicTextField(
+              controller: _herMessageController,
+              hintText: '她說了什麼...',
+              onSubmitted: (_) => _addHerMessage(),
+            ),
+          ),
+          _buildAddButton(_addHerMessage),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          const BubbleAvatar(
+            label: '我',
+            isMe: true,
+            size: 32,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GlassmorphicTextField(
+              controller: _myMessageController,
+              hintText: '我說了什麼...',
+              onSubmitted: (_) => _addMyMessage(),
+            ),
+          ),
+          _buildAddButton(_addMyMessage),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _conversationHint,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
@@ -274,196 +514,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 ),
                 const SizedBox(height: 24),
               ],
-              Text('認識情境', style: AppTypography.bodyLarge),
-              const SizedBox(height: 8),
-              GlassmorphicSegmentedButton<MeetingContext>(
-                segments: MeetingContext.values
-                    .map(
-                      (value) => GlassSegment(
-                        value: value,
-                        label: _meetingContextLabel(value),
-                      ),
-                    )
-                    .toList(),
-                selected: _meetingContext,
-                onChanged: (value) => setState(() => _meetingContext = value),
-              ),
-              const SizedBox(height: 16),
-              Text('認識多久', style: AppTypography.bodyLarge),
-              const SizedBox(height: 8),
-              GlassmorphicSegmentedButton<AcquaintanceDuration>(
-                segments: AcquaintanceDuration.values
-                    .map(
-                      (value) => GlassSegment(
-                        value: value,
-                        label: _durationLabel(value),
-                      ),
-                    )
-                    .toList(),
-                selected: _duration,
-                onChanged: (value) => setState(() => _duration = value),
-              ),
-              const SizedBox(height: 16),
-              Text('目前目標', style: AppTypography.bodyLarge),
-              const SizedBox(height: 8),
-              GlassmorphicSegmentedButton<UserGoal>(
-                segments: UserGoal.values
-                    .map(
-                      (value) => GlassSegment(
-                        value: value,
-                        label: _goalLabel(value),
-                      ),
-                    )
-                    .toList(),
-                selected: _goal,
-                onChanged: (value) => setState(() => _goal = value),
-              ),
               if (widget.partnerId == null) ...[
+                ..._buildSessionContextSettings(),
+                ..._buildLegacyPersonalizationBlock(),
                 const SizedBox(height: 24),
-                InkWell(
-                  onTap: () => setState(
-                      () => _showPersonalization = !_showPersonalization),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _showPersonalization
-                            ? Icons.expand_less
-                            : Icons.expand_more,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '個人化資訊（選填）',
-                        style: AppTypography.bodyLarge.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_showPersonalization) ...[
-                  const SizedBox(height: 16),
-                  Text('對方特質', style: AppTypography.bodyMedium),
-                  const SizedBox(height: 8),
-                  GlassmorphicTextField(
-                    controller: _targetDescriptionController,
-                    hintText: '例如：活潑、慢熱、喜歡戶外活動',
-                    isDense: true,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '這些對方資訊可到對象卡的「對方特質」齒輪設定一次。',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
+                ..._buildConversationContentInput(),
+              ] else ...[
+                ..._buildConversationContentInput(),
+                ..._buildPartnerScopedAnalysisSettings(),
               ],
-              const SizedBox(height: 24),
-              Text('對話內容', style: AppTypography.bodyLarge),
-              const SizedBox(height: 8),
-              if (_messages.isNotEmpty) ...[
-                GlassmorphicContainer(
-                  borderRadius: 12,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 220),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = _messages[index];
-                        final isFromMe = msg['isFromMe'] as bool;
-                        return ListTile(
-                          dense: true,
-                          textColor: AppColors.glassTextPrimary,
-                          iconColor: AppColors.glassTextHint,
-                          leading: BubbleAvatar(
-                            label: isFromMe ? '我' : '她',
-                            isMe: isFromMe,
-                            size: 28,
-                          ),
-                          title: Text(
-                            msg['content'] as String,
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.glassTextPrimary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          trailing: IconButton(
-                            icon: Icon(
-                              Icons.close,
-                              size: 18,
-                              color: AppColors.glassTextHint,
-                            ),
-                            onPressed: () => _removeMessage(index),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              Row(
-                children: [
-                  const BubbleAvatar(
-                    label: '她',
-                    isMe: false,
-                    size: 32,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: GlassmorphicTextField(
-                      controller: _herMessageController,
-                      hintText: '她說了什麼...',
-                      onSubmitted: (_) => _addHerMessage(),
-                    ),
-                  ),
-                  _buildAddButton(_addHerMessage),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const BubbleAvatar(
-                    label: '我',
-                    isMe: true,
-                    size: 32,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: GlassmorphicTextField(
-                      controller: _myMessageController,
-                      hintText: '我說了什麼...',
-                      onSubmitted: (_) => _addMyMessage(),
-                    ),
-                  ),
-                  _buildAddButton(_addMyMessage),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 18,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _conversationHint,
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 32),
               GradientButton(
                 text: _primaryButtonText,

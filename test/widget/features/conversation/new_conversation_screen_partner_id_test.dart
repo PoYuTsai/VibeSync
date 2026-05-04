@@ -190,6 +190,37 @@ void main() {
     expect(find.text('例如：活潑、慢熱、喜歡戶外活動'), findsNothing);
   });
 
+  testWidgets(
+      'partnerId set shows conversation input first and collapses analysis settings',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      child: MaterialApp.router(routerConfig: _routerWith('p-test')),
+    ));
+    await _settle(t);
+
+    expect(find.text('對話內容'), findsOneWidget);
+    expect(find.text('這次分析設定（可不改）'), findsOneWidget);
+    expect(find.text('只影響這次分析，不會改對象資料。'), findsOneWidget);
+    expect(find.text('認識情境'), findsNothing,
+        reason: 'Partner-scoped manual input should not lead with settings; '
+            'the optional per-analysis controls stay collapsed by default.');
+    expect(
+      t.getTopLeft(find.text('對話內容')).dy,
+      lessThan(t.getTopLeft(find.text('這次分析設定（可不改）')).dy),
+      reason: 'The first thing users should see is where to type the chat.',
+    );
+
+    await t.tap(find.text('這次分析設定（可不改）'));
+    await _settle(t);
+
+    expect(find.text('認識情境'), findsOneWidget);
+    expect(find.text('認識多久'), findsOneWidget);
+    expect(find.text('目前目標'), findsOneWidget);
+  });
+
   testWidgets('partnerId null still shows 對話對象 input (legacy entry)',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
