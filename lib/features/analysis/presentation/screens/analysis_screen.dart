@@ -1126,7 +1126,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   Future<void> _addMessage({required bool isFromMe}) async {
     final content = _messageController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty) {
+      final hint = isFromMe
+          ? '先輸入你要補上的訊息，再點「加入為我說」。'
+          : '先貼上或輸入對方的新回覆，再點「加入為她說」。';
+      _showFloatingSnackBar(hint);
+      return;
+    }
 
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
@@ -5265,7 +5271,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               style: AppTypography.bodyMedium
                   .copyWith(color: AppColors.glassTextPrimary),
               decoration: InputDecoration(
-                hintText: '貼上對方的回覆...',
+                hintText: '貼上或輸入新的一則訊息...',
+                helperText: '輸入後，再選下方「加入為她說」或「加入為我說」。',
+                helperStyle: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextHint,
+                ),
                 hintStyle: AppTypography.bodyMedium.copyWith(
                   color: AppColors.glassTextHint,
                 ),
@@ -5326,7 +5336,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ? () => _addMessage(isFromMe: false)
                           : null,
                       icon: const Text('👩', style: TextStyle(fontSize: 18)),
-                      label: Text('她說...',
+                      label: Text('加入為她說',
                           style: TextStyle(color: AppColors.glassTextPrimary)),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -5376,7 +5386,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             children: [
                               Text('👤', style: TextStyle(fontSize: 18)),
                               SizedBox(width: 8),
-                              Text('我說...',
+                              Text('加入為我說',
                                   style: TextStyle(
                                       color: canAddManualMessage
                                           ? Colors.white
