@@ -1,8 +1,10 @@
-// Spec 5 C23 — phase input sheet (3 phase variants).
+// Spec 5 C23 — phase input sheet (3 lifecycle variants + openCoach).
 //
 // Implements design §1.2 Click-First Input Flow. Each phase has its own
 // Q1/Q2/Q3 option set; Q1 is always required, Q2 is required only for
 // postDateReflection, Q3 is always free-text optional 80 chars.
+// Spec 5 v1.1 openCoach is the exception: q1 is a stable sentinel
+// (`openQuestion`) and q3 is required, capped at 120 chars.
 //
 // Stable-key discipline: option values are English keys (`fuzzy`,
 // `concrete`, ...) stored internally and forwarded to the wire. 繁中 labels
@@ -142,6 +144,9 @@ class _CoachFollowUpInputSheetState extends State<CoachFollowUpInputSheet> {
 
   bool get _canSubmit {
     if (widget.isLoading) return false;
+    if (widget.phase == CoachFollowUpPhase.openCoach) {
+      return _q3Ctrl.text.trim().isNotEmpty;
+    }
     if (_q1 == null) return false;
     if (_spec.q2Required && _q2 == null) return false;
     return true;
@@ -150,6 +155,13 @@ class _CoachFollowUpInputSheetState extends State<CoachFollowUpInputSheet> {
   void _submit() {
     if (!_canSubmit) return;
     final q3 = _q3Ctrl.text.trim();
+    if (widget.phase == CoachFollowUpPhase.openCoach) {
+      widget.onSubmit(CoachFollowUpAnswers(
+        q1: 'openQuestion',
+        q3: q3,
+      ));
+      return;
+    }
     widget.onSubmit(CoachFollowUpAnswers(
       q1: _q1!,
       q2: _q2,
@@ -174,47 +186,82 @@ class _CoachFollowUpInputSheetState extends State<CoachFollowUpInputSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            _QuestionGroup(
-              question: _spec.q1Question,
-              required: true,
-              options: _spec.q1Options,
-              selectedKey: _q1,
-              onSelected: (k) => setState(() {
-                _q1 = (_q1 == k) ? null : k;
-              }),
-            ),
-            const SizedBox(height: 16),
-            _QuestionGroup(
-              question: _spec.q2Question,
-              required: _spec.q2Required,
-              options: _spec.q2Options,
-              selectedKey: _q2,
-              onSelected: (k) => setState(() {
-                _q2 = (_q2 == k) ? null : k;
-              }),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _q3Ctrl,
-              maxLength: 80,
-              maxLines: 3,
-              minLines: 1,
-              decoration: InputDecoration(
-                hintText: _spec.q3Hint,
-                border: const OutlineInputBorder(),
+            if (widget.phase == CoachFollowUpPhase.openCoach)
+              _buildOpenCoachBody()
+            else ...[
+              _QuestionGroup(
+                question: _spec.q1Question,
+                required: true,
+                options: _spec.q1Options,
+                selectedKey: _q1,
+                onSelected: (k) => setState(() {
+                  _q1 = (_q1 == k) ? null : k;
+                }),
               ),
-            ),
+              const SizedBox(height: 16),
+              _QuestionGroup(
+                question: _spec.q2Question,
+                required: _spec.q2Required,
+                options: _spec.q2Options,
+                selectedKey: _q2,
+                onSelected: (k) => setState(() {
+                  _q2 = (_q2 == k) ? null : k;
+                }),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _q3Ctrl,
+                maxLength: 80,
+                maxLines: 3,
+                minLines: 1,
+                decoration: InputDecoration(
+                  hintText: _spec.q3Hint,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: _canSubmit ? _submit : null,
-                child: const Text('產生跟進建議'),
+                child: Text(
+                  widget.phase == CoachFollowUpPhase.openCoach
+                      ? '讓教練看一下'
+                      : '產生跟進建議',
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildOpenCoachBody() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '把你現在卡住的點寫下來。教練會用 VibeSync 的真誠、穩定、尊重框架，給你一張短建議卡。',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.onBackgroundSecondary,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _q3Ctrl,
+          maxLength: 120,
+          maxLines: 4,
+          minLines: 2,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            hintText: '例如：我太有邊界感，不知道怎麼推進；她回很慢，我該等還是約？',
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ],
     );
   }
 }

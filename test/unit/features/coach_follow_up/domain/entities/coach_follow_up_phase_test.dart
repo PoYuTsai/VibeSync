@@ -12,16 +12,19 @@ void main() {
   group('CoachFollowUpPhase', () {
     test('phase serializes to stable English string keys', () {
       expect(CoachFollowUpPhase.prepareInvite.name, equals('prepareInvite'));
-      expect(CoachFollowUpPhase.preDateReminder.name, equals('preDateReminder'));
+      expect(
+          CoachFollowUpPhase.preDateReminder.name, equals('preDateReminder'));
       expect(
         CoachFollowUpPhase.postDateReflection.name,
         equals('postDateReflection'),
       );
+      expect(CoachFollowUpPhase.openCoach.name, equals('openCoach'));
     });
 
-    test('values list has exactly 3 phases (no extras / no missing)', () {
-      expect(CoachFollowUpPhase.values, hasLength(3));
-      expect(CoachFollowUpPhase.values, contains(CoachFollowUpPhase.prepareInvite));
+    test('values list has exactly 4 phases (no extras / no missing)', () {
+      expect(CoachFollowUpPhase.values, hasLength(4));
+      expect(CoachFollowUpPhase.values,
+          contains(CoachFollowUpPhase.prepareInvite));
       expect(
         CoachFollowUpPhase.values,
         contains(CoachFollowUpPhase.preDateReminder),
@@ -30,6 +33,7 @@ void main() {
         CoachFollowUpPhase.values,
         contains(CoachFollowUpPhase.postDateReflection),
       );
+      expect(CoachFollowUpPhase.values, contains(CoachFollowUpPhase.openCoach));
     });
 
     test('fromString returns matching enum for each stable key', () {
@@ -44,6 +48,10 @@ void main() {
       expect(
         CoachFollowUpPhase.fromString('postDateReflection'),
         equals(CoachFollowUpPhase.postDateReflection),
+      );
+      expect(
+        CoachFollowUpPhase.fromString('openCoach'),
+        equals(CoachFollowUpPhase.openCoach),
       );
     });
 
@@ -66,6 +74,7 @@ void main() {
         CoachFollowUpPhase.postDateReflection.displayLabel,
         equals('約會後復盤'),
       );
+      expect(CoachFollowUpPhase.openCoach.displayLabel, equals('我有其他問題'));
     });
   });
 }

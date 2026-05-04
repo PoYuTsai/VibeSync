@@ -1,9 +1,10 @@
 // Spec 5 C22 — phase chip row + AI hint + 額度 caption.
 //
-// Pure presentation widget. Renders 3 phase chips (always in
-// CoachFollowUpPhase.values order), an optional AI hint line below them, and
-// a fixed quota caption. Telemetry is the parent's responsibility — this
-// widget surfaces taps via onPhaseSelected and that's it.
+// Pure presentation widget. Renders the 3 fixed lifecycle chips, an optional
+// AI hint line below them, and a fixed quota caption. Spec 5 v1.1 adds
+// CoachFollowUpPhase.openCoach, but that phase is intentionally NOT rendered
+// as a fourth chip; the section owns a separate "open question" entry below
+// this row so the fixed menus and free-form coach question stay distinct.
 //
 // Selection priority for visual highlight:
 //   1. selectedPhase (user-explicit choice)
@@ -15,6 +16,12 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/coach_follow_up_phase.dart';
+
+const _lifecyclePhases = <CoachFollowUpPhase>[
+  CoachFollowUpPhase.prepareInvite,
+  CoachFollowUpPhase.preDateReminder,
+  CoachFollowUpPhase.postDateReflection,
+];
 
 class CoachFollowUpChipRow extends StatelessWidget {
   final CoachFollowUpPhase? selectedPhase;
@@ -45,15 +52,14 @@ class CoachFollowUpChipRow extends StatelessWidget {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: CoachFollowUpPhase.values.map((phase) {
+          children: _lifecyclePhases.map((phase) {
             return ChoiceChip(
               label: Text(phase.displayLabel),
               selected: _isHighlighted(phase),
               // showCheckmark: false avoids the dark-bg ghost-checkmark
               // artifact that bit ProfileChipSection (memory ref).
               showCheckmark: false,
-              onSelected:
-                  isLoading ? null : (_) => onPhaseSelected(phase),
+              onSelected: isLoading ? null : (_) => onPhaseSelected(phase),
             );
           }).toList(growable: false),
         ),

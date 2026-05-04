@@ -183,6 +183,7 @@ void main() {
       expect(find.text('準備邀約'), findsOneWidget);
       expect(find.text('約會前提醒'), findsOneWidget);
       expect(find.text('約會後復盤'), findsOneWidget);
+      expect(find.text('或直接問教練一個問題...'), findsOneWidget);
       expect(find.textContaining('生成會使用 1 則額度'), findsOneWidget);
 
       // With-result state widgets must be absent.
@@ -270,6 +271,17 @@ void main() {
       expect(find.text('產生跟進建議'), findsOneWidget);
     });
 
+    testWidgets('open coach entry opens the open question sheet', (t) async {
+      await _pump(t, repo: _FakeRepo(), partner: _partner());
+
+      await t.tap(find.text('或直接問教練一個問題...'));
+      await t.pumpAndSettle();
+
+      expect(find.text('我有其他問題'), findsOneWidget);
+      expect(find.text('讓教練看一下'), findsOneWidget);
+      expect(find.textContaining('把你現在卡住的點寫下來'), findsOneWidget);
+    });
+
     testWidgets('submitting the sheet generates + transitions to with-result',
         (t) async {
       await _pump(
@@ -289,6 +301,26 @@ void main() {
       expect(find.text('BRAND_NEW'), findsOneWidget);
       expect(find.text('重新生成'), findsOneWidget);
       expect(find.text('換情境'), findsOneWidget);
+    });
+
+    testWidgets('submitting open coach question generates an openCoach card',
+        (t) async {
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        invoker: _stubInvoker(headline: 'OPEN_COACH'),
+      );
+
+      await t.tap(find.text('或直接問教練一個問題...'));
+      await t.pumpAndSettle();
+      await t.enterText(find.byType(TextField), '我太有邊界感，不知道怎麼推進');
+      await t.pumpAndSettle();
+      await t.tap(find.text('讓教練看一下'));
+      await t.pumpAndSettle();
+
+      expect(find.text('OPEN_COACH'), findsOneWidget);
+      expect(find.text('我有其他問題'), findsOneWidget);
     });
 
     testWidgets('重新生成 enabled after a fresh same-session generate', (t) async {
@@ -349,6 +381,28 @@ void main() {
       expect(invoked, hasLength(1));
       expect(invoked.first.phase, CoachFollowUpPhase.prepareInvite);
       expect(invoked.first.hasOptionalText, isFalse);
+    });
+
+    testWidgets('open coach Invoked event uses openCoach + optional text',
+        (t) async {
+      final events = <CoachFollowUpTelemetryEvent>[];
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        onTelemetry: events.add,
+      );
+
+      await t.tap(find.text('或直接問教練一個問題...'));
+      await t.pumpAndSettle();
+      await t.enterText(find.byType(TextField), '她回很慢，我該等還是約？');
+      await t.pumpAndSettle();
+      await t.tap(find.text('讓教練看一下'));
+      await t.pumpAndSettle();
+
+      final invoked = events.whereType<CoachFollowUpInvokedEvent>().single;
+      expect(invoked.phase, CoachFollowUpPhase.openCoach);
+      expect(invoked.hasOptionalText, isTrue);
     });
 
     testWidgets('Invoked.hasOptionalText true when q3 free-text filled',

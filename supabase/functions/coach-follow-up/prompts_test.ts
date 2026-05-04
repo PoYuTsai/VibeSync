@@ -46,6 +46,18 @@ Deno.test("postDateReflection prompt includes phase tag + boundary instruction",
   assertStringIncludes(p, "boundaryReminder");
 });
 
+Deno.test("openCoach prompt includes phase tag + open coach positioning", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "我太有邊界感，不知道怎麼推進" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "我有其他問題");
+  assertStringIncludes(p, "開放式教練診斷");
+  assertStringIncludes(p, "不是自由聊天");
+  assertStringIncludes(p, "健康主動性");
+});
+
 Deno.test("preDateReminder does NOT instruct inference from partner name", () => {
   const p = buildCoachFollowUpPrompt(
     "preDateReminder",
@@ -144,6 +156,17 @@ Deno.test("q3 is marked as priority context, not buried beside q1/q2", () => {
   assertStringIncludes(p, "[用戶補充 - 必須優先回應]");
   assertStringIncludes(p, "我想跟她打炮");
   assertStringIncludes(p, "不可只根據 q1/q2 泛泛回答");
+});
+
+Deno.test("openCoach q3 is required priority context", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "她回很慢，我該等還是約？" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "q1=openQuestion（用戶直接問教練一個開放式問題）");
+  assertStringIncludes(p, "[用戶補充 - 必須優先回應]");
+  assertStringIncludes(p, "她回很慢，我該等還是約？");
 });
 
 Deno.test("prompt tells model how to handle explicit / rude / incoherent q3 safely", () => {

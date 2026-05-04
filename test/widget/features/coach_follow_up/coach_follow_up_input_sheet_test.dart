@@ -1,13 +1,14 @@
 // Spec 5 C23 — CoachFollowUpInputSheet widget TDD spec.
 //
-// Implements design §1.2 Click-First Input Flow. 3 phase variants × Q1/Q2/Q3
-// each with phase-specific options. STABLE ENGLISH KEYS internally; 中文
+// Implements design §1.2 Click-First Input Flow. 3 lifecycle variants × Q1/Q2/Q3
+// plus v1.1 openCoach free-form question. STABLE ENGLISH KEYS internally; 中文
 // labels render only at the chip surface — Edge function never sees 繁中
 // option strings (locked by C19's wire shape + this widget's submit assertion).
 //
 // Submit button gating:
 //   • prepareInvite / preDateReminder — Q1 required only
 //   • postDateReflection — Q1 + Q2 both required
+//   • openCoach — q3 open question required, q1 emits stable sentinel
 //   • isLoading=true — always disabled (debounce — Q2 verdict)
 
 import 'package:flutter/material.dart';
@@ -183,7 +184,8 @@ void main() {
     });
   });
 
-  group('CoachFollowUpInputSheet — postDateReflection phase '
+  group(
+      'CoachFollowUpInputSheet — postDateReflection phase '
       '(Q1 + Q2 BOTH required)', () {
     testWidgets('renders 4 Q1 options + 4 Q2 options', (tester) async {
       await _pump(tester, phase: CoachFollowUpPhase.postDateReflection);
@@ -212,8 +214,7 @@ void main() {
       expect(btn.onPressed, isNull);
     });
 
-    testWidgets(
-        'submit enables once Q1 + Q2 are BOTH selected',
+    testWidgets('submit enables once Q1 + Q2 are BOTH selected',
         (tester) async {
       await _pump(tester, phase: CoachFollowUpPhase.postDateReflection);
       await _tapChipText(tester, '卡卡的');
@@ -225,8 +226,7 @@ void main() {
       expect(btn.onPressed, isNotNull);
     });
 
-    testWidgets(
-        'Q2 stable keys: proactive / polite / cooling / stillUnclear',
+    testWidgets('Q2 stable keys: proactive / polite / cooling / stillUnclear',
         (tester) async {
       CoachFollowUpAnswers? captured;
       await _pump(
@@ -284,6 +284,62 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(captured?.q3, isNull);
+    });
+  });
+
+  group('CoachFollowUpInputSheet — openCoach phase', () {
+    testWidgets('renders open question textarea without Q1/Q2 chips',
+        (tester) async {
+      await _pump(tester, phase: CoachFollowUpPhase.openCoach);
+
+      expect(find.text('我有其他問題'), findsOneWidget);
+      expect(find.textContaining('把你現在卡住的點寫下來'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('讓教練看一下'), findsOneWidget);
+      expect(find.text('你想用什麼方式邀？'), findsNothing);
+      expect(find.byType(ChoiceChip), findsNothing);
+    });
+
+    testWidgets('submit disabled until user writes a question', (tester) async {
+      await _pump(tester, phase: CoachFollowUpPhase.openCoach);
+
+      var btn = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '讓教練看一下'),
+      );
+      expect(btn.onPressed, isNull);
+
+      await tester.enterText(find.byType(TextField), '我太有邊界感，不知道怎麼推進');
+      await tester.pumpAndSettle();
+
+      btn = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '讓教練看一下'),
+      );
+      expect(btn.onPressed, isNotNull);
+    });
+
+    testWidgets('submit emits q1=openQuestion and q3 trimmed', (tester) async {
+      CoachFollowUpAnswers? captured;
+      await _pump(
+        tester,
+        phase: CoachFollowUpPhase.openCoach,
+        onSubmit: (a) => captured = a,
+      );
+
+      await tester.enterText(find.byType(TextField), '  她回很慢，我該等還是約？  ');
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '讓教練看一下'));
+      await tester.pumpAndSettle();
+
+      expect(captured?.q1, 'openQuestion');
+      expect(captured?.q2, isNull);
+      expect(captured?.q3, '她回很慢，我該等還是約？');
+    });
+
+    testWidgets('open question text caps at 120 chars', (tester) async {
+      await _pump(tester, phase: CoachFollowUpPhase.openCoach);
+
+      final textFieldWidget = tester.widget<TextField>(find.byType(TextField));
+      expect(textFieldWidget.maxLength, 120);
     });
   });
 

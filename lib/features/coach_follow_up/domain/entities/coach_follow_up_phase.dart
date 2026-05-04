@@ -4,6 +4,7 @@
 ///   - prepareInvite    準備邀約 — user hasn't asked yet / opened but no reply / opened wrong
 ///   - preDateReminder  約會前提醒 — date locked, meeting soon
 ///   - postDateReflection 約會後復盤 — just met / met recently, needs pacing reflection
+///   - openCoach        我有其他問題 — open-ended coach question, still short-card output
 ///
 /// `.name` keys are the WIRE FORMAT — they ride on:
 ///   - the Edge function request body (`phase` field)
@@ -15,7 +16,8 @@
 enum CoachFollowUpPhase {
   prepareInvite,
   preDateReminder,
-  postDateReflection;
+  postDateReflection,
+  openCoach;
 
   /// Parse a stable English key back to the enum. Returns null for unknown,
   /// empty, or null input. Display labels (繁中) are intentionally NOT accepted
@@ -36,6 +38,8 @@ enum CoachFollowUpPhase {
         return '約會前提醒';
       case CoachFollowUpPhase.postDateReflection:
         return '約會後復盤';
+      case CoachFollowUpPhase.openCoach:
+        return '我有其他問題';
     }
   }
 }

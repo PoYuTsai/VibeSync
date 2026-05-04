@@ -59,6 +59,51 @@ Deno.test("validateRequest rejects q3 over 80 chars", async () => {
   );
 });
 
+Deno.test("validateRequest accepts openCoach with required q3 up to 120 chars", () => {
+  const r = validateRequest({
+    phase: "openCoach",
+    answers: { q1: "openQuestion", q3: "我太有邊界感，不知道怎麼推進".padEnd(120, "。") },
+  });
+  assertEquals(r.phase, "openCoach");
+  assertEquals(r.answers.q1, "openQuestion");
+});
+
+Deno.test("validateRequest rejects openCoach when q3 is missing", async () => {
+  await assertRejects(
+    async () =>
+      validateRequest({
+        phase: "openCoach",
+        answers: { q1: "openQuestion" },
+      }),
+    Error,
+    "q3 required",
+  );
+});
+
+Deno.test("validateRequest rejects openCoach q3 over 120 chars", async () => {
+  await assertRejects(
+    async () =>
+      validateRequest({
+        phase: "openCoach",
+        answers: { q1: "openQuestion", q3: "a".repeat(121) },
+      }),
+    Error,
+    "q3",
+  );
+});
+
+Deno.test("validateRequest rejects invalid openCoach q1", async () => {
+  await assertRejects(
+    async () =>
+      validateRequest({
+        phase: "openCoach",
+        answers: { q1: "fuzzy", q3: "我有一個問題" },
+      }),
+    Error,
+    "invalid q1",
+  );
+});
+
 Deno.test("validateRequest rejects partnerHint.lastConversationSummary over 200 chars", async () => {
   await assertRejects(
     async () =>
@@ -84,13 +129,17 @@ Deno.test("validateRequest accepts minimal valid payload", () => {
   assertEquals(r.answers.q1, "fuzzy");
 });
 
-Deno.test("validateRequest accepts all three phases", () => {
+Deno.test("validateRequest accepts all four phases", () => {
   const payloads = [
     { phase: "prepareInvite", answers: { q1: "fuzzy" } },
     { phase: "preDateReminder", answers: { q1: "tomorrow" } },
     {
       phase: "postDateReflection",
       answers: { q1: "okay", q2: "stillUnclear" },
+    },
+    {
+      phase: "openCoach",
+      answers: { q1: "openQuestion", q3: "我想問一個開放式問題" },
     },
   ];
   for (const payload of payloads) {

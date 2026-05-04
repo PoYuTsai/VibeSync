@@ -1,7 +1,7 @@
 // Spec 5 C22 — CoachFollowUpChipRow widget TDD spec.
 //
-// Pure-presentation chip row: 3 phases always visible (CoachFollowUpPhase
-// .values order), optional AI hint line, always-visible 額度 caption. Parent
+// Pure-presentation chip row: 3 fixed lifecycle phases always visible,
+// optional AI hint line, always-visible 額度 caption. Parent
 // owns the selected state + telemetry — this widget just renders + bubbles
 // taps via onPhaseSelected.
 
@@ -41,18 +41,19 @@ void main() {
       expect(find.text('準備邀約'), findsOneWidget);
       expect(find.text('約會前提醒'), findsOneWidget);
       expect(find.text('約會後復盤'), findsOneWidget);
+      expect(find.text('我有其他問題'), findsNothing,
+          reason: 'openCoach is rendered as a separate text-box entry by '
+              'CoachFollowUpSection, not as a fourth lifecycle chip.');
     });
 
-    testWidgets('renders chips in CoachFollowUpPhase.values order',
-        (tester) async {
+    testWidgets('renders lifecycle chips in fixed order', (tester) async {
       await _pump(tester);
 
       // Topological order check: prepareInvite renders BEFORE preDateReminder
       // BEFORE postDateReflection. We use byKey so the ordering is stable
       // regardless of where the labels live inside ChoiceChip's subtree.
-      final chipKeys = tester
-          .widgetList<ChoiceChip>(find.byType(ChoiceChip))
-          .toList();
+      final chipKeys =
+          tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).toList();
       expect(chipKeys, hasLength(3));
       expect(
         (chipKeys[0].label as Text).data,
@@ -79,8 +80,7 @@ void main() {
   });
 
   group('CoachFollowUpChipRow — AI hint text', () {
-    testWidgets(
-        'shows hint line with 💡 prefix when hintText is non-null',
+    testWidgets('shows hint line with 💡 prefix when hintText is non-null',
         (tester) async {
       await _pump(
         tester,
@@ -154,8 +154,7 @@ void main() {
   });
 
   group('CoachFollowUpChipRow — tap callback', () {
-    testWidgets(
-        'tapping a chip fires onPhaseSelected with the matching enum',
+    testWidgets('tapping a chip fires onPhaseSelected with the matching enum',
         (tester) async {
       CoachFollowUpPhase? tapped;
       await _pump(tester, onPhaseSelected: (p) => tapped = p);

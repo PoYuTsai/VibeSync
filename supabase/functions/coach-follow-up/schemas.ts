@@ -12,6 +12,7 @@ export const PhaseEnum = z.enum([
   "prepareInvite",
   "preDateReminder",
   "postDateReflection",
+  "openCoach",
 ]);
 
 const ANSWER_KEY_RULES = {
@@ -30,6 +31,11 @@ const ANSWER_KEY_RULES = {
     q2: ["proactive", "polite", "cooling", "stillUnclear"],
     q2Required: true,
   },
+  openCoach: {
+    q1: ["openQuestion"],
+    q2: [],
+    q2Required: false,
+  },
 } as const;
 
 function containsKey(list: readonly string[], value: string): boolean {
@@ -41,7 +47,7 @@ export const RequestSchema = z.object({
   answers: z.object({
     q1: z.string().min(1),
     q2: z.string().nullable().optional(),
-    q3: z.string().max(80).nullable().optional(),
+    q3: z.string().max(120).nullable().optional(),
   }),
   partnerHint: z
     .object({
@@ -76,6 +82,26 @@ export const RequestSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["answers", "q2"],
       message: `invalid q2 for ${payload.phase}`,
+    });
+  }
+
+  const q3 = payload.answers.q3;
+  if (payload.phase === "openCoach") {
+    if (q3 == null || q3.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["answers", "q3"],
+        message: "q3 required for openCoach",
+      });
+    }
+    return;
+  }
+
+  if (q3 != null && q3.length > 80) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["answers", "q3"],
+      message: `q3 over 80 chars for ${payload.phase}`,
     });
   }
 });

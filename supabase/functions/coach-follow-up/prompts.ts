@@ -28,6 +28,7 @@ const SYSTEM_PROMPT_BASE = `
 - 若用戶補充提到性或親密慾望：承認慾望存在，但只給尊重、同意、節奏、邊界與自我穩定相關建議；絕不教施壓、誘導、灌酒、情緒勒索或用承諾交換親密。
 - 若用戶補充是辱罵或人格標籤：不要認同標籤，改問/引導回具體行為與合不合適；提醒不要用輕蔑感做決策。
 - 若用戶補充像亂碼、打錯字或語意不足：不要腦補，依 q1/q2 與 phase 給保守建議，task 可請用戶補一個具體瞬間。
+- 若 phase=openCoach：把它當成開放式教練診斷，不是自由聊天；先理解用戶此刻的困惑，再給短、穩、可執行的一步。
 - 必須輸出 5 個欄位：headline (≤ 30 字) / observation (≤ 80 字) / task (≤ 30 字) / suggestedLine (≤ 80 字, optional) / boundaryReminder (≤ 60 字, REQUIRED, 永不可為 null)。
 - boundaryReminder 是 REQUIRED 強制欄位，每次都要產出邊界視角；缺欄位將視為失敗、用戶不會被扣額度。
 
@@ -67,6 +68,15 @@ const PHASE_INSTRUCTIONS: Record<CoachFollowUpRequest["phase"], string> = {
 - 若 q3 提到親密進展、性、打炮、收尾、暈船、想確認關係：必須直接回應這個補充。不要羞辱慾望，也不要鼓勵施壓；把重點拉回雙方意願、清楚同意、情緒穩定與不索取安全感。
 - task：給一個「這幾天就只做這個」的小動作；不要復盤整場約會。
 - boundaryReminder：提醒用戶分辨「她的節奏」和「我自己的不安」。
+`.trim(),
+  openCoach: `
+[Phase: 我有其他問題]
+情境：用戶不是在三個固定情境內，而是丟出一個比較開放、模糊、心理層面的卡點。
+- observation：直接回應 q3 的核心困惑；濃縮「真正卡住的是什麼」，不要展開長文分析。
+- task：給今天能練的一個最小動作；不要叫他全面改造自己。
+- suggestedLine：只有當 q3 明確需要一則訊息時才給；否則可為 null。
+- boundaryReminder：提醒「健康主動性 = 清楚表達意願 + 尊重對方反應」，不是迎合、控制或逃避。
+- 可以承認慾望、推進意願、害怕被拒絕、過度邊界感；但要轉成穩定、真誠、有發起能力的下一步。
 `.trim(),
 };
 
@@ -117,6 +127,12 @@ const ANSWER_LABELS: Record<
       cooling: "對方變慢或變淡",
       stillUnclear: "太早，還看不出來",
     },
+  },
+  openCoach: {
+    q1: {
+      openQuestion: "用戶直接問教練一個開放式問題",
+    },
+    q2: {},
   },
 };
 
