@@ -6,13 +6,13 @@ class LearningLinkResolver {
   const LearningLinkResolver._();
 
   static const Map<CoachActionType, String?> _table = {
-    CoachActionType.softInvite: null,
+    CoachActionType.softInvite: '21',
     CoachActionType.lowerPressureReply: '10',
     CoachActionType.extendTopicStoryFrame: '14',
     CoachActionType.emotionalResonance: '11',
     CoachActionType.rightSizeReply: '12',
     CoachActionType.playfulReply: '3',
-    CoachActionType.pausePursuit: null,
+    CoachActionType.pausePursuit: '22',
     CoachActionType.preferenceSignal: '2',
     CoachActionType.fitCheck: '18',
   };

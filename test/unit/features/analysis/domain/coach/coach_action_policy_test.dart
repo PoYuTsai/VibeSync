@@ -151,7 +151,7 @@ void main() {
       );
       expect(card.actionLabel, '模糊邀約');
       expect(card.suggestedLine, '剛好我也想去，週六下午有空嗎？');
-      expect(card.learningLink, isNull);
+      expect(card.learningLink, '21');
     });
 
     test('should not pick softInvite on veryHot heat without meeting signal',

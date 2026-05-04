@@ -5,8 +5,8 @@ import 'package:vibesync/features/learning/data/articles_data.dart';
 
 void main() {
   group('LearningLinkResolver.resolve', () {
-    test('should return null for softInvite when no exact article exists', () {
-      expect(LearningLinkResolver.resolve(CoachActionType.softInvite), isNull);
+    test('should return article 21 for softInvite', () {
+      expect(LearningLinkResolver.resolve(CoachActionType.softInvite), '21');
     });
 
     test('should return article 10 for lowerPressureReply', () {
@@ -44,11 +44,10 @@ void main() {
       );
     });
 
-    test('should return null for pausePursuit when no exact article exists',
-        () {
+    test('should return article 22 for pausePursuit', () {
       expect(
         LearningLinkResolver.resolve(CoachActionType.pausePursuit),
-        isNull,
+        '22',
       );
     });
 
@@ -75,6 +74,16 @@ void main() {
           isTrue,
           reason:
               '$type maps to articleId "$id" but no such article in articles',
+        );
+      }
+    });
+
+    test('should have an exact learning link for every coach action type', () {
+      for (final type in CoachActionType.values) {
+        expect(
+          LearningLinkResolver.resolve(type),
+          isNotNull,
+          reason: '$type should map to an exact learning article',
         );
       }
     });
