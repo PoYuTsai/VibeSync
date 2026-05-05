@@ -50,9 +50,9 @@ void main() {
       await _pumpAnalysisScreen(tester);
 
       expect(find.text('貼上或輸入新的一則訊息...'), findsOneWidget);
-      expect(find.text('輸入後，再選下方「加入為她說」或「加入為我說」。'), findsOneWidget);
-      expect(find.text('加入為她說'), findsOneWidget);
-      expect(find.text('加入為我說'), findsOneWidget);
+      expect(find.text('先輸入一句，再選這句是她說，還是我說。'), findsOneWidget);
+      expect(find.text('這句是她說'), findsOneWidget);
+      expect(find.text('這句是我說'), findsOneWidget);
     });
 
     testWidgets(
@@ -60,13 +60,24 @@ void main() {
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
-      final herButton = find.text('加入為她說');
+      final herButton = find.text('這句是她說');
       await tester.ensureVisible(herButton);
       await tester.tap(herButton);
       await tester.pump();
 
       expect(
-        find.text('先貼上或輸入對方的新回覆，再點「加入為她說」。'),
+        find.text('先貼上或輸入對方的新回覆，再點「這句是她說」。'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('empty conversation explains the first manual-input step',
+        (tester) async {
+      await _pumpAnalysisScreen(tester, messages: const []);
+
+      expect(find.text('還沒有訊息'), findsOneWidget);
+      expect(
+        find.text('先在下方輸入一句，再選「這句是她說」或「這句是我說」。'),
         findsOneWidget,
       );
     });

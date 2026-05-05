@@ -112,6 +112,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   bool _showAllMessages = false;
+  String? _lastManualAddedMessageId;
+  String? _lastManualAddedContent;
+  bool? _lastManualAddedIsFromMe;
 
   // 截圖上傳功能
   List<Uint8List> _selectedImages = [];
@@ -561,7 +564,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         .read(conversationWriteControllerProvider.notifier)
         .save(conversation);
     ref.invalidate(conversationProvider(widget.conversationId));
-    setState(() {});
+    setState(() {
+      if (_lastManualAddedMessageId == message.id) {
+        _lastManualAddedIsFromMe = !message.isFromMe;
+      }
+    });
   }
 
   /// 編輯訊息文字（供 OCR 錯字現場修正用）
@@ -580,7 +587,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           minLines: 1,
           style: TextStyle(color: AppColors.glassTextPrimary),
           decoration: InputDecoration(
-            hintText: '修正 OCR 錯字...',
+            hintText: '修正這則訊息...',
             hintStyle: TextStyle(color: AppColors.glassTextHint),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -632,7 +639,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         .read(conversationWriteControllerProvider.notifier)
         .save(conversation);
     ref.invalidate(conversationProvider(widget.conversationId));
-    setState(() {});
+    setState(() {
+      if (_lastManualAddedMessageId == message.id) {
+        _lastManualAddedContent = edited;
+        _lastManualAddedIsFromMe = message.isFromMe;
+      }
+    });
   }
 
   /// 刪除訊息
@@ -669,7 +681,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         .read(conversationWriteControllerProvider.notifier)
         .save(conversation);
     ref.invalidate(conversationProvider(widget.conversationId));
-    setState(() {});
+    setState(() {
+      if (_lastManualAddedMessageId == message.id) {
+        _lastManualAddedMessageId = null;
+        _lastManualAddedContent = null;
+        _lastManualAddedIsFromMe = null;
+      }
+    });
   }
 
   /// 啟動識別計時器
@@ -1121,7 +1139,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     final content = _messageController.text.trim();
     if (content.isEmpty) {
       final hint =
-          isFromMe ? '先輸入你要補上的訊息，再點「加入為我說」。' : '先貼上或輸入對方的新回覆，再點「加入為她說」。';
+          isFromMe ? '先輸入你要補上的訊息，再點「這句是我說」。' : '先貼上或輸入對方的新回覆，再點「這句是她說」。';
       _showFloatingSnackBar(hint);
       return;
     }
@@ -1146,11 +1164,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     // 清空輸入框
     _messageController.clear();
+    setState(() {
+      _lastManualAddedMessageId = newMessage.id;
+      _lastManualAddedContent = content;
+      _lastManualAddedIsFromMe = isFromMe;
+    });
 
     // 根據訊息類型決定行為
     if (!isFromMe) {
-      // 「她說」：不自動分析，顯示提示讓用戶決定
-      _showAnalyzePrompt();
+      // 「她說」：不自動分析，讓輸入區內的成功回饋提供下一步。
     } else {
       // 「我說」：Essential 用戶自動分析話題延續 (Haiku, 快速)
       final subscription = ref.read(subscriptionProvider);
@@ -1182,19 +1204,108 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return messages.skip(messages.length - 5).toList();
   }
 
-  /// 顯示分析提示，讓用戶決定是否分析「她說」的訊息
-  void _showAnalyzePrompt() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('已新增對方訊息'),
-        backgroundColor: AppColors.surface,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: '分析熱度與建議',
-          textColor: AppColors.primary,
-          onPressed: _runAnalysis,
+  Future<void> _editLastManualAddedMessage() async {
+    final messageId = _lastManualAddedMessageId;
+    if (messageId == null) return;
+
+    final repository = ref.read(conversationRepositoryProvider);
+    final conversation = repository.getConversation(widget.conversationId);
+    if (conversation == null) return;
+
+    Message? message;
+    for (final candidate in conversation.messages) {
+      if (candidate.id == messageId) {
+        message = candidate;
+        break;
+      }
+    }
+    if (message == null) return;
+
+    await _editMessage(conversation, message);
+  }
+
+  Widget _buildManualAddedFeedback() {
+    final content = _lastManualAddedContent;
+    final isFromMe = _lastManualAddedIsFromMe;
+    if (content == null || isFromMe == null) {
+      return const SizedBox.shrink();
+    }
+
+    final speakerLabel = isFromMe ? '我說' : '她說';
+    final nextStep =
+        isFromMe ? '已放到上方對話框。等對方回覆後，再貼上她說的內容。' : '已放到上方對話框。確認沒錯後，可以分析熱度與建議。';
+    final preview =
+        content.length > 36 ? '${content.substring(0, 36)}…' : content;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.success.withValues(alpha: 0.28),
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: AppColors.success,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '已加入為$speakerLabel：「$preview」',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            nextStep,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              TextButton.icon(
+                onPressed: _editLastManualAddedMessage,
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('編輯剛剛那則'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
+              if (!isFromMe)
+                TextButton.icon(
+                  onPressed: _isAnalyzing ? null : _runAnalysis,
+                  icon: const Icon(Icons.auto_graph, size: 16),
+                  label: const Text('分析這段'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -3179,6 +3290,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           GlassmorphicContainer(
                             child: Column(
                               children: [
+                                if (conversation.messages.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 20,
+                                      horizontal: 8,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.chat_bubble_outline,
+                                          color: AppColors.glassTextHint,
+                                          size: 34,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          '還沒有訊息',
+                                          style: AppTypography.titleMedium
+                                              .copyWith(
+                                            color: AppColors.glassTextPrimary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          '先在下方輸入一句，再選「這句是她說」或「這句是我說」。',
+                                          textAlign: TextAlign.center,
+                                          style:
+                                              AppTypography.bodySmall.copyWith(
+                                            color: AppColors.glassTextSecondary,
+                                            height: 1.35,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 // 顯示訊息 (可展開/收合)
                                 ..._visibleMessagePreview(
                                   conversation.messages,
@@ -5289,7 +5435,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   .copyWith(color: AppColors.glassTextPrimary),
               decoration: InputDecoration(
                 hintText: '貼上或輸入新的一則訊息...',
-                helperText: '輸入後，再選下方「加入為她說」或「加入為我說」。',
+                helperText: '先輸入一句，再選這句是她說，還是我說。',
                 helperStyle: AppTypography.caption.copyWith(
                   color: AppColors.glassTextHint,
                 ),
@@ -5353,7 +5499,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           ? () => _addMessage(isFromMe: false)
                           : null,
                       icon: const Text('👩', style: TextStyle(fontSize: 18)),
-                      label: Text('加入為她說',
+                      label: Text('這句是她說',
                           style: TextStyle(color: AppColors.glassTextPrimary)),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -5403,7 +5549,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             children: [
                               Text('👤', style: TextStyle(fontSize: 18)),
                               SizedBox(width: 8),
-                              Text('加入為我說',
+                              Text('這句是我說',
                                   style: TextStyle(
                                       color: canAddManualMessage
                                           ? Colors.white
@@ -5418,6 +5564,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
               ],
             ),
+            if (_lastManualAddedContent != null) ...[
+              const SizedBox(height: 10),
+              _buildManualAddedFeedback(),
+            ],
           ],
         ),
       ),

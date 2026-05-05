@@ -15,20 +15,24 @@
 **症狀**:
 
 - 繼續對話輸入一則訊息後點「加入為她說」，上方對話預覽仍停在舊訊息，使用者看不出來是否加入成功。
+- 成功加入後只出現黑色 snackbar + 右側 action，使用者仍不確定剛剛那句是否已寫進對話，也不知道打錯字如何補救。
 - 「我有想說的，幫我優化」與「教練跟進」在額度用完時只顯示 snackbar / inline error，沒有直接帶到升級方案頁。
 - Free 用戶升級 Essential 後仍沿用 Free 已使用量，顯示本月已使用 28 / 今日剩餘已被扣。
 
 **Root Cause**:
 
 1. 對話預覽折疊狀態使用 `conversation.messages.take(5)`，只顯示最舊 5 則；新增訊息 append 到尾端後被藏住。
-2. 分析優化與 coach-follow-up 的 quota exception 只轉成文字狀態，沒有接 paywall navigation。
-3. `sync-subscription` 讀到 client `resetUsage` 但後端把 `shouldResetUsage` 寫死為 `false`，付費升級不會清 usage counters。
+2. 成功狀態放在 transient snackbar，且文案只說「已新增對方訊息」，沒有把「已加入哪一邊 / 內容摘要 / 下一步 / 可編輯」放回使用者正在操作的底部輸入區。
+3. 分析優化與 coach-follow-up 的 quota exception 只轉成文字狀態，沒有接 paywall navigation。
+4. `sync-subscription` 讀到 client `resetUsage` 但後端把 `shouldResetUsage` 寫死為 `false`，付費升級不會清 usage counters。
 
 **修復**:
 
 1. 折疊預覽改顯示最新 5 則，讓新增的「她說 / 我說」立即出現在上方對話框。
-2. Daily / Monthly quota exceeded 都直接觸發 paywall；coach-follow-up section 透過 `onQuotaExceeded` callback 由 Partner Detail 開升級頁。
-3. `sync-subscription` 新增 paid-upgrade reset helper：只有 RevenueCat 確認 tier 變成付費且 client 要求 reset 時才清 `monthly_messages_used` / `daily_messages_used`；restore、same-tier、scheduled downgrade、RC transient free snapshot 不清。
+2. 成功加入後改成底部 inline feedback：「已加入為她說/我說」+ 內容摘要 + 下一步；提供「編輯剛剛那則」，她說時另提供「分析這段」。
+3. 空對話預覽加第一步提示；按鈕文案從「加入為她說/我說」改成「這句是她說/我說」，降低新用戶的判斷成本。
+4. Daily / Monthly quota exceeded 都直接觸發 paywall；coach-follow-up section 透過 `onQuotaExceeded` callback 由 Partner Detail 開升級頁。
+5. `sync-subscription` 新增 paid-upgrade reset helper：只有 RevenueCat 確認 tier 變成付費且 client 要求 reset 時才清 `monthly_messages_used` / `daily_messages_used`；restore、same-tier、scheduled downgrade、RC transient free snapshot 不清。
 
 **驗證**:
 
