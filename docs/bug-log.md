@@ -10,6 +10,33 @@
 
 ## 2026-05
 
+### [2026-05-05] 編輯剛剛那則訊息文字對比不足
+
+**症狀**:
+
+- 使用者在「繼續對話」手動補上一則訊息後，點「編輯剛剛那則」打開編輯 Dialog，輸入框文字顏色在實機上與背景對比不足，看起來太深、不易讀。
+
+**Root Cause**:
+
+1. 編輯 Dialog 只指定 `TextField.style`，沒有把輸入框底色 `fillColor` 固定。
+2. `AlertDialog` 仍可能受 Material surface tint / 外層主題影響，導致實機視覺不是穩定的「淺底深字」。
+
+**修復**:
+
+1. `AlertDialog` 關閉 `surfaceTintColor`，避免主題 tint 讓底色跑掉。
+2. 編輯 `TextField` 固定為白色填底、深色正文、primary 游標，確保 OCR/手動訊息修正時可讀。
+3. 補 widget test 鎖住 Dialog 背景、TextField 填底與文字色契約。
+
+**驗證**:
+
+- `flutter test test/widget/features/analysis/analysis_screen_continue_input_test.dart`
+- `flutter analyze`
+
+**涉及檔案**:
+
+- `lib/features/analysis/presentation/screens/analysis_screen.dart`
+- `test/widget/features/analysis/analysis_screen_continue_input_test.dart`
+
 ### [2026-05-05] iOS 手動輸入鍵盤無法明確收起
 
 **症狀**:

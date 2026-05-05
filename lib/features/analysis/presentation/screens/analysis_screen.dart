@@ -601,6 +601,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
+        surfaceTintColor: Colors.transparent,
         title:
             Text('編輯文字', style: TextStyle(color: AppColors.glassTextPrimary)),
         content: TextField(
@@ -608,10 +609,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           autofocus: true,
           maxLines: null,
           minLines: 1,
-          style: TextStyle(color: AppColors.glassTextPrimary),
+          cursorColor: AppColors.primary,
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.glassTextPrimary,
+            height: 1.35,
+          ),
           decoration: InputDecoration(
             hintText: '修正這則訊息...',
             hintStyle: TextStyle(color: AppColors.glassTextHint),
+            filled: true,
+            fillColor: Colors.white,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(color: AppColors.glassBorder),

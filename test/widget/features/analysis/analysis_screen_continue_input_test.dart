@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -73,6 +74,43 @@ void main() {
       await tester.pump();
 
       expect(tester.testTextInput.isVisible, isFalse);
+    });
+
+    testWidgets('edit dialog keeps the text field readable on a light surface',
+        (tester) async {
+      await _pumpAnalysisScreen(
+        tester,
+        messages: [
+          Message(
+            id: 'm1',
+            content: 'Readable edit target',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 4),
+          ),
+        ],
+      );
+
+      final bubble = find.text('Readable edit target').first;
+      await tester.ensureVisible(bubble);
+      await tester.longPress(bubble);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tap(find.text('編輯文字'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final dialog = tester.widget<AlertDialog>(find.byType(AlertDialog));
+      expect(dialog.backgroundColor, AppColors.glassWhite);
+      expect(dialog.surfaceTintColor, Colors.transparent);
+
+      final fieldFinder = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      );
+      final field = tester.widget<TextField>(fieldFinder);
+      expect(field.cursorColor, AppColors.primary);
+      expect(field.style?.color, AppColors.glassTextPrimary);
+      expect(field.decoration?.filled, isTrue);
+      expect(field.decoration?.fillColor, Colors.white);
     });
 
     testWidgets(
