@@ -250,6 +250,21 @@ void main() {
 
       final textFieldWidget = tester.widget<TextField>(find.byType(TextField));
       expect(textFieldWidget.maxLength, 80);
+      expect(textFieldWidget.textInputAction, TextInputAction.done);
+      expect(find.byTooltip('收起鍵盤'), findsOneWidget);
+    });
+
+    testWidgets('Q3 can dismiss keyboard before submit', (tester) async {
+      await _pump(tester, phase: CoachFollowUpPhase.prepareInvite);
+
+      await tester.tap(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), '怕她覺得我太急');
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      await tester.tap(find.byTooltip('收起鍵盤'));
+      await tester.pump();
+
+      expect(tester.testTextInput.isVisible, isFalse);
     });
 
     testWidgets('Q3 text is forwarded to onSubmit when non-empty',
@@ -340,6 +355,8 @@ void main() {
 
       final textFieldWidget = tester.widget<TextField>(find.byType(TextField));
       expect(textFieldWidget.maxLength, 120);
+      expect(textFieldWidget.textInputAction, TextInputAction.done);
+      expect(find.byTooltip('收起鍵盤'), findsOneWidget);
     });
   });
 

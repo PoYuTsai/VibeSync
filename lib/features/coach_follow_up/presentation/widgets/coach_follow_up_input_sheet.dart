@@ -152,8 +152,26 @@ class _CoachFollowUpInputSheetState extends State<CoachFollowUpInputSheet> {
     return true;
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  InputDecoration _textInputDecoration(String hintText) {
+    return InputDecoration(
+      hintText: hintText,
+      helperText: '輸入完可先收起鍵盤，再送出。',
+      border: const OutlineInputBorder(),
+      suffixIcon: IconButton(
+        icon: const Icon(Icons.keyboard_hide),
+        onPressed: _dismissKeyboard,
+        tooltip: '收起鍵盤',
+      ),
+    );
+  }
+
   void _submit() {
     if (!_canSubmit) return;
+    _dismissKeyboard();
     final q3 = _q3Ctrl.text.trim();
     if (widget.phase == CoachFollowUpPhase.openCoach) {
       widget.onSubmit(CoachFollowUpAnswers(
@@ -214,10 +232,9 @@ class _CoachFollowUpInputSheetState extends State<CoachFollowUpInputSheet> {
                 maxLength: 80,
                 maxLines: 3,
                 minLines: 1,
-                decoration: InputDecoration(
-                  hintText: _spec.q3Hint,
-                  border: const OutlineInputBorder(),
-                ),
+                textInputAction: TextInputAction.done,
+                onEditingComplete: _dismissKeyboard,
+                decoration: _textInputDecoration(_spec.q3Hint),
               ),
             ],
             const SizedBox(height: 12),
@@ -255,11 +272,10 @@ class _CoachFollowUpInputSheetState extends State<CoachFollowUpInputSheet> {
           maxLength: 120,
           maxLines: 4,
           minLines: 2,
+          textInputAction: TextInputAction.done,
+          onEditingComplete: _dismissKeyboard,
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            hintText: '例如：我太有邊界感，不知道怎麼推進；她回很慢，我該等還是約？',
-            border: OutlineInputBorder(),
-          ),
+          decoration: _textInputDecoration('例如：我太有邊界感，不知道怎麼推進；她回很慢，我該等還是約？'),
         ),
       ],
     );

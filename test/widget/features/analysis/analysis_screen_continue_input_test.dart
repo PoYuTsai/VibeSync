@@ -51,9 +51,28 @@ void main() {
 
       expect(find.text('貼上或輸入新的一則訊息...'), findsOneWidget);
       expect(find.text('建立這段對話'), findsOneWidget);
-      expect(find.text('先輸入一句，再選這句是她說，還是我說。'), findsOneWidget);
+      expect(find.text('輸入完先收起鍵盤，再選這句是她說，還是我說。'), findsOneWidget);
       expect(find.text('這句是她說'), findsOneWidget);
       expect(find.text('這句是我說'), findsOneWidget);
+    });
+
+    testWidgets('manual input can dismiss keyboard before choosing speaker',
+        (tester) async {
+      await _pumpAnalysisScreen(tester);
+
+      final textFieldFinder = find.byType(TextField).last;
+      final textField = tester.widget<TextField>(textFieldFinder);
+      expect(textField.textInputAction, TextInputAction.done);
+      expect(find.byTooltip('收起鍵盤'), findsOneWidget);
+
+      await tester.tap(textFieldFinder);
+      await tester.enterText(textFieldFinder, '要幫你帶什麼嗎？');
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      await tester.tap(find.byTooltip('收起鍵盤'));
+      await tester.pump();
+
+      expect(tester.testTextInput.isVisible, isFalse);
     });
 
     testWidgets(

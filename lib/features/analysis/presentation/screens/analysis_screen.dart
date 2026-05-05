@@ -356,6 +356,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   Future<void> _collapseComposerAndShowMessages() async {
+    _dismissKeyboard();
     if (_enthusiasmScore != null && _showContinueConversation) {
       setState(() {
         _showContinueConversation = false;
@@ -371,6 +372,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOut,
     );
+  }
+
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   Future<void> _handleErrorAction(AnalysisErrorAction action) async {
@@ -1162,6 +1167,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return;
     }
 
+    _dismissKeyboard();
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
     if (conversation == null) return;
@@ -2441,6 +2447,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     final draft = _optimizeController.text.trim();
     if (draft.isEmpty) return;
 
+    _dismissKeyboard();
     setState(() {
       _isOptimizing = true;
       _optimizedMessage = null;
@@ -2738,6 +2745,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _submitFeedback(String rating) async {
     if (_feedbackSubmitted || _isSubmittingFeedback) return;
 
+    _dismissKeyboard();
     final conversation = ref.read(conversationProvider(widget.conversationId));
     if (conversation == null) return;
 
@@ -4652,8 +4660,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                           color: AppColors.glassTextPrimary),
                                       decoration: InputDecoration(
                                         hintText: '輸入你想說的內容...',
+                                        helperText: '輸入完可先收起鍵盤，再按「幫我優化」。',
                                         hintStyle:
                                             AppTypography.bodyMedium.copyWith(
+                                          color: AppColors.glassTextHint,
+                                        ),
+                                        helperStyle:
+                                            AppTypography.caption.copyWith(
                                           color: AppColors.glassTextHint,
                                         ),
                                         filled: true,
@@ -4678,8 +4691,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                               color: AppColors.selectedStart,
                                               width: 1.5),
                                         ),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(Icons.keyboard_hide,
+                                              color: AppColors.glassTextHint),
+                                          onPressed: _dismissKeyboard,
+                                          tooltip: '收起鍵盤',
+                                        ),
                                       ),
                                       maxLines: 3,
+                                      textInputAction: TextInputAction.done,
+                                      onEditingComplete: _dismissKeyboard,
                                       enabled: !_isOptimizing,
                                       onChanged: (_) => setState(() {}),
                                     ),
@@ -4938,10 +4959,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                                     AppColors.glassTextPrimary),
                                         decoration: InputDecoration(
                                           hintText: '補充說明（選填）',
+                                          helperText: '輸入完可先收起鍵盤，再送出反饋。',
                                           hintStyle: AppTypography.bodyMedium
                                               .copyWith(
                                                   color:
                                                       AppColors.glassTextHint),
+                                          helperStyle:
+                                              AppTypography.caption.copyWith(
+                                            color: AppColors.glassTextHint,
+                                          ),
                                           isDense: true,
                                           filled: true,
                                           fillColor: Colors.white
@@ -4965,9 +4991,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                                 color: AppColors.selectedStart,
                                                 width: 1.5),
                                           ),
+                                          suffixIcon: IconButton(
+                                            icon: Icon(Icons.keyboard_hide,
+                                                color: AppColors.glassTextHint),
+                                            onPressed: _dismissKeyboard,
+                                            tooltip: '收起鍵盤',
+                                          ),
                                         ),
                                         maxLength: 300,
                                         maxLines: 3,
+                                        textInputAction: TextInputAction.done,
+                                        onEditingComplete: _dismissKeyboard,
                                       ),
                                       const SizedBox(height: 16),
                                       SizedBox(
@@ -5532,7 +5566,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   .copyWith(color: AppColors.glassTextPrimary),
               decoration: InputDecoration(
                 hintText: '貼上或輸入新的一則訊息...',
-                helperText: '先輸入一句，再選這句是她說，還是我說。',
+                helperText: '輸入完先收起鍵盤，再選這句是她說，還是我說。',
                 helperStyle: AppTypography.caption.copyWith(
                   color: AppColors.glassTextHint,
                 ),
@@ -5558,30 +5592,45 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   horizontal: 16,
                   vertical: 16,
                 ),
-                // 貼上按鈕
-                suffixIcon: IconButton(
-                  icon:
-                      Icon(Icons.content_paste, color: AppColors.glassTextHint),
-                  onPressed: _isAnalyzing
-                      ? null
-                      : () async {
-                          final data =
-                              await Clipboard.getData(Clipboard.kTextPlain);
-                          if (data?.text != null && data!.text!.isNotEmpty) {
-                            _messageController.text = data.text!;
-                            _messageController.selection =
-                                TextSelection.fromPosition(
-                              TextPosition(
-                                  offset: _messageController.text.length),
-                            );
-                          }
-                        },
-                  tooltip: '貼上',
+                suffixIconConstraints: const BoxConstraints(minWidth: 96),
+                // iOS multiline keyboards do not always show an obvious dismiss
+                // affordance, so keep explicit controls inside the visible field.
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.keyboard_hide,
+                          color: AppColors.glassTextHint),
+                      onPressed: _dismissKeyboard,
+                      tooltip: '收起鍵盤',
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.content_paste,
+                          color: AppColors.glassTextHint),
+                      onPressed: _isAnalyzing
+                          ? null
+                          : () async {
+                              final data =
+                                  await Clipboard.getData(Clipboard.kTextPlain);
+                              if (data?.text != null &&
+                                  data!.text!.isNotEmpty) {
+                                _messageController.text = data.text!;
+                                _messageController.selection =
+                                    TextSelection.fromPosition(
+                                  TextPosition(
+                                      offset: _messageController.text.length),
+                                );
+                              }
+                            },
+                      tooltip: '貼上',
+                    ),
+                  ],
                 ),
               ),
               maxLines: 5,
               minLines: 2,
-              textInputAction: TextInputAction.newline,
+              textInputAction: TextInputAction.done,
+              onEditingComplete: _dismissKeyboard,
               enabled: !_isAnalyzing,
             ),
             const SizedBox(height: 12),

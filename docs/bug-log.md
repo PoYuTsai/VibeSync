@@ -10,6 +10,40 @@
 
 ## 2026-05
 
+### [2026-05-05] iOS 手動輸入鍵盤無法明確收起
+
+**症狀**:
+
+- 使用者在「繼續對話」底部手動輸入新訊息後，iOS 鍵盤覆蓋「這句是她說 / 這句是我說」按鈕。
+- 多行輸入框右下角顯示 return / 換行，沒有明確「完成」語意；使用者不知道怎麼收起鍵盤繼續下一步。
+- 同類型的「輸入文字後，下方才有 CTA」也會遇到相同問題：訊息優化、問題回饋補充、教練跟進 sheet 的補充輸入。
+
+**Root Cause**:
+
+1. 手動補訊息的 `TextField` 使用 `TextInputAction.newline`，導致 iOS keyboard 優先呈現換行，而不是完成輸入。
+2. speaker 選擇按鈕放在輸入框下方；鍵盤開啟時按鈕容易被遮住，但畫面內沒有 visible keyboard dismiss control。
+3. 類似多行文字輸入沒有統一 keyboard-dismiss convention。
+
+**修復**:
+
+1. 手動輸入框改用 `TextInputAction.done`，`onEditingComplete` 主動 unfocus 收起鍵盤。
+2. 輸入框右側新增 `keyboard_hide` 按鈕，讓使用者不用猜 iOS 鍵盤怎麼收。
+3. 按「看上方對話」與成功加入訊息前也主動 unfocus，避免鍵盤卡住流程。
+4. 同步補「訊息優化」、「問題回饋補充」、「教練跟進 sheet」的多行輸入：done action + 右側收鍵盤按鈕 + submit 前 unfocus。
+
+**驗證**:
+
+- `flutter test test/widget/features/analysis/analysis_screen_continue_input_test.dart`
+- `flutter test test/widget/features/coach_follow_up/coach_follow_up_input_sheet_test.dart`
+- `flutter analyze`
+
+**涉及檔案**:
+
+- `lib/features/analysis/presentation/screens/analysis_screen.dart`
+- `test/widget/features/analysis/analysis_screen_continue_input_test.dart`
+- `lib/features/coach_follow_up/presentation/widgets/coach_follow_up_input_sheet.dart`
+- `test/widget/features/coach_follow_up/coach_follow_up_input_sheet_test.dart`
+
 ### [2026-05-05] Coach follow-up 對模糊赴約缺少時間成本判斷
 
 **症狀**:
