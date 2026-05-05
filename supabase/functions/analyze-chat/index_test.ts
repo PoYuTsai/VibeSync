@@ -220,3 +220,22 @@ Deno.test({
     assert(source.includes("有慾望很正常"));
   },
 });
+
+Deno.test({
+  name: "SYSTEM_PROMPT keeps flirtation calibrated without becoming explicit",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("情境11: 聊騷尺度 / 曖昧張力"));
+    assert(source.includes("不要裝沒看到，也不要立刻升級成露骨性內容"));
+    assert(source.includes("調情、暗示、留白、承認吸引、轉向見面"));
+    assert(source.includes("不輸出 Level 3 露骨性描寫"));
+    assert(source.includes("如果氣氛對，我應該不會假裝沒想過"));
+    assert(
+      source.includes("具體性器官、性行為細節、命令式挑逗、線上性愛式長文"),
+    );
+  },
+});
