@@ -104,7 +104,7 @@
 │  • 所有資料將在 30 天內永久刪除         │
 │  • 您將收到確認 Email                   │
 │                                         │
-│  如有疑問，請聯繫 support@vibesync.app  │
+│  如有疑問，請聯繫 vibesyncaiapp@gmail.com  │
 │                                         │
 │  [知道了，登出]                         │
 │                                         │
@@ -302,7 +302,7 @@ async function permanentlyDeleteUser(userId: string) {
 • 所有資料將在 30 天內永久刪除
 
 如果這不是您本人的操作，請立即聯繫我們：
-support@vibesync.app
+vibesyncaiapp@gmail.com
 
 如需取消刪除，請在 30 天內登入 App 並選擇「取消刪除」。
 
@@ -320,7 +320,7 @@ VibeSync 團隊
 
 感謝您曾使用 VibeSync。
 
-如有任何疑問，請聯繫 support@vibesync.app
+如有任何疑問，請聯繫 vibesyncaiapp@gmail.com
 
 VibeSync 團隊
 ```

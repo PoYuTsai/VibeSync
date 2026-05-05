@@ -69,7 +69,7 @@ VibeSync 可能提供 Free、Starter、Essential 或其他方案。
 - 取消、退款、帳單爭議與續訂規則，通常受您實際購買平台的政策約束
 - restore、transfer、entitlement 等結果，也可能受平台帳號與 RevenueCat 同步規則影響
 
-如有付款問題，請先依購買平台處理；如仍需協助，可聯繫 support@vibesyncai.app。
+如有付款問題，請先依購買平台處理；如仍需協助，可聯繫 vibesyncaiapp@gmail.com。
 
 ## 7. 您的內容
 
@@ -150,4 +150,4 @@ VibeSync 可能提供 Free、Starter、Essential 或其他方案。
 
 如您對本條款、付款、刪除帳號或服務使用有疑問，請聯繫：
 
-- support@vibesyncai.app
+- vibesyncaiapp@gmail.com

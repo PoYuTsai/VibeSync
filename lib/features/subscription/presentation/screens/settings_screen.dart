@@ -28,6 +28,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _manageSubscriptionsUrl =
       'https://apps.apple.com/account/subscriptions';
+  static const _supportEmail = 'vibesyncaiapp@gmail.com';
 
   String _versionString = '';
   bool _isRefreshingPendingDowngrade = false;
@@ -177,7 +178,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       icon: Icons.feedback,
                       title: '客服與支援',
                       onTap: () {
-                        _launchUrl('https://t.me/vibesync_feedback_bot');
+                        _openSupportEmail();
                       },
                     ),
                     _buildTile(
@@ -726,6 +727,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SnackBar(content: Text('目前無法開啟連結。')),
       );
     }
+  }
+
+  Future<void> _openSupportEmail() async {
+    final subscription = ref.read(subscriptionProvider);
+    final body = [
+      '請簡單描述你遇到的問題：',
+      '',
+      '問題類型：帳號 / 付款 / 額度 / OCR / AI 回覆 / 其他',
+      '帳號：${_accountLabel()}',
+      '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
+      'App 版本：${_versionString.isNotEmpty ? _versionString : '未知'}',
+      '',
+      '問題描述：',
+    ].join('\n');
+    final uri = Uri(
+      scheme: 'mailto',
+      path: _supportEmail,
+      queryParameters: {
+        'subject': 'VibeSync 客服與支援',
+        'body': body,
+      },
+    );
+    await _launchUrl(uri.toString());
   }
 
   Future<void> _openManageSubscriptions() async {

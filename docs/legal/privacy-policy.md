@@ -143,4 +143,4 @@ VibeSync 目前定位為 17+ 使用者的服務。若您未滿可適用年齡，
 
 若您對本政策、刪除資料、帳號問題或隱私事項有疑問，請聯繫：
 
-- support@vibesyncai.app
+- vibesyncaiapp@gmail.com

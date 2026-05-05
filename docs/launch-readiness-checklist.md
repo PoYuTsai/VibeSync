@@ -32,7 +32,7 @@
 
 - [ ] [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 內容與目前資料流一致
 - [ ] [https://vibesyncai.app/terms](https://vibesyncai.app/terms) 內容與目前方案一致
-- [ ] `support@vibesyncai.app` 可收信
+- [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect privacy disclosure 已完成
 - [ ] App Review 說明文已更新
 

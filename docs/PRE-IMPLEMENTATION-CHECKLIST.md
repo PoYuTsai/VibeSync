@@ -271,7 +271,7 @@ docs/
 | 300 則 | NT$179 |
 
 ### 客服配置
-- Email: support@vibesync.app (1-2 工作天回覆)
+- Email: vibesyncaiapp@gmail.com (1-2 工作天回覆)
 - LINE 官方帳號: @vibesync
 - App 內回饋表單
 

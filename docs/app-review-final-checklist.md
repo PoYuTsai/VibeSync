@@ -39,7 +39,7 @@
 
 - [ ] `https://vibesyncai.app/privacy` 可正常開啟
 - [ ] `https://vibesyncai.app/terms` 可正常開啟
-- [ ] `support@vibesyncai.app` 可收信
+- [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
 - [ ] App Review 說明文已更新成目前實際功能與資料流
 
