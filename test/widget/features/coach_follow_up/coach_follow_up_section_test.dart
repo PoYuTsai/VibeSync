@@ -134,6 +134,19 @@ CoachFollowUpInvoker _errorInvoker({
   };
 }
 
+CoachFollowUpInvoker _quotaInvoker() {
+  return (String _, {required Map<String, dynamic> body}) async {
+    return CoachFollowUpInvokeResponse(
+      status: 429,
+      data: <String, dynamic>{
+        'error': 'Daily limit exceeded',
+        'used': 15,
+        'limit': 15,
+      },
+    );
+  };
+}
+
 // ── Pump helper ───────────────────────────────────────────────────────────
 
 Future<void> _pump(
@@ -144,6 +157,7 @@ Future<void> _pump(
   List<Conversation> conversations = const [],
   DataQualityFlag flag = const DataQualityFlag.unflagged(),
   ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry,
+  Future<void> Function()? onQuotaExceeded,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -163,6 +177,7 @@ Future<void> _pump(
             child: CoachFollowUpSection(
               partnerId: _partnerId,
               onTelemetry: onTelemetry,
+              onQuotaExceeded: onQuotaExceeded,
             ),
           ),
         ),
@@ -357,6 +372,30 @@ void main() {
 
       expect(find.textContaining('未扣額度'), findsOneWidget);
       expect(find.text('GEN_HEADLINE'), findsNothing);
+    });
+
+    testWidgets('quota exceeded opens the upgrade surface callback', (t) async {
+      var paywallOpenCount = 0;
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        invoker: _quotaInvoker(),
+        onQuotaExceeded: () async {
+          paywallOpenCount += 1;
+        },
+      );
+
+      await t.tap(find.text('準備邀約'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('還沒想好'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('產生跟進建議'));
+      await t.pump();
+      await t.pump();
+
+      expect(paywallOpenCount, 1);
+      expect(find.textContaining('額度已用完'), findsOneWidget);
     });
   });
 

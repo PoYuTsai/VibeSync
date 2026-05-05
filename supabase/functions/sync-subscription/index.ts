@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
+import { shouldResetUsageOnTierSync } from "./usage_reset.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
@@ -252,14 +254,27 @@ serve(async (req) => {
       : null;
 
     const limits = TIER_LIMITS[finalTier] ?? TIER_LIMITS.free;
-    // Keep usage counters intact across tier sync / restore. Upgrading should
-    // increase limits, not erase already-consumed usage.
-    const shouldResetUsage = false;
+    // A confirmed paid upgrade starts the new plan with a fresh usage bucket.
+    // Same-tier restore / scheduled downgrade / transient RC free snapshot
+    // still preserve counters to avoid accidental quota erasure.
+    const shouldResetUsage = shouldResetUsageOnTierSync({
+      resetUsageRequested: resetUsage,
+      previousTier,
+      finalTier,
+      revenueCatTier,
+      tierPreservedReason,
+    });
     const nowIso = new Date().toISOString();
     const updatePayload: Record<string, unknown> = {
       tier: finalTier,
       status: finalTier == "free" ? "active" : "active",
     };
+    if (shouldResetUsage) {
+      updatePayload.monthly_messages_used = 0;
+      updatePayload.daily_messages_used = 0;
+      updatePayload.monthly_reset_at = nowIso;
+      updatePayload.daily_reset_at = nowIso;
+    }
 
     let syncedRow: Record<string, unknown> | null = null;
 

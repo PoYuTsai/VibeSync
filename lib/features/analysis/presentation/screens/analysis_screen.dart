@@ -498,9 +498,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ? null
             : jsonEncode(result.rawResponse);
 
-    await ref
-        .read(conversationWriteControllerProvider.notifier)
-        .save(conv);
+    await ref.read(conversationWriteControllerProvider.notifier).save(conv);
   }
 
   @override
@@ -567,15 +565,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   /// 編輯訊息文字（供 OCR 錯字現場修正用）
-  Future<void> _editMessage(
-      Conversation conversation, Message message) async {
+  Future<void> _editMessage(Conversation conversation, Message message) async {
     final controller = TextEditingController(text: message.content);
     final edited = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.glassWhite,
-        title: Text('編輯文字',
-            style: TextStyle(color: AppColors.glassTextPrimary)),
+        title:
+            Text('編輯文字', style: TextStyle(color: AppColors.glassTextPrimary)),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -602,12 +599,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(null),
-            child: Text('取消',
-                style: TextStyle(color: AppColors.unselectedText)),
+            child:
+                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
           ),
           TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
             style: TextButton.styleFrom(foregroundColor: AppColors.primary),
             child: const Text('儲存'),
           ),
@@ -942,8 +938,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
 
     if (importMode == _importModeNewConversation) {
-      final controller =
-          ref.read(conversationWriteControllerProvider.notifier);
+      final controller = ref.read(conversationWriteControllerProvider.notifier);
       // Inherit partnerId from the source conversation so the new "互動紀錄"
       // shows up under the same Partner detail page. Pre-A2 this path
       // created orphan conversations (partnerId=null) which silently
@@ -1030,9 +1025,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     conv.messages.addAll(importedMessages);
-    await ref
-        .read(conversationWriteControllerProvider.notifier)
-        .save(conv);
+    await ref.read(conversationWriteControllerProvider.notifier).save(conv);
     ref.invalidate(conversationProvider(widget.conversationId));
 
     final messageCount = importedMessages.length;
@@ -1127,9 +1120,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   Future<void> _addMessage({required bool isFromMe}) async {
     final content = _messageController.text.trim();
     if (content.isEmpty) {
-      final hint = isFromMe
-          ? '先輸入你要補上的訊息，再點「加入為我說」。'
-          : '先貼上或輸入對方的新回覆，再點「加入為她說」。';
+      final hint =
+          isFromMe ? '先輸入你要補上的訊息，再點「加入為我說」。' : '先貼上或輸入對方的新回覆，再點「加入為她說」。';
       _showFloatingSnackBar(hint);
       return;
     }
@@ -1179,6 +1171,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         curve: Curves.easeOut,
       );
     }
+  }
+
+  List<Message> _visibleMessagePreview(List<Message> messages) {
+    if (_showAllMessages || messages.length <= 5) {
+      return messages;
+    }
+    // Collapsed mode must show the latest messages so a freshly added
+    // manual "她說 / 我說" appears immediately in the preview card.
+    return messages.skip(messages.length - 5).toList();
   }
 
   /// 顯示分析提示，讓用戶決定是否分析「她說」的訊息
@@ -2136,15 +2137,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
       _syncSubscriptionUsageFromResult(result);
     } on DailyLimitExceededException catch (e) {
+      if (!mounted) return;
       setState(() {
         _isAnalyzing = false;
         _applyErrorState(
-          message: '今日額度已用完 (${e.used}/${e.dailyLimit})，明天再來！',
-          action: AnalysisErrorAction.wait,
+          message: '今日額度已用完 (${e.used}/${e.dailyLimit})，帶你去升級方案。',
+          action: AnalysisErrorAction.upgrade,
           origin: _AnalysisErrorOrigin.analysis,
         );
       });
+      await _showPaywall(context);
     } on MonthlyLimitExceededException catch (e) {
+      if (!mounted) return;
       setState(() {
         _isAnalyzing = false;
         _applyErrorState(
@@ -2153,6 +2157,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           origin: _AnalysisErrorOrigin.analysis,
         );
       });
+      await _showPaywall(context);
     } on AnalysisException catch (e) {
       setState(() {
         _isAnalyzing = false;
@@ -2277,6 +2282,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         _showFloatingSnackBar('這次沒有產生可用的優化結果，請稍後再試。');
       }
       _syncSubscriptionUsageFromResult(result);
+    } on DailyLimitExceededException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isOptimizing = false;
+      });
+      _showFloatingSnackBar('今日額度已用完 (${e.used}/${e.dailyLimit})，帶你去升級方案。');
+      await _showPaywall(context);
+    } on MonthlyLimitExceededException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isOptimizing = false;
+      });
+      _showFloatingSnackBar('本月額度已用完 (${e.used}/${e.monthlyLimit})，帶你去升級方案。');
+      await _showPaywall(context);
     } on AnalysisException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -3161,18 +3180,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             child: Column(
                               children: [
                                 // 顯示訊息 (可展開/收合)
-                                ...(_showAllMessages
-                                        ? conversation.messages
-                                        : conversation.messages.take(5))
-                                    .map((m) => MessageBubble(
-                                          message: m,
-                                          onEdit: () =>
-                                              _editMessage(conversation, m),
-                                          onSwapSide: () =>
-                                              _swapMessageSide(conversation, m),
-                                          onDelete: () =>
-                                              _deleteMessage(conversation, m),
-                                        )),
+                                ..._visibleMessagePreview(
+                                  conversation.messages,
+                                ).map((m) => MessageBubble(
+                                      message: m,
+                                      onEdit: () =>
+                                          _editMessage(conversation, m),
+                                      onSwapSide: () =>
+                                          _swapMessageSide(conversation, m),
+                                      onDelete: () =>
+                                          _deleteMessage(conversation, m),
+                                    )),
                                 if (conversation.messages.length > 5)
                                   GestureDetector(
                                     onTap: () => setState(() =>
@@ -3841,13 +3859,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       : false;
                                   final practiceGoals = partnerId != null
                                       ? ref
-                                          .watch(effectiveStyleProvider(
-                                              partnerId))
+                                          .watch(
+                                              effectiveStyleProvider(partnerId))
                                           .practiceGoals
                                       : const <PracticeGoal>[];
 
-                                  final cardData =
-                                      CoachActionPolicy.evaluate(
+                                  final cardData = CoachActionPolicy.evaluate(
                                     heatScore: _enthusiasmScore!,
                                     gameStage: _gameStage!,
                                     finalRecommendation: _finalRecommendation!,

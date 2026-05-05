@@ -185,6 +185,7 @@ class PartnerDetailScreen extends ConsumerWidget {
                 CoachFollowUpSection(
                   partnerId: partnerId,
                   onTelemetry: _logCoachFollowUpTelemetry,
+                  onQuotaExceeded: () async => context.push('/paywall'),
                 ),
                 const SizedBox(height: 16),
                 if (conversations.isEmpty)

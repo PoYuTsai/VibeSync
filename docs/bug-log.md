@@ -10,6 +10,40 @@
 
 ## 2026-05
 
+### [2026-05-05] TF smoke：手動輸入回饋、額度用完導頁、付費升級額度沿用
+
+**症狀**:
+
+- 繼續對話輸入一則訊息後點「加入為她說」，上方對話預覽仍停在舊訊息，使用者看不出來是否加入成功。
+- 「我有想說的，幫我優化」與「教練跟進」在額度用完時只顯示 snackbar / inline error，沒有直接帶到升級方案頁。
+- Free 用戶升級 Essential 後仍沿用 Free 已使用量，顯示本月已使用 28 / 今日剩餘已被扣。
+
+**Root Cause**:
+
+1. 對話預覽折疊狀態使用 `conversation.messages.take(5)`，只顯示最舊 5 則；新增訊息 append 到尾端後被藏住。
+2. 分析優化與 coach-follow-up 的 quota exception 只轉成文字狀態，沒有接 paywall navigation。
+3. `sync-subscription` 讀到 client `resetUsage` 但後端把 `shouldResetUsage` 寫死為 `false`，付費升級不會清 usage counters。
+
+**修復**:
+
+1. 折疊預覽改顯示最新 5 則，讓新增的「她說 / 我說」立即出現在上方對話框。
+2. Daily / Monthly quota exceeded 都直接觸發 paywall；coach-follow-up section 透過 `onQuotaExceeded` callback 由 Partner Detail 開升級頁。
+3. `sync-subscription` 新增 paid-upgrade reset helper：只有 RevenueCat 確認 tier 變成付費且 client 要求 reset 時才清 `monthly_messages_used` / `daily_messages_used`；restore、same-tier、scheduled downgrade、RC transient free snapshot 不清。
+
+**驗證**:
+
+- `flutter test test/widget/features/analysis/analysis_screen_continue_input_test.dart`
+- `flutter test test/widget/features/coach_follow_up/coach_follow_up_section_test.dart --plain-name "quota exceeded opens the upgrade surface callback"`
+- `deno test supabase/functions/sync-subscription/usage_reset_test.ts`
+
+**涉及檔案**:
+
+- `lib/features/analysis/presentation/screens/analysis_screen.dart`
+- `lib/features/coach_follow_up/presentation/widgets/coach_follow_up_section.dart`
+- `lib/features/partner/presentation/screens/partner_detail_screen.dart`
+- `supabase/functions/sync-subscription/index.ts`
+- `supabase/functions/sync-subscription/usage_reset.ts`
+
 ### [2026-05-05] Coach follow-up 邊界提醒半句 + 額度日切後顯示 stale
 
 **症狀**:

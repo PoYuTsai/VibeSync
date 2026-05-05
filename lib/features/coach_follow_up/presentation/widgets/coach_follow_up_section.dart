@@ -94,11 +94,13 @@ class CoachFollowUpPhaseSwitchedEvent extends CoachFollowUpTelemetryEvent {
 class CoachFollowUpSection extends ConsumerStatefulWidget {
   final String partnerId;
   final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
+  final Future<void> Function()? onQuotaExceeded;
 
   const CoachFollowUpSection({
     super.key,
     required this.partnerId,
     this.onTelemetry,
+    this.onQuotaExceeded,
   });
 
   @override
@@ -118,6 +120,7 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
   CoachFollowUpPhase? _lastPhase;
   CoachFollowUpAnswers? _lastAnswers;
   DateTime? _lastGeneratedAt;
+  bool _openingQuotaPaywall = false;
 
   @override
   void initState() {
@@ -131,6 +134,25 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
 
   void _emit(CoachFollowUpTelemetryEvent event) {
     widget.onTelemetry?.call(event);
+  }
+
+  void _openQuotaPaywallOnce() {
+    if (_openingQuotaPaywall) return;
+    _openingQuotaPaywall = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _openingQuotaPaywall = false;
+        return;
+      }
+      try {
+        await widget.onQuotaExceeded?.call();
+      } finally {
+        if (mounted) {
+          _openingQuotaPaywall = false;
+        }
+      }
+    });
   }
 
   /// Resolves the "previous" phase for PhaseSwitched. Priority:
@@ -253,11 +275,18 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
     ref.listen<AsyncValue<CoachFollowUpResult?>>(
       coachFollowUpControllerProvider(widget.partnerId),
       (prev, next) {
-        next.whenOrNull(data: (v) {
-          if (!mounted) return;
-          if (v == null) return; // initial empty hydrate — already null
-          setState(() => _displayedResult = v);
-        });
+        next.whenOrNull(
+          data: (v) {
+            if (!mounted) return;
+            if (v == null) return; // initial empty hydrate — already null
+            setState(() => _displayedResult = v);
+          },
+          error: (error, _) {
+            if (error is QuotaExceededException) {
+              _openQuotaPaywallOnce();
+            }
+          },
+        );
       },
     );
 
