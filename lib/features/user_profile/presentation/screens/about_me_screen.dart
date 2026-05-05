@@ -189,7 +189,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '花 30 秒設定，AI 會用更像你的節奏給建議。',
+                'AI 會用這些設定調整你的回覆語氣、練習方向和跟進建議；不會替你假裝成另一個人。',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.onBackgroundSecondary,
                 ),

@@ -67,7 +67,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '花 30 秒填一下，之後 AI 會用更像你的節奏給建議。',
+            '填一下互動風格與練習目標，AI 會調整建議語氣，不會替你假裝成另一個人。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.glassTextSecondary,
             ),

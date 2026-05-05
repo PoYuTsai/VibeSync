@@ -166,6 +166,7 @@ ProviderContainer _container({
   DataQualityFlag flag = const DataQualityFlag.unflagged(),
   String partnerId = 'p-1',
   Future<void> Function()? usageSync,
+  String? styleContext,
 }) {
   final container = ProviderContainer(overrides: [
     coachFollowUpRepositoryProvider.overrideWithValue(repo),
@@ -176,6 +177,8 @@ ProviderContainer _container({
     partnerByIdProvider(partnerId).overrideWithValue(partner),
     conversationsByPartnerProvider(partnerId).overrideWithValue(conversations),
     dataQualityFlagProvider(partnerId).overrideWithValue(flag),
+    coachFollowUpStyleContextProvider(partnerId)
+        .overrideWithValue(styleContext),
   ]);
   return container;
 }
@@ -510,6 +513,30 @@ void main() {
         'heatScore': 88,
         'gameStage': 'close',
       });
+    });
+
+    test('forwards Spec 2.5 style context into the API call when present',
+        () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _stubInvoker(_okResponse(), recorder: calls),
+        partner: _partner(name: 'Mia'),
+        styleContext: '- Preferred voice: 幽默；回覆要輕鬆、有留白',
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachFollowUpControllerProvider('p-1').future);
+      await c.read(coachFollowUpControllerProvider('p-1').notifier).generate(
+            phase: CoachFollowUpPhase.prepareInvite,
+            answers: const CoachFollowUpAnswers(q1: 'fuzzy'),
+          );
+
+      expect(
+        calls.single.body['styleContext'],
+        '- Preferred voice: 幽默；回覆要輕鬆、有留白',
+      );
     });
 
     test('debounce: 2nd generate() while in-flight is a silent no-op',

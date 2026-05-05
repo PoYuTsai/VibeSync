@@ -425,6 +425,7 @@ class AnalysisService {
     SessionContext? sessionContext,
     String? conversationSummary,
     String? partnerSummary,
+    String? effectiveStyleContext,
     String? knownContactName,
     String? userDraft,
     String? analyzeMode,
@@ -471,6 +472,7 @@ class AnalysisService {
           sessionContext: sessionContext,
           conversationSummary: conversationSummary,
           partnerSummary: partnerSummary,
+          effectiveStyleContext: effectiveStyleContext,
           knownContactName: knownContactName,
           userDraft: userDraft,
           analyzeMode: analyzeMode,
@@ -550,6 +552,7 @@ class AnalysisService {
     SessionContext? sessionContext,
     String? conversationSummary,
     String? partnerSummary,
+    String? effectiveStyleContext,
     String? knownContactName,
     String? userDraft,
     String? analyzeMode,
@@ -627,6 +630,9 @@ class AnalysisService {
           'conversationSummary': conversationSummary.trim(),
         if (partnerSummary != null && partnerSummary.trim().isNotEmpty)
           'partnerSummary': partnerSummary.trim(),
+        if (effectiveStyleContext != null &&
+            effectiveStyleContext.trim().isNotEmpty)
+          'effectiveStyleContext': effectiveStyleContext.trim(),
         if (knownContactName != null && knownContactName.trim().isNotEmpty)
           'knownContactName': knownContactName.trim(),
         if (hasUserDraft) 'userDraft': userDraft.trim(),
@@ -684,11 +690,11 @@ class AnalysisService {
           final telemetryData = _normalizeObject(responseData['telemetry']);
 
           onTelemetry?.call(
-          AnalysisTelemetry(
-            requestType: telemetryData?['requestType'] as String?,
-            imageCount: imageCount,
-            requestBodyBytes: requestBodyBytes,
-            payloadPreparationDuration: payloadPreparationDuration,
+            AnalysisTelemetry(
+              requestType: telemetryData?['requestType'] as String?,
+              imageCount: imageCount,
+              requestBodyBytes: requestBodyBytes,
+              payloadPreparationDuration: payloadPreparationDuration,
               roundTripDuration: roundTripDuration,
               edgeAiDuration: _durationFromMilliseconds(
                 telemetryData?['serverAiLatencyMs'],
@@ -743,19 +749,19 @@ class AnalysisService {
                       is num
                   ? (telemetryData?['continuityAdjustedCount'] as num).round()
                   : null,
-              groupedAdjustedCount: telemetryData?['groupedAdjustedCount'] is num
-                  ? (telemetryData?['groupedAdjustedCount'] as num).round()
-                  : null,
+              groupedAdjustedCount:
+                  telemetryData?['groupedAdjustedCount'] is num
+                      ? (telemetryData?['groupedAdjustedCount'] as num).round()
+                      : null,
               layoutFirstAdjustedCount:
                   telemetryData?['layoutFirstAdjustedCount'] is num
                       ? (telemetryData?['layoutFirstAdjustedCount'] as num)
                           .round()
                       : null,
-              systemRowsRemovedCount:
-                  telemetryData?['systemRowsRemovedCount'] is num
-                      ? (telemetryData?['systemRowsRemovedCount'] as num)
-                          .round()
-                      : null,
+              systemRowsRemovedCount: telemetryData?['systemRowsRemovedCount']
+                      is num
+                  ? (telemetryData?['systemRowsRemovedCount'] as num).round()
+                  : null,
               quotedPreviewRemovedCount:
                   telemetryData?['quotedPreviewRemovedCount'] is num
                       ? (telemetryData?['quotedPreviewRemovedCount'] as num)
@@ -775,8 +781,7 @@ class AnalysisService {
                   : null,
               estimatedMessageCount:
                   telemetryData?['estimatedMessageCount'] is num
-                      ? (telemetryData?['estimatedMessageCount'] as num)
-                          .round()
+                      ? (telemetryData?['estimatedMessageCount'] as num).round()
                       : null,
               quotaReason: telemetryData?['quotaReason'] as String?,
             ),

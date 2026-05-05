@@ -8,8 +8,8 @@
 //       — banned-token assertCardSafe mirror of validate.ts BANNED_TOKENS
 //
 // The `partnerHint` payload may ONLY come from buildCoachFollowUpPartnerHint
-// (C17). This service does not rebuild it inline — privacy contract is held
-// by the helper at the type boundary, never re-derived here.
+// (C17). Spec 2.5 `styleContext` may ONLY come from
+// EffectiveStylePromptBuilder. This service does not rebuild either inline.
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -139,11 +139,15 @@ class CoachFollowUpApiService {
     required CoachFollowUpPhase phase,
     required CoachFollowUpAnswers answers,
     CoachFollowUpPartnerHint? partnerHint,
+    String? effectiveStyleContext,
   }) async {
     final body = <String, dynamic>{
       'phase': phase.name,
       'answers': _answersToWire(answers),
       if (partnerHint != null) 'partnerHint': _hintToWire(partnerHint),
+      if (effectiveStyleContext != null &&
+          effectiveStyleContext.trim().isNotEmpty)
+        'styleContext': effectiveStyleContext.trim(),
     };
 
     final response = await _invoke('coach-follow-up', body: body);
@@ -227,7 +231,8 @@ class CoachFollowUpApiService {
         headline.isEmpty ||
         observation.isEmpty ||
         task.isEmpty) {
-      throw GenerationFailedException('malformed_response: required_card_field_missing');
+      throw GenerationFailedException(
+          'malformed_response: required_card_field_missing');
     }
     final suggestedLine = cardMap['suggestedLine'];
     final model = data['model'];
@@ -236,7 +241,8 @@ class CoachFollowUpApiService {
       throw GenerationFailedException('malformed_response: missing_model');
     }
     if (generatedAt is! String) {
-      throw GenerationFailedException('malformed_response: missing_generatedAt');
+      throw GenerationFailedException(
+          'malformed_response: missing_generatedAt');
     }
     final parsedAt = DateTime.tryParse(generatedAt);
     if (parsedAt == null) {

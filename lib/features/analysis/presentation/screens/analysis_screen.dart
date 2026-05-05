@@ -41,6 +41,7 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
+import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 
 class AnalysisScreen extends ConsumerStatefulWidget {
@@ -1545,6 +1546,32 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     return ref.read(partnerContextResolverProvider).resolve(conversation);
   }
 
+  /// Spec 2.5: About Me + per-partner style becomes compact prompt context.
+  /// If Spec 3 flags this partner card, partner-specific style is suspended
+  /// and only global About Me remains trusted.
+  String? _resolveEffectiveStyleContext(Conversation conversation) {
+    final global = ref.read(userProfileControllerProvider).valueOrNull;
+    final partnerId = conversation.partnerId;
+    if (partnerId == null) {
+      return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
+            global: global,
+            partner: null,
+            includePartnerOverride: false,
+          );
+    }
+
+    final includePartnerOverride =
+        !ref.read(dataQualityFlagProvider(partnerId)).isFlagged;
+    final partner = includePartnerOverride
+        ? ref.read(partnerStyleOverrideProvider(partnerId)).valueOrNull
+        : null;
+    return ref.read(effectiveStylePromptBuilderProvider).buildForAnalysis(
+          global: global,
+          partner: partner,
+          includePartnerOverride: includePartnerOverride,
+        );
+  }
+
   Future<({List<Message> requestMessages, String? conversationSummary})>
       _buildSummaryAwareAnalysisContext({
     required Conversation conversation,
@@ -2309,6 +2336,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
         partnerSummary: _resolvePartnerSummary(conversation),
+        effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
           conversation.name,
@@ -2421,6 +2449,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
         partnerSummary: _resolvePartnerSummary(conversation),
+        effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
           conversation.name,
@@ -2479,6 +2508,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         sessionContext: conversation.sessionContext,
         conversationSummary: analysisContext.conversationSummary,
         partnerSummary: _resolvePartnerSummary(conversation),
+        effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
         knownContactName:
             ScreenshotRecognitionHelper.isPlaceholderConversationName(
           conversation.name,

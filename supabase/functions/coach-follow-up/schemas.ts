@@ -57,6 +57,7 @@ export const RequestSchema = z.object({
       lastConversationSummary: z.string().max(200).nullable().optional(),
     })
     .optional(),
+  styleContext: z.string().max(500).nullable().optional(),
 }).strict().superRefine((payload, ctx) => {
   const rules = ANSWER_KEY_RULES[payload.phase];
   if (!containsKey(rules.q1, payload.answers.q1)) {

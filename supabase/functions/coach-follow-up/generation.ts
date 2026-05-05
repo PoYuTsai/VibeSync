@@ -62,6 +62,7 @@ export interface GenerationInput {
   phase: CoachFollowUpRequest["phase"];
   answers: CoachFollowUpRequest["answers"];
   partnerHint?: CoachFollowUpRequest["partnerHint"];
+  styleContext?: CoachFollowUpRequest["styleContext"];
   tier: "free" | "starter" | "essential";
   accountIsTest: boolean;
   apiKey: string;
@@ -91,6 +92,7 @@ export async function runCoachFollowUp(
     input.phase,
     input.answers,
     input.partnerHint ?? { name: "" },
+    input.styleContext,
   );
 
   // Telemetry: phase + tier + a boolean flag for q3 presence — never the value.
@@ -197,7 +199,9 @@ function getErrorMessage(error: unknown): string {
  */
 function classifyClaudeError(error: unknown): string {
   const msg = getErrorMessage(error).toLowerCase();
-  if (msg.includes("timeout") || msg.includes("aborted")) return "claude_timeout";
+  if (msg.includes("timeout") || msg.includes("aborted")) {
+    return "claude_timeout";
+  }
   if (msg.includes("rate") && msg.includes("limit")) return "claude_rate_limit";
   if (msg.includes("network") || msg.includes("fetch failed")) {
     return "claude_network";

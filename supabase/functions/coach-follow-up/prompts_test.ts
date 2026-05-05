@@ -160,6 +160,27 @@ Deno.test("gameStage appears in context when provided", () => {
   assertStringIncludes(p, "gameStage=close");
 });
 
+Deno.test("styleContext appears as User voice & coaching preferences", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "我想更有幽默感" },
+    { name: "X" },
+    "- Preferred voice: 幽默；回覆要輕鬆、有留白",
+  );
+  assertStringIncludes(p, "User voice & coaching preferences");
+  assertStringIncludes(p, "Preferred voice: 幽默");
+});
+
+Deno.test("styleContext section omitted when blank", () => {
+  const p = buildCoachFollowUpPrompt(
+    "prepareInvite",
+    { q1: "fuzzy" },
+    { name: "X" },
+    "   ",
+  );
+  assertEquals(p.includes("User voice & coaching preferences"), false);
+});
+
 Deno.test("answers q1 always appears", () => {
   const p = buildCoachFollowUpPrompt(
     "prepareInvite",

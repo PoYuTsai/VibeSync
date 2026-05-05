@@ -2,9 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/effective_style.dart';
 import '../../domain/entities/partner_style_override.dart';
+import '../../domain/services/effective_style_prompt_builder.dart';
 import '../../domain/services/resolve_effective_style.dart';
 import '../repositories/partner_style_repository.dart';
 import 'user_profile_providers.dart';
+
+final effectiveStylePromptBuilderProvider =
+    Provider<EffectiveStylePromptBuilder>(
+  (ref) => const EffectiveStylePromptBuilder(),
+);
 
 final partnerStyleRepositoryProvider = Provider<PartnerStyleRepository>(
   (ref) => PartnerStyleRepository(),
@@ -42,9 +48,8 @@ class PartnerStyleOverrideController
 }
 
 /// Per-field merge of the global About Me with the per-partner override.
-/// UI uses this for placeholder hints ("沿用全域：穩重") and a future
-/// prompt builder will read the same shape — keep this provider's output
-/// stable so prompt code can swap in without a UI refactor.
+/// UI uses this for placeholder hints ("沿用全域：穩重"). Spec 2.5 prompt code
+/// reads the same merge shape through [EffectiveStylePromptBuilder].
 final effectiveStyleProvider =
     Provider.family<EffectiveStyle, String>((ref, partnerId) {
   final globalAsync = ref.watch(userProfileControllerProvider);

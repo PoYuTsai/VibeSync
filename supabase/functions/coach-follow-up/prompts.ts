@@ -161,6 +161,7 @@ export function buildCoachFollowUpPrompt(
     gameStage?: string | null;
     lastConversationSummary?: string | null;
   } = { name: "" },
+  styleContext?: string | null,
 ): string {
   const hasQ3 = !!(answers.q3 && answers.q3.trim().length > 0);
   const parts: string[] = [
@@ -183,6 +184,11 @@ export function buildCoachFollowUpPrompt(
   }
   if (hint.lastConversationSummary) {
     parts.push(`[Context] 最近對話摘要：${hint.lastConversationSummary}`);
+  }
+  if (styleContext && styleContext.trim()) {
+    parts.push(
+      `[Context] User voice & coaching preferences\n${styleContext.trim()}`,
+    );
   }
 
   return parts.join("\n\n");

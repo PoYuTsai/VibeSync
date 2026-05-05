@@ -265,6 +265,7 @@ const MAX_CONVERSATION_SUMMARY_LENGTH = 5000;
 // PartnerSummaryBuilder caps at 1500 grapheme clusters; allow a small
 // headroom for trim variations and future expansion before rejecting.
 const MAX_PARTNER_SUMMARY_LENGTH = 2000;
+const MAX_EFFECTIVE_STYLE_CONTEXT_LENGTH = 1200;
 const VALID_ANALYZE_MODES = new Set(["normal", "my_message"]);
 const VALID_FORCE_MODELS = new Set([
   "claude-haiku-4-5-20251001",
@@ -865,6 +866,7 @@ function buildImageAnalysisPrompt(options: {
   imageCount: number;
   contextInfo: string;
   partnerContextInfo: string;
+  styleContextInfo: string;
   historicalContextInfo: string;
   compiledConversationText: string;
   knownContactName?: string;
@@ -873,6 +875,7 @@ function buildImageAnalysisPrompt(options: {
     imageCount,
     contextInfo,
     partnerContextInfo,
+    styleContextInfo,
     historicalContextInfo,
     compiledConversationText,
     knownContactName,
@@ -890,6 +893,7 @@ function buildImageAnalysisPrompt(options: {
       ? `## Known Contact Name\n- Existing thread contact name: ${knownContactName}\n- Use this only as a tie-breaker when the visible header or nickname is almost the same and OCR is uncertain by one similar-looking character.`
       : "",
     partnerContextInfo,
+    styleContextInfo,
     historicalContextInfo,
     compiledConversationText
       ? `## Existing Thread Context\n${compiledConversationText}`
@@ -3215,6 +3219,32 @@ function sanitizePartnerSummary(
   return { partnerSummary: trimmed };
 }
 
+function sanitizeEffectiveStyleContext(
+  input: unknown,
+): { effectiveStyleContext?: string; error?: string } {
+  if (input == null) {
+    return {};
+  }
+
+  if (typeof input !== "string") {
+    return { error: "Invalid effectiveStyleContext" };
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  if (trimmed.length > MAX_EFFECTIVE_STYLE_CONTEXT_LENGTH) {
+    return {
+      error:
+        `effectiveStyleContext too long (max ${MAX_EFFECTIVE_STYLE_CONTEXT_LENGTH} chars)`,
+    };
+  }
+
+  return { effectiveStyleContext: trimmed };
+}
+
 // 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
 // 測試帳號白名單 (不扣額度)
@@ -3335,6 +3365,7 @@ serve(async (req) => {
       sessionContext: rawSessionContext,
       conversationSummary: rawConversationSummary,
       partnerSummary: rawPartnerSummary,
+      effectiveStyleContext: rawEffectiveStyleContext,
       knownContactName: rawKnownContactName,
       userDraft: rawUserDraft,
       forceModel: rawForceModel,
@@ -3838,6 +3869,18 @@ serve(async (req) => {
     }
     const partnerSummary = partnerSummaryValidation.partnerSummary;
 
+    const effectiveStyleContextValidation = sanitizeEffectiveStyleContext(
+      rawEffectiveStyleContext,
+    );
+    if (effectiveStyleContextValidation.error) {
+      return jsonResponse(
+        { error: effectiveStyleContextValidation.error },
+        400,
+      );
+    }
+    const effectiveStyleContext =
+      effectiveStyleContextValidation.effectiveStyleContext;
+
     const knownContactName = sanitizeContactNameValue(rawKnownContactName);
     if (rawKnownContactName != null && !knownContactName) {
       return jsonResponse({ error: "Invalid knownContactName" }, 400);
@@ -4163,11 +4206,19 @@ ${recentText}`;
     const partnerContextInfo = partnerSummary
       ? ["## Partner Context", partnerSummary].join("\n")
       : "";
+    const styleContextInfo = effectiveStyleContext
+      ? [
+        "## User Voice & Coaching Preferences",
+        effectiveStyleContext,
+        "Use these preferences to adjust tone and coaching direction only. Current conversation, consent/safety, and the 1.8x rule override them.",
+      ].join("\n")
+      : "";
 
     let userPrompt = isMyMessageMode
       ? joinPromptSections(
         contextInfo,
         partnerContextInfo,
+        styleContextInfo,
         historicalContextInfo,
         "## Recent Conversation",
         compiledConversationText,
@@ -4176,6 +4227,7 @@ ${recentText}`;
       : joinPromptSections(
         contextInfo,
         partnerContextInfo,
+        styleContextInfo,
         historicalContextInfo,
         "Analyze the conversation below and return the structured JSON response.",
         "## Recent Conversation",
@@ -4195,6 +4247,7 @@ ${recentText}`;
           contextInfo,
           knownContactName,
           partnerContextInfo,
+          styleContextInfo,
           historicalContextInfo,
           compiledConversationText,
         });

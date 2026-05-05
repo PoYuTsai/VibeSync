@@ -162,6 +162,13 @@ class _PartnerStyleEditScreenState
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, kToolbarHeight, 16, 32),
                 children: [
+                  Text(
+                    '只影響你和這位對象的建議；未設定時沿用「關於我」。AI 會調整語氣與練習方向，不會替你假裝成另一個人。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.glassTextSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   _InteractionStyleSection(
                     selected: _interactionStyle,
                     globalFallback: globalProfile?.interactionStyle,

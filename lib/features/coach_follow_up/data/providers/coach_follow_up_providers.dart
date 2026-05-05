@@ -24,6 +24,8 @@ import '../../../conversation/domain/entities/message.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
+import '../../../user_profile/data/providers/partner_style_providers.dart';
+import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../domain/entities/coach_follow_up_phase.dart';
 import '../../domain/entities/coach_follow_up_result.dart';
 import '../../domain/repositories/coach_follow_up_repository.dart';
@@ -159,6 +161,25 @@ final coachFollowUpPartnerHintProvider =
   );
 });
 
+/// Lightweight Spec 2.5 style context for the coach-follow-up prompt.
+/// Uses interaction style + practice goals only; notes/topics stay out of
+/// Spec 5 so this diagnostic surface does not become broad long-term memory.
+final coachFollowUpStyleContextProvider =
+    Provider.family<String?, String>((ref, partnerId) {
+  final global = ref.watch(userProfileControllerProvider).valueOrNull;
+  final flag = ref.watch(dataQualityFlagProvider(partnerId));
+  final includePartnerOverride = !flag.isFlagged;
+  final partner = includePartnerOverride
+      ? ref.watch(partnerStyleOverrideProvider(partnerId)).valueOrNull
+      : null;
+
+  return ref.watch(effectiveStylePromptBuilderProvider).buildForCoachFollowUp(
+        global: global,
+        partner: partner,
+        includePartnerOverride: includePartnerOverride,
+      );
+});
+
 // ── Controller ───────────────────────────────────────────────────────────
 
 /// AsyncNotifier managing generate / regenerate. Persists the new card on
@@ -196,6 +217,8 @@ class CoachFollowUpController
       final api = ref.read(coachFollowUpApiServiceProvider);
       final repo = ref.read(coachFollowUpRepositoryProvider);
       final hint = ref.read(coachFollowUpPartnerHintProvider(partnerId));
+      final styleContext =
+          ref.read(coachFollowUpStyleContextProvider(partnerId));
 
       try {
         final result = await api.generate(
@@ -203,6 +226,7 @@ class CoachFollowUpController
           phase: phase,
           answers: answers,
           partnerHint: hint,
+          effectiveStyleContext: styleContext,
         );
         await repo.put(result);
         state = AsyncValue.data(result);

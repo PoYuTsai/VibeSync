@@ -1,7 +1,7 @@
 // Spec 5 C19 — CoachFollowUpApiService TDD spec.
 //
 // Edge contract reference: supabase/functions/coach-follow-up/schemas.ts
-//   - request: { phase, answers{q1, q2?, q3?}, partnerHint? }
+//   - request: { phase, answers{q1, q2?, q3?}, partnerHint?, styleContext? }
 //   - response 200: { phase, card, model, generatedAt }
 //   - 400 invalid input / 429 quota / 5xx AI or deduct failure
 //
@@ -73,7 +73,8 @@ CoachFollowUpAnswers _answers({
 
 // Build a hint via the C17 helper directly so the test asserts the wire
 // payload comes from the helper, not a hand-rolled map.
-CoachFollowUpPartnerHint _hintFromHelper({GameStage? gameStage, int? heatScore}) {
+CoachFollowUpPartnerHint _hintFromHelper(
+    {GameStage? gameStage, int? heatScore}) {
   return CoachFollowUpPartnerHint(
     name: 'Mia',
     heatScore: heatScore,
@@ -180,7 +181,8 @@ void main() {
       });
     });
 
-    test('omits null fields from partnerHint payload (Edge schema is .optional)',
+    test(
+        'omits null fields from partnerHint payload (Edge schema is .optional)',
         () async {
       final calls = <_Recorded>[];
       final service =
@@ -212,6 +214,40 @@ void main() {
       );
 
       expect(calls.single.body.containsKey('partnerHint'), isFalse);
+    });
+
+    test('sends non-empty styleContext when Spec 2.5 context is provided',
+        () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachFollowUpApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.generate(
+        partnerId: 'p-1',
+        phase: CoachFollowUpPhase.prepareInvite,
+        answers: _answers(),
+        effectiveStyleContext: '  - Preferred voice: 溫柔；不催促  ',
+      );
+
+      expect(
+        calls.single.body['styleContext'],
+        '- Preferred voice: 溫柔；不催促',
+      );
+    });
+
+    test('omits blank styleContext', () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachFollowUpApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.generate(
+        partnerId: 'p-1',
+        phase: CoachFollowUpPhase.prepareInvite,
+        answers: _answers(),
+        effectiveStyleContext: '   ',
+      );
+
+      expect(calls.single.body.containsKey('styleContext'), isFalse);
     });
 
     test(
@@ -506,7 +542,8 @@ void main() {
       );
     });
 
-    test('accepts 200 response when banned token only appears in caller-side '
+    test(
+        'accepts 200 response when banned token only appears in caller-side '
         'fields (defense scope is response card only)', () async {
       // Sanity check on the assertion scope — we guard the visible CARD
       // fields, not arbitrary response keys. The banned-token check has

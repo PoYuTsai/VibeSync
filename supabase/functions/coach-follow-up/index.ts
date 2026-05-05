@@ -75,7 +75,10 @@ const SUBSCRIPTION_COLUMNS =
 // ---------------------------------------------------------------------------
 
 // deno-lint-ignore no-explicit-any
-async function fetchSubscription(supabase: any, userId: string): Promise<SubscriptionRow | null> {
+async function fetchSubscription(
+  supabase: any,
+  userId: string,
+): Promise<SubscriptionRow | null> {
   const { data, error } = await supabase
     .from("subscriptions")
     .select(SUBSCRIPTION_COLUMNS)
@@ -91,7 +94,10 @@ async function fetchSubscription(supabase: any, userId: string): Promise<Subscri
 }
 
 // deno-lint-ignore no-explicit-any
-async function selfHealSubscription(supabase: any, userId: string): Promise<SubscriptionRow | null> {
+async function selfHealSubscription(
+  supabase: any,
+  userId: string,
+): Promise<SubscriptionRow | null> {
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from("subscriptions")
@@ -147,8 +153,12 @@ async function persistResets(
       error: error.message,
     });
   } else {
-    if (dailyReset) logInfo("daily_quota_reset", { user: summarizeUser(userId) });
-    if (monthlyReset) logInfo("monthly_quota_reset", { user: summarizeUser(userId) });
+    if (dailyReset) {
+      logInfo("daily_quota_reset", { user: summarizeUser(userId) });
+    }
+    if (monthlyReset) {
+      logInfo("monthly_quota_reset", { user: summarizeUser(userId) });
+    }
   }
 }
 
@@ -270,7 +280,9 @@ export async function handleRequest(req: Request): Promise<Response> {
     auth: { persistSession: false },
   });
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+  const { data: { user }, error: userError } = await supabase.auth.getUser(
+    token,
+  );
   if (userError || !user) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
@@ -278,7 +290,9 @@ export async function handleRequest(req: Request): Promise<Response> {
   // ── Body size guard + JSON parse ──
   const contentLengthHeader = req.headers.get("content-length");
   const contentLength = contentLengthHeader ? Number(contentLengthHeader) : NaN;
-  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+  if (
+    Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES
+  ) {
     return jsonResponse({ error: "Request body too large" }, 413);
   }
 
@@ -381,7 +395,9 @@ export async function handleRequest(req: Request): Promise<Response> {
   // ── T7: generate via Claude, validate + safety check, deduct on success. ──
   const apiKey = Deno.env.get("CLAUDE_API_KEY");
   if (!apiKey) {
-    logError("coach_follow_up_config_missing", { user: summarizeUser(user.id) });
+    logError("coach_follow_up_config_missing", {
+      user: summarizeUser(user.id),
+    });
     return jsonResponse({ error: "config_missing" }, 500);
   }
 
@@ -393,6 +409,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       phase: payload.phase,
       answers: payload.answers,
       partnerHint: payload.partnerHint,
+      styleContext: payload.styleContext,
       tier,
       accountIsTest,
       apiKey,
