@@ -243,3 +243,31 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "SYSTEM_PROMPT handles complex emotional dynamics in main analysis",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("情境12: 複雜情緒 / 關係修復 / 全局判讀"));
+    assert(source.includes("先同理用戶，也同理對方可能處境"));
+    assert(source.includes("不要直接套邀約或技巧"));
+    assert(
+      source.includes(
+        "先判斷用戶情緒、對方處境、關係位置、時間成本與下一步風險",
+      ),
+    );
+    assert(
+      source.includes("回覆、暫停、道歉、低成本釐清、降低投入，或完全不赴局"),
+    );
+    assert(source.includes("把對方反應和用戶價值拆開"));
+    assert(source.includes("同理上頭感，但提醒降速"));
+    assert(source.includes("保住尊嚴，不糾纏、不追問原因"));
+    assert(source.includes("不要鼓勵控制、查勤、逼問或試探"));
+    assert(source.includes("短、誠實、不求立刻原諒"));
+    assert(source.includes("人生低潮或非感情壓力"));
+  },
+});
