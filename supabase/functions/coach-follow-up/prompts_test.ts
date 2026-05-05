@@ -120,6 +120,35 @@ Deno.test("prompt does not ignore casual-sex intent when a partner has a relatio
   assertStringIncludes(p, "承認慾望、尊重對方、講清楚期待、承擔後果");
 });
 
+Deno.test("prompt supports emotional distress with empathy for both sides", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    {
+      q1: "openQuestion",
+      q3: "我最近失戀又跟她吵架，工作也很不順，整個人很亂",
+    },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "失戀、吵架、被拒絕、人生低潮、工作或家庭壓力");
+  assertStringIncludes(p, "先同理用戶，也同理對方可能的處境");
+  assertStringIncludes(p, "不要急著教技巧");
+  assertStringIncludes(p, "不要把所有問題導回邀約或吸引");
+  assertStringIncludes(p, "5 分鐘內能做的小動作");
+  assertStringIncludes(p, "情緒很滿時先穩住自己");
+});
+
+Deno.test("prompt routes self-harm crisis away from dating coaching", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "我失戀到覺得活不下去" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "自傷、想死、活不下去");
+  assertStringIncludes(p, "不要做戀愛教練建議");
+  assertStringIncludes(p, "安全支持");
+  assertStringIncludes(p, "當地緊急服務或危機專線");
+});
+
 Deno.test("preDateReminder does NOT instruct inference from partner name", () => {
   const p = buildCoachFollowUpPrompt(
     "preDateReminder",
