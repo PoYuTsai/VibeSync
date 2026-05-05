@@ -99,6 +99,24 @@ Deno.test("openCoach prompt handles ambiguous date invitations as time-cost tria
   assertStringIncludes(p, "不要直接建議下次見面");
 });
 
+Deno.test("prompt does not ignore casual-sex intent when a partner has a relationship", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    {
+      q1: "openQuestion",
+      q3: "她有男友還約我？我對她沒感情，可以順勢把她變炮友？",
+    },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "炮友");
+  assertStringIncludes(p, "短期關係");
+  assertStringIncludes(p, "不要忽略或道德審判");
+  assertStringIncludes(p, "短期、低承諾的親密可能");
+  assertStringIncludes(p, "清楚同意");
+  assertStringIncludes(p, "關係透明");
+  assertStringIncludes(p, "不得教用戶介入對方伴侶關係");
+});
+
 Deno.test("preDateReminder does NOT instruct inference from partner name", () => {
   const p = buildCoachFollowUpPrompt(
     "preDateReminder",
