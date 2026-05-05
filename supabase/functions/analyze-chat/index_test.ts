@@ -218,6 +218,7 @@ Deno.test({
     assert(source.includes("若用戶出現性羞愧"));
     assert(source.includes("成熟的男人不是沒有慾望"));
     assert(source.includes("有慾望很正常"));
+    assert(source.includes("性與親密是成人關係中正常的一部分"));
   },
 });
 
@@ -231,6 +232,9 @@ Deno.test({
 
     assert(source.includes("情境11: 聊騷尺度 / 曖昧張力"));
     assert(source.includes("不要裝沒看到，也不要立刻升級成露骨性內容"));
+    assert(source.includes("繁中語境重點"));
+    assert(source.includes("幽默、隱喻、留白、反差與具體畫面感"));
+    assert(source.includes("激起好奇與想靠近的期待"));
     assert(source.includes("調情、暗示、留白、承認吸引、轉向見面"));
     assert(source.includes("不輸出 Level 3 露骨性描寫"));
     assert(source.includes("如果氣氛對，我應該不會假裝沒想過"));
