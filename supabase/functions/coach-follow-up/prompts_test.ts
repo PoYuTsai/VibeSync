@@ -137,6 +137,24 @@ Deno.test("prompt supports emotional distress with empathy for both sides", () =
   assertStringIncludes(p, "情緒很滿時先穩住自己");
 });
 
+Deno.test("prompt covers core openCoach emotional support scenarios", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "她沒回我，我覺得自己很沒魅力又很上頭" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "自我價值崩掉");
+  assertStringIncludes(p, "把對方反應和自我價值拆開");
+  assertStringIncludes(p, "暈船或過度投入");
+  assertStringIncludes(p, "提醒降速");
+  assertStringIncludes(p, "被拒絕後修復");
+  assertStringIncludes(p, "保住用戶尊嚴");
+  assertStringIncludes(p, "嫉妒、佔有慾或比較心");
+  assertStringIncludes(p, "不要鼓勵控制、查勤、逼問或試探");
+  assertStringIncludes(p, "道歉或犯錯後修復");
+  assertStringIncludes(p, "短、誠實、不求立刻原諒");
+});
+
 Deno.test("prompt routes self-harm crisis away from dating coaching", () => {
   const p = buildCoachFollowUpPrompt(
     "openCoach",
