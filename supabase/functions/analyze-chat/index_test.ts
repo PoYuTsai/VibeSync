@@ -189,6 +189,7 @@ Deno.test({
     );
     assert(source.includes("決策流程（必須由上而下）"));
     assert(source.includes("Go / No-Go 判斷"));
+    assert(source.includes("RelationshipRiskAndTimeCostFrame"));
     assert(source.includes("可見輸出禁用內部術語"));
     assert(source.includes("不要把一次玩笑、一次情緒或一次敷衍推測成長期人格"));
     assert(source.includes("go_no_go"));
@@ -269,5 +270,33 @@ Deno.test({
     assert(source.includes("不要鼓勵控制、查勤、逼問或試探"));
     assert(source.includes("短、誠實、不求立刻原諒"));
     assert(source.includes("人生低潮或非感情壓力"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT uses relationship risk and time-cost triage without over-expanding",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("RelationshipRiskAndTimeCostFrame"));
+    assert(
+      source.includes("關係是否透明、目的是否清楚、時間/金錢成本是否合理"),
+    );
+    assert(source.includes("關係透明：對方是否單身 / 是否公開透明"));
+    assert(
+      source.includes("目的清楚：這是朋友局、工作局、情緒空窗，還是曖昧邀約"),
+    );
+    assert(source.includes("金錢/利用風險"));
+    assert(source.includes("借錢、投資、訂房、機票、送禮、一直要求請客"));
+    assert(source.includes("減法原則（不要補這些）"));
+    assert(source.includes("不補 PUA 技巧庫"));
+    assert(source.includes("不做人格診斷"));
+    assert(source.includes("不把所有問題都導向邀約、聊騷或短期親密"));
+    assert(source.includes("risk_time_cost"));
+    assert(source.includes("complex_emotion"));
   },
 });

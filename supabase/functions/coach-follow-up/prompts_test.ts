@@ -69,6 +69,27 @@ Deno.test("prompt frames healthy initiative with mature go/no-go judgment", () =
   assertStringIncludes(p, "何時該收");
   assertStringIncludes(p, "時間成本");
   assertStringIncludes(p, "不值得投入");
+  assertStringIncludes(p, "RelationshipRiskAndTimeCostFrame");
+  assertStringIncludes(p, "關係透明");
+  assertStringIncludes(p, "目的清楚");
+  assertStringIncludes(p, "可退出性");
+  assertStringIncludes(p, "不要只因為「有邀約」就鼓勵赴約");
+  assertStringIncludes(p, "做減法");
+  assertStringIncludes(p, "不要補 PUA 技巧庫");
+  assertStringIncludes(p, "不要做人格診斷");
+});
+
+Deno.test("openCoach prompt treats money and exploitation risk as triage, not pursuit", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "她一直叫我請客，還說想借錢投資" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "金錢/利用風險");
+  assertStringIncludes(p, "借錢、投資、訂房、機票、送禮、一直要求請客");
+  assertStringIncludes(p, "不要給追求建議");
+  assertStringIncludes(p, "observation 點出成本與不對等");
+  assertStringIncludes(p, "task 給釐清或退出");
 });
 
 Deno.test("prompt allows internal tension craft but forbids exposing technique labels", () => {
