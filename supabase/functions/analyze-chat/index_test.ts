@@ -194,3 +194,29 @@ Deno.test({
     assert(source.includes("go_no_go"));
   },
 });
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT acknowledges short-term intimacy intent without teaching manipulation",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("情境10: 短期關係 / 約炮 / 炮友意圖"));
+    assert(source.includes("不要忽略、羞辱或假裝他想認真交往"));
+    assert(
+      source.includes(
+        "清楚同意、誠實期待、關係透明、安全措施、情緒後果、可退出邊界",
+      ),
+    );
+    assert(source.includes("可以給低壓邀約或釐清期待的訊息"));
+    assert(source.includes("不提供推進成親密關係的路線"));
+    assert(source.includes("我現在比較適合輕鬆、低壓、不急著定義的相處"));
+    assert(source.includes("教用戶騙對方、吊著對方、用承諾換親密、灌酒推進"));
+    assert(source.includes("若用戶出現性羞愧"));
+    assert(source.includes("成熟的男人不是沒有慾望"));
+    assert(source.includes("有慾望很正常"));
+  },
+});

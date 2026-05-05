@@ -115,6 +115,9 @@ Deno.test("prompt does not ignore casual-sex intent when a partner has a relatio
   assertStringIncludes(p, "清楚同意");
   assertStringIncludes(p, "關係透明");
   assertStringIncludes(p, "不得教用戶介入對方伴侶關係");
+  assertStringIncludes(p, "性羞愧");
+  assertStringIncludes(p, "成熟的男人不是沒有慾望");
+  assertStringIncludes(p, "承認慾望、尊重對方、講清楚期待、承擔後果");
 });
 
 Deno.test("preDateReminder does NOT instruct inference from partner name", () => {
