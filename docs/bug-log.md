@@ -10,6 +10,36 @@
 
 ## 2026-05
 
+### [2026-05-05] 續聊手動新增訊息後分析仍讀到舊對話
+
+**症狀**:
+
+- 使用者先輸入 1 則「她說」並完成分析，再從「繼續對話」手動新增 1 則「她說」。
+- 點「分析新增內容」後，分析畫面沒有反映新增那則訊息，右上角仍像是在等待網路請求。
+- 截圖路徑尚未測，但同屬「寫入目前對話後立刻讀回分析」的資料新鮮度問題。
+
+**Root Cause**:
+
+1. `ConversationWriteController.save()` 只 invalidate partner scope 與 `conversationsProvider`，沒有 invalidate `conversationProvider(id)`。
+2. `AnalysisScreen` 續聊分析、額度 preview 與畫面回復都依賴 `conversationProvider(id)`；手動補訊息後若 detail provider 仍是舊快照，就可能把舊訊息送去分析，或保存錯誤的已分析訊息數。
+3. 截圖匯入路徑有手動 `ref.invalidate(conversationProvider(id))`，因此手動輸入路徑與截圖路徑的 invalidation discipline 不一致。
+
+**修復**:
+
+1. `ConversationWriteController` 新增 detail provider invalidation，`create/save/delete` 都刷新 `conversationProvider(conversationId)`。
+2. 分析快照保存時改用重新讀回的最新 conversation 長度寫入 `lastAnalyzedMessageCount`，避免舊參照覆蓋續聊計數。
+3. 補 `ConversationWriteController.save invalidates conversationProvider detail after save` 測試，鎖住「新增第二則她說後，下次讀 detail 必須看到第二則」契約。
+
+**驗證**:
+
+- `flutter test test/unit/services/conversation_write_controller_test.dart test/widget/features/analysis/analysis_screen_continue_input_test.dart`
+
+**涉及檔案**:
+
+- `lib/features/conversation/data/providers/conversation_write_controller.dart`
+- `lib/features/analysis/presentation/screens/analysis_screen.dart`
+- `test/unit/services/conversation_write_controller_test.dart`
+
 ### [2026-05-05] Paywall 方案卡在手機寬度下溢出
 
 **症狀**:

@@ -41,6 +41,7 @@ class ConversationWriteController extends Notifier<void> {
       messages: messages,
       partnerId: partnerId,
     );
+    _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(partnerId);
     _invalidateLegacyGlobal();
     return c;
@@ -49,6 +50,7 @@ class ConversationWriteController extends Notifier<void> {
   Future<void> save(Conversation c, {String? previousPartnerId}) async {
     final repo = ref.read(conversationRepositoryProvider);
     await repo.updateConversation(c);
+    _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);
     if (previousPartnerId != null && previousPartnerId != c.partnerId) {
       _invalidatePartnerScope(previousPartnerId);
@@ -59,8 +61,13 @@ class ConversationWriteController extends Notifier<void> {
   Future<void> delete(Conversation c) async {
     final repo = ref.read(conversationRepositoryProvider);
     await repo.deleteConversation(c.id);
+    _invalidateConversationDetail(c.id);
     _invalidatePartnerScope(c.partnerId);
     _invalidateLegacyGlobal();
+  }
+
+  void _invalidateConversationDetail(String id) {
+    ref.invalidate(conversationProvider(id));
   }
 
   /// Narrow partner-scoped invalidate. Null partnerId = legacy / unmigrated

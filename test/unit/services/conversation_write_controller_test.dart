@@ -59,6 +59,9 @@ class _FakeConversationRepository extends ConversationRepository {
   }
 
   @override
+  Conversation? getConversation(String id) => store[id];
+
+  @override
   List<Conversation> listByPartner(String partnerId) {
     listByPartnerCalls[partnerId] = (listByPartnerCalls[partnerId] ?? 0) + 1;
     return store.values.where((c) => c.partnerId == partnerId).toList()
@@ -326,6 +329,52 @@ void main() {
       expect(_fakeRepo.listByPartnerCalls['p-X'], xBefore,
           reason: 'null partnerId must not touch any partner scope');
     });
+
+    test('invalidates conversationProvider detail after save', () async {
+      final container = await _makeContainer();
+      addTearDown(container.dispose);
+
+      final firstMessage = Message(
+        id: 'm1',
+        content: '第一則她說',
+        isFromMe: false,
+        timestamp: DateTime(2026, 5, 5, 10),
+      );
+      final initial = _convo('detail-refresh', partnerId: 'p-X')
+        ..messages = [firstMessage]
+        ..lastAnalyzedMessageCount = 1;
+      _fakeRepo.store[initial.id] = initial;
+
+      expect(
+        container
+            .read(conversationProvider(initial.id))!
+            .messages
+            .map((message) => message.content),
+        ['第一則她說'],
+      );
+
+      final updated = _convo('detail-refresh', partnerId: 'p-X')
+        ..messages = [
+          firstMessage,
+          Message(
+            id: 'm2',
+            content: '第二則她說',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 5, 10, 1),
+          ),
+        ]
+        ..lastAnalyzedMessageCount = 1;
+
+      await container
+          .read(conversationWriteControllerProvider.notifier)
+          .save(updated);
+
+      final refreshed = container.read(conversationProvider(initial.id))!;
+      expect(refreshed.messages.length, 2);
+      expect(refreshed.messages.last.content, '第二則她說',
+          reason:
+              '續聊新增訊息後，AnalysisScreen 再讀 conversationProvider 時必須看到最新對話，否則會拿舊內容分析。');
+    });
   });
 
   group('ConversationWriteController.delete', () {
@@ -381,8 +430,7 @@ void main() {
   });
 
   group('Spec 3 Task 17 — dataQualityFlagProvider invalidation', () {
-    test(
-        'create with new candidate name flips flag from unflagged to flagged',
+    test('create with new candidate name flips flag from unflagged to flagged',
         () async {
       // Use a real PartnerDataQualityRepository backed by an injected Hive
       // box so `dataQualityFlagProvider` can read confirmed-pairs state
@@ -396,7 +444,8 @@ void main() {
         conversationRepositoryProvider.overrideWithValue(_fakeRepo),
         partnerRepositoryProvider
             .overrideWithValue(PartnerRepository(box: partnerBox)),
-        authConversationScopeProvider.overrideWith((ref) => Stream.value('u-1')),
+        authConversationScopeProvider
+            .overrideWith((ref) => Stream.value('u-1')),
         partnerDataQualityRepoProvider.overrideWithValue(dqRepo),
       ]);
       addTearDown(container.dispose);

@@ -508,7 +508,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   Future<void> _persistLatestAnalysisSnapshot(
-    Conversation conversation,
     AnalysisResult result,
   ) async {
     final repository = ref.read(conversationRepositoryProvider);
@@ -518,7 +517,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;
-    conv.lastAnalyzedMessageCount = conversation.messages.length;
+    conv.lastAnalyzedMessageCount = conv.messages.length;
     conv.currentGameStage = result.gameStage.current.name;
     conv.lastAnalysisSnapshotJson =
         result.rawResponse == null || result.rawResponse!.isEmpty
@@ -2374,7 +2373,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       });
 
       try {
-        await _persistLatestAnalysisSnapshot(conversation, result);
+        await _persistLatestAnalysisSnapshot(result);
       } catch (_) {
         // Ignore errors in test environment
       }
