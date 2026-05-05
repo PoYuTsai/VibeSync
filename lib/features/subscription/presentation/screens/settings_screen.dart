@@ -162,7 +162,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   children: [
                     _buildTile(
                       icon: Icons.info,
-                      title: '版本',
+                      title: 'App 版本',
                       trailing:
                           _versionString.isNotEmpty ? _versionString : '載入中...',
                     ),

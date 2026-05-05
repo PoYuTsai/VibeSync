@@ -344,14 +344,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         onPressed: () {
                           _launchUrl(_termsUrl);
                         },
-                        child: Text('條款', style: AppTypography.caption),
+                        child: Text('服務條款', style: AppTypography.caption),
                       ),
                       Text('|', style: AppTypography.caption),
                       TextButton(
                         onPressed: () {
                           _launchUrl(_privacyUrl);
                         },
-                        child: Text('隱私', style: AppTypography.caption),
+                        child: Text('隱私政策', style: AppTypography.caption),
                       ),
                       Text('|', style: AppTypography.caption),
                       TextButton(
@@ -445,26 +445,45 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '功能比較',
+            '方案功能比較',
             style: AppTypography.titleMedium.copyWith(
               color: AppColors.glassTextPrimary,
             ),
           ),
           const SizedBox(height: 12),
-          _buildComparisonRow(
-              '回覆風格', 'Free', '延展', 'Starter', '全部 5 種', 'Essential', '全部 5 種'),
-          _buildComparisonRow('AI 模型', 'Free', 'Haiku', 'Starter', 'Sonnet',
-              'Essential', 'Sonnet'),
-          _buildComparisonRow(
-              '雷達圖', 'Free', '--', 'Starter', 'V', 'Essential', 'V'),
-          _buildComparisonRow(
-              '對話健檢', 'Free', '--', 'Starter', '--', 'Essential', 'V'),
-          _buildComparisonRow(
-              '訊息優化', 'Free', '--', 'Starter', '--', 'Essential', 'V'),
-          _buildComparisonRow(
-              '每日額度', 'Free', '15', 'Starter', '50', 'Essential', '120'),
-          _buildComparisonRow(
-              '每月額度', 'Free', '30', 'Starter', '300', 'Essential', '800'),
+          _buildComparisonHeader(),
+          _buildComparisonRow('適合誰', '先試手感', '穩定練習', '深度打磨'),
+          _buildComparisonRow('回覆風格', '延展', '全部 5 種', '全部 5 種'),
+          _buildComparisonRow('AI 模型', 'Haiku', 'Sonnet', 'Sonnet'),
+          _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
+          _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
+          _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),
+          _buildComparisonRow('每日額度', '15 則', '50 則', '120 則'),
+          _buildComparisonRow('每月額度', '30 則', '300 則', '800 則'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComparisonHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          const SizedBox(width: 72),
+          for (final label in ['Free', 'Starter', 'Essential'])
+            Expanded(
+              child: Text(
+                label,
+                style: AppTypography.caption.copyWith(
+                  color: label == 'Essential'
+                      ? AppColors.glassTextPrimary
+                      : AppColors.glassTextHint,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
         ],
       ),
     );
@@ -472,11 +491,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Widget _buildComparisonRow(
     String feature,
-    String freeLabel,
     String freeValue,
-    String starterLabel,
     String starterValue,
-    String essentialLabel,
     String essentialValue,
   ) {
     return Padding(
@@ -727,54 +743,59 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${option.name} ${option.period}',
-                  style: AppTypography.titleLarge.copyWith(
-                    color: AppColors.glassTextPrimary,
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        '${option.name} ${option.period}',
+                        style: AppTypography.titleLarge.copyWith(
+                          color: AppColors.glassTextPrimary,
+                        ),
+                      ),
+                      _buildBadge(
+                        label: option.badge,
+                        background: isRecommended
+                            ? const LinearGradient(
+                                colors: [
+                                  AppColors.selectedStart,
+                                  AppColors.selectedEnd,
+                                ],
+                              )
+                            : null,
+                        color: isRecommended
+                            ? Colors.white
+                            : AppColors.glassTextPrimary,
+                      ),
+                      if (option.discount != null)
+                        _buildBadge(
+                          label: option.discount!,
+                          background: LinearGradient(
+                            colors: [
+                              AppColors.success.withValues(alpha: 0.88),
+                              AppColors.success.withValues(alpha: 0.72),
+                            ],
+                          ),
+                          color: Colors.white,
+                        ),
+                      if (isCurrentPlan)
+                        _buildBadge(
+                          label: '目前',
+                          background: LinearGradient(
+                            colors: [
+                              AppColors.success.withValues(alpha: 0.88),
+                              AppColors.success.withValues(alpha: 0.72),
+                            ],
+                          ),
+                          color: Colors.white,
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                _buildBadge(
-                  label: option.badge,
-                  background: isRecommended
-                      ? const LinearGradient(
-                          colors: [
-                            AppColors.selectedStart,
-                            AppColors.selectedEnd,
-                          ],
-                        )
-                      : null,
-                  color:
-                      isRecommended ? Colors.white : AppColors.glassTextPrimary,
-                ),
-                if (option.discount != null) ...[
-                  const SizedBox(width: 6),
-                  _buildBadge(
-                    label: option.discount!,
-                    background: LinearGradient(
-                      colors: [
-                        AppColors.success.withValues(alpha: 0.88),
-                        AppColors.success.withValues(alpha: 0.72),
-                      ],
-                    ),
-                    color: Colors.white,
-                  ),
-                ],
-                if (isCurrentPlan) ...[
-                  const SizedBox(width: 8),
-                  _buildBadge(
-                    label: '目前',
-                    background: LinearGradient(
-                      colors: [
-                        AppColors.success.withValues(alpha: 0.88),
-                        AppColors.success.withValues(alpha: 0.72),
-                      ],
-                    ),
-                    color: Colors.white,
-                  ),
-                ],
-                const Spacer(),
                 Radio<String>(
                   value: option.id,
                   groupValue: _selectedOptionId,

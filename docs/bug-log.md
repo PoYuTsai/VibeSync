@@ -10,6 +10,36 @@
 
 ## 2026-05
 
+### [2026-05-05] Paywall 方案卡在手機寬度下溢出
+
+**症狀**:
+
+- 上線前檢查付款頁時，widget test 在 430px 手機寬度下抓到 `Essential 季繳 + 最划算 + 省 36% + radio` 同列超出卡片寬度。
+- 使用者可能在較窄手機、較大字體或價格文案較長時看到方案卡右側被截斷。
+
+**Root Cause**:
+
+1. 方案卡 header 使用單列 `Row`，方案名稱、badge、折扣 badge、目前方案 badge 與 radio 都在同一行。
+2. 原本付款頁測試仍停在舊版文案，沒有守住新版四方案 layout，因此這個 overflow 沒有被測試及早抓到。
+
+**修復**:
+
+1. 方案卡 header 改成 `Expanded + Wrap`，讓名稱與 badge 可自然換行，radio 保持在右側。
+2. 功能比較表補上 Free / Starter / Essential 表頭，並把 `V / --` 改成 `可用 / 未開放`。
+3. 更新 Settings / Paywall widget tests 到目前上線文案，鎖住版本顯示、方案比較、價格同步狀態與刪除帳號確認流程。
+
+**驗證**:
+
+- `flutter test test/widget/screens/paywall_screen_test.dart test/widget/screens/settings_screen_test.dart`
+- `flutter analyze`
+
+**涉及檔案**:
+
+- `lib/features/subscription/presentation/screens/paywall_screen.dart`
+- `lib/features/subscription/presentation/screens/settings_screen.dart`
+- `test/widget/screens/paywall_screen_test.dart`
+- `test/widget/screens/settings_screen_test.dart`
+
 ### [2026-05-05] 編輯剛剛那則訊息文字對比不足
 
 **症狀**:

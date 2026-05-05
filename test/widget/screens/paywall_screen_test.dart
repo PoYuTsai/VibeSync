@@ -7,137 +7,130 @@ import 'package:vibesync/features/subscription/data/providers/subscription_provi
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 
 void main() {
-  Widget buildTestWidget({Future<void> Function()? refreshUsage}) {
-    return ProviderScope(
-      overrides: [
-        subscriptionScreenRefreshProvider.overrideWithValue(
-          refreshUsage ?? () async {},
-        ),
-      ],
-      child: const MaterialApp(home: PaywallScreen()),
+  Future<void> pumpPaywall(
+    WidgetTester tester, {
+    Future<void> Function()? refreshUsage,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(430, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          subscriptionScreenRefreshProvider.overrideWithValue(
+            refreshUsage ?? () async {},
+          ),
+        ],
+        child: const MaterialApp(home: PaywallScreen()),
+      ),
     );
+    await tester.pump();
   }
 
   group('PaywallScreen', () {
     testWidgets('refreshes subscription usage snapshot on entry',
         (tester) async {
       var refreshCalls = 0;
-      await tester.pumpWidget(buildTestWidget(refreshUsage: () async {
+      await pumpPaywall(tester, refreshUsage: () async {
         refreshCalls++;
-      }));
-      await tester.pump();
+      });
 
       expect(refreshCalls, 1);
     });
 
-    testWidgets('displays title', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
+    testWidgets('shows launch-ready title and upgrade/downgrade copy',
+        (tester) async {
+      await pumpPaywall(tester);
 
-      expect(find.text('升級方案'), findsOneWidget);
-      expect(find.text('解鎖完整功能'), findsOneWidget);
+      expect(find.text('方案與額度'), findsOneWidget);
+      expect(find.text('解鎖完整分析，回得更有把握'), findsOneWidget);
+      expect(find.textContaining('升級會立即生效'), findsAtLeastNWidgets(1));
+      expect(find.textContaining('降級則會在下次續訂時生效'), findsOneWidget);
     });
 
-    testWidgets('displays subtitle', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
+    testWidgets('shows current Free quota summary with remaining counts',
+        (tester) async {
+      await pumpPaywall(tester);
 
-      expect(find.text('提升你的社交溝通能力'), findsOneWidget);
+      expect(find.text('目前方案與額度'), findsOneWidget);
+      expect(find.text('目前方案：Free'), findsOneWidget);
+      expect(find.text('本月剩餘'), findsOneWidget);
+      expect(find.text('今日剩餘'), findsOneWidget);
+      expect(find.text('30/30'), findsOneWidget);
+      expect(find.text('15/15'), findsOneWidget);
     });
 
-    testWidgets('shows Starter plan', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
+    testWidgets('comparison table names tiers and uses human-readable values',
+        (tester) async {
+      await pumpPaywall(tester);
 
+      expect(find.text('方案功能比較'), findsOneWidget);
+      expect(find.text('Free'), findsOneWidget);
       expect(find.text('Starter'), findsOneWidget);
-      expect(find.text('NT\$149/月'), findsOneWidget);
-    });
-
-    testWidgets('shows Starter features', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-
-      expect(find.text('300 則訊息/月'), findsOneWidget);
-      expect(find.text('每日 50 則上限'), findsOneWidget);
-      expect(find.text('5 種回覆建議'), findsNWidgets(2)); // Both plans have this
-    });
-
-    testWidgets('shows Essential plan with recommended badge', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-
       expect(find.text('Essential'), findsOneWidget);
-      expect(find.text('NT\$349/月'), findsOneWidget);
+      expect(find.text('適合誰'), findsOneWidget);
+      expect(find.text('先試手感'), findsOneWidget);
+      expect(find.text('穩定練習'), findsOneWidget);
+      expect(find.text('深度打磨'), findsOneWidget);
+      expect(find.text('雷達圖'), findsOneWidget);
+      expect(find.text('可用'), findsNWidgets(4));
+      expect(find.text('未開放'), findsNWidgets(5));
+      expect(find.text('120 則'), findsOneWidget);
+      expect(find.text('800 則'), findsOneWidget);
+    });
+
+    testWidgets('shows four product options while prices are syncing',
+        (tester) async {
+      await pumpPaywall(tester);
+
+      expect(find.text('Starter 月繳'), findsOneWidget);
+      expect(find.text('Starter 季繳'), findsOneWidget);
+      expect(find.text('Essential 月繳'), findsOneWidget);
+      expect(find.text('Essential 季繳'), findsOneWidget);
+      expect(find.text('入門'), findsNWidgets(2));
       expect(find.text('推薦'), findsOneWidget);
+      expect(find.text('最划算'), findsOneWidget);
+      expect(find.text('價格同步中'), findsNWidgets(4));
+      expect(find.text('方案資訊尚未就緒'), findsOneWidget);
     });
 
-    testWidgets('shows Essential exclusive features', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
+    testWidgets('Essential monthly option is selected by default',
+        (tester) async {
+      await pumpPaywall(tester);
 
-      expect(find.text('1,000 則訊息/月'), findsOneWidget);
-      expect(find.text('每日 150 則上限'), findsOneWidget);
-      expect(find.text('對話健檢 (獨家)'), findsOneWidget);
-      expect(find.text('Sonnet 優先模型'), findsOneWidget);
-    });
-
-    testWidgets('Essential is selected by default', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-
-      // Check for radio button selection
-      final essentialRadio = tester.widget<Radio<String>>(
+      final essentialMonthlyRadio = tester.widget<Radio<String>>(
         find.byWidgetPredicate(
-          (widget) => widget is Radio<String> && widget.value == 'essential',
+          (widget) =>
+              widget is Radio<String> && widget.value == 'essential_monthly',
         ),
       );
-      expect(essentialRadio.groupValue, 'essential');
+      expect(essentialMonthlyRadio.groupValue, 'essential_monthly');
     });
 
-    testWidgets('can select Starter plan', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
+    testWidgets('can switch selected product option before purchasing',
+        (tester) async {
+      await pumpPaywall(tester);
 
-      // Initially Essential is selected
-      final starterRadioBefore = tester.widget<Radio<String>>(
+      await tester.tap(find.text('Starter 月繳'));
+      await tester.pump();
+
+      final starterMonthlyRadio = tester.widget<Radio<String>>(
         find.byWidgetPredicate(
-          (widget) => widget is Radio<String> && widget.value == 'starter',
+          (widget) =>
+              widget is Radio<String> && widget.value == 'starter_monthly',
         ),
       );
-      expect(starterRadioBefore.groupValue, 'essential');
-
-      // Tap on Starter card
-      await tester.tap(find.text('Starter'));
-      await tester.pumpAndSettle();
-
-      // Now Starter should be selected
-      final starterRadioAfter = tester.widget<Radio<String>>(
-        find.byWidgetPredicate(
-          (widget) => widget is Radio<String> && widget.value == 'starter',
-        ),
-      );
-      expect(starterRadioAfter.groupValue, 'starter');
+      expect(starterMonthlyRadio.groupValue, 'starter_monthly');
     });
 
-    testWidgets('shows free trial CTA', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
+    testWidgets('shows consistent legal and subscription management links',
+        (tester) async {
+      await pumpPaywall(tester);
 
-      expect(find.text('開始 7 天免費試用'), findsOneWidget);
-    });
-
-    testWidgets('shows trial terms', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-
-      expect(find.text('試用結束後自動扣款，可隨時取消'), findsOneWidget);
-    });
-
-    testWidgets('shows legal links', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-
-      expect(find.text('使用條款'), findsOneWidget);
-      expect(find.text('隱私權政策'), findsOneWidget);
+      expect(find.text('服務條款'), findsOneWidget);
+      expect(find.text('隱私政策'), findsOneWidget);
+      expect(find.text('管理訂閱'), findsOneWidget);
       expect(find.text('恢復購買'), findsOneWidget);
-    });
-
-    testWidgets('tapping CTA shows snackbar', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-
-      await tester.tap(find.text('開始 7 天免費試用'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('RevenueCat 整合待實作'), findsOneWidget);
     });
   });
 }

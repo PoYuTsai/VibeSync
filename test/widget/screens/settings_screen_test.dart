@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/presentation/screens/settings_screen.dart';
 
@@ -9,6 +10,14 @@ void main() {
   late GoRouter testRouter;
 
   setUp(() {
+    PackageInfo.setMockInitialValues(
+      appName: 'VibeSync',
+      packageName: 'com.poyutsai.vibesync',
+      version: '1.0.0',
+      buildNumber: '165',
+      buildSignature: '',
+    );
+
     testRouter = GoRouter(
       initialLocation: '/settings',
       routes: [
@@ -26,105 +35,110 @@ void main() {
     );
   });
 
-  Widget buildTestWidget({Future<void> Function()? refreshUsage}) {
-    return ProviderScope(
-      overrides: [
-        subscriptionScreenRefreshProvider.overrideWithValue(
-          refreshUsage ?? () async {},
-        ),
-      ],
-      child: MaterialApp.router(
-        routerConfig: testRouter,
+  Future<void> pumpSettings(
+    WidgetTester tester, {
+    Future<void> Function()? refreshUsage,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(430, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          subscriptionScreenRefreshProvider.overrideWithValue(
+            refreshUsage ?? () async {},
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: testRouter),
       ),
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
   }
 
   group('SettingsScreen', () {
-    testWidgets('displays title in app bar', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
-
-      expect(find.text('設定'), findsOneWidget);
-    });
-
-    testWidgets('displays account section', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
-
-      expect(find.text('帳戶'), findsOneWidget);
-      expect(find.text('訂閱方案'), findsOneWidget);
-      expect(find.text('本月用量'), findsOneWidget);
-      expect(find.text('帳號'), findsOneWidget);
-    });
-
-    testWidgets('displays privacy section', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
-
-      expect(find.text('隱私與安全'), findsOneWidget);
-      expect(find.text('清除所有對話資料'), findsOneWidget);
-      expect(find.text('匯出我的資料'), findsOneWidget);
-      expect(find.text('隱私權政策'), findsOneWidget);
-    });
-
-    testWidgets('displays about section', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
-
-      expect(find.text('關於'), findsOneWidget);
-      expect(find.text('版本'), findsOneWidget);
-      expect(find.text('使用條款'), findsOneWidget);
-      expect(find.text('意見回饋'), findsOneWidget);
-    });
-
-    testWidgets('displays Free tier as default', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
-
-      expect(find.text('Free'), findsOneWidget);
-    });
-
     testWidgets('refreshes subscription usage snapshot on entry',
         (tester) async {
       var refreshCalls = 0;
-      await tester.pumpWidget(buildTestWidget(refreshUsage: () async {
+      await pumpSettings(tester, refreshUsage: () async {
         refreshCalls++;
-      }));
-      await tester.pump();
+      });
 
       expect(refreshCalls, 1);
     });
 
-    testWidgets('displays usage as 0/30', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
+    testWidgets('shows settings title and quota summary', (tester) async {
+      await pumpSettings(tester);
 
-      expect(find.text('0/30 則'), findsOneWidget);
+      expect(find.text('設定'), findsOneWidget);
+      expect(find.text('目前方案與額度'), findsOneWidget);
+      expect(find.text('目前方案：Free'), findsOneWidget);
+      expect(find.text('本月剩餘'), findsNWidgets(2));
+      expect(find.text('今日剩餘'), findsNWidgets(2));
+      expect(find.text('30/30'), findsNWidgets(2));
+      expect(find.text('15/15'), findsNWidgets(2));
     });
 
-    testWidgets('shows delete dialog when tapping clear data', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
+    testWidgets('shows clear plan and account rows', (tester) async {
+      await pumpSettings(tester);
+
+      expect(find.text('方案與帳號'), findsOneWidget);
+      expect(find.text('目前方案'), findsOneWidget);
+      expect(find.text('本月已使用'), findsOneWidget);
+      expect(find.text('0/30'), findsOneWidget);
+      expect(find.text('帳號'), findsOneWidget);
+      expect(find.text('尚未登入'), findsOneWidget);
+      expect(find.text('管理訂閱'), findsOneWidget);
+      expect(find.text('恢復購買'), findsOneWidget);
+    });
+
+    testWidgets('shows privacy and support rows with launch copy',
+        (tester) async {
+      await pumpSettings(tester);
+
+      expect(find.text('隱私與資料'), findsOneWidget);
+      expect(find.text('刪除帳號'), findsOneWidget);
+      expect(find.text('隱私政策'), findsOneWidget);
+      expect(find.text('其他'), findsOneWidget);
+      expect(find.text('App 版本'), findsOneWidget);
+      expect(find.text('1.0.0 (165)'), findsOneWidget);
+      expect(find.text('服務條款'), findsOneWidget);
+      expect(find.text('客服與支援'), findsOneWidget);
+      expect(find.text('登出'), findsOneWidget);
+    });
+
+    testWidgets('opens paywall when tapping current plan row', (tester) async {
+      await pumpSettings(tester);
+
+      await tester.tap(find.text('目前方案'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('清除所有對話資料'));
-      await tester.pumpAndSettle();
+      expect(find.text('Paywall'), findsOneWidget);
+    });
 
-      expect(find.text('確定要刪除所有對話？'), findsOneWidget);
+    testWidgets('delete account dialog requires explicit DELETE confirmation',
+        (tester) async {
+      await pumpSettings(tester);
+
+      await tester.tap(find.text('刪除帳號'));
+      await tester.pump();
+
+      expect(find.text('刪除帳號'), findsNWidgets(2));
+      expect(find.textContaining('Apple 訂閱管理'), findsOneWidget);
+      expect(find.text('輸入 DELETE 以確認'), findsOneWidget);
       expect(find.text('取消'), findsOneWidget);
       expect(find.text('刪除'), findsOneWidget);
-    });
 
-    testWidgets('can dismiss delete dialog', (tester) async {
-      await tester.pumpWidget(buildTestWidget());
-      await tester.pumpAndSettle();
+      final deleteButton =
+          tester.widget<TextButton>(find.widgetWithText(TextButton, '刪除'));
+      expect(deleteButton.onPressed, isNull);
 
-      await tester.tap(find.text('清除所有對話資料'));
-      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
 
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('確定要刪除所有對話？'), findsNothing);
+      final enabledDeleteButton =
+          tester.widget<TextButton>(find.widgetWithText(TextButton, '刪除'));
+      expect(enabledDeleteButton.onPressed, isNotNull);
     });
   });
 }
