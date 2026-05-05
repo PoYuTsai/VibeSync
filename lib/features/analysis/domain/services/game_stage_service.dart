@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import '../entities/game_stage.dart';
 
-/// GAME 階段分析服務
+/// 對話階段分析服務
 /// 根據 AI 回傳的分析結果，提供階段相關的 UI 資訊
 class GameStageService {
   /// 取得階段顯示名稱 (含英文)
@@ -27,9 +27,9 @@ class GameStageService {
       case GameStage.opening:
         return '破冰階段 - 建立初步連結';
       case GameStage.premise:
-        return '前提階段 - 進入男女框架，建立張力';
+        return '升溫階段 - 建立曖昧張力';
       case GameStage.qualification:
-        return '評估階段 - 讓她證明自己配得上你';
+        return '評估階段 - 互相觀察是否同頻';
       case GameStage.narrative:
         return '敘事階段 - 分享個性樣本、說故事';
       case GameStage.close:
@@ -91,7 +91,7 @@ class GameStageService {
       case GameStageStatus.normal:
         return '繼續目前節奏';
       case GameStageStatus.stuckFriend:
-        return '需要建立曖昧張力，跳出朋友框架';
+        return '需要建立曖昧張力，避免只停在朋友感';
       case GameStageStatus.canAdvance:
         return '時機成熟，可以推進到下一階段';
       case GameStageStatus.shouldRetreat:
@@ -120,7 +120,8 @@ class GameStageService {
   }
 
   /// 判斷是否應該建議「放棄這段對話」
-  bool shouldSuggestGiveUp(int enthusiasmScore, GameStage stage, int roundCount) {
+  bool shouldSuggestGiveUp(
+      int enthusiasmScore, GameStage stage, int roundCount) {
     // 熱度 < 20，且已經超過 10 輪，對方興趣極低
     return enthusiasmScore < 20 && roundCount > 10;
   }

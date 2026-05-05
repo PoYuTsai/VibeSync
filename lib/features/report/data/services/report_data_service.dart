@@ -7,7 +7,7 @@ import '../../../analysis/domain/entities/game_stage.dart';
 import '../../domain/entities/report_models.dart';
 
 class ReportDataService {
-  /// GAME 階段短標籤對照
+  /// 對話階段短標籤對照
   static const _stageShortLabels = {
     GameStage.opening: '破冰',
     GameStage.premise: '升溫',

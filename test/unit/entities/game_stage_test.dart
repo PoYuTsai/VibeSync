@@ -7,7 +7,7 @@ void main() {
       test('returns correct Chinese label for each stage', () {
         expect(GameStage.opening.label, '破冰階段');
         expect(GameStage.premise.label, '建立男女感');
-        expect(GameStage.qualification.label, '讓她證明自己');
+        expect(GameStage.qualification.label, '互相評估');
         expect(GameStage.narrative.label, '展現個人魅力');
         expect(GameStage.close.label, '準備邀約');
       });
@@ -17,7 +17,7 @@ void main() {
       test('returns correct description for each stage', () {
         expect(GameStage.opening.description, '你們還在破冰，先讓對話自然流動');
         expect(GameStage.premise.description, '開始有男女氛圍，可以加點張力');
-        expect(GameStage.qualification.description, '她在向你證明自己，保持沉穩');
+        expect(GameStage.qualification.description, '她在觀察你，你也判斷是否同頻');
         expect(GameStage.narrative.description, '分享故事展現魅力，讓她更了解你');
         expect(GameStage.close.description, '時機對了，可以邀她出來見面');
       });

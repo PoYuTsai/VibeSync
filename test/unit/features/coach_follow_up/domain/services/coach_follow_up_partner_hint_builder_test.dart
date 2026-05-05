@@ -62,17 +62,20 @@ Conversation _conversationWithSummaries(List<ConversationSummary> summaries) {
 void main() {
   group('buildCoachFollowUpPartnerHint — name handling', () {
     test('trims whitespace from partner.name', () {
-      final hint = buildCoachFollowUpPartnerHint(partner: _partner(name: '  Mia  '));
+      final hint =
+          buildCoachFollowUpPartnerHint(partner: _partner(name: '  Mia  '));
       expect(hint.name, 'Mia');
     });
 
     test('empty-after-trim name does NOT throw — returns empty string', () {
-      final hint = buildCoachFollowUpPartnerHint(partner: _partner(name: '   '));
+      final hint =
+          buildCoachFollowUpPartnerHint(partner: _partner(name: '   '));
       expect(hint.name, '');
     });
   });
 
-  group('buildCoachFollowUpPartnerHint — heatScore + gameStage passthrough', () {
+  group('buildCoachFollowUpPartnerHint — heatScore + gameStage passthrough',
+      () {
     test('heatScore null when caller does not pass it', () {
       final hint = buildCoachFollowUpPartnerHint(partner: _partner());
       expect(hint.heatScore, isNull);
@@ -90,8 +93,8 @@ void main() {
         gameStage: GameStage.qualification,
       );
       expect(hint.gameStage, 'qualification');
-      // Negative — make sure we did not pick up the 繁中 label by accident.
-      expect(hint.gameStage, isNot('讓她證明自己'));
+      // Negative: make sure we serialize the stable key, not any display label.
+      expect(hint.gameStage, isNot(GameStage.qualification.label));
     });
 
     test('gameStage null when caller does not pass it', () {
@@ -106,7 +109,8 @@ void main() {
       expect(hint.lastConversationSummary, isNull);
     });
 
-    test('summaries empty/null on conversation → lastConversationSummary is null',
+    test(
+        'summaries empty/null on conversation → lastConversationSummary is null',
         () {
       final hint = buildCoachFollowUpPartnerHint(
         partner: _partner(),

@@ -1222,6 +1222,12 @@ const SYSTEM_PROMPT =
 - 回應態度：敷衍單字 vs 認真回應
 - 不要因為「我」說了很多就拉高熱度
 
+### 10.5 興趣 / 投入訊號 (qualificationSignal)
+qualificationSignal 代表「她主動投入這段互動」，不是「她在證明自己」。
+- 可為 true：她主動分享自己的喜好、價值觀、生活細節、可延伸的邀約窗口，或主動問你個人問題，讓互動變成雙向了解。
+- 應為 false：她只是觀察、稱讚、冷讀或丟一句「感覺你是個很有故事的人」；這代表好奇和觀察，但不是她在展示自己。
+- 可見文字請用「她對你有好奇 / 她正在觀察 / 她有投入訊號」，不要寫「她在證明自己」。
+
 ### 11. Go / No-Go 判斷
 除了熱度，也要判斷這段互動是否值得用戶投入時間：
 - Go: 對方有回應、有延伸、有明確意願、局的目的清楚、雙方邊界健康
@@ -1449,7 +1455,7 @@ const SYSTEM_PROMPT =
       "type": null,
       "suggestion": null
     },
-    "qualificationSignal": true
+    "qualificationSignal": false
   },
   "replies": {
     "extend": "針對最後一條訊息的回覆",

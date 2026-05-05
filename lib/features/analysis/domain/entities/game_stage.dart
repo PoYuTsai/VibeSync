@@ -1,10 +1,10 @@
 // lib/features/analysis/domain/entities/game_stage.dart
 
-/// GAME 五階段流程
+/// 對話五階段流程
 enum GameStage {
   opening, // 打開 - 破冰
-  premise, // 前提 - 進入男女框架
-  qualification, // 評估 - 她證明自己配得上你
+  premise, // 升溫 - 建立曖昧張力
+  qualification, // 評估 - 互相觀察與篩選
   narrative, // 敘事 - 個性樣本、說故事
   close; // 收尾 - 模糊邀約 → 確立邀約
 
@@ -22,7 +22,7 @@ enum GameStage {
       case premise:
         return '建立男女感';
       case qualification:
-        return '讓她證明自己';
+        return '互相評估';
       case narrative:
         return '展現個人魅力';
       case close:
@@ -37,7 +37,7 @@ enum GameStage {
       case premise:
         return '開始有男女氛圍，可以加點張力';
       case qualification:
-        return '她在向你證明自己，保持沉穩';
+        return '她在觀察你，你也判斷是否同頻';
       case narrative:
         return '分享故事展現魅力，讓她更了解你';
       case close:
@@ -61,10 +61,10 @@ enum GameStage {
   }
 }
 
-/// GAME 階段狀態
+/// 對話階段狀態
 enum GameStageStatus {
   normal, // 正常進行
-  stuckFriend, // 卡在朋友框
+  stuckFriend, // 偏向朋友感
   canAdvance, // 可以推進
   shouldRetreat; // 應該退回
 

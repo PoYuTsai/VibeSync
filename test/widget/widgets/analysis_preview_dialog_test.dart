@@ -51,9 +51,9 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('確認分析'), findsOneWidget);
-      expect(find.text('本次分析'), findsOneWidget);
-      expect(find.text('5 則訊息'), findsOneWidget);
+      expect(find.text('開始分析前'), findsOneWidget);
+      expect(find.text('這次會用掉'), findsOneWidget);
+      expect(find.text('5 則'), findsOneWidget);
     });
 
     testWidgets('displays monthly and daily usage', (tester) async {
@@ -77,13 +77,14 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('月額度'), findsOneWidget);
-      expect(find.text('剩餘 20 / 30 則'), findsOneWidget);
-      expect(find.text('今日額度'), findsOneWidget);
-      expect(find.text('剩餘 10 / 15 則'), findsOneWidget);
+      expect(find.text('本月剩餘'), findsOneWidget);
+      expect(find.text('20 / 30 則'), findsOneWidget);
+      expect(find.text('今日剩餘'), findsOneWidget);
+      expect(find.text('10 / 15 則'), findsOneWidget);
     });
 
-    testWidgets('shows after analysis preview when can proceed', (tester) async {
+    testWidgets('shows after analysis preview when can proceed',
+        (tester) async {
       final preview = const MessagePreview(
         messageCount: 5,
         charCount: 100,
@@ -105,7 +106,29 @@ void main() {
       await tester.pumpAndSettle();
 
       // After analysis: monthly 20-5=15, daily 10-5=5
-      expect(find.text('分析後剩餘: 月 15 則 / 日 5 則'), findsOneWidget);
+      expect(find.text('分析後大約還剩：本月 15 則 / 今日 5 則'), findsOneWidget);
+    });
+
+    testWidgets('explains re-analysis uses context but only bills new content',
+        (tester) async {
+      final preview = const MessagePreview(
+        messageCount: 1,
+        charCount: 12,
+        exceedsLimit: false,
+      );
+      final usage = UsageData.free();
+
+      await tester.pumpWidget(buildTestWidget(
+        preview: preview,
+        usage: usage,
+      ));
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('重新分析會用目前整段對話重新判斷；舊訊息只作為背景，不重複扣額度，這次只計算新增內容。'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows warning when content exceeds limit', (tester) async {
@@ -123,7 +146,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('內容過長，請分批分析 (上限 5,000 字)'), findsOneWidget);
+      expect(find.text('這次內容太長了，請先刪掉一部分對話後再試。'), findsOneWidget);
     });
 
     testWidgets('shows warning when monthly limit exceeded', (tester) async {
@@ -147,7 +170,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('月額度不足，請升級方案'), findsOneWidget);
+      expect(find.text('這個月的分析次數不夠了，升級後再繼續。'), findsOneWidget);
     });
 
     testWidgets('shows warning when daily limit exceeded', (tester) async {
@@ -171,7 +194,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('今日額度已用完，明天再試'), findsOneWidget);
+      expect(find.text('今天的分析次數不夠了，明天再來或先升級方案。'), findsOneWidget);
     });
 
     testWidgets('confirm button enabled when can proceed', (tester) async {
@@ -191,7 +214,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      final confirmButton = find.widgetWithText(ElevatedButton, '確認分析');
+      final confirmButton = find.widgetWithText(ElevatedButton, '開始分析');
       expect(confirmButton, findsOneWidget);
 
       await tester.tap(confirmButton);
@@ -216,7 +239,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final confirmButton = tester.widget<ElevatedButton>(
-        find.widgetWithText(ElevatedButton, '確認分析'),
+        find.widgetWithText(ElevatedButton, '開始分析'),
       );
       expect(confirmButton.onPressed, isNull);
     });
@@ -244,7 +267,9 @@ void main() {
       expect(cancelled, isTrue);
     });
 
-    testWidgets('shows upgrade button when cannot proceed and onUpgrade provided', (tester) async {
+    testWidgets(
+        'shows upgrade button when cannot proceed and onUpgrade provided',
+        (tester) async {
       final preview = const MessagePreview(
         messageCount: 50,
         charCount: 200,
@@ -267,14 +292,15 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('升級方案'), findsOneWidget);
-      await tester.tap(find.text('升級方案'));
+      expect(find.text('查看升級方案'), findsOneWidget);
+      await tester.tap(find.text('查看升級方案'));
       await tester.pumpAndSettle();
 
       expect(upgraded, isTrue);
     });
 
-    testWidgets('hides upgrade button when onUpgrade not provided', (tester) async {
+    testWidgets('hides upgrade button when onUpgrade not provided',
+        (tester) async {
       final preview = const MessagePreview(
         messageCount: 50,
         charCount: 200,
@@ -296,7 +322,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('升級方案'), findsNothing);
+      expect(find.text('查看升級方案'), findsNothing);
     });
   });
 
@@ -330,7 +356,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('確認分析'));
+      await tester.tap(find.text('開始分析'));
       await tester.pumpAndSettle();
 
       expect(result, isTrue);

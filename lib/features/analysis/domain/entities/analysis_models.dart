@@ -125,8 +125,8 @@ class GameStageInfo {
 /// Psychology analysis (淺溝通解讀)
 class PsychologyAnalysis {
   final String subtext; // 她真正想說的
-  final String? shitTest; // 偵測到的廢測 (null = 無)
-  final bool qualificationSignal; // 她是否在向你證明自己
+  final String? shitTest; // 偵測到的互動測試訊號 (null = 無)
+  final bool qualificationSignal; // 她是否主動投入這段互動
 
   const PsychologyAnalysis({
     required this.subtext,
@@ -219,8 +219,7 @@ FinalRecommendation _ensureRecommendationFallback(
           (pick) => replies[pick]?.trim().isNotEmpty == true,
           orElse: () => replies.keys.isNotEmpty ? replies.keys.first : 'extend',
         );
-  final fallbackContent =
-      replies[fallbackPick]?.trim() ??
+  final fallbackContent = replies[fallbackPick]?.trim() ??
       (requestedPick == fallbackPick ? recommendation.content.trim() : '');
 
   if (fallbackContent.isEmpty) {
@@ -364,10 +363,10 @@ class RecognizedMessage {
           rawQuotedReplyPreview == null || rawQuotedReplyPreview.isEmpty
               ? null
               : rawQuotedReplyPreview,
-      quotedReplyPreviewIsFromMe: rawQuotedReplyPreview == null ||
-              rawQuotedReplyPreview.isEmpty
-          ? null
-          : rawQuotedReplyPreviewIsFromMe,
+      quotedReplyPreviewIsFromMe:
+          rawQuotedReplyPreview == null || rawQuotedReplyPreview.isEmpty
+              ? null
+              : rawQuotedReplyPreviewIsFromMe,
     );
   }
 
@@ -636,7 +635,8 @@ class AnalysisResult {
       'engagement': (map['engagement'] as num?)?.toInt() ?? 50,
       'topicDepth': (map['topicDepth'] as num?)?.toInt() ?? 50,
       'replyWillingness': (map['replyWillingness'] as num?)?.toInt() ?? 50,
-      'emotionalConnection': (map['emotionalConnection'] as num?)?.toInt() ?? 50,
+      'emotionalConnection':
+          (map['emotionalConnection'] as num?)?.toInt() ?? 50,
     };
   }
 }

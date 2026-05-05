@@ -33,7 +33,7 @@ class Conversation extends HiveObject {
   @HiveField(7)
   SessionContext? sessionContext;
 
-  // v1.1 新增：當前 GAME 階段
+  // v1.1 新增：當前對話階段
   @HiveField(8)
   String? currentGameStage;
 

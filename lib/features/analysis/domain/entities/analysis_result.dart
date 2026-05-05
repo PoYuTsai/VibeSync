@@ -5,10 +5,10 @@ import 'enthusiasm_level.dart';
 /// 心理分析結果
 class PsychologyAnalysis {
   final String subtext; // 淺溝通解讀
-  final bool shitTestDetected; // 是否偵測到廢測
-  final String? shitTestType; // 廢測類型
+  final bool shitTestDetected; // 是否偵測到互動測試訊號
+  final String? shitTestType; // 互動測試類型
   final String? shitTestSuggestion;
-  final bool qualificationSignal; // 她有在證明自己
+  final bool qualificationSignal; // 她有主動投入訊號
 
   PsychologyAnalysis({
     required this.subtext,
@@ -56,7 +56,7 @@ class FinalRecommendation {
 
 /// 完整分析結果
 class AnalysisResult {
-  // GAME 階段
+  // 對話階段
   final GameStage gameStage;
   final GameStageStatus gameStatus;
   final String gameNextStep;
@@ -126,8 +126,7 @@ class AnalysisResult {
       ),
       gameNextStep: gameStageJson['nextStep'] ?? '',
       enthusiasmScore: enthusiasmJson['score'] ?? 50,
-      enthusiasmLevel:
-          EnthusiasmLevel.fromScore(enthusiasmJson['score'] ?? 50),
+      enthusiasmLevel: EnthusiasmLevel.fromScore(enthusiasmJson['score'] ?? 50),
       topicDepthCurrent: topicDepthJson['current'] ?? 'facts',
       topicDepthSuggestion: topicDepthJson['suggestion'] ?? '',
       psychology: PsychologyAnalysis.fromJson(json['psychology'] ?? {}),

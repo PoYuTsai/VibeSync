@@ -74,7 +74,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   _AnalysisErrorOrigin? _errorOrigin;
   String? _errorGuidance;
 
-  // GAME 階段分析
+  // 對話階段分析
   GameStageInfo? _gameStage;
 
   // 心理分析
@@ -4197,7 +4197,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             ),
                           ],
 
-                          // GAME 階段指示器
+                          // 對話階段指示器
                           if (_gameStage != null) ...[
                             const SizedBox(height: 16),
                             GameStageIndicator(
@@ -4246,7 +4246,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
-                                              '偵測到廢測: ${_psychology!.shitTest}',
+                                              '互動測試訊號: ${_psychology!.shitTest}',
                                               style: AppTypography.caption
                                                   .copyWith(
                                                       color: AppColors
@@ -4264,7 +4264,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         const Icon(Icons.check_circle,
                                             size: 16, color: AppColors.success),
                                         const SizedBox(width: 4),
-                                        Text('她在向你證明自己',
+                                        Text('她有主動投入訊號',
                                             style: AppTypography.caption
                                                 .copyWith(
                                                     color: AppColors

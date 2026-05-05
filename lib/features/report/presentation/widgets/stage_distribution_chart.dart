@@ -7,7 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../domain/entities/report_models.dart';
 
-/// GAME 階段分佈甜甜圈圖
+/// 對話階段分佈甜甜圈圖
 class StageDistributionChart extends StatelessWidget {
   final List<StageDistribution> distributions;
   final int totalConversations;

@@ -16,8 +16,7 @@ void main() {
         ),
       );
 
-      expect(find.text('打開'), findsOneWidget);
-      expect(find.text('👋'), findsWidgets);
+      expect(find.text('破冰'), findsOneWidget);
     });
 
     testWidgets('displays premise stage correctly', (tester) async {
@@ -31,11 +30,11 @@ void main() {
         ),
       );
 
-      expect(find.text('前提'), findsOneWidget);
-      expect(find.text('進入男女框架'), findsOneWidget);
+      expect(find.text('升溫'), findsOneWidget);
+      expect(find.text('目前・升溫'), findsOneWidget);
     });
 
-    testWidgets('displays status badge', (tester) async {
+    testWidgets('keeps qualification stage copy neutral', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -47,7 +46,8 @@ void main() {
         ),
       );
 
-      expect(find.text('卡在朋友框'), findsOneWidget);
+      expect(find.text('深入'), findsOneWidget);
+      expect(find.text('目前・深入'), findsOneWidget);
     });
 
     testWidgets('displays next step when provided', (tester) async {
@@ -77,9 +77,9 @@ void main() {
         ),
       );
 
-      expect(find.text('收尾'), findsOneWidget);
-      expect(find.text('準備邀約'), findsOneWidget);
-      expect(find.text('可以推進'), findsOneWidget);
+      expect(find.text('邀約'), findsOneWidget);
+      expect(find.text('目前・邀約'), findsOneWidget);
+      expect(find.text('收尾'), findsNothing);
     });
   });
 }

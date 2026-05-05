@@ -300,3 +300,20 @@ Deno.test({
     assert(source.includes("complex_emotion"));
   },
 });
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT treats qualificationSignal as investment, not proving herself",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("興趣 / 投入訊號 (qualificationSignal)"));
+    assert(source.includes("不是「她在證明自己」"));
+    assert(source.includes("感覺你是個很有故事的人"));
+    assert(source.includes("這代表好奇和觀察，但不是她在展示自己"));
+    assert(source.includes('"qualificationSignal": false'));
+  },
+});

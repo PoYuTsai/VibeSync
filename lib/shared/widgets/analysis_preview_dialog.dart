@@ -84,6 +84,14 @@ class AnalysisPreviewDialog extends StatelessWidget {
               height: 1.45,
             ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            '重新分析會用目前整段對話重新判斷；舊訊息只作為背景，不重複扣額度，這次只計算新增內容。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
           if (canProceed) ...[
             const SizedBox(height: 8),
             Text(

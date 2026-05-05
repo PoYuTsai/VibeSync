@@ -14,7 +14,8 @@ void main() {
     test('returns correct name for each stage', () {
       expect(service.getStageName(GameStage.opening), contains('Opening'));
       expect(service.getStageName(GameStage.premise), contains('Premise'));
-      expect(service.getStageName(GameStage.qualification), contains('Qualification'));
+      expect(service.getStageName(GameStage.qualification),
+          contains('Qualification'));
       expect(service.getStageName(GameStage.narrative), contains('Narrative'));
       expect(service.getStageName(GameStage.close), contains('Close'));
     });
@@ -29,7 +30,8 @@ void main() {
     test('returns detailed description for each stage', () {
       expect(service.getStageDescription(GameStage.opening), contains('破冰'));
       expect(service.getStageDescription(GameStage.premise), contains('張力'));
-      expect(service.getStageDescription(GameStage.qualification), contains('證明'));
+      expect(service.getStageDescription(GameStage.qualification),
+          contains('互相觀察'));
       expect(service.getStageDescription(GameStage.narrative), contains('故事'));
       expect(service.getStageDescription(GameStage.close), contains('邀約'));
     });
@@ -75,18 +77,25 @@ void main() {
   group('GameStageService.getStatusAdvice', () {
     test('returns advice for each status', () {
       expect(service.getStatusAdvice(GameStageStatus.normal), contains('繼續'));
-      expect(service.getStatusAdvice(GameStageStatus.stuckFriend), contains('朋友框架'));
-      expect(service.getStatusAdvice(GameStageStatus.canAdvance), contains('推進'));
-      expect(service.getStatusAdvice(GameStageStatus.shouldRetreat), contains('放慢'));
+      expect(service.getStatusAdvice(GameStageStatus.stuckFriend),
+          contains('朋友感'));
+      expect(
+          service.getStatusAdvice(GameStageStatus.canAdvance), contains('推進'));
+      expect(service.getStatusAdvice(GameStageStatus.shouldRetreat),
+          contains('放慢'));
     });
   });
 
   group('GameStageService.getStatusIcon', () {
     test('returns different icons for each status', () {
-      expect(service.getStatusIcon(GameStageStatus.normal), Icons.check_circle_outline);
-      expect(service.getStatusIcon(GameStageStatus.stuckFriend), Icons.warning_amber_outlined);
-      expect(service.getStatusIcon(GameStageStatus.canAdvance), Icons.arrow_forward);
-      expect(service.getStatusIcon(GameStageStatus.shouldRetreat), Icons.arrow_back);
+      expect(service.getStatusIcon(GameStageStatus.normal),
+          Icons.check_circle_outline);
+      expect(service.getStatusIcon(GameStageStatus.stuckFriend),
+          Icons.warning_amber_outlined);
+      expect(service.getStatusIcon(GameStageStatus.canAdvance),
+          Icons.arrow_forward);
+      expect(service.getStatusIcon(GameStageStatus.shouldRetreat),
+          Icons.arrow_back);
     });
   });
 
@@ -103,7 +112,8 @@ void main() {
 
     test('returns false when past opening stage', () {
       expect(service.shouldSuggestNoReply(25, GameStage.premise), isFalse);
-      expect(service.shouldSuggestNoReply(25, GameStage.qualification), isFalse);
+      expect(
+          service.shouldSuggestNoReply(25, GameStage.qualification), isFalse);
     });
   });
 
@@ -126,7 +136,8 @@ void main() {
     test('returns next stage when available', () {
       expect(service.getNextStage(GameStage.opening), GameStage.premise);
       expect(service.getNextStage(GameStage.premise), GameStage.qualification);
-      expect(service.getNextStage(GameStage.qualification), GameStage.narrative);
+      expect(
+          service.getNextStage(GameStage.qualification), GameStage.narrative);
       expect(service.getNextStage(GameStage.narrative), GameStage.close);
     });
 
@@ -138,8 +149,10 @@ void main() {
   group('GameStageService.getPreviousStage', () {
     test('returns previous stage when available', () {
       expect(service.getPreviousStage(GameStage.close), GameStage.narrative);
-      expect(service.getPreviousStage(GameStage.narrative), GameStage.qualification);
-      expect(service.getPreviousStage(GameStage.qualification), GameStage.premise);
+      expect(service.getPreviousStage(GameStage.narrative),
+          GameStage.qualification);
+      expect(
+          service.getPreviousStage(GameStage.qualification), GameStage.premise);
       expect(service.getPreviousStage(GameStage.premise), GameStage.opening);
     });
 

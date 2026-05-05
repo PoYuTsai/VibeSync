@@ -10,6 +10,43 @@
 
 ## 2026-05
 
+### [2026-05-05] 主分析介面殘留早期 Game 語彙造成誤判感
+
+**症狀**:
+
+- 夥伴測試只輸入一則「她說：感覺你是個很有故事的人」。
+- AI 對話解讀本身接近正確，但主介面把 `qualificationSignal` 顯示成「她在向你證明自己」，使用者感覺很怪，像是 UI label 在亂貼標籤。
+- 同類早期語彙也散落在階段描述與心理卡，例如「讓她證明自己」「廢測」「男女框架」。
+
+**Root Cause**:
+
+1. `qualificationSignal` 的早期產品語義偏 Game/PUA，等同「她在證明自己」。
+2. 現在產品定位已收斂成「有記憶的 AI 約會教練」，但部分 UI 文案與 prompt schema example 沒同步升級。
+3. Prompt 沒明確區分「她在觀察 / 稱讚你」與「她主動投入 / 分享自己」，導致單句人格觀察也可能被標成 qualification。
+
+**修復**:
+
+1. Prompt 補 `qualificationSignal` 定義：它代表「主動投入互動」，不是「她在證明自己」；「感覺你是個很有故事的人」應視為好奇與觀察，不是展示自己。
+2. 主介面與 `PsychologyCard` 將可見文案改成「她有主動投入訊號」。
+3. GAME 階段文案改成「互相評估 / 她在觀察你，你也判斷是否同頻」。
+4. 可見「廢測」改成「互動測試訊號」，移除早期黑話。
+5. 分析 preview 補上「重新分析會用目前整段對話重新判斷；舊訊息只作為背景，不重複扣額度，這次只計算新增內容。」
+
+**驗證**:
+
+- `deno test --allow-read supabase/functions/analyze-chat/index_test.ts`
+- `flutter test test/unit/entities/game_stage_test.dart test/unit/services/game_stage_service_test.dart test/widget/widgets/game_stage_indicator_test.dart test/widget/widgets/analysis_preview_dialog_test.dart test/widget/features/analysis/psychology_card_test.dart`
+- `flutter analyze`
+
+**涉及檔案**:
+
+- `supabase/functions/analyze-chat/index.ts`
+- `lib/features/analysis/domain/entities/game_stage.dart`
+- `lib/features/analysis/domain/services/game_stage_service.dart`
+- `lib/features/analysis/presentation/screens/analysis_screen.dart`
+- `lib/features/analysis/presentation/widgets/psychology_card.dart`
+- `lib/shared/widgets/analysis_preview_dialog.dart`
+
 ### [2026-05-05] 續聊手動新增訊息後分析仍讀到舊對話
 
 **症狀**:

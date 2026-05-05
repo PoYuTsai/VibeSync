@@ -4,7 +4,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/analysis_result.dart';
 
-/// Card showing psychology analysis (subtext, shit test, qualification signal)
+/// Card showing psychology analysis (subtext, shit test, interest signal)
 class PsychologyCard extends StatelessWidget {
   final PsychologyAnalysis psychology;
 
@@ -39,7 +39,7 @@ class PsychologyCard extends StatelessWidget {
             ),
           ),
 
-          // Shit test alert
+          // Interaction-test alert
           if (psychology.shitTestDetected) ...[
             const SizedBox(height: 12),
             _ShitTestAlert(
@@ -48,7 +48,7 @@ class PsychologyCard extends StatelessWidget {
             ),
           ],
 
-          // Qualification signal
+          // Interest / investment signal
           if (psychology.qualificationSignal) ...[
             const SizedBox(height: 12),
             _QualificationSignal(),
@@ -72,7 +72,8 @@ class _ShitTestAlert extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.warning.withAlpha(25), // ~0.1 opacity
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.warning.withAlpha(77)), // ~0.3 opacity
+        border:
+            Border.all(color: AppColors.warning.withAlpha(77)), // ~0.3 opacity
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -86,8 +87,9 @@ class _ShitTestAlert extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '偵測到廢測',
-                style: AppTypography.titleSmall.copyWith(color: AppColors.warning),
+                '互動測試訊號',
+                style:
+                    AppTypography.titleSmall.copyWith(color: AppColors.warning),
               ),
             ],
           ),
@@ -119,7 +121,8 @@ class _QualificationSignal extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.success.withAlpha(25), // ~0.1 opacity
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.success.withAlpha(77)), // ~0.3 opacity
+        border:
+            Border.all(color: AppColors.success.withAlpha(77)), // ~0.3 opacity
       ),
       child: Row(
         children: [
@@ -127,7 +130,7 @@ class _QualificationSignal extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '她在向你證明自己 (Qualification Signal)',
+              '她有主動投入訊號',
               style: AppTypography.bodySmall.copyWith(color: AppColors.success),
             ),
           ),
