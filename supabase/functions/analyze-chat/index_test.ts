@@ -162,6 +162,9 @@ Deno.test({
     assert(source.includes("情境2.6: 人格觀察/輕鬆貼標籤"));
     assert(source.includes("承認一半 + 補一個具體畫面 + 反問她是哪一派"));
     assert(source.includes("finalRecommendation.content 不能只是認同或附和"));
+    assert(source.includes("replies.extend 也必須是「可直接送出」的句子"));
+    assert(source.includes("每張卡都要是可直接送出的回覆"));
+    assert(source.includes("1.8x 是節奏護欄，不是保守無聊的理由"));
     assert(source.includes("personality_observation"));
     assert(source.includes("被妳發現了，我會在飲料櫃前思考人生"));
   },
