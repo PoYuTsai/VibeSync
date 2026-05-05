@@ -58,6 +58,47 @@ Deno.test("openCoach prompt includes phase tag + open coach positioning", () => 
   assertStringIncludes(p, "健康主動性");
 });
 
+Deno.test("prompt frames healthy initiative with mature go/no-go judgment", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "她有男友還約我幹嘛？" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "健康的進攻性");
+  assertStringIncludes(p, "全局觀");
+  assertStringIncludes(p, "何時該收");
+  assertStringIncludes(p, "時間成本");
+  assertStringIncludes(p, "不值得投入");
+});
+
+Deno.test("prompt allows internal tension craft but forbids exposing technique labels", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "我要怎麼幽默一點，又不要太刻意？" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "互動張力");
+  assertStringIncludes(p, "輕微調侃");
+  assertStringIncludes(p, "誇張曲解");
+  assertStringIncludes(p, "不要展示技巧名稱");
+  assertStringIncludes(p, "推拉");
+  assertStringIncludes(p, "自然的人味");
+  assertStringIncludes(p, "吸引力不是技巧本身");
+});
+
+Deno.test("openCoach prompt handles ambiguous date invitations as time-cost triage", () => {
+  const p = buildCoachFollowUpPrompt(
+    "openCoach",
+    { q1: "openQuestion", q3: "有男友了還約我幹嘛？這局該去嗎？" },
+    { name: "X" },
+  );
+  assertStringIncludes(p, "這局該不該去");
+  assertStringIncludes(p, "對方動機是否清楚");
+  assertStringIncludes(p, "關係是否透明");
+  assertStringIncludes(p, "低成本可退出");
+  assertStringIncludes(p, "不要直接建議下次見面");
+});
+
 Deno.test("preDateReminder does NOT instruct inference from partner name", () => {
   const p = buildCoachFollowUpPrompt(
     "preDateReminder",
