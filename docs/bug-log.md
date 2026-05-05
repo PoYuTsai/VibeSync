@@ -8,6 +8,40 @@
 
 ---
 
+## 2026-05
+
+### [2026-05-05] Coach follow-up 邊界提醒半句 + 額度日切後顯示 stale
+
+**症狀**:
+
+- 「教練跟進」結果卡的 `boundaryReminder` 連續出現半句，例如句子被切在「誠實溝」或破折號後。
+- Free 用戶在台灣時間 08:00 後仍看到舊的今日剩餘；使用 coach follow-up 後才刷新成新的 server usage，造成「2/15 用 3 次後變 12/15」的跳動感。
+
+**Root Cause**:
+
+1. `truncateCard()` 對可見欄位用硬 `slice(0, cap)`，AI 一旦超過 60 字就會被切成半句。
+2. 設定頁 / 付費頁開啟時沒有主動 refresh subscription usage snapshot；日額度在 Edge function 端已依 UTC 日切重置，但前端仍可能暫時顯示舊 state。
+
+**修復**:
+
+1. `boundaryReminder` prompt 收斂到 45 字、完整短句；server truncation 改成優先切完整句，沒有句界才加省略號。
+2. Settings / Paywall 開頁後透過 `subscriptionScreenRefreshProvider` 主動刷新 usage snapshot，測試可 override 避免真網路。
+
+**驗證**:
+
+- `deno test --allow-env --allow-net supabase/functions/coach-follow-up`
+- `flutter test test/widget/screens/settings_screen_test.dart --plain-name "refreshes subscription usage snapshot on entry"`
+- `flutter test test/widget/screens/paywall_screen_test.dart --plain-name "refreshes subscription usage snapshot on entry"`
+- `flutter analyze lib/features/subscription lib/features/coach_follow_up test/widget/screens/settings_screen_test.dart test/widget/screens/paywall_screen_test.dart`
+
+**涉及檔案**:
+
+- `supabase/functions/coach-follow-up/validate.ts`
+- `supabase/functions/coach-follow-up/prompts.ts`
+- `lib/features/subscription/data/providers/subscription_providers.dart`
+- `lib/features/subscription/presentation/screens/settings_screen.dart`
+- `lib/features/subscription/presentation/screens/paywall_screen.dart`
+
 ## 2026-04
 ### [2026-04-30] TestFlight upload 被 Apple 拒收：IPA 使用 iOS 18.5 SDK
 

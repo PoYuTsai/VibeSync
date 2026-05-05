@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +36,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     _loadVersion();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(ref.read(subscriptionScreenRefreshProvider)());
+    });
   }
 
   Future<void> _loadVersion() async {
@@ -77,12 +83,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _buildTile(
                       icon: Icons.workspace_premium,
                       title: '目前方案',
-                      trailing: '${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
+                      trailing:
+                          '${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
                       onTap: () {
                         context.push('/paywall');
                       },
                     ),
-                    if (subscription.renewsAt != null && !subscription.isFreeUser)
+                    if (subscription.renewsAt != null &&
+                        !subscription.isFreeUser)
                       _buildTile(
                         icon: Icons.event,
                         title: '下次續約',

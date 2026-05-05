@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/presentation/screens/settings_screen.dart';
 
 void main() {
@@ -25,8 +26,13 @@ void main() {
     );
   });
 
-  Widget buildTestWidget() {
+  Widget buildTestWidget({Future<void> Function()? refreshUsage}) {
     return ProviderScope(
+      overrides: [
+        subscriptionScreenRefreshProvider.overrideWithValue(
+          refreshUsage ?? () async {},
+        ),
+      ],
       child: MaterialApp.router(
         routerConfig: testRouter,
       ),
@@ -76,6 +82,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Free'), findsOneWidget);
+    });
+
+    testWidgets('refreshes subscription usage snapshot on entry',
+        (tester) async {
+      var refreshCalls = 0;
+      await tester.pumpWidget(buildTestWidget(refreshUsage: () async {
+        refreshCalls++;
+      }));
+      await tester.pump();
+
+      expect(refreshCalls, 1);
     });
 
     testWidgets('displays usage as 0/30', (tester) async {

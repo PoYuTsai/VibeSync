@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,6 +31,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   String _selectedOptionId = 'essential_monthly';
   bool _isPurchasing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(ref.read(subscriptionScreenRefreshProvider)());
+    });
+  }
 
   List<_PaywallOption> _buildOptions(SubscriptionState subscription) {
     final starterLimits = SubscriptionTierHelper.limitsFor(

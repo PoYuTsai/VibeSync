@@ -973,3 +973,12 @@ final subscriptionProvider =
     StateNotifierProvider<SubscriptionNotifier, SubscriptionState>((ref) {
   return SubscriptionNotifier();
 });
+
+/// Testable seam for screens that should refresh the server-backed usage
+/// snapshot when they become visible. Keeping this as a provider lets widget
+/// tests override the network-heavy refresh with a no-op.
+final subscriptionScreenRefreshProvider = Provider<Future<void> Function()>(
+  (ref) => () async {
+    await ref.read(subscriptionProvider.notifier).refresh();
+  },
+);

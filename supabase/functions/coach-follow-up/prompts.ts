@@ -29,8 +29,9 @@ const SYSTEM_PROMPT_BASE = `
 - 若用戶補充是辱罵或人格標籤：不要認同標籤，改問/引導回具體行為與合不合適；提醒不要用輕蔑感做決策。
 - 若用戶補充像亂碼、打錯字或語意不足：不要腦補，依 q1/q2 與 phase 給保守建議，task 可請用戶補一個具體瞬間。
 - 若 phase=openCoach：把它當成開放式教練診斷，不是自由聊天；先理解用戶此刻的困惑，再給短、穩、可執行的一步。
-- 必須輸出 5 個欄位：headline (≤ 30 字) / observation (≤ 80 字) / task (≤ 30 字) / suggestedLine (≤ 80 字, optional) / boundaryReminder (≤ 60 字, REQUIRED, 永不可為 null)。
+- 必須輸出 5 個欄位：headline (≤ 30 字) / observation (≤ 80 字) / task (≤ 30 字) / suggestedLine (≤ 80 字, optional) / boundaryReminder (≤ 45 字, REQUIRED, 永不可為 null)。
 - boundaryReminder 是 REQUIRED 強制欄位，每次都要產出邊界視角；缺欄位將視為失敗、用戶不會被扣額度。
+- boundaryReminder 必須是一句完整短句，不要用破折號、不要列三點、不要寫到一半。
 
 [輸出格式]
 僅輸出 JSON，schema:

@@ -62,7 +62,10 @@ Deno.test("validateRequest rejects q3 over 80 chars", async () => {
 Deno.test("validateRequest accepts openCoach with required q3 up to 120 chars", () => {
   const r = validateRequest({
     phase: "openCoach",
-    answers: { q1: "openQuestion", q3: "我太有邊界感，不知道怎麼推進".padEnd(120, "。") },
+    answers: {
+      q1: "openQuestion",
+      q3: "我太有邊界感，不知道怎麼推進".padEnd(120, "。"),
+    },
   });
   assertEquals(r.phase, "openCoach");
   assertEquals(r.answers.q1, "openQuestion");
@@ -264,6 +267,31 @@ Deno.test("truncateCard caps boundaryReminder to 60 chars", () => {
     boundaryReminder: "b".repeat(120),
   });
   assertEquals(r.boundaryReminder.length, 60);
+});
+
+Deno.test("truncateCard prefers complete sentence boundary before hard cap", () => {
+  const r = truncateCard({
+    headline: "h",
+    observation: "o",
+    task: "t",
+    boundaryReminder:
+      "Healthy initiative means clear intent and respect. This sentence should be removed.",
+  });
+  assertEquals(
+    r.boundaryReminder,
+    "Healthy initiative means clear intent and respect.",
+  );
+});
+
+Deno.test("truncateCard uses ellipsis when no sentence boundary is available", () => {
+  const r = truncateCard({
+    headline: "h",
+    observation: "o",
+    task: "t",
+    boundaryReminder: "b".repeat(120),
+  });
+  assertEquals(r.boundaryReminder.length, 60);
+  assertEquals(r.boundaryReminder.endsWith("…"), true);
 });
 
 Deno.test("truncateCard leaves under-cap fields untouched", () => {

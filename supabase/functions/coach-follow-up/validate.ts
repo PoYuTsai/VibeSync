@@ -10,12 +10,12 @@
 // here as separate task per plan §4.
 
 import {
-  RequestSchema,
-  ResponseCardSchema,
-  ResponseSchema,
   type CoachFollowUpRequest,
   type CoachFollowUpResponse,
   type CoachFollowUpResponseCard,
+  RequestSchema,
+  ResponseCardSchema,
+  ResponseSchema,
 } from "./schemas.ts";
 
 /**
@@ -67,17 +67,38 @@ const FIELD_CAPS: Record<string, number> = {
   boundaryReminder: 60,
 };
 
-export function truncateCard<T extends Record<string, string | null | undefined>>(
+export function truncateCard<
+  T extends Record<string, string | null | undefined>,
+>(
   card: T,
 ): T {
   const out = { ...card };
   for (const [field, cap] of Object.entries(FIELD_CAPS)) {
     const v = out[field as keyof T];
     if (typeof v === "string" && v.length > cap) {
-      (out as Record<string, string | null | undefined>)[field] = v.slice(0, cap);
+      (out as Record<string, string | null | undefined>)[field] =
+        truncateVisibleText(v, cap);
     }
   }
   return out;
+}
+
+function truncateVisibleText(value: string, cap: number): string {
+  if (value.length <= cap) return value;
+
+  const head = value.slice(0, cap);
+  const punctuation = /[。！？!?；;.]/g;
+  let lastBoundary = -1;
+  for (const match of head.matchAll(punctuation)) {
+    lastBoundary = match.index ?? -1;
+  }
+
+  // Prefer a complete sentence when the model gave us one early enough.
+  if (lastBoundary >= Math.floor(cap * 0.45)) {
+    return head.slice(0, lastBoundary + 1);
+  }
+
+  return `${head.slice(0, Math.max(0, cap - 1)).trimEnd()}…`;
 }
 
 const BANNED_TOKENS = [

@@ -15,7 +15,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { buildCoachFollowUpPrompt } from "./prompts.ts";
 
-Deno.test("prepareInvite prompt includes phase tag + boundary instruction + ≤60 cap", () => {
+Deno.test("prepareInvite prompt includes phase tag + boundary instruction + ≤45 cap", () => {
   const p = buildCoachFollowUpPrompt(
     "prepareInvite",
     { q1: "fuzzy" },
@@ -23,7 +23,7 @@ Deno.test("prepareInvite prompt includes phase tag + boundary instruction + ≤6
   );
   assertStringIncludes(p, "準備邀約");
   assertStringIncludes(p, "boundaryReminder");
-  assertStringIncludes(p, "≤ 60");
+  assertStringIncludes(p, "≤ 45");
 });
 
 Deno.test("preDateReminder prompt includes phase tag + boundary instruction", () => {
@@ -217,6 +217,8 @@ Deno.test("prompt declares boundaryReminder REQUIRED, never null", () => {
   );
   // System prompt must spell out that boundaryReminder is non-null required
   assertStringIncludes(p, "REQUIRED");
+  assertStringIncludes(p, "45");
+  assertStringIncludes(p, "完整短句");
 });
 
 Deno.test("prompt instructs JSON-only output", () => {
