@@ -355,6 +355,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     await _scrollToBottom();
   }
 
+  Future<void> _collapseComposerAndShowMessages() async {
+    if (_enthusiasmScore != null && _showContinueConversation) {
+      setState(() {
+        _showContinueConversation = false;
+      });
+      await Future.delayed(const Duration(milliseconds: 80));
+    }
+
+    if (!mounted || !_scrollController.hasClients) {
+      return;
+    }
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+  }
+
   Future<void> _handleErrorAction(AnalysisErrorAction action) async {
     switch (action) {
       case AnalysisErrorAction.retry:
@@ -1231,9 +1249,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       return const SizedBox.shrink();
     }
 
+    final conversation = ref.watch(conversationProvider(widget.conversationId));
+    final totalMessages = conversation?.messages.length ?? 0;
+    final lastAnalyzed = conversation?.lastAnalyzedMessageCount ?? 0;
+    final pendingCount = _enthusiasmScore == null
+        ? totalMessages
+        : (totalMessages - lastAnalyzed).clamp(0, totalMessages);
+    final countLabel =
+        pendingCount > 1 ? '已補上 $pendingCount 則新訊息' : '已補上 1 則新訊息';
     final speakerLabel = isFromMe ? '我說' : '她說';
-    final nextStep =
-        isFromMe ? '已放到上方對話框。等對方回覆後，再貼上她說的內容。' : '已放到上方對話框。確認沒錯後，可以分析熱度與建議。';
+    final isContinuingAnalyzedConversation = _enthusiasmScore != null;
+    final nextStep = isContinuingAnalyzedConversation
+        ? '舊內容不重複扣；分析前會確認本次額度。可以繼續補下一句，或分析新增內容。'
+        : isFromMe
+            ? '已放到上方對話框。等對方回覆後，再貼上她說的內容。'
+            : '已放到上方對話框。確認沒錯後，可以分析熱度與建議。';
     final preview =
         content.length > 36 ? '${content.substring(0, 36)}…' : content;
 
@@ -1261,7 +1291,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '已加入為$speakerLabel：「$preview」',
+                  '$countLabel｜最新：$speakerLabel「$preview」',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.glassTextPrimary,
                     fontWeight: FontWeight.w700,
@@ -1293,17 +1323,79 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ),
+              TextButton.icon(
+                onPressed: _collapseComposerAndShowMessages,
+                icon: const Icon(Icons.keyboard_arrow_up, size: 16),
+                label: const Text('看上方對話'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
               if (!isFromMe)
                 TextButton.icon(
                   onPressed: _isAnalyzing ? null : _runAnalysis,
                   icon: const Icon(Icons.auto_graph, size: 16),
-                  label: const Text('分析這段'),
+                  label: Text(
+                      isContinuingAnalyzedConversation ? '分析新增內容' : '分析這段'),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManualInputGuide({required bool isContinue}) {
+    final title = isContinue ? '接續上一段對話' : '建立這段對話';
+    final description = isContinue
+        ? '只補新的來回訊息。舊對話會用必要摘要和最近訊息當背景，不用重貼；按分析前會先確認本次額度，已分析過的舊訊息不重複扣。'
+        : '照聊天順序一則一則補上，先選這句是誰說的。分析前會先確認本次額度。';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isContinue ? Icons.playlist_add : Icons.chat_bubble_outline,
+            color: AppColors.primary,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -5350,8 +5442,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 child: SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: () =>
-                        setState(() => _showContinueConversation = true),
+                    onPressed: _openContinueComposer,
                     icon: const Icon(Icons.add_comment_outlined),
                     label: const Text('繼續對話'),
                     style: OutlinedButton.styleFrom(
@@ -5378,18 +5469,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     ),
                   ),
                   child: InkWell(
-                    onTap: () =>
-                        setState(() => _showContinueConversation = false),
+                    onTap: _collapseComposerAndShowMessages,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.keyboard_arrow_down,
+                          Icon(Icons.keyboard_arrow_up,
                               color: AppColors.unselectedText, size: 20),
                           const SizedBox(width: 4),
                           Text(
-                            '收合',
+                            '看上方對話',
                             style: AppTypography.bodySmall
                                 .copyWith(color: AppColors.unselectedText),
                           ),
@@ -5427,6 +5517,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             if (showScreenshotUpload) ...[
               _buildConversationScreenshotSection(),
               const SizedBox(height: 12),
+            ],
+            if (_lastManualAddedContent == null) ...[
+              _buildManualInputGuide(isContinue: _enthusiasmScore != null),
+              const SizedBox(height: 10),
+            ] else ...[
+              _buildManualAddedFeedback(),
+              const SizedBox(height: 10),
             ],
             // 輸入框 + 貼上按鈕
             TextField(
@@ -5564,10 +5661,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                 ),
               ],
             ),
-            if (_lastManualAddedContent != null) ...[
-              const SizedBox(height: 10),
-              _buildManualAddedFeedback(),
-            ],
           ],
         ),
       ),
