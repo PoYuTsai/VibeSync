@@ -52,8 +52,8 @@ const SAFE_REPLIES: Record<string, Record<string, string>> = {
     coldRead: "感覺你是個很有想法的人",
   },
   hot: {
-    extend: "繼續聊這個，我覺得很有意思",
-    resonate: "對啊，我也這麼覺得",
+    extend: "這個有畫面欸，你是怎麼想到的？",
+    resonate: "有點準，但我想聽聽你為什麼這樣覺得",
     tease: "你這樣說，讓我更想認識你了",
     humor: "跟你聊天很開心耶",
     coldRead: "我覺得我們蠻合的",

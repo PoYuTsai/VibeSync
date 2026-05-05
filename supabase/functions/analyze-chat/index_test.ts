@@ -1,7 +1,10 @@
 // supabase/functions/analyze-chat/index_test.ts
 // Note: Edge Function tests run via Deno test
 
-import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 // 訊息計算函數
 function countMessages(messages: Array<{ content: string }>): number {
@@ -145,4 +148,49 @@ Deno.test("selectModel - complex emotions uses Sonnet", () => {
     tier: "starter",
   });
   assertEquals(model, "claude-sonnet-4-20250514");
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT locks personality-observation replies into half-agree + image + question",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("情境2.6: 人格觀察/輕鬆貼標籤"));
+    assert(source.includes("承認一半 + 補一個具體畫面 + 反問她是哪一派"));
+    assert(source.includes("finalRecommendation.content 不能只是認同或附和"));
+    assert(source.includes("personality_observation"));
+    assert(source.includes("被妳發現了，我會在飲料櫃前思考人生"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT aligns analyze-chat with VibeSync memory coach positioning",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("你是 VibeSync：有記憶的 AI 約會教練"));
+    assert(
+      source.includes(
+        "不只回答「怎麼回」，也要判斷「要不要回」「值不值得投入」「該推進還是該收」",
+      ),
+    );
+    assert(
+      source.includes(
+        "健康的主動性 = 清楚表達意願 + 尊重對方反應 + 能承擔被拒絕",
+      ),
+    );
+    assert(source.includes("決策流程（必須由上而下）"));
+    assert(source.includes("Go / No-Go 判斷"));
+    assert(source.includes("可見輸出禁用內部術語"));
+    assert(source.includes("不要把一次玩笑、一次情緒或一次敷衍推測成長期人格"));
+    assert(source.includes("go_no_go"));
+  },
 });
