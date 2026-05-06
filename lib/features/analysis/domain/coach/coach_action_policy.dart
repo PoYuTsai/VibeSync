@@ -30,6 +30,42 @@ class CoachActionPolicy {
   static bool _payloadSuggestsMeeting(String text) =>
       _meetingKeywords.any(text.contains);
 
+  static const List<String> _emotionSignalKeywords = [
+    '不安',
+    '焦慮',
+    '緊張',
+    '擔心',
+    '壓力',
+    '委屈',
+    '失落',
+    '難過',
+    '受傷',
+    '害怕',
+    '脆弱',
+    '生氣',
+    '不舒服',
+    '被忽略',
+    '需要被理解',
+    '想被理解',
+    '需要被看見',
+    '想被看見',
+    '安全感',
+    '安撫',
+    '修復',
+    '道歉',
+    '前任',
+    '邊界',
+    '吃醋',
+    '嫉妒',
+    '暈船',
+  ];
+
+  static bool _hasEmotionSignal(PsychologyAnalysis? psychology) {
+    final subtext = psychology?.subtext.trim() ?? '';
+    if (subtext.isEmpty) return false;
+    return _emotionSignalKeywords.any(subtext.contains);
+  }
+
   static bool _hasMeetingGameplaySignal(
     GameStageInfo gameStage,
     FinalRecommendation finalRecommendation,
@@ -136,8 +172,8 @@ class CoachActionPolicy {
       );
     }
     final challengeSignal = psychology?.shitTest != null;
-    final strongSubtext = (psychology?.subtext.trim().length ?? 0) >= 8;
-    if (challengeSignal || strongSubtext) {
+    final emotionSignal = _hasEmotionSignal(psychology);
+    if (challengeSignal || emotionSignal) {
       return _buildEmotionalResonance(
         heatScore: heatScore,
         finalRecommendation: finalRecommendation,
@@ -181,8 +217,8 @@ class CoachActionPolicy {
       );
     }
     final challengeSignal = psychology?.shitTest != null;
-    final strongSubtext = (psychology?.subtext.trim().length ?? 0) >= 8;
-    if (challengeSignal || strongSubtext) {
+    final emotionSignal = _hasEmotionSignal(psychology);
+    if (challengeSignal || emotionSignal) {
       return _buildEmotionalResonance(
         heatScore: heatScore,
         finalRecommendation: finalRecommendation,
@@ -333,13 +369,13 @@ class CoachActionPolicy {
   }) {
     final candidate = finalRecommendation.content.trim();
     final whyNow = challengeSignal
-        ? '熱度 $heatScore，她拋了一個試探訊號，先接住情緒比較穩'
-        : '熱度 $heatScore，從字裡行間讀到她在傳訊號，先接住再說';
+        ? '熱度 $heatScore，她丟的是互動測試，不是要你解釋；先穩住語氣'
+        : '熱度 $heatScore，這次有明確情緒訊號，先讓她覺得被理解';
     return CoachActionCardData(
-      actionLabel: '情緒共鳴',
+      actionLabel: challengeSignal ? '接住試探球' : '情緒共鳴',
       whyNow: whyNow,
-      task: '先用一句接住她的情緒，再決定要不要展開',
-      avoid: '別急著給建議或解釋',
+      task: challengeSignal ? '先輕鬆承接，再把球自然丟回去' : '先命名她的感受，再用一句低壓提問延伸',
+      avoid: challengeSignal ? '別急著自證、道歉或反擊' : '別急著給建議或講道理',
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.emotionalResonance),

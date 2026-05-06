@@ -10,6 +10,37 @@
 
 ## 2026-05
 
+### [2026-05-06] Coach Action Card 過度重複顯示情緒共鳴
+
+**症狀**:
+
+- 使用者連續測試主分析畫面的「本回合練什麼」卡片，約 10 次有 8 次顯示「情緒共鳴」。
+- 卡片文案高度重複，例如「熱度 X，先接住情緒」「這次只做：先用一句接住她的情緒」「先不要：別急著給建議或解釋」。
+- 實際對話有些只是人格觀察、話題球或一般傳訊號，不應全部被歸成情緒共鳴。
+
+**Root Cause**:
+
+1. `CoachActionPolicy` 只要 `psychology.subtext.length >= 8` 就觸發 `emotionalResonance`，條件過寬。
+2. 主分析幾乎每次都會輸出一段「她話裡的意思」，因此 deterministic policy 很容易被長 subtext 吸走。
+3. 互動測試與真實情緒共鳴共用同一張「情緒共鳴」卡，導致使用者感覺像模板。
+
+**修復**:
+
+1. 移除「subtext 長度 >= 8」作為情緒共鳴 trigger。
+2. 新增明確情緒 keyword gate，只有不安、焦慮、壓力、委屈、修復、前任、邊界等情緒/關係壓力訊號才走情緒共鳴。
+3. 互動測試仍保留 safe coaching，但顯示成「接住試探球」，文案改成穩住語氣、不要自證或反擊。
+4. 一般人格觀察 / 想了解你 / 話題球改走故事框架或其他 mid-game action，避免 8/10 卡片重複。
+
+**驗證**:
+
+- `flutter test test/unit/features/analysis/domain/coach/coach_action_policy_test.dart`
+- `flutter analyze`
+
+**涉及檔案**:
+
+- `lib/features/analysis/domain/coach/coach_action_policy.dart`
+- `test/unit/features/analysis/domain/coach/coach_action_policy_test.dart`
+
 ### [2026-05-05] 主分析介面殘留早期 Game 語彙造成誤判感
 
 **症狀**:

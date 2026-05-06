@@ -300,7 +300,7 @@ void main() {
       expect(card.learningLink, '2');
     });
 
-    test('should pick emotionalResonance when challengeSignal is detected', () {
+    test('should pick challenge copy when challengeSignal is detected', () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 55,
         gameStage: const GameStageInfo(
@@ -321,11 +321,15 @@ void main() {
           shitTest: '她在試你會不會推回去',
         ),
       );
-      expect(card.actionLabel, '情緒共鳴');
+      expect(card.actionLabel, '接住試探球');
+      expect(card.whyNow, contains('互動測試'));
+      expect(card.task, contains('把球自然丟回去'));
+      expect(card.avoid, contains('別急著自證'));
       expect(card.learningLink, '11');
     });
 
-    test('should pick emotionalResonance when subtext signal is strong', () {
+    test('should pick emotionalResonance when subtext has explicit emotion',
+        () {
       final card = CoachActionPolicy.evaluate(
         heatScore: 55,
         gameStage:
@@ -339,9 +343,32 @@ void main() {
         messages: const [],
         practiceGoals: const [],
         isDataQualityFlagged: false,
-        psychology: const PsychologyAnalysis(subtext: '她其實在等你主動關心一下'),
+        psychology: const PsychologyAnalysis(subtext: '她其實有點不安，想先被理解和安撫一下'),
       );
       expect(card.actionLabel, '情緒共鳴');
+      expect(card.whyNow, contains('明確情緒訊號'));
+    });
+
+    test('should not pick emotionalResonance when subtext is generic signal',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 55,
+        gameStage:
+            const GameStageInfo(current: GameStage.qualification, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '被妳發現了，我會在飲料櫃前思考人生。妳也是亂逛派嗎？',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+        psychology: const PsychologyAnalysis(subtext: '她想了解你是不是有趣、有生活感'),
+      );
+
+      expect(card.actionLabel, isNot('情緒共鳴'));
+      expect(card.actionLabel, '故事框架');
     });
 
     test('should not pick emotionalResonance when subtext is short noise', () {
@@ -536,7 +563,7 @@ void main() {
         isDataQualityFlagged: true,
       );
       expect(card.actionLabel, isNot('模糊邀約'));
-      const safeLabels = ['情緒共鳴', '回得剛剛好', '降低壓力', '互動品質觀察'];
+      const safeLabels = ['情緒共鳴', '接住試探球', '回得剛剛好', '降低壓力', '互動品質觀察'];
       expect(
         safeLabels.contains(card.actionLabel),
         isTrue,
@@ -620,7 +647,7 @@ void main() {
           'heatScore': 55,
           'gameStage': const GameStageInfo(
               current: GameStage.qualification, nextStep: ''),
-          'psychology': const PsychologyAnalysis(subtext: '她其實希望被多了解一點'),
+          'psychology': const PsychologyAnalysis(subtext: '她其實有點不安，想先被理解一下'),
         },
         // playfulReply
         {
