@@ -17,6 +17,7 @@ import {
   ResponseCardSchema,
   ResponseSchema,
 } from "./schemas.ts";
+import { containsBannedToken } from "../_shared/banned_tokens.ts";
 
 /**
  * Parse + validate an incoming POST body.
@@ -101,16 +102,6 @@ function truncateVisibleText(value: string, cap: number): string {
   return `${head.slice(0, Math.max(0, cap - 1)).trimEnd()}…`;
 }
 
-const BANNED_TOKENS = [
-  "PUA",
-  "收割",
-  "控住",
-  "攻略",
-  "壞女人",
-  "高分妹",
-  "玩咖",
-] as const;
-
 const VISIBLE_FIELDS = [
   "headline",
   "observation",
@@ -125,10 +116,9 @@ export function assertCardSafe(
   for (const field of VISIBLE_FIELDS) {
     const value = card[field];
     if (typeof value !== "string") continue;
-    for (const token of BANNED_TOKENS) {
-      if (value.includes(token)) {
-        throw new Error(`banned_token: ${token} found in ${field}`);
-      }
+    const token = containsBannedToken(value);
+    if (token != null) {
+      throw new Error(`banned_token: ${token} found in ${field}`);
     }
   }
 }

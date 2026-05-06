@@ -20,6 +20,8 @@ import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/coach_action_card.dart';
 import '../../../../shared/widgets/score_hero_card.dart';
+import '../../../coach_chat/data/services/coach_chat_api_service.dart';
+import '../../../coach_chat/presentation/widgets/coach_chat_card.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../data/providers/analysis_providers.dart';
@@ -159,6 +161,32 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       _showFloatingSnackBar('已升級完整版，正在幫你刷新完整回覆選項。');
       await _refreshPremiumReplies();
     }
+  }
+
+  Future<void> _handleCoachChatQuotaExceeded() async {
+    if (!mounted) return;
+    _showFloatingSnackBar('教練額度已用完，帶你去升級方案。');
+    await _showPaywall(context);
+  }
+
+  CoachChatAnalysisSnapshot _buildCoachChatAnalysisSnapshot() {
+    final keySignals = <String>[
+      if (_psychology?.subtext.trim().isNotEmpty == true)
+        _psychology!.subtext.trim(),
+      if (_topicDepth?.suggestion.trim().isNotEmpty == true)
+        _topicDepth!.suggestion.trim(),
+      if (_healthCheck?.issues.isNotEmpty == true)
+        ..._healthCheck!.issues.take(2),
+    ];
+
+    return CoachChatAnalysisSnapshot(
+      heatScore: _enthusiasmScore,
+      stage: _gameStage?.current.name,
+      summary: _strategy,
+      nextStep: _gameStage?.nextStep,
+      coachActionType: _finalRecommendation?.pick,
+      keySignals: keySignals.take(8).toList(growable: false),
+    );
   }
 
   Future<void> _refreshPremiumReplies() async {
@@ -4651,6 +4679,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   ),
                                 ],
                               ),
+                            ),
+                          ],
+
+                          if (_enthusiasmScore != null &&
+                              _gameStage != null &&
+                              _finalRecommendation != null) ...[
+                            const SizedBox(height: 16),
+                            CoachChatCard(
+                              conversationId: widget.conversationId,
+                              analysisSnapshot:
+                                  _buildCoachChatAnalysisSnapshot(),
+                              onQuotaExceeded: () {
+                                unawaited(_handleCoachChatQuotaExceeded());
+                              },
                             ),
                           ],
 

@@ -1,6 +1,7 @@
 // lib/features/conversation/data/repositories/conversation_repository.dart
 import 'dart:async';
 
+import 'package:hive_ce/hive_ce.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -72,7 +73,8 @@ class ConversationRepository {
   }) async {
     final currentUserId = _currentUserId;
     if (currentUserId == null) {
-      throw StateError('Cannot create a conversation without an authenticated user.');
+      throw StateError(
+          'Cannot create a conversation without an authenticated user.');
     }
 
     final now = DateTime.now();
@@ -104,13 +106,15 @@ class ConversationRepository {
   Future<void> updateConversation(Conversation conversation) async {
     final currentUserId = _currentUserId;
     if (currentUserId == null) {
-      throw StateError('Cannot update a conversation without an authenticated user.');
+      throw StateError(
+          'Cannot update a conversation without an authenticated user.');
     }
 
     conversation.ownerUserId ??= currentUserId;
 
     if (conversation.ownerUserId != currentUserId) {
-      throw StateError('Conversation does not belong to the current signed-in user.');
+      throw StateError(
+          'Conversation does not belong to the current signed-in user.');
     }
 
     conversation.currentRound = _calculateRoundCount(conversation.messages);
@@ -126,6 +130,7 @@ class ConversationRepository {
     }
 
     await StorageService.conversationsBox.delete(id);
+    await _deleteCoachChatForConversation(id);
   }
 
   Future<void> deleteAll() async {
@@ -142,6 +147,18 @@ class ConversationRepository {
     await Future.wait(
       conversationIds.map(StorageService.conversationsBox.delete),
     );
+    await Future.wait(conversationIds.map(_deleteCoachChatForConversation));
+  }
+
+  Future<void> _deleteCoachChatForConversation(String conversationId) async {
+    if (!Hive.isBoxOpen('coach_chat_results')) {
+      return;
+    }
+    final ids = StorageService.coachChatResultsBox.values
+        .where((result) => result.conversationId == conversationId)
+        .map((result) => result.id)
+        .toList();
+    await Future.wait(ids.map(StorageService.coachChatResultsBox.delete));
   }
 
   List<Message> parseMessages(String rawText) {
@@ -176,12 +193,14 @@ class ConversationRepository {
 
   /// Create messages from a list of maps (for chat-style input)
   List<Message> createMessagesFromList(List<Map<String, dynamic>> messageList) {
-    return messageList.map((m) => Message(
-      id: _uuid.v4(),
-      content: m['content'] as String,
-      isFromMe: m['isFromMe'] as bool,
-      timestamp: DateTime.now(),
-    )).toList();
+    return messageList
+        .map((m) => Message(
+              id: _uuid.v4(),
+              content: m['content'] as String,
+              isFromMe: m['isFromMe'] as bool,
+              timestamp: DateTime.now(),
+            ))
+        .toList();
   }
 
   int _calculateRoundCount(List<Message> messages) {

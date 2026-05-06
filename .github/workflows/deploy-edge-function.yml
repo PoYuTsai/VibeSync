@@ -32,7 +32,7 @@ jobs:
       - name: Deploy Edge Functions
         # Deploy functions one-by-one instead of `supabase functions deploy --all`.
         # OCR baseline requires analyze-chat to keep --no-verify-jwt.
-        # coach-follow-up is JWT-verified, so do not pass --no-verify-jwt.
+        # coach-follow-up / coach-chat are JWT-verified, so do not pass --no-verify-jwt.
         run: |
           supabase functions deploy analyze-chat --no-verify-jwt
           supabase functions deploy delete-account
@@ -40,5 +40,6 @@ jobs:
           supabase functions deploy submit-feedback
           supabase functions deploy revenuecat-webhook --no-verify-jwt
           supabase functions deploy coach-follow-up
+          supabase functions deploy coach-chat
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

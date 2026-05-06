@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../features/coach_chat/domain/entities/coach_chat_result.dart';
 import '../../features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
@@ -41,6 +42,7 @@ class StorageService {
     Hive.registerAdapter(PartnerDataQualityStateAdapter()); // typeId=14, Spec 3
     Hive.registerAdapter(NamePairAdapter()); // typeId=15, Spec 3
     Hive.registerAdapter(CoachFollowUpResultAdapter()); // typeId=16, Spec 5
+    Hive.registerAdapter(CoachChatResultAdapter()); // typeId=17, Spec 6A
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -73,6 +75,11 @@ class StorageService {
 
     await Hive.openBox<CoachFollowUpResult>(
       'coach_follow_up_results',
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<CoachChatResult>(
+      'coach_chat_results',
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -146,13 +153,16 @@ class StorageService {
   static Box<CoachFollowUpResult> get coachFollowUpResultsBox =>
       Hive.box<CoachFollowUpResult>('coach_follow_up_results');
 
+  static Box<CoachChatResult> get coachChatResultsBox =>
+      Hive.box<CoachChatResult>('coach_chat_results');
+
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
 
   /// Clear all stored data (conversations, partners, user profile,
-  /// partner style overrides, partner data quality states, coach follow-up
-  /// results, settings, usage).
+  /// partner style overrides, partner data quality states, coach follow-up /
+  /// coach chat results, settings, usage).
   static Future<void> clearAll() async {
     await conversationsBox.clear();
     await partnersBox.clear();
@@ -160,6 +170,7 @@ class StorageService {
     await partnerStyleOverridesBox.clear();
     await partnerDataQualityStatesBox.clear();
     await coachFollowUpResultsBox.clear();
+    await coachChatResultsBox.clear();
     await settingsBox.clear();
     await usageBox.clear();
   }

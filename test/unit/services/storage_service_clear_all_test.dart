@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/storage_service.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
@@ -56,6 +57,9 @@ void main() {
     if (!Hive.isAdapterRegistered(16)) {
       Hive.registerAdapter(CoachFollowUpResultAdapter());
     }
+    if (!Hive.isAdapterRegistered(17)) {
+      Hive.registerAdapter(CoachChatResultAdapter());
+    }
   });
 
   tearDown(() async {
@@ -65,6 +69,7 @@ void main() {
     await Hive.deleteBoxFromDisk('partner_style_overrides');
     await Hive.deleteBoxFromDisk('partner_data_quality_states');
     await Hive.deleteBoxFromDisk('coach_follow_up_results');
+    await Hive.deleteBoxFromDisk('coach_chat_results');
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await Hive.deleteBoxFromDisk(AppConstants.usageBox);
   });
@@ -82,6 +87,7 @@ void main() {
       'partner_data_quality_states',
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -114,6 +120,7 @@ void main() {
       'partner_data_quality_states',
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -141,6 +148,7 @@ void main() {
       'partner_data_quality_states',
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -167,6 +175,7 @@ void main() {
       'partner_data_quality_states',
     );
     await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -188,5 +197,45 @@ void main() {
     await StorageService.clearAll();
 
     expect(StorageService.coachFollowUpResultsBox.isEmpty, isTrue);
+  });
+
+  test('clearAll() purges coach_chat_results box (Spec 6A)', () async {
+    await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<Partner>(AppConstants.partnersBox);
+    await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox(AppConstants.settingsBox);
+    await Hive.openBox(AppConstants.usageBox);
+
+    await StorageService.coachChatResultsBox.put(
+      'c1-1',
+      CoachChatResult(
+        id: 'c1-1',
+        conversationId: 'c1',
+        partnerId: 'p1',
+        question: '她這句話是真的有興趣嗎？',
+        mode: 'replyCraft',
+        headline: '先接球',
+        answer: '她是在丟觀察，不是要你證明自己。',
+        userState: '你可能急著解釋。',
+        nextStep: '承認一半再反問。',
+        suggestedLine: '被妳發現了。妳也是亂逛派嗎？',
+        boundaryReminder: '不要把一句觀察放大成考試。',
+        needsReflection: false,
+        generatedAt: DateTime.utc(2026, 5, 7, 12),
+        provider: 'claude',
+        modelUsed: 'claude-sonnet-4-20250514',
+      ),
+    );
+    expect(StorageService.coachChatResultsBox.isNotEmpty, isTrue);
+
+    await StorageService.clearAll();
+
+    expect(StorageService.coachChatResultsBox.isEmpty, isTrue);
   });
 }
