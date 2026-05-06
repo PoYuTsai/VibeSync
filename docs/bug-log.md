@@ -10,6 +10,37 @@
 
 ## 2026-05
 
+### [2026-05-06] userDraft 優化改掉使用者真正想表達的主題
+
+**症狀**:
+
+- 夥伴在「我有想說的，幫我優化」輸入「感覺你潛水很厲害」。
+- 上方對話脈絡裡，對方上一句是「你有在健身嗎」。
+- AI 優化後輸出「有在勤，但不算很勤勞。你是規律運動派？」這類健身回答，沒有保留使用者真正想表達的潛水稱讚。
+
+**Root Cause**:
+
+1. `userDraft` prompt 只寫「根據以上原則優化」，並把 1.8x 法則綁到「她最後一則訊息長度」。
+2. Prompt 沒明確定義 userDraft 是使用者主要意圖，導致模型把「幫我優化」誤解成「幫我回答她上一句」。
+3. 對話脈絡權重過高，蓋掉了使用者輸入本身的主題、稱讚對象與互動意圖。
+
+**修復**:
+
+1. 在 `SYSTEM_PROMPT` 的用戶訊息優化段落新增「語義保真規則」。
+2. 明確要求 userDraft 的核心對象、主題、稱讚 / 邀約 / 界線意圖必須保留。
+3. 明確限制對話脈絡只能調整語氣、長度、禮貌程度與接續感，不得把 userDraft 改寫成回答對方最後一題。
+4. 在 runtime 追加的 `User Draft To Optimize` 區塊補上英文 optimization contract，避免模型把 draft 當成 vague hint。
+5. 新增 Deno prompt regression test，鎖住「潛水稱讚」不能被上一句「健身」帶偏。
+
+**驗證**:
+
+- `deno test --allow-read supabase/functions/analyze-chat/index_test.ts`
+
+**涉及檔案**:
+
+- `supabase/functions/analyze-chat/index.ts`
+- `supabase/functions/analyze-chat/index_test.ts`
+
 ### [2026-05-06] Coach Action Card 過度重複顯示情緒共鳴
 
 **症狀**:

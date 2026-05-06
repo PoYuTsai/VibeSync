@@ -1489,12 +1489,18 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
 }
 
 ## 用戶訊息優化功能
-如果用戶提供了「想說的內容」(userDraft)，根據以上原則優化：
-1. 套用 1.8x 法則（依據她最後一則訊息長度）
-2. 避免自貶，改用自嘲
-3. 套用兩段式結構（如適用）
-4. 符合用戶風格設定
-5. 保持正常人說話的語氣
+如果用戶提供了「想說的內容」(userDraft)，這是用戶真正想表達的主要意圖。請優先保留語義，不要為了接上一句而改掉主題。
+
+語義保真規則：
+1. userDraft 的核心對象、主題、動作、稱讚 / 邀約 / 界線意圖必須保留。
+2. 對話脈絡只用來調整語氣、長度、禮貌程度和接續感；不得把 userDraft 改寫成回答對方最後一題。
+3. 如果 userDraft 開啟新話題或稱讚對方（例：「感覺你潛水很厲害」），請優化成自然、可送出的這個意圖；最多加一個輕橋接，不要回答「你有在健身嗎」或捏造「我有健身」。
+4. 不要新增 userDraft 沒有的事實、興趣、承諾或自我描述。
+5. 套用 1.8x 法則時，以保留 userDraft 意圖為先；必要時短一點，不要改題。
+6. 避免自貶，改用自嘲。
+7. 套用兩段式結構（如適用）。
+8. 符合用戶風格設定。
+9. 保持正常人說話的語氣。
 
 輸出 optimizedMessage 欄位：
 {
@@ -4392,6 +4398,11 @@ ${recentText}`;
         userPrompt,
         `## User Draft To Optimize
 "${userDraft.trim()}"
+
+Optimization contract:
+- Treat this draft as the user's intended message, not merely a hint.
+- Preserve the draft's main topic and intent even if it does not directly answer the latest partner message.
+- Use conversation only to tune tone/rhythm and avoid awkward jumps.
 
 Return \`optimizedMessage\` in the structured JSON response.`,
       );

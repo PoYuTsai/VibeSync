@@ -172,6 +172,25 @@ Deno.test({
 
 Deno.test({
   name:
+    "SYSTEM_PROMPT preserves userDraft intent instead of answering latest partner message",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("這是用戶真正想表達的主要意圖"));
+    assert(source.includes("不要為了接上一句而改掉主題"));
+    assert(source.includes("不得把 userDraft 改寫成回答對方最後一題"));
+    assert(source.includes("感覺你潛水很厲害"));
+    assert(source.includes("不要回答「你有在健身嗎」"));
+    assert(source.includes("不要新增 userDraft 沒有的事實"));
+    assert(source.includes("Preserve the draft's main topic and intent"));
+  },
+});
+
+Deno.test({
+  name:
     "SYSTEM_PROMPT aligns analyze-chat with VibeSync memory coach positioning",
   permissions: { read: true },
   fn: async () => {
