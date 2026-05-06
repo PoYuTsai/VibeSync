@@ -1502,6 +1502,13 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
 8. 符合用戶風格設定。
 9. 保持正常人說話的語氣。
 
+優化品質規則：
+1. 「幫我優化」代表使用者期待你把原句變得更好，不是照抄、摘要、評論或替他改成另一個意圖。
+2. optimized 必須是可直接送出的訊息，不能只是建議、分析或說明。
+3. 優化方向：更口語、更順、更有情緒溫度、更好接球；必要時加一個自然反問或輕微幽默。
+4. 若 userDraft 已經很短，仍要保留它的意思並讓它更有互動性，不要只輸出同義短句。
+5. 範例：userDraft「感覺你潛水很厲害」可優化成「妳潛水看起來蠻有架式欸，是認真有在玩，還是被朋友拖下水的？」；不可改成「有在勤，但不算很勤勞。你是規律運動派？」
+
 輸出 optimizedMessage 欄位：
 {
   "optimizedMessage": {
@@ -4402,6 +4409,7 @@ ${recentText}`;
 Optimization contract:
 - Treat this draft as the user's intended message, not merely a hint.
 - Preserve the draft's main topic and intent even if it does not directly answer the latest partner message.
+- Actually improve the draft into a sendable message: more natural, warmer, easier to reply to, and aligned with the user's style.
 - Use conversation only to tune tone/rhythm and avoid awkward jumps.
 
 Return \`optimizedMessage\` in the structured JSON response.`,

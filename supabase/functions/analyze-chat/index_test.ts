@@ -185,7 +185,13 @@ Deno.test({
     assert(source.includes("感覺你潛水很厲害"));
     assert(source.includes("不要回答「你有在健身嗎」"));
     assert(source.includes("不要新增 userDraft 沒有的事實"));
+    assert(source.includes("幫我優化」代表使用者期待你把原句變得更好"));
+    assert(source.includes("optimized 必須是可直接送出的訊息"));
+    assert(source.includes("更口語、更順、更有情緒溫度、更好接球"));
+    assert(source.includes("妳潛水看起來蠻有架式欸"));
+    assert(source.includes("不可改成「有在勤，但不算很勤勞"));
     assert(source.includes("Preserve the draft's main topic and intent"));
+    assert(source.includes("Actually improve the draft into a sendable message"));
   },
 });
 

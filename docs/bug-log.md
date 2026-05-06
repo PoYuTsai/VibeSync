@@ -29,8 +29,9 @@
 1. 在 `SYSTEM_PROMPT` 的用戶訊息優化段落新增「語義保真規則」。
 2. 明確要求 userDraft 的核心對象、主題、稱讚 / 邀約 / 界線意圖必須保留。
 3. 明確限制對話脈絡只能調整語氣、長度、禮貌程度與接續感，不得把 userDraft 改寫成回答對方最後一題。
-4. 在 runtime 追加的 `User Draft To Optimize` 區塊補上英文 optimization contract，避免模型把 draft 當成 vague hint。
-5. 新增 Deno prompt regression test，鎖住「潛水稱讚」不能被上一句「健身」帶偏。
+4. 新增「優化品質規則」：幫我優化必須真的把原句變得更口語、更順、更有情緒溫度、更好接球，而不是照抄、摘要、評論或改成另一個意圖。
+5. 在 runtime 追加的 `User Draft To Optimize` 區塊補上英文 optimization contract，避免模型把 draft 當成 vague hint。
+6. 新增 Deno prompt regression test，鎖住「潛水稱讚」不能被上一句「健身」帶偏，且必須變成可直接送出的優化訊息。
 
 **驗證**:
 
