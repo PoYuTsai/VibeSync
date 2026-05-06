@@ -415,7 +415,9 @@ coach-chat/
   prompts.ts
   schema.ts
   validate.ts
-  openai_client.ts
+  coach_provider.ts
+  claude_client.ts
+  openai_client.ts       # optional dogfood/ablation path, not required for v1 launch
   logger.ts
   quota.ts
   telemetry.ts
@@ -424,26 +426,66 @@ coach-chat/
 
 ### 4.9 Model Strategy
 
-Spec 6A uses OpenAI API by default.
+Spec 6A should **not switch production provider by default**.
+
+Default v1 provider:
+
+- Use the existing Claude provider path first.
+- Keep the current tier-based model policy:
+  - Free: Haiku.
+  - Starter / Essential: Sonnet.
+- Do not introduce OpenAI into production until Coach 1:1 has been evaluated against the same prompt and same context.
+
+Rationale:
+
+- Current quality complaints compare free-form ChatGPT with schema-constrained VibeSync output. This is not a fair model comparison.
+- The first hypothesis to test is whether Coach 1:1 improves when the task is opened up: enough context, one direct question, less report-like schema pressure.
+- Changing provider too early adds privacy, cost, retention, App Store disclosure, and deployment complexity before the product shape is validated.
+- VibeSync's moat should come from context + coaching framework + memory, not from assuming one provider is always better.
 
 Environment variables:
 
 ```text
-OPENAI_API_KEY
-COACH_CHAT_PROVIDER=openai
-COACH_CHAT_MODEL=gpt-5.5
+COACH_CHAT_PROVIDER=claude
+CLAUDE_API_KEY
+COACH_CHAT_MODEL_FREE=claude-haiku-4-5-20251001
+COACH_CHAT_MODEL_PAID=claude-sonnet-4-20250514
 ```
 
-Initial API strategy:
+Provider abstraction:
 
-- Responses API.
-- Structured Outputs / JSON schema.
-- `reasoning.effort = low`.
-- `text.verbosity = low`.
+- Add a thin `CoachProvider` interface so the implementation can later switch between Claude and OpenAI without touching UI, quota, validation, or persistence.
+- The first shipped implementation may only implement `ClaudeCoachProvider`.
+- `OpenAICoachProvider` is optional until an explicit dogfood ablation proves it is worth the added operational/privacy complexity.
+
+OpenAI ablation path:
+
+```text
+COACH_CHAT_PROVIDER=openai
+OPENAI_API_KEY
+COACH_CHAT_MODEL=<verified-current-model>
+```
+
+Use this only in staging/internal dogfood unless Eric/Bruce explicitly approve production rollout.
+
+Production provider switch gate:
+
+- Run the same 20 dogfood questions through Claude and OpenAI.
+- Use the same VibeSync context bundle, same system prompt intent, and same output schema.
+- Eric/Bruce blind-score the outputs.
+- Switch Coach 1:1 production provider only if OpenAI is clearly better, for example:
+  - wins at least 15/20 prompts; or
+  - improves average usefulness by at least 1 point on a 5-point scale; and
+  - does not regress privacy, safety, cost, or Traditional Chinese tone.
+
+Initial generation strategy:
+
 - Output cap around 900 tokens.
 - 30s timeout.
+- Validate output with local schema and post-generation safety checks.
+- Prefer prompt/schema/context improvements before changing provider.
 
-If dogfood quality is shallow, try `reasoning.effort = medium`.
+If Claude dogfood quality is shallow after task/schema cleanup, then run the provider ablation before making OpenAI a production dependency.
 
 ### 4.10 Credit Rules
 
@@ -454,7 +496,7 @@ Do not deduct when:
 - User only opens the card.
 - User types but does not submit.
 - User taps a chip but does not submit.
-- OpenAI call fails.
+- Provider call fails.
 - Schema validation fails.
 - Banned token validator fails.
 - Credit deduction fails.
@@ -953,6 +995,8 @@ Rationale:
 - No images.
 - No full-history Coach chat.
 - No infinite chat in v1.
+- Keep provider telemetry so Claude vs OpenAI cost can be compared later.
+- If OpenAI ablation is enabled, keep it internal until pricing and privacy disclosure are reviewed.
 
 ### 12.4 Telemetry
 
@@ -978,12 +1022,20 @@ Do not log:
 
 ### 12.5 User-facing Privacy Copy
 
-Because Spec 6 uses OpenAI API, the product should clearly state:
+Because Coach 1:1 sends necessary context to an AI provider, the product should clearly state:
 
 ```text
 為了回答你的問題，系統會把這段對話的必要上下文傳給 AI 模型。
 這些內容只用於本次生成，不會被 VibeSync 後端長期保存。
 ```
+
+If OpenAI is later enabled in production, update:
+
+- in-app first-use copy;
+- privacy policy;
+- App Store privacy disclosure;
+- provider/subprocessor list;
+- retention / zero-data-retention decision notes.
 
 ---
 
@@ -1026,6 +1078,8 @@ Rate 1-5:
 - Maintains tension when appropriate.
 - Stops when appropriate.
 - Pushes forward when appropriate.
+- Outperforms the same prompt sent to a general LLM without VibeSync context.
+- If running provider ablation, identifies which provider gives the more useful answer under the same prompt/context/schema.
 
 Pass:
 
@@ -1061,7 +1115,8 @@ Mitigation:
 
 - One-question-one-answer v1.
 - Context caps.
-- Low reasoning first.
+- Existing Claude provider first.
+- Provider ablation only after Coach 1:1 product shape is validated.
 - Token telemetry.
 
 ### R4. UI becomes more crowded
@@ -1091,9 +1146,9 @@ Mitigation:
 
 ---
 
-## 15. Open Questions
+## 15. Locked Decisions / Open Questions
 
-1. Should Phase 6A immediately use OpenAI `gpt-5.5`, or should model choice wait for final API pricing review?
+1. **LOCKED:** Provider strategy for v1: use existing Claude provider first; keep OpenAI as internal ablation/hypothesis, not production default.
 2. Should `Ask the coach` results be visible inline only, or also saved in a local history drawer?
 3. Should Free users get Coach 1:1 from day one, or should v1 hide it after limited trial usage?
 4. Should the analysis result page be refactored before or after Coach 1:1 dogfood?
@@ -1114,3 +1169,25 @@ Mitigation:
 
 Do not write the implementation plan until Eric and Bruce approve this design direction.
 
+---
+
+## 17. Amendment Log
+
+### 2026-05-07 - Provider strategy locked
+
+Decision:
+
+- Phase 6A v1 uses the existing Claude provider first.
+- OpenAI is not the production default.
+- OpenAI remains an internal ablation path behind provider abstraction.
+
+Why:
+
+- The current quality gap is likely a task-design comparison problem: free-form ChatGPT vs schema-constrained VibeSync/Sonnet.
+- Provider switching adds privacy disclosure, cost, retention, App Store review, and CI/CD complexity before the Coach 1:1 product shape is validated.
+- The first product bet is context-aware coaching, not model-brand arbitrage.
+
+Implication:
+
+- Implementation plan should create a provider interface but only needs to ship `ClaudeCoachProvider`.
+- `OpenAICoachProvider` should wait until Eric/Bruce run the same 20 dogfood prompts against both providers and decide with evidence.
