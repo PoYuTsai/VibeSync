@@ -118,6 +118,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final _messageFocusNode = FocusNode();
+  final _messageInputKey = GlobalKey();
   final _coachChatCardKey = GlobalKey();
   bool _showAllMessages = false;
   String? _lastManualAddedMessageId;
@@ -550,6 +551,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   void _handleMessageInputFocus() {
+    if (mounted) {
+      setState(() {});
+    }
     if (!_messageFocusNode.hasFocus) {
       return;
     }
@@ -561,7 +565,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (!mounted || !_messageFocusNode.hasFocus) {
         return;
       }
-      unawaited(_scrollToBottom());
+      final context = _messageInputKey.currentContext;
+      if (context == null) {
+        unawaited(_scrollToBottom());
+        return;
+      }
+      unawaited(
+        Scrollable.ensureVisible(
+          context,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        ),
+      );
     });
   }
 
@@ -3626,7 +3640,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     return GradientBackground(
       child: Scaffold(
-        resizeToAvoidBottomInset: false,
+        resizeToAvoidBottomInset: true,
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
@@ -5524,7 +5538,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     ),
                   ),
                   // 對話延續輸入區（有分析結果時可收合）
-                  _buildKeyboardAwareMessageInput(),
+                  _buildCollapsibleMessageInput(),
                 ],
               ),
             ),
@@ -5810,18 +5824,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  /// 建立可收合的訊息輸入區（有分析結果時預設收合）
-  Widget _buildKeyboardAwareMessageInput() {
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: _buildCollapsibleMessageInput(),
-    );
-  }
-
   Widget _buildCollapsibleMessageInput() {
     // 沒有分析結果時，直接顯示輸入區
     if (_enthusiasmScore == null) {
@@ -5954,6 +5956,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Widget _buildMessageInput({required bool showScreenshotUpload}) {
     final canAddManualMessage =
         !_isAnalyzing && !_isRecognizing && _selectedImages.isEmpty;
+    final isTypingMessage = _messageFocusNode.hasFocus;
+    final showComposerHelp = !isTypingMessage;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -5972,21 +5976,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               _buildContinueComposerToolbar(),
               const SizedBox(height: 12),
             ],
-            if (showScreenshotUpload) ...[
+            if (showScreenshotUpload && showComposerHelp) ...[
               _buildConversationScreenshotSection(),
               const SizedBox(height: 12),
             ],
-            if (_lastManualAddedContent == null) ...[
+            if (showComposerHelp && _lastManualAddedContent == null) ...[
               _buildManualInputGuide(isContinue: _enthusiasmScore != null),
               const SizedBox(height: 10),
-            ] else ...[
+            ] else if (showComposerHelp) ...[
               _buildManualAddedFeedback(),
               const SizedBox(height: 10),
             ],
             // 輸入框 + 貼上按鈕
             TextField(
+              key: _messageInputKey,
               controller: _messageController,
               focusNode: _messageFocusNode,
+              onTap: _scheduleMessageInputIntoView,
               style: AppTypography.bodyMedium
                   .copyWith(color: AppColors.glassTextPrimary),
               decoration: InputDecoration(
