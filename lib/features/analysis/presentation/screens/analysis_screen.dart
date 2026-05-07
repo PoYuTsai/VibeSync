@@ -5551,19 +5551,32 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               ),
               child: SafeArea(
                 top: false,
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _openContinueComposer,
-                    icon: const Icon(Icons.add_comment_outlined),
-                    label: const Text('繼續對話'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: BorderSide(
-                          color: AppColors.primary.withValues(alpha: 0.5)),
-                      foregroundColor: AppColors.primary,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openContinueComposer,
+                        icon: const Icon(Icons.add_comment_outlined),
+                        label: const Text('補聊天紀錄'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(
+                              color: AppColors.primary.withValues(alpha: 0.5)),
+                          foregroundColor: AppColors.primary,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '新增她說／我說或截圖；重新分析才會扣本次增量。',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.unselectedText,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
