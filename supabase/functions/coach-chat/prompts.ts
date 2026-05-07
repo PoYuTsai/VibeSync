@@ -4,6 +4,7 @@ export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
+    section("本輪教練狀態", formatSessionState(input)),
     section("本次教練室對話", formatSessionTurns(input.activeSessionTurns)),
     section("最近對話", formatMessages(input.recentMessages)),
     section("舊對話摘要", input.conversationSummary),
@@ -69,6 +70,8 @@ const SYSTEM_PROMPT_BASE =
 - clarifyingQuestion 只問一個問題，像真人教練，不要變成表單。問題優先問：「你聽到她這句話後，心裡第一個反應是什麼？」或「你心裡其實想怎麼回？先不用修飾。」
 - clarifyingQuestion 的 costDeducted 必須是 0，suggestedLine/rewriteDecision/rewriteReason 用 null。
 - 如果使用者已經補充感受、原本想回的句子、目的，或 forceAnswer=true，才給 responseType="coachAnswer"。
+- 如果本輪已經問過 clarifyingQuestion，下一回合不要重複問同一個問題；請整合使用者補充，低信心也要收斂成一個 coachAnswer。
+- 如果使用者指出「你剛剛不是說...」或對教練前後判斷困惑，先承認並整合前後脈絡，再給修正後的一個工作判斷；不要硬拗或另開很多可能性。
 - coachAnswer 的 costDeducted 必須是 1，並且要填 rewriteDecision。
 - 不要為了看起來專業而硬改使用者原句。若原句已真實、有分寸、可承擔，就用 keep_original 或 light_edit。
 - 如果原句會讓使用者掉價、越界、焦慮補位、過度承諾或變成情緒勒索，才 rewrite 或 do_not_send。
@@ -112,6 +115,49 @@ function formatSessionTurns(
       return `${role}(${turn.kind})：${turn.content}`;
     })
     .join("\n");
+}
+
+function formatSessionState(input: CoachChatRequest): string | null {
+  const turns = input.activeSessionTurns;
+  const hasTurns = turns.length > 0;
+  const lastClarification = [...turns].reverse().find((turn) =>
+    turn.role === "coach" && turn.kind === "clarification"
+  );
+  const userSupplements = turns.filter((turn) =>
+    turn.role === "user" && turn.kind === "supplement"
+  );
+  const currentUserText = input.userQuestion.trim();
+  const lines: string[] = [];
+
+  if (input.sessionId) lines.push(`sessionId：${input.sessionId}`);
+  if (lastClarification) {
+    lines.push(`本輪已追問過：${lastClarification.content}`);
+  }
+  if (userSupplements.length) {
+    lines.push(
+      `使用者已補充：${
+        userSupplements.map((turn) => turn.content).slice(-3).join(" / ")
+      }`,
+    );
+  } else if (lastClarification && currentUserText) {
+    lines.push(`使用者正在補充：${currentUserText}`);
+  }
+  if (input.forceAnswer) {
+    lines.push(
+      "使用者選擇直接看正式建議：本回合必須輸出 coachAnswer，不要再問 clarifyingQuestion；可以標低信心，但仍要給一個最小安全下一步。",
+    );
+  } else if (lastClarification) {
+    lines.push(
+      "本回合是追問後的延續：不要重複同一個追問；優先整合補充並收斂成 coachAnswer。",
+    );
+  }
+  if (hasTurns) {
+    lines.push(
+      "如果使用者挑戰或修正教練前一輪判斷，先承認脈絡變了，再更新判斷。",
+    );
+  }
+
+  return lines.length ? lines.join("\n") : null;
 }
 
 function formatAnalysis(

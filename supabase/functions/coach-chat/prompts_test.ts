@@ -48,6 +48,10 @@ Deno.test("buildCoachChatPrompt carries active coaching turns and clarification 
     dataQualityFlagged: false,
   });
   assertStringIncludes(prompt, "本次教練室對話");
+  assertStringIncludes(prompt, "本輪教練狀態");
+  assertStringIncludes(prompt, "本輪已追問過");
+  assertStringIncludes(prompt, "使用者正在補充：我其實想回她，但怕太裝");
+  assertStringIncludes(prompt, "不要重複同一個追問");
   assertStringIncludes(prompt, "使用者原本想怎麼回");
   assertStringIncludes(prompt, "clarifyingQuestion 的 costDeducted 必須是 0");
   assertStringIncludes(prompt, "硬改使用者原句");
@@ -114,4 +118,32 @@ Deno.test("buildCoachChatPrompt frames attached-partner invitations as role and 
   });
   assertStringIncludes(prompt, "對方有男友/女友/伴侶");
   assertStringIncludes(prompt, "時間成本");
+});
+
+Deno.test("buildCoachChatPrompt makes force-answer session state explicit", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    sessionId: "s1",
+    userQuestion: "她是什麼意思？",
+    activeSessionTurns: [
+      {
+        role: "user",
+        kind: "question",
+        content: "她是什麼意思？",
+      },
+      {
+        role: "coach",
+        kind: "clarification",
+        content: "你聽到後第一個反應是什麼？",
+      },
+    ],
+    forceAnswer: true,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  assertStringIncludes(prompt, "使用者選擇直接看正式建議");
+  assertStringIncludes(prompt, "本回合必須輸出 coachAnswer");
+  assertStringIncludes(prompt, "不要再問 clarifyingQuestion");
+  assertStringIncludes(prompt, "低信心");
 });

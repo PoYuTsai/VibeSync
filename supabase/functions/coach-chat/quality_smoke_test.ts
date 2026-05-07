@@ -131,3 +131,36 @@ Deno.test("Spec 6 smoke: attached-partner case prioritizes role, boundary, and c
   assertStringIncludes(prompt, "讓使用者看清自己想站的位置與時間成本");
   assertStringIncludes(prompt, "界線、成本或風險提醒");
 });
+
+Deno.test("Spec 6 smoke: session state prevents repeated clarification", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "spec6-session-state",
+    sessionId: "coach-c1-1",
+    userQuestion: "等等，我現在有點困惑，你剛剛不是說已經約她了嗎？",
+    activeSessionTurns: [
+      {
+        role: "user",
+        kind: "question",
+        content: "她這樣是不是想約我？",
+      },
+      {
+        role: "coach",
+        kind: "clarification",
+        content: "你聽到她這句話後，心裡第一個反應是什麼？",
+      },
+    ],
+    forceAnswer: false,
+    recentMessages: [
+      { sender: "partner", text: "下次可以一起去那家店" },
+      { sender: "me", text: "可以啊，我也想去看看" },
+    ],
+    dataQualityFlagged: false,
+  });
+
+  assertCoreSpec6Contract(prompt);
+  assertStringIncludes(prompt, "本輪教練狀態");
+  assertStringIncludes(prompt, "本輪已追問過");
+  assertStringIncludes(prompt, "不要重複同一個追問");
+  assertStringIncludes(prompt, "先承認並整合前後脈絡");
+  assertStringIncludes(prompt, "修正後的一個工作判斷");
+});
