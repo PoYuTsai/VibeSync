@@ -108,7 +108,7 @@ export const ResponseCardSchema = z.object({
   boundaryReminder: z.string().min(1).max(100),
   needsReflection: z.boolean(),
   reflectionQuestion: z.string().max(90).nullable().optional(),
-  costDeducted: z.number().int().min(0).max(1).default(1),
+  costDeducted: z.number().int().min(0).max(1).nullable().optional(),
 }).strict().superRefine((card, ctx) => {
   if (
     card.needsReflection &&
@@ -121,13 +121,6 @@ export const ResponseCardSchema = z.object({
     });
   }
   if (card.responseType === "clarifyingQuestion") {
-    if (card.costDeducted !== 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["costDeducted"],
-        message: "clarifyingQuestion must not deduct credit",
-      });
-    }
     if (!card.needsReflection) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -145,7 +138,10 @@ export const ResponseCardSchema = z.object({
       });
     }
   }
-});
+}).transform((card) => ({
+  ...card,
+  costDeducted: card.responseType === "clarifyingQuestion" ? 0 : 1,
+}));
 
 export const ResponseSchema = z.object({
   card: ResponseCardSchema,

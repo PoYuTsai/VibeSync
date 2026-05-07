@@ -131,6 +131,45 @@ Deno.test("runCoachChat returns clarification without deducting credit", async (
   assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
 });
 
+Deno.test("runCoachChat accepts clarification when Claude omits cost", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        responseType: "clarifyingQuestion",
+        mode: "clarifyIntent",
+        headline: "先問清楚你的推進目標",
+        answer: "我先接住你：你不是不能推，而是還沒說清楚想推到哪一步。",
+        userTruth: null,
+        userState: "你可能想往前，但還沒釐清目的與成本。",
+        nextStep: "先補一句你心裡真正想推進到哪裡。",
+        suggestedLine: null,
+        rewriteDecision: null,
+        rewriteReason: null,
+        boundaryReminder: "釐清不扣額度；正式建議才扣 1 則。",
+        needsReflection: true,
+        reflectionQuestion: "你說推進，是想邀約、升溫，還是確認她意願？",
+        costDeducted: undefined,
+      })),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, userQuestion: "我該推進嗎？" },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).responseType,
+    "clarifyingQuestion",
+  );
+  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+});
+
 Deno.test("runCoachChat skips deduction for test account", async () => {
   const harness = deps({});
   const result = await runCoachChat(

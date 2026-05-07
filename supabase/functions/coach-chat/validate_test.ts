@@ -135,6 +135,47 @@ Deno.test("validateResponseCard accepts clarification when it does not deduct", 
   assertEquals(parsed.costDeducted, 0);
 });
 
+Deno.test("validateResponseCard normalizes omitted clarification cost to zero", () => {
+  const parsed = validateResponseCard({
+    responseType: "clarifyingQuestion",
+    mode: "clarifyIntent",
+    headline: "先問清楚你的真實想法",
+    answer: "你不是不能推進，而是還沒說清楚自己想推到哪一步。",
+    userTruth: null,
+    userState: "你可能想往前，但還沒釐清目的與可承擔成本。",
+    nextStep: "先補一句你心裡真正想推進到哪裡。",
+    suggestedLine: null,
+    rewriteDecision: null,
+    rewriteReason: null,
+    boundaryReminder: "釐清不扣額度；正式建議才扣 1 則。",
+    needsReflection: true,
+    reflectionQuestion: "你說推進，是想邀約、升溫，還是確認對方意願？",
+  });
+  assertEquals(parsed.responseType, "clarifyingQuestion");
+  assertEquals(parsed.costDeducted, 0);
+});
+
+Deno.test("validateResponseCard normalizes omitted coach answer cost to one", () => {
+  const parsed = validateResponseCard({
+    responseType: "coachAnswer",
+    mode: "moveForward",
+    headline: "先做一個小推進",
+    answer: "這題可以推，但不要一次推太滿。先用低壓邀約測她願不願意給時間。",
+    userTruth: "你想往前，但怕被拒絕。",
+    userState: "你把推進想成一次成敗考試。",
+    frictionType: "hesitatesToMoveForward",
+    nextStep: "今天只丟一個可退可進的輕邀約。",
+    suggestedLine: "那下次你想放空時，我帶你去一間安靜的甜點店。",
+    rewriteDecision: "rewrite",
+    rewriteReason: "把目的感改成低壓邀約。",
+    boundaryReminder: "邀約是給選擇，不是給壓力。",
+    needsReflection: false,
+    reflectionQuestion: null,
+  });
+  assertEquals(parsed.responseType, "coachAnswer");
+  assertEquals(parsed.costDeducted, 1);
+});
+
 Deno.test("validateResponseCard defaults frictionType for backwards compatibility", () => {
   const parsed = validateResponseCard({
     responseType: "coachAnswer",
