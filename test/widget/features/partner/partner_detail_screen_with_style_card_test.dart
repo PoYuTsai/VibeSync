@@ -1,5 +1,5 @@
 // Verifies PartnerStyleEntryCard is mounted on PartnerDetailScreen
-// alongside the existing PartnerTraitsCard (Spec 2 Task 12).
+// before detailed traits in the Spec 6D command-center flow.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -63,7 +63,7 @@ Partner _p() => Partner(
 
 void main() {
   testWidgets(
-      'PartnerStyleEntryCard appears below PartnerTraitsCard on detail screen',
+      'PartnerStyleEntryCard appears before detailed traits on detail screen',
       (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
@@ -85,15 +85,28 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    expect(find.byType(PartnerTraitsCard), findsOneWidget);
+    await t.scrollUntilVisible(
+      find.byType(PartnerStyleEntryCard),
+      450,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await t.pumpAndSettle();
+
     expect(find.byType(PartnerStyleEntryCard), findsOneWidget);
     expect(find.text('我的風格 · 對Alice'), findsOneWidget);
     // Default (no override) renders the 沿用 subtitle.
     expect(find.text('沿用全域預設'), findsOneWidget);
+    expect(
+      find.text('不會讓 AI 假裝成另一個人，只會幫你更像穩定版的自己。'),
+      findsOneWidget,
+    );
 
-    // Geometric position: style card is BELOW traits card.
-    final traitsTop = t.getTopLeft(find.byType(PartnerTraitsCard)).dy;
-    final styleTop = t.getTopLeft(find.byType(PartnerStyleEntryCard)).dy;
-    expect(styleTop, greaterThan(traitsTop));
+    await t.scrollUntilVisible(
+      find.byType(PartnerTraitsCard),
+      450,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await t.pumpAndSettle();
+    expect(find.byType(PartnerTraitsCard), findsOneWidget);
   });
 }

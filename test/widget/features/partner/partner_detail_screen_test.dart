@@ -110,6 +110,19 @@ class _RecordingDataQualityRepo extends PartnerDataQualityRepository {
   }
 }
 
+Future<void> _scrollUntilVisible(
+  WidgetTester t,
+  Finder finder, {
+  double delta = 450,
+}) async {
+  await t.scrollUntilVisible(
+    finder,
+    delta,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await t.pumpAndSettle();
+}
+
 void main() {
   testWidgets('tile delete confirm calls ConversationWriteController.delete',
       (t) async {
@@ -183,7 +196,7 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    expect(find.text('Alice'), findsOneWidget);
+    expect(find.text('Alice'), findsWidgets);
     expect(find.byIcon(Icons.more_vert), findsOneWidget);
 
     await t.tap(find.byIcon(Icons.more_vert));
@@ -325,6 +338,7 @@ void main() {
     ));
     await t.pumpAndSettle();
 
+    await _scrollUntilVisible(t, find.byTooltip('設定對方資訊'));
     await t.tap(find.byTooltip('設定對方資訊'));
     await t.pumpAndSettle();
     await t.enterText(find.byType(TextField), '  慢熱，喜歡戶外活動  ');
@@ -360,6 +374,7 @@ void main() {
     ));
     await t.pumpAndSettle();
 
+    await _scrollUntilVisible(t, find.text('你的設定'));
     expect(find.text('你的設定'), findsOneWidget);
     expect(find.text('慢熱，喜歡戶外活動'), findsOneWidget);
   });
@@ -435,7 +450,7 @@ void main() {
     expect(find.text('merge-stub-p1'), findsOneWidget);
   });
 
-  testWidgets('renders hero + traits + radar + new-conversation FAB',
+  testWidgets('renders command summary + hero + details + new-conversation FAB',
       (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
@@ -454,24 +469,21 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    // Post-A2 visual polish — hero comes BEFORE traits/radar.
+    // Spec 6D — command-center content comes before detailed traits/radar.
+    expect(find.text('目前：待分析'), findsOneWidget);
+    expect(find.text('下一步'), findsOneWidget);
     expect(find.byType(PartnerHeatHeroCard), findsOneWidget);
-    expect(find.byType(PartnerTraitsCard), findsOneWidget);
-    expect(find.byType(PartnerRadarSummaryCard), findsOneWidget);
     // FAB copy stays "+ 新增對話" verbatim per ADR-15 vocabulary lock
     // (Path A 2026-04-28). Visual changed (pill + orange), copy did not.
     expect(find.text('+ 新增對話'), findsOneWidget);
     // Empty-aggregate path → hero shows "待分析" (deterministic mapping,
     // never a fake score).
-    expect(find.text('待分析'), findsOneWidget);
+    expect(find.text('待分析'), findsWidgets);
     expect(find.text('--'), findsOneWidget);
-    expect(
-      t.getTopLeft(find.byType(PartnerHeatHeroCard)).dy,
-      lessThanOrEqualTo(kToolbarHeight),
-      reason:
-          'hero should sit close under the transparent title bar, not leave '
-          'a dead shelf above the heat card.',
-    );
+
+    await _scrollUntilVisible(t, find.byType(PartnerTraitsCard));
+    expect(find.byType(PartnerTraitsCard), findsOneWidget);
+    expect(find.byType(PartnerRadarSummaryCard), findsOneWidget);
   });
 
   testWidgets('new-conversation sheet receives current partnerId', (t) async {
@@ -688,7 +700,8 @@ void main() {
   });
 
   // Spec 3 Task 19 — PartnerDataQualityBanner integration on PartnerDetailScreen.
-  // The banner sits between PartnerTraitsCard and PartnerStyleEntryCard and
+  // Spec 6D moves the banner below detailed traits/trends so it no longer
+  // interrupts the command-center flow.
   // only renders when the dataQualityFlagProvider returns a flagged result
   // with a non-null conflictingPair. Action handlers are STUBS in this task
   // (Tasks 20/21 fill them in); these tests verify rendering only.
@@ -793,6 +806,7 @@ void main() {
     // Banner renders (override forces flagged state).
     expect(find.byType(PartnerDataQualityBanner), findsOneWidget);
 
+    await _scrollUntilVisible(t, find.text('這是同一人'));
     await t.tap(find.text('這是同一人'));
     await t.pumpAndSettle();
 
@@ -857,6 +871,7 @@ void main() {
       ));
       await t.pumpAndSettle();
 
+      await _scrollUntilVisible(t, find.text('拆成新對象'));
       await t.tap(find.text('拆成新對象'));
       await t.pumpAndSettle();
 
@@ -881,6 +896,7 @@ void main() {
       ));
       await t.pumpAndSettle();
 
+      await _scrollUntilVisible(t, find.text('拆成新對象'));
       await t.tap(find.text('拆成新對象'));
       await t.pumpAndSettle();
       await t.tap(find.text('取消'));
@@ -910,6 +926,7 @@ void main() {
       ));
       await t.pumpAndSettle();
 
+      await _scrollUntilVisible(t, find.text('拆成新對象'));
       await t.tap(find.text('拆成新對象'));
       await t.pumpAndSettle();
       await t.tap(find.text('確認拆卡'));
@@ -941,6 +958,7 @@ void main() {
       ));
       await t.pumpAndSettle();
 
+      await _scrollUntilVisible(t, find.text('拆成新對象'));
       await t.tap(find.text('拆成新對象'));
       await t.pumpAndSettle();
 
@@ -971,6 +989,7 @@ void main() {
       ));
       await t.pumpAndSettle();
 
+      await _scrollUntilVisible(t, find.text('拆成新對象'));
       await t.tap(find.text('拆成新對象'));
       await t.pumpAndSettle();
       await t.tap(find.text('確認拆卡'));

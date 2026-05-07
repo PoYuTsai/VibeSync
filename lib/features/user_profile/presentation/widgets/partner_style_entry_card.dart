@@ -55,6 +55,14 @@ class PartnerStyleEntryCard extends ConsumerWidget {
                       color: AppColors.glassTextSecondary,
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '不會讓 AI 假裝成另一個人，只會幫你更像穩定版的自己。',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.glassTextSecondary,
+                      height: 1.35,
+                    ),
+                  ),
                 ],
               ),
             ),
