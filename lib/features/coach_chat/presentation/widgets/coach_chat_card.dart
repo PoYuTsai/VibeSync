@@ -92,6 +92,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     final latest =
         state.valueOrNull ?? (history.isEmpty ? null : history.first);
     final isLoading = state.isLoading;
+    final canSubmit = !isLoading;
     final isClarifying = latest?.isClarifyingQuestion ?? false;
 
     ref.listen<AsyncValue<CoachChatResult?>>(provider, (previous, next) {
@@ -172,14 +173,11 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                 .map(
                   (chip) => ActionChip(
                     label: Text(chip),
-                    onPressed: isLoading ? null : () => _controller.text = chip,
+                    onPressed: () => _fillSuggestedQuestion(chip),
                     visualDensity: VisualDensity.compact,
                     backgroundColor: Colors.white.withValues(alpha: 0.55),
-                    disabledColor: Colors.white.withValues(alpha: 0.42),
                     labelStyle: AppTypography.caption.copyWith(
-                      color: isLoading
-                          ? AppColors.glassTextSecondary
-                          : AppColors.glassTextPrimary,
+                      color: AppColors.glassTextPrimary,
                     ),
                     side: BorderSide(
                       color: AppColors.glassBorder.withValues(alpha: 0.7),
@@ -195,9 +193,8 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
             maxLength: 240,
             minLines: 1,
             maxLines: 3,
-            enabled: !isLoading,
             textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _ask(),
+            onSubmitted: canSubmit ? (_) => _ask() : null,
             inputFormatters: [LengthLimitingTextInputFormatter(240)],
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextPrimary,
@@ -246,7 +243,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.arrow_upward_rounded),
-                    onPressed: isLoading ? null : _ask,
+                    onPressed: canSubmit ? _ask : null,
                     color: AppColors.primary,
                   ),
                 ],
@@ -322,6 +319,11 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   }
 
   void _ask() {
+    if (ref
+        .read(coachChatControllerProvider(widget.conversationId))
+        .isLoading) {
+      return;
+    }
     final question = _controller.text.trim();
     if (question.isEmpty) return;
     FocusScope.of(context).unfocus();
@@ -333,6 +335,11 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
           question: question,
           analysisSnapshot: widget.analysisSnapshot,
         );
+  }
+
+  void _fillSuggestedQuestion(String question) {
+    _controller.text = question;
+    _controller.selection = TextSelection.collapsed(offset: question.length);
   }
 
   void _focusInputForFollowUp() {
