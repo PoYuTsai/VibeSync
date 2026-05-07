@@ -27,7 +27,7 @@ class LearningScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '學習專區',
+                  '練習專區',
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.ctaStart,
                     fontWeight: FontWeight.w600,
@@ -40,12 +40,20 @@ class LearningScreen extends ConsumerWidget {
                       color: AppColors.onBackgroundPrimary,
                     ),
                     children: [
-                      const TextSpan(text: '提升你的 '),
+                      const TextSpan(text: '把技巧練成 '),
                       TextSpan(
-                        text: '溝通力',
+                        text: '下一步',
                         style: TextStyle(color: AppColors.ctaStart),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '讀一篇，收成一個今天可以練的動作，再帶回真實對話。',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.45,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -196,7 +204,7 @@ class LearningScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                article.readTime,
+                                '${article.readTime} · 讀完可練一次',
                                 style: AppTypography.caption.copyWith(
                                   color: Colors.white.withValues(alpha: 0.8),
                                 ),

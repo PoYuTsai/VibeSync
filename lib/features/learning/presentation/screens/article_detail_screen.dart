@@ -71,6 +71,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
     if (article == null) {
       return const Scaffold(body: Center(child: Text('Article not found')));
     }
+    final practiceGuide = buildArticlePracticeGuide(article);
     final subscription = ref.watch(subscriptionProvider);
     _scheduleReadGate(subscription);
 
@@ -133,6 +134,8 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+              _PracticeBriefCard(article: article, guide: practiceGuide),
+              const SizedBox(height: 16),
               // Article content in glass container
               GlassmorphicContainer(
                 padding: const EdgeInsets.all(20),
@@ -142,13 +145,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: GradientButton(
-                  text: '學完了？來實戰練習',
-                  onPressed: () => context.push('/opener'),
-                ),
-              ),
+              _PracticeActionCard(guide: practiceGuide),
               const SizedBox(height: 32),
             ],
           ),
@@ -286,5 +283,249 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
     }
 
     return richText;
+  }
+}
+
+class _PracticeBriefCard extends StatelessWidget {
+  final Article article;
+  final ArticlePracticeGuide guide;
+
+  const _PracticeBriefCard({
+    required this.article,
+    required this.guide,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PracticeLabel(text: '這篇要練的能力'),
+          const SizedBox(height: 8),
+          Text(
+            guide.category,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _PracticeInfoRow(
+            icon: Icons.lightbulb_outline,
+            title: '一句話重點',
+            body: guide.oneLineTakeaway,
+          ),
+          const SizedBox(height: 12),
+          _PracticeInfoRow(
+            icon: Icons.near_me_outlined,
+            title: '什麼時候用',
+            body: guide.whenToUse,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            article.title,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PracticeActionCard extends StatelessWidget {
+  final ArticlePracticeGuide guide;
+
+  const _PracticeActionCard({required this.guide});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PracticeLabel(text: '今天練一次'),
+          const SizedBox(height: 8),
+          Text(
+            guide.practiceTitle,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            guide.practicePrompt,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              height: 1.55,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _ExampleBox(
+            title: '錯誤示範',
+            text: guide.mistakeExample,
+            color: AppColors.error,
+          ),
+          const SizedBox(height: 10),
+          _ExampleBox(
+            title: '好的示範',
+            text: guide.goodExample,
+            color: AppColors.success,
+          ),
+          const SizedBox(height: 18),
+          Text(
+            '帶回真實對話',
+            style: AppTypography.titleSmall.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            guide.carryBackHint,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          GradientButton(
+            text: '用開場救星練一次',
+            onPressed: () => context.push('/opener'),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => context.go('/'),
+              icon: const Icon(Icons.forum_outlined, size: 18),
+              label: const Text('回首頁找一段真實對話'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.glassTextPrimary,
+                side: BorderSide(
+                  color: AppColors.glassBorder.withValues(alpha: 0.8),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PracticeLabel extends StatelessWidget {
+  final String text;
+
+  const _PracticeLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: AppTypography.caption.copyWith(
+        color: AppColors.ctaStart,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
+
+class _PracticeInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String body;
+
+  const _PracticeInfoRow({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: AppColors.ctaStart),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                body,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExampleBox extends StatelessWidget {
+  final String title;
+  final String text;
+  final Color color;
+
+  const _ExampleBox({
+    required this.title,
+    required this.text,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: AppTypography.caption.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            text,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
