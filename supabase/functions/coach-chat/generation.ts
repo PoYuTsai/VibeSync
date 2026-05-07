@@ -114,12 +114,13 @@ export async function runCoachChat(
         attempt,
       });
       if (attempt === MAX_CARD_GENERATION_ATTEMPTS) {
-        deps.logger.warn("coach_chat_failed", {
+        deps.logger.warn("coach_chat_fallback_used", {
           tier: input.tier,
           errorClass: lastValidationError,
           attempts: attempt,
         });
-        return { status: 500, body: { error: lastValidationError } };
+        card = buildFallbackClarificationCard(input.request);
+        break;
       }
     }
   }
@@ -207,6 +208,39 @@ function parseAndValidateCard(claudeData: unknown): CoachChatResponseCard {
   const parsed = parseClaudeJSON(claudeData);
   const truncated = truncateCard(parsed);
   const card = validateResponseCard(truncated);
+  assertCardSafe(card);
+  return card;
+}
+
+function buildFallbackClarificationCard(
+  request: CoachChatRequest,
+): CoachChatResponseCard {
+  const question = request.userQuestion.toLowerCase();
+  const isMoveForward = /推進|約|邀|升溫|收尾|關門|轉場/.test(question);
+  const card = validateResponseCard({
+    responseType: "clarifyingQuestion",
+    mode: isMoveForward ? "moveForward" : "clarifyIntent",
+    headline: isMoveForward ? "先把推進目標說清楚" : "先問清楚你的真實想法",
+    answer: isMoveForward
+      ? "我先接住你：這題不是不能判斷，而是目前需要先知道你想推進到哪一步。先把目的說清楚，下一步才不會太硬或太急。"
+      : "我先接住你：這題可以判斷，但還缺你當下的第一反應。先把真實想法補上，教練才不會替你亂補劇本。",
+    userTruth: null,
+    userState: isMoveForward
+      ? "你可能想往前，但還沒把目的、節奏和可承擔成本講清楚。"
+      : "你可能急著找答案，但還沒說出自己真正卡住的點。",
+    frictionType: isMoveForward ? "hesitatesToMoveForward" : "unclearIntent",
+    nextStep: isMoveForward
+      ? "先補一句你真正想達成的下一步。"
+      : "先補一句你心裡第一個反應。",
+    suggestedLine: null,
+    rewriteDecision: null,
+    rewriteReason: null,
+    boundaryReminder: "釐清不扣額度；正式建議才扣 1 則。",
+    needsReflection: true,
+    reflectionQuestion: isMoveForward
+      ? "你說推進，是想邀約、升溫，還是確認她意願？"
+      : "你聽到她這句話後，心裡第一個反應是什麼？",
+  });
   assertCardSafe(card);
   return card;
 }

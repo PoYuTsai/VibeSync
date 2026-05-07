@@ -208,7 +208,7 @@ Deno.test("runCoachChat retries malformed cards before surfacing failure", async
   assertEquals(harness.events.includes("coach_chat_retry_succeeded"), true);
 });
 
-Deno.test("runCoachChat does not deduct when all card attempts are malformed", async () => {
+Deno.test("runCoachChat falls back to a free clarification when all card attempts are malformed", async () => {
   let calls = 0;
   const harness = deps({
     callClaude: () => {
@@ -219,17 +219,26 @@ Deno.test("runCoachChat does not deduct when all card attempts are malformed", a
   const result = await runCoachChat(
     {
       userId: "u1",
-      request,
+      request: { ...request, userQuestion: "我該推進嗎？" },
       tier: "starter",
       accountIsTest: false,
       apiKey: "key",
     },
     harness.deps,
   );
-  assertEquals(result.status, 500);
-  assertEquals(result.body.error, "schema_invalid");
+  assertEquals(result.status, 200);
   assertEquals(calls, 3);
   assertEquals(harness.deductCalls, 0);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).responseType,
+    "clarifyingQuestion",
+  );
+  assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).reflectionQuestion,
+    "你說推進，是想邀約、升溫，還是確認她意願？",
+  );
+  assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
 });
 
 Deno.test("runCoachChat skips deduction for test account", async () => {
@@ -248,7 +257,7 @@ Deno.test("runCoachChat skips deduction for test account", async () => {
   assertEquals(harness.deductCalls, 0);
 });
 
-Deno.test("runCoachChat does not deduct on banned token", async () => {
+Deno.test("runCoachChat falls back without deducting on repeated banned tokens", async () => {
   const harness = deps({
     callClaude: () => Promise.resolve(validClaudeCard({ headline: "PUA" })),
   });
@@ -262,8 +271,11 @@ Deno.test("runCoachChat does not deduct on banned token", async () => {
     },
     harness.deps,
   );
-  assertEquals(result.status, 500);
-  assertEquals(result.body.error, "banned_token");
+  assertEquals(result.status, 200);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).responseType,
+    "clarifyingQuestion",
+  );
   assertEquals(harness.deductCalls, 0);
 });
 
