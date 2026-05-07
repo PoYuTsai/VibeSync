@@ -47,6 +47,8 @@ Deno.test("buildCoachChatPrompt carries active coaching turns and clarification 
   assertStringIncludes(prompt, "clarifyingQuestion 的 costDeducted 必須是 0");
   assertStringIncludes(prompt, "硬改使用者原句");
   assertStringIncludes(prompt, "1.8x 黃金法則");
+  assertStringIncludes(prompt, "明顯錯字");
+  assertStringIncludes(prompt, "不要照抄明顯錯字");
   assertStringIncludes(prompt, "使用者(question)：她說我很有故事是什麼意思？");
   assertStringIncludes(
     prompt,
