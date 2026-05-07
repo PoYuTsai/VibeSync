@@ -101,6 +101,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   // 訊息優化功能
   bool _showOptimizeInput = false;
+  bool _showDetailedAnalysis = false;
   bool _isOptimizing = false;
   final _optimizeController = TextEditingController();
   OptimizedMessage? _optimizedMessage;
@@ -375,6 +376,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     if (!mounted) {
       return;
     }
+    _dismissKeyboard();
+    await Future.delayed(const Duration(milliseconds: 60));
 
     if (_enthusiasmScore != null && !_showContinueConversation) {
       setState(() {
@@ -398,10 +401,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       });
       await Future.delayed(const Duration(milliseconds: 80));
     }
-    setState(() {
-      _coachChatFocusRequest++;
-    });
-    await Future.delayed(const Duration(milliseconds: 80));
     final coachContext = _coachChatCardKey.currentContext;
     if (!mounted || coachContext == null || !coachContext.mounted) {
       return;
@@ -411,6 +410,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOut,
       alignment: 0.08,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _coachChatFocusRequest++;
+    });
+  }
+
+  Future<void> _returnToAnalysisOverview() async {
+    _dismissKeyboard();
+    if (_showContinueConversation) {
+      setState(() {
+        _showContinueConversation = false;
+      });
+      await Future.delayed(const Duration(milliseconds: 80));
+    }
+    if (!mounted || !_scrollController.hasClients) {
+      return;
+    }
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
     );
   }
 
@@ -573,6 +596,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     _reminder = result.reminder;
     _shouldGiveUp = result.shouldGiveUp;
     _lastAiResponse = result.rawResponse;
+    _showDetailedAnalysis = false;
 
     if (resetFeedbackState) {
       _resetFeedbackState();
@@ -3415,6 +3439,132 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     );
   }
 
+  Widget _buildDetailedAnalysisToggle() {
+    return Semantics(
+      button: true,
+      label: _showDetailedAnalysis ? '收起詳細分析與更多回覆' : '展開詳細分析與更多回覆',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(
+          () => _showDetailedAnalysis = !_showDetailedAnalysis,
+        ),
+        child: GlassmorphicContainer(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.insights_outlined,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '詳細分析與更多回覆',
+                          style: AppTypography.titleMedium.copyWith(
+                            color: AppColors.glassTextPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '熱度、階段、心理訊號、五維雷達與更多回覆風格',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.glassTextSecondary,
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _showDetailedAnalysis ? '收起' : '展開',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          _showDetailedAnalysis
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          color: AppColors.primary,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (_enthusiasmScore != null)
+                    _buildDetailedAnalysisPill('熱度 $_enthusiasmScore'),
+                  if (_gameStage != null)
+                    _buildDetailedAnalysisPill(_gameStage!.current.label),
+                  if (_replies != null && _replies!.isNotEmpty)
+                    _buildDetailedAnalysisPill('${_replies!.length} 種回覆'),
+                  if (_dimensionScores != null)
+                    _buildDetailedAnalysisPill('五維雷達'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailedAnalysisPill(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.caption.copyWith(
+          color: AppColors.glassTextSecondary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final conversation = ref.watch(conversationProvider(widget.conversationId));
@@ -3490,6 +3640,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     child: SingleChildScrollView(
                       controller: _scrollController,
                       padding: const EdgeInsets.all(16),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       // 移除 physics 設定，使用平台預設（與第一頁一致）
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4291,6 +4443,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                 analysisSnapshot:
                                     _buildCoachChatAnalysisSnapshot(),
                                 focusRequestToken: _coachChatFocusRequest,
+                                onReturnToAnalysis: _returnToAnalysisOverview,
                                 onQuotaExceeded: () {
                                   unawaited(_handleCoachChatQuotaExceeded());
                                 },
@@ -4299,13 +4452,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             const SizedBox(height: 16),
                           ],
 
-                          // Enthusiasm Gauge
-                          if (_enthusiasmScore != null) ...[
-                            ScoreHeroCard(
-                              score: _enthusiasmScore!,
-                              // previousScore: null for now
-                            ),
-                          ] else if (_isAnalyzing) ...[
+                          if (_isAnalyzing && _enthusiasmScore == null) ...[
                             const Center(
                               child: Column(
                                 children: [
@@ -4317,430 +4464,475 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             ),
                           ],
 
-                          // 五維度剖析 (Starter / Essential only)
-                          if (_dimensionScores != null &&
-                              subscription.isPremium) ...[
-                            const SizedBox(height: 16),
-                            DimensionRadarChart(
-                              scores: DimensionScores(
-                                heat: _dimensionScores!['heat'] ?? 50,
-                                engagement:
-                                    _dimensionScores!['engagement'] ?? 50,
-                                topicDepth:
-                                    _dimensionScores!['topicDepth'] ?? 50,
-                                replyWillingness:
-                                    _dimensionScores!['replyWillingness'] ?? 50,
-                                emotionalConnection:
-                                    _dimensionScores!['emotionalConnection'] ??
-                                        50,
+                          if (_enthusiasmScore != null) ...[
+                            _buildDetailedAnalysisToggle(),
+                            if (_showDetailedAnalysis) ...[
+                              const SizedBox(height: 12),
+                              ScoreHeroCard(
+                                score: _enthusiasmScore!,
+                                // previousScore: null for now
                               ),
-                            ),
-                          ],
 
-                          // 對話階段指示器
-                          if (_gameStage != null) ...[
-                            const SizedBox(height: 16),
-                            GameStageIndicator(
-                              currentStage: _gameStage!.current,
-                              status: _gameStage!.status,
-                              nextStep: _gameStage!.nextStep,
-                            ),
-                          ],
+                              // 五維度剖析 (Starter / Essential only)
+                              if (_dimensionScores != null &&
+                                  subscription.isPremium) ...[
+                                const SizedBox(height: 16),
+                                DimensionRadarChart(
+                                  scores: DimensionScores(
+                                    heat: _dimensionScores!['heat'] ?? 50,
+                                    engagement:
+                                        _dimensionScores!['engagement'] ?? 50,
+                                    topicDepth:
+                                        _dimensionScores!['topicDepth'] ?? 50,
+                                    replyWillingness:
+                                        _dimensionScores!['replyWillingness'] ??
+                                            50,
+                                    emotionalConnection: _dimensionScores![
+                                            'emotionalConnection'] ??
+                                        50,
+                                  ),
+                                ),
+                              ],
 
-                          // 她話裡的意思
-                          if (_psychology != null) ...[
-                            const SizedBox(height: 16),
-                            GlassmorphicContainer(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
+                              // 對話階段指示器
+                              if (_gameStage != null) ...[
+                                const SizedBox(height: 16),
+                                GameStageIndicator(
+                                  currentStage: _gameStage!.current,
+                                  status: _gameStage!.status,
+                                  nextStep: _gameStage!.nextStep,
+                                ),
+                              ],
+
+                              // 她話裡的意思
+                              if (_psychology != null) ...[
+                                const SizedBox(height: 16),
+                                GlassmorphicContainer(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      const Text('🧠',
-                                          style: TextStyle(fontSize: 18)),
-                                      const SizedBox(width: 8),
-                                      Text('她話裡的意思',
-                                          style: AppTypography.titleMedium
+                                      Row(
+                                        children: [
+                                          const Text('🧠',
+                                              style: TextStyle(fontSize: 18)),
+                                          const SizedBox(width: 8),
+                                          Text('她話裡的意思',
+                                              style: AppTypography.titleMedium
+                                                  .copyWith(
+                                                      color: AppColors
+                                                          .glassTextPrimary)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(_psychology!.subtext,
+                                          style: AppTypography.bodyMedium
                                               .copyWith(
                                                   color: AppColors
                                                       .glassTextPrimary)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(_psychology!.subtext,
-                                      style: AppTypography.bodyMedium.copyWith(
-                                          color: AppColors.glassTextPrimary)),
-                                  if (_psychology!.shitTest != null) ...[
-                                    const SizedBox(height: 8),
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.warning
-                                            .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Text('⚠️',
-                                              style: TextStyle(fontSize: 14)),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              '互動測試訊號: ${_psychology!.shitTest}',
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .glassTextPrimary),
-                                            ),
+                                      if (_psychology!.shitTest != null) ...[
+                                        const SizedBox(height: 8),
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.warning
+                                                .withValues(alpha: 0.1),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                  if (_psychology!.qualificationSignal) ...[
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.check_circle,
-                                            size: 16, color: AppColors.success),
-                                        const SizedBox(width: 4),
-                                        Text('她有主動投入訊號',
-                                            style: AppTypography.caption
-                                                .copyWith(
-                                                    color: AppColors
-                                                        .glassTextPrimary)),
-                                      ],
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-
-                          // Strategy
-                          if (_strategy != null &&
-                              _strategy!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            GlassmorphicContainer(
-                              child: Row(
-                                children: [
-                                  const Text('💡',
-                                      style: TextStyle(fontSize: 20)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _strategy!,
-                                      style: AppTypography.bodyMedium.copyWith(
-                                          color: AppColors.glassTextPrimary),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-
-                          // Topic Depth (話題深度)
-                          if (_topicDepth != null) ...[
-                            const SizedBox(height: 16),
-                            GlassmorphicContainer(
-                              child: Row(
-                                children: [
-                                  Text(_topicDepth!.current.emoji,
-                                      style: const TextStyle(fontSize: 20)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                            '話題深度: ${_topicDepth!.current.label}',
-                                            style: AppTypography.bodyMedium
-                                                .copyWith(
-                                                    color: AppColors
-                                                        .glassTextPrimary)),
-                                        if (_topicDepth!.suggestion.isNotEmpty)
-                                          Text(_topicDepth!.suggestion,
-                                              style: AppTypography.caption
-                                                  .copyWith(
-                                                      color: AppColors
-                                                          .glassTextHint)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-
-                          // Health Check (對話健檢 - Essential 專屬)
-                          if (_healthCheck != null &&
-                              _healthCheck!.issues.isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.warning.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color: AppColors.warning
-                                        .withValues(alpha: 0.3)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Text('🩺',
-                                          style: TextStyle(fontSize: 18)),
-                                      const SizedBox(width: 8),
-                                      Text('對話健檢',
-                                          style: AppTypography.titleMedium),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ..._healthCheck!.issues
-                                      .map((issue) => Padding(
-                                            padding: const EdgeInsets.only(
-                                                bottom: 4),
-                                            child: Row(
-                                              children: [
-                                                const Icon(Icons.warning_amber,
-                                                    size: 16,
-                                                    color: AppColors.warning),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                    child: Text(issue,
-                                                        style: AppTypography
-                                                            .bodyMedium)),
-                                              ],
-                                            ),
-                                          )),
-                                  if (_healthCheck!.suggestions.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    ..._healthCheck!.suggestions
-                                        .map((suggestion) => Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 4),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                      Icons.lightbulb_outline,
-                                                      size: 16,
-                                                      color: AppColors.success),
-                                                  const SizedBox(width: 8),
-                                                  Expanded(
-                                                      child: Text(suggestion,
-                                                          style: AppTypography
-                                                              .caption)),
-                                                ],
-                                              ),
-                                            )),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-
-                          // Reply suggestions (5 種回覆)
-                          if (_replies != null && _replies!.isNotEmpty) ...[
-                            const SizedBox(height: 24),
-                            Row(
-                              children: [
-                                Text('回覆建議・${_replies!.length} 種風格',
-                                    style: AppTypography.titleLarge.copyWith(
-                                        color: AppColors.onBackgroundPrimary)),
-                                const Spacer(),
-                                Text('← 左右滑動',
-                                    style: AppTypography.caption.copyWith(
-                                        color: AppColors.glassTextHint)),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height: 200,
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                children: [
-                                  if (_replies!.containsKey('extend'))
-                                    _buildHorizontalReplyCard(
-                                        'extend', _replies!['extend']!,
-                                        isRecommended:
-                                            _isRecommendedReplyType('extend')),
-                                  if (_replies!.containsKey('resonate'))
-                                    _buildHorizontalReplyCard(
-                                        'resonate', _replies!['resonate']!,
-                                        isRecommended: _isRecommendedReplyType(
-                                            'resonate')),
-                                  if (_replies!.containsKey('tease'))
-                                    _buildHorizontalReplyCard(
-                                        'tease', _replies!['tease']!,
-                                        isRecommended:
-                                            _isRecommendedReplyType('tease')),
-                                  if (_replies!.containsKey('humor'))
-                                    _buildHorizontalReplyCard(
-                                        'humor', _replies!['humor']!,
-                                        isRecommended:
-                                            _isRecommendedReplyType('humor')),
-                                  if (_replies!.containsKey('coldRead'))
-                                    _buildHorizontalReplyCard(
-                                        'coldRead', _replies!['coldRead']!,
-                                        isRecommended: _isRecommendedReplyType(
-                                            'coldRead')),
-                                ],
-                              ),
-                            ),
-                            // 如果只有 extend，根據用戶 tier 顯示不同提示
-                            if (_replies!.length == 1 &&
-                                _replies!.containsKey('extend')) ...[
-                              const SizedBox(height: 12),
-                              Builder(
-                                builder: (context) {
-                                  // Free 用戶：顯示升級提示
-                                  if (subscription.isFreeUser) {
-                                    return GestureDetector(
-                                      onTap: () async => _showPaywall(context),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary
-                                              .withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          border: Border.all(
-                                              color: AppColors.primary
-                                                  .withValues(alpha: 0.3)),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            const Icon(Icons.lock_outline,
-                                                color: AppColors.primary),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                '升級解鎖共鳴、調情、幽默、冷讀等回覆風格',
-                                                style: AppTypography.bodyMedium
-                                                    .copyWith(
-                                                        color:
-                                                            AppColors.primary),
-                                              ),
-                                            ),
-                                            const Icon(Icons.arrow_forward_ios,
-                                                size: 16,
-                                                color: AppColors.primary),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  if (_analysisNeedsReplyRefresh(
-                                    subscription,
-                                  )) {
-                                    return Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary
-                                            .withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: AppColors.primary
-                                              .withValues(alpha: 0.3),
-                                        ),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
+                                          child: Row(
                                             children: [
-                                              const Icon(
-                                                Icons.auto_awesome,
-                                                color: AppColors.primary,
-                                              ),
+                                              const Text('⚠️',
+                                                  style:
+                                                      TextStyle(fontSize: 14)),
                                               const SizedBox(width: 8),
                                               Expanded(
                                                 child: Text(
-                                                  '你已升級完整版，這份分析仍是免費版結果。',
-                                                  style: AppTypography
-                                                      .bodyMedium
+                                                  '互動測試訊號: ${_psychology!.shitTest}',
+                                                  style: AppTypography.caption
                                                       .copyWith(
+                                                          color: AppColors
+                                                              .glassTextPrimary),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      if (_psychology!.qualificationSignal) ...[
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.check_circle,
+                                                size: 16,
+                                                color: AppColors.success),
+                                            const SizedBox(width: 4),
+                                            Text('她有主動投入訊號',
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                        color: AppColors
+                                                            .glassTextPrimary)),
+                                          ],
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              // Strategy
+                              if (_strategy != null &&
+                                  _strategy!.trim().isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                GlassmorphicContainer(
+                                  child: Row(
+                                    children: [
+                                      const Text('💡',
+                                          style: TextStyle(fontSize: 20)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _strategy!,
+                                          style: AppTypography.bodyMedium
+                                              .copyWith(
+                                                  color: AppColors
+                                                      .glassTextPrimary),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              // Topic Depth (話題深度)
+                              if (_topicDepth != null) ...[
+                                const SizedBox(height: 16),
+                                GlassmorphicContainer(
+                                  child: Row(
+                                    children: [
+                                      Text(_topicDepth!.current.emoji,
+                                          style: const TextStyle(fontSize: 20)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                                '話題深度: ${_topicDepth!.current.label}',
+                                                style: AppTypography.bodyMedium
+                                                    .copyWith(
+                                                        color: AppColors
+                                                            .glassTextPrimary)),
+                                            if (_topicDepth!
+                                                .suggestion.isNotEmpty)
+                                              Text(_topicDepth!.suggestion,
+                                                  style: AppTypography.caption
+                                                      .copyWith(
+                                                          color: AppColors
+                                                              .glassTextHint)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              // Health Check (對話健檢 - Essential 專屬)
+                              if (_healthCheck != null &&
+                                  _healthCheck!.issues.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warning
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                        color: AppColors.warning
+                                            .withValues(alpha: 0.3)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text('🩺',
+                                              style: TextStyle(fontSize: 18)),
+                                          const SizedBox(width: 8),
+                                          Text('對話健檢',
+                                              style: AppTypography.titleMedium),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ..._healthCheck!.issues
+                                          .map((issue) => Padding(
+                                                padding: const EdgeInsets.only(
+                                                    bottom: 4),
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(
+                                                        Icons.warning_amber,
+                                                        size: 16,
+                                                        color:
+                                                            AppColors.warning),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                        child: Text(issue,
+                                                            style: AppTypography
+                                                                .bodyMedium)),
+                                                  ],
+                                                ),
+                                              )),
+                                      if (_healthCheck!
+                                          .suggestions.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        ..._healthCheck!.suggestions
+                                            .map((suggestion) => Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          bottom: 4),
+                                                  child: Row(
+                                                    children: [
+                                                      const Icon(
+                                                          Icons
+                                                              .lightbulb_outline,
+                                                          size: 16,
+                                                          color: AppColors
+                                                              .success),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                          child: Text(
+                                                              suggestion,
+                                                              style:
+                                                                  AppTypography
+                                                                      .caption)),
+                                                    ],
+                                                  ),
+                                                )),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              // Reply suggestions (5 種回覆)
+                              if (_replies != null && _replies!.isNotEmpty) ...[
+                                const SizedBox(height: 24),
+                                Row(
+                                  children: [
+                                    Text('回覆建議・${_replies!.length} 種風格',
+                                        style: AppTypography.titleLarge
+                                            .copyWith(
+                                                color: AppColors
+                                                    .onBackgroundPrimary)),
+                                    const Spacer(),
+                                    Text('← 左右滑動',
+                                        style: AppTypography.caption.copyWith(
+                                            color: AppColors.glassTextHint)),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 200,
+                                  child: ListView(
+                                    scrollDirection: Axis.horizontal,
+                                    children: [
+                                      if (_replies!.containsKey('extend'))
+                                        _buildHorizontalReplyCard(
+                                            'extend', _replies!['extend']!,
+                                            isRecommended:
+                                                _isRecommendedReplyType(
+                                                    'extend')),
+                                      if (_replies!.containsKey('resonate'))
+                                        _buildHorizontalReplyCard(
+                                            'resonate', _replies!['resonate']!,
+                                            isRecommended:
+                                                _isRecommendedReplyType(
+                                                    'resonate')),
+                                      if (_replies!.containsKey('tease'))
+                                        _buildHorizontalReplyCard(
+                                            'tease', _replies!['tease']!,
+                                            isRecommended:
+                                                _isRecommendedReplyType(
+                                                    'tease')),
+                                      if (_replies!.containsKey('humor'))
+                                        _buildHorizontalReplyCard(
+                                            'humor', _replies!['humor']!,
+                                            isRecommended:
+                                                _isRecommendedReplyType(
+                                                    'humor')),
+                                      if (_replies!.containsKey('coldRead'))
+                                        _buildHorizontalReplyCard(
+                                            'coldRead', _replies!['coldRead']!,
+                                            isRecommended:
+                                                _isRecommendedReplyType(
+                                                    'coldRead')),
+                                    ],
+                                  ),
+                                ),
+                                // 如果只有 extend，根據用戶 tier 顯示不同提示
+                                if (_replies!.length == 1 &&
+                                    _replies!.containsKey('extend')) ...[
+                                  const SizedBox(height: 12),
+                                  Builder(
+                                    builder: (context) {
+                                      // Free 用戶：顯示升級提示
+                                      if (subscription.isFreeUser) {
+                                        return GestureDetector(
+                                          onTap: () async =>
+                                              _showPaywall(context),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary
+                                                  .withValues(alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                  color: AppColors.primary
+                                                      .withValues(alpha: 0.3)),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Icon(Icons.lock_outline,
+                                                    color: AppColors.primary),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    '升級解鎖共鳴、調情、幽默、冷讀等回覆風格',
+                                                    style: AppTypography
+                                                        .bodyMedium
+                                                        .copyWith(
+                                                            color: AppColors
+                                                                .primary),
+                                                  ),
+                                                ),
+                                                const Icon(
+                                                    Icons.arrow_forward_ios,
+                                                    size: 16,
+                                                    color: AppColors.primary),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      if (_analysisNeedsReplyRefresh(
+                                        subscription,
+                                      )) {
+                                        return Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary
+                                                .withValues(alpha: 0.1),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: AppColors.primary
+                                                  .withValues(alpha: 0.3),
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.auto_awesome,
                                                     color: AppColors.primary,
-                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      '你已升級完整版，這份分析仍是免費版結果。',
+                                                      style: AppTypography
+                                                          .bodyMedium
+                                                          .copyWith(
+                                                        color:
+                                                            AppColors.primary,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                '重新分析一次，就能拿到完整回覆選項。',
+                                                style: AppTypography.caption
+                                                    .copyWith(
+                                                  color: AppColors.primary,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: OutlinedButton.icon(
+                                                  onPressed: (_isAnalyzing ||
+                                                          _isRefreshingPremiumReplies)
+                                                      ? null
+                                                      : _refreshPremiumReplies,
+                                                  icon: (_isAnalyzing ||
+                                                          _isRefreshingPremiumReplies)
+                                                      ? const SizedBox(
+                                                          width: 16,
+                                                          height: 16,
+                                                          child:
+                                                              CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                          ),
+                                                        )
+                                                      : const Icon(
+                                                          Icons.refresh_rounded,
+                                                        ),
+                                                  label: Text(
+                                                    (_isAnalyzing ||
+                                                            _isRefreshingPremiumReplies)
+                                                        ? '正在刷新完整回覆...'
+                                                        : '重新分析完整回覆',
                                                   ),
                                                 ),
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            '重新分析一次，就能拿到完整回覆選項。',
-                                            style:
-                                                AppTypography.caption.copyWith(
-                                              color: AppColors.primary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          SizedBox(
-                                            width: double.infinity,
-                                            child: OutlinedButton.icon(
-                                              onPressed: (_isAnalyzing ||
-                                                      _isRefreshingPremiumReplies)
-                                                  ? null
-                                                  : _refreshPremiumReplies,
-                                              icon: (_isAnalyzing ||
-                                                      _isRefreshingPremiumReplies)
-                                                  ? const SizedBox(
-                                                      width: 16,
-                                                      height: 16,
-                                                      child:
-                                                          CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                      ),
-                                                    )
-                                                  : const Icon(
-                                                      Icons.refresh_rounded,
-                                                    ),
-                                              label: Text(
-                                                (_isAnalyzing ||
-                                                        _isRefreshingPremiumReplies)
-                                                    ? '正在刷新完整回覆...'
-                                                    : '重新分析完整回覆',
+                                        );
+                                      }
+                                      // 付費用戶：AI 判斷此情境最適合延展
+                                      return Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.onBackgroundSecondary
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.lightbulb_outline,
+                                                color: AppColors
+                                                    .onBackgroundSecondary),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'AI 判斷此情境最適合使用延展回覆',
+                                                style: AppTypography.bodyMedium
+                                                    .copyWith(
+                                                  color: AppColors
+                                                      .onBackgroundSecondary,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }
-                                  // 付費用戶：AI 判斷此情境最適合延展
-                                  return Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.onBackgroundSecondary
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.lightbulb_outline,
-                                            color: AppColors
-                                                .onBackgroundSecondary),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            'AI 判斷此情境最適合使用延展回覆',
-                                            style: AppTypography.bodyMedium
-                                                .copyWith(
-                                              color: AppColors
-                                                  .onBackgroundSecondary,
-                                            ),
-                                          ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ],
                             ],
                           ],
 
@@ -5682,11 +5874,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.keyboard_arrow_up,
+                          Icon(Icons.keyboard_arrow_down,
                               color: AppColors.unselectedText, size: 20),
                           const SizedBox(width: 4),
                           Text(
-                            '看上方對話',
+                            '收起補聊天紀錄，回到分析結果',
                             style: AppTypography.bodySmall
                                 .copyWith(color: AppColors.unselectedText),
                           ),
@@ -5722,6 +5914,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (showScreenshotUpload) ...[
+              _buildContinueComposerToolbar(),
+              const SizedBox(height: 12),
+            ],
+            if (showScreenshotUpload) ...[
               _buildConversationScreenshotSection(),
               const SizedBox(height: 12),
             ],
@@ -5739,7 +5935,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   .copyWith(color: AppColors.glassTextPrimary),
               decoration: InputDecoration(
                 hintText: '貼上或輸入新的一則訊息...',
-                helperText: '輸入完先收起鍵盤，再選這句是她說，還是我說。',
+                helperText: showScreenshotUpload
+                    ? '輸入完選「她說／我說」。不想補了可點上方「回分析」。'
+                    : '輸入完先收起鍵盤，再選這句是她說，還是我說。',
                 helperStyle: AppTypography.caption.copyWith(
                   color: AppColors.glassTextHint,
                 ),
@@ -5885,6 +6083,78 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildContinueComposerToolbar() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.add_comment_outlined,
+              color: AppColors.primary,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '正在補聊天紀錄',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '只補新的來回訊息，不會重扣已分析內容。',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: _collapseComposerAndShowMessages,
+            icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+            label: const Text('回分析'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              side: BorderSide(
+                color: AppColors.primary.withValues(alpha: 0.35),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              visualDensity: VisualDensity.compact,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

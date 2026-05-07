@@ -15,6 +15,7 @@ class CoachChatCard extends ConsumerStatefulWidget {
   final String conversationId;
   final CoachChatAnalysisSnapshot analysisSnapshot;
   final VoidCallback? onQuotaExceeded;
+  final VoidCallback? onReturnToAnalysis;
   final int focusRequestToken;
 
   const CoachChatCard({
@@ -22,6 +23,7 @@ class CoachChatCard extends ConsumerStatefulWidget {
     required this.conversationId,
     required this.analysisSnapshot,
     this.onQuotaExceeded,
+    this.onReturnToAnalysis,
     this.focusRequestToken = 0,
   });
 
@@ -138,6 +140,17 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                   ],
                 ),
               ),
+              if (_focusNode.hasFocus)
+                TextButton.icon(
+                  onPressed: _returnToAnalysis,
+                  icon: const Icon(Icons.keyboard_hide_outlined, size: 17),
+                  label: const Text('回分析'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.glassTextSecondary,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -210,7 +223,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                     IconButton(
                       tooltip: '收起鍵盤',
                       icon: const Icon(Icons.keyboard_hide_outlined),
-                      onPressed: () => FocusScope.of(context).unfocus(),
+                      onPressed: _unfocusInput,
                       color: AppColors.glassTextSecondary,
                     ),
                   IconButton(
@@ -264,6 +277,16 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   void _focusInputForFollowUp() {
     _controller.clear();
     _focusNode.requestFocus();
+  }
+
+  void _unfocusInput() {
+    _focusNode.unfocus();
+    FocusScope.of(context).unfocus();
+  }
+
+  void _returnToAnalysis() {
+    _unfocusInput();
+    widget.onReturnToAnalysis?.call();
   }
 
   String _failureMessage(Object error) {
