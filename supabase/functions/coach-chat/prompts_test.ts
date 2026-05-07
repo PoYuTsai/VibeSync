@@ -96,6 +96,61 @@ Deno.test("buildCoachChatPrompt teaches sexual tension without shame or pressure
   assertStringIncludes(prompt, "絕不教施壓");
 });
 
+Deno.test("buildCoachChatPrompt handles adult intimacy logistics with consent and safety", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "我想約砲，今晚怎麼自然帶去旅館？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  assertStringIncludes(prompt, "約砲");
+  assertStringIncludes(prompt, "帶去旅館");
+  assertStringIncludes(prompt, "短期親密意圖");
+  assertStringIncludes(prompt, "低壓轉場或確認句");
+  assertStringIncludes(prompt, "清醒同意");
+  assertStringIncludes(prompt, "戴套");
+  assertStringIncludes(prompt, "不要利用酒精/壓力/承諾");
+});
+
+Deno.test("buildCoachChatPrompt reframes resistance language as consent calibration", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "最後一分鐘抵抗怎麼處理？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  assertStringIncludes(prompt, "最後一分鐘抵抗");
+  assertStringIncludes(prompt, "不要照抄成技巧");
+  assertStringIncludes(prompt, "可能就是不想");
+  assertStringIncludes(prompt, "絕不教突破拒絕");
+  assertStringIncludes(prompt, "說不要");
+  assertStringIncludes(prompt, "suggestedLine 用停止/照顧/送回安全處");
+});
+
+Deno.test("buildCoachChatPrompt covers social venue and hostess context without moralizing", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "KTV多人局或去酒店遇到坐檯妹，要怎麼互動？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  assertStringIncludes(prompt, "夜店/KTV/多人局");
+  assertStringIncludes(prompt, "不要只盯單一目標");
+  assertStringIncludes(prompt, "酒店/坐檯");
+  assertStringIncludes(prompt, "情緒勞動或服務");
+  assertStringIncludes(prompt, "金錢、時間與自尊成本");
+  assertStringIncludes(prompt, "不高道德、不說教");
+});
+
 Deno.test("buildCoachChatPrompt converges line meaning into one working judgment", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",

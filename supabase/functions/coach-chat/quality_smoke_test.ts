@@ -134,6 +134,33 @@ Deno.test("Spec 6 smoke: attached-partner case prioritizes role, boundary, and c
   assertStringIncludes(prompt, "界線、成本或風險提醒");
 });
 
+Deno.test("Spec 6 smoke: adult same-night escalation stays concrete and consent-first", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "spec6-adult-close",
+    userQuestion: "酒吧聊得不錯，我想今晚收尾，怎麼自然轉場？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [
+      { sender: "partner", text: "這裡太吵了，我有點聽不到你說話" },
+      { sender: "me", text: "那我們等等換個地方？" },
+    ],
+    analysisSnapshot: {
+      heatScore: 78,
+      stage: "升溫",
+      keySignals: ["願意轉場", "酒吧局"],
+    },
+    dataQualityFlagged: false,
+  });
+
+  assertCoreSpec6Contract(prompt);
+  assertStringIncludes(prompt, "成人約會與場景判讀");
+  assertStringIncludes(prompt, "支持成年人之間合意、清醒、可拒絕、可停止");
+  assertStringIncludes(prompt, "先想好自然下一站、路線、時間感與退路");
+  assertStringIncludes(prompt, "低壓轉場");
+  assertStringIncludes(prompt, "戴套");
+  assertStringIncludes(prompt, "絕不教突破拒絕");
+});
+
 Deno.test("Spec 6 smoke: session state prevents repeated clarification", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "spec6-session-state",
