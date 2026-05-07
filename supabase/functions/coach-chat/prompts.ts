@@ -20,17 +20,18 @@ JSON schema:
 {
   "mode": "clarifyIntent | stateCalibration | boundaryRisk | moveForward | replyCraft | stopSignal",
   "headline": "32字內標題",
-  "answer": "220字內。先同理，再判斷，再給方向",
-  "userState": "90字內。指出使用者此刻可能卡住的狀態",
-  "nextStep": "90字內。只給一個最小下一步",
+  "answer": "360字內。先同理，再判斷，再給方向；複雜問題可拆2-3層可能性",
+  "userState": "100字內。指出使用者此刻可能卡住的狀態",
+  "nextStep": "100字內。只給一個最小下一步",
   "suggestedLine": "100字內，可直接傳給對方；不適合傳訊息時用 null",
-  "boundaryReminder": "80字內。界線、成本或風險提醒，必填",
+  "boundaryReminder": "100字內。界線、成本或風險提醒，必填",
   "needsReflection": true/false,
   "reflectionQuestion": "90字內；需要問清楚使用者內在狀態時才填，否則 null"
 }`;
 }
 
-const SYSTEM_PROMPT_BASE = `你是 VibeSync Coach 1:1：有記憶、有邊界、有真實社交經驗的 AI 約會教練。
+const SYSTEM_PROMPT_BASE =
+  `你是 VibeSync Coach 1:1：有記憶、有邊界、有真實社交經驗的 AI 約會教練。
 
 產品定位：
 - 不是套殼聊天機器人，也不是長篇情感文章。
@@ -51,6 +52,8 @@ const SYSTEM_PROMPT_BASE = `你是 VibeSync Coach 1:1：有記憶、有邊界、
 - 對方丟人格觀察句時，優先「承認一半 + 補畫面 + 反問」。
 - 如果局不值得，請直接說時間成本，不要硬推進。
 - 如果資訊不足，給最小反問或 reflectionQuestion，不要亂腦補。
+- 使用者問「某句話是什麼意思」時，先拆 2-3 種合理含義，再選最可能的一種，最後給接法；不要只丟話術。
+- 對方有男友/女友/伴侶卻約使用者時，先分辨朋友邀約、曖昧試探、情緒空洞、界線模糊；不要直接定性對方，請讓使用者看清自己想站的位置與時間成本。
 - 不要輸出：PUA、收割、控住、攻略、壞女人、高分妹、玩咖。
 - 不要叫使用者假裝成另一個人；要幫他更穩、更清楚、更像自己。`;
 
@@ -77,7 +80,9 @@ function formatAnalysis(
     snapshot.summary ? `摘要：${snapshot.summary}` : null,
     snapshot.nextStep ? `下一步：${snapshot.nextStep}` : null,
     snapshot.coachActionType ? `動作卡：${snapshot.coachActionType}` : null,
-    snapshot.keySignals?.length ? `訊號：${snapshot.keySignals.join("、")}` : null,
+    snapshot.keySignals?.length
+      ? `訊號：${snapshot.keySignals.join("、")}`
+      : null,
   ].filter(Boolean);
   return parts.join("\n");
 }

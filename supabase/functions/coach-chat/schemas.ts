@@ -58,11 +58,11 @@ export const RequestSchema = z.object({
 export const ResponseCardSchema = z.object({
   mode: CoachChatModeEnum,
   headline: z.string().min(1).max(32),
-  answer: z.string().min(1).max(220),
-  userState: z.string().min(1).max(90),
-  nextStep: z.string().min(1).max(90),
+  answer: z.string().min(1).max(360),
+  userState: z.string().min(1).max(100),
+  nextStep: z.string().min(1).max(100),
   suggestedLine: z.string().max(100).nullable().optional(),
-  boundaryReminder: z.string().min(1).max(80),
+  boundaryReminder: z.string().min(1).max(100),
   needsReflection: z.boolean(),
   reflectionQuestion: z.string().max(90).nullable().optional(),
 }).strict().superRefine((card, ctx) => {

@@ -14,7 +14,9 @@ export function validateRequest(payload: unknown): CoachChatRequest {
     payload !== null &&
     "images" in (payload as Record<string, unknown>)
   ) {
-    throw new Error("invalid_input_for_mode: images not accepted in coach-chat v1");
+    throw new Error(
+      "invalid_input_for_mode: images not accepted in coach-chat v1",
+    );
   }
   return RequestSchema.parse(payload);
 }
@@ -29,11 +31,11 @@ export function validateFullResponse(payload: unknown): CoachChatResponse {
 
 const FIELD_CAPS: Record<string, number> = {
   headline: 32,
-  answer: 220,
-  userState: 90,
-  nextStep: 90,
+  answer: 360,
+  userState: 100,
+  nextStep: 100,
   suggestedLine: 100,
-  boundaryReminder: 80,
+  boundaryReminder: 100,
   reflectionQuestion: 90,
 };
 

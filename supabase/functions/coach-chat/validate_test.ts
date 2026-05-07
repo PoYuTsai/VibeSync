@@ -66,18 +66,18 @@ Deno.test("truncateCard caps long visible fields before validation", () => {
   const card = truncateCard({
     mode: "moveForward",
     headline: "這是一個非常非常非常非常非常長的標題",
-    answer: "a".repeat(260),
-    userState: "b".repeat(120),
-    nextStep: "c".repeat(120),
+    answer: "a".repeat(420),
+    userState: "b".repeat(140),
+    nextStep: "c".repeat(140),
     suggestedLine: "d".repeat(140),
-    boundaryReminder: "e".repeat(100),
+    boundaryReminder: "e".repeat(140),
     needsReflection: false,
     reflectionQuestion: null,
   });
   const parsed = validateResponseCard(card);
   assertEquals(parsed.headline.length <= 32, true);
-  assertEquals(parsed.answer.length <= 220, true);
-  assertEquals(parsed.boundaryReminder.length <= 80, true);
+  assertEquals(parsed.answer.length <= 360, true);
+  assertEquals(parsed.boundaryReminder.length <= 100, true);
 });
 
 Deno.test("assertCardSafe rejects shared banned tokens", () => {

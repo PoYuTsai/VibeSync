@@ -28,6 +28,8 @@ class CoachChatCard extends ConsumerStatefulWidget {
 
 class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+  String? _lastAskedQuestion;
 
   static const _chips = <String>[
     '她是什麼意思？',
@@ -38,9 +40,21 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  @override
   void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -120,8 +134,11 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                     onPressed: isLoading ? null : () => _controller.text = chip,
                     visualDensity: VisualDensity.compact,
                     backgroundColor: Colors.white.withValues(alpha: 0.55),
+                    disabledColor: Colors.white.withValues(alpha: 0.42),
                     labelStyle: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextPrimary,
+                      color: isLoading
+                          ? AppColors.glassTextSecondary
+                          : AppColors.glassTextPrimary,
                     ),
                     side: BorderSide(
                       color: AppColors.glassBorder.withValues(alpha: 0.7),
@@ -133,6 +150,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
           const SizedBox(height: 12),
           TextField(
             controller: _controller,
+            focusNode: _focusNode,
             maxLength: 240,
             minLines: 1,
             maxLines: 3,
@@ -166,22 +184,40 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                   width: 1.4,
                 ),
               ),
-              suffixIcon: IconButton(
-                icon: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.arrow_upward_rounded),
-                onPressed: isLoading ? null : _ask,
-                color: AppColors.primary,
+              suffixIconConstraints: const BoxConstraints(minWidth: 48),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_focusNode.hasFocus)
+                    IconButton(
+                      tooltip: '收起鍵盤',
+                      icon: const Icon(Icons.keyboard_hide_outlined),
+                      onPressed: () => FocusScope.of(context).unfocus(),
+                      color: AppColors.glassTextSecondary,
+                    ),
+                  IconButton(
+                    tooltip: isLoading ? '教練思考中' : '送出問題',
+                    icon: isLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.arrow_upward_rounded),
+                    onPressed: isLoading ? null : _ask,
+                    color: AppColors.primary,
+                  ),
+                ],
               ),
             ),
           ),
           if (latest != null) ...[
             const SizedBox(height: 14),
-            _CoachChatResultView(result: latest),
+            _CoachChatResultView(
+              result: latest,
+              question: _lastAskedQuestion,
+              onFollowUp: _focusInputForFollowUp,
+            ),
           ],
         ],
       ),
@@ -192,10 +228,19 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     final question = _controller.text.trim();
     if (question.isEmpty) return;
     FocusScope.of(context).unfocus();
+    setState(() {
+      _lastAskedQuestion = question;
+      _controller.clear();
+    });
     ref.read(coachChatControllerProvider(widget.conversationId).notifier).ask(
           question: question,
           analysisSnapshot: widget.analysisSnapshot,
         );
+  }
+
+  void _focusInputForFollowUp() {
+    _controller.clear();
+    _focusNode.requestFocus();
   }
 
   String _failureMessage(Object error) {
@@ -211,8 +256,14 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
 
 class _CoachChatResultView extends StatelessWidget {
   final CoachChatResult result;
+  final String? question;
+  final VoidCallback onFollowUp;
 
-  const _CoachChatResultView({required this.result});
+  const _CoachChatResultView({
+    required this.result,
+    required this.onFollowUp,
+    this.question,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -253,8 +304,24 @@ class _CoachChatResultView extends StatelessWidget {
                   ),
                 ),
               ),
+              IconButton(
+                tooltip: '複製教練回覆',
+                icon: const Icon(Icons.copy_rounded, size: 18),
+                visualDensity: VisualDensity.compact,
+                color: AppColors.glassTextSecondary,
+                onPressed: () => _copyCoachAnswer(context),
+              ),
             ],
           ),
+          if (question != null && question!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '你剛剛問：$question',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           Text(
             result.answer,
@@ -282,12 +349,65 @@ class _CoachChatResultView extends StatelessWidget {
                 ),
               ),
             ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _copyText(context, result.suggestedLine!),
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('複製這句'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
           ],
           const SizedBox(height: 10),
           _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
           if (result.needsReflection && result.reflectionQuestion != null)
             _InfoLine(label: '教練追問', value: result.reflectionQuestion!),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: onFollowUp,
+              icon: const Icon(Icons.add_comment_outlined, size: 18),
+              label: const Text('繼續追問'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                side: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.38),
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _copyCoachAnswer(BuildContext context) async {
+    final parts = <String>[
+      result.headline,
+      result.answer,
+      '你現在卡在：${result.userState}',
+      '這次先做：${result.nextStep}',
+      if (result.suggestedLine != null) '可以這樣說：${result.suggestedLine}',
+      '邊界提醒：${result.boundaryReminder}',
+      if (result.needsReflection && result.reflectionQuestion != null)
+        '教練追問：${result.reflectionQuestion}',
+    ];
+    await _copyText(context, parts.join('\n'));
+  }
+
+  Future<void> _copyText(BuildContext context, String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已複製'),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
