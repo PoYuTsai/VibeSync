@@ -17,6 +17,9 @@ Deno.test("buildCoachChatPrompt includes coach 1:1 positioning and JSON contract
   assertStringIncludes(prompt, "不是套殼聊天機器人");
   assertStringIncludes(prompt, "收斂狀態機");
   assertStringIncludes(prompt, "不是幫他發散更多劇本");
+  assertStringIncludes(prompt, "記憶使用規則");
+  assertStringIncludes(prompt, "自然點出一個具體依據");
+  assertStringIncludes(prompt, "不要寫成「我參考了 A/B/C」的報告");
   assertStringIncludes(prompt, '"mode"');
   assertStringIncludes(prompt, '"responseType"');
   assertStringIncludes(prompt, '"boundaryReminder"');

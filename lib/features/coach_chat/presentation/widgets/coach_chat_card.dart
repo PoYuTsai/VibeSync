@@ -5,11 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../conversation/domain/entities/conversation.dart';
 import '../../data/providers/coach_chat_providers.dart';
 import '../../data/services/coach_chat_api_service.dart';
 import '../../domain/entities/coach_chat_mode.dart';
 import '../../domain/entities/coach_chat_result.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 
 class CoachChatCard extends ConsumerStatefulWidget {
   final String conversationId;
@@ -80,6 +83,12 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     final state = ref.watch(provider);
     final history = ref.watch(coachChatHistoryProvider(widget.conversationId));
     final subscription = ref.watch(subscriptionProvider);
+    final conversation = ref.watch(conversationProvider(widget.conversationId));
+    final memorySources = _coachMemorySources(
+      ref: ref,
+      conversation: conversation,
+      analysisSnapshot: widget.analysisSnapshot,
+    );
     final latest =
         state.valueOrNull ?? (history.isEmpty ? null : history.first);
     final isLoading = state.isLoading;
@@ -153,6 +162,8 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                 ),
             ],
           ),
+          const SizedBox(height: 14),
+          _CoachMemorySourceStrip(sources: memorySources),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
@@ -258,6 +269,53 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
         ],
       ),
     );
+  }
+
+  List<String> _coachMemorySources({
+    required WidgetRef ref,
+    required Conversation? conversation,
+    required CoachChatAnalysisSnapshot analysisSnapshot,
+  }) {
+    final sources = <String>[];
+    final messages = conversation?.messages ?? const [];
+    final hasConversation = messages.any(
+      (message) => message.content.trim().isNotEmpty,
+    );
+    if (hasConversation) sources.add('本段對話');
+
+    final summaries = conversation?.summaries;
+    if (summaries != null && summaries.isNotEmpty) {
+      sources.add('舊摘要');
+    }
+
+    if (_hasAnalysisSnapshot(analysisSnapshot)) {
+      sources.add('最新分析');
+    }
+
+    final partnerId = conversation?.partnerId;
+    if (partnerId != null) {
+      final flag = ref.watch(dataQualityFlagProvider(partnerId));
+      final flagged = flag.isFlagged;
+      final styleContext = ref.watch(coachChatStyleContextProvider((
+        partnerId: partnerId,
+        includePartnerOverride: !flagged,
+      )));
+      if (styleContext != null && styleContext.trim().isNotEmpty) {
+        sources.add('你的風格');
+      }
+      sources.add(flagged ? '只看本段' : '對象資料');
+    }
+
+    return sources.isEmpty ? const ['目前問題'] : sources;
+  }
+
+  bool _hasAnalysisSnapshot(CoachChatAnalysisSnapshot snapshot) {
+    return snapshot.heatScore != null ||
+        (snapshot.stage?.trim().isNotEmpty ?? false) ||
+        (snapshot.summary?.trim().isNotEmpty ?? false) ||
+        (snapshot.nextStep?.trim().isNotEmpty ?? false) ||
+        (snapshot.coachActionType?.trim().isNotEmpty ?? false) ||
+        snapshot.keySignals.any((signal) => signal.trim().isNotEmpty);
   }
 
   void _ask() {
@@ -537,6 +595,71 @@ class _CoachChatResultView extends StatelessWidget {
       const SnackBar(
         content: Text('已複製'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+class _CoachMemorySourceStrip extends StatelessWidget {
+  final List<String> sources;
+
+  const _CoachMemorySourceStrip({required this.sources});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.46),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: AppColors.glassBorder.withValues(alpha: 0.75),
+        ),
+      ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.auto_awesome_outlined,
+                size: 15,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '教練參考',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          ...sources.map(
+            (source) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.14),
+                ),
+              ),
+              child: Text(
+                source,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
