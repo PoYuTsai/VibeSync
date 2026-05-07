@@ -472,6 +472,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
   }
 
   Future<void> _handleErrorAction(AnalysisErrorAction action) async {
@@ -705,6 +706,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
           autofocus: true,
           maxLines: null,
           minLines: 1,
+          onTapOutside: (_) => _dismissKeyboard(),
           cursorColor: AppColors.primary,
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.glassTextPrimary,
@@ -5027,6 +5029,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       maxLines: 3,
                                       textInputAction: TextInputAction.done,
                                       onEditingComplete: _dismissKeyboard,
+                                      onTapOutside: (_) => _dismissKeyboard(),
                                       enabled: !_isOptimizing,
                                       onChanged: (_) => setState(() {}),
                                     ),
@@ -5329,6 +5332,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         maxLines: 3,
                                         textInputAction: TextInputAction.done,
                                         onEditingComplete: _dismissKeyboard,
+                                        onTapOutside: (_) => _dismissKeyboard(),
                                       ),
                                       const SizedBox(height: 16),
                                       SizedBox(
@@ -6011,6 +6015,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
               minLines: 2,
               textInputAction: TextInputAction.done,
               onEditingComplete: _dismissKeyboard,
+              onTapOutside: (_) => _dismissKeyboard(),
               enabled: !_isAnalyzing,
             ),
             const SizedBox(height: 12),
