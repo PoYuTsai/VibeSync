@@ -4119,16 +4119,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             const SizedBox(height: 16),
                           ],
 
-                          // Enthusiasm Gauge
                           if (_enthusiasmScore != null) ...[
-                            ScoreHeroCard(
-                              score: _enthusiasmScore!,
-                              // previousScore: null for now
-                            ),
-
-                            // 冰點放棄建議 vs 行動下一步（互斥，避免訊息衝突）
                             if (_shouldGiveUp) ...[
-                              const SizedBox(height: 12),
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
@@ -4140,21 +4132,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                 ),
                                 child: Row(
                                   children: [
-                                    const Text('🚫',
+                                    const Text('⚠️',
                                         style: TextStyle(fontSize: 20)),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        '機會不大，建議開新對話，把時間留給對的人',
+                                        '這段互動目前不建議再投入，先保護自己的時間與情緒成本。',
                                         style: AppTypography.bodyMedium,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
+                              const SizedBox(height: 16),
                             ] else if (_gameStage != null &&
                                 _finalRecommendation != null) ...[
-                              const SizedBox(height: 12),
                               Builder(
                                 builder: (context) {
                                   final conversation = ref.watch(
@@ -4192,7 +4184,79 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                   );
                                 },
                               ),
+                              const SizedBox(height: 16),
                             ],
+                          ],
+
+                          if (_finalRecommendation != null &&
+                              _finalRecommendation!.content
+                                  .trim()
+                                  .isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColors.primary.withValues(alpha: 0.1),
+                                    AppColors.primary.withValues(alpha: 0.05),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: AppColors.primary
+                                        .withValues(alpha: 0.3)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Text('🎯',
+                                          style: TextStyle(fontSize: 20)),
+                                      const SizedBox(width: 8),
+                                      Text('AI 推薦回覆',
+                                          style: AppTypography.titleLarge),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ..._buildRecommendationContent(
+                                      _finalRecommendation!.content),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    '📝 ${_finalRecommendation!.reason}',
+                                    style: AppTypography.bodyMedium,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '🧠 ${_finalRecommendation!.psychology}',
+                                    style: AppTypography.caption,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_enthusiasmScore != null &&
+                              _gameStage != null &&
+                              _finalRecommendation != null) ...[
+                            CoachChatCard(
+                              conversationId: widget.conversationId,
+                              analysisSnapshot:
+                                  _buildCoachChatAnalysisSnapshot(),
+                              onQuotaExceeded: () {
+                                unawaited(_handleCoachChatQuotaExceeded());
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Enthusiasm Gauge
+                          if (_enthusiasmScore != null) ...[
+                            ScoreHeroCard(
+                              score: _enthusiasmScore!,
+                              // previousScore: null for now
+                            ),
                           ] else if (_isAnalyzing) ...[
                             const Center(
                               child: Column(
@@ -4630,70 +4694,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                 },
                               ),
                             ],
-                          ],
-
-                          // 最終建議 (AI 推薦) - 只在有實際內容時顯示
-                          if (_finalRecommendation != null &&
-                              _finalRecommendation!.content
-                                  .trim()
-                                  .isNotEmpty) ...[
-                            const SizedBox(height: 24),
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    AppColors.primary.withValues(alpha: 0.1),
-                                    AppColors.primary.withValues(alpha: 0.05),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: AppColors.primary
-                                        .withValues(alpha: 0.3)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Text('⭐',
-                                          style: TextStyle(fontSize: 20)),
-                                      const SizedBox(width: 8),
-                                      Text('AI 推薦回覆',
-                                          style: AppTypography.titleLarge),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  ..._buildRecommendationContent(
-                                      _finalRecommendation!.content),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    '📝 ${_finalRecommendation!.reason}',
-                                    style: AppTypography.bodyMedium,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '🧠 ${_finalRecommendation!.psychology}',
-                                    style: AppTypography.caption,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-
-                          if (_enthusiasmScore != null &&
-                              _gameStage != null &&
-                              _finalRecommendation != null) ...[
-                            const SizedBox(height: 16),
-                            CoachChatCard(
-                              conversationId: widget.conversationId,
-                              analysisSnapshot:
-                                  _buildCoachChatAnalysisSnapshot(),
-                              onQuotaExceeded: () {
-                                unawaited(_handleCoachChatQuotaExceeded());
-                              },
-                            ),
                           ],
 
                           // 優化我的訊息功能
