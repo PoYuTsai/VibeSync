@@ -70,31 +70,25 @@ void main() {
       expect(view.lastInteraction, isNull);
     });
 
-    test('latestHeat = lastEnthusiasmScore of the most-recent conversation', () {
+    test('latestHeat = lastEnthusiasmScore of the most-recent conversation',
+        () {
       final view = _partner().aggregateOver([
         _convo(
-            id: 'c1',
-            updatedAt: DateTime(2026, 1, 1),
-            lastEnthusiasmScore: 99),
+            id: 'c1', updatedAt: DateTime(2026, 1, 1), lastEnthusiasmScore: 99),
         _convo(
-            id: 'c2',
-            updatedAt: DateTime(2026, 4, 1),
-            lastEnthusiasmScore: 72),
+            id: 'c2', updatedAt: DateTime(2026, 4, 1), lastEnthusiasmScore: 72),
         _convo(
-            id: 'c3',
-            updatedAt: DateTime(2026, 3, 1),
-            lastEnthusiasmScore: 50),
+            id: 'c3', updatedAt: DateTime(2026, 3, 1), lastEnthusiasmScore: 50),
       ]);
       expect(view.latestHeat, 72);
     });
 
-    test('latestHeat is null when most-recent conversation has null score (D5-C)',
+    test(
+        'latestHeat is null when most-recent conversation has null score (D5-C)',
         () {
       final view = _partner().aggregateOver([
         _convo(
-            id: 'c1',
-            updatedAt: DateTime(2026, 1, 1),
-            lastEnthusiasmScore: 80),
+            id: 'c1', updatedAt: DateTime(2026, 1, 1), lastEnthusiasmScore: 80),
         _convo(
             id: 'c2',
             updatedAt: DateTime(2026, 5, 1),
@@ -152,8 +146,7 @@ void main() {
         _convo(
           id: 'old',
           updatedAt: DateTime(2026, 1, 1),
-          snapshotJson:
-              _snapshot(interests: ['t1', 't2', 't3', 't4', 't5']),
+          snapshotJson: _snapshot(interests: ['t1', 't2', 't3', 't4', 't5']),
         ),
         _convo(
           id: 'new',
@@ -166,8 +159,7 @@ void main() {
       expect(view.unionInterests.take(4).toList(), ['t6', 't7', 't8', 't9']);
       // Cap drops the trailing tag of the oldest snapshot (t5), not the head.
       expect(view.unionInterests, isNot(contains('t5')));
-      expect(view.unionInterests,
-          containsAll(['t1', 't2', 't3', 't4']));
+      expect(view.unionInterests, containsAll(['t1', 't2', 't3', 't4']));
     });
 
     test('unionTraits dedupes and ranks by recency (oldest mention sinks last)',
@@ -205,6 +197,84 @@ void main() {
         ),
       ]);
       expect(view.unionNotes, '第一次見面緊張\n約過咖啡');
+    });
+
+    test('unionNotes dedupes exact and near-duplicate notes', () {
+      final view = _partner().aggregateOver([
+        _convo(
+          id: 'old',
+          updatedAt: DateTime(2026, 1, 1),
+          snapshotJson: _snapshot(notes: [
+            'like-testing-reactions',
+            'father steak interest but busy',
+          ]),
+        ),
+        _convo(
+          id: 'new',
+          updatedAt: DateTime(2026, 5, 1),
+          snapshotJson: _snapshot(notes: [
+            'likes-testing-reactions',
+            'father steak interest but busy',
+            'active questioning',
+          ]),
+        ),
+      ]);
+
+      final lines = view.unionNotes!.split('\n');
+      expect(lines, [
+        'likes-testing-reactions',
+        'father steak interest but busy',
+        'active questioning',
+      ]);
+      expect(lines, isNot(contains('like-testing-reactions')));
+    });
+
+    test('unionNotes keeps the latest 8 unique notes', () {
+      final view = _partner().aggregateOver([
+        _convo(
+          id: 'old',
+          updatedAt: DateTime(2026, 1, 1),
+          snapshotJson: _snapshot(notes: ['n1', 'n2', 'n3', 'n4']),
+        ),
+        _convo(
+          id: 'new',
+          updatedAt: DateTime(2026, 5, 1),
+          snapshotJson: _snapshot(
+            notes: ['n5', 'n6', 'n7', 'n8', 'n9', 'n10'],
+          ),
+        ),
+      ]);
+
+      expect(view.unionNotes!.split('\n'), [
+        'n1',
+        'n2',
+        'n5',
+        'n6',
+        'n7',
+        'n8',
+        'n9',
+        'n10',
+      ]);
+    });
+
+    test('unionNotes does not merge opposite notes with negation', () {
+      final view = _partner().aggregateOver([
+        _convo(
+          id: 'old',
+          updatedAt: DateTime(2026, 1, 1),
+          snapshotJson: _snapshot(notes: ['可以直接提問']),
+        ),
+        _convo(
+          id: 'new',
+          updatedAt: DateTime(2026, 5, 1),
+          snapshotJson: _snapshot(notes: ['不可以直接提問']),
+        ),
+      ]);
+
+      expect(view.unionNotes!.split('\n'), [
+        '可以直接提問',
+        '不可以直接提問',
+      ]);
     });
 
     test(

@@ -10,6 +10,35 @@
 
 ## 2026-05
 
+### [2026-05-07] 對象卡備註重複累積
+**症狀**:
+
+- 對象詳情卡的「備註」會把每次分析擷取到的 `targetProfile.notes` 逐行串起來。
+- 同一個觀察，例如「喜歡測試對方反應」「對教父牛排有興趣但用忙拒絕邀約」「可能需要更多信任建立」，會在卡片裡重複出現多次。
+- 使用者看起來像記憶很亂，而不是 AI 有統整過同一個對象。
+
+**Root Cause**:
+
+- `Partner.aggregateOver()` 對 interests / traits 有 recency ranking + dedupe + cap，但 notes 只是把所有 snapshot notes 依時間串接。
+- 每段對話重新分析時，AI 會穩定抽到相似備註，舊邏輯沒有 exact dedupe、near-duplicate collapse，也沒有顯示上限。
+
+**修復**:
+
+- 新增 `unionNotes` 聚合規則：先選最新 notes、去掉完全重複和近似重複，再保留最多 8 條。
+- 顯示仍維持時間線順序，避免卡片讀起來像倒序碎片。
+- 新增 regression tests 覆蓋 exact duplicate、near duplicate、latest-8 cap。
+
+**驗證**:
+
+- `flutter test test/unit/entities/partner_aggregates_test.dart`
+- `flutter test test/unit/features/coach_chat test/unit/entities/partner_aggregates_test.dart`
+- `flutter analyze`
+
+**相關檔案**:
+
+- `lib/features/partner/domain/extensions/partner_aggregates.dart`
+- `test/unit/entities/partner_aggregates_test.dart`
+
 ### [2026-05-06] userDraft 優化改掉使用者真正想表達的主題
 
 **症狀**:

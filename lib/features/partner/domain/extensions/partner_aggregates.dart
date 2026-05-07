@@ -34,6 +34,7 @@ class PartnerAggregateView {
 }
 
 const int _kMaxTags = 8;
+const int _kMaxNotes = 8;
 
 extension PartnerAggregates on Partner {
   PartnerAggregateView aggregateOver(List<Conversation> conversations) {
@@ -53,10 +54,9 @@ extension PartnerAggregates on Partner {
     final unionTraits =
         _rankByRecency(parsedDesc, (p) => p.traits, cap: _kMaxTags);
 
-    final notesOldestFirst =
-        parsedDesc.reversed.expand((p) => p.notes).toList();
+    final unionNoteLines = _rankNotesByRecency(parsedDesc, cap: _kMaxNotes);
     final unionNotes =
-        notesOldestFirst.isEmpty ? null : notesOldestFirst.join('\n');
+        unionNoteLines.isEmpty ? null : unionNoteLines.join('\n');
 
     final totalRounds =
         conversations.fold<int>(0, (s, c) => s + c.currentRound);
@@ -123,4 +123,116 @@ List<String> _rankByRecency(
     }
   }
   return result;
+}
+
+List<String> _rankNotesByRecency(
+  List<_Parsed> descByDate, {
+  required int cap,
+}) {
+  final seen = <String>{};
+  final result = <_NoteCandidate>[];
+  for (final p in descByDate) {
+    for (var i = 0; i < p.notes.length; i++) {
+      final raw = p.notes[i];
+      final note = raw.trim();
+      if (note.isEmpty) continue;
+
+      final key = _normalizeNoteKey(note);
+      if (key.isEmpty || seen.contains(key)) continue;
+
+      seen.add(key);
+      if (_isNearDuplicateNote(key, result)) continue;
+
+      result.add(_NoteCandidate(
+        note: note,
+        updatedAt: p.updatedAt,
+        sourceOrder: i,
+      ));
+      if (result.length >= cap) return _displayNotesInTimelineOrder(result);
+    }
+  }
+  return _displayNotesInTimelineOrder(result);
+}
+
+List<String> _displayNotesInTimelineOrder(List<_NoteCandidate> notes) {
+  final sorted = [...notes]..sort((a, b) {
+      final byDate = a.updatedAt.compareTo(b.updatedAt);
+      if (byDate != 0) return byDate;
+      return a.sourceOrder.compareTo(b.sourceOrder);
+    });
+  return sorted.map((candidate) => candidate.note).toList();
+}
+
+bool _isNearDuplicateNote(
+  String normalizedNote,
+  List<_NoteCandidate> existingNotes,
+) {
+  for (final existing in existingNotes) {
+    final existingKey = _normalizeNoteKey(existing.note);
+    if (existingKey == normalizedNote) return true;
+    if (normalizedNote.length < 6 || existingKey.length < 6) continue;
+    if (_hasDifferentNegationSignal(normalizedNote, existingKey)) continue;
+    if (normalizedNote.contains(existingKey) ||
+        existingKey.contains(normalizedNote)) {
+      return true;
+    }
+    final maxLength = normalizedNote.length > existingKey.length
+        ? normalizedNote.length
+        : existingKey.length;
+    if (maxLength <= 24 &&
+        _levenshteinDistance(normalizedNote, existingKey) <= 2) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool _hasDifferentNegationSignal(String a, String b) {
+  return _hasNegationSignal(a) != _hasNegationSignal(b);
+}
+
+bool _hasNegationSignal(String value) {
+  const tokens = ['不', '無', '沒', '別', 'not', 'no', 'never', 'cannot'];
+  return tokens.any(value.contains);
+}
+
+class _NoteCandidate {
+  final String note;
+  final DateTime updatedAt;
+  final int sourceOrder;
+
+  const _NoteCandidate({
+    required this.note,
+    required this.updatedAt,
+    required this.sourceOrder,
+  });
+}
+
+String _normalizeNoteKey(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s，。！？、,.!?;；:：「」『』（）()【】\[\]…·\-—_]+'), '');
+}
+
+int _levenshteinDistance(String a, String b) {
+  if (a == b) return 0;
+  if (a.isEmpty) return b.length;
+  if (b.isEmpty) return a.length;
+
+  var previous = List<int>.generate(b.length + 1, (i) => i);
+  for (var i = 0; i < a.length; i++) {
+    final current = List<int>.filled(b.length + 1, 0);
+    current[0] = i + 1;
+    for (var j = 0; j < b.length; j++) {
+      final cost = a[i] == b[j] ? 0 : 1;
+      final insertion = current[j] + 1;
+      final deletion = previous[j + 1] + 1;
+      final substitution = previous[j] + cost;
+      current[j + 1] = insertion < deletion
+          ? (insertion < substitution ? insertion : substitution)
+          : (deletion < substitution ? deletion : substitution);
+    }
+    previous = current;
+  }
+  return previous[b.length];
 }
