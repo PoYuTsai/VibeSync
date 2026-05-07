@@ -456,6 +456,10 @@ class _CoachChatResultView extends StatelessWidget {
           const SizedBox(height: 10),
           if (result.userTruth != null)
             _InfoLine(label: '我理解你的真實想法', value: result.userTruth!),
+          _InfoLine(
+            label: '這輪卡點',
+            value: _frictionTypeLabel(result.frictionType),
+          ),
           _InfoLine(label: '你現在卡在', value: result.userState),
           _InfoLine(
               label: isClarifying ? '先補充這一點' : '這次先做', value: result.nextStep),
@@ -549,6 +553,19 @@ class _CoachChatResultView extends StatelessWidget {
     };
   }
 
+  String _frictionTypeLabel(String type) {
+    return switch (type) {
+      'fearOfMistake' => '怕犯錯／怕丟臉',
+      'overPolishing' => '想找完美句，反而卡住',
+      'hesitatesToMoveForward' => '有窗口，但不敢往前一步',
+      'emotionalOverreach' => '情緒上頭，想補位或討確認',
+      'boundaryRisk' => '界線或壓迫風險',
+      'stopLoss' => '這局該先停或止損',
+      'none' => '狀態穩，照節奏走',
+      _ => '意圖還沒完全釐清',
+    };
+  }
+
   Future<void> _confirmForceAnswer(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -578,6 +595,7 @@ class _CoachChatResultView extends StatelessWidget {
     final parts = <String>[
       result.headline,
       result.answer,
+      '這輪卡點：${_frictionTypeLabel(result.frictionType)}',
       '你現在卡在：${result.userState}',
       '這次先做：${result.nextStep}',
       if (result.suggestedLine != null) '可以這樣說：${result.suggestedLine}',

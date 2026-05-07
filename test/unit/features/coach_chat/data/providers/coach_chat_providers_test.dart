@@ -71,6 +71,7 @@ Map<String, dynamic> _edgeSuccess({
       'headline': headline,
       'answer': '她是在丟一個觀察，不是要你立刻證明自己。',
       'userState': '你可能急著解釋，反而把輕鬆感弄重。',
+      'frictionType': 'overPolishing',
       'nextStep': '承認一半，補一個畫面，再把球丟回她。',
       'suggestedLine': '被妳發現了，我會在飲料櫃前思考人生。妳也是亂逛派嗎？',
       'boundaryReminder': '不要把一句觀察放大成考試。',
@@ -267,6 +268,7 @@ void main() {
 
       final state = c.read(coachChatControllerProvider('c-1'));
       expect(state.value?.headline, '接住她的觀察');
+      expect(state.value?.frictionType, 'overPolishing');
       expect(repo.putCalls, 1);
       expect(calls.single.fn, 'coach-chat');
       expect(calls.single.body['sessionId'], isA<String>());

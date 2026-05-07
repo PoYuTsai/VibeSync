@@ -22,6 +22,9 @@ Deno.test("buildCoachChatPrompt includes coach 1:1 positioning and JSON contract
   assertStringIncludes(prompt, "不要寫成「我參考了 A/B/C」的報告");
   assertStringIncludes(prompt, '"mode"');
   assertStringIncludes(prompt, '"responseType"');
+  assertStringIncludes(prompt, '"frictionType"');
+  assertStringIncludes(prompt, "fearOfMistake");
+  assertStringIncludes(prompt, "30 秒到 5 分鐘內可做完");
   assertStringIncludes(prompt, '"boundaryReminder"');
 });
 

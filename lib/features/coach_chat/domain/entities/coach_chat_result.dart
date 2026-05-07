@@ -75,6 +75,9 @@ class CoachChatResult {
   @HiveField(21)
   final int costDeducted;
 
+  @HiveField(22)
+  final String frictionType;
+
   const CoachChatResult({
     required this.id,
     required this.conversationId,
@@ -98,6 +101,7 @@ class CoachChatResult {
     this.rewriteDecision,
     this.rewriteReason,
     this.costDeducted = 1,
+    this.frictionType = 'unclearIntent',
   });
 
   bool get isClarifyingQuestion => responseType == 'clarifyingQuestion';

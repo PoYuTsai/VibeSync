@@ -26,6 +26,7 @@ function validClaudeCard(overrides: Record<string, unknown> = {}) {
           "她是在丟一個觀察，不一定是要你證明自己。接住一半，再補一個有畫面的反問就好。",
         userTruth: "你想接住她的好奇，但不想裝深沉。",
         userState: "你可能想抓住她的興趣，但不用急著解釋自己。",
+        frictionType: "overPolishing",
         nextStep: "用一句輕鬆反問把球丟回去。",
         suggestedLine: "被妳發現了，我會在飲料櫃前思考人生。妳也是亂逛派嗎？",
         rewriteDecision: "light_edit",
@@ -83,6 +84,10 @@ Deno.test("runCoachChat returns card and deducts one credit on success", async (
   assertEquals(
     (result.body.card as Record<string, unknown>).mode,
     "replyCraft",
+  );
+  assertEquals(
+    (result.body.card as Record<string, unknown>).frictionType,
+    "overPolishing",
   );
   assertEquals(harness.events.includes("coach_chat_succeeded"), true);
 });

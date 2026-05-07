@@ -31,6 +31,7 @@ Map<String, dynamic> _validResponse({
           'answer': '她是在丟一個觀察，不是要你立刻證明自己。',
           'userTruth': '你想接住她的好奇，但不想裝深沉。',
           'userState': '你可能急著解釋，反而把輕鬆感弄重。',
+          'frictionType': 'overPolishing',
           'nextStep': '承認一半，補一個畫面，再把球丟回她。',
           'suggestedLine': '被妳發現了，我會在飲料櫃前思考人生。妳也是亂逛派嗎？',
           'rewriteDecision': 'light_edit',
@@ -210,6 +211,7 @@ void main() {
       expect(result.mode, 'replyCraft');
       expect(result.responseType, 'coachAnswer');
       expect(result.sessionId, 's-1');
+      expect(result.frictionType, 'overPolishing');
       expect(result.rewriteDecision, 'light_edit');
       expect(result.costDeducted, 1);
       expect(result.provider, 'claude');
@@ -254,6 +256,43 @@ void main() {
       expect(result.isClarifyingQuestion, isTrue);
       expect(result.costDeducted, 0);
       expect(result.reflectionQuestion, contains('心裡第一個反應'));
+    });
+
+    test('defaults missing frictionType for older edge responses', () async {
+      final service = CoachChatApiService(
+        invoker: _stub(
+          _ok(
+            _validResponse(
+              card: <String, dynamic>{
+                'mode': 'replyCraft',
+                'responseType': 'coachAnswer',
+                'headline': '接住她的觀察',
+                'answer': '她是在丟一個觀察，不是要你立刻證明自己。',
+                'userTruth': '你想接住她的好奇，但不想裝深沉。',
+                'userState': '你可能急著解釋，反而把輕鬆感弄重。',
+                'nextStep': '承認一半，補一個畫面，再把球丟回她。',
+                'suggestedLine': '被妳發現了。妳也是亂逛派嗎？',
+                'rewriteDecision': 'light_edit',
+                'rewriteReason': '保留原意，只補畫面與反問。',
+                'boundaryReminder': '不要把一句觀察放大成考試。',
+                'needsReflection': false,
+                'reflectionQuestion': null,
+                'costDeducted': 1,
+              },
+            ),
+          ),
+        ),
+      );
+
+      final result = await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '她是什麼意思？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+      );
+
+      expect(result.frictionType, 'unclearIntent');
     });
 
     test('throws quota exception on 429', () async {

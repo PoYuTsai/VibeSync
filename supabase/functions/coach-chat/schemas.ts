@@ -27,6 +27,16 @@ export const RewriteDecisionEnum = z.enum([
   "rewrite",
   "do_not_send",
 ]);
+export const FrictionTypeEnum = z.enum([
+  "fearOfMistake",
+  "overPolishing",
+  "hesitatesToMoveForward",
+  "emotionalOverreach",
+  "boundaryRisk",
+  "stopLoss",
+  "unclearIntent",
+  "none",
+]);
 
 export const RequestMessageSchema = z.object({
   sender: MessageSenderEnum,
@@ -90,6 +100,7 @@ export const ResponseCardSchema = z.object({
   answer: z.string().min(1).max(360),
   userTruth: z.string().max(120).nullable().optional(),
   userState: z.string().min(1).max(100),
+  frictionType: FrictionTypeEnum.default("unclearIntent"),
   nextStep: z.string().min(1).max(100),
   suggestedLine: z.string().max(160).nullable().optional(),
   rewriteDecision: RewriteDecisionEnum.nullable().optional(),

@@ -284,6 +284,7 @@ class CoachChatApiService {
     final headline = _requireString(cardMap, 'headline');
     final answer = _requireString(cardMap, 'answer');
     final userState = _requireString(cardMap, 'userState');
+    final frictionType = cardMap['frictionType'];
     final nextStep = _requireString(cardMap, 'nextStep');
     final boundaryReminder = _requireString(cardMap, 'boundaryReminder');
     final userTruth = cardMap['userTruth'];
@@ -331,6 +332,9 @@ class CoachChatApiService {
       userTruth:
           userTruth is String && userTruth.trim().isNotEmpty ? userTruth : null,
       userState: userState,
+      frictionType: frictionType is String && frictionType.trim().isNotEmpty
+          ? frictionType
+          : 'unclearIntent',
       nextStep: nextStep,
       suggestedLine: suggestedLine is String && suggestedLine.trim().isNotEmpty
           ? suggestedLine

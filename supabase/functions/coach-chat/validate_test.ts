@@ -135,6 +135,51 @@ Deno.test("validateResponseCard accepts clarification when it does not deduct", 
   assertEquals(parsed.costDeducted, 0);
 });
 
+Deno.test("validateResponseCard defaults frictionType for backwards compatibility", () => {
+  const parsed = validateResponseCard({
+    responseType: "coachAnswer",
+    mode: "moveForward",
+    headline: "先做一個小推進",
+    answer: "你現在不是缺話術，而是怕一推就尷尬。先用一個低壓邀約測窗口。",
+    userTruth: "你其實想約，只是怕被拒絕。",
+    userState: "你把邀約想成一次成敗考試。",
+    nextStep: "今天只丟一個可退可進的輕邀約。",
+    suggestedLine: "那下次你想放空時，我帶你去一間安靜的甜點店。",
+    rewriteDecision: "rewrite",
+    rewriteReason: "把焦慮解釋改成低壓邀約。",
+    boundaryReminder: "邀約是給選擇，不是給壓力。",
+    needsReflection: false,
+    reflectionQuestion: null,
+    costDeducted: 1,
+  });
+
+  assertEquals(parsed.frictionType, "unclearIntent");
+});
+
+Deno.test("validateResponseCard rejects unknown frictionType", () => {
+  assertThrows(
+    () =>
+      validateResponseCard({
+        responseType: "coachAnswer",
+        mode: "moveForward",
+        headline: "先做一個小推進",
+        answer: "你現在不是缺話術，而是怕一推就尷尬。先用一個低壓邀約測窗口。",
+        userTruth: "你其實想約，只是怕被拒絕。",
+        userState: "你把邀約想成一次成敗考試。",
+        frictionType: "random",
+        nextStep: "今天只丟一個可退可進的輕邀約。",
+        suggestedLine: "那下次你想放空時，我帶你去一間安靜的甜點店。",
+        rewriteDecision: "rewrite",
+        rewriteReason: "把焦慮解釋改成低壓邀約。",
+        boundaryReminder: "邀約是給選擇，不是給壓力。",
+        needsReflection: false,
+        reflectionQuestion: null,
+        costDeducted: 1,
+      }),
+    Error,
+  );
+});
+
 Deno.test("assertCardSafe rejects shared banned tokens", () => {
   assertThrows(
     () =>

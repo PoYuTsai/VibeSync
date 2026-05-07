@@ -66,6 +66,8 @@ Deno.test("Spec 6 smoke: invite anxiety asks for intent before pushing", () => {
 
   assertCoreSpec6Contract(prompt);
   assertStringIncludes(prompt, "我想約她，但怕太急");
+  assertStringIncludes(prompt, "hesitatesToMoveForward");
+  assertStringIncludes(prompt, "fearOfMistake");
   assertStringIncludes(
     prompt,
     "若缺少使用者感受、原本想回、真正目的或可承擔成本",
