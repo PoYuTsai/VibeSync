@@ -151,6 +151,45 @@ Deno.test("buildCoachChatPrompt covers social venue and hostess context without 
   assertStringIncludes(prompt, "不高道德、不說教");
 });
 
+Deno.test("buildCoachChatPrompt treats explicit sex questions as practical intimacy coaching", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "如果她問我想用什麼性愛姿勢，怎麼聊比較不瞎？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  assertStringIncludes(prompt, "很露骨的性詞彙");
+  assertStringIncludes(prompt, "性愛姿勢");
+  assertStringIncludes(prompt, "成熟性健康/親密溝通教練");
+  assertStringIncludes(prompt, "不要寫色情故事");
+  assertStringIncludes(prompt, "不要做角色扮演");
+  assertStringIncludes(prompt, "溝通、舒適度、身體訊號、安全、節奏");
+  assertStringIncludes(prompt, "疼痛就停");
+  assertStringIncludes(prompt, "用潤滑");
+  assertStringIncludes(prompt, "戴套");
+});
+
+Deno.test("buildCoachChatPrompt routes sexual health risks to safety guidance", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "保險套破了或她說會痛怎麼辦？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  assertStringIncludes(prompt, "疼痛、出血、性功能障礙、性病症狀、避孕失誤");
+  assertStringIncludes(prompt, "降低撩感");
+  assertStringIncludes(prompt, "健康安全建議");
+  assertStringIncludes(prompt, "就醫/篩檢/緊急避孕");
+  assertStringIncludes(prompt, "不要診斷");
+  assertStringIncludes(prompt, "不要保證沒有風險");
+});
+
 Deno.test("buildCoachChatPrompt converges line meaning into one working judgment", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",

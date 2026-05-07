@@ -161,6 +161,27 @@ Deno.test("Spec 6 smoke: adult same-night escalation stays concrete and consent-
   assertStringIncludes(prompt, "絕不教突破拒絕");
 });
 
+Deno.test("Spec 6 smoke: explicit sex technique stays health-and-communication framed", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "spec6-explicit-sex",
+    userQuestion: "她問我喜歡什麼姿勢，我想講得色色但不要瞎聊",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [
+      { sender: "partner", text: "你看起來很會，但不知道是不是真的" },
+      { sender: "me", text: "那要看你想怎麼驗證" },
+    ],
+    dataQualityFlagged: false,
+  });
+
+  assertCoreSpec6Contract(prompt);
+  assertStringIncludes(prompt, "很露骨的性詞彙");
+  assertStringIncludes(prompt, "成熟性健康/親密溝通教練");
+  assertStringIncludes(prompt, "不要寫色情故事");
+  assertStringIncludes(prompt, "問對方感受");
+  assertStringIncludes(prompt, "不要假裝每個人都適合同一招");
+});
+
 Deno.test("Spec 6 smoke: session state prevents repeated clarification", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "spec6-session-state",
