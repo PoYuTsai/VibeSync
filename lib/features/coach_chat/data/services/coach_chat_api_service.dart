@@ -42,6 +42,20 @@ class CoachChatPartnerHint {
   });
 }
 
+class CoachChatSessionTurn {
+  final String role;
+  final String kind;
+  final String content;
+  final DateTime? createdAt;
+
+  const CoachChatSessionTurn({
+    required this.role,
+    required this.kind,
+    required this.content,
+    this.createdAt,
+  });
+}
+
 typedef CoachChatInvoker = Future<CoachChatInvokeResponse> Function(
   String functionName, {
   required Map<String, dynamic> body,
@@ -99,9 +113,11 @@ const _bannedTokens = <String>[
 const _visibleCardFields = <String>[
   'headline',
   'answer',
+  'userTruth',
   'userState',
   'nextStep',
   'suggestedLine',
+  'rewriteReason',
   'boundaryReminder',
   'reflectionQuestion',
 ];
@@ -115,7 +131,11 @@ class CoachChatApiService {
   Future<CoachChatResult> ask({
     required String conversationId,
     required String? partnerId,
+    String? sessionId,
     required String question,
+    String? rawReplyDraft,
+    List<CoachChatSessionTurn> activeSessionTurns = const [],
+    bool forceAnswer = false,
     required List<CoachChatMessage> recentMessages,
     String? conversationSummary,
     CoachChatAnalysisSnapshot? analysisSnapshot,
@@ -126,7 +146,15 @@ class CoachChatApiService {
     final body = <String, dynamic>{
       'conversationId': conversationId,
       if (partnerId != null) 'partnerId': partnerId,
+      if (sessionId != null && sessionId.trim().isNotEmpty)
+        'sessionId': sessionId.trim(),
       'userQuestion': question.trim(),
+      if (rawReplyDraft != null && rawReplyDraft.trim().isNotEmpty)
+        'rawReplyDraft': rawReplyDraft.trim(),
+      if (activeSessionTurns.isNotEmpty)
+        'activeSessionTurns':
+            activeSessionTurns.map(_sessionTurnToWire).toList(),
+      if (forceAnswer) 'forceAnswer': true,
       'recentMessages': recentMessages.map(_messageToWire).toList(),
       if (conversationSummary != null && conversationSummary.trim().isNotEmpty)
         'conversationSummary': conversationSummary.trim(),
@@ -178,6 +206,16 @@ class CoachChatApiService {
       'text': message.text.trim(),
       if (message.createdAt != null)
         'createdAt': message.createdAt!.toIso8601String(),
+    };
+  }
+
+  Map<String, dynamic> _sessionTurnToWire(CoachChatSessionTurn turn) {
+    return <String, dynamic>{
+      'role': turn.role,
+      'kind': turn.kind,
+      'content': turn.content.trim(),
+      if (turn.createdAt != null)
+        'createdAt': turn.createdAt!.toIso8601String(),
     };
   }
 
@@ -238,11 +276,20 @@ class CoachChatApiService {
     _assertCardSafe(cardMap);
 
     final mode = _requireString(cardMap, 'mode');
+    final responseTypeValue = cardMap['responseType'];
+    final responseType =
+        responseTypeValue is String && responseTypeValue.isNotEmpty
+            ? responseTypeValue
+            : 'coachAnswer';
     final headline = _requireString(cardMap, 'headline');
     final answer = _requireString(cardMap, 'answer');
     final userState = _requireString(cardMap, 'userState');
     final nextStep = _requireString(cardMap, 'nextStep');
     final boundaryReminder = _requireString(cardMap, 'boundaryReminder');
+    final userTruth = cardMap['userTruth'];
+    final rewriteDecision = cardMap['rewriteDecision'];
+    final rewriteReason = cardMap['rewriteReason'];
+    final costDeducted = cardMap['costDeducted'];
     final needsReflection = cardMap['needsReflection'];
     if (needsReflection is! bool) {
       throw CoachChatGenerationFailedException(
@@ -281,10 +328,19 @@ class CoachChatApiService {
       mode: mode,
       headline: headline,
       answer: answer,
+      userTruth:
+          userTruth is String && userTruth.trim().isNotEmpty ? userTruth : null,
       userState: userState,
       nextStep: nextStep,
       suggestedLine: suggestedLine is String && suggestedLine.trim().isNotEmpty
           ? suggestedLine
+          : null,
+      rewriteDecision:
+          rewriteDecision is String && rewriteDecision.trim().isNotEmpty
+              ? rewriteDecision
+              : null,
+      rewriteReason: rewriteReason is String && rewriteReason.trim().isNotEmpty
+          ? rewriteReason
           : null,
       boundaryReminder: boundaryReminder,
       needsReflection: needsReflection,
@@ -295,7 +351,15 @@ class CoachChatApiService {
       generatedAt: parsedAt,
       provider: provider,
       modelUsed: model,
+      responseType: responseType,
+      sessionId: _stringOrNull(data['sessionId']),
+      costDeducted: costDeducted is int ? costDeducted : 1,
     );
+  }
+
+  String? _stringOrNull(dynamic value) {
+    if (value is! String || value.trim().isEmpty) return null;
+    return value.trim();
   }
 
   String _requireString(Map<String, dynamic> map, String field) {

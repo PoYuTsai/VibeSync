@@ -26,15 +26,21 @@ Map<String, dynamic> _validResponse({
     'card': card ??
         <String, dynamic>{
           'mode': 'replyCraft',
+          'responseType': 'coachAnswer',
           'headline': '接住她的觀察',
           'answer': '她是在丟一個觀察，不是要你立刻證明自己。',
+          'userTruth': '你想接住她的好奇，但不想裝深沉。',
           'userState': '你可能急著解釋，反而把輕鬆感弄重。',
           'nextStep': '承認一半，補一個畫面，再把球丟回她。',
           'suggestedLine': '被妳發現了，我會在飲料櫃前思考人生。妳也是亂逛派嗎？',
+          'rewriteDecision': 'light_edit',
+          'rewriteReason': '保留原意，只補畫面與反問。',
           'boundaryReminder': '不要把一句觀察放大成考試。',
           'needsReflection': false,
           'reflectionQuestion': null,
+          'costDeducted': 1,
         },
+    'sessionId': 's-1',
     'provider': 'claude',
     'model': 'claude-sonnet-4-20250514',
     'generatedAt': generatedAt,
@@ -54,7 +60,22 @@ void main() {
       await service.ask(
         conversationId: 'c-1',
         partnerId: 'p-1',
+        sessionId: 's-1',
         question: ' 她這句話是真的有興趣嗎？ ',
+        rawReplyDraft: '哈哈哪有',
+        activeSessionTurns: const [
+          CoachChatSessionTurn(
+            role: 'user',
+            kind: 'question',
+            content: '她說我很有故事是什麼意思？',
+          ),
+          CoachChatSessionTurn(
+            role: 'coach',
+            kind: 'clarification',
+            content: '你聽到她這句話後，心裡第一個反應是什麼？',
+          ),
+        ],
+        forceAnswer: true,
         recentMessages: [
           CoachChatMessage(
             isFromMe: false,
@@ -84,7 +105,22 @@ void main() {
       expect(calls.single.fn, 'coach-chat');
       expect(calls.single.body['conversationId'], 'c-1');
       expect(calls.single.body['partnerId'], 'p-1');
+      expect(calls.single.body['sessionId'], 's-1');
       expect(calls.single.body['userQuestion'], '她這句話是真的有興趣嗎？');
+      expect(calls.single.body['rawReplyDraft'], '哈哈哪有');
+      expect(calls.single.body['forceAnswer'], true);
+      expect(calls.single.body['activeSessionTurns'], [
+        {
+          'role': 'user',
+          'kind': 'question',
+          'content': '她說我很有故事是什麼意思？',
+        },
+        {
+          'role': 'coach',
+          'kind': 'clarification',
+          'content': '你聽到她這句話後，心裡第一個反應是什麼？',
+        },
+      ]);
       expect(calls.single.body['conversationSummary'], '最近在升溫。');
       expect(
           calls.single.body['effectiveStyleContext'], '- Preferred voice: 幽默');
@@ -172,9 +208,52 @@ void main() {
       expect(result.partnerId, 'p-1');
       expect(result.question, '她是什麼意思？');
       expect(result.mode, 'replyCraft');
+      expect(result.responseType, 'coachAnswer');
+      expect(result.sessionId, 's-1');
+      expect(result.rewriteDecision, 'light_edit');
+      expect(result.costDeducted, 1);
       expect(result.provider, 'claude');
       expect(result.modelUsed, 'claude-sonnet-4-20250514');
       expect(result.generatedAt, DateTime.parse('2026-05-07T12:00:00.000Z'));
+    });
+
+    test('parses clarification response without cost deduction', () async {
+      final service = CoachChatApiService(
+        invoker: _stub(
+          _ok(
+            _validResponse(
+              card: <String, dynamic>{
+                'responseType': 'clarifyingQuestion',
+                'mode': 'clarifyIntent',
+                'headline': '先問清楚你的真實想法',
+                'answer': '我先接住你：你不是沒答案，而是怕一回就失去分寸。',
+                'userTruth': null,
+                'userState': '你可能想推進，但還沒說出原本想回的句子。',
+                'nextStep': '先補一句你心裡真正想怎麼回。',
+                'suggestedLine': null,
+                'rewriteDecision': null,
+                'rewriteReason': null,
+                'boundaryReminder': '補充釐清不扣額度；正式建議才扣 1 則。',
+                'needsReflection': true,
+                'reflectionQuestion': '你聽到她這句話後，心裡第一個反應是什麼？',
+                'costDeducted': 0,
+              },
+            ),
+          ),
+        ),
+      );
+
+      final result = await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '她是什麼意思？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+      );
+
+      expect(result.isClarifyingQuestion, isTrue);
+      expect(result.costDeducted, 0);
+      expect(result.reflectionQuestion, contains('心裡第一個反應'));
     });
 
     test('throws quota exception on 429', () async {

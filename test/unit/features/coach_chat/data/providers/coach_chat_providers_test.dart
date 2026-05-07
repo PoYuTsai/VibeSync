@@ -80,6 +80,32 @@ Map<String, dynamic> _edgeSuccess({
     'provider': 'claude',
     'model': 'claude-sonnet-4-20250514',
     'generatedAt': _generatedAt,
+    'sessionId': 's-1',
+  };
+}
+
+Map<String, dynamic> _edgeClarification() {
+  return <String, dynamic>{
+    'card': <String, dynamic>{
+      'responseType': 'clarifyingQuestion',
+      'mode': 'clarifyIntent',
+      'headline': '先問清楚你的真實想法',
+      'answer': '我先接住你：你不是沒答案，而是怕一回就失去分寸。',
+      'userTruth': null,
+      'userState': '你可能想推進，但還沒說出原本想回的句子。',
+      'nextStep': '先補一句你心裡真正想怎麼回。',
+      'suggestedLine': null,
+      'rewriteDecision': null,
+      'rewriteReason': null,
+      'boundaryReminder': '補充釐清不扣額度；正式建議才扣 1 則。',
+      'needsReflection': true,
+      'reflectionQuestion': '你聽到她這句話後，心裡第一個反應是什麼？',
+      'costDeducted': 0,
+    },
+    'provider': 'claude',
+    'model': 'claude-sonnet-4-20250514',
+    'generatedAt': _generatedAt,
+    'sessionId': 's-1',
   };
 }
 
@@ -243,6 +269,7 @@ void main() {
       expect(state.value?.headline, '接住她的觀察');
       expect(repo.putCalls, 1);
       expect(calls.single.fn, 'coach-chat');
+      expect(calls.single.body['sessionId'], isA<String>());
       expect(
         calls.single.body['effectiveStyleContext'],
         contains('Preferred voice'),
@@ -260,6 +287,96 @@ void main() {
         {'sender': 'me', 'text': '哈哈哪有', 'createdAt': isA<String>()},
       ]);
       expect(calls.single.body['conversationSummary'], '前面在聊旅行和工作生活。');
+    });
+
+    test('clarification result persists but does not refresh usage', () async {
+      final repo = _FakeRepo();
+      var syncCalls = 0;
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(
+          response:
+              CoachChatInvokeResponse(status: 200, data: _edgeClarification()),
+        ),
+        conversation: _conversation(),
+        partner: _partner(),
+        usageSync: () async => syncCalls++,
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+            question: '她是什麼意思？',
+            analysisSnapshot: _snapshot(),
+          );
+
+      final result = c.read(coachChatControllerProvider('c-1')).value;
+      expect(result?.isClarifyingQuestion, isTrue);
+      expect(result?.costDeducted, 0);
+      expect(repo.putCalls, 1);
+      expect(syncCalls, 0);
+    });
+
+    test('supplement after clarification sends previous coach turn', () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return calls.length == 1
+              ? CoachChatInvokeResponse(status: 200, data: _edgeClarification())
+              : CoachChatInvokeResponse(status: 200, data: _edgeSuccess());
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await notifier.ask(
+        question: '她說我很有故事是什麼意思？',
+        analysisSnapshot: _snapshot(),
+      );
+      await notifier.ask(
+        question: '我其實想回她，但怕太裝深沉',
+        analysisSnapshot: _snapshot(),
+      );
+
+      expect(calls, hasLength(2));
+      final turns = calls.last.body['activeSessionTurns'] as List<dynamic>;
+      expect(turns.length, 2);
+      expect(turns.first['kind'], 'question');
+      expect(turns.last['kind'], 'clarification');
+    });
+
+    test('forceAnswer sends forceAnswer flag after clarification', () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return calls.length == 1
+              ? CoachChatInvokeResponse(status: 200, data: _edgeClarification())
+              : CoachChatInvokeResponse(status: 200, data: _edgeSuccess());
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await notifier.ask(
+        question: '她是什麼意思？',
+        analysisSnapshot: _snapshot(),
+      );
+      await notifier.forceAnswer(analysisSnapshot: _snapshot());
+
+      expect(calls.last.body['forceAnswer'], true);
+      expect(calls.last.body['activeSessionTurns'], isNotEmpty);
     });
 
     test('dataQuality flagged card strips partner traits from the API payload',

@@ -32,9 +32,11 @@ export function validateFullResponse(payload: unknown): CoachChatResponse {
 const FIELD_CAPS: Record<string, number> = {
   headline: 32,
   answer: 360,
+  userTruth: 120,
   userState: 100,
   nextStep: 100,
   suggestedLine: 100,
+  rewriteReason: 100,
   boundaryReminder: 100,
   reflectionQuestion: 90,
 };
@@ -73,9 +75,11 @@ function truncateVisibleText(value: string, cap: number): string {
 const VISIBLE_FIELDS = [
   "headline",
   "answer",
+  "userTruth",
   "userState",
   "nextStep",
   "suggestedLine",
+  "rewriteReason",
   "boundaryReminder",
   "reflectionQuestion",
 ] as const;

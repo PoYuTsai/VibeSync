@@ -3,6 +3,8 @@ import type { CoachChatRequest } from "./schemas.ts";
 export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
     section("使用者問題", input.userQuestion),
+    section("使用者原本想怎麼回", input.rawReplyDraft),
+    section("本次教練室對話", formatSessionTurns(input.activeSessionTurns)),
     section("最近對話", formatMessages(input.recentMessages)),
     section("舊對話摘要", input.conversationSummary),
     section("最新分析快照", formatAnalysis(input.analysisSnapshot)),
@@ -18,15 +20,20 @@ ${context}
 
 JSON schema:
 {
+  "responseType": "clarifyingQuestion | coachAnswer",
   "mode": "clarifyIntent | stateCalibration | boundaryRisk | moveForward | replyCraft | stopSignal",
   "headline": "32字內標題",
   "answer": "360字內。先同理，再判斷，再給方向；複雜問題可拆2-3層可能性",
+  "userTruth": "120字內。你理解到的使用者真實感受/意圖；不確定時用 null",
   "userState": "100字內。指出使用者此刻可能卡住的狀態",
   "nextStep": "100字內。只給一個最小下一步",
   "suggestedLine": "100字內，可直接傳給對方；不適合傳訊息時用 null",
+  "rewriteDecision": "keep_original | light_edit | rewrite | do_not_send；clarifyingQuestion 用 null",
+  "rewriteReason": "100字內。為什麼保留/輕修/重寫/不送；clarifyingQuestion 用 null",
   "boundaryReminder": "100字內。界線、成本或風險提醒，必填",
   "needsReflection": true/false,
-  "reflectionQuestion": "90字內；需要問清楚使用者內在狀態時才填，否則 null"
+  "reflectionQuestion": "90字內；需要問清楚使用者內在狀態時才填，否則 null",
+  "costDeducted": 0 或 1
 }`;
 }
 
@@ -43,6 +50,15 @@ const SYSTEM_PROMPT_BASE =
 - 使用者狀態：焦慮、性慾、委屈、不甘心、想推進、想確認價值、想省時間。
 - 關係卡點：熱度、節奏、互相性、邊界、投入成本。
 - 最小下一步：一句話、一個觀察、一個邀約、一個停止點。
+
+教練追問規則：
+- 如果你還不知道使用者聽到那句話後的真實感受、心裡想怎麼回、真正目的或可承擔的成本，優先回 responseType="clarifyingQuestion"。
+- clarifyingQuestion 只問一個問題，像真人教練，不要變成表單。問題優先問：「你聽到她這句話後，心裡第一個反應是什麼？」或「你心裡其實想怎麼回？先不用修飾。」
+- clarifyingQuestion 的 costDeducted 必須是 0，suggestedLine/rewriteDecision/rewriteReason 用 null。
+- 如果使用者已經補充感受、原本想回的句子、目的，或 forceAnswer=true，才給 responseType="coachAnswer"。
+- coachAnswer 的 costDeducted 必須是 1，並且要填 rewriteDecision。
+- 不要為了看起來專業而硬改使用者原句。若原句已真實、有分寸、可承擔，就用 keep_original 或 light_edit。
+- 如果原句會讓使用者掉價、越界、焦慮補位、過度承諾或變成情緒勒索，才 rewrite 或 do_not_send。
 
 輸出原則：
 - 先同理使用者，也同理對方可能的處境。
@@ -67,6 +83,19 @@ function formatMessages(messages: CoachChatRequest["recentMessages"]): string {
   return messages
     .slice(-24)
     .map((m) => `${m.sender === "me" ? "我" : "對方"}：${m.text}`)
+    .join("\n");
+}
+
+function formatSessionTurns(
+  turns: CoachChatRequest["activeSessionTurns"],
+): string | null {
+  if (!turns.length) return null;
+  return turns
+    .slice(-12)
+    .map((turn) => {
+      const role = turn.role === "user" ? "使用者" : "教練";
+      return `${role}(${turn.kind})：${turn.content}`;
+    })
     .join("\n");
 }
 

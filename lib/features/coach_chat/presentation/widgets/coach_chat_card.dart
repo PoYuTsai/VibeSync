@@ -65,6 +65,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     final latest =
         state.valueOrNull ?? (history.isEmpty ? null : history.first);
     final isLoading = state.isLoading;
+    final isClarifying = latest?.isClarifyingQuestion ?? false;
 
     ref.listen<AsyncValue<CoachChatResult?>>(provider, (previous, next) {
       final error = next.error;
@@ -113,7 +114,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                       ),
                     ),
                     Text(
-                      '不確定怎麼判斷，就直接問；成功回覆會扣 1 則額度。',
+                      '先釐清你的真實想法；正式建議才扣 1 則額度。',
                       style: AppTypography.caption.copyWith(
                         color: AppColors.glassTextSecondary,
                       ),
@@ -163,7 +164,8 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
             ),
             decoration: InputDecoration(
               counterText: '',
-              hintText: '例如：她這句話是真的有興趣嗎？',
+              hintText:
+                  isClarifying ? '補充：你聽到後的感受，或你原本想怎麼回' : '例如：她這句話是真的有興趣嗎？',
               hintStyle: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextHint,
               ),
@@ -217,6 +219,10 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
               result: latest,
               question: _lastAskedQuestion,
               onFollowUp: _focusInputForFollowUp,
+              onForceAnswer: () => ref
+                  .read(coachChatControllerProvider(widget.conversationId)
+                      .notifier)
+                  .forceAnswer(analysisSnapshot: widget.analysisSnapshot),
             ),
           ],
         ],
@@ -258,16 +264,19 @@ class _CoachChatResultView extends StatelessWidget {
   final CoachChatResult result;
   final String? question;
   final VoidCallback onFollowUp;
+  final VoidCallback onForceAnswer;
 
   const _CoachChatResultView({
     required this.result,
     required this.onFollowUp,
+    required this.onForceAnswer,
     this.question,
   });
 
   @override
   Widget build(BuildContext context) {
     final mode = CoachChatModeX.fromWire(result.mode);
+    final isClarifying = result.isClarifyingQuestion;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -323,6 +332,14 @@ class _CoachChatResultView extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 10),
+          if (isClarifying) ...[
+            _CoachNotice(
+              icon: Icons.psychology_alt_outlined,
+              title: '教練想先問清楚',
+              body: result.reflectionQuestion ?? result.answer,
+            ),
+            const SizedBox(height: 10),
+          ],
           Text(
             result.answer,
             style: AppTypography.bodyMedium.copyWith(
@@ -331,8 +348,17 @@ class _CoachChatResultView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
+          if (result.userTruth != null)
+            _InfoLine(label: '我理解你的真實想法', value: result.userTruth!),
           _InfoLine(label: '你現在卡在', value: result.userState),
-          _InfoLine(label: '這次先做', value: result.nextStep),
+          _InfoLine(
+              label: isClarifying ? '先補充這一點' : '這次先做', value: result.nextStep),
+          if (!isClarifying && result.rewriteDecision != null)
+            _InfoLine(
+              label: '教練判斷',
+              value:
+                  '${_rewriteDecisionLabel(result.rewriteDecision!)}${result.rewriteReason == null ? '' : '：${result.rewriteReason}'}',
+            ),
           if (result.suggestedLine != null) ...[
             const SizedBox(height: 10),
             Container(
@@ -364,27 +390,56 @@ class _CoachChatResultView extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
-          if (result.needsReflection && result.reflectionQuestion != null)
+          if (!isClarifying &&
+              result.needsReflection &&
+              result.reflectionQuestion != null)
             _InfoLine(label: '教練追問', value: result.reflectionQuestion!),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: onFollowUp,
-              icon: const Icon(Icons.add_comment_outlined, size: 18),
-              label: const Text('繼續追問'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: BorderSide(
-                  color: AppColors.primary.withValues(alpha: 0.38),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onFollowUp,
+                icon: Icon(
+                  isClarifying
+                      ? Icons.edit_note_outlined
+                      : Icons.add_comment_outlined,
+                  size: 18,
                 ),
-                visualDensity: VisualDensity.compact,
+                label: Text(isClarifying ? '補充我的想法' : '繼續深挖'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.38),
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
-            ),
+              if (isClarifying)
+                TextButton(
+                  onPressed: onForceAnswer,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.glassTextSecondary,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('直接給我建議'),
+                ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  String _rewriteDecisionLabel(String decision) {
+    return switch (decision) {
+      'keep_original' => '原話就很好',
+      'light_edit' => '輕修就好',
+      'rewrite' => '建議重寫',
+      'do_not_send' => '先不要送',
+      _ => '保持彈性',
+    };
   }
 
   Future<void> _copyCoachAnswer(BuildContext context) async {
@@ -437,6 +492,62 @@ class _InfoLine extends StatelessWidget {
             TextSpan(text: value),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CoachNotice extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String body;
+
+  const _CoachNotice({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.56),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.14),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.primary, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

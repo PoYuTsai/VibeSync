@@ -57,6 +57,24 @@ class CoachChatResult {
   @HiveField(15)
   final String modelUsed;
 
+  @HiveField(16)
+  final String responseType;
+
+  @HiveField(17)
+  final String? sessionId;
+
+  @HiveField(18)
+  final String? userTruth;
+
+  @HiveField(19)
+  final String? rewriteDecision;
+
+  @HiveField(20)
+  final String? rewriteReason;
+
+  @HiveField(21)
+  final int costDeducted;
+
   const CoachChatResult({
     required this.id,
     required this.conversationId,
@@ -74,5 +92,15 @@ class CoachChatResult {
     required this.generatedAt,
     required this.provider,
     required this.modelUsed,
+    this.responseType = 'coachAnswer',
+    this.sessionId,
+    this.userTruth,
+    this.rewriteDecision,
+    this.rewriteReason,
+    this.costDeducted = 1,
   });
+
+  bool get isClarifyingQuestion => responseType == 'clarifyingQuestion';
+
+  bool get isCoachAnswer => responseType == 'coachAnswer';
 }

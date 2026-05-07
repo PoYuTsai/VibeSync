@@ -79,6 +79,8 @@ final coachChatControllerProvider =
 class CoachChatController
     extends FamilyAsyncNotifier<CoachChatResult?, String> {
   bool _inFlight = false;
+  String? _activeSessionId;
+  List<CoachChatSessionTurn> _activeTurns = const [];
 
   @override
   Future<CoachChatResult?> build(String conversationId) async {
@@ -89,20 +91,27 @@ class CoachChatController
   Future<void> ask({
     required String question,
     required CoachChatAnalysisSnapshot analysisSnapshot,
+    bool forceAnswer = false,
   }) async {
     final trimmed = question.trim();
     if (trimmed.isEmpty || _inFlight) return;
     _inFlight = true;
     try {
-      state = const AsyncValue.loading();
       final conversationId = arg;
+      final repo = ref.read(coachChatRepositoryProvider);
+      final previousResult =
+          state.valueOrNull ?? repo.latestForConversation(conversationId);
+      final sessionId = _activeSessionId ??
+          previousResult?.sessionId ??
+          'coach-$conversationId-${DateTime.now().microsecondsSinceEpoch}';
+      final outboundTurns = _seedTurns(previousResult);
+      state = const AsyncValue.loading();
       final conversation = ref.read(conversationProvider(conversationId));
       if (conversation == null) {
         throw StateError('Conversation not found');
       }
 
       final api = ref.read(coachChatApiServiceProvider);
-      final repo = ref.read(coachChatRepositoryProvider);
       final partnerId = conversation.partnerId;
       final dataQualityFlag = partnerId == null
           ? null
@@ -112,7 +121,10 @@ class CoachChatController
       final result = await api.ask(
         conversationId: conversationId,
         partnerId: partnerId,
+        sessionId: sessionId,
         question: trimmed,
+        activeSessionTurns: outboundTurns,
+        forceAnswer: forceAnswer,
         recentMessages: _recentMessages(conversation),
         conversationSummary: _conversationSummary(conversation),
         analysisSnapshot: analysisSnapshot,
@@ -127,13 +139,75 @@ class CoachChatController
         dataQualityFlagged: flagged,
       );
       await repo.put(result);
+      _activeSessionId = result.sessionId ?? sessionId;
+      _activeTurns = _capTurns([
+        ...outboundTurns,
+        CoachChatSessionTurn(
+          role: 'user',
+          kind: forceAnswer ? 'supplement' : 'question',
+          content: trimmed,
+          createdAt: DateTime.now(),
+        ),
+        CoachChatSessionTurn(
+          role: 'coach',
+          kind: result.isClarifyingQuestion ? 'clarification' : 'answer',
+          content: result.isClarifyingQuestion
+              ? (result.reflectionQuestion ?? result.answer)
+              : result.answer,
+          createdAt: result.generatedAt,
+        ),
+      ]);
       state = AsyncValue.data(result);
-      await _syncUsageSnapshot();
+      if (result.costDeducted > 0) {
+        await _syncUsageSnapshot();
+      }
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     } finally {
       _inFlight = false;
     }
+  }
+
+  Future<void> forceAnswer({
+    required CoachChatAnalysisSnapshot analysisSnapshot,
+  }) async {
+    final latest = state.valueOrNull ??
+        ref.read(coachChatRepositoryProvider).latestForConversation(arg);
+    await ask(
+      question: latest?.question ?? '請直接給我建議',
+      analysisSnapshot: analysisSnapshot,
+      forceAnswer: true,
+    );
+  }
+
+  List<CoachChatSessionTurn> _seedTurns(CoachChatResult? previousResult) {
+    if (_activeTurns.isNotEmpty) return _activeTurns;
+    if (previousResult == null || previousResult.sessionId == null) {
+      return const [];
+    }
+    _activeSessionId = previousResult.sessionId;
+    final turns = <CoachChatSessionTurn>[
+      CoachChatSessionTurn(
+        role: 'user',
+        kind: 'question',
+        content: previousResult.question,
+        createdAt: previousResult.generatedAt,
+      ),
+      CoachChatSessionTurn(
+        role: 'coach',
+        kind: previousResult.isClarifyingQuestion ? 'clarification' : 'answer',
+        content: previousResult.isClarifyingQuestion
+            ? (previousResult.reflectionQuestion ?? previousResult.answer)
+            : previousResult.answer,
+        createdAt: previousResult.generatedAt,
+      ),
+    ];
+    return _capTurns(turns);
+  }
+
+  List<CoachChatSessionTurn> _capTurns(List<CoachChatSessionTurn> turns) {
+    if (turns.length <= 12) return List.unmodifiable(turns);
+    return List.unmodifiable(turns.sublist(turns.length - 12));
   }
 
   List<CoachChatMessage> _recentMessages(Conversation conversation) {

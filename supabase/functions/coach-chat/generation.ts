@@ -1,8 +1,5 @@
 import { buildCoachChatPrompt } from "./prompts.ts";
-import type {
-  CoachChatRequest,
-  CoachChatResponseCard,
-} from "./schemas.ts";
+import type { CoachChatRequest, CoachChatResponseCard } from "./schemas.ts";
 import {
   assertCardSafe,
   truncateCard,
@@ -56,6 +53,8 @@ export async function runCoachChat(
     tier: input.tier,
     hasSummary: !!input.request.conversationSummary,
     hasStyleContext: !!input.request.effectiveStyleContext,
+    hasSessionTurns: input.request.activeSessionTurns.length > 0,
+    forceAnswer: input.request.forceAnswer,
     dataQualityFlagged: input.request.dataQualityFlagged,
   });
 
@@ -94,7 +93,9 @@ export async function runCoachChat(
     return { status: 500, body: { error: errorClass } };
   }
 
-  if (!input.accountIsTest) {
+  const shouldDeduct = card.responseType === "coachAnswer";
+
+  if (shouldDeduct && !input.accountIsTest) {
     try {
       await deps.deductCredit({ userId: input.userId });
     } catch {
@@ -109,16 +110,21 @@ export async function runCoachChat(
   deps.logger.info("coach_chat_succeeded", {
     tier: input.tier,
     mode: card.mode,
+    responseType: card.responseType,
     model,
     provider: "claude",
     latencyMs: now() - startedAt,
-    costDeducted: input.accountIsTest ? 0 : 1,
+    costDeducted: shouldDeduct && !input.accountIsTest ? 1 : 0,
   });
 
   return {
     status: 200,
     body: {
-      card,
+      card: {
+        ...card,
+        costDeducted: shouldDeduct && !input.accountIsTest ? 1 : 0,
+      },
+      sessionId: input.request.sessionId ?? null,
       provider: "claude",
       model,
       generatedAt: new Date(now()).toISOString(),
