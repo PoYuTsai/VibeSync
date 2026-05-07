@@ -465,5 +465,38 @@ void main() {
       expect(repo.putCalls, 0);
       expect(syncCalls, 0);
     });
+
+    test(
+        'API failure keeps the controller in error with previous answer intact',
+        () async {
+      final repo = _FakeRepo()..seed(_storedResult());
+      var syncCalls = 0;
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(
+          response: const CoachChatInvokeResponse(
+            status: 500,
+            data: {'error': 'schema_invalid'},
+          ),
+        ),
+        conversation: _conversation(),
+        partner: _partner(),
+        usageSync: () async => syncCalls++,
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      await c.read(coachChatControllerProvider('c-1').notifier).ask(
+            question: 'normal follow up question',
+            analysisSnapshot: _snapshot(),
+          );
+
+      final state = c.read(coachChatControllerProvider('c-1'));
+      expect(state.hasError, isTrue);
+      expect(state.valueOrNull?.id, 'old');
+      expect(repo.latestForConversation('c-1')?.id, 'old');
+      expect(repo.putCalls, 0);
+      expect(syncCalls, 0);
+    });
   });
 }

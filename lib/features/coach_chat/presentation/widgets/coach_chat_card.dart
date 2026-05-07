@@ -89,8 +89,10 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
       conversation: conversation,
       analysisSnapshot: widget.analysisSnapshot,
     );
-    final latest =
-        state.valueOrNull ?? (history.isEmpty ? null : history.first);
+    final activeError = state.hasError && _lastAskedQuestion != null;
+    final latest = activeError
+        ? null
+        : (state.valueOrNull ?? (history.isEmpty ? null : history.first));
     final isLoading = state.isLoading;
     final canSubmit = !isLoading;
     final isClarifying = latest?.isClarifyingQuestion ?? false;
@@ -253,11 +255,18 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
           if (isLoading) ...[
             const SizedBox(height: 14),
             _CoachThinkingNotice(question: _lastAskedQuestion),
+          ] else if (activeError) ...[
+            const SizedBox(height: 14),
+            _CoachFailureNotice(
+              question: _lastAskedQuestion!,
+              message: _failureMessage(state.error!),
+              onRetry: _retryLastQuestion,
+            ),
           ] else if (latest != null) ...[
             const SizedBox(height: 14),
             _CoachChatResultView(
               result: latest,
-              question: _lastAskedQuestion,
+              question: latest.question,
               dailyRemaining: subscription.dailyRemaining,
               onFollowUp: _focusInputForFollowUp,
               onForceAnswer: () => ref
@@ -340,6 +349,14 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   void _fillSuggestedQuestion(String question) {
     _controller.text = question;
     _controller.selection = TextSelection.collapsed(offset: question.length);
+  }
+
+  void _retryLastQuestion() {
+    final question = _lastAskedQuestion?.trim();
+    if (question == null || question.isEmpty) return;
+    _controller.text = question;
+    _controller.selection = TextSelection.collapsed(offset: question.length);
+    _ask();
   }
 
   void _focusInputForFollowUp() {
@@ -745,6 +762,101 @@ class _CoachThinkingNotice extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoachFailureNotice extends StatelessWidget {
+  final String question;
+  final String message;
+  final VoidCallback onRetry;
+
+  const _CoachFailureNotice({
+    required this.question,
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.warning.withValues(alpha: 0.24),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                color: AppColors.warning,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '這題教練沒接住',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.glassTextPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '未扣額度。上一輪回覆已保留，但不是這題的新結果。',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.glassTextSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '你剛剛問：$question',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            message,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('重試這題'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                visualDensity: VisualDensity.compact,
+              ),
             ),
           ),
         ],
