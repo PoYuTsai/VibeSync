@@ -41,6 +41,18 @@ function validClaudeCard(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function malformedClaudeCard() {
+  return {
+    content: [{
+      text: JSON.stringify({
+        responseType: "coachAnswer",
+        mode: "moveForward",
+        headline: "少了必要欄位",
+      }),
+    }],
+  };
+}
+
 function deps(opts: {
   callClaude?: (args: ClaudeCallArgs) => Promise<unknown>;
   deductCredit?: () => Promise<void>;
@@ -168,6 +180,56 @@ Deno.test("runCoachChat accepts clarification when Claude omits cost", async () 
     "clarifyingQuestion",
   );
   assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+});
+
+Deno.test("runCoachChat retries malformed cards before surfacing failure", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(
+        calls < 3 ? malformedClaudeCard() : validClaudeCard(),
+      );
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, userQuestion: "我該推進嗎？" },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals(harness.events.includes("coach_chat_retry_succeeded"), true);
+});
+
+Deno.test("runCoachChat does not deduct when all card attempts are malformed", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(malformedClaudeCard());
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 500);
+  assertEquals(result.body.error, "schema_invalid");
+  assertEquals(calls, 3);
+  assertEquals(harness.deductCalls, 0);
 });
 
 Deno.test("runCoachChat skips deduction for test account", async () => {

@@ -50,6 +50,8 @@ export interface GenerationResult {
   body: Record<string, unknown>;
 }
 
+const MAX_CARD_GENERATION_ATTEMPTS = 3;
+
 export async function runCoachChat(
   input: GenerationInput,
   deps: GenerationDeps,
@@ -69,39 +71,61 @@ export async function runCoachChat(
     dataQualityFlagged: input.request.dataQualityFlagged,
   });
 
-  let claudeData: unknown;
-  try {
-    claudeData = await deps.callClaude({
-      model,
-      prompt: buildCoachChatPrompt(input.request),
-      maxTokens: 1200,
-      timeoutMs: 60000,
-      apiKey: input.apiKey,
-    });
-  } catch (e) {
-    deps.logger.warn("coach_chat_failed", {
-      tier: input.tier,
-      errorClass: classifyClaudeError(e),
-    });
-    return { status: 500, body: { error: "AI 生成失敗" } };
+  let card: CoachChatResponseCard | null = null;
+  const basePrompt = buildCoachChatPrompt(input.request);
+  let lastValidationError = "schema_invalid";
+
+  for (let attempt = 1; attempt <= MAX_CARD_GENERATION_ATTEMPTS; attempt++) {
+    let claudeData: unknown;
+    try {
+      claudeData = await deps.callClaude({
+        model,
+        prompt: buildAttemptPrompt(basePrompt, attempt, lastValidationError),
+        maxTokens: 1200,
+        timeoutMs: 60000,
+        apiKey: input.apiKey,
+      });
+    } catch (e) {
+      deps.logger.warn("coach_chat_failed", {
+        tier: input.tier,
+        errorClass: classifyClaudeError(e),
+        attempt,
+      });
+      return { status: 500, body: { error: "AI 生成失敗" } };
+    }
+
+    try {
+      card = parseAndValidateCard(claudeData);
+      if (attempt > 1) {
+        deps.logger.info("coach_chat_retry_succeeded", {
+          tier: input.tier,
+          attempt,
+        });
+      }
+      break;
+    } catch (e) {
+      const message = getErrorMessage(e);
+      lastValidationError = message.startsWith("banned_token")
+        ? "banned_token"
+        : "schema_invalid";
+      deps.logger.warn("coach_chat_card_invalid", {
+        tier: input.tier,
+        errorClass: lastValidationError,
+        attempt,
+      });
+      if (attempt === MAX_CARD_GENERATION_ATTEMPTS) {
+        deps.logger.warn("coach_chat_failed", {
+          tier: input.tier,
+          errorClass: lastValidationError,
+          attempts: attempt,
+        });
+        return { status: 500, body: { error: lastValidationError } };
+      }
+    }
   }
 
-  let card: CoachChatResponseCard;
-  try {
-    const parsed = parseClaudeJSON(claudeData);
-    const truncated = truncateCard(parsed);
-    card = validateResponseCard(truncated);
-    assertCardSafe(card);
-  } catch (e) {
-    const message = getErrorMessage(e);
-    const errorClass = message.startsWith("banned_token")
-      ? "banned_token"
-      : "schema_invalid";
-    deps.logger.warn("coach_chat_failed", {
-      tier: input.tier,
-      errorClass,
-    });
-    return { status: 500, body: { error: errorClass } };
+  if (!card) {
+    return { status: 500, body: { error: lastValidationError } };
   }
 
   const shouldDeduct = card.responseType === "coachAnswer";
@@ -160,6 +184,31 @@ export async function runCoachChat(
       generatedAt: new Date(now()).toISOString(),
     },
   };
+}
+
+function buildAttemptPrompt(
+  basePrompt: string,
+  attempt: number,
+  lastValidationError: string,
+): string {
+  if (attempt === 1) return basePrompt;
+  return `${basePrompt}
+
+上一次輸出未通過後端驗證：${lastValidationError}
+請重新輸出一個完整且合法的 JSON 物件：
+- 只輸出 JSON，不要 markdown，不要前後解釋。
+- 所有 schema 欄位都要存在；不確定可用 null，但必填欄位不可省略。
+- responseType="clarifyingQuestion" 時：rewriteDecision、rewriteReason、suggestedLine 用 null，needsReflection=true，reflectionQuestion 必填。
+- responseType="coachAnswer" 時：rewriteDecision 必填。
+- 避免輸出被禁止的可見詞彙。`;
+}
+
+function parseAndValidateCard(claudeData: unknown): CoachChatResponseCard {
+  const parsed = parseClaudeJSON(claudeData);
+  const truncated = truncateCard(parsed);
+  const card = validateResponseCard(truncated);
+  assertCardSafe(card);
+  return card;
 }
 
 function getErrorMessage(error: unknown): string {
