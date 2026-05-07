@@ -15,12 +15,14 @@ class CoachChatCard extends ConsumerStatefulWidget {
   final String conversationId;
   final CoachChatAnalysisSnapshot analysisSnapshot;
   final VoidCallback? onQuotaExceeded;
+  final int focusRequestToken;
 
   const CoachChatCard({
     super.key,
     required this.conversationId,
     required this.analysisSnapshot,
     this.onQuotaExceeded,
+    this.focusRequestToken = 0,
   });
 
   @override
@@ -44,6 +46,18 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   void initState() {
     super.initState();
     _focusNode.addListener(_handleFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant CoachChatCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.focusRequestToken != oldWidget.focusRequestToken) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
   }
 
   @override

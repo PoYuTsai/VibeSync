@@ -31,6 +31,7 @@ import '../../../conversation/domain/entities/conversation_summary.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
+import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
@@ -114,10 +115,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // 對話延續功能
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final _coachChatCardKey = GlobalKey();
   bool _showAllMessages = false;
   String? _lastManualAddedMessageId;
   String? _lastManualAddedContent;
   bool? _lastManualAddedIsFromMe;
+  int _coachChatFocusRequest = 0;
 
   // 截圖上傳功能
   List<Uint8List> _selectedImages = [];
@@ -382,6 +385,47 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
     }
 
     await _scrollToBottom();
+  }
+
+  Future<void> _openCoachQuestion() async {
+    if (!mounted) {
+      return;
+    }
+    _dismissKeyboard();
+    if (_showContinueConversation) {
+      setState(() {
+        _showContinueConversation = false;
+      });
+      await Future.delayed(const Duration(milliseconds: 80));
+    }
+    setState(() {
+      _coachChatFocusRequest++;
+    });
+    await Future.delayed(const Duration(milliseconds: 80));
+    final coachContext = _coachChatCardKey.currentContext;
+    if (!mounted || coachContext == null || !coachContext.mounted) {
+      return;
+    }
+    await Scrollable.ensureVisible(
+      coachContext,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+      alignment: 0.08,
+    );
+  }
+
+  Future<void> _openNewConversationSheet() async {
+    if (!mounted) {
+      return;
+    }
+    _dismissKeyboard();
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => NewConversationSheet(partnerId: conversation?.partnerId),
+    );
   }
 
   Future<void> _collapseComposerAndShowMessages() async {
@@ -4240,13 +4284,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                           if (_enthusiasmScore != null &&
                               _gameStage != null &&
                               _finalRecommendation != null) ...[
-                            CoachChatCard(
-                              conversationId: widget.conversationId,
-                              analysisSnapshot:
-                                  _buildCoachChatAnalysisSnapshot(),
-                              onQuotaExceeded: () {
-                                unawaited(_handleCoachChatQuotaExceeded());
-                              },
+                            KeyedSubtree(
+                              key: _coachChatCardKey,
+                              child: CoachChatCard(
+                                conversationId: widget.conversationId,
+                                analysisSnapshot:
+                                    _buildCoachChatAnalysisSnapshot(),
+                                focusRequestToken: _coachChatFocusRequest,
+                                onQuotaExceeded: () {
+                                  unawaited(_handleCoachChatQuotaExceeded());
+                                },
+                              ),
                             ),
                             const SizedBox(height: 16),
                           ],
@@ -5556,21 +5604,55 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                   children: [
                     SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _openContinueComposer,
-                        icon: const Icon(Icons.add_comment_outlined),
-                        label: const Text('補聊天紀錄'),
-                        style: OutlinedButton.styleFrom(
+                      child: FilledButton.icon(
+                        onPressed: _openCoachQuestion,
+                        icon: const Icon(Icons.forum_outlined),
+                        label: const Text('問教練：我現在該怎麼做？'),
+                        style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(
-                              color: AppColors.primary.withValues(alpha: 0.5)),
-                          foregroundColor: AppColors.primary,
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _openContinueComposer,
+                            icon: const Icon(Icons.add_comment_outlined),
+                            label: const Text('補聊天紀錄'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              side: BorderSide(
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.45),
+                              ),
+                              foregroundColor: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _openNewConversationSheet,
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('開新對話'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              side: BorderSide(
+                                color: AppColors.glassBorder,
+                              ),
+                              foregroundColor: AppColors.glassTextPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     Text(
-                      '新增她說／我說或截圖；重新分析才會扣本次增量。',
+                      '問教練：釐清不扣，正式建議才扣 1 則。補聊天紀錄後，重新分析只扣新增內容。',
                       textAlign: TextAlign.center,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.unselectedText,

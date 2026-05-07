@@ -4,9 +4,9 @@
 // `lib/app/main_shell.dart` (`_NewConversationSheet`) — no behavior change.
 //
 // ADR-15 vocabulary contract (Phase 4 Task 5): the title「新增對話」STAYS.
-// This sheet is reached only from `PartnerDetailScreen` with `partnerId` set,
-// i.e. it always creates a Conversation under an existing Partner. That makes
-// it Conversation-level surface, where 「對話」 is the correct vocabulary.
+// This sheet is primarily reached from `PartnerDetailScreen` with `partnerId`
+// set, and can also be opened from an analyzed conversation as a fast
+// "start a fresh interaction" escape hatch.
 // Drift-protected by `test/widget/features/copy_sweep_snapshot_test.dart`.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,6 +32,7 @@ class NewConversationSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final hasPartner = partnerId != null && partnerId!.isNotEmpty;
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
@@ -49,7 +50,7 @@ class NewConversationSheet extends ConsumerWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '在這張對象卡裡新增同一個人的一段互動紀錄',
+            hasPartner ? '在這張對象卡裡新增同一個人的一段互動紀錄' : '建立一段新的互動紀錄',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.unselectedText,
             ),
