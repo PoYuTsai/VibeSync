@@ -55,13 +55,14 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     ref.listen<AsyncValue<CoachChatResult?>>(provider, (previous, next) {
       final error = next.error;
       if (error == null) return;
+      if (!context.mounted) return;
       if (error is CoachChatQuotaExceededException) {
         widget.onQuotaExceeded?.call();
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('教練暫時沒接住，請稍後再試。'),
+          content: Text(_failureMessage(error)),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -195,6 +196,16 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
           question: question,
           analysisSnapshot: widget.analysisSnapshot,
         );
+  }
+
+  String _failureMessage(Object error) {
+    if (error is CoachChatGenerationFailedException) {
+      return '教練暫時沒接住，這次未扣額度，請稍後再試。';
+    }
+    if (error is CoachChatApiException) {
+      return '連線不穩，這次未扣額度，請稍後再試。';
+    }
+    return '教練暫時沒接住，這次未扣額度，請稍後再試。';
   }
 }
 

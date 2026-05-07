@@ -13,7 +13,7 @@ import {
   type SubscriptionRow,
   TEST_EMAILS,
   tierRank,
-} from "../coach-follow-up/quota.ts";
+} from "../_shared/quota.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -222,7 +222,9 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   const contentLengthHeader = req.headers.get("content-length");
   const contentLength = contentLengthHeader ? Number(contentLengthHeader) : NaN;
-  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+  if (
+    Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES
+  ) {
     return jsonResponse({ error: "Request body too large" }, 413);
   }
 
@@ -318,7 +320,6 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   const tier = normalizeTier(sub.tier);
-  const subAtCall = sub;
   const result = await runCoachChat(
     {
       userId: user.id,
@@ -330,13 +331,10 @@ export async function handleRequest(req: Request): Promise<Response> {
     {
       callClaude: callClaudeAPI,
       deductCredit: async ({ userId }) => {
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({
-            monthly_messages_used: (subAtCall.monthly_messages_used || 0) + 1,
-            daily_messages_used: (subAtCall.daily_messages_used || 0) + 1,
-          })
-          .eq("user_id", userId);
+        const { error } = await supabase.rpc("increment_usage", {
+          p_user_id: userId,
+          p_messages: COST_PER_GENERATION,
+        });
         if (error) {
           logWarn("coach_chat_deduct_db_error", {
             user: summarizeUser(userId),

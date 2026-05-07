@@ -1,4 +1,4 @@
-// supabase/functions/coach-follow-up/quota_test.ts
+// supabase/functions/_shared/quota_test.ts
 //
 // T6 — quota machinery pure-helper tests. Covers the full edge-case matrix
 // (Codex Plan-Review P1 #3) WITHOUT touching real Supabase / RevenueCat:
@@ -24,9 +24,9 @@ import {
   resolveLimits,
   type SubscriptionRow,
   TEST_EMAILS,
-  tierRank,
   TIER_DAILY_LIMITS,
   TIER_MONTHLY_LIMITS,
+  tierRank,
 } from "./quota.ts";
 
 // ---------------------------------------------------------------------------
@@ -327,8 +327,16 @@ Deno.test("parseRevenueCatSubscriber picks highest active tier across entitlemen
 // ---------------------------------------------------------------------------
 
 Deno.test("TIER_MONTHLY_LIMITS / TIER_DAILY_LIMITS pricing-final.md values", () => {
-  assertObjectMatch(TIER_MONTHLY_LIMITS, { free: 30, starter: 300, essential: 800 });
-  assertObjectMatch(TIER_DAILY_LIMITS, { free: 15, starter: 50, essential: 120 });
+  assertObjectMatch(TIER_MONTHLY_LIMITS, {
+    free: 30,
+    starter: 300,
+    essential: 800,
+  });
+  assertObjectMatch(TIER_DAILY_LIMITS, {
+    free: 15,
+    starter: 50,
+    essential: 120,
+  });
 });
 
 Deno.test("TEST_EMAILS contains the canonical vibesync.test@gmail.com only", () => {

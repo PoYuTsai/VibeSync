@@ -1,16 +1,17 @@
-// supabase/functions/coach-follow-up/quota.ts
+// supabase/functions/_shared/quota.ts
 //
 // Quota machinery — pure helpers that mirror the analyze-chat contract WITHOUT
 // importing from analyze-chat (Codex Plan-Review §A5 OCR isolation rule).
 //
 // The DB-touching wrappers (selfHealSubscription / persistResets /
-// maybeRefreshTierFromRevenueCat) live in index.ts so this module stays
+// maybeRefreshTierFromRevenueCat / increment_usage RPC) live in each function's
+// index.ts so this module stays
 // trivially unit-testable without Supabase mocks. The full edge-case matrix
 // (Codex P1 #3) is covered in quota_test.ts.
 //
 // Limits / test-account list / RC payload shape MUST match analyze-chat
-// (CLAUDE.md pricing table @ 2026-04-22). If pricing changes, both functions
-// have to update — there's no shared module by design.
+// (CLAUDE.md pricing table @ 2026-04-22). If pricing changes, update this
+// shared helper once so coach-follow-up / coach-chat stay in lockstep.
 
 export type TierName = "free" | "starter" | "essential";
 

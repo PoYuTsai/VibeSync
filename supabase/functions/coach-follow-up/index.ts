@@ -4,9 +4,10 @@
 // MUST NOT import from supabase/functions/analyze-chat/** (OCR baseline isolation).
 // JWT-verified deploy (no --no-verify-jwt). Cost = 1 credit, deducted only on success.
 //
-// T6: auth + quota gate. Pure quota machinery lives in quota.ts (see quota_test.ts
-// for the full edge-case matrix per Codex P1 #3). Real Supabase + RC HTTP are wired
-// here so the pure helpers stay trivially testable.
+// T6: auth + quota gate. Pure quota machinery lives in ../_shared/quota.ts
+// (see ../_shared/quota_test.ts for the full edge-case matrix per Codex P1 #3).
+// Real Supabase + RC HTTP are wired here so the pure helpers stay trivially
+// testable.
 //
 // Generation path (prompt + Claude call + truncate + assertCardSafe + deduct +
 // persist + JSON response) lands in T7. Until then, requests that pass the gate
@@ -27,7 +28,7 @@ import {
   type SubscriptionRow,
   TEST_EMAILS,
   tierRank,
-} from "./quota.ts";
+} from "../_shared/quota.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -402,7 +403,6 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   const tier = normalizeTier(sub.tier);
-  const subAtCall = sub;
   const result = await runCoachFollowUp(
     {
       userId: user.id,
@@ -417,18 +417,12 @@ export async function handleRequest(req: Request): Promise<Response> {
     {
       callClaude: callClaudeAPI,
       deductCredit: async ({ userId }) => {
-        // Codex P1: Supabase update on {error} doesn't throw — must surface
-        // explicitly or generation.ts will treat it as success and the user
-        // gets a free card. Internal Supabase error message stays here in a
-        // warn log; only the stable bucket name "credit_deduct_failed"
-        // propagates upward to telemetry / response.
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({
-            monthly_messages_used: (subAtCall.monthly_messages_used || 0) + 1,
-            daily_messages_used: (subAtCall.daily_messages_used || 0) + 1,
-          })
-          .eq("user_id", userId);
+        // Atomic server-side increment prevents concurrent generations from
+        // both reading the same usage count and under-deducting one credit.
+        const { error } = await supabase.rpc("increment_usage", {
+          p_user_id: userId,
+          p_messages: COST_PER_GENERATION,
+        });
         if (error) {
           logWarn("coach_follow_up_deduct_db_error", {
             user: summarizeUser(userId),
