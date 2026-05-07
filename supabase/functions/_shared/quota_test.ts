@@ -227,6 +227,25 @@ Deno.test("checkQuota: boundary — usage exactly at limit fails (cost would pus
   assertEquals(r.ok, false);
 });
 
+Deno.test("checkQuota: zero-cost preflight passes at exact limit but not over limit", () => {
+  const atLimit = checkQuota({
+    sub: { ...baseSub(), monthly_messages_used: 30, daily_messages_used: 15 },
+    cost: 0,
+    isTestAccount: false,
+    monthlyLimit: 30,
+    dailyLimit: 15,
+  });
+  const overLimit = checkQuota({
+    sub: { ...baseSub(), monthly_messages_used: 31, daily_messages_used: 15 },
+    cost: 0,
+    isTestAccount: false,
+    monthlyLimit: 30,
+    dailyLimit: 15,
+  });
+  assertEquals(atLimit.ok, true);
+  assertEquals(overLimit.ok, false);
+});
+
 Deno.test("checkQuota: boundary — usage one below limit passes", () => {
   const r = checkQuota({
     sub: { ...baseSub(), monthly_messages_used: 29, daily_messages_used: 5 },

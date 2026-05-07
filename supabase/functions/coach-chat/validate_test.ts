@@ -98,7 +98,7 @@ Deno.test("truncateCard caps long visible fields before validation", () => {
     userTruth: "x".repeat(160),
     userState: "b".repeat(140),
     nextStep: "c".repeat(140),
-    suggestedLine: "d".repeat(140),
+    suggestedLine: "d".repeat(190),
     rewriteDecision: "rewrite",
     rewriteReason: "f".repeat(140),
     boundaryReminder: "e".repeat(140),
@@ -110,6 +110,7 @@ Deno.test("truncateCard caps long visible fields before validation", () => {
   assertEquals(parsed.headline.length <= 32, true);
   assertEquals(parsed.answer.length <= 360, true);
   assertEquals((parsed.userTruth ?? "").length <= 120, true);
+  assertEquals((parsed.suggestedLine ?? "").length <= 160, true);
   assertEquals(parsed.boundaryReminder.length <= 100, true);
 });
 

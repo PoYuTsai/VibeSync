@@ -35,7 +35,7 @@ const FIELD_CAPS: Record<string, number> = {
   userTruth: 120,
   userState: 100,
   nextStep: 100,
-  suggestedLine: 100,
+  suggestedLine: 160,
   rewriteReason: 100,
   boundaryReminder: 100,
   reflectionQuestion: 90,

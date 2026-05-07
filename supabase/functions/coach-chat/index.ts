@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { callClaudeAPI, runCoachChat } from "./generation.ts";
+import {
+  callClaudeAPI,
+  CoachChatQuotaExceededError,
+  runCoachChat,
+} from "./generation.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import { validateRequest } from "./validate.ts";
 import {
@@ -20,6 +24,7 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
 
 const COST_PER_GENERATION = 1;
+const PREFLIGHT_QUOTA_COST = 0;
 const MAX_REQUEST_BODY_BYTES = 48 * 1024;
 const SUBSCRIPTION_COLUMNS =
   "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
@@ -266,7 +271,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   let limits = resolveLimits(sub.tier);
   let gate = checkQuota({
     sub,
-    cost: COST_PER_GENERATION,
+    cost: PREFLIGHT_QUOTA_COST,
     isTestAccount: accountIsTest,
     monthlyLimit: limits.monthly,
     dailyLimit: limits.daily,
@@ -284,7 +289,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       limits = resolveLimits(sub.tier);
       gate = checkQuota({
         sub,
-        cost: COST_PER_GENERATION,
+        cost: PREFLIGHT_QUOTA_COST,
         isTestAccount: accountIsTest,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
@@ -331,6 +336,56 @@ export async function handleRequest(req: Request): Promise<Response> {
     {
       callClaude: callClaudeAPI,
       deductCredit: async ({ userId }) => {
+        let latestSub = await fetchSubscription(supabase, userId);
+        if (!latestSub) throw new Error("No subscription found");
+
+        const latestReset = applyResetsIfNeeded(latestSub, new Date());
+        latestSub = latestReset.sub;
+        if (latestReset.dailyReset || latestReset.monthlyReset) {
+          await persistResets(
+            supabase,
+            userId,
+            latestSub,
+            latestReset.dailyReset,
+            latestReset.monthlyReset,
+          );
+        }
+
+        let latestLimits = resolveLimits(latestSub.tier);
+        let deductGate = checkQuota({
+          sub: latestSub,
+          cost: COST_PER_GENERATION,
+          isTestAccount: accountIsTest,
+          monthlyLimit: latestLimits.monthly,
+          dailyLimit: latestLimits.daily,
+        });
+        if (!deductGate.ok) {
+          const refreshed = await maybeRefreshTierFromRevenueCat(
+            supabase,
+            userId,
+            latestSub,
+            deductGate.reason,
+          );
+          if (refreshed) {
+            latestSub = refreshed;
+            latestLimits = resolveLimits(latestSub.tier);
+            deductGate = checkQuota({
+              sub: latestSub,
+              cost: COST_PER_GENERATION,
+              isTestAccount: accountIsTest,
+              monthlyLimit: latestLimits.monthly,
+              dailyLimit: latestLimits.daily,
+            });
+          }
+        }
+        if (!deductGate.ok) {
+          throw new CoachChatQuotaExceededError(
+            deductGate.reason,
+            deductGate.used,
+            deductGate.limit,
+          );
+        }
+
         const { error } = await supabase.rpc("increment_usage", {
           p_user_id: userId,
           p_messages: COST_PER_GENERATION,

@@ -9,6 +9,7 @@ import '../../data/providers/coach_chat_providers.dart';
 import '../../data/services/coach_chat_api_service.dart';
 import '../../domain/entities/coach_chat_mode.dart';
 import '../../domain/entities/coach_chat_result.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 
 class CoachChatCard extends ConsumerStatefulWidget {
   final String conversationId;
@@ -62,6 +63,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     final provider = coachChatControllerProvider(widget.conversationId);
     final state = ref.watch(provider);
     final history = ref.watch(coachChatHistoryProvider(widget.conversationId));
+    final subscription = ref.watch(subscriptionProvider);
     final latest =
         state.valueOrNull ?? (history.isEmpty ? null : history.first);
     final isLoading = state.isLoading;
@@ -218,6 +220,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
             _CoachChatResultView(
               result: latest,
               question: _lastAskedQuestion,
+              dailyRemaining: subscription.dailyRemaining,
               onFollowUp: _focusInputForFollowUp,
               onForceAnswer: () => ref
                   .read(coachChatControllerProvider(widget.conversationId)
@@ -263,11 +266,13 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
 class _CoachChatResultView extends StatelessWidget {
   final CoachChatResult result;
   final String? question;
+  final int dailyRemaining;
   final VoidCallback onFollowUp;
   final VoidCallback onForceAnswer;
 
   const _CoachChatResultView({
     required this.result,
+    required this.dailyRemaining,
     required this.onFollowUp,
     required this.onForceAnswer,
     this.question,
@@ -331,11 +336,17 @@ class _CoachChatResultView extends StatelessWidget {
               ),
             ),
           ],
+          const SizedBox(height: 8),
+          _CostStatusChip(
+            costDeducted: result.costDeducted,
+            dailyRemaining: dailyRemaining,
+            isClarifying: isClarifying,
+          ),
           const SizedBox(height: 10),
           if (isClarifying) ...[
             _CoachNotice(
               icon: Icons.psychology_alt_outlined,
-              title: '教練想先問清楚',
+              title: '教練想先問清楚（這題不扣）',
               body: result.reflectionQuestion ?? result.answer,
             ),
             const SizedBox(height: 10),
@@ -417,13 +428,14 @@ class _CoachChatResultView extends StatelessWidget {
                 ),
               ),
               if (isClarifying)
-                TextButton(
-                  onPressed: onForceAnswer,
+                TextButton.icon(
+                  onPressed: () => _confirmForceAnswer(context),
+                  icon: const Icon(Icons.bolt_outlined, size: 18),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.glassTextSecondary,
                     visualDensity: VisualDensity.compact,
                   ),
-                  child: const Text('直接給我建議'),
+                  label: const Text('直接看建議（扣 1 則）'),
                 ),
             ],
           ),
@@ -440,6 +452,31 @@ class _CoachChatResultView extends StatelessWidget {
       'do_not_send' => '先不要送',
       _ => '保持彈性',
     };
+  }
+
+  Future<void> _confirmForceAnswer(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('直接看正式建議？'),
+        content: const Text(
+          '教練會跳過免費追問，直接給完整建議；成功後會扣 1 則額度。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('先補充想法'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('扣 1 則並生成'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      onForceAnswer();
+    }
   }
 
   Future<void> _copyCoachAnswer(BuildContext context) async {
@@ -463,6 +500,46 @@ class _CoachChatResultView extends StatelessWidget {
       const SnackBar(
         content: Text('已複製'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+class _CostStatusChip extends StatelessWidget {
+  final int costDeducted;
+  final int dailyRemaining;
+  final bool isClarifying;
+
+  const _CostStatusChip({
+    required this.costDeducted,
+    required this.dailyRemaining,
+    required this.isClarifying,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isClarifying || costDeducted == 0
+        ? AppColors.success
+        : AppColors.warning;
+    final label = isClarifying || costDeducted == 0
+        ? '這次不扣額度'
+        : '已扣 $costDeducted 則 · 今日剩 $dailyRemaining 則';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.caption.copyWith(
+            color: AppColors.glassTextPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }

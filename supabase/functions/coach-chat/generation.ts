@@ -26,6 +26,17 @@ export interface GenerationDeps {
   now?: () => number;
 }
 
+export class CoachChatQuotaExceededError extends Error {
+  constructor(
+    readonly reason: "monthly_limit_exceeded" | "daily_limit_exceeded",
+    readonly used: number,
+    readonly limit: number,
+  ) {
+    super(reason);
+    this.name = "CoachChatQuotaExceededError";
+  }
+}
+
 export interface GenerationInput {
   userId: string;
   request: CoachChatRequest;
@@ -98,7 +109,26 @@ export async function runCoachChat(
   if (shouldDeduct && !input.accountIsTest) {
     try {
       await deps.deductCredit({ userId: input.userId });
-    } catch {
+    } catch (e) {
+      if (e instanceof CoachChatQuotaExceededError) {
+        deps.logger.warn("coach_chat_failed", {
+          tier: input.tier,
+          errorClass: e.reason,
+          used: e.used,
+          limit: e.limit,
+        });
+        return {
+          status: 429,
+          body: {
+            error: e.reason === "monthly_limit_exceeded"
+              ? "Monthly limit exceeded"
+              : "Daily limit exceeded",
+            quotaNeeded: 1,
+            used: e.used,
+            limit: e.limit,
+          },
+        };
+      }
       deps.logger.warn("coach_chat_failed", {
         tier: input.tier,
         errorClass: "credit_deduct_failed",

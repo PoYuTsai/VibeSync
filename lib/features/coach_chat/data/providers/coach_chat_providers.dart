@@ -71,13 +71,13 @@ final coachChatHistoryProvider =
   return repo.listByConversation(conversationId);
 });
 
-final coachChatControllerProvider =
-    AsyncNotifierProvider.family<CoachChatController, CoachChatResult?, String>(
+final coachChatControllerProvider = AsyncNotifierProvider.autoDispose
+    .family<CoachChatController, CoachChatResult?, String>(
   CoachChatController.new,
 );
 
 class CoachChatController
-    extends FamilyAsyncNotifier<CoachChatResult?, String> {
+    extends AutoDisposeFamilyAsyncNotifier<CoachChatResult?, String> {
   bool _inFlight = false;
   String? _activeSessionId;
   List<CoachChatSessionTurn> _activeTurns = const [];

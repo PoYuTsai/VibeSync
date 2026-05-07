@@ -91,7 +91,7 @@ export const ResponseCardSchema = z.object({
   userTruth: z.string().max(120).nullable().optional(),
   userState: z.string().min(1).max(100),
   nextStep: z.string().min(1).max(100),
-  suggestedLine: z.string().max(100).nullable().optional(),
+  suggestedLine: z.string().max(160).nullable().optional(),
   rewriteDecision: RewriteDecisionEnum.nullable().optional(),
   rewriteReason: z.string().max(100).nullable().optional(),
   boundaryReminder: z.string().min(1).max(100),

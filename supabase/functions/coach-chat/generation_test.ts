@@ -1,5 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { type ClaudeCallArgs, runCoachChat } from "./generation.ts";
+import {
+  type ClaudeCallArgs,
+  CoachChatQuotaExceededError,
+  runCoachChat,
+} from "./generation.ts";
 import type { CoachChatRequest } from "./schemas.ts";
 
 const request: CoachChatRequest = {
@@ -173,6 +177,28 @@ Deno.test("runCoachChat does not return card when deduction fails", async () => 
   );
   assertEquals(result.status, 500);
   assertEquals(result.body.error, "credit_deduct_failed");
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat returns quota error when formal answer cannot deduct", async () => {
+  const harness = deps({
+    deductCredit: () =>
+      Promise.reject(
+        new CoachChatQuotaExceededError("daily_limit_exceeded", 15, 15),
+      ),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request,
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 429);
+  assertEquals(result.body.error, "Daily limit exceeded");
   assertEquals(harness.deductCalls, 1);
 });
 

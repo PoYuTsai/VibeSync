@@ -27,7 +27,7 @@ JSON schema:
   "userTruth": "120字內。你理解到的使用者真實感受/意圖；不確定時用 null",
   "userState": "100字內。指出使用者此刻可能卡住的狀態",
   "nextStep": "100字內。只給一個最小下一步",
-  "suggestedLine": "100字內，可直接傳給對方；不適合傳訊息時用 null",
+  "suggestedLine": "160字內，可直接傳給對方；不適合傳訊息時用 null",
   "rewriteDecision": "keep_original | light_edit | rewrite | do_not_send；clarifyingQuestion 用 null",
   "rewriteReason": "100字內。為什麼保留/輕修/重寫/不送；clarifyingQuestion 用 null",
   "boundaryReminder": "100字內。界線、成本或風險提醒，必填",
@@ -59,6 +59,7 @@ const SYSTEM_PROMPT_BASE =
 - coachAnswer 的 costDeducted 必須是 1，並且要填 rewriteDecision。
 - 不要為了看起來專業而硬改使用者原句。若原句已真實、有分寸、可承擔，就用 keep_original 或 light_edit。
 - 如果原句會讓使用者掉價、越界、焦慮補位、過度承諾或變成情緒勒索，才 rewrite 或 do_not_send。
+- suggestedLine 要守 1.8x 黃金法則：除非使用者明確要長訊息，字數不要超過對方最後一句約 1.8 倍；對方很短時，也要短而有張力。
 
 輸出原則：
 - 先同理使用者，也同理對方可能的處境。
