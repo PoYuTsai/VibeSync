@@ -95,7 +95,7 @@ export async function runCoachChat(
     }
 
     try {
-      card = parseAndValidateCard(claudeData);
+      card = parseAndValidateCard(claudeData, input.request);
       if (attempt > 1) {
         deps.logger.info("coach_chat_retry_succeeded", {
           tier: input.tier,
@@ -111,6 +111,7 @@ export async function runCoachChat(
       deps.logger.warn("coach_chat_card_invalid", {
         tier: input.tier,
         errorClass: lastValidationError,
+        detail: summarizeValidationError(e),
         attempt,
       });
       if (attempt === MAX_CARD_GENERATION_ATTEMPTS) {
@@ -204,9 +205,13 @@ function buildAttemptPrompt(
 - 避免輸出被禁止的可見詞彙。`;
 }
 
-function parseAndValidateCard(claudeData: unknown): CoachChatResponseCard {
+function parseAndValidateCard(
+  claudeData: unknown,
+  request: CoachChatRequest,
+): CoachChatResponseCard {
   const parsed = parseClaudeJSON(claudeData);
-  const truncated = truncateCard(parsed);
+  const repaired = repairCardShape(parsed, request);
+  const truncated = truncateCard(repaired);
   const card = validateResponseCard(truncated);
   assertCardSafe(card);
   return card;
@@ -215,9 +220,17 @@ function parseAndValidateCard(claudeData: unknown): CoachChatResponseCard {
 function buildFallbackClarificationCard(
   request: CoachChatRequest,
 ): CoachChatResponseCard {
+  const card = validateResponseCard(buildFallbackClarificationShape(request));
+  assertCardSafe(card);
+  return card;
+}
+
+function buildFallbackClarificationShape(
+  request: CoachChatRequest,
+): Record<string, string | number | boolean | null | undefined> {
   const question = request.userQuestion.toLowerCase();
   const isMoveForward = /推進|約|邀|升溫|收尾|關門|轉場/.test(question);
-  const card = validateResponseCard({
+  return {
     responseType: "clarifyingQuestion",
     mode: isMoveForward ? "moveForward" : "clarifyIntent",
     headline: isMoveForward ? "先把推進目標說清楚" : "先問清楚你的真實想法",
@@ -240,9 +253,159 @@ function buildFallbackClarificationCard(
     reflectionQuestion: isMoveForward
       ? "你說推進，是想邀約、升溫，還是確認她意願？"
       : "你聽到她這句話後，心裡第一個反應是什麼？",
-  });
-  assertCardSafe(card);
-  return card;
+  };
+}
+
+const VALID_RESPONSE_TYPES = new Set(["clarifyingQuestion", "coachAnswer"]);
+const VALID_MODES = new Set([
+  "clarifyIntent",
+  "stateCalibration",
+  "boundaryRisk",
+  "moveForward",
+  "replyCraft",
+  "stopSignal",
+]);
+const VALID_FRICTION_TYPES = new Set([
+  "fearOfMistake",
+  "overPolishing",
+  "hesitatesToMoveForward",
+  "emotionalOverreach",
+  "boundaryRisk",
+  "stopLoss",
+  "unclearIntent",
+  "none",
+]);
+const VALID_REWRITE_DECISIONS = new Set([
+  "keep_original",
+  "light_edit",
+  "rewrite",
+  "do_not_send",
+]);
+
+function repairCardShape(
+  raw: Record<string, string | number | boolean | null | undefined>,
+  request: CoachChatRequest,
+): Record<string, string | number | boolean | null | undefined> {
+  const rawResponseType = typeof raw.responseType === "string"
+    ? raw.responseType
+    : "";
+  const responseType = VALID_RESPONSE_TYPES.has(rawResponseType)
+    ? rawResponseType
+    : inferResponseType(raw);
+
+  if (responseType === "clarifyingQuestion") {
+    return repairClarificationCard(raw, request);
+  }
+  return repairCoachAnswerCard(raw, request);
+}
+
+function repairClarificationCard(
+  raw: Record<string, string | number | boolean | null | undefined>,
+  request: CoachChatRequest,
+): Record<string, string | number | boolean | null | undefined> {
+  const fallback = buildFallbackClarificationShape(request);
+  return {
+    responseType: "clarifyingQuestion",
+    mode: validString(raw.mode, VALID_MODES) ?? fallback.mode,
+    headline: nonEmptyString(raw.headline) ?? fallback.headline,
+    answer: nonEmptyString(raw.answer) ?? fallback.answer,
+    userTruth: nullableString(raw.userTruth),
+    userState: nonEmptyString(raw.userState) ?? fallback.userState,
+    frictionType: validString(raw.frictionType, VALID_FRICTION_TYPES) ??
+      fallback.frictionType,
+    nextStep: nonEmptyString(raw.nextStep) ?? fallback.nextStep,
+    suggestedLine: null,
+    rewriteDecision: null,
+    rewriteReason: null,
+    boundaryReminder: nonEmptyString(raw.boundaryReminder) ??
+      fallback.boundaryReminder,
+    needsReflection: true,
+    reflectionQuestion: nonEmptyString(raw.reflectionQuestion) ??
+      fallback.reflectionQuestion,
+    costDeducted: 0,
+  };
+}
+
+function repairCoachAnswerCard(
+  raw: Record<string, string | number | boolean | null | undefined>,
+  request: CoachChatRequest,
+): Record<string, string | number | boolean | null | undefined> {
+  const answer = nonEmptyString(raw.answer);
+  if (answer == null) {
+    return buildFallbackClarificationShape(request);
+  }
+  const isMoveForward = /推進|約|邀|升溫|收尾|關門|轉場/.test(
+    request.userQuestion.toLowerCase(),
+  );
+  const needsReflection = typeof raw.needsReflection === "boolean"
+    ? raw.needsReflection
+    : false;
+
+  return {
+    responseType: "coachAnswer",
+    mode: validString(raw.mode, VALID_MODES) ??
+      (isMoveForward ? "moveForward" : "replyCraft"),
+    headline: nonEmptyString(raw.headline) ?? "先收斂成一小步",
+    answer,
+    userTruth: nullableString(raw.userTruth),
+    userState: nonEmptyString(raw.userState) ??
+      "你正在找一個穩而不過度的下一步。",
+    frictionType: validString(raw.frictionType, VALID_FRICTION_TYPES) ??
+      (isMoveForward ? "hesitatesToMoveForward" : "unclearIntent"),
+    nextStep: nonEmptyString(raw.nextStep) ??
+      "先做一個低壓、小幅度的試探。",
+    suggestedLine: nullableString(raw.suggestedLine),
+    rewriteDecision:
+      validString(raw.rewriteDecision, VALID_REWRITE_DECISIONS) ??
+        "light_edit",
+    rewriteReason: nullableString(raw.rewriteReason) ??
+      "保留方向，只把語氣收穩。",
+    boundaryReminder: nonEmptyString(raw.boundaryReminder) ??
+      "把選擇權留給對方，不要用焦慮推進。",
+    needsReflection,
+    reflectionQuestion: needsReflection
+      ? (nonEmptyString(raw.reflectionQuestion) ?? "你真正想達成的是什麼？")
+      : nullableString(raw.reflectionQuestion),
+    costDeducted: 1,
+  };
+}
+
+function inferResponseType(
+  raw: Record<string, string | number | boolean | null | undefined>,
+): string {
+  if (raw.needsReflection === true && raw.rewriteDecision == null) {
+    return "clarifyingQuestion";
+  }
+  return "coachAnswer";
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return nonEmptyString(value);
+}
+
+function validString(value: unknown, allowed: Set<string>): string | null {
+  const text = nonEmptyString(value);
+  return text != null && allowed.has(text) ? text : null;
+}
+
+function summarizeValidationError(error: unknown): string {
+  const maybeIssues = (error as { issues?: unknown } | null)?.issues;
+  if (Array.isArray(maybeIssues)) {
+    return maybeIssues.slice(0, 4).map((issue) => {
+      const item = issue as { path?: unknown; message?: unknown };
+      const path = Array.isArray(item.path) && item.path.length
+        ? item.path.join(".")
+        : "_";
+      return `${path}:${String(item.message ?? "invalid")}`;
+    }).join("|").slice(0, 260);
+  }
+  return getErrorMessage(error).slice(0, 260);
 }
 
 function getErrorMessage(error: unknown): string {

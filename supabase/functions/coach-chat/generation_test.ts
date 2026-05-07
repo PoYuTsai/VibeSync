@@ -44,10 +44,24 @@ function validClaudeCard(overrides: Record<string, unknown> = {}) {
 function malformedClaudeCard() {
   return {
     content: [{
+      text: "這不是 JSON",
+    }],
+  };
+}
+
+function partialClaudeAnswer(overrides: Record<string, unknown> = {}) {
+  return {
+    content: [{
       text: JSON.stringify({
         responseType: "coachAnswer",
         mode: "moveForward",
-        headline: "少了必要欄位",
+        headline: "先小幅推進",
+        answer:
+          "這題可以推，但不要一次推太滿。先用低壓方式確認她願不願意給時間。",
+        nextStep: "先丟一個低壓邀約。",
+        boundaryReminder: "邀約是給選擇，不是給壓力。",
+        extraField: "Claude 偶爾會多吐欄位",
+        ...overrides,
       }),
     }],
   };
@@ -180,6 +194,53 @@ Deno.test("runCoachChat accepts clarification when Claude omits cost", async () 
     "clarifyingQuestion",
   );
   assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
+});
+
+Deno.test("runCoachChat repairs common coach answer schema drift", async () => {
+  const harness = deps({
+    callClaude: () => Promise.resolve(partialClaudeAnswer()),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, userQuestion: "我該推進嗎？" },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(card.responseType, "coachAnswer");
+  assertEquals(card.rewriteDecision, "light_edit");
+  assertEquals(card.userState, "你正在找一個穩而不過度的下一步。");
+  assertEquals("extraField" in card, false);
+  assertEquals(harness.deductCalls, 1);
+});
+
+Deno.test("runCoachChat downgrades answer without answer text to a free clarification", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(partialClaudeAnswer({
+        answer: undefined,
+      })),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...request, userQuestion: "我該推進嗎？" },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(card.responseType, "clarifyingQuestion");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(harness.deductCalls, 0);
 });
 
 Deno.test("runCoachChat retries malformed cards before surfacing failure", async () => {
