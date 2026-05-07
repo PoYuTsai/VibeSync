@@ -11,14 +11,45 @@ import '../features/report/presentation/screens/my_report_screen.dart';
 import '../features/learning/presentation/screens/learning_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  const MainShell({
+    super.key,
+    this.initialTabIndex = 0,
+  });
+
+  final int initialTabIndex;
+
+  static int tabIndexFromRoute(String? tab) {
+    switch (tab) {
+      case 'report':
+      case 'reports':
+        return 1;
+      case 'learn':
+      case 'learning':
+        return 2;
+      case 'home':
+      default:
+        return 0;
+    }
+  }
 
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
-  int _currentIndex = 0;
+  late int _currentIndex = _normalizeTabIndex(widget.initialTabIndex);
+
+  @override
+  void didUpdateWidget(covariant MainShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextIndex = _normalizeTabIndex(widget.initialTabIndex);
+    if (oldWidget.initialTabIndex != widget.initialTabIndex &&
+        _currentIndex != nextIndex) {
+      setState(() => _currentIndex = nextIndex);
+    }
+  }
+
+  int _normalizeTabIndex(int index) => index.clamp(0, 2);
 
   @override
   Widget build(BuildContext context) {
@@ -44,9 +75,7 @@ class _MainShellState extends State<MainShell> {
             LearningScreen(),
           ],
         ),
-        floatingActionButton: _currentIndex == 0
-            ? const HomeFab()
-            : null,
+        floatingActionButton: _currentIndex == 0 ? const HomeFab() : null,
         bottomNavigationBar: _buildBottomNav(),
       ),
     );
@@ -68,10 +97,8 @@ class _MainShellState extends State<MainShell> {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _buildTab(0, Icons.home_outlined, Icons.home, '首頁'),
-            _buildTab(
-                1, Icons.bar_chart_outlined, Icons.bar_chart, '報告'),
-            _buildTab(
-                2, Icons.menu_book_outlined, Icons.menu_book, '學習'),
+            _buildTab(1, Icons.bar_chart_outlined, Icons.bar_chart, '報告'),
+            _buildTab(2, Icons.menu_book_outlined, Icons.menu_book, '學習'),
           ],
         ),
       ),
@@ -106,9 +133,8 @@ class _MainShellState extends State<MainShell> {
             children: [
               Icon(
                 isSelected ? activeIcon : icon,
-                color: isSelected
-                    ? Colors.white
-                    : AppColors.onBackgroundSecondary,
+                color:
+                    isSelected ? Colors.white : AppColors.onBackgroundSecondary,
                 size: 22,
               ),
               if (isSelected) ...[

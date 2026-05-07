@@ -51,7 +51,10 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/',
-      builder: (context, state) => const MainShell(),
+      builder: (context, state) => MainShell(
+        initialTabIndex:
+            MainShell.tabIndexFromRoute(state.uri.queryParameters['tab']),
+      ),
     ),
     GoRoute(
       path: '/new',

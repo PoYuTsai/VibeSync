@@ -342,9 +342,13 @@ class _PracticeActionCard extends StatelessWidget {
   const _PracticeActionCard({required this.guide});
 
   bool get _isOpeningPractice => guide.category == '開話題';
+  bool get _shouldAskCoach => guide.carryBackHint.contains('問教練');
 
-  String get _primaryActionLabel =>
-      _isOpeningPractice ? '用開場救星練一次' : '回首頁找真實對話練一次';
+  String get _primaryActionLabel {
+    if (_isOpeningPractice) return '用開場救星練一次';
+    if (_shouldAskCoach) return '回首頁選對話，再問教練';
+    return '回首頁找真實對話練一次';
+  }
 
   String get _nextActionHint => _isOpeningPractice
       ? '這篇偏開場素材，可以先用開場救星把一句話拆成幾種可傳版本。'
@@ -355,7 +359,7 @@ class _PracticeActionCard extends StatelessWidget {
       context.push('/opener');
       return;
     }
-    context.go('/');
+    context.go('/?tab=home');
   }
 
   @override
@@ -429,7 +433,7 @@ class _PracticeActionCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => context.go('/'),
+                onPressed: () => context.go('/?tab=home'),
                 icon: const Icon(Icons.forum_outlined, size: 18),
                 label: const Text('回首頁找一段真實對話'),
                 style: OutlinedButton.styleFrom(
