@@ -341,6 +341,23 @@ class _PracticeActionCard extends StatelessWidget {
 
   const _PracticeActionCard({required this.guide});
 
+  bool get _isOpeningPractice => guide.category == '開話題';
+
+  String get _primaryActionLabel =>
+      _isOpeningPractice ? '用開場救星練一次' : '回首頁找真實對話練一次';
+
+  String get _nextActionHint => _isOpeningPractice
+      ? '這篇偏開場素材，可以先用開場救星把一句話拆成幾種可傳版本。'
+      : '這篇更適合拿真實互動測：回首頁找一段對話，分析後按「問教練」收斂下一步。';
+
+  void _openPrimaryAction(BuildContext context) {
+    if (_isOpeningPractice) {
+      context.push('/opener');
+      return;
+    }
+    context.go('/');
+  }
+
   @override
   Widget build(BuildContext context) {
     return GlassmorphicContainer(
@@ -393,30 +410,41 @@ class _PracticeActionCard extends StatelessWidget {
               height: 1.45,
             ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            _nextActionHint,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 16),
           GradientButton(
-            text: '用開場救星練一次',
-            onPressed: () => context.push('/opener'),
+            text: _primaryActionLabel,
+            onPressed: () => _openPrimaryAction(context),
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => context.go('/'),
-              icon: const Icon(Icons.forum_outlined, size: 18),
-              label: const Text('回首頁找一段真實對話'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.glassTextPrimary,
-                side: BorderSide(
-                  color: AppColors.glassBorder.withValues(alpha: 0.8),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+          if (_isOpeningPractice) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => context.go('/'),
+                icon: const Icon(Icons.forum_outlined, size: 18),
+                label: const Text('回首頁找一段真實對話'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.glassTextPrimary,
+                  side: BorderSide(
+                    color: AppColors.glassBorder.withValues(alpha: 0.8),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
