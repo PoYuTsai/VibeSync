@@ -253,7 +253,10 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
               ),
             ),
           ),
-          if (latest != null) ...[
+          if (isLoading) ...[
+            const SizedBox(height: 14),
+            _CoachThinkingNotice(question: _lastAskedQuestion),
+          ] else if (latest != null) ...[
             const SizedBox(height: 14),
             _CoachChatResultView(
               result: latest,
@@ -675,6 +678,66 @@ class _CoachMemorySourceStrip extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoachThinkingNotice extends StatelessWidget {
+  final String? question;
+
+  const _CoachThinkingNotice({this.question});
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedQuestion = question?.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.2),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '教練正在接這句',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  trimmedQuestion == null || trimmedQuestion.isEmpty
+                      ? '正在整合本段對話、你的風格和最新分析。'
+                      : '「$trimmedQuestion」',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

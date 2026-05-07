@@ -61,7 +61,8 @@ enum _AnalysisErrorOrigin {
   recognition,
 }
 
-class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
+class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
+    with WidgetsBindingObserver {
   final MemoryService _memoryService = MemoryService();
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
@@ -116,6 +117,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   // 對話延續功能
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final _messageFocusNode = FocusNode();
   final _coachChatCardKey = GlobalKey();
   bool _showAllMessages = false;
   String? _lastManualAddedMessageId;
@@ -533,8 +535,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _messageFocusNode.addListener(_handleMessageInputFocus);
     _restorePersistedAnalysis();
     // 不再自動分析，讓用戶手動點擊
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (_messageFocusNode.hasFocus) {
+      _scheduleMessageInputIntoView();
+    }
+  }
+
+  void _handleMessageInputFocus() {
+    if (!_messageFocusNode.hasFocus) {
+      return;
+    }
+    _scheduleMessageInputIntoView();
+  }
+
+  void _scheduleMessageInputIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_messageFocusNode.hasFocus) {
+        return;
+      }
+      unawaited(_scrollToBottom());
+    });
   }
 
   void _restorePersistedAnalysis() {
@@ -626,7 +654,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _messageController.dispose();
+    _messageFocusNode.dispose();
     _scrollController.dispose();
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
@@ -3596,6 +3626,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
 
     return GradientBackground(
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
@@ -5493,7 +5524,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     ),
                   ),
                   // 對話延續輸入區（有分析結果時可收合）
-                  _buildCollapsibleMessageInput(),
+                  _buildKeyboardAwareMessageInput(),
                 ],
               ),
             ),
@@ -5780,6 +5811,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   /// 建立可收合的訊息輸入區（有分析結果時預設收合）
+  Widget _buildKeyboardAwareMessageInput() {
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: _buildCollapsibleMessageInput(),
+    );
+  }
+
   Widget _buildCollapsibleMessageInput() {
     // 沒有分析結果時，直接顯示輸入區
     if (_enthusiasmScore == null) {
@@ -5944,6 +5986,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
             // 輸入框 + 貼上按鈕
             TextField(
               controller: _messageController,
+              focusNode: _messageFocusNode,
               style: AppTypography.bodyMedium
                   .copyWith(color: AppColors.glassTextPrimary),
               decoration: InputDecoration(
