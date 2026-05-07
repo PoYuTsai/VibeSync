@@ -123,6 +123,12 @@ Future<void> _scrollUntilVisible(
   await t.pumpAndSettle();
 }
 
+Future<void> _expandDetailedTraits(WidgetTester t) async {
+  await _scrollUntilVisible(t, find.text('詳細特質與趨勢'));
+  await t.tap(find.text('展開'));
+  await t.pumpAndSettle();
+}
+
 void main() {
   testWidgets('tile delete confirm calls ConversationWriteController.delete',
       (t) async {
@@ -177,7 +183,8 @@ void main() {
     expect(find.text('已刪除這段互動紀錄'), findsOneWidget);
   });
 
-  testWidgets('⋮ menu: merge + edit only, no disabled delete item', (t) async {
+  testWidgets('settings gear + ⋮ merge only, no disabled delete item',
+      (t) async {
     await t.pumpWidget(ProviderScope(
       overrides: [
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
@@ -197,18 +204,19 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.text('Alice'), findsWidgets);
+    expect(find.byTooltip('對象設定'), findsOneWidget);
     expect(find.byIcon(Icons.more_vert), findsOneWidget);
 
     await t.tap(find.byIcon(Icons.more_vert));
     await t.pumpAndSettle();
 
     expect(find.text('合併重複對象'), findsOneWidget);
-    expect(find.text('編輯對象'), findsOneWidget);
+    expect(find.text('編輯對象'), findsNothing);
     expect(find.text('編輯對象（即將推出）'), findsNothing);
     expect(find.text('刪除對象（即將推出）'), findsNothing);
   });
 
-  testWidgets('⋮ edit → dialog → 儲存 calls updateName + success snackbar',
+  testWidgets('settings gear → 儲存 calls updateName + success snackbar',
       (t) async {
     final fake = RecordingPartnerWriteController();
 
@@ -231,24 +239,24 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    await t.tap(find.byIcon(Icons.more_vert));
-    await t.pumpAndSettle();
-    await t.tap(find.text('編輯對象'));
+    await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
 
-    expect(find.byType(TextField), findsOneWidget);
-    await t.enterText(find.byType(TextField), '  Alicia  ');
+    expect(find.byType(TextField), findsNWidgets(2));
+    await t.enterText(find.byType(TextField).at(0), '  Alicia  ');
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
     expect(fake.updateNameCalled, isTrue);
+    expect(fake.updateCustomNoteCalled, isFalse);
     expect(fake.updatedPartner?.id, 'p1');
     expect(fake.updatedName, 'Alicia',
         reason: 'dialog must trim before handing off to controller');
-    expect(find.text('已更新名稱'), findsOneWidget);
+    expect(find.text('已更新對象設定'), findsOneWidget);
   });
 
-  testWidgets('⋮ edit → 取消 does not call updateName', (t) async {
+  testWidgets('settings gear → 取消 does not call updateName or update note',
+      (t) async {
     final fake = RecordingPartnerWriteController();
 
     await t.pumpWidget(ProviderScope(
@@ -270,18 +278,18 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    await t.tap(find.byIcon(Icons.more_vert));
-    await t.pumpAndSettle();
-    await t.tap(find.text('編輯對象'));
+    await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
     await t.tap(find.text('取消'));
     await t.pumpAndSettle();
 
     expect(fake.updateNameCalled, isFalse);
-    expect(find.text('已更新名稱'), findsNothing);
+    expect(fake.updateCustomNoteCalled, isFalse);
+    expect(find.text('已更新對象設定'), findsNothing);
   });
 
-  testWidgets('⋮ edit → controller throw shows error snackbar', (t) async {
+  testWidgets('settings gear → controller throw shows error snackbar',
+      (t) async {
     final fake = RecordingPartnerWriteController()
       ..throwOnUpdateName = StateError('boom');
 
@@ -304,11 +312,9 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    await t.tap(find.byIcon(Icons.more_vert));
+    await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
-    await t.tap(find.text('編輯對象'));
-    await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), 'Alicia');
+    await t.enterText(find.byType(TextField).at(0), 'Alicia');
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
@@ -316,7 +322,7 @@ void main() {
     expect(find.textContaining('更新失敗'), findsOneWidget);
   });
 
-  testWidgets('traits gear edits partner-level custom note', (t) async {
+  testWidgets('settings gear edits partner-level custom note', (t) async {
     final fake = RecordingPartnerWriteController();
 
     await t.pumpWidget(ProviderScope(
@@ -338,17 +344,17 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    await _scrollUntilVisible(t, find.byTooltip('設定對方資訊'));
-    await t.tap(find.byTooltip('設定對方資訊'));
+    await t.tap(find.byTooltip('對象設定'));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), '  慢熱，喜歡戶外活動  ');
+    await t.enterText(find.byType(TextField).at(1), '  慢熱，喜歡戶外活動  ');
     await t.tap(find.text('儲存'));
     await t.pumpAndSettle();
 
+    expect(fake.updateNameCalled, isFalse);
     expect(fake.updateCustomNoteCalled, isTrue);
     expect(fake.notePartner?.id, 'p1');
     expect(fake.updatedCustomNote, '慢熱，喜歡戶外活動');
-    expect(find.text('已更新對方資訊'), findsOneWidget);
+    expect(find.text('已更新對象設定'), findsOneWidget);
   });
 
   testWidgets('traits card renders existing partner-level custom note',
@@ -374,6 +380,7 @@ void main() {
     ));
     await t.pumpAndSettle();
 
+    await _expandDetailedTraits(t);
     await _scrollUntilVisible(t, find.text('你的設定'));
     expect(find.text('你的設定'), findsOneWidget);
     expect(find.text('慢熱，喜歡戶外活動'), findsOneWidget);
@@ -481,7 +488,13 @@ void main() {
     expect(find.text('待分析'), findsWidgets);
     expect(find.text('--'), findsOneWidget);
 
-    await _scrollUntilVisible(t, find.byType(PartnerTraitsCard));
+    await _scrollUntilVisible(t, find.text('詳細特質與趨勢'));
+    expect(find.text('詳細特質與趨勢'), findsOneWidget);
+    expect(find.text('長期資料與雷達圖，給想確認依據時展開。'), findsOneWidget);
+    expect(find.text('展開'), findsOneWidget);
+    expect(find.byType(PartnerTraitsCard), findsNothing);
+
+    await _expandDetailedTraits(t);
     expect(find.byType(PartnerTraitsCard), findsOneWidget);
     expect(find.byType(PartnerRadarSummaryCard), findsOneWidget);
   });

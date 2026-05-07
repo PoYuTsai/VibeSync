@@ -102,10 +102,12 @@ void main() {
     );
 
     await t.scrollUntilVisible(
-      find.byType(PartnerTraitsCard),
+      find.text('詳細特質與趨勢'),
       450,
       scrollable: find.byType(Scrollable).first,
     );
+    await t.pumpAndSettle();
+    await t.tap(find.text('展開'));
     await t.pumpAndSettle();
     expect(find.byType(PartnerTraitsCard), findsOneWidget);
   });

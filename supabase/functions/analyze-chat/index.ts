@@ -1502,8 +1502,15 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
 8. 符合用戶風格設定。
 9. 保持正常人說話的語氣。
 
+Coach-aligned 底層原則：
+1. 這不是 Coach 1:1 的局勢判斷，不要反問使用者，也不要改成長篇分析。
+2. 不要叫使用者假裝成另一個人；只幫他更穩、更清楚、更像自己。
+3. 預設 light edit：如果原句已真實、有分寸、可承擔，就保留原意微調，不要為了「看起來更會撩」而重寫。
+4. 如果原句有焦慮補位、過度解釋、越界、情緒勒索、過度承諾或掉價風險，要改成更穩、更有界線的版本。
+5. 使用 effectiveStyleContext 時，只調整語氣和個人風格；不得蓋過當前對話脈絡、同意/安全邊界和 userDraft 原意。
+
 優化品質規則：
-1. 「幫我優化」代表使用者期待你把原句變得更好，不是照抄、摘要、評論或替他改成另一個意圖。
+1. 「草稿潤飾」代表使用者期待你把原句變得更好，不是照抄、摘要、評論或替他改成另一個意圖。
 2. optimized 必須是可直接送出的訊息，不能只是建議、分析或說明。
 3. 優化方向：更口語、更順、更有情緒溫度、更好接球；必要時加一個自然反問或輕微幽默。
 4. 若 userDraft 已經很短，仍要保留它的意思並讓它更有互動性，不要只輸出同義短句。
@@ -4411,6 +4418,8 @@ Optimization contract:
 - Preserve the draft's main topic and intent even if it does not directly answer the latest partner message.
 - Actually improve the draft into a sendable message: more natural, warmer, easier to reply to, and aligned with the user's style.
 - Use conversation only to tune tone/rhythm and avoid awkward jumps.
+- This is draft polishing, not Coach 1:1: do not ask a clarifying question, do not re-decide the whole strategy, and do not rewrite the user into a different persona.
+- Prefer light edits when the draft is already honest and calibrated; rewrite only when it is anxious, boundary-blurring, over-explaining, manipulative, or hard to reply to.
 
 Return \`optimizedMessage\` in the structured JSON response.`,
       );

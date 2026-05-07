@@ -15,6 +15,8 @@ Deno.test("buildCoachChatPrompt includes coach 1:1 positioning and JSON contract
   });
   assertStringIncludes(prompt, "VibeSync Coach 1:1");
   assertStringIncludes(prompt, "不是套殼聊天機器人");
+  assertStringIncludes(prompt, "收斂狀態機");
+  assertStringIncludes(prompt, "不是幫他發散更多劇本");
   assertStringIncludes(prompt, '"mode"');
   assertStringIncludes(prompt, '"responseType"');
   assertStringIncludes(prompt, '"boundaryReminder"');
@@ -84,7 +86,7 @@ Deno.test("buildCoachChatPrompt teaches sexual tension without shame or pressure
   assertStringIncludes(prompt, "絕不教施壓");
 });
 
-Deno.test("buildCoachChatPrompt asks for layered meaning when user asks what a line means", () => {
+Deno.test("buildCoachChatPrompt converges line meaning into one working judgment", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",
     userQuestion: "她說我很有故事是什麼意思？",
@@ -93,8 +95,9 @@ Deno.test("buildCoachChatPrompt asks for layered meaning when user asks what a l
     recentMessages: [{ sender: "partner", text: "你感覺很有故事的人" }],
     dataQualityFlagged: false,
   });
-  assertStringIncludes(prompt, "先拆 2-3 種合理含義");
-  assertStringIncludes(prompt, "不要只丟話術");
+  assertStringIncludes(prompt, "最多列 2 種合理含義");
+  assertStringIncludes(prompt, "立刻選一個最可能的工作判斷");
+  assertStringIncludes(prompt, "不要展開成選項清單");
 });
 
 Deno.test("buildCoachChatPrompt frames attached-partner invitations as role and cost judgment", () => {

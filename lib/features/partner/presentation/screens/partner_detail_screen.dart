@@ -43,8 +43,7 @@ import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
-import '../dialogs/partner_edit_dialog.dart';
-import '../dialogs/partner_note_edit_dialog.dart';
+import '../dialogs/partner_settings_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_data_quality_banner.dart';
@@ -90,6 +89,14 @@ class PartnerDetailScreen extends ConsumerWidget {
           style: const TextStyle(color: AppColors.onBackgroundPrimary),
         ),
         actions: [
+          IconButton(
+            tooltip: '對象設定',
+            onPressed: () => _onEditPartnerSettings(context, ref, partner),
+            icon: const Icon(
+              Icons.settings_outlined,
+              color: AppColors.onBackgroundPrimary,
+            ),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(
               Icons.more_vert,
@@ -101,14 +108,9 @@ class PartnerDetailScreen extends ConsumerWidget {
                 enabled: hasOtherPartner,
                 child: Text(hasOtherPartner ? '合併重複對象' : '合併重複對象（需至少 2 個對象）'),
               ),
-              const PopupMenuItem(
-                value: 'edit',
-                child: Text('編輯對象'),
-              ),
             ],
             onSelected: (v) {
               if (v == 'merge') context.push('/partner/$partnerId/merge');
-              if (v == 'edit') _onEditPartner(context, ref, partner);
             },
           ),
         ],
@@ -202,31 +204,13 @@ class PartnerDetailScreen extends ConsumerWidget {
                   ),
                 ],
                 const SizedBox(height: 16),
-                _PartnerDetailSection(
+                _PartnerExpandableDetailSection(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '詳細特質與趨勢',
-                        style: AppTypography.titleSmall.copyWith(
-                          color: AppColors.onBackgroundPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '這裡保留長期資料，不放在最上方打斷下一步判斷。',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.onBackgroundSecondary,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       PartnerTraitsCard(
                         view: aggregate,
                         customNote: partner.customNote,
-                        onEditNote: () =>
-                            _onEditPartnerNote(context, ref, partner),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -792,6 +776,98 @@ class _PartnerTag extends StatelessWidget {
   }
 }
 
+class _PartnerExpandableDetailSection extends StatefulWidget {
+  final Widget child;
+
+  const _PartnerExpandableDetailSection({required this.child});
+
+  @override
+  State<_PartnerExpandableDetailSection> createState() =>
+      _PartnerExpandableDetailSectionState();
+}
+
+class _PartnerExpandableDetailSectionState
+    extends State<_PartnerExpandableDetailSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PartnerDetailSection(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      _expanded ? Icons.insights : Icons.insights_outlined,
+                      color: AppColors.onBackgroundPrimary,
+                      size: 21,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '詳細特質與趨勢',
+                          style: AppTypography.titleSmall.copyWith(
+                            color: AppColors.onBackgroundPrimary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '長期資料與雷達圖，給想確認依據時展開。',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _expanded ? '收起' : '展開',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded) ...[
+            const SizedBox(height: 14),
+            widget.child,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _PartnerDetailSection extends StatelessWidget {
   final Widget child;
 
@@ -949,51 +1025,38 @@ void _logCoachFollowUpTelemetry(CoachFollowUpTelemetryEvent event) {
   }
 }
 
-Future<void> _onEditPartner(
+Future<void> _onEditPartnerSettings(
   BuildContext context,
   WidgetRef ref,
   Partner partner,
 ) async {
   final messenger = ScaffoldMessenger.of(context);
   final controller = ref.read(partnerWriteControllerProvider.notifier);
-  final newName = await showDialog<String>(
+  final result = await showDialog<PartnerSettingsResult>(
     context: context,
-    builder: (_) => PartnerEditDialog(initialName: partner.name),
-  );
-  if (newName == null) return;
-  try {
-    await controller.updateName(partner, newName);
-    if (!context.mounted) return;
-    messenger.showSnackBar(const SnackBar(content: Text('已更新名稱')));
-  } catch (e, st) {
-    debugPrint('PartnerDetailScreen edit failed: $e\n$st');
-    if (!context.mounted) return;
-    messenger.showSnackBar(
-      const SnackBar(content: Text('更新失敗，請稍後再試')),
-    );
-  }
-}
-
-Future<void> _onEditPartnerNote(
-  BuildContext context,
-  WidgetRef ref,
-  Partner partner,
-) async {
-  final messenger = ScaffoldMessenger.of(context);
-  final controller = ref.read(partnerWriteControllerProvider.notifier);
-  final newNote = await showDialog<String>(
-    context: context,
-    builder: (_) => PartnerNoteEditDialog(
+    builder: (_) => PartnerSettingsDialog(
+      initialName: partner.name,
       initialNote: partner.customNote ?? '',
     ),
   );
-  if (newNote == null) return;
+  if (result == null) return;
+
+  final shouldUpdateName = result.name.trim() != partner.name.trim();
+  final shouldUpdateNote =
+      result.note.trim() != (partner.customNote ?? '').trim();
+  if (!shouldUpdateName && !shouldUpdateNote) return;
+
   try {
-    await controller.updateCustomNote(partner, newNote);
+    if (shouldUpdateName) {
+      await controller.updateName(partner, result.name);
+    }
+    if (shouldUpdateNote) {
+      await controller.updateCustomNote(partner, result.note);
+    }
     if (!context.mounted) return;
-    messenger.showSnackBar(const SnackBar(content: Text('已更新對方資訊')));
+    messenger.showSnackBar(const SnackBar(content: Text('已更新對象設定')));
   } catch (e, st) {
-    debugPrint('PartnerDetailScreen note edit failed: $e\n$st');
+    debugPrint('PartnerDetailScreen settings edit failed: $e\n$st');
     if (!context.mounted) return;
     messenger.showSnackBar(
       const SnackBar(content: Text('更新失敗，請稍後再試')),

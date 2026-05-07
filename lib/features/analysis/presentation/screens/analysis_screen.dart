@@ -4936,7 +4936,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                             ],
                           ],
 
-                          // 優化我的訊息功能
+                          // 草稿潤飾功能：使用者已有方向時才用；判斷/策略交給 Coach 1:1。
                           if (_enthusiasmScore != null) ...[
                             const SizedBox(height: 24),
                             GlassmorphicContainer(
@@ -4954,7 +4954,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            '我有想說的，幫我優化',
+                                            '我已有草稿，幫我修自然',
                                             style: AppTypography.titleMedium
                                                 .copyWith(
                                                     color: AppColors
@@ -4970,6 +4970,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       ],
                                     ),
                                   ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '適合你已經知道想回什麼，只想調整語氣、長度和壓迫感。還不確定該不該回，就用「問教練」。',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.glassTextSecondary,
+                                      height: 1.35,
+                                    ),
+                                  ),
                                   if (_showOptimizeInput) ...[
                                     const SizedBox(height: 12),
                                     TextField(
@@ -4977,8 +4985,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                       style: AppTypography.bodyMedium.copyWith(
                                           color: AppColors.glassTextPrimary),
                                       decoration: InputDecoration(
-                                        hintText: '輸入你想說的內容...',
-                                        helperText: '輸入完可先收起鍵盤，再按「幫我優化」。',
+                                        hintText: '貼上你原本想傳的訊息...',
+                                        helperText: '這裡只修草稿；想討論下一步，請用「問教練」。',
                                         hintStyle:
                                             AppTypography.bodyMedium.copyWith(
                                           color: AppColors.glassTextHint,
@@ -5042,7 +5050,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                               )
                                             : const Icon(Icons.auto_fix_high),
                                         label: Text(
-                                            _isOptimizing ? '優化中...' : '幫我優化'),
+                                          _isOptimizing ? '優化中...' : '優化這段草稿',
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -5059,7 +5068,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                             style: TextStyle(fontSize: 18)),
                                         const SizedBox(width: 8),
                                         Text(
-                                          '優化後的訊息',
+                                          '優化後草稿',
                                           style: AppTypography.titleMedium
                                               .copyWith(
                                             color: AppColors.glassTextPrimary,
@@ -5127,7 +5136,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                                           );
                                         },
                                         icon: const Icon(Icons.copy),
-                                        label: const Text('複製優化訊息'),
+                                        label: const Text('複製草稿'),
                                       ),
                                     ),
                                   ],
