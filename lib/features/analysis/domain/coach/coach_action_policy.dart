@@ -116,6 +116,26 @@ class CoachActionPolicy {
     'fitCheck': CoachActionType.fitCheck,
   };
 
+  static String _avoidLabelForActionType(CoachActionType actionType) {
+    switch (actionType) {
+      case CoachActionType.softInvite:
+        return '邀約提醒';
+      case CoachActionType.lowerPressureReply:
+      case CoachActionType.pausePursuit:
+        return '先不要';
+      case CoachActionType.rightSizeReply:
+        return '精簡提醒';
+      case CoachActionType.emotionalResonance:
+        return '回應提醒';
+      case CoachActionType.playfulReply:
+        return '尺度提醒';
+      case CoachActionType.extendTopicStoryFrame:
+      case CoachActionType.preferenceSignal:
+      case CoachActionType.fitCheck:
+        return '節奏提醒';
+    }
+  }
+
   static const List<String> _concreteTopicKeywords = [
     '追劇',
     '看劇',
@@ -352,6 +372,7 @@ class CoachActionPolicy {
       whyNow: card.whyNow,
       task: card.task,
       avoid: card.avoid,
+      avoidLabel: card.avoidLabel,
       suggestedLine: null,
       learningLink: card.learningLink,
     );
@@ -367,6 +388,7 @@ class CoachActionPolicy {
       whyNow: '熱度 $heatScore，互動穩定且對方有訊號，可以給具體選項',
       task: '拋一個低門檻邀約，給具體時間和場景',
       avoid: '別要對方立刻決定',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.softInvite),
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink: LearningLinkResolver.resolve(CoachActionType.softInvite),
     );
@@ -385,6 +407,7 @@ class CoachActionPolicy {
       whyNow: whyNow,
       task: '這次只回一句，把追問留到下次',
       avoid: '別連發三題、不要追問結果',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.lowerPressureReply),
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.lowerPressureReply),
@@ -401,6 +424,7 @@ class CoachActionPolicy {
       whyNow: '熱度 $heatScore，可以丟一個 playful 卡點維持張力',
       task: '拋一個 playful 卡點，留半步空白',
       avoid: '別讓玩笑變嘲弄',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.playfulReply),
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink: LearningLinkResolver.resolve(CoachActionType.playfulReply),
     );
@@ -412,6 +436,7 @@ class CoachActionPolicy {
       whyNow: '熱度 $heatScore，這時推進反而容易把話聊死',
       task: '今天先不主動再傳，明天觀察她有沒有開新話題',
       avoid: '別連發訊息追問結果',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.pausePursuit),
       suggestedLine: null,
       learningLink: LearningLinkResolver.resolve(CoachActionType.pausePursuit),
     );
@@ -432,6 +457,7 @@ class CoachActionPolicy {
       whyNow: '她丟出的球：$catchablePoint。$read',
       task: hint.microMove.trim(),
       avoid: hint.avoid.trim(),
+      avoidLabel: _avoidLabelForActionType(actionType),
       suggestedLine: null,
       learningLink: LearningLinkResolver.resolve(actionType),
     );
@@ -450,6 +476,8 @@ class CoachActionPolicy {
       whyNow: whyNow,
       task: '先接她的內容，再補一個你的感受或低壓小問題',
       avoid: '別只連問清單題，也別急著判斷她冷或熱',
+      avoidLabel:
+          _avoidLabelForActionType(CoachActionType.extendTopicStoryFrame),
       suggestedLine: null,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
@@ -466,6 +494,8 @@ class CoachActionPolicy {
       whyNow: '熱度 $heatScore，可以用故事框架往下展開',
       task: '用「場景 + 觀點/情緒 + 開放式提問」這個框架延展話題',
       avoid: '別只丟一個開放式問句',
+      avoidLabel:
+          _avoidLabelForActionType(CoachActionType.extendTopicStoryFrame),
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
@@ -478,6 +508,7 @@ class CoachActionPolicy {
       whyNow: '熱度 $heatScore，可以輕鬆露出自己的偏好',
       task: '講一個自己的小喜好或觀點，不問問題',
       avoid: '別把這當解釋自己',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.preferenceSignal),
       suggestedLine: null,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.preferenceSignal),
@@ -494,6 +525,7 @@ class CoachActionPolicy {
       whyNow: '熱度 $heatScore，這次回得有點長，下一句先精簡一點再展開',
       task: '把回覆字數對齊對方上一句的 1.8 倍以內',
       avoid: '別把所有想說的塞進一封',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.rightSizeReply),
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.rightSizeReply),
@@ -514,6 +546,7 @@ class CoachActionPolicy {
       whyNow: whyNow,
       task: challengeSignal ? '先輕鬆承接，再把球自然丟回去' : '先命名她的感受，再用一句低壓提問延伸',
       avoid: challengeSignal ? '別急著自證、道歉或反擊' : '別急著給建議或講道理',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.emotionalResonance),
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink:
           LearningLinkResolver.resolve(CoachActionType.emotionalResonance),
@@ -534,6 +567,7 @@ class CoachActionPolicy {
       whyNow: whyNow,
       task: '回一個低壓小球，觀察她會不會補細節',
       avoid: '不要把短回覆直接解讀成冷或熱',
+      avoidLabel: _avoidLabelForActionType(CoachActionType.fitCheck),
       suggestedLine: null,
       learningLink: LearningLinkResolver.resolve(CoachActionType.fitCheck),
     );

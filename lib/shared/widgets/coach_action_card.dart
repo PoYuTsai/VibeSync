@@ -59,7 +59,7 @@ class CoachActionCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _LabeledRow(
-            label: '先不要',
+            label: data.avoidLabel,
             text: data.avoid,
             textColor: AppColors.glassTextSecondary,
           ),

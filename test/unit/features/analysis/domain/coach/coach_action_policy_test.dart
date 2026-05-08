@@ -141,6 +141,7 @@ void main() {
       expect(card.actionLabel, '接住生活話題');
       expect(card.whyNow, contains('在家追劇 看絕命毒師'));
       expect(card.task, contains('補一個你的感受'));
+      expect(card.avoidLabel, '節奏提醒');
       expect(card.avoid, contains('別只連問清單題'));
       expect(card.suggestedLine, isNull);
       expect(card.learningLink, '14');
@@ -176,8 +177,32 @@ void main() {
       expect(card.whyNow, contains('她丟出的球：在家追劇 / 絕命毒師'));
       expect(card.whyNow, contains('不是單純冷回'));
       expect(card.task, contains('接劇名'));
+      expect(card.avoidLabel, '節奏提醒');
       expect(card.avoid, contains('不要連問清單題'));
       expect(card.learningLink, '14');
+    });
+
+    test('should keep hard brake label only for pressure-reduction actions',
+        () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 25,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '直接約她出來吃飯',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+
+      expect(card.actionLabel, '暫停追問');
+      expect(card.avoidLabel, '先不要');
     });
 
     test('should ignore low-confidence AI coachActionHint', () {

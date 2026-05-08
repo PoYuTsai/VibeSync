@@ -18,6 +18,7 @@ void main() {
                 task: '用「場景 + 觀點/情緒 + 開放式提問」',
                 suggestedLine: '聽起來最近壓力大，是哪一塊？',
                 avoid: '別只丟一個開放式問句',
+                avoidLabel: '節奏提醒',
                 learningLink: '14',
               ),
               onLearningLinkTap: (id) => tappedId = id,
@@ -30,7 +31,9 @@ void main() {
       expect(find.textContaining('· 故事框架'), findsOneWidget);
       expect(find.textContaining('熱度 50'), findsOneWidget);
       expect(find.textContaining('場景 + 觀點'), findsOneWidget);
+      expect(find.textContaining('節奏提醒：'), findsOneWidget);
       expect(find.textContaining('別只丟一個開放式問句'), findsOneWidget);
+      expect(find.textContaining('先不要：'), findsNothing);
       expect(find.text('試試這樣回'), findsOneWidget);
       expect(find.textContaining('聽起來最近壓力大'), findsOneWidget);
       expect(find.text('看 3 分鐘教學'), findsOneWidget);
@@ -59,6 +62,29 @@ void main() {
       expect(find.text('試試這樣回'), findsNothing);
       expect(find.text('本回合怎麼接'), findsOneWidget);
       expect(find.text('看 3 分鐘教學'), findsOneWidget);
+    });
+
+    testWidgets('should default avoid label to 先不要 for legacy data',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CoachActionCard(
+              data: const CoachActionCardData(
+                actionLabel: '暫停追問',
+                whyNow: '這時推進反而容易把話聊死',
+                task: '今天先不主動再傳',
+                suggestedLine: null,
+                avoid: '別連發訊息追問結果',
+                learningLink: null,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('先不要：'), findsOneWidget);
+      expect(find.textContaining('別連發訊息追問結果'), findsOneWidget);
     });
 
     testWidgets('should hide CTA row when learningLink is null',

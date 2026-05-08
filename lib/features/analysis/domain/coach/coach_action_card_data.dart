@@ -8,6 +8,7 @@ class CoachActionCardData {
     required this.whyNow,
     required this.task,
     required this.avoid,
+    this.avoidLabel = '先不要',
     this.suggestedLine,
     this.learningLink,
   });
@@ -16,6 +17,7 @@ class CoachActionCardData {
   final String whyNow;
   final String task;
   final String avoid;
+  final String avoidLabel;
   final String? suggestedLine;
   final String? learningLink;
 
@@ -27,6 +29,7 @@ class CoachActionCardData {
         other.whyNow == whyNow &&
         other.task == task &&
         other.avoid == avoid &&
+        other.avoidLabel == avoidLabel &&
         other.suggestedLine == suggestedLine &&
         other.learningLink == learningLink;
   }
@@ -37,6 +40,7 @@ class CoachActionCardData {
         whyNow,
         task,
         avoid,
+        avoidLabel,
         suggestedLine,
         learningLink,
       );
@@ -44,6 +48,6 @@ class CoachActionCardData {
   @override
   String toString() =>
       'CoachActionCardData(actionLabel: $actionLabel, whyNow: $whyNow, '
-      'task: $task, avoid: $avoid, suggestedLine: $suggestedLine, '
-      'learningLink: $learningLink)';
+      'task: $task, avoidLabel: $avoidLabel, avoid: $avoid, '
+      'suggestedLine: $suggestedLine, learningLink: $learningLink)';
 }
