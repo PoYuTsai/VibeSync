@@ -91,6 +91,61 @@ void main() {
       expect(card.learningLink, '18');
     });
 
+    test(
+        'should turn concrete entertainment topics into a topic-extension practice',
+        () {
+      final messages = [
+        Message(
+          id: 'm1',
+          content: '嘿呀',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 8, 21),
+        ),
+        Message(
+          id: 'm2',
+          content: '你今天過得如何',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 8, 21, 1),
+        ),
+        Message(
+          id: 'm3',
+          content: '不錯呀',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 8, 21, 2),
+        ),
+        Message(
+          id: 'm4',
+          content: '在家追劇 看絕命毒師',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 8, 21, 3),
+        ),
+      ];
+
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 60,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '絕命毒師很經典，你看到第幾季了？',
+          reason: '接住她主動丟出的追劇話題',
+          psychology: '',
+        ),
+        messages: messages,
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+
+      expect(card.actionLabel, '接住生活話題');
+      expect(card.whyNow, contains('在家追劇 看絕命毒師'));
+      expect(card.task, contains('補一個你的感受'));
+      expect(card.avoid, contains('別只連問清單題'));
+      expect(card.suggestedLine, isNull);
+      expect(card.learningLink, '14');
+    });
+
     test('should not surface long-term-trait phrases when partner is flagged',
         () {
       final card = CoachActionPolicy.evaluate(

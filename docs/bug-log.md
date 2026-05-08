@@ -10,6 +10,33 @@
 
 ## 2026-05
 
+### [2026-05-08] 本回合練習卡忽略具體生活話題
+**症狀**:
+
+- 對方明確丟出「在家追劇 看絕命毒師」這類可延展話題時，分析頁仍顯示泛用的「互動品質觀察」。
+- 文案反覆出現「先別下定論」「練觀察」，和當下對話不夠貼合。
+
+**Root Cause**:
+
+- `CoachActionPolicy` 的 fallback 只看熱度與 GAME stage。
+- opening 階段沒有讀最後一則對方訊息的生活話題訊號，導致具體 topic hook 也掉到 fitCheck。
+
+**修復**:
+
+- 新增最後一則對方訊息的 concrete topic hook 偵測。
+- 追劇、電影、音樂、運動、餐廳等可延展生活話題改顯示「接住生活話題」。
+- 收斂 fitCheck fallback 文案，避免一直重複「先別下定論」。
+
+**驗證**:
+
+- `flutter test test/unit/features/analysis/domain/coach/coach_action_policy_test.dart`
+- `flutter analyze`
+
+**相關檔案**:
+
+- `lib/features/analysis/domain/coach/coach_action_policy.dart`
+- `test/unit/features/analysis/domain/coach/coach_action_policy_test.dart`
+
 ### [2026-05-07] 對象卡備註重複累積
 **症狀**:
 

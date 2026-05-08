@@ -104,6 +104,75 @@ class CoachActionPolicy {
     GameStage.narrative,
   };
 
+  static const List<String> _concreteTopicKeywords = [
+    '追劇',
+    '看劇',
+    '影集',
+    '電影',
+    'Netflix',
+    'netflix',
+    'YouTube',
+    'youtube',
+    '動漫',
+    '動畫',
+    '漫畫',
+    '小說',
+    '音樂',
+    '演唱會',
+    '遊戲',
+    '手遊',
+    '健身',
+    '運動',
+    '爬山',
+    '咖啡',
+    '餐廳',
+    '甜點',
+    '酒吧',
+    '旅行',
+    '旅遊',
+    '逛街',
+    '展覽',
+    '在家',
+    '做飯',
+    '煮飯',
+    '寵物',
+    '貓',
+    '狗',
+  ];
+
+  static String _latestPartnerMessageContent(List<Message> messages) {
+    for (var i = messages.length - 1; i >= 0; i--) {
+      final message = messages[i];
+      if (!message.isFromMe) {
+        return message.content.trim();
+      }
+    }
+    return '';
+  }
+
+  static bool _hasConcreteTopicHook({
+    required List<Message> messages,
+    required GameStageInfo gameStage,
+    required FinalRecommendation finalRecommendation,
+  }) {
+    final latestPartnerMessage = _latestPartnerMessageContent(messages);
+    if (latestPartnerMessage.length < 4) return false;
+
+    final haystack = [
+      latestPartnerMessage,
+      gameStage.nextStep,
+      finalRecommendation.content,
+      finalRecommendation.reason,
+    ].join(' ');
+    return _concreteTopicKeywords.any(haystack.contains);
+  }
+
+  static String _compactTopic(String raw) {
+    final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= 16) return normalized;
+    return '${normalized.substring(0, 16)}...';
+  }
+
   static CoachActionCardData evaluate({
     required int heatScore,
     required GameStageInfo gameStage,
@@ -178,6 +247,17 @@ class CoachActionPolicy {
         heatScore: heatScore,
         finalRecommendation: finalRecommendation,
         challengeSignal: challengeSignal,
+      );
+    }
+    if (heatScore <= AppConstants.hotMax &&
+        _hasConcreteTopicHook(
+          messages: messages,
+          gameStage: gameStage,
+          finalRecommendation: finalRecommendation,
+        )) {
+      return _buildConcreteTopicExtension(
+        heatScore: heatScore,
+        latestPartnerMessage: _latestPartnerMessageContent(messages),
       );
     }
     if (heatScore <= AppConstants.hotMax &&
@@ -318,6 +398,25 @@ class CoachActionPolicy {
     );
   }
 
+  static CoachActionCardData _buildConcreteTopicExtension({
+    required int heatScore,
+    required String latestPartnerMessage,
+  }) {
+    final topic = _compactTopic(latestPartnerMessage);
+    final whyNow = topic.isEmpty
+        ? '熱度 $heatScore，她有丟出可延展的生活話題，先接住內容再觀察'
+        : '熱度 $heatScore，她丟出「$topic」這種生活話題，先接住內容再觀察';
+    return CoachActionCardData(
+      actionLabel: '接住生活話題',
+      whyNow: whyNow,
+      task: '先接她的內容，再補一個你的感受或低壓小問題',
+      avoid: '別只連問清單題，也別急著判斷她冷或熱',
+      suggestedLine: null,
+      learningLink:
+          LearningLinkResolver.resolve(CoachActionType.extendTopicStoryFrame),
+    );
+  }
+
   static CoachActionCardData _buildExtendTopicStoryFrame({
     required int heatScore,
     required FinalRecommendation finalRecommendation,
@@ -390,12 +489,12 @@ class CoachActionPolicy {
     // long-term knowledge of the person — fall back to "this interaction only".
     final whyNow = isDataQualityFlagged
         ? '這位對象目前資料還不完整，先用這次互動的訊號來判斷'
-        : '熱度 $heatScore，先別下定論，當作練觀察';
+        : '熱度 $heatScore，訊號還輕；先看她願不願意把話接回來';
     return CoachActionCardData(
       actionLabel: '互動品質觀察',
       whyNow: whyNow,
-      task: '觀察這次的節奏，記下一個感覺',
-      avoid: '不要急著貼標籤',
+      task: '回一個低壓小球，觀察她會不會補細節',
+      avoid: '不要把短回覆直接解讀成冷或熱',
       suggestedLine: null,
       learningLink: LearningLinkResolver.resolve(CoachActionType.fitCheck),
     );
