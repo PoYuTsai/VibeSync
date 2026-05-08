@@ -16,4 +16,17 @@ void main() {
       expect(MainShell.tabIndexFromRoute('unknown'), 0);
     });
   });
+
+  group('MainShell.tabRouteFromIndex', () {
+    test('maps shell indexes back to stable route tab query values', () {
+      expect(MainShell.tabRouteFromIndex(0), 'home');
+      expect(MainShell.tabRouteFromIndex(1), 'report');
+      expect(MainShell.tabRouteFromIndex(2), 'learning');
+    });
+
+    test('falls back to home for out-of-range values', () {
+      expect(MainShell.tabRouteFromIndex(-1), 'home');
+      expect(MainShell.tabRouteFromIndex(99), 'home');
+    });
+  });
 }

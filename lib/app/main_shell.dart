@@ -14,9 +14,11 @@ class MainShell extends StatefulWidget {
   const MainShell({
     super.key,
     this.initialTabIndex = 0,
+    this.routeTab,
   });
 
   final int initialTabIndex;
+  final String? routeTab;
 
   static int tabIndexFromRoute(String? tab) {
     switch (tab) {
@@ -32,6 +34,18 @@ class MainShell extends StatefulWidget {
     }
   }
 
+  static String tabRouteFromIndex(int index) {
+    switch (index) {
+      case 1:
+        return 'report';
+      case 2:
+        return 'learning';
+      case 0:
+      default:
+        return 'home';
+    }
+  }
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -43,8 +57,8 @@ class _MainShellState extends State<MainShell> {
   void didUpdateWidget(covariant MainShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     final nextIndex = _normalizeTabIndex(widget.initialTabIndex);
-    if (oldWidget.initialTabIndex != widget.initialTabIndex &&
-        _currentIndex != nextIndex) {
+    final routeTabChanged = oldWidget.routeTab != widget.routeTab;
+    if (routeTabChanged && _currentIndex != nextIndex) {
       setState(() => _currentIndex = nextIndex);
     }
   }
@@ -111,7 +125,7 @@ class _MainShellState extends State<MainShell> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => _selectTab(index),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: AnimatedContainer(
@@ -152,6 +166,14 @@ class _MainShellState extends State<MainShell> {
         ),
       ),
     );
+  }
+
+  void _selectTab(int index) {
+    final nextIndex = _normalizeTabIndex(index);
+    if (_currentIndex != nextIndex) {
+      setState(() => _currentIndex = nextIndex);
+    }
+    context.go('/?tab=${MainShell.tabRouteFromIndex(nextIndex)}');
   }
 }
 

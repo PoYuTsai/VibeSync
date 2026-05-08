@@ -54,6 +54,7 @@ final router = GoRouter(
       builder: (context, state) => MainShell(
         initialTabIndex:
             MainShell.tabIndexFromRoute(state.uri.queryParameters['tab']),
+        routeTab: state.uri.queryParameters['tab'],
       ),
     ),
     GoRoute(
