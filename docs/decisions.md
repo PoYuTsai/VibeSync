@@ -26,6 +26,7 @@
 | 14 | 開場救星 feature（2026-04） | ✅ Active |
 | 15 | Partner Entity Refactor（2026-04-25） — A1 schema-only ship + A2 UI/AI deferred | ✅ Active（v2 Shipped 2026-04-28，含 D-P4-1~5） |
 | 16 | Spec 4 Phase 1 — Coach Action Card 取代 ScoreActionHint（2026-05-01） | ✅ Active（Shipped + cleanup complete 2026-05-02 HEAD `0d7ff06`） |
+| 17 | Coach Action Hint v2 — analyze-chat 回傳可接球點（2026-05-08） | ✅ Active |
 
 ---
 
@@ -424,3 +425,33 @@
 
 **相關 commits（main 線性）**:
 `20722d4` Task 1 enum · `cdf3c9d` Task 2 view model · `dda2715` Task 3 resolver · `3294bfc` Task 4 drift guard · `41d9496` review fixes · `2854bcb` Task 5 policy 骨架 · `1ee1d81` Task 6 softInvite · `c96f9e0` Task 7 meeting suppression · `b257d90` flagged whyNow 強化 · `cd844da` Task 8 storyFrame · `bdd9216` Task 9 emotionalResonance · `954346b` Task 10 rightSizeReply · `6ded284` Task 11 tie-breakers + safe set · `7dd7318` cosmetic · `5cad69d` Task 12 widget · `2ca0257` Task 13 wiring
+
+---
+
+## ADR #17 — [2026-05-08] Coach Action Hint v2 — analyze-chat 回傳可接球點
+**狀態**: ✅ Active
+
+**決定**: `analyze-chat` 主分析回應新增 `coachActionHint`，由模型在同一次分析裡回傳聊天窗下方卡片需要的「可接球點」。Flutter `AnalysisResult` 解析此欄位，`CoachActionPolicy` 在安全優先序後優先使用 high/medium confidence hint；低信心或缺欄位則回到 deterministic fallback。
+
+**欄位契約**:
+- `catchablePoint`：引用或濃縮對方剛丟出的具體球點，必須能在聊天內容找到證據
+- `read`：一句話說明這顆球代表什麼，不以 heat score 開頭
+- `microMove`：這回合只做的一個小動作
+- `avoid`：針對當下對話風險的「先不要」
+- `actionType`：沿用 9 個 `CoachActionType.name`
+- `confidence`：`high | medium | low`
+
+**原因**:
+1. App-side keyword fallback 已能止血，但遇到夜店局、短回、邀約、性張力、情緒測試等複雜情境時，不足以證明「真的看懂聊天」。
+2. 這張卡貼在聊天窗下方，位置權重高，第一眼必須引用或濃縮上方對話的具體球點。
+3. 不新增第二次模型呼叫，避免成本、延遲與分析判斷不一致；沿用 `analyze-chat` 已讀完整對話的上下文。
+4. App 端仍保留安全排序：cold/低熱度邀約、過長回覆、情緒訊號、flagged partner safe-set 不交給模型直接覆蓋。
+
+**不做**:
+- 不新增 Edge endpoint。
+- 不讓 AI 直接決定所有 action card；AI 只提供 catchable point，policy 仍做 guard 與 fallback。
+- 不動 OCR parser / layout / cache。
+
+**驗收**:
+- 「在家追劇 看絕命毒師」這類對話，卡片應顯示「她丟出的球：在家追劇 / 絕命毒師」，而不是泛用「先別下定論」。
+- 如果 AI 回 low confidence，app 不採用 hint，回 deterministic fallback。

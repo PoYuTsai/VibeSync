@@ -87,6 +87,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 最終建議
   FinalRecommendation? _finalRecommendation;
 
+  // 可接球點教練卡
+  CoachActionHint? _coachActionHint;
+
   // 一致性提醒
   String? _reminder;
 
@@ -636,6 +639,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _gameStage = result.gameStage;
     _psychology = result.psychology;
     _finalRecommendation = result.recommendation;
+    _coachActionHint = result.coachActionHint;
     _reminder = result.reminder;
     _shouldGiveUp = result.shouldGiveUp;
     _lastAiResponse = result.rawResponse;
@@ -2508,6 +2512,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _gameStage = result.gameStage;
         _psychology = result.psychology;
         _finalRecommendation = result.recommendation;
+        _coachActionHint = result.coachActionHint;
         _reminder = result.reminder;
         _shouldGiveUp = result.shouldGiveUp;
         _lastAiResponse = result.rawResponse; // 儲存原始 AI 回應
@@ -4417,6 +4422,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         const <Message>[],
                                     practiceGoals: practiceGoals,
                                     isDataQualityFlagged: flagged,
+                                    coachActionHint: _coachActionHint,
                                     psychology: _psychology,
                                   );
 

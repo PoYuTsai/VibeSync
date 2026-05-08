@@ -25,7 +25,7 @@ class CoachActionCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                '本回合練什麼',
+                '本回合怎麼接',
                 style: AppTypography.caption.copyWith(
                   color: AppColors.ctaStart,
                   fontWeight: FontWeight.w600,

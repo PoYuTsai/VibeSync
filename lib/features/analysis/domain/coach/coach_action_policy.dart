@@ -104,6 +104,18 @@ class CoachActionPolicy {
     GameStage.narrative,
   };
 
+  static const Map<String, CoachActionType> _hintActionTypeMap = {
+    'softInvite': CoachActionType.softInvite,
+    'lowerPressureReply': CoachActionType.lowerPressureReply,
+    'extendTopicStoryFrame': CoachActionType.extendTopicStoryFrame,
+    'emotionalResonance': CoachActionType.emotionalResonance,
+    'rightSizeReply': CoachActionType.rightSizeReply,
+    'playfulReply': CoachActionType.playfulReply,
+    'pausePursuit': CoachActionType.pausePursuit,
+    'preferenceSignal': CoachActionType.preferenceSignal,
+    'fitCheck': CoachActionType.fitCheck,
+  };
+
   static const List<String> _concreteTopicKeywords = [
     '追劇',
     '看劇',
@@ -180,6 +192,7 @@ class CoachActionPolicy {
     required List<Message> messages,
     required List<PracticeGoal> practiceGoals,
     required bool isDataQualityFlagged,
+    CoachActionHint? coachActionHint,
     PsychologyAnalysis? psychology,
   }) {
     final card = _select(
@@ -189,6 +202,7 @@ class CoachActionPolicy {
       messages: messages,
       practiceGoals: practiceGoals,
       isDataQualityFlagged: isDataQualityFlagged,
+      coachActionHint: coachActionHint,
       psychology: psychology,
     );
     return _filterSuggestedLine(card, heatScore);
@@ -201,6 +215,7 @@ class CoachActionPolicy {
     required List<Message> messages,
     required List<PracticeGoal> practiceGoals,
     required bool isDataQualityFlagged,
+    CoachActionHint? coachActionHint,
     PsychologyAnalysis? psychology,
   }) {
     if (isDataQualityFlagged) {
@@ -248,6 +263,10 @@ class CoachActionPolicy {
         finalRecommendation: finalRecommendation,
         challengeSignal: challengeSignal,
       );
+    }
+    final aiHintCard = _buildFromCoachActionHint(coachActionHint);
+    if (aiHintCard != null) {
+      return aiHintCard;
     }
     if (heatScore <= AppConstants.hotMax &&
         _hasConcreteTopicHook(
@@ -395,6 +414,26 @@ class CoachActionPolicy {
       avoid: '別連發訊息追問結果',
       suggestedLine: null,
       learningLink: LearningLinkResolver.resolve(CoachActionType.pausePursuit),
+    );
+  }
+
+  static CoachActionCardData? _buildFromCoachActionHint(
+    CoachActionHint? hint,
+  ) {
+    if (hint == null || !hint.isUsable) return null;
+
+    final catchablePoint = hint.catchablePoint.trim();
+    final read = hint.read.trim();
+    final actionType = _hintActionTypeMap[hint.actionType.trim()] ??
+        CoachActionType.extendTopicStoryFrame;
+
+    return CoachActionCardData(
+      actionLabel: '可接球點',
+      whyNow: '她丟出的球：$catchablePoint。$read',
+      task: hint.microMove.trim(),
+      avoid: hint.avoid.trim(),
+      suggestedLine: null,
+      learningLink: LearningLinkResolver.resolve(actionType),
     );
   }
 

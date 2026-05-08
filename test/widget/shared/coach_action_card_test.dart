@@ -26,7 +26,7 @@ void main() {
         ),
       );
 
-      expect(find.text('本回合練什麼'), findsOneWidget);
+      expect(find.text('本回合怎麼接'), findsOneWidget);
       expect(find.textContaining('· 故事框架'), findsOneWidget);
       expect(find.textContaining('熱度 50'), findsOneWidget);
       expect(find.textContaining('場景 + 觀點'), findsOneWidget);
@@ -57,7 +57,7 @@ void main() {
       );
 
       expect(find.text('試試這樣回'), findsNothing);
-      expect(find.text('本回合練什麼'), findsOneWidget);
+      expect(find.text('本回合怎麼接'), findsOneWidget);
       expect(find.text('看 3 分鐘教學'), findsOneWidget);
     });
 
@@ -82,7 +82,7 @@ void main() {
 
       expect(find.text('看 3 分鐘教學'), findsNothing);
       expect(find.byKey(const Key('coach_action_learning_cta')), findsNothing);
-      expect(find.text('本回合練什麼'), findsOneWidget);
+      expect(find.text('本回合怎麼接'), findsOneWidget);
     });
 
     testWidgets(

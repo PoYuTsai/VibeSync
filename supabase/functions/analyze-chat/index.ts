@@ -395,6 +395,65 @@ function sanitizeReplies(
   return filteredReplies;
 }
 
+const COACH_ACTION_HINT_ACTION_TYPES = new Set([
+  "softInvite",
+  "lowerPressureReply",
+  "extendTopicStoryFrame",
+  "emotionalResonance",
+  "rightSizeReply",
+  "playfulReply",
+  "pausePursuit",
+  "preferenceSignal",
+  "fitCheck",
+]);
+
+const COACH_ACTION_HINT_CONFIDENCE = new Set(["high", "medium", "low"]);
+
+function clampNormalizedText(value: unknown, maxLength: number): string {
+  const normalized = normalizeAiText(value).replace(/\s+/g, " ");
+  return normalized.length > maxLength
+    ? normalized.slice(0, maxLength).trim()
+    : normalized;
+}
+
+function sanitizeCoachActionHint(
+  rawHint: unknown,
+): Record<string, string> | undefined {
+  if (!rawHint || typeof rawHint !== "object") {
+    return undefined;
+  }
+
+  const hint = rawHint as Record<string, unknown>;
+  const catchablePoint = clampNormalizedText(hint.catchablePoint, 80);
+  const read = clampNormalizedText(hint.read, 120);
+  const microMove = clampNormalizedText(hint.microMove, 120);
+  const avoid = clampNormalizedText(hint.avoid, 100);
+  const actionType = clampNormalizedText(hint.actionType, 40);
+  const confidence = clampNormalizedText(hint.confidence, 20).toLowerCase();
+
+  if (
+    catchablePoint.length === 0 ||
+    read.length === 0 ||
+    microMove.length === 0 ||
+    avoid.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    catchablePoint,
+    read,
+    microMove,
+    avoid,
+    actionType: COACH_ACTION_HINT_ACTION_TYPES.has(actionType)
+      ? actionType
+      : "extendTopicStoryFrame",
+    confidence: COACH_ACTION_HINT_CONFIDENCE.has(confidence)
+      ? confidence
+      : "medium",
+  };
+}
+
 function buildFallbackRecommendationText(
   pick: string,
 ): { reason: string; psychology: string } {
@@ -1423,6 +1482,23 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
 - notes: 值得記住的重點（如：「不喜歡聊工作」「週末通常在家」「養了一隻貓叫 Mochi」）
 每個欄位最多 5 項。必須有明確文字證據或多輪一致訊號才寫入；如果對話太短無法判斷，返回空陣列。不要把一次玩笑、一次情緒或一次敷衍推測成長期人格。
 
+## 可接球點教練卡 (coachActionHint)
+這張卡會貼在聊天窗正下方，使用者會期待你真的讀懂上方對話。它不是一般教學，也不是熱度摘要。
+
+你必須根據最新一輪「對方可回覆的訊息」輸出一個具體可接球點：
+- catchablePoint: 引用或濃縮對方剛丟出的具體球點，必須能在聊天內容找到證據（例：「在家追劇 / 絕命毒師」）
+- read: 用一句話說明這顆球代表什麼，不要只說熱度，也不要說「先觀察」這種空泛話
+- microMove: 這回合只做一個小動作，格式要像可立即練習的指令（例：「接劇名 + 補你的看劇感受 + 問一個低壓問題」）
+- avoid: 這回合先不要做什麼，要針對當下對話的風險（例：「不要連問清單題，也不要急著跳邀約」）
+- actionType: 只可用 softInvite / lowerPressureReply / extendTopicStoryFrame / emotionalResonance / rightSizeReply / playfulReply / pausePursuit / preferenceSignal / fitCheck
+- confidence: high / medium / low
+
+重要：
+- 第一眼必須讓使用者覺得「你真的有看懂我上面的聊天」
+- 不要把 heat score 放在第一句；熱度只是背景，catchablePoint 才是主角
+- 如果對方訊號很少，catchablePoint 寫「訊號太少，沒有明確可接球點」，confidence 寫 low，microMove 要保守
+- 不要跟 finalRecommendation.content 重複；coachActionHint 解釋「怎麼接」，finalRecommendation 才給可送出的句子
+
 ## 冰點特殊處理
 當熱度 0-30 且判斷機會渺茫時：
 - 不硬回
@@ -1430,7 +1506,7 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
 - 鼓勵開新對話
 
 ## 可見輸出禁用內部術語
-以下詞可以作為內部理解，但不得出現在 finalRecommendation.reason / psychology / strategy / reminder / healthCheck 的可見文字中：
+以下詞可以作為內部理解，但不得出現在 finalRecommendation.reason / psychology / strategy / reminder / healthCheck / coachActionHint 的可見文字中：
 - PUA、推拉、廢物測試、shit test、高價值男性、收割、控住、攻略、壞女人、高分妹、玩咖
 - 可改寫成：互動測試、收放節奏、穩定框架、健康主動性、是否值得投入
 - 不要把「撈女、公主病、婊子、怪男、噁男」這類標籤寫進可見建議；改寫成具體行為、邊界、風險與適配度
@@ -1473,6 +1549,14 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
     "content": "推薦的完整回覆內容。如果對方有多條需要回覆的訊息，用分句標註格式：① 回「關鍵詞」→ 回覆內容 ② 回「關鍵詞」→ 回覆內容 💡「不用回的」→ 原因",
     "reason": "為什麼推薦這個回覆",
     "psychology": "心理學依據"
+  },
+  "coachActionHint": {
+    "catchablePoint": "對方剛丟出的具體可接球點，例如：在家追劇 / 絕命毒師",
+    "read": "這代表她有補生活細節，可以接這顆球；不是只看熱度",
+    "microMove": "接住這個點，再補一個你的感受或低壓小問題",
+    "avoid": "不要連問清單題，也不要急著跳邀約",
+    "actionType": "extendTopicStoryFrame",
+    "confidence": "high"
   },
   "warnings": [],
   "healthCheck": {
@@ -4945,6 +5029,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           ? normalizedRecommendationPsychology
           : fallbackExplanation.psychology,
       };
+    }
+
+    const sanitizedCoachActionHint = sanitizeCoachActionHint(
+      result?.coachActionHint,
+    );
+    if (sanitizedCoachActionHint) {
+      result.coachActionHint = sanitizedCoachActionHint;
+    } else {
+      delete result.coachActionHint;
     }
 
     // Remove health check if not allowed

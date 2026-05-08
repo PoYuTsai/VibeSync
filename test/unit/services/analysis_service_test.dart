@@ -31,6 +31,14 @@ void main() {
           'reason': '推薦理由',
           'psychology': '心理學依據',
         },
+        'coachActionHint': {
+          'catchablePoint': '在家追劇 / 絕命毒師',
+          'read': '她有補生活細節，可以接這顆球。',
+          'microMove': '接劇名，再補一個你的看劇感受。',
+          'avoid': '不要連問清單題。',
+          'actionType': 'extendTopicStoryFrame',
+          'confidence': 'high',
+        },
         'warnings': [],
         'strategy': '保持沉穩',
         'reminder': '記得用你的方式說',
@@ -50,7 +58,10 @@ void main() {
       expect(result.replies['humor'], '幽默回覆');
       expect(result.replies['coldRead'], '冷讀回覆');
       expect(result.recommendation.pick, 'tease');
-      expect(result.recommendation.content, '推薦的回覆');
+      expect(result.recommendation.content, '調情回覆');
+      expect(result.coachActionHint?.catchablePoint, '在家追劇 / 絕命毒師');
+      expect(result.coachActionHint?.microMove, contains('接劇名'));
+      expect(result.coachActionHint?.isUsable, true);
       expect(result.reminder, '記得用你的方式說');
       expect(result.shouldGiveUp, false);
     });
@@ -164,9 +175,12 @@ void main() {
   group('GameStageStatus.fromString', () {
     test('parses all statuses correctly', () {
       expect(GameStageStatus.fromString('normal'), GameStageStatus.normal);
-      expect(GameStageStatus.fromString('stuckFriend'), GameStageStatus.stuckFriend);
-      expect(GameStageStatus.fromString('canAdvance'), GameStageStatus.canAdvance);
-      expect(GameStageStatus.fromString('shouldRetreat'), GameStageStatus.shouldRetreat);
+      expect(GameStageStatus.fromString('stuckFriend'),
+          GameStageStatus.stuckFriend);
+      expect(
+          GameStageStatus.fromString('canAdvance'), GameStageStatus.canAdvance);
+      expect(GameStageStatus.fromString('shouldRetreat'),
+          GameStageStatus.shouldRetreat);
     });
 
     test('defaults to normal for unknown value', () {

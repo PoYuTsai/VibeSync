@@ -146,6 +146,69 @@ void main() {
       expect(card.learningLink, '14');
     });
 
+    test('should prefer usable AI coachActionHint over generic fallback', () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 60,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '絕命毒師很經典，你看到第幾季了？',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+        coachActionHint: const CoachActionHint(
+          catchablePoint: '在家追劇 / 絕命毒師',
+          read: '她有補生活細節，這顆球可以接，不是單純冷回。',
+          microMove: '先接劇名，再補一個你的看劇感受或低壓小問題',
+          avoid: '不要連問清單題，也不要急著跳邀約',
+          actionType: 'extendTopicStoryFrame',
+          confidence: 'high',
+        ),
+      );
+
+      expect(card.actionLabel, '可接球點');
+      expect(card.whyNow, contains('她丟出的球：在家追劇 / 絕命毒師'));
+      expect(card.whyNow, contains('不是單純冷回'));
+      expect(card.task, contains('接劇名'));
+      expect(card.avoid, contains('不要連問清單題'));
+      expect(card.learningLink, '14');
+    });
+
+    test('should ignore low-confidence AI coachActionHint', () {
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 50,
+        gameStage: const GameStageInfo(
+          current: GameStage.opening,
+          nextStep: '',
+        ),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: '',
+          reason: '',
+          psychology: '',
+        ),
+        messages: const [],
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+        coachActionHint: const CoachActionHint(
+          catchablePoint: '訊號太少，沒有明確可接球點',
+          read: '對方沒有提供足夠內容。',
+          microMove: '保守回一個低壓小球',
+          avoid: '不要硬推進',
+          actionType: 'fitCheck',
+          confidence: 'low',
+        ),
+      );
+
+      expect(card.actionLabel, '互動品質觀察');
+    });
+
     test('should not surface long-term-trait phrases when partner is flagged',
         () {
       final card = CoachActionPolicy.evaluate(

@@ -184,6 +184,58 @@ class FinalRecommendation {
   }
 }
 
+/// A compact, analysis-generated coaching hint for the card under chat bubbles.
+class CoachActionHint {
+  final String catchablePoint; // 對方剛丟出的具體可接球點
+  final String read; // 這顆球代表什麼
+  final String microMove; // 這回合只做什麼
+  final String avoid; // 這回合先不要做什麼
+  final String actionType; // 對應 CoachActionType.name
+  final String confidence; // high / medium / low
+
+  const CoachActionHint({
+    required this.catchablePoint,
+    required this.read,
+    required this.microMove,
+    required this.avoid,
+    required this.actionType,
+    required this.confidence,
+  });
+
+  bool get isUsable =>
+      catchablePoint.trim().isNotEmpty &&
+      read.trim().isNotEmpty &&
+      microMove.trim().isNotEmpty &&
+      avoid.trim().isNotEmpty &&
+      confidence.trim().toLowerCase() != 'low';
+
+  factory CoachActionHint.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return const CoachActionHint(
+        catchablePoint: '',
+        read: '',
+        microMove: '',
+        avoid: '',
+        actionType: 'extendTopicStoryFrame',
+        confidence: 'low',
+      );
+    }
+
+    String text(String key) => (json[key] as String? ?? '').trim();
+
+    return CoachActionHint(
+      catchablePoint: text('catchablePoint'),
+      read: text('read'),
+      microMove: text('microMove'),
+      avoid: text('avoid'),
+      actionType: text('actionType').isEmpty
+          ? 'extendTopicStoryFrame'
+          : text('actionType'),
+      confidence: text('confidence').isEmpty ? 'medium' : text('confidence'),
+    );
+  }
+}
+
 String _normalizeRecommendationText(dynamic value) {
   if (value is! String) {
     return '';
@@ -531,6 +583,7 @@ class AnalysisResult {
   final int? imagesUsed; // 使用的截圖數量
   final Map<String, int>? dimensionScores; // 五維度分數
   final Map<String, dynamic>? targetProfile; // 對方個人檔案
+  final CoachActionHint? coachActionHint; // 可接球點教練卡
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -550,6 +603,7 @@ class AnalysisResult {
     this.imagesUsed,
     this.dimensionScores,
     this.targetProfile,
+    this.coachActionHint,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -602,6 +656,14 @@ class AnalysisResult {
           json['finalRecommendation'] as Map<String, dynamic>?),
       normalizedReplies,
     );
+    final rawCoachActionHint = json['coachActionHint'];
+    final coachActionHintJson = rawCoachActionHint is Map<String, dynamic>
+        ? rawCoachActionHint
+        : rawCoachActionHint is Map
+            ? rawCoachActionHint.map(
+                (key, value) => MapEntry(key.toString(), value),
+              )
+            : null;
 
     return AnalysisResult(
       enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
@@ -624,6 +686,7 @@ class AnalysisResult {
       imagesUsed: imagesUsed,
       dimensionScores: _parseDimensions(json['dimensions']),
       targetProfile: json['targetProfile'] as Map<String, dynamic>?,
+      coachActionHint: CoachActionHint.fromJson(coachActionHintJson),
     );
   }
 
