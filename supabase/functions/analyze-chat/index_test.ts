@@ -172,6 +172,32 @@ Deno.test({
 
 Deno.test({
   name:
+    "SYSTEM_PROMPT forces all five reply styles to be sendable next-turn messages",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("五種回覆品質契約"));
+    assert(source.includes("接球三步"));
+    assert(source.includes("接住她的情緒或具體可接球點"));
+    assert(source.includes("加一點互動感"));
+    assert(source.includes("順勢延伸下一輪"));
+    assert(source.includes("coachActionHint.catchablePoint"));
+    assert(source.includes("五種 replies 都要優先圍繞同一個球點"));
+    assert(source.includes("extend（延展）：接住她的具體話題"));
+    assert(source.includes("resonate（共鳴）：先命名或貼近她的情緒"));
+    assert(source.includes("tease（調情）：用安全的誤讀"));
+    assert(source.includes("humor（幽默）：用自嘲、荒謬畫面"));
+    assert(source.includes("coldRead（冷讀）：根據她剛說的具體線索"));
+    assert(source.includes("禁止輸出這類「報告腔」"));
+    assert(source.includes("絕命毒師很會讓人一集接一集欸"));
+  },
+});
+
+Deno.test({
+  name:
     "SYSTEM_PROMPT preserves userDraft intent instead of answering latest partner message",
   permissions: { read: true },
   fn: async () => {
