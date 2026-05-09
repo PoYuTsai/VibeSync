@@ -10,7 +10,7 @@
 
 **Tech Stack:** Flutter, Riverpod, Supabase Edge Functions, Claude API (Sonnet Vision / Haiku)
 
-**Design Spec:** `docs/plans/2026-04-23-opening-rescue-design.md`
+**Design Spec:** `docs/archive/plans/2026-04-23-opening-rescue-design.md`
 
 ---
 
