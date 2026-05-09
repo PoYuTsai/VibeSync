@@ -230,6 +230,32 @@ Deno.test({
 
 Deno.test({
   name:
+    "SYSTEM_PROMPT treats Mandarin questions as functional cues, not mandatory answers",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("中文問句框架判斷"));
+    assert(source.includes("問號不等於必答題"));
+    assert(source.includes("真問題 / 資訊需求"));
+    assert(source.includes("情緒球 / 求共鳴"));
+    assert(source.includes("互動測試 / 框架問題"));
+    assert(source.includes("玩笑反問 / 語氣球"));
+    assert(source.includes("查戶口 / 低價值問題"));
+    assert(source.includes("邊界 / 安全 / 關係風險問題"));
+    assert(source.includes("答、半答、重框、略過、反丟"));
+    assert(source.includes("不要點對點自證"));
+    assert(source.includes("這題比較像測框架，不必認真自證"));
+    assert(source.includes("你是不是很會撩？"));
+    assert(source.includes("太認真回答就不好玩了"));
+    assert(source.includes("中文問句不一定都是必答題"));
+  },
+});
+
+Deno.test({
+  name:
     "SYSTEM_PROMPT preserves userDraft intent instead of answering latest partner message",
   permissions: { read: true },
   fn: async () => {
