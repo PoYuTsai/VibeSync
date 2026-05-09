@@ -515,7 +515,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     final items = <Widget>[];
     final labelMap = {
       'style': '風格',
-      'personality': '個性',
+      'personality': '切入判斷',
       'talkingPoints': '話題切入點',
       'vibe': '氛圍',
       'interests': '興趣',

@@ -363,8 +363,12 @@ Deno.test({
     assert(source.includes("現實認識"));
     assert(source.includes("資訊不足：明說線索不足"));
     assert(source.includes("為什麼這句最容易被回"));
+    assert(source.includes("明確標示可見線索不足"));
+    assert(source.includes("不假裝洞察"));
+    assert(source.includes("只使用明確線索，不要補不存在的人格或共同點"));
     assertFalse(source.includes("### Big Five 照片特徵映射"));
     assertFalse(source.includes("穿搭風格 → 性格推斷"));
+    assertFalse(source.includes("請生成通用但有趣的開場白"));
   },
 });
 

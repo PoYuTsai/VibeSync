@@ -5,7 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/analysis_result.dart';
 
-/// Card showing AI's final recommendation with reason and psychology
+/// Card showing AI's final recommendation with coach-style reasoning.
 class FinalRecommendationCard extends StatelessWidget {
   final FinalRecommendation recommendation;
 
@@ -80,10 +80,10 @@ class FinalRecommendationCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
-          // Psychology basis
+          // Interaction basis
           _InfoRow(
             icon: '🧠',
-            title: '心理學依據',
+            title: '為什麼這樣接',
             content: recommendation.psychology,
           ),
           const SizedBox(height: 16),

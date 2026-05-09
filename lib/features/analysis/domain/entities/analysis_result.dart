@@ -35,7 +35,7 @@ class FinalRecommendation {
   final String pick; // 選哪個回覆類型
   final String content; // 推薦的回覆內容
   final String reason; // 為什麼推薦這個
-  final String psychology; // 心理學依據
+  final String psychology; // 互動判斷（schema 欄位名沿用 psychology）
 
   FinalRecommendation({
     required this.pick,

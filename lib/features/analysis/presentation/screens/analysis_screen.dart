@@ -2899,7 +2899,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         buffer.writeln('--- AI 推薦 ---');
         buffer.writeln('推薦回覆: ${_finalRecommendation!.content}');
         buffer.writeln('推薦理由: ${_finalRecommendation!.reason}');
-        buffer.writeln('心理學依據: ${_finalRecommendation!.psychology}');
+        buffer.writeln('互動判斷: ${_finalRecommendation!.psychology}');
       }
 
       if (_healthCheck != null && _healthCheck!.issues.isNotEmpty) {

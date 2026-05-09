@@ -4101,9 +4101,13 @@ serve(async (req) => {
       }
 
       if (!userContent.length && !imageCount) {
-        userContent.push("用戶沒有提供對方資料，請生成通用但有趣的開場白。");
+        userContent.push(
+          "用戶沒有提供對方資料。請明確標示可見線索不足，生成低風險、自然、不油、不假裝洞察的開場白。",
+        );
       } else if (userContent.length > 0) {
-        userContent.push("\n請根據以上資訊生成 5 種風格的開場白。");
+        userContent.push(
+          "\n請根據以上可見資訊生成 5 種風格的開場白；只使用明確線索，不要補不存在的人格或共同點。",
+        );
       }
 
       if (imageCount > 0) {

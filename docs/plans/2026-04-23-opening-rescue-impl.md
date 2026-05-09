@@ -1,10 +1,12 @@
 # 開場救星（Opening Rescue）Implementation Plan
 
+> **Superseded note（2026-05-09）**：本實作計畫保留作為歷史紀錄；AI prompt 已改為「可見線索 → 可回覆開場」。請勿再照本文件早期的穿搭推人格、Big Five 映射或通用開場方向實作。現行準則以 `supabase/functions/analyze-chat/index.ts` 的 `OPENER_PROMPT` 為準。
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 在新增對話選單加入「開場救星」功能，讓用戶上傳交友軟體自介截圖或手動輸入對方資訊，AI 生成 5 種風格的開場白。
 
-**Architecture:** 新增 `OpeningRescueScreen` 頁面 + `OpenerService` API 呼叫。後端在 `analyze-chat` Edge Function 加入 `mode: "opener"` 分流，使用研究報告的照片分析框架作為 AI 知識庫。前端複用現有 ImagePickerWidget 和回覆卡片風格。
+**Architecture:** 新增 `OpeningRescueScreen` 頁面 + `OpenerService` API 呼叫。後端在 `analyze-chat` Edge Function 加入 `mode: "opener"` 分流，使用可見線索、場景分流與可回覆性作為 AI 判斷核心。前端複用現有 ImagePickerWidget 和回覆卡片風格。
 
 **Tech Stack:** Flutter, Riverpod, Supabase Edge Functions, Claude API (Sonnet Vision / Haiku)
 
@@ -20,8 +22,9 @@
 **做什麼：**
 
 1. 新增 `OPENER_PROMPT` 常數，包含：
-   - 角色：「你是 VibeSync 的開場白生成教練」
-   - 照片分析框架（穿搭風格→性格、Big Five映射、擺拍vs自然、背景環境→話題）
+   - 角色：「你是 VibeSync 的開場救星教練」
+   - 可見線索優先（bio / 背景 / 活動 / 物件 / 文字 / 用戶提供資訊）
+   - 場景分流（交友軟體 / IG 限動 / 現實認識 / 朋友介紹 / 資訊不足）
    - 5 種風格定義（extend/resonate/tease/humor/coldRead）
    - JSON 輸出格式：`{ profileAnalysis, openers, recommendation }`
    - 台灣在地化提示（繁中、台灣交友軟體常見照片風格）
@@ -30,7 +33,7 @@
    - 使用 `OPENER_PROMPT` 替代 `SYSTEM_PROMPT`
    - 有圖片時用 Vision（buildVisionContent 複用現有邏輯）
    - 無圖片有文字時用純文字 prompt
-   - 都沒有時生成隨機通用開場白
+   - 都沒有時標示線索不足，生成低風險、不油、不假裝洞察的開場白
    - 額度扣除：基本 1 則 + 每多一張截圖多 1 則
 
 3. 回應格式保持現有 CORS + JSON 結構
@@ -109,7 +112,7 @@ class OpenerService {
    - 「重新生成」按鈕
    - Free 用戶只顯示 extend，其他 4 張顯示鎖定 + 升級提示
 
-5. **空狀態提示**：「上傳截圖或輸入資料，效果更好。不提供資料也能生成通用開場白」
+5. **空狀態提示**：「上傳截圖或輸入資料，效果更好。沒有資料也能先給低風險開場，但不會假裝看出洞察。」
 
 使用 GradientBackground 背景，整體風格跟分析頁一致。
 
@@ -175,7 +178,7 @@ ListTile(
    - [ ] 點「開場救星」進入頁面
    - [ ] 截圖上傳 + 生成開場白
    - [ ] 手動輸入 + 生成開場白
-   - [ ] 不提供資料 + 生成通用開場白
+   - [ ] 不提供資料 + 標示線索不足 + 生成低風險開場白
    - [ ] Free 用戶只看到延展風格
    - [ ] 額度正確扣除
    - [ ] 複製按鈕正常

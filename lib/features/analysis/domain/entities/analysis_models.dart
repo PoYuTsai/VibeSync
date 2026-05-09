@@ -210,7 +210,7 @@ class FinalRecommendation {
   final String pick; // 推薦的回覆類型 (extend/resonate/tease/humor/coldRead)
   final String content; // 推薦的回覆內容
   final String reason; // 推薦理由
-  final String psychology; // 心理學依據
+  final String psychology; // 互動判斷（schema 欄位名沿用 psychology）
   final List<ReplySegment> replySegments; // 可分開複製的分段回覆
 
   const FinalRecommendation({
