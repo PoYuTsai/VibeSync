@@ -456,7 +456,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '對方特質分析',
+                  '對方資料讀取',
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
@@ -570,7 +570,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     final labelMap = {
       'style': '風格',
       'personality': '切入判斷',
+      'avoidTopics': '先避開',
+      'positiveHooks': '可接線索',
       'talkingPoints': '話題切入點',
+      'openingStrategy': '推薦策略',
       'vibe': '氛圍',
       'interests': '興趣',
     };
