@@ -1,7 +1,11 @@
 # Launch Readiness Checklist
 
-最後更新：2026-04-05
+最後更新：2026-05-09
 目前目標：iOS / TestFlight / App Review 上線前最後收尾
+
+送審主控台、App Review Notes 草稿、Privacy Label 對照見：
+
+- `docs/app-review-submission-package.md`
 
 ## 1. 核心功能
 

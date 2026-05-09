@@ -1,8 +1,12 @@
 # App Review Final Checklist
 
-最後更新：2026-04-05
+最後更新：2026-05-09
 
 這份清單是送審前最後核對用，不是功能願望清單。
+
+送審主控台與 App Review Notes 草稿見：
+
+- `docs/app-review-submission-package.md`
 
 ## 1. 帳號與登入
 
@@ -14,6 +18,8 @@
 
 ## 2. 訂閱與 restore
 
+- [ ] 4 個 IAP 產品都在 App Store Connect 可供審核
+- [ ] 4 個 IAP 產品都在同一 subscription group，避免誤訂兩份同類訂閱
 - [ ] Starter 購買可完成
 - [ ] Essential 購買可完成
 - [ ] Restore Purchases 可完成
@@ -42,6 +48,15 @@
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
 - [ ] App Review 說明文已更新成目前實際功能與資料流
+- [ ] App Review Information 已填測試帳號、測試步驟、IAP/AI/OCR 說明
+- [ ] App Store metadata 不使用「把妹、操控、約砲、保證成功」等高風險定位
+
+## 4.5 AI / 內容安全
+
+- [ ] AI 不鼓勵騷擾、跟蹤、威脅、操控或違反同意的行為
+- [ ] 成人/曖昧情境能成熟回覆，但包含尊重、界線、安全提醒
+- [ ] AI 失敗、額度不足、OCR 失敗時都不顯示 raw internal error
+- [ ] Free 用戶可在額度內完成核心分析體驗，用完才導 Paywall
 
 ## 5. Release / Workflow
 
