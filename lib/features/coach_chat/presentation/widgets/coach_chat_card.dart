@@ -84,18 +84,21 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     final history = ref.watch(coachChatHistoryProvider(widget.conversationId));
     final subscription = ref.watch(subscriptionProvider);
     final conversation = ref.watch(conversationProvider(widget.conversationId));
+    final timeline = _mergeCoachHistory(
+      history: history,
+      current: state.valueOrNull,
+    );
     final memorySources = _coachMemorySources(
       ref: ref,
       conversation: conversation,
       analysisSnapshot: widget.analysisSnapshot,
     );
     final activeError = state.hasError && _lastAskedQuestion != null;
-    final latest = activeError
-        ? null
-        : (state.valueOrNull ?? (history.isEmpty ? null : history.first));
     final isLoading = state.isLoading;
     final canSubmit = !isLoading;
-    final isClarifying = latest?.isClarifyingQuestion ?? false;
+    final latest = timeline.isEmpty ? null : timeline.first;
+    final isClarifying =
+        !activeError && (latest?.isClarifyingQuestion ?? false);
 
     ref.listen<AsyncValue<CoachChatResult?>>(provider, (previous, next) {
       final error = next.error;
@@ -262,11 +265,22 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
               message: _failureMessage(state.error!),
               onRetry: _retryLastQuestion,
             ),
-          ] else if (latest != null) ...[
+            if (timeline.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _CoachChatThreadView(
+                results: timeline,
+                dailyRemaining: subscription.dailyRemaining,
+                onFollowUp: _focusInputForFollowUp,
+                onForceAnswer: () => ref
+                    .read(coachChatControllerProvider(widget.conversationId)
+                        .notifier)
+                    .forceAnswer(analysisSnapshot: widget.analysisSnapshot),
+              ),
+            ],
+          ] else if (timeline.isNotEmpty) ...[
             const SizedBox(height: 14),
-            _CoachChatResultView(
-              result: latest,
-              question: latest.question,
+            _CoachChatThreadView(
+              results: timeline,
               dailyRemaining: subscription.dailyRemaining,
               onFollowUp: _focusInputForFollowUp,
               onForceAnswer: () => ref
@@ -278,6 +292,21 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
         ],
       ),
     );
+  }
+
+  List<CoachChatResult> _mergeCoachHistory({
+    required List<CoachChatResult> history,
+    required CoachChatResult? current,
+  }) {
+    final byId = <String, CoachChatResult>{
+      for (final result in history) result.id: result,
+    };
+    if (current != null) {
+      byId[current.id] = current;
+    }
+    final list = byId.values.toList()
+      ..sort((a, b) => b.generatedAt.compareTo(a.generatedAt));
+    return list;
   }
 
   List<String> _coachMemorySources({
@@ -382,6 +411,189 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
       return '連線不穩，這次未扣額度，請稍後再試。';
     }
     return '教練暫時沒接住，這次未扣額度，請稍後再試。';
+  }
+}
+
+class _CoachChatThreadView extends StatelessWidget {
+  final List<CoachChatResult> results;
+  final int dailyRemaining;
+  final VoidCallback onFollowUp;
+  final VoidCallback onForceAnswer;
+
+  const _CoachChatThreadView({
+    required this.results,
+    required this.dailyRemaining,
+    required this.onFollowUp,
+    required this.onForceAnswer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final latest = results.first;
+    final previous = results.skip(1).toList(growable: false);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _CoachChatResultView(
+          result: latest,
+          question: latest.question,
+          dailyRemaining: dailyRemaining,
+          onFollowUp: onFollowUp,
+          onForceAnswer: onForceAnswer,
+        ),
+        if (previous.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              initiallyExpanded: false,
+              title: Text(
+                '前面 ${previous.length} 輪教練紀錄',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              subtitle: Text(
+                '已扣額度的正式建議會保留；最新版仍放在上面。',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextSecondary,
+                ),
+              ),
+              children: previous
+                  .map(
+                    (result) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _CoachChatHistoryTile(result: result),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CoachChatHistoryTile extends StatelessWidget {
+  final CoachChatResult result;
+
+  const _CoachChatHistoryTile({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.46),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.glassBorder.withValues(alpha: 0.7),
+        ),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          title: Text(
+            result.question,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: Text(
+            '${_timeLabel(result.generatedAt)} · ${result.headline}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+            ),
+          ),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _CostStatusChip(
+                costDeducted: result.costDeducted,
+                dailyRemaining: -1,
+                isClarifying: result.isClarifyingQuestion,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              result.answer,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextPrimary,
+                height: 1.45,
+              ),
+            ),
+            if (result.suggestedLine != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.56),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  result.suggestedLine!,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            _InfoLine(label: '這次先做', value: result.nextStep),
+            _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _copyCoachTurn(context),
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('複製這輪'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _timeLabel(DateTime value) {
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  Future<void> _copyCoachTurn(BuildContext context) async {
+    final parts = <String>[
+      '你問：${result.question}',
+      result.headline,
+      result.answer,
+      '這次先做：${result.nextStep}',
+      if (result.suggestedLine != null) '可以這樣說：${result.suggestedLine}',
+      '邊界提醒：${result.boundaryReminder}',
+    ];
+    await Clipboard.setData(ClipboardData(text: parts.join('\n')));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已複製'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 }
 
@@ -883,7 +1095,9 @@ class _CostStatusChip extends StatelessWidget {
         : AppColors.warning;
     final label = isClarifying || costDeducted == 0
         ? '這次不扣額度'
-        : '已扣 $costDeducted 則 · 今日剩 $dailyRemaining 則';
+        : dailyRemaining >= 0
+            ? '已扣 $costDeducted 則 · 今日剩 $dailyRemaining 則'
+            : '已扣 $costDeducted 則';
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(

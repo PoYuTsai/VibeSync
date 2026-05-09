@@ -66,16 +66,19 @@ void main() {
     expect(repo.latestForConversation('c-1')?.id, 'new');
   });
 
-  test('put trims to latest 3 results per conversation', () async {
-    for (var i = 0; i < 5; i++) {
+  test('put trims to latest 10 results per conversation', () async {
+    for (var i = 0; i < 12; i++) {
       await repo.put(_result(
         'r-$i',
-        generatedAt: DateTime(2026, 5, 7, 10 + i),
+        generatedAt: DateTime(2026, 5, 7, 10).add(Duration(minutes: i)),
       ));
     }
 
     final list = repo.listByConversation('c-1');
-    expect(list.map((r) => r.id), ['r-4', 'r-3', 'r-2']);
+    expect(
+      list.map((r) => r.id),
+      ['r-11', 'r-10', 'r-9', 'r-8', 'r-7', 'r-6', 'r-5', 'r-4', 'r-3', 'r-2'],
+    );
   });
 
   test('deleteConversation removes only that conversation', () async {

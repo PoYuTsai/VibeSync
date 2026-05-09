@@ -4,7 +4,7 @@ import '../../domain/entities/coach_chat_result.dart';
 import '../../domain/repositories/coach_chat_repository.dart';
 
 class CoachChatRepositoryImpl implements CoachChatRepository {
-  CoachChatRepositoryImpl(this._box, {this.keepPerConversation = 3});
+  CoachChatRepositoryImpl(this._box, {this.keepPerConversation = 10});
 
   final Box<CoachChatResult> _box;
   final int keepPerConversation;

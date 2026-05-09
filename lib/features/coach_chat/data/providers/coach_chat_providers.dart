@@ -139,6 +139,7 @@ class CoachChatController
         dataQualityFlagged: flagged,
       );
       await repo.put(result);
+      ref.invalidate(coachChatHistoryProvider(conversationId));
       _activeSessionId = result.sessionId ?? sessionId;
       _activeTurns = _capTurns([
         ...outboundTurns,

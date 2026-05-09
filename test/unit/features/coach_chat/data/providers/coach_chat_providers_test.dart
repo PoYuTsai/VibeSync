@@ -261,6 +261,7 @@ void main() {
       addTearDown(c.dispose);
 
       await c.read(coachChatControllerProvider('c-1').future);
+      expect(c.read(coachChatHistoryProvider('c-1')), isEmpty);
       await c.read(coachChatControllerProvider('c-1').notifier).ask(
             question: '她這句話是真的有興趣嗎？',
             analysisSnapshot: _snapshot(),
@@ -268,6 +269,7 @@ void main() {
 
       final state = c.read(coachChatControllerProvider('c-1'));
       expect(state.value?.headline, '接住她的觀察');
+      expect(c.read(coachChatHistoryProvider('c-1')).single.headline, '接住她的觀察');
       expect(state.value?.frictionType, 'overPolishing');
       expect(repo.putCalls, 1);
       expect(calls.single.fn, 'coach-chat');
