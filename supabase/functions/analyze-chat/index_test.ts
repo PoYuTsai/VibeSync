@@ -419,6 +419,17 @@ Deno.test({
     assert(source.includes("規則只是背景紅線"));
     assert(source.includes("妳是不是那種明明該補眠，結果又突然開一個新坑的人"));
     assert(source.includes("玩咖但有邊界"));
+    assert(source.includes("旁路冷讀：不要把線索原文講破"));
+    assert(source.includes("從資料旁邊長出一個合理但不明說的推測"));
+    assert(source.includes("不要直接說「妳在酒吧上班」或問上班"));
+    assert(source.includes("妳感覺蠻會唱歌"));
+    assert(source.includes("優先讓 coldRead 風格使用旁路冷讀"));
+    assert(source.includes("三層優先級：來回 > 男人框架 > 幽默"));
+    assert(source.includes("像羽毛球一樣能來來回回"));
+    assert(source.includes("不要把球打死"));
+    assert(source.includes("你也在觀察她，而不是單方面求她認可"));
+    assert(source.includes("不刻意的幽默才有吸引力"));
+    assert(source.includes("她有球可以打回來"));
     assert(source.includes("兩顆球策略：不必每次都押一句神回"));
     assert(source.includes("第一球：微拉、畫面感、輕微挑戰"));
     assert(source.includes("初期只能微拉，不要重拉"));
@@ -427,6 +438,8 @@ Deno.test({
     assert(source.includes("不要把它們全部做成同一種玩咖推拉"));
     assert(source.includes("tease：只做微拉，不做重拉"));
     assert(source.includes("初期陌生開場只能微拉"));
+    assert(source.includes("幽默是加分項，不是必要項"));
+    assert(source.includes("優先保留來回感與男人框架"));
     assert(source.includes("Specialness Gate：不特別就重寫"));
     assert(source.includes("如果輸出只是一般人也會問的安全句，產品就失去價值"));
     assert(source.includes("拿掉對方資料仍然能套在任何人身上"));
