@@ -4,6 +4,7 @@
 import {
   assert,
   assertEquals,
+  assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 // 訊息計算函數
@@ -210,10 +211,14 @@ Deno.test({
     assert(source.includes("先做「選球」"));
     assert(source.includes("通常只選 1-2 顆球，最多 3 顆"));
     assert(source.includes("把 2 顆球自然串成一則可送出的訊息"));
+    assert(source.includes("finalRecommendation.content：只放「可直接送出」"));
     assert(source.includes("finalRecommendation.reason 要簡短說明"));
     assert(source.includes("接住她對 F1 的興奮，再順到夜市行程"));
     assert(source.includes("白天看人差點打起來"));
     assert(source.includes("樂華夜市最後會帶什麼罪惡美食回家"));
+    assert(source.includes("即使對方連發多條，也不要放 ①②"));
+    assertFalse(source.includes("finalRecommendation.content 必須分句標註"));
+    assertFalse(source.includes("① 回「她的原文關鍵詞」"));
   },
 });
 
