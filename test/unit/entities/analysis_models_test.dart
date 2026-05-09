@@ -116,5 +116,38 @@ void main() {
       expect(recommendation.reason, '用調情回覆推進曖昧');
       expect(recommendation.psychology, '模糊邀約讓她有想像空間');
     });
+
+    test('parses optional reply segments for split copy UI', () {
+      final recommendation = FinalRecommendation.fromJson({
+        'pick': 'extend',
+        'content': '紅牛跟賓士沒打起來，但妳這行程已經先熱血起來了XD\n樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？',
+        'reason': '分開接 F1 興奮和夜市行程',
+        'psychology': '兩顆球分開回會更像真人聊天',
+        'replySegments': [
+          {
+            'sourceIndex': 2,
+            'label': '接她的 F1 興奮',
+            'sourceMessage': '紅牛跟賓士差點打起來XD',
+            'reply': '紅牛跟賓士沒打起來，但妳這行程已經先熱血起來了XD',
+            'reason': '這句有情緒和畫面，適合單獨接住',
+          },
+          {
+            'sourceIndex': 4,
+            'sourceMessage': '等等要去樂華夜市',
+            'reply': '樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？',
+            'reason': '這句能自然延伸下一輪',
+          },
+        ],
+      });
+
+      expect(recommendation.replySegments, hasLength(2));
+      expect(recommendation.replySegments.first.sourceIndex, 2);
+      expect(recommendation.replySegments.first.displayLabel, '接她的 F1 興奮');
+      expect(recommendation.replySegments.last.displayLabel, '回第 4 句');
+      expect(
+        recommendation.replySegments.last.reply,
+        '樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？',
+      );
+    });
   });
 }

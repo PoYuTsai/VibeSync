@@ -487,6 +487,40 @@ function buildFallbackRecommendationText(
   }
 }
 
+function sanitizeReplySegments(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const segments = [];
+  for (const item of value.slice(0, 3)) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const record = item as Record<string, unknown>;
+    const reply = normalizeAiText(record.reply);
+    if (reply.length === 0) {
+      continue;
+    }
+
+    const rawSourceIndex = Number(record.sourceIndex);
+    const sourceIndex = Number.isFinite(rawSourceIndex) && rawSourceIndex > 0
+      ? Math.floor(rawSourceIndex)
+      : undefined;
+
+    segments.push({
+      ...(sourceIndex != null ? { sourceIndex } : {}),
+      label: normalizeAiText(record.label).slice(0, 24),
+      sourceMessage: normalizeAiText(record.sourceMessage).slice(0, 120),
+      reply,
+      reason: normalizeAiText(record.reason).slice(0, 120),
+    });
+  }
+
+  return segments;
+}
+
 function ensureNonEmptyAnalysisOutput({
   result,
   recognizeOnly,
@@ -508,7 +542,9 @@ function ensureNonEmptyAnalysisOutput({
   let replies = sanitizeReplies(result.replies, allowedFeatures);
 
   if (Object.keys(replies).length === 0) {
-    const safeReplies = getSafeReplies(getSafeReplyLevelFromScore(enthusiasmScore));
+    const safeReplies = getSafeReplies(
+      getSafeReplyLevelFromScore(enthusiasmScore),
+    );
     replies = sanitizeReplies(safeReplies, allowedFeatures);
   }
 
@@ -516,7 +552,8 @@ function ensureNonEmptyAnalysisOutput({
     (result.finalRecommendation as Record<string, unknown> | undefined)?.pick,
   );
   const preferredContent = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)?.content,
+    (result.finalRecommendation as Record<string, unknown> | undefined)
+      ?.content,
   );
   const preferredReason = normalizeAiText(
     (result.finalRecommendation as Record<string, unknown> | undefined)?.reason,
@@ -524,6 +561,10 @@ function ensureNonEmptyAnalysisOutput({
   const preferredPsychology = normalizeAiText(
     (result.finalRecommendation as Record<string, unknown> | undefined)
       ?.psychology,
+  );
+  const preferredSegments = sanitizeReplySegments(
+    (result.finalRecommendation as Record<string, unknown> | undefined)
+      ?.replySegments,
   );
 
   const fallbackPick = preferredPick.length > 0 &&
@@ -533,9 +574,14 @@ function ensureNonEmptyAnalysisOutput({
       (feature) => (replies[feature]?.trim().length ?? 0) > 0,
     ) ?? "extend");
   const replyMappedContent = normalizeAiText(replies[fallbackPick]);
+  const segmentMappedContent = preferredSegments
+    .map((segment) => segment.reply)
+    .join("\n");
   const fallbackContent = replyMappedContent.length > 0
     ? replyMappedContent
-    : (preferredPick === fallbackPick ? preferredContent : "");
+    : (preferredPick === fallbackPick
+      ? (preferredContent.length > 0 ? preferredContent : segmentMappedContent)
+      : "");
   const fallbackExplanation = buildFallbackRecommendationText(fallbackPick);
   const guaranteedContent = fallbackContent.length > 0
     ? fallbackContent
@@ -551,6 +597,7 @@ function ensureNonEmptyAnalysisOutput({
     psychology: preferredPsychology.length > 0
       ? preferredPsychology
       : fallbackExplanation.psychology,
+    replySegments: preferredSegments,
   };
 
   return result;
@@ -957,7 +1004,7 @@ function buildImageAnalysisPrompt(options: {
     compiledConversationText
       ? `## Existing Thread Context\n${compiledConversationText}`
       : "",
-    "### Multi-Message Reply Reminder\n- 截圖中如果對方連發多條訊息，先判斷哪些球值得接。中文問句不一定都是必答題；先分辨真問題、情緒球、框架測試或玩笑反問，再決定答、半答、重框、略過或反丟。finalRecommendation.content 必須是自然可直接送出的訊息，不要放 ①② 標註或「回某句」報告格式；finalRecommendation.reason 再簡短說明接了哪些球、略過哪些低價值資訊。",
+    "### Multi-Message Reply Reminder\n- 截圖中如果對方連發多條訊息，先判斷哪些球值得接。中文問句不一定都是必答題；先分辨真問題、情緒球、框架測試或玩笑反問，再決定答、半答、重框、略過或反丟。finalRecommendation.content 必須是自然可直接送出的訊息，不要放 ①② 標註或「回某句」報告格式；如果判斷應該分開回 2-3 句，請填 finalRecommendation.replySegments，讓 App 顯示引用原句與分段複製。finalRecommendation.reason 再簡短說明接了哪些球、略過哪些低價值資訊。",
   );
 }
 
@@ -1274,7 +1321,27 @@ const SYSTEM_PROMPT =
 - 她：「這樣是不是很扯？」✅「有點扯，但我懂妳為什麼會不爽。」
 - 她：「你做什麼的？住哪？幾歲？」✅「我先回答最不無聊的，我是做軟體的。妳問這麼快是在面試我嗎？」
 
-### 1.5 回覆結構指南
+### 1.5 分段引用與 emoji 畫龍點睛
+當對方連發 2-5 句時，先判斷「一句總回」還是「分開回」比較自然：
+- 一句總回：對方只是同一個情緒/同一個生活片段的連續分享，用一則訊息把 1-2 顆球自然串起來即可。
+- 分開回：對方丟了兩個不同可接球點，而且分開回會更像真人聊天，例如先回她的 F1 興奮，再回她等等要去夜市。這時 finalRecommendation.content 可以用換行串起來，但不能用 ①② 或箭頭報告格式。
+- 如果建議分開回，必須填 finalRecommendation.replySegments：每段都要有 sourceMessage（引用她的原句或片段）、reply（可直接複製送出的那句）、reason（為什麼這句值得單獨接）。
+- replySegments 最多 3 段，通常 2 段就夠。不要把每個流水帳都拆成一段，拆太多會讓使用者看起來像客服逐條回覆。
+
+emoji 規則：
+- emoji 是畫龍點睛，不是裝飾品。只有在它能補語氣、降低壓力、接住她的情緒或讓文字更像真人時才用。
+- 一則回覆最多 0-1 個 emoji；多段 replySegments 也不需要每段都有。
+- 優先沿用對方語氣：她有 XD、哈哈、🥲、照片或很活潑的分享，可以少量跟；她很認真、低落、談邊界或有壓力時，不要硬塞 emoji。
+- 不要用太多愛心、火、色色符號讓尺度突然升級；調情要靠語氣與畫面，不靠 emoji 堆疊。
+
+範例（分開回比較自然）：
+- 她：「紅牛跟賓士差點打起來XD」「剛來吃晚餐」「等等要去樂華夜市」
+- content:「紅牛跟賓士沒打起來，但妳這行程已經先熱血起來了XD\n樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？」
+- replySegments:
+  - sourceMessage:「紅牛跟賓士差點打起來XD」 / reply:「紅牛跟賓士沒打起來，但妳這行程已經先熱血起來了XD」
+  - sourceMessage:「等等要去樂華夜市」 / reply:「樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？」
+
+### 1.6 回覆結構指南
 **優先考慮兩段式**（在 1.8x 限制內）：
 - 第一部分：回應/共鳴/觀察
 - 第二部分：延伸/提問/冷讀
@@ -1288,7 +1355,7 @@ const SYSTEM_PROMPT =
 
 **判斷標準**：對話是否能自然延續？太單薄就加第二句，夠豐富就保持簡潔。
 
-### 1.6 接球能力（避免安全但無聊）
+### 1.7 接球能力（避免安全但無聊）
 - finalRecommendation.content 不能只是認同或附和，除非對方已明確要結束話題
 - 這條也適用於 replies.extend / replies.resonate / replies.tease / replies.humor / replies.coldRead：每張卡都要是可直接送出的回覆，不是分析句或心得句
 - 至少要做到一個推進動作：反問、延伸畫面、輕微調侃、把話題丟回她
@@ -1299,7 +1366,7 @@ const SYSTEM_PROMPT =
 - ✅ 「被妳發現了，我會在飲料櫃前思考人生。妳也是亂逛派嗎？」
 - 1.8x 是節奏護欄，不是保守無聊的理由；短句也要有畫面、張力或一個好接球點
 
-### 1.7 五種回覆品質契約（極重要）
+### 1.8 五種回覆品質契約（極重要）
 replies 的五種風格不是報告摘要，也不是「對方訊息代表什麼」的分析。它們都是使用者可以直接複製送出的下一句。
 
 每一種 replies.* 都必須通過「接球三步」：
@@ -1658,7 +1725,16 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
     "pick": "tease",
     "content": "推薦的完整回覆內容，只能是可直接送出的自然訊息；即使對方連發多條，也不要放 ①②、箭頭或「回某句」報告格式",
     "reason": "一句教練式判斷：這句接了哪個球、避開哪個雷、為什麼此刻適合",
-    "psychology": "互動判斷：對方為什麼比較容易接、不會有壓力或會感覺被看見"
+    "psychology": "互動判斷：對方為什麼比較容易接、不會有壓力或會感覺被看見",
+    "replySegments": [
+      {
+        "sourceIndex": 2,
+        "label": "接她的 F1 興奮",
+        "sourceMessage": "紅牛跟賓士差點打起來XD",
+        "reply": "紅牛跟賓士沒打起來，但妳這行程已經先熱血起來了XD",
+        "reason": "這句有情緒和畫面，適合單獨接住"
+      }
+    ]
   },
   "coachActionHint": {
     "catchablePoint": "對方剛丟出的具體可接球點，例如：在家追劇 / 絕命毒師",

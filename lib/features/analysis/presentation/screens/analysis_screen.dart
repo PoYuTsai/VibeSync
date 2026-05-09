@@ -3130,10 +3130,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return replyText.isEmpty ? null : replyText;
   }
 
+  void _copyRecommendationText(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(label)),
+    );
+  }
+
   /// 截圖識別結果卡片
-  /// 解析 AI 推薦回覆內容，支援多條分句標註格式
-  /// 格式：① 回「關鍵詞」→ 回覆內容
-  List<Widget> _buildRecommendationContent(String content) {
+  /// 優先呈現結構化分段回覆；舊版 ①② 格式只保留相容。
+  List<Widget> _buildRecommendationContent(FinalRecommendation recommendation) {
+    final content = recommendation.content.trim();
+    final structuredSegments = recommendation.replySegments
+        .where((segment) => segment.reply.trim().isNotEmpty)
+        .toList();
+    if (structuredSegments.isNotEmpty) {
+      return _buildStructuredRecommendationSegments(
+        recommendation: recommendation,
+        segments: structuredSegments,
+      );
+    }
+
     final segments = _extractRecommendationSegments(content);
     if (segments.length <= 1) {
       return [
@@ -3150,10 +3167,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: content));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已複製到剪貼簿')),
-              );
+              _copyRecommendationText(content, '已複製到剪貼簿');
             },
             icon: const Icon(Icons.copy),
             label: const Text('複製推薦回覆'),
@@ -3199,10 +3213,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   height: 36,
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(text: replyText));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('已複製：$replyText')),
-                      );
+                      _copyRecommendationText(replyText, '已複製這句');
                     },
                     icon: const Icon(Icons.copy, size: 16),
                     label: const Text('複製這句', style: TextStyle(fontSize: 13)),
@@ -3210,6 +3221,148 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 ),
               ],
             ],
+          ),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+
+  List<Widget> _buildStructuredRecommendationSegments({
+    required FinalRecommendation recommendation,
+    required List<ReplySegment> segments,
+  }) {
+    final widgets = <Widget>[
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
+        ),
+        child: Text(
+          segments.length == 1
+              ? '這句可以直接送出；下方保留引用，方便你確認 AI 接的是哪顆球。'
+              : '建議分開回 ${segments.length} 句。每段都引用她的原句，也能單獨複製。',
+          style: AppTypography.caption.copyWith(
+            color: AppColors.textSecondary,
+            height: 1.4,
+          ),
+        ),
+      ),
+      const SizedBox(height: 10),
+    ];
+
+    for (var i = 0; i < segments.length; i++) {
+      final segment = segments[i];
+      final source = segment.sourceMessage.trim();
+      final reply = segment.reply.trim();
+      final reason = segment.reason.trim();
+      widgets.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.divider.withValues(alpha: 0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.format_quote_rounded,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      segment.displayLabel,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (source.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.background.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border(
+                      left: BorderSide(
+                        color: AppColors.primary.withValues(alpha: 0.45),
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    source,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Text(
+                reply,
+                style: AppTypography.bodyLarge.copyWith(height: 1.45),
+              ),
+              if (reason.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  reason,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 38,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    _copyRecommendationText(reply, '已複製第 ${i + 1} 句');
+                  },
+                  icon: const Icon(Icons.copy, size: 16),
+                  label: Text(
+                    segments.length == 1 ? '複製這句' : '複製第 ${i + 1} 句',
+                    style: AppTypography.labelMedium,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final allContent = recommendation.content.trim();
+    if (segments.length > 1 && allContent.isNotEmpty) {
+      widgets.add(
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              _copyRecommendationText(allContent, '已複製全部推薦回覆');
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('複製全部推薦'),
           ),
         ),
       );
@@ -4469,7 +4622,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ),
                                   const SizedBox(height: 12),
                                   ..._buildRecommendationContent(
-                                      _finalRecommendation!.content),
+                                      _finalRecommendation!),
                                   const SizedBox(height: 12),
                                   Text(
                                     '📝 ${_finalRecommendation!.reason}',

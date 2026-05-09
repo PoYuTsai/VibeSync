@@ -153,17 +153,72 @@ class PsychologyAnalysis {
 }
 
 /// Final AI recommendation
+class ReplySegment {
+  final int? sourceIndex;
+  final String label;
+  final String sourceMessage;
+  final String reply;
+  final String reason;
+
+  const ReplySegment({
+    this.sourceIndex,
+    required this.label,
+    required this.sourceMessage,
+    required this.reply,
+    required this.reason,
+  });
+
+  bool get isUsable => reply.trim().isNotEmpty;
+
+  String get displayLabel {
+    final trimmedLabel = label.trim();
+    if (trimmedLabel.isNotEmpty) {
+      return trimmedLabel;
+    }
+    if (sourceIndex != null) {
+      return '回第 $sourceIndex 句';
+    }
+    return '分開回這句';
+  }
+
+  factory ReplySegment.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return const ReplySegment(
+        label: '',
+        sourceMessage: '',
+        reply: '',
+        reason: '',
+      );
+    }
+
+    final rawSourceIndex = json['sourceIndex'];
+    final sourceIndex = rawSourceIndex is num && rawSourceIndex > 0
+        ? rawSourceIndex.toInt()
+        : null;
+
+    return ReplySegment(
+      sourceIndex: sourceIndex,
+      label: json['label'] as String? ?? '',
+      sourceMessage: json['sourceMessage'] as String? ?? '',
+      reply: json['reply'] as String? ?? '',
+      reason: json['reason'] as String? ?? '',
+    );
+  }
+}
+
 class FinalRecommendation {
   final String pick; // 推薦的回覆類型 (extend/resonate/tease/humor/coldRead)
   final String content; // 推薦的回覆內容
   final String reason; // 推薦理由
   final String psychology; // 心理學依據
+  final List<ReplySegment> replySegments; // 可分開複製的分段回覆
 
   const FinalRecommendation({
     required this.pick,
     required this.content,
     required this.reason,
     required this.psychology,
+    this.replySegments = const [],
   });
 
   factory FinalRecommendation.fromJson(Map<String, dynamic>? json) {
@@ -173,13 +228,38 @@ class FinalRecommendation {
         content: '',
         reason: '',
         psychology: '',
+        replySegments: [],
       );
     }
+    final rawSegments = json['replySegments'] as List?;
+    final replySegments = rawSegments
+            ?.map((item) {
+              if (item is Map<String, dynamic>) {
+                return ReplySegment.fromJson(item);
+              }
+              if (item is Map) {
+                return ReplySegment.fromJson(
+                  item.map((key, value) => MapEntry(key.toString(), value)),
+                );
+              }
+              return const ReplySegment(
+                label: '',
+                sourceMessage: '',
+                reply: '',
+                reason: '',
+              );
+            })
+            .where((segment) => segment.isUsable)
+            .take(3)
+            .toList() ??
+        const <ReplySegment>[];
+
     return FinalRecommendation(
       pick: json['pick'] as String? ?? 'extend',
       content: json['content'] as String? ?? '',
       reason: json['reason'] as String? ?? '',
       psychology: json['psychology'] as String? ?? '',
+      replySegments: replySegments,
     );
   }
 }
@@ -272,7 +352,14 @@ FinalRecommendation _ensureRecommendationFallback(
           orElse: () => replies.keys.isNotEmpty ? replies.keys.first : 'extend',
         );
   final fallbackContent = replies[fallbackPick]?.trim() ??
-      (requestedPick == fallbackPick ? recommendation.content.trim() : '');
+      (requestedPick == fallbackPick
+          ? (recommendation.content.trim().isNotEmpty
+              ? recommendation.content.trim()
+              : recommendation.replySegments
+                  .map((segment) => segment.reply.trim())
+                  .where((reply) => reply.isNotEmpty)
+                  .join('\n'))
+          : '');
 
   if (fallbackContent.isEmpty) {
     return recommendation;
@@ -319,6 +406,7 @@ FinalRecommendation _ensureRecommendationFallback(
     psychology: recommendation.psychology.trim().isNotEmpty
         ? recommendation.psychology
         : fallbackPsychology(fallbackPick),
+    replySegments: recommendation.replySegments,
   );
 }
 

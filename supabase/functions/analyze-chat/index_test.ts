@@ -204,8 +204,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "SYSTEM_PROMPT selects the best cues from multi-message life updates",
+  name: "SYSTEM_PROMPT selects the best cues from multi-message life updates",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -251,6 +250,30 @@ Deno.test({
     assert(source.includes("你是不是很會撩？"));
     assert(source.includes("太認真回答就不好玩了"));
     assert(source.includes("中文問句不一定都是必答題"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT supports structured split replies with quoted source messages",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("分段引用與 emoji 畫龍點睛"));
+    assert(source.includes("一句總回"));
+    assert(source.includes("分開回"));
+    assert(source.includes("finalRecommendation.replySegments"));
+    assert(source.includes("sourceMessage"));
+    assert(source.includes("sourceIndex"));
+    assert(source.includes("replySegments 最多 3 段"));
+    assert(source.includes("讓 App 顯示引用原句與分段複製"));
+    assert(source.includes("可直接複製送出的那句"));
+    assert(source.includes("emoji 是畫龍點睛，不是裝飾品"));
+    assert(source.includes("一則回覆最多 0-1 個 emoji"));
+    assert(source.includes("不要用太多愛心、火、色色符號"));
   },
 });
 
@@ -468,7 +491,9 @@ Deno.test({
     assert(source.includes("不要寫成報表、心理學課、技巧教科書"));
     assert(source.includes("finalRecommendation.reason：一句教練式判斷"));
     assert(
-      source.includes("finalRecommendation.psychology：雖然欄位名叫 psychology"),
+      source.includes(
+        "finalRecommendation.psychology：雖然欄位名叫 psychology",
+      ),
     );
     assert(source.includes("strategy：只寫這回合的工作判斷"));
     assert(source.includes("healthCheck：只有當目前對話真的有明顯雷點才輸出"));
