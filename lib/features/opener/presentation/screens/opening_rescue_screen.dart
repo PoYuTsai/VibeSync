@@ -568,6 +568,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         ],
 
         const SizedBox(height: 16),
+        _buildNextStepCard(),
+
+        const SizedBox(height: 16),
 
         // Regenerate button
         Center(
@@ -585,6 +588,126 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNextStepCard() {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.route_outlined,
+                size: 18,
+                color: AppColors.ctaStart,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '下一步怎麼接？',
+                style: AppTypography.titleSmall.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再建立新對話分析後續。',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildNextStepRow(
+            icon: Icons.content_copy_outlined,
+            title: '1. 複製開場，去交友軟體送出',
+            description: '你可以直接用，也可以照自己的語氣微調。',
+          ),
+          const SizedBox(height: 10),
+          _buildNextStepRow(
+            icon: Icons.chat_bubble_outline,
+            title: '2. 她回覆後，回來開新對話',
+            description: '把你送出的那句，加上她的回覆一起貼上。',
+          ),
+          const SizedBox(height: 10),
+          _buildNextStepRow(
+            icon: Icons.psychology_alt_outlined,
+            title: '3. 分析後再問教練怎麼接',
+            description: '只有真實互動進入分析後，才會接上對象記憶。',
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => context.push('/new'),
+              icon: const Icon(Icons.add_comment_outlined, size: 18),
+              label: const Text('她回覆了，開始分析對話'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.ctaStart,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '最近一次開場結果已保留在本機，離開再回來也看得到。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextHint,
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNextStepRow({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          size: 18,
+          color: AppColors.glassTextHint,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextHint,
+                  height: 1.35,
+                ),
+              ),
+            ],
           ),
         ),
       ],
