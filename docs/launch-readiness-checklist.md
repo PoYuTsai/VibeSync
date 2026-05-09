@@ -28,6 +28,7 @@
 
 - [ ] 單張截圖識別正常
 - [ ] 截圖匯入後分析正常
+- [ ] iOS 首次選取聊天截圖時，Photo Library 權限彈窗文案正常
 - [ ] LINE 引用回覆、長圖、多圖 overlap 已驗證
 - [ ] media bubble / sticker / video bubble 不會破壞 speaker 判斷
 - [ ] 同一批真實截圖抽測仍維持穩定
@@ -36,8 +37,10 @@
 
 - [ ] [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy) 內容與目前資料流一致
 - [ ] [https://vibesyncai.app/terms](https://vibesyncai.app/terms) 內容與目前方案一致
+- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面；`/support` 未上線前暫用 [https://vibesyncai.app/privacy](https://vibesyncai.app/privacy)
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect privacy disclosure 已完成
+- [ ] Privacy Label 已揭露使用者主動上傳的聊天截圖、文字對話、訂閱、使用量與診斷資料
 - [ ] App Review 說明文已更新
 
 ## 3. 後端與部署

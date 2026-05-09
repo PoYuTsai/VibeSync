@@ -20,6 +20,7 @@ Privacy and AI processing:
 - When the user explicitly requests analysis, screenshot recognition, or AI coaching, only the minimum required content for that request is sent through our backend processing service and AI providers to generate the response.
 - We do not use users' raw conversations to train our own model.
 - Users can delete conversations locally and can delete their account in the app.
+- The app requests Photo Library access only when the user chooses to upload a chat screenshot for OCR/analysis. It does not access photos in the background.
 
 Subscriptions:
 - Paid plans are Apple auto-renewable subscriptions managed through App Store in-app purchase.
@@ -41,6 +42,57 @@ Reviewer account:
 Notes:
 - If a screenshot is unreadable or unsupported, the app may ask the user to retry or enter text manually.
 - Some AI responses vary slightly because they are generated dynamically.
+```
+
+---
+
+## 1.1 App Store Metadata 草稿
+
+這段是給 App Store Connect 商品頁與審核 metadata 的安全版本。避免使用「把妹、操控、約砲、保證成功」等高風險詞。
+
+| 欄位 | 建議草稿 |
+|------|----------|
+| App Name | VibeSync |
+| Subtitle | AI 對話分析與社交回覆教練 |
+| Category | Lifestyle 或 Productivity，送審前依 App Store Connect 可選項擇一 |
+| Age Rating | 建議 17+，因使用者可能輸入成人/曖昧/關係內容 |
+| Privacy Policy URL | `https://vibesyncai.app/privacy` |
+| Support URL | 暫用 `https://vibesyncai.app/privacy`（頁面底部含客服信箱）；`/support` 正式上線後再改 |
+
+### 簡短描述
+
+```text
+VibeSync 是一款 AI 對話教練，幫助你整理聊天脈絡、理解互動訊號，並產生更自然、有邊界感的回覆草稿。
+```
+
+### 完整描述草稿
+
+```text
+VibeSync helps you reflect on private chat context and prepare better replies with AI-assisted conversation coaching.
+
+You can paste chat messages or upload chat screenshots, then receive conversation signals, reply suggestions, and follow-up coaching. VibeSync is designed for people who want to communicate with more clarity, confidence, and emotional awareness.
+
+Key features:
+- Chat context analysis and heat score
+- AI reply suggestions with multiple tones
+- Screenshot recognition for chat screenshots
+- 1:1 coach follow-up for deeper context
+- Conversation memory and personal notes
+- Learning articles for communication practice
+
+Privacy-first:
+- Your conversations are local-first by default.
+- AI processing happens only when you explicitly request analysis or coaching.
+- VibeSync does not send messages on your behalf and does not guarantee any dating, relationship, or social outcome.
+
+Subscriptions:
+VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewable subscriptions managed by Apple App Store in-app purchase.
+```
+
+### 關鍵字草稿
+
+```text
+聊天,社交,溝通,對話,AI教練,回覆建議,情感,約會,聊天分析,自我提升
 ```
 
 ---
@@ -109,9 +161,50 @@ Notes:
 核對原則：
 
 - [ ] Privacy Policy、App Store Connect Privacy Label、Review Notes 三者一致
+- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面，不要填 `mailto:`；`/support` 未上線前暫用 `https://vibesyncai.app/privacy`
 - [ ] 不宣稱「資料永不離開裝置」
 - [ ] 清楚揭露 AI provider 會處理使用者主動送出的內容
 - [ ] 若新增 analytics / crash SDK，要回頭更新此表
+
+### 3.1 App Store Connect Privacy Label 建議填法
+
+Apple 要求 privacy label 同時涵蓋 app 與第三方 SDK/服務的資料處理。官方說明也提醒：只要 app 或第三方 partner 會收集資料，就算用途不是廣告或分析，也要揭露；若 app 提供照片上傳類功能，也要揭露對應媒體資料類型。
+
+以下是送審前建議答案草稿，實際填寫時仍以 App Store Connect 畫面為準：
+
+| ASC Data Type | 建議是否揭露 | Linked to User | Tracking | Purposes |
+|---------------|--------------|----------------|----------|----------|
+| Contact Info - Email Address | 是 | 是 | 否 | App Functionality、Customer Support |
+| Identifiers - User ID | 是 | 是 | 否 | App Functionality、Analytics、Fraud Prevention/Security |
+| Purchases - Purchase History | 是 | 是 | 否 | App Functionality |
+| User Content - Other User Content | 是 | 是 | 否 | App Functionality、Product Personalization |
+| User Content - Photos or Videos | 是，使用者主動上傳聊天截圖時 | 是 | 否 | App Functionality、Product Personalization |
+| User Content - Customer Support | 可能，使用者主動提交 feedback/support 時 | 是 | 否 | Customer Support、App Functionality |
+| Usage Data - Product Interaction / Other Usage Data | 是 | 是 | 否 | Analytics、App Functionality |
+| Diagnostics - Crash / Performance / Other Diagnostic Data | 是 | 可能 | 否 | Analytics、App Functionality |
+
+建議不要勾：
+
+- Location：目前沒有定位功能
+- Contacts：目前不讀取通訊錄
+- Browsing/Search History：目前沒有收集跨網站瀏覽或搜尋紀錄
+- Sensitive Info：除非未來主動要求使用者填寫更敏感的個資
+- Tracking：目前沒有廣告追蹤、跨 app/web tracking 或 ATT
+
+### 3.2 iOS 權限文案核對
+
+目前 iOS 權限宣告：
+
+| Permission | 用途 | Info.plist key |
+|------------|------|----------------|
+| Photo Library | 使用者點選圖時，選取聊天截圖做 OCR/分析 | `NSPhotoLibraryUsageDescription` |
+
+目前不需要：
+
+- Camera：app 只從相簿選圖，沒有拍照入口
+- Microphone：沒有錄音/錄影功能
+- Location / Contacts / Calendar：沒有使用
+- App Tracking Transparency：沒有 tracking 用途
 
 ---
 
@@ -175,3 +268,10 @@ App 內 AI 邊界：
 | Privacy | URL、policy、ASC privacy label、Review Notes 一致 | 未完成 |
 | Backend | Edge deploy 綠、`analyze-chat --no-verify-jwt` 維持、webhook 正常 | 未驗 |
 | Review Notes | 測試帳號、測試步驟、IAP 說明已填 ASC | 未完成 |
+
+---
+
+## 7. 參考來源
+
+- Apple App Privacy Details: https://developer.apple.com/app-store/app-privacy-details/
+- App Store Connect App Privacy Reference: https://developer.apple.com/help/app-store-connect/reference/app-information/app-privacy

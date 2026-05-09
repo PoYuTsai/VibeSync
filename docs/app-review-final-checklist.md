@@ -45,11 +45,15 @@
 
 - [ ] `https://vibesyncai.app/privacy` 可正常開啟
 - [ ] `https://vibesyncai.app/terms` 可正常開啟
+- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面，不使用 `mailto:`；`/support` 未上線前暫用 `https://vibesyncai.app/privacy`
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
+- [ ] Privacy Label 已揭露 Email / User ID / Purchase History / User Content / Photos / Usage Data / Diagnostics
+- [ ] Privacy Label 未勾 tracking、location、contacts 等未使用資料類型
 - [ ] App Review 說明文已更新成目前實際功能與資料流
 - [ ] App Review Information 已填測試帳號、測試步驟、IAP/AI/OCR 說明
 - [ ] App Store metadata 不使用「把妹、操控、約砲、保證成功」等高風險定位
+- [ ] iOS `NSPhotoLibraryUsageDescription` 已存在，且說明只用於聊天截圖 OCR/分析
 
 ## 4.5 AI / 內容安全
 
