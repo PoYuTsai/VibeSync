@@ -397,6 +397,17 @@ Deno.test({
     assert(source.includes("畫面感"));
     assert(source.includes("輕微挑戰"));
     assert(source.includes("可愛地怪"));
+    assert(source.includes("實戰高手特質：借優點，不借操控"));
+    assert(source.includes("鬆弛、自信、框架感、輕微推拉、非乞求感"));
+    assert(source.includes("平等框架"));
+    assert(source.includes("輕判斷可反駁"));
+    assert(source.includes("非乞求感"));
+    assert(source.includes("先畫面再問題"));
+    assert(source.includes("觀察 + 小框架 + 好回出口"));
+    assert(source.includes("Specialness Gate：不特別就重寫"));
+    assert(source.includes("如果輸出只是一般人也會問的安全句，產品就失去價值"));
+    assert(source.includes("拿掉對方資料仍然能套在任何人身上"));
+    assert(source.includes("最 special、最有機會從一百則訊息裡跳出來"));
     assert(source.includes("先鋒備案：開場不是終點"));
     assert(source.includes("開場救星是產品的「先鋒」"));
     assert(source.includes("ifCold"));
