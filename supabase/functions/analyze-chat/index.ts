@@ -4604,17 +4604,25 @@ ${recentText}`;
         }, 429);
       }
     }
-    if (isMyMessageMode && effectiveTier !== "essential") {
+    const isOptimizeMessageMode = requestType === "optimize_message";
+    if (
+      (isMyMessageMode || isOptimizeMessageMode) &&
+      effectiveTier !== "essential"
+    ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
-        "feature_gate_my_message",
+        isMyMessageMode
+          ? "feature_gate_my_message"
+          : "feature_gate_optimize_message",
       );
       if (!(refreshed && effectiveTier === "essential")) {
         return jsonResponse({
-        error: "「我說」分析功能僅限 Essential 方案",
-        code: "FEATURE_NOT_AVAILABLE",
-        requiredTier: "essential",
-      }, 403);
-    }
+          error: isMyMessageMode
+            ? "「我說」分析功能僅限 Essential 方案"
+            : "草稿潤飾功能僅限 Essential 方案",
+          code: "FEATURE_NOT_AVAILABLE",
+          requiredTier: "essential",
+        }, 403);
+      }
     }
 
     const systemPrompt = recognizeOnly

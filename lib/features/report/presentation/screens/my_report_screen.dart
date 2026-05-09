@@ -1,9 +1,12 @@
 // lib/features/report/presentation/screens/my_report_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/presentation/widgets/about_me_card.dart';
 import '../../data/providers/report_providers.dart';
 import '../widgets/heat_trend_chart.dart';
@@ -15,6 +18,7 @@ class MyReportScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final subscription = ref.watch(subscriptionProvider);
     final report = ref.watch(reportDataProvider);
     final isEmpty = report.totalConversations == 0;
 
@@ -23,7 +27,9 @@ class MyReportScreen extends ConsumerWidget {
       children: [
         const AboutMeCard(),
         const SizedBox(height: 24),
-        if (isEmpty)
+        if (subscription.isFreeUser)
+          _lockedReportCard(context)
+        else if (isEmpty)
           ..._emptyStateContents()
         else ...[
           Text(
@@ -66,6 +72,42 @@ class MyReportScreen extends ConsumerWidget {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _lockedReportCard(BuildContext context) {
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_outline, color: AppColors.ctaStart, size: 32),
+          const SizedBox(height: 12),
+          Text(
+            '我的報告會在 Starter 解鎖',
+            style: AppTypography.titleLarge.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '升級後可以看五維雷達圖、歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => context.push('/paywall'),
+              icon: const Icon(Icons.workspace_premium),
+              label: const Text('查看升級方案'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

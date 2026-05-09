@@ -92,8 +92,8 @@ BEGIN
       v_monthly_limit := 300;
       v_daily_limit := 50;
     WHEN 'essential' THEN
-      v_monthly_limit := 1000;
-      v_daily_limit := 150;
+      v_monthly_limit := 800;
+      v_daily_limit := 120;
     ELSE
       v_monthly_limit := 30;
       v_daily_limit := 15;

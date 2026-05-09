@@ -180,12 +180,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   CoachChatAnalysisSnapshot _buildCoachChatAnalysisSnapshot() {
+    final subscription = ref.read(subscriptionProvider);
     final keySignals = <String>[
       if (_psychology?.subtext.trim().isNotEmpty == true)
         _psychology!.subtext.trim(),
       if (_topicDepth?.suggestion.trim().isNotEmpty == true)
         _topicDepth!.suggestion.trim(),
-      if (_healthCheck?.issues.isNotEmpty == true)
+      if (subscription.isEssential && _healthCheck?.issues.isNotEmpty == true)
         ..._healthCheck!.issues.take(2),
     ];
 
@@ -2629,6 +2630,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final draft = _optimizeController.text.trim();
     if (draft.isEmpty) return;
 
+    if (!ref.read(subscriptionProvider).isEssential) {
+      _showFloatingSnackBar('草稿潤飾器需要 Essential 方案。');
+      await _showPaywall(context);
+      return;
+    }
+
     _dismissKeyboard();
     setState(() {
       _isOptimizing = true;
@@ -2695,6 +2702,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _isOptimizing = false;
       });
       _showFloatingSnackBar(e.message);
+      if (e.suggestedAction == AnalysisErrorAction.upgrade) {
+        await _showPaywall(context);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -2902,7 +2912,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         buffer.writeln('互動判斷: ${_finalRecommendation!.psychology}');
       }
 
-      if (_healthCheck != null && _healthCheck!.issues.isNotEmpty) {
+      final subscription = ref.read(subscriptionProvider);
+      if (subscription.isEssential &&
+          _healthCheck != null &&
+          _healthCheck!.issues.isNotEmpty) {
         buffer.writeln('');
         buffer.writeln('--- 對話健檢 ---');
         for (final issue in _healthCheck!.issues) {
@@ -4847,6 +4860,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                               // Health Check (對話健檢 - Essential 專屬)
                               if (_healthCheck != null &&
+                                  subscription.isEssential &&
                                   _healthCheck!.issues.isNotEmpty) ...[
                                 const SizedBox(height: 16),
                                 Container(
@@ -5184,7 +5198,44 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       height: 1.35,
                                     ),
                                   ),
-                                  if (_showOptimizeInput) ...[
+                                  if (!subscription.isEssential) ...[
+                                    const SizedBox(height: 12),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary
+                                            .withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: AppColors.primary
+                                              .withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.lock_outline,
+                                            color: AppColors.primary,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              '草稿潤飾器是 Essential 功能，升級後可直接把你的草稿修得更自然。',
+                                              style: AppTypography.bodyMedium
+                                                  .copyWith(
+                                                color: AppColors.primary,
+                                              ),
+                                            ),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                _showPaywall(context),
+                                            child: const Text('查看方案'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ] else if (_showOptimizeInput) ...[
                                     const SizedBox(height: 12),
                                     TextField(
                                       controller: _optimizeController,
@@ -5263,7 +5314,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     ),
                                   ],
                                   // 顯示優化結果
-                                  if (_optimizedMessage != null &&
+                                  if (subscription.isEssential &&
+                                      _optimizedMessage != null &&
                                       _optimizedMessage!
                                           .optimized.isNotEmpty) ...[
                                     const SizedBox(height: 16),

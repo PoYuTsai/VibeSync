@@ -10,6 +10,40 @@
 
 ## 2026-05
 
+### [2026-05-09] 付費功能門檻與額度表不一致
+**症狀**:
+
+- Free 使用者可能在「我的報告」看到付費報表入口，與產品設定的 Starter/Essential 限制不一致。
+- 草稿潤飾器在 UI 上可被非 Essential 使用者觸發，後端也沒有獨立擋 `optimize_message`。
+- 舊 DB helper `check_and_reset_usage` 仍保留 Essential 1000/月、150/日，和目前定價 800/月、120/日不一致。
+
+**Root Cause**:
+
+- 方案調整後，主要 Edge quota 與 App constants 已更新，但舊 DB helper 與部分 UI gate 沒有同步收斂。
+- `healthCheck` 是 Essential 專屬，但 App 端仍可能保留舊分析快取，降級後若未 gate 會污染複製內容或 Coach context。
+
+**修復**:
+
+- Free 的「我的報告」改成 Starter 解鎖卡。
+- 草稿潤飾器改為 Essential-only：App 端先擋並導 Paywall，Edge Function 對 `optimize_message` 回 `FEATURE_NOT_AVAILABLE`。
+- Health Check 顯示、複製與 Coach snapshot 全部加 Essential gate。
+- 修正 initial schema，並新增 migration 讓既有 DB 的 `check_and_reset_usage` 對齊 30/15、300/50、800/120。
+
+**驗證**:
+
+- `flutter analyze`
+- `flutter test test/unit/services/subscription_tier_helper_test.dart test/unit/features/opener/data/services/opener_service_test.dart test/widget/widgets/analysis_preview_dialog_test.dart test/widget/screens/paywall_screen_test.dart test/widget/screens/settings_screen_test.dart`
+- `deno test --allow-read supabase/functions/_shared/quota_test.ts supabase/functions/sync-subscription/usage_reset_test.ts supabase/functions/analyze-chat/index_test.ts`
+- `deno check supabase/functions/analyze-chat/index.ts supabase/functions/sync-subscription/index.ts supabase/functions/revenuecat-webhook/index.ts`
+
+**相關檔案**:
+
+- `lib/features/analysis/presentation/screens/analysis_screen.dart`
+- `lib/features/report/presentation/screens/my_report_screen.dart`
+- `supabase/functions/analyze-chat/index.ts`
+- `supabase/migrations/00001_initial_schema.sql`
+- `supabase/migrations/20260509_fix_check_and_reset_usage_limits.sql`
+
 ### [2026-05-08] 本回合練習卡忽略具體生活話題
 **症狀**:
 
