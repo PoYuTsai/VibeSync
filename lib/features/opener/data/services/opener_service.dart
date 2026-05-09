@@ -33,6 +33,45 @@ class OpenerResult {
     this.recommendedReason,
     this.costUsed = 3,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (profileAnalysis != null) 'profileAnalysis': profileAnalysis,
+      'openers': openers,
+      if (pioneerPlan != null) 'pioneerPlan': pioneerPlan,
+      if (recommendedPick != null) 'recommendedPick': recommendedPick,
+      if (recommendedReason != null) 'recommendedReason': recommendedReason,
+      'costUsed': costUsed,
+    };
+  }
+
+  factory OpenerResult.fromJson(Map<String, dynamic> json) {
+    return OpenerResult(
+      profileAnalysis: _dynamicMapOrNull(json['profileAnalysis']),
+      openers: _stringMap(json['openers']),
+      pioneerPlan:
+          json['pioneerPlan'] == null ? null : _stringMap(json['pioneerPlan']),
+      recommendedPick: json['recommendedPick'] as String?,
+      recommendedReason: json['recommendedReason'] as String?,
+      costUsed: (json['costUsed'] as num?)?.round() ?? 3,
+    );
+  }
+
+  static Map<String, String> _stringMap(dynamic value) {
+    if (value is! Map) {
+      return const {};
+    }
+    return value.map(
+      (key, value) => MapEntry(key.toString(), value.toString()),
+    );
+  }
+
+  static Map<String, dynamic>? _dynamicMapOrNull(dynamic value) {
+    if (value is! Map) {
+      return null;
+    }
+    return value.map((key, value) => MapEntry(key.toString(), value));
+  }
 }
 
 class OpenerQuotaExceededException implements Exception {

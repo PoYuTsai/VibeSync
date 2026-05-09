@@ -10,6 +10,34 @@
 
 ## 2026-05
 
+### [2026-05-09] 開場救星返回後結果遺失
+**症狀**:
+
+- 新對話進入開場救星，成功分析並扣額度後，如果使用者按上一頁離開，再回來就看不到剛才的開場結果。
+- 這會造成「已付費/已扣額度，但成果消失」的體驗落差。
+
+**Root Cause**:
+
+- `OpeningRescueScreen` 只把 `OpenerResult` 放在頁面 state `_result`，route pop 後 widget dispose，結果沒有任何本機保存。
+
+**修復**:
+
+- `OpenerResult` 補 `toJson/fromJson`。
+- 新增 `OpenerResultCacheService`，把最近一次開場結果寫入既有 encrypted Hive `settingsBox`。
+- 開場救星頁 init 時自動恢復最近一次結果；成功分析後先保存，再更新畫面。
+
+**驗證**:
+
+- `flutter analyze lib/features/opener/data/services/opener_service.dart lib/features/opener/data/services/opener_result_cache_service.dart lib/features/opener/presentation/screens/opening_rescue_screen.dart`
+- `flutter test test/unit/features/opener/data/services/opener_service_test.dart test/unit/features/opener/data/services/opener_result_cache_service_test.dart`
+
+**影響檔案**:
+
+- `lib/features/opener/data/services/opener_service.dart`
+- `lib/features/opener/data/services/opener_result_cache_service.dart`
+- `lib/features/opener/presentation/screens/opening_rescue_screen.dart`
+- `test/unit/features/opener/data/services/opener_result_cache_service_test.dart`
+
 ### [2026-05-09] 付費功能門檻與額度表不一致
 **症狀**:
 

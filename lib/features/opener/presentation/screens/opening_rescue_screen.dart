@@ -7,6 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../../core/services/usage_service.dart';
+import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
 
 class OpeningRescueScreen extends ConsumerStatefulWidget {
@@ -30,6 +31,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   OpenerResult? _result;
   String? _error;
   final _scrollController = ScrollController();
+  final _resultCacheService = OpenerResultCacheService();
 
   static const _meetingOptions = ['交友軟體', 'IG', '現實認識', '其他'];
 
@@ -42,6 +44,20 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   };
 
   int get _estimatedCost => 3 + (_images.length * 2);
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreLatestResult();
+  }
+
+  void _restoreLatestResult() {
+    try {
+      _result = _resultCacheService.loadLatest();
+    } catch (_) {
+      _result = null;
+    }
+  }
 
   UsageData _currentUsageSnapshot() {
     final subscription = ref.read(subscriptionProvider);
@@ -129,6 +145,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         interests: _interestsController.text,
         meetingContext: _meetingContext,
       );
+      try {
+        await _resultCacheService.saveLatest(result);
+      } catch (_) {
+        // The paid result should still be shown even if local persistence fails.
+      }
       if (mounted) {
         setState(() {
           _result = result;
