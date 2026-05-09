@@ -364,24 +364,35 @@ Deno.test({
     assert(source.includes("開場白的北極星：低壓、具體、可回、像真人"));
     assert(
       source.includes(
-        "先讀資料，再開場（Profile Read → Avoid → Hook → Opener）",
+        "先讀資料，再開場（Profile Read → Frame → Hook → Opener）",
       ),
     );
     assert(source.includes("先避開 avoidTopics"));
+    assert(source.includes("判斷框架 frameRead"));
+    assert(source.includes("界線要被內化，不一定要被唸出來"));
     assert(source.includes("可接線索 positiveHooks"));
     assert(source.includes("推薦策略 openingStrategy"));
     assert(source.includes("如果自介明確說不要問工作、不要約酒、討厭沒誠意"));
+    assert(source.includes("中文語境注意：「不約」通常表示不要低成本約砲"));
+    assert(source.includes("不是「永遠不見面」或「不能認識」"));
     assert(source.includes("可見線索優先"));
     assert(source.includes("不要假裝看出很深的人格"));
     assert(source.includes("profileAnalysis.avoidTopics"));
+    assert(source.includes("profileAnalysis.frameRead"));
     assert(source.includes("profileAnalysis.positiveHooks"));
     assert(source.includes("profileAnalysis.openingStrategy"));
     assert(source.includes("場景分流"));
+    assert(source.includes("自介資訊量分流"));
+    assert(source.includes("自介很長、界線很多"));
+    assert(source.includes("自介只有一句話"));
+    assert(source.includes("幾乎沒有自介、只有自拍"));
     assert(source.includes("交友軟體"));
     assert(source.includes("IG / 限動"));
     assert(source.includes("現實認識"));
     assert(source.includes("先不踩雷 > 有看資料 > 對方好回 > 有一點個人味"));
+    assert(source.includes("不要為了安全犧牲人的味道"));
     assert(source.includes("避開禁忌、接住正向線索、問一個低壓問題"));
+    assert(source.includes("不要總是使用「我有認真看完自介」"));
     assert(source.includes("不喜歡被問工作、不愛喝酒、喜歡學習嘗試新事物"));
     assert(source.includes("資訊不足：明說線索不足"));
     assert(
