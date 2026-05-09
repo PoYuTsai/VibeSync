@@ -78,6 +78,12 @@ class CoachChatResult {
   @HiveField(22)
   final String frictionType;
 
+  @HiveField(23)
+  final String? earlierSummary;
+
+  @HiveField(24)
+  final int earlierResultCount;
+
   const CoachChatResult({
     required this.id,
     required this.conversationId,
@@ -102,9 +108,44 @@ class CoachChatResult {
     this.rewriteReason,
     this.costDeducted = 1,
     this.frictionType = 'unclearIntent',
+    this.earlierSummary,
+    this.earlierResultCount = 0,
   });
 
   bool get isClarifyingQuestion => responseType == 'clarifyingQuestion';
 
   bool get isCoachAnswer => responseType == 'coachAnswer';
+
+  CoachChatResult copyWith({
+    String? earlierSummary,
+    int? earlierResultCount,
+  }) {
+    return CoachChatResult(
+      id: id,
+      conversationId: conversationId,
+      partnerId: partnerId,
+      question: question,
+      mode: mode,
+      headline: headline,
+      answer: answer,
+      userState: userState,
+      nextStep: nextStep,
+      suggestedLine: suggestedLine,
+      boundaryReminder: boundaryReminder,
+      needsReflection: needsReflection,
+      reflectionQuestion: reflectionQuestion,
+      generatedAt: generatedAt,
+      provider: provider,
+      modelUsed: modelUsed,
+      responseType: responseType,
+      sessionId: sessionId,
+      userTruth: userTruth,
+      rewriteDecision: rewriteDecision,
+      rewriteReason: rewriteReason,
+      costDeducted: costDeducted,
+      frictionType: frictionType,
+      earlierSummary: earlierSummary ?? this.earlierSummary,
+      earlierResultCount: earlierResultCount ?? this.earlierResultCount,
+    );
+  }
 }

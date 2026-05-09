@@ -26,15 +26,93 @@ class CoachChatRepositoryImpl implements CoachChatRepository {
 
   @override
   Future<void> put(CoachChatResult result) async {
-    await _box.put(result.id, result);
+    final previousLatest = latestForConversation(result.conversationId);
+    final resultWithRollup = _carryForwardRollup(result, previousLatest);
+    await _box.put(resultWithRollup.id, resultWithRollup);
     await _trimConversation(result.conversationId);
+  }
+
+  CoachChatResult _carryForwardRollup(
+    CoachChatResult result,
+    CoachChatResult? previousLatest,
+  ) {
+    if (result.earlierSummary?.trim().isNotEmpty == true ||
+        previousLatest == null ||
+        previousLatest.earlierSummary?.trim().isNotEmpty != true) {
+      return result;
+    }
+    return result.copyWith(
+      earlierSummary: previousLatest.earlierSummary,
+      earlierResultCount: previousLatest.earlierResultCount,
+    );
   }
 
   Future<void> _trimConversation(String conversationId) async {
     final list = listByConversation(conversationId);
     if (list.length <= keepPerConversation) return;
-    final stale = list.skip(keepPerConversation);
+    final keep = list.take(keepPerConversation).toList(growable: false);
+    final stale = list.skip(keepPerConversation).toList(growable: false);
+    await _rollupStaleResults(keep.first, keep, stale);
     await Future.wait(stale.map((result) => _box.delete(result.id)));
+  }
+
+  Future<void> _rollupStaleResults(
+    CoachChatResult latest,
+    List<CoachChatResult> keep,
+    List<CoachChatResult> stale,
+  ) async {
+    if (stale.isEmpty) return;
+
+    final lines = <String>[
+      for (final result in keep.reversed)
+        if (result.earlierSummary?.trim().isNotEmpty == true)
+          result.earlierSummary!.trim(),
+      for (final result in stale.reversed) _summarizeResult(result),
+    ].where((line) => line.trim().isNotEmpty).toList(growable: false);
+
+    final summary = _truncateSummary(_dedupeLines(lines).join('\n'));
+    final count = keep.fold<int>(
+          0,
+          (max, result) =>
+              result.earlierResultCount > max ? result.earlierResultCount : max,
+        ) +
+        stale.length;
+    await _box.put(
+      latest.id,
+      latest.copyWith(
+        earlierSummary: summary,
+        earlierResultCount: count,
+      ),
+    );
+  }
+
+  List<String> _dedupeLines(List<String> lines) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final line in lines) {
+      final normalized = line.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (normalized.isEmpty || !seen.add(normalized)) continue;
+      result.add(line.trim());
+    }
+    return result;
+  }
+
+  String _summarizeResult(CoachChatResult result) {
+    final parts = <String>[
+      '問「${result.question}」',
+      result.headline,
+      '先做：${result.nextStep}',
+      if (result.suggestedLine?.trim().isNotEmpty == true)
+        '建議句：${result.suggestedLine!.trim()}',
+    ];
+    return '- ${parts.join('；')}';
+  }
+
+  String _truncateSummary(String summary) {
+    const maxLength = 900;
+    final trimmed = summary.trim();
+    if (trimmed.length <= maxLength) return trimmed;
+    return trimmed.substring(trimmed.length - maxLength).trimLeft();
   }
 
   @override

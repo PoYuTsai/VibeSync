@@ -81,6 +81,39 @@ void main() {
     );
   });
 
+  test('put rolls trimmed coach results into the latest summary', () async {
+    for (var i = 0; i < 12; i++) {
+      await repo.put(_result(
+        'r-$i',
+        generatedAt: DateTime(2026, 5, 7, 10).add(Duration(minutes: i)),
+      ));
+    }
+
+    final latest = repo.latestForConversation('c-1')!;
+
+    expect(latest.earlierResultCount, 2);
+    expect(latest.earlierSummary, contains('問「她是什麼意思？」'));
+    expect(latest.earlierSummary, contains('先做：先用一句反問接回去。'));
+  });
+
+  test('put carries existing earlier summary onto a newer latest result',
+      () async {
+    await repo.put(_result('old').copyWith(
+      earlierSummary: '- 問「她是什麼意思？」；舊摘要',
+      earlierResultCount: 3,
+    ));
+    await repo.put(_result(
+      'new',
+      generatedAt: DateTime(2026, 5, 7, 13),
+    ));
+
+    final latest = repo.latestForConversation('c-1')!;
+
+    expect(latest.id, 'new');
+    expect(latest.earlierResultCount, 3);
+    expect(latest.earlierSummary, contains('舊摘要'));
+  });
+
   test('deleteConversation removes only that conversation', () async {
     await repo.put(_result('a', conversationId: 'c-1'));
     await repo.put(_result('b', conversationId: 'c-2'));

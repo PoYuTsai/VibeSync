@@ -442,6 +442,10 @@ class _CoachChatThreadView extends StatelessWidget {
           onFollowUp: onFollowUp,
           onForceAnswer: onForceAnswer,
         ),
+        if (latest.earlierSummary?.trim().isNotEmpty == true) ...[
+          const SizedBox(height: 10),
+          _EarlierCoachSummaryCard(result: latest),
+        ],
         if (previous.isNotEmpty) ...[
           const SizedBox(height: 10),
           Theme(
@@ -475,6 +479,61 @@ class _CoachChatThreadView extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _EarlierCoachSummaryCard extends StatelessWidget {
+  final CoachChatResult result;
+
+  const _EarlierCoachSummaryCard({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final count = result.earlierResultCount;
+    final title = count > 0 ? '更早 $count 輪摘要' : '更早教練摘要';
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.14),
+        ),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          initiallyExpanded: false,
+          title: Text(
+            title,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: Text(
+            '超過最近 10 輪的內容會保留成摘要，不讓頁面無限變長。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+            ),
+          ),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                result.earlierSummary!.trim(),
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  height: 1.45,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
