@@ -366,6 +366,9 @@ Deno.test({
     assert(source.includes("推薦開場必須有一點好奇心鉤子"));
     assert(source.includes("更偏玩咖"));
     assert(source.includes("這男的是怎樣？我來跟他尬一下"));
+    assert(source.includes("VibeSync 是教練，不是話術產生器"));
+    assert(source.includes("回話只是示範，框架大於話術"));
+    assert(source.includes("怎麼丟球、怎麼維持男人框架、怎麼讓女生有球可以回"));
     assert(
       source.includes(
         "先讀資料，再開場（Profile Read → Frame → Hook → Opener）",
@@ -430,10 +433,21 @@ Deno.test({
     assert(source.includes("你也在觀察她，而不是單方面求她認可"));
     assert(source.includes("不刻意的幽默才有吸引力"));
     assert(source.includes("她有球可以打回來"));
+    assert(source.includes("框架大於話術"));
+    assert(source.includes("所有 opener 都是示範，不是唯一正解"));
+    assert(source.includes("這句在丟哪顆球"));
+    assert(
+      source.includes("recommendation.reason 必須說明「這句示範了什麼框架」"),
+    );
     assert(source.includes("兩顆球策略：不必每次都押一句神回"));
     assert(source.includes("第一球：微拉、畫面感、輕微挑戰"));
     assert(source.includes("初期只能微拉，不要重拉"));
     assert(source.includes("第二球：冷讀、觀察、可被反駁"));
+    assert(source.includes("實戰短句範例"));
+    assert(source.includes("沒到微胖吧，挺辣，謙虛了"));
+    assert(source.includes("只在她自介/標籤/用戶描述已經提到微胖"));
+    assert(source.includes("妳感覺蠻會唱歌"));
+    assert(source.includes("短、留白、可反駁、可接球"));
     assert(source.includes("五種風格各有任務"));
     assert(source.includes("不要把它們全部做成同一種玩咖推拉"));
     assert(source.includes("tease：只做微拉，不做重拉"));
