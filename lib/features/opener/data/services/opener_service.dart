@@ -20,6 +20,7 @@ class OpenerInvokeResponse {
 class OpenerResult {
   final Map<String, dynamic>? profileAnalysis;
   final Map<String, String> openers;
+  final Map<String, String>? pioneerPlan;
   final String? recommendedPick;
   final String? recommendedReason;
   final int costUsed;
@@ -27,6 +28,7 @@ class OpenerResult {
   const OpenerResult({
     this.profileAnalysis,
     required this.openers,
+    this.pioneerPlan,
     this.recommendedPick,
     this.recommendedReason,
     this.costUsed = 3,
@@ -130,6 +132,11 @@ class OpenerService {
     // Parse recommendation
     final recommendation = data['recommendation'] as Map<String, dynamic>?;
 
+    // Parse first-message follow-up plan
+    final pioneerPlanRaw = data['pioneerPlan'] as Map<String, dynamic>?;
+    final pioneerPlan =
+        pioneerPlanRaw?.map((k, v) => MapEntry(k, v.toString()));
+
     // Parse profile analysis
     final profileAnalysis = data['profileAnalysis'] as Map<String, dynamic>?;
 
@@ -140,6 +147,7 @@ class OpenerService {
     return OpenerResult(
       profileAnalysis: profileAnalysis,
       openers: openers,
+      pioneerPlan: pioneerPlan,
       recommendedPick: recommendation?['pick'] as String?,
       recommendedReason: recommendation?['reason'] as String?,
       costUsed: cost,

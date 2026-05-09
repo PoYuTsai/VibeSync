@@ -541,6 +541,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
         ],
 
+        if (result.pioneerPlan != null && result.pioneerPlan!.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildPioneerPlanCard(result.pioneerPlan!),
+        ],
+
         const SizedBox(height: 16),
 
         // Regenerate button
@@ -565,6 +570,109 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
   }
 
+  Widget _buildPioneerPlanCard(Map<String, String> pioneerPlan) {
+    final labelMap = {
+      'ifCold': '她冷回',
+      'ifShortPositive': '短回有接',
+      'ifEngaged': '她認真回',
+      'handoff': '下一步',
+    };
+
+    final entries = pioneerPlan.entries
+        .where((entry) => entry.value.trim().isNotEmpty)
+        .toList();
+
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.flag_outlined,
+                size: 18,
+                color: AppColors.ctaStart,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '先鋒備案',
+                style: AppTypography.titleSmall.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '貼出去後如果她冷回或短回，先照這裡接；有新回覆再回來分析或問教練。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextHint,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...entries.map((entry) {
+            final label = labelMap[entry.key] ?? entry.key;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 78,
+                    child: Text(
+                      label,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.ctaStart,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      entry.value,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.glassTextSecondary,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: entry.value));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('已複製「$label」備案'),
+                          duration: const Duration(seconds: 2),
+                          backgroundColor: AppColors.backgroundGradientMid
+                              .withValues(alpha: 0.9),
+                        ),
+                      );
+                    },
+                    icon: Icon(
+                      Icons.copy,
+                      size: 15,
+                      color: AppColors.glassTextHint,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildProfileAnalysisItems(Map<String, dynamic> analysis) {
     final items = <Widget>[];
     final labelMap = {
@@ -573,6 +681,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       'avoidTopics': '先避開',
       'frameRead': '框架判斷',
       'positiveHooks': '可接線索',
+      'curiosityHook': '好奇鉤子',
       'talkingPoints': '話題切入點',
       'openingStrategy': '推薦策略',
       'vibe': '氛圍',

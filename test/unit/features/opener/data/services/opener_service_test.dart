@@ -22,6 +22,10 @@ void main() {
                 'pick': 'extend',
                 'reason': '低壓自然',
               },
+              'pioneerPlan': {
+                'ifCold': '她只回嗯嗯，就先輕鬆換一個具體小問題。',
+                'handoff': '她回覆後貼回分析或問教練。',
+              },
               'profileAnalysis': {'tone': '生活感'},
               'usage': {'cost': 5},
             },
@@ -40,6 +44,8 @@ void main() {
       );
 
       expect(result.openers['extend'], '嗨，你也喜歡看展嗎？');
+      expect(result.pioneerPlan?['ifCold'], '她只回嗯嗯，就先輕鬆換一個具體小問題。');
+      expect(result.pioneerPlan?['handoff'], '她回覆後貼回分析或問教練。');
       expect(result.recommendedPick, 'extend');
       expect(result.recommendedReason, '低壓自然');
       expect(result.costUsed, 5);
