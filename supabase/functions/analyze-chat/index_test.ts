@@ -446,14 +446,31 @@ Deno.test({
     assert(source.includes("初期只能微拉，不要重拉"));
     assert(source.includes("第二球：冷讀、觀察、可被反駁"));
     assert(source.includes("實戰短句範例"));
+    assert(source.includes("調情：「沒到微胖吧，挺辣，謙虛了。」"));
     assert(source.includes("沒到微胖吧，挺辣，謙虛了"));
     assert(source.includes("只在她自介/標籤/用戶描述已經提到微胖"));
     assert(source.includes("妳感覺蠻會唱歌"));
     assert(source.includes("短、留白、可反駁、可接球"));
+    assert(source.includes("長自介 / 規則多 / 仍有正向線索的範例"));
+    assert(source.includes("如果她自介很長，不要誤判成「線索少」"));
+    assert(
+      source.includes(
+        "妳自介寫那麼完整，我反而比較想問：最近最想學的新東西是什麼？",
+      ),
+    );
+    assert(source.includes("不是難聊，是不想把時間浪費在罐頭對話上"));
+    assert(source.includes("自介有點像入境規定"));
+    assert(source.includes("走私罐頭訊息"));
     assert(source.includes("五種風格各有任務"));
     assert(source.includes("不要把它們全部做成同一種玩咖推拉"));
-    assert(source.includes("tease：只做微拉，不做重拉"));
+    assert(source.includes("用戶看到的名稱是「調情」"));
+    assert(source.includes("不要輸出「微拉」這個內部術語"));
+    assert(source.includes("目標質感接近「沒到微胖吧，挺辣，謙虛了。」"));
+    assert(source.includes("目標質感接近「妳感覺蠻會唱歌。」"));
+    assert(source.includes("不把線索原文說破"));
     assert(source.includes("初期陌生開場只能微拉"));
+    assert(source.includes("這張卡在 UI 叫「調情」"));
+    assert(source.includes("不要把內部術語「微拉」寫給用戶"));
     assert(source.includes("幽默是加分項，不是必要項"));
     assert(source.includes("優先保留來回感與男人框架"));
     assert(source.includes("Specialness Gate：不特別就重寫"));
