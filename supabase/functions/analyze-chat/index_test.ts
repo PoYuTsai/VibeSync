@@ -166,6 +166,12 @@ Deno.test({
     assert(source.includes("replies.extend 也必須是「可直接送出」的句子"));
     assert(source.includes("每張卡都要是可直接送出的回覆"));
     assert(source.includes("1.8x 是節奏護欄，不是保守無聊的理由"));
+    assert(source.includes("1.8x 不是死板字數公式"));
+    assert(source.includes("投入感比例"));
+    assert(source.includes("多句連續分享：不要只拿最後一條算長度"));
+    assert(source.includes("1.8x 是上限，不是目標"));
+    assert(source.includes("用最少的字接住最值得接的球"));
+    assert(source.includes("自然引用原則"));
     assert(source.includes("personality_observation"));
     assert(source.includes("被妳發現了，我會在飲料櫃前思考人生"));
   },
