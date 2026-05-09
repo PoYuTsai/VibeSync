@@ -198,6 +198,27 @@ Deno.test({
 
 Deno.test({
   name:
+    "SYSTEM_PROMPT selects the best cues from multi-message life updates",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("多句連續分享的選球規則"));
+    assert(source.includes("不要逐句查戶口"));
+    assert(source.includes("先做「選球」"));
+    assert(source.includes("通常只選 1-2 顆球，最多 3 顆"));
+    assert(source.includes("把 2 顆球自然串成一則可送出的訊息"));
+    assert(source.includes("finalRecommendation.reason 要簡短說明"));
+    assert(source.includes("接住她對 F1 的興奮，再順到夜市行程"));
+    assert(source.includes("白天看人差點打起來"));
+    assert(source.includes("樂華夜市最後會帶什麼罪惡美食回家"));
+  },
+});
+
+Deno.test({
+  name:
     "SYSTEM_PROMPT preserves userDraft intent instead of answering latest partner message",
   permissions: { read: true },
   fn: async () => {
