@@ -306,6 +306,70 @@ Deno.test({
 
 Deno.test({
   name:
+    "SYSTEM_PROMPT keeps draft polish natural, bounded, and non-AI sounding",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("emoji 只在補語氣、補情緒或降低壓力時使用"));
+    assert(source.includes("最多 0-1 個"));
+    assert(source.includes("不要把用戶口吻過度美化成文青、客服或 AI 腔"));
+    assert(source.includes("慾望、邀約、親密、短期意圖或推進意圖"));
+    assert(source.includes("清楚、低壓、可拒絕、不越界"));
+    assert(source.includes("Keep the user's natural voice"));
+    assert(source.includes("do not over-polish into poetic"));
+    assert(source.includes("keeping consent/exit room clear"));
+  },
+});
+
+Deno.test({
+  name:
+    "MY_MESSAGE_PROMPT provides concrete branch planning without invented topics",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("你是 VibeSync 的「我說模式」教練"));
+    assert(source.includes("這不是完整分析報告，也不是算命"));
+    assert(source.includes("下一句可以直接拿來接的方案"));
+    assert(source.includes("如果她冷淡回覆：保住尊嚴、降低壓力"));
+    assert(source.includes("suggestion 必須像可以直接拿來接的下一句"));
+    assert(source.includes("備用話題只能來自"));
+    assert(source.includes("不要編造她喜歡咖啡"));
+    assert(source.includes("目前備用話題不足"));
+  },
+});
+
+Deno.test({
+  name:
+    "OPENER_PROMPT prioritizes visible cues and replyability over personality guesses",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("你是 VibeSync 的開場救星教練"));
+    assert(source.includes("開場白的北極星：低壓、具體、可回、像真人"));
+    assert(source.includes("可見線索優先"));
+    assert(source.includes("不要假裝看出很深的人格"));
+    assert(source.includes("場景分流"));
+    assert(source.includes("交友軟體"));
+    assert(source.includes("IG / 限動"));
+    assert(source.includes("現實認識"));
+    assert(source.includes("資訊不足：明說線索不足"));
+    assert(source.includes("為什麼這句最容易被回"));
+    assertFalse(source.includes("### Big Five 照片特徵映射"));
+    assertFalse(source.includes("穿搭風格 → 性格推斷"));
+  },
+});
+
+Deno.test({
+  name:
     "SYSTEM_PROMPT aligns analyze-chat with VibeSync memory coach positioning",
   permissions: { read: true },
   fn: async () => {
