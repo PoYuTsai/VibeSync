@@ -684,6 +684,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       'masterObservation': '高手觀察',
       'curiosityHook': '好奇鉤子',
       'masterMove': '高手手法',
+      'twoBallPlan': '雙球策略',
       'talkingPoints': '話題切入點',
       'openingStrategy': '推薦策略',
       'vibe': '氛圍',
