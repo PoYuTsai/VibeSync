@@ -424,3 +424,30 @@ Deno.test({
     assert(source.includes('"qualificationSignal": false'));
   },
 });
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT demotes old technique library and keeps visible fields coach-like",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("備用技巧工具箱（服從狀態機）"));
+    assert(source.includes("不是必套模板"));
+    assert(source.includes("先判斷這回合卡點"));
+    assert(source.includes("可見輸出不要寫技巧名"));
+    assert(source.includes("可見輸出欄位語氣規則"));
+    assert(source.includes("不要寫成報表、心理學課、技巧教科書"));
+    assert(source.includes("finalRecommendation.reason：一句教練式判斷"));
+    assert(
+      source.includes("finalRecommendation.psychology：雖然欄位名叫 psychology"),
+    );
+    assert(source.includes("strategy：只寫這回合的工作判斷"));
+    assert(source.includes("healthCheck：只有當目前對話真的有明顯雷點才輸出"));
+    assert(source.includes("最多 1 個 issue + 1 個 suggestion"));
+    assert(source.includes("不要每次都像老師批改作業"));
+    assert(source.includes("互動判斷：對方為什麼比較容易接"));
+  },
+});
