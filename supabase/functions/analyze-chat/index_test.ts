@@ -384,6 +384,8 @@ Deno.test({
     assert(source.includes("如果自介明確說不要問工作、不要約酒、討厭沒誠意"));
     assert(source.includes("中文語境注意：「不約」通常表示不要低成本約砲"));
     assert(source.includes("不是「永遠不見面」或「不能認識」"));
+    assert(source.includes("不要在 opener 或 reason 裡主動提「不約」"));
+    assert(source.includes("讓對話自然走到可約"));
     assert(source.includes("可見線索優先"));
     assert(source.includes("不要假裝看出很深的人格"));
     assert(source.includes("profileAnalysis.avoidTopics"));
@@ -476,14 +478,17 @@ Deno.test({
     assert(source.includes("現實認識"));
     assert(source.includes("先不踩雷 > 有看資料 > 對方好回 > 有一點個人味"));
     assert(source.includes("不要為了安全犧牲人的味道"));
-    assert(source.includes("避開禁忌、接住正向線索、問一個低壓問題"));
+    assert(source.includes("推薦開場要在心裡避開禁忌"));
+    assert(source.includes("不要把禁忌本身拿出來講"));
     assert(source.includes("不要總是使用「我有認真看完自介」"));
     assert(source.includes("至少要有一個好奇心鉤子"));
     assert(source.includes("不喜歡被問工作、不愛喝酒、喜歡學習嘗試新事物"));
+    assert(source.includes("心裡刪掉工作與酒局題庫"));
     assert(source.includes("資訊不足：明說線索不足"));
     assert(
-      source.includes("避開了什麼 + 接住哪個可回線索 + 為什麼這句最容易被回"),
+      source.includes("這句示範了什麼框架 + 接住哪個可回線索 + 為什麼容易被回"),
     );
+    assert(source.includes("如果內部避開的是「不約」"));
     assert(source.includes("明確標示可見線索不足"));
     assert(source.includes("不假裝洞察"));
     assert(source.includes("只使用明確線索，不要補不存在的人格或共同點"));
