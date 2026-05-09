@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
 import '../../features/subscription/domain/services/subscription_tier_helper.dart';
 import 'storage_service.dart';
+import 'supabase_service.dart';
 
 /// User's current usage data
 class UsageData {
@@ -26,7 +27,8 @@ class UsageData {
   bool get canAnalyze => monthlyUsed < monthlyLimit && dailyUsed < dailyLimit;
 
   /// Remaining monthly messages
-  int get monthlyRemaining => (monthlyLimit - monthlyUsed).clamp(0, monthlyLimit);
+  int get monthlyRemaining =>
+      (monthlyLimit - monthlyUsed).clamp(0, monthlyLimit);
 
   /// Remaining daily messages
   int get dailyRemaining => (dailyLimit - dailyUsed).clamp(0, dailyLimit);
@@ -87,6 +89,7 @@ class UsageService {
   static const _tierKey = 'subscription_tier';
   static const _monthlyLimitKey = 'subscription_monthly_limit';
   static const _dailyLimitKey = 'subscription_daily_limit';
+  static const _userIdKey = 'usage_user_id';
 
   static void syncSubscriptionSnapshot({
     required String tier,
@@ -96,6 +99,10 @@ class UsageService {
     int? dailyUsed,
   }) {
     final box = StorageService.usageBox;
+    final currentUserId = SupabaseService.currentUser?.id;
+    if (currentUserId != null) {
+      box.put(_userIdKey, currentUserId);
+    }
     box.put(_tierKey, tier);
     box.put(_monthlyLimitKey, monthlyLimit);
     box.put(_dailyLimitKey, dailyLimit);
@@ -117,7 +124,32 @@ class UsageService {
       box.delete(_tierKey),
       box.delete(_monthlyLimitKey),
       box.delete(_dailyLimitKey),
+      box.delete(_userIdKey),
     ]);
+  }
+
+  static void _resetSnapshotIfAccountChanged() {
+    final currentUserId = SupabaseService.currentUser?.id;
+    if (currentUserId == null) return;
+
+    final box = StorageService.usageBox;
+    final storedUserId = box.get(_userIdKey) as String?;
+    if (storedUserId == null) {
+      box.put(_userIdKey, currentUserId);
+      return;
+    }
+
+    if (storedUserId == currentUserId) return;
+
+    final now = DateTime.now();
+    box.put(_userIdKey, currentUserId);
+    box.put(_monthlyUsedKey, 0);
+    box.put(_dailyUsedKey, 0);
+    box.put(_monthlyResetAtKey, now.toIso8601String());
+    box.put(_dailyResetAtKey, _getNextMidnight().toIso8601String());
+    box.put(_tierKey, SubscriptionTierHelper.free);
+    box.put(_monthlyLimitKey, AppConstants.freeMonthlyLimit);
+    box.put(_dailyLimitKey, AppConstants.freeDailyLimit);
   }
 
   static int _defaultMonthlyLimitForTier(String tier) {
@@ -131,6 +163,7 @@ class UsageService {
   /// Get current usage data (local cache)
   UsageData getLocalUsage() {
     final box = StorageService.usageBox;
+    _resetSnapshotIfAccountChanged();
     final now = DateTime.now();
 
     // Check if daily reset needed
@@ -161,7 +194,8 @@ class UsageService {
 
     if (monthlyResetAtStr != null) {
       final monthlyResetAt = DateTime.parse(monthlyResetAtStr);
-      if (now.month != monthlyResetAt.month || now.year != monthlyResetAt.year) {
+      if (now.month != monthlyResetAt.month ||
+          now.year != monthlyResetAt.year) {
         // Reset monthly usage
         monthlyUsed = 0;
         box.put(_monthlyUsedKey, 0);

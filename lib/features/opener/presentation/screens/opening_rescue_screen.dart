@@ -43,6 +43,47 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   int get _estimatedCost => 3 + (_images.length * 2);
 
+  UsageData _currentUsageSnapshot() {
+    final subscription = ref.read(subscriptionProvider);
+    final localUsage = ref.read(usageDataProvider);
+
+    if (subscription.isLoading) {
+      return localUsage;
+    }
+
+    return UsageData(
+      monthlyUsed: subscription.monthlyMessagesUsed,
+      monthlyLimit: subscription.monthlyLimit,
+      dailyUsed: subscription.dailyMessagesUsed,
+      dailyLimit: subscription.dailyLimit,
+      dailyResetAt: localUsage.dailyResetAt,
+      tier: subscription.tier,
+    );
+  }
+
+  Future<bool> _canStartGeneration(int cost) async {
+    if (_currentUsageSnapshot().canAfford(cost)) {
+      return true;
+    }
+
+    try {
+      await ref.read(subscriptionScreenRefreshProvider)();
+    } catch (_) {
+      // If refresh is temporarily unavailable, let the Edge Function make the
+      // authoritative quota decision instead of blocking a fresh free user.
+      return true;
+    }
+
+    if (_currentUsageSnapshot().canAfford(cost)) {
+      return true;
+    }
+
+    if (mounted) {
+      context.push('/paywall');
+    }
+    return false;
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -53,14 +94,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Future<void> _generate() async {
-    final usage = ref.read(usageDataProvider);
-    final cost = _estimatedCost;
-
-    if (!usage.canAfford(cost)) {
-      if (mounted) context.push('/paywall');
-      return;
-    }
-
     // Validate input
     final hasImages = _images.isNotEmpty;
     final hasManualInput = _nameController.text.trim().isNotEmpty ||
@@ -71,6 +104,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       setState(() => _error = '請上傳截圖或輸入對方資料');
       return;
     }
+
+    final cost = _estimatedCost;
+    if (!await _canStartGeneration(cost)) {
+      return;
+    }
+    if (!mounted) return;
 
     // 收鍵盤
     FocusScope.of(context).unfocus();
@@ -95,6 +134,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           _result = result;
           _isGenerating = false;
         });
+
+        try {
+          await ref.read(subscriptionScreenRefreshProvider)();
+        } catch (_) {
+          // The opener result already succeeded; usage UI can catch up on the
+          // next subscription refresh if this best-effort sync fails.
+        }
+        if (!mounted) return;
+
         // 滾到結果區域
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
@@ -105,6 +153,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             );
           }
         });
+      }
+    } on OpenerQuotaExceededException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _isGenerating = false;
+        });
+        context.push('/paywall');
       }
     } catch (e) {
       if (mounted) {
@@ -332,13 +388,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   color: isSelected
                       ? AppColors.ctaStart
                       : AppColors.glassTextSecondary,
-                  fontWeight:
-                      isSelected ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
                 side: BorderSide(
-                  color: isSelected
-                      ? AppColors.ctaStart
-                      : AppColors.glassBorder,
+                  color:
+                      isSelected ? AppColors.ctaStart : AppColors.glassBorder,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
@@ -646,8 +700,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                       SnackBar(
                         content: Text('已複製「$label」開場白'),
                         duration: const Duration(seconds: 2),
-                        backgroundColor:
-                            AppColors.backgroundGradientMid.withValues(alpha: 0.9),
+                        backgroundColor: AppColors.backgroundGradientMid
+                            .withValues(alpha: 0.9),
                       ),
                     );
                   },
