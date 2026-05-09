@@ -25,6 +25,18 @@ void main() {
           'humor': '幽默回覆',
           'coldRead': '冷讀回覆',
         },
+        'replyOptions': {
+          'tease': {
+            'approach': '先接她的行程，再用輕推拉延伸',
+            'messages': [
+              {
+                'sourceMessage': '等等要去樂華夜市',
+                'reply': '樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？',
+                'reason': '接住她主動分享的下一站',
+              },
+            ],
+          },
+        },
         'finalRecommendation': {
           'pick': 'tease',
           'content': '推薦的回覆',
@@ -59,6 +71,9 @@ void main() {
       expect(result.replies['coldRead'], '冷讀回覆');
       expect(result.recommendation.pick, 'tease');
       expect(result.recommendation.content, '調情回覆');
+      expect(result.replyOptions['tease']?.approach, contains('輕推拉'));
+      expect(result.replyOptions['tease']?.messages.single.reply,
+          contains('樂華夜市'));
       expect(result.coachActionHint?.catchablePoint, '在家追劇 / 絕命毒師');
       expect(result.coachActionHint?.microMove, contains('接劇名'));
       expect(result.coachActionHint?.isUsable, true);
@@ -103,6 +118,7 @@ void main() {
       expect(result.strategy, '');
       expect(result.healthCheck, isNull);
       expect(result.reminder, isNull);
+      expect(result.replyOptions['extend']?.copyText, '延展回覆');
       expect(result.shouldGiveUp, false);
     });
 

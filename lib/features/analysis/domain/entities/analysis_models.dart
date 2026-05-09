@@ -206,6 +206,105 @@ class ReplySegment {
   }
 }
 
+List<ReplySegment> _parseReplySegments(dynamic rawSegments) {
+  if (rawSegments is! List) {
+    return const <ReplySegment>[];
+  }
+
+  return rawSegments
+      .map((item) {
+        if (item is Map<String, dynamic>) {
+          return ReplySegment.fromJson(item);
+        }
+        if (item is Map) {
+          return ReplySegment.fromJson(
+            item.map((key, value) => MapEntry(key.toString(), value)),
+          );
+        }
+        return const ReplySegment(
+          label: '',
+          sourceMessage: '',
+          reply: '',
+          reason: '',
+        );
+      })
+      .where((segment) => segment.isUsable)
+      .take(3)
+      .toList();
+}
+
+/// Hybrid reply card content: coachable approach + copyable message group.
+class ReplyOption {
+  final String approach;
+  final List<ReplySegment> messages;
+
+  const ReplyOption({
+    required this.approach,
+    this.messages = const [],
+  });
+
+  bool get isUsable =>
+      approach.trim().isNotEmpty || messages.any((segment) => segment.isUsable);
+
+  String get copyText => messages
+      .map((segment) => segment.reply.trim())
+      .where((reply) => reply.isNotEmpty)
+      .join('\n');
+
+  factory ReplyOption.fromJson(
+    dynamic json, {
+    String fallbackContent = '',
+  }) {
+    if (json == null || json is! Map) {
+      final fallback = fallbackContent.trim();
+      return ReplyOption(
+        approach: '',
+        messages: fallback.isEmpty
+            ? const <ReplySegment>[]
+            : [
+                ReplySegment(
+                  label: '建議訊息',
+                  sourceMessage: '',
+                  reply: fallback,
+                  reason: '',
+                ),
+              ],
+      );
+    }
+
+    final data = json is Map<String, dynamic>
+        ? json
+        : json.map((key, value) => MapEntry(key.toString(), value));
+    final rawMessages =
+        data['messages'] ?? data['messageGroup'] ?? data['replySegments'];
+    var messages = _parseReplySegments(rawMessages);
+
+    if (messages.isEmpty) {
+      final direct =
+          _normalizeRecommendationText(data['reply'] ?? data['content']);
+      final fallback = direct.isNotEmpty
+          ? direct
+          : _normalizeRecommendationText(fallbackContent);
+      if (fallback.isNotEmpty) {
+        messages = [
+          ReplySegment(
+            label: '建議訊息',
+            sourceMessage: data['sourceMessage'] as String? ?? '',
+            reply: fallback,
+            reason: data['reason'] as String? ?? '',
+          ),
+        ];
+      }
+    }
+
+    return ReplyOption(
+      approach:
+          _normalizeRecommendationText(data['approach'] ?? data['strategy']),
+      messages: messages,
+    );
+  }
+}
+
 class FinalRecommendation {
   final String pick; // 推薦的回覆類型 (extend/resonate/tease/humor/coldRead)
   final String content; // 推薦的回覆內容
@@ -231,28 +330,7 @@ class FinalRecommendation {
         replySegments: [],
       );
     }
-    final rawSegments = json['replySegments'] as List?;
-    final replySegments = rawSegments
-            ?.map((item) {
-              if (item is Map<String, dynamic>) {
-                return ReplySegment.fromJson(item);
-              }
-              if (item is Map) {
-                return ReplySegment.fromJson(
-                  item.map((key, value) => MapEntry(key.toString(), value)),
-                );
-              }
-              return const ReplySegment(
-                label: '',
-                sourceMessage: '',
-                reply: '',
-                reason: '',
-              );
-            })
-            .where((segment) => segment.isUsable)
-            .take(3)
-            .toList() ??
-        const <ReplySegment>[];
+    final replySegments = _parseReplySegments(json['replySegments']);
 
     return FinalRecommendation(
       pick: json['pick'] as String? ?? 'extend',
@@ -323,6 +401,30 @@ String _normalizeRecommendationText(dynamic value) {
   return value.replaceAll('\r\n', '\n').replaceAll('\u200b', '').trim();
 }
 
+String _normalizeReplyTextValue(dynamic value) {
+  if (value is String) {
+    return _normalizeRecommendationText(value);
+  }
+  if (value is! Map) {
+    return '';
+  }
+
+  final data = value is Map<String, dynamic>
+      ? value
+      : value.map((key, value) => MapEntry(key.toString(), value));
+  final direct = _normalizeRecommendationText(data['reply'] ?? data['content']);
+  if (direct.isNotEmpty) {
+    return direct;
+  }
+
+  return _parseReplySegments(
+    data['messages'] ?? data['messageGroup'] ?? data['replySegments'],
+  )
+      .map((segment) => segment.reply.trim())
+      .where((reply) => reply.isNotEmpty)
+      .join('\n');
+}
+
 Map<String, String> _normalizeRepliesMap(Map<String, dynamic>? repliesData) {
   if (repliesData == null) {
     return {};
@@ -330,11 +432,38 @@ Map<String, String> _normalizeRepliesMap(Map<String, dynamic>? repliesData) {
 
   final normalized = <String, String>{};
   repliesData.forEach((key, value) {
-    final text = _normalizeRecommendationText(value);
+    final text = _normalizeReplyTextValue(value);
     if (text.isNotEmpty) {
       normalized[key] = text;
     }
   });
+  return normalized;
+}
+
+Map<String, ReplyOption> _normalizeReplyOptionsMap(
+  Map<String, dynamic>? optionsData,
+  Map<String, String> replies,
+) {
+  final normalized = <String, ReplyOption>{};
+  if (optionsData != null) {
+    optionsData.forEach((key, value) {
+      final option = ReplyOption.fromJson(
+        value,
+        fallbackContent: replies[key] ?? '',
+      );
+      if (option.isUsable) {
+        normalized[key] = option;
+      }
+    });
+  }
+
+  replies.forEach((key, content) {
+    normalized.putIfAbsent(
+      key,
+      () => ReplyOption.fromJson(null, fallbackContent: content),
+    );
+  });
+
   return normalized;
 }
 
@@ -661,6 +790,7 @@ class AnalysisResult {
   final TopicDepth topicDepth;
   final HealthCheck? healthCheck; // null for Free users
   final Map<String, String> replies;
+  final Map<String, ReplyOption> replyOptions;
   final FinalRecommendation recommendation;
   final String? reminder;
   final bool shouldGiveUp; // 冰點放棄建議
@@ -681,6 +811,7 @@ class AnalysisResult {
     required this.topicDepth,
     this.healthCheck,
     required this.replies,
+    required this.replyOptions,
     required this.recommendation,
     this.reminder,
     this.shouldGiveUp = false,
@@ -698,6 +829,11 @@ class AnalysisResult {
     final enthusiasm = json['enthusiasm'] as Map<String, dynamic>?;
     final repliesData = json['replies'] as Map<String, dynamic>?;
     final normalizedReplies = _normalizeRepliesMap(repliesData);
+    final replyOptionsData = json['replyOptions'] as Map<String, dynamic>?;
+    final normalizedReplyOptions = _normalizeReplyOptionsMap(
+      replyOptionsData,
+      normalizedReplies,
+    );
 
     // Parse healthCheck only if present (Essential tier only)
     HealthCheck? healthCheck;
@@ -764,6 +900,7 @@ class AnalysisResult {
           TopicDepth.fromJson(json['topicDepth'] as Map<String, dynamic>?),
       healthCheck: healthCheck,
       replies: normalizedReplies,
+      replyOptions: normalizedReplyOptions,
       recommendation: recommendation,
       reminder: json['reminder'] as String?,
       shouldGiveUp: shouldGiveUp,

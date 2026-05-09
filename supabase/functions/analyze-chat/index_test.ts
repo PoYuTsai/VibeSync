@@ -163,8 +163,10 @@ Deno.test({
     assert(source.includes("情境2.6: 人格觀察/輕鬆貼標籤"));
     assert(source.includes("承認一半 + 補一個具體畫面 + 反問她是哪一派"));
     assert(source.includes("finalRecommendation.content 不能只是認同或附和"));
-    assert(source.includes("replies.extend 也必須是「可直接送出」的句子"));
-    assert(source.includes("每張卡都要是可直接送出的回覆"));
+    assert(
+      source.includes("replyOptions.extend.messages 也必須是可複製的自然訊息"),
+    );
+    assert(source.includes("每張卡都要同時有可執行接法與可複製訊息組"));
     assert(source.includes("1.8x 是節奏護欄，不是保守無聊的理由"));
     assert(source.includes("1.8x 不是死板字數公式"));
     assert(source.includes("投入感比例"));
@@ -179,7 +181,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "SYSTEM_PROMPT forces all five reply styles to be sendable next-turn messages",
+    "SYSTEM_PROMPT forces all five reply styles to be approach plus message groups",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
@@ -187,12 +189,15 @@ Deno.test({
     );
 
     assert(source.includes("五種回覆品質契約"));
+    assert(source.includes("推薦接法 + 訊息組"));
     assert(source.includes("接球三步"));
     assert(source.includes("接住她的情緒或具體可接球點"));
     assert(source.includes("加一點互動感"));
     assert(source.includes("順勢延伸下一輪"));
     assert(source.includes("coachActionHint.catchablePoint"));
-    assert(source.includes("五種 replies 都要優先圍繞同一個球點"));
+    assert(source.includes("五種 replyOptions 都要優先圍繞同一個球點"));
+    assert(source.includes("混合式回覆卡規則"));
+    assert(source.includes("不要只給「直接貼上」的長文"));
     assert(source.includes("extend（延展）：接住她的具體話題"));
     assert(source.includes("resonate（共鳴）：先命名或貼近她的情緒"));
     assert(source.includes("tease（調情）：用安全的誤讀"));
@@ -215,13 +220,14 @@ Deno.test({
     assert(source.includes("不要逐句查戶口"));
     assert(source.includes("先做「選球」"));
     assert(source.includes("通常只選 1-2 顆球，最多 3 顆"));
-    assert(source.includes("把 2 顆球自然串成一則可送出的訊息"));
-    assert(source.includes("finalRecommendation.content：只放「可直接送出」"));
+    assert(source.includes("不要把 4-5 則內容硬擠成一句"));
+    assert(source.includes("replyOptions：五種風格的主要輸出"));
+    assert(source.includes("messages 每段都盡量有 sourceMessage"));
     assert(source.includes("finalRecommendation.reason 要簡短說明"));
     assert(source.includes("接住她對 F1 的興奮，再順到夜市行程"));
     assert(source.includes("白天看人差點打起來"));
     assert(source.includes("樂華夜市最後會帶什麼罪惡美食回家"));
-    assert(source.includes("即使對方連發多條，也不要放 ①②"));
+    assert(source.includes("可用換行表示 2-3 則真人訊息，但不要放 ①②"));
     assertFalse(source.includes("finalRecommendation.content 必須分句標註"));
     assertFalse(source.includes("① 回「她的原文關鍵詞」"));
   },
@@ -266,6 +272,7 @@ Deno.test({
     assert(source.includes("一句總回"));
     assert(source.includes("分開回"));
     assert(source.includes("finalRecommendation.replySegments"));
+    assert(source.includes("replyOptions.*.messages 也要套用同樣規則"));
     assert(source.includes("sourceMessage"));
     assert(source.includes("sourceIndex"));
     assert(source.includes("replySegments 最多 3 段"));

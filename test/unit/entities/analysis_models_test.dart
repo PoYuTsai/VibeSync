@@ -150,4 +150,39 @@ void main() {
       );
     });
   });
+
+  group('ReplyOption', () {
+    test('parses approach and copyable message group', () {
+      final option = ReplyOption.fromJson({
+        'approach': '先接她的 F1 興奮，再順到夜市，不逐條查戶口',
+        'messages': [
+          {
+            'sourceIndex': 2,
+            'label': '接 F1',
+            'sourceMessage': '紅牛跟賓士差點打起來XD',
+            'reply': '紅牛跟賓士沒打起來，但妳這行程已經先熱血起來了XD',
+            'reason': '接住情緒最高的球',
+          },
+          {
+            'sourceIndex': 5,
+            'sourceMessage': '等等要去樂華夜市',
+            'reply': '樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？',
+            'reason': '順勢延伸下一輪',
+          },
+        ],
+      });
+
+      expect(option.isUsable, true);
+      expect(option.approach, contains('不逐條查戶口'));
+      expect(option.messages, hasLength(2));
+      expect(
+        option.copyText,
+        contains('紅牛跟賓士沒打起來'),
+      );
+      expect(
+        option.copyText,
+        contains('\n樂華夜市我只問一件事'),
+      );
+    });
+  });
 }

@@ -71,6 +71,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Map<String, int>? _dimensionScores;
   String? _strategy;
   Map<String, String>? _replies;
+  Map<String, ReplyOption>? _replyOptions;
   TopicDepth? _topicDepth;
   HealthCheck? _healthCheck;
   String? _errorMessage;
@@ -635,6 +636,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _dimensionScores = result.dimensionScores;
     _strategy = result.strategy;
     _replies = result.replies;
+    _replyOptions = result.replyOptions;
     _topicDepth = result.topicDepth;
     _healthCheck = result.healthCheck;
     _gameStage = result.gameStage;
@@ -2508,6 +2510,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _dimensionScores = result.dimensionScores;
         _strategy = result.strategy;
         _replies = result.replies;
+        _replyOptions = result.replyOptions;
         _topicDepth = result.topicDepth;
         _healthCheck = result.healthCheck;
         _gameStage = result.gameStage;
@@ -3257,8 +3260,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ),
         child: Text(
           segments.length == 1
-              ? '這句可以直接送出；下方保留引用，方便你確認 AI 接的是哪顆球。'
-              : '建議分開回 ${segments.length} 句。每段都引用她的原句，也能單獨複製。',
+              ? '這是推薦訊息素材；下方保留引用，方便你確認 AI 接的是哪顆球。'
+              : '建議拆成 ${segments.length} 則短訊息。每段都引用她的原句，也能單獨複製。',
           style: AppTypography.caption.copyWith(
             color: AppColors.textSecondary,
             height: 1.4,
@@ -3372,10 +3375,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () {
-              _copyRecommendationText(allContent, '已複製全部推薦回覆');
+              _copyRecommendationText(allContent, '已複製整組訊息');
             },
             icon: const Icon(Icons.copy),
-            label: const Text('複製全部推薦'),
+            label: const Text('複製整組訊息'),
           ),
         ),
       );
@@ -4943,7 +4946,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 const SizedBox(height: 24),
                                 Row(
                                   children: [
-                                    Text('回覆建議・${_replies!.length} 種風格',
+                                    Text('接法建議・${_replies!.length} 種風格',
                                         style: AppTypography.titleLarge
                                             .copyWith(
                                                 color: AppColors
@@ -4956,37 +4959,42 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 ),
                                 const SizedBox(height: 12),
                                 SizedBox(
-                                  height: 200,
+                                  height: 292,
                                   child: ListView(
                                     scrollDirection: Axis.horizontal,
                                     children: [
                                       if (_replies!.containsKey('extend'))
                                         _buildHorizontalReplyCard(
                                             'extend', _replies!['extend']!,
+                                            option: _replyOptions?['extend'],
                                             isRecommended:
                                                 _isRecommendedReplyType(
                                                     'extend')),
                                       if (_replies!.containsKey('resonate'))
                                         _buildHorizontalReplyCard(
                                             'resonate', _replies!['resonate']!,
+                                            option: _replyOptions?['resonate'],
                                             isRecommended:
                                                 _isRecommendedReplyType(
                                                     'resonate')),
                                       if (_replies!.containsKey('tease'))
                                         _buildHorizontalReplyCard(
                                             'tease', _replies!['tease']!,
+                                            option: _replyOptions?['tease'],
                                             isRecommended:
                                                 _isRecommendedReplyType(
                                                     'tease')),
                                       if (_replies!.containsKey('humor'))
                                         _buildHorizontalReplyCard(
                                             'humor', _replies!['humor']!,
+                                            option: _replyOptions?['humor'],
                                             isRecommended:
                                                 _isRecommendedReplyType(
                                                     'humor')),
                                       if (_replies!.containsKey('coldRead'))
                                         _buildHorizontalReplyCard(
                                             'coldRead', _replies!['coldRead']!,
+                                            option: _replyOptions?['coldRead'],
                                             isRecommended:
                                                 _isRecommendedReplyType(
                                                     'coldRead')),
@@ -5775,8 +5783,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return pick == type && (_replies?[type]?.trim().isNotEmpty ?? false);
   }
 
-  Widget _buildHorizontalReplyCard(String type, String content,
-      {bool isRecommended = false}) {
+  Widget _buildHorizontalReplyCard(
+    String type,
+    String content, {
+    ReplyOption? option,
+    bool isRecommended = false,
+  }) {
     final labels = {
       'extend': '\u{1F504} 延展',
       'resonate': '\u{1F4AC} 共鳴',
@@ -5801,11 +5813,31 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       'coldRead': '猜中她沒說的，製造驚喜',
     };
 
+    final approach = option?.approach.trim() ?? '';
+    final optionMessages =
+        option?.messages.where((segment) => segment.isUsable).toList() ??
+            const <ReplySegment>[];
+    final messages = optionMessages.isNotEmpty
+        ? optionMessages
+        : [
+            ReplySegment(
+              label: '建議訊息',
+              sourceMessage: '',
+              reply: content,
+              reason: '',
+            ),
+          ];
+    final copyAllText = messages
+        .map((segment) => segment.reply.trim())
+        .where((reply) => reply.isNotEmpty)
+        .join('\n');
+    final visibleMessages = messages.take(3).toList();
+
     return Container(
-      width: 280,
+      width: 312,
       margin: const EdgeInsets.only(right: 12),
       child: GlassmorphicContainer(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -5834,24 +5866,59 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: content));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('已複製到剪貼簿'),
-                        duration: Duration(seconds: 1)),
-                  );
-                },
-                child: Text(
-                  content,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
-                  ),
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (approach.isNotEmpty) ...[
+                      Text(
+                        '接法',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.ctaStart,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        approach,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.glassTextSecondary,
+                          height: 1.35,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      '訊息組',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.glassTextHint,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    for (var i = 0; i < visibleMessages.length; i++) ...[
+                      _buildReplyOptionMessageRow(
+                        visibleMessages[i],
+                        index: i,
+                        total: messages.length,
+                      ),
+                      if (i != visibleMessages.length - 1)
+                        const SizedBox(height: 6),
+                    ],
+                    if (messages.length > visibleMessages.length) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        '還有 ${messages.length - visibleMessages.length} 則可在推薦卡查看',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.glassTextHint,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -5873,6 +5940,102 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ),
                 ),
               ],
+            ),
+            if (copyAllText.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 34,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: copyAllText));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('已複製這組訊息'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.copy, size: 15),
+                  label: Text(
+                    messages.length == 1 ? '複製這句' : '複製整組',
+                    style: AppTypography.labelMedium,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReplyOptionMessageRow(
+    ReplySegment segment, {
+    required int index,
+    required int total,
+  }) {
+    final source = segment.sourceMessage.trim();
+    final reply = segment.reply.trim();
+    final sourceLabel = source.isNotEmpty
+        ? '接：$source'
+        : (total == 1 ? segment.displayLabel : '訊息 ${index + 1}');
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: reply));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(total == 1 ? '已複製這句' : '已複製第 ${index + 1} 句'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: AppColors.divider.withValues(alpha: 0.45),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    sourceLabel,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    reply,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textPrimary,
+                      height: 1.28,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.copy_rounded,
+              size: 15,
+              color: AppColors.textSecondary,
             ),
           ],
         ),

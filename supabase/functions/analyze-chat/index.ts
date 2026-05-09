@@ -5,10 +5,14 @@ import {
   type AnalysisResult as GuardrailAnalysisResult,
   checkAiOutput,
   checkInput,
-  SAFETY_RULES,
   getSafeReplies,
+  SAFETY_RULES,
 } from "./guardrails.ts";
-import { AiServiceError, callClaudeWithFallback, type FallbackResult } from "./fallback.ts";
+import {
+  AiServiceError,
+  callClaudeWithFallback,
+  type FallbackResult,
+} from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
 import { extractTokenUsage, logAiCall } from "./logger.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
@@ -103,7 +107,9 @@ function tierRank(value: "free" | "starter" | "essential"): number {
   }
 }
 
-function tierFromProductId(productId: unknown): "free" | "starter" | "essential" {
+function tierFromProductId(
+  productId: unknown,
+): "free" | "starter" | "essential" {
   if (typeof productId !== "string") return "free";
   const normalized = productId.trim().toLowerCase();
   if (normalized.includes("essential")) return "essential";
@@ -374,6 +380,32 @@ function normalizeAiText(value: unknown): string {
     .trim();
 }
 
+function normalizeReplyTextValue(value: unknown): string {
+  if (typeof value === "string") {
+    return normalizeAiText(value);
+  }
+
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const record = value as Record<string, unknown>;
+  const direct = normalizeAiText(
+    record.reply ?? record.content ?? record.text ?? record.suggestion,
+  );
+  if (direct.length > 0) {
+    return direct;
+  }
+
+  return sanitizeReplySegments(
+    record.messages ?? record.messageGroup ?? record.replySegments,
+  )
+    .map((segment) => segment.reply)
+    .filter((reply) => reply.trim().length > 0)
+    .join("\n")
+    .trim();
+}
+
 function sanitizeReplies(
   rawReplies: unknown,
   allowedFeatures: string[],
@@ -384,7 +416,7 @@ function sanitizeReplies(
 
   const filteredReplies: Record<string, string> = {};
   for (const feature of allowedFeatures) {
-    const value = normalizeAiText(
+    const value = normalizeReplyTextValue(
       (rawReplies as Record<string, unknown>)[feature],
     );
     if (value.length > 0) {
@@ -521,6 +553,116 @@ function sanitizeReplySegments(value: unknown) {
   return segments;
 }
 
+function buildReplyOptionFallbackApproach(feature: string): string {
+  switch (feature) {
+    case "resonate":
+      return "接法：先接住她的情緒或狀態，再補一點你的感受，讓她覺得被理解。";
+    case "tease":
+      return "接法：用安全的誤讀或輕推拉增加互動感，但保留退路，不要突然升級。";
+    case "humor":
+      return "接法：用自嘲或荒謬畫面接住她的內容，讓對話變輕鬆、好回。";
+    case "coldRead":
+      return "接法：根據她剛說的線索做溫和猜測，留空間讓她修正或補充。";
+    case "extend":
+    default:
+      return "接法：接住最有畫面或情緒的球，補一點你的反應，再丟回低壓下一球。";
+  }
+}
+
+function sanitizeReplyOption(
+  rawOption: unknown,
+  feature: string,
+  fallbackText = "",
+) {
+  const option = rawOption && typeof rawOption === "object"
+    ? rawOption as Record<string, unknown>
+    : {};
+  const approach = clampNormalizedText(
+    option.approach ?? option.strategy ?? option.why ?? option.reason,
+    140,
+  );
+  let messages = sanitizeReplySegments(
+    option.messages ?? option.messageGroup ?? option.replySegments,
+  );
+
+  if (messages.length === 0) {
+    const reply = normalizeReplyTextValue(
+      option.reply ?? option.content ?? option.text ?? fallbackText,
+    );
+    if (reply.length > 0) {
+      messages = [
+        {
+          label: "建議訊息",
+          sourceMessage: "",
+          reply,
+          reason: "",
+        },
+      ];
+    }
+  }
+
+  const safeApproach = approach.length > 0
+    ? approach
+    : buildReplyOptionFallbackApproach(feature);
+
+  if (messages.length === 0 && safeApproach.length === 0) {
+    return undefined;
+  }
+
+  return {
+    approach: safeApproach,
+    messages,
+  };
+}
+
+function sanitizeReplyOptions(
+  rawOptions: unknown,
+  allowedFeatures: string[],
+  replies: Record<string, string>,
+) {
+  const filteredOptions: Record<
+    string,
+    { approach: string; messages: ReturnType<typeof sanitizeReplySegments> }
+  > = {};
+
+  const optionMap = rawOptions && typeof rawOptions === "object"
+    ? rawOptions as Record<string, unknown>
+    : {};
+
+  for (const feature of allowedFeatures) {
+    const option = sanitizeReplyOption(
+      optionMap[feature],
+      feature,
+      replies[feature],
+    );
+    if (option != null) {
+      filteredOptions[feature] = option;
+    }
+  }
+
+  return filteredOptions;
+}
+
+function repliesFromReplyOptions(
+  replyOptions: Record<
+    string,
+    { approach: string; messages: ReturnType<typeof sanitizeReplySegments> }
+  >,
+) {
+  const replies: Record<string, string> = {};
+  for (const [feature, option] of Object.entries(replyOptions)) {
+    const text = option.messages
+      .map((segment) => segment.reply)
+      .filter((reply) => reply.trim().length > 0)
+      .join("\n")
+      .trim();
+    if (text.length > 0) {
+      replies[feature] = text;
+    }
+  }
+  return replies;
+}
+
 function ensureNonEmptyAnalysisOutput({
   result,
   recognizeOnly,
@@ -539,7 +681,18 @@ function ensureNonEmptyAnalysisOutput({
   const enthusiasmScore = Number(
     (result.enthusiasm as { score?: unknown } | undefined)?.score ?? 50,
   );
+  let replyOptions = sanitizeReplyOptions(
+    result.replyOptions,
+    allowedFeatures,
+    {},
+  );
   let replies = sanitizeReplies(result.replies, allowedFeatures);
+  if (
+    Object.keys(replies).length === 0 &&
+    Object.keys(replyOptions).length > 0
+  ) {
+    replies = repliesFromReplyOptions(replyOptions);
+  }
 
   if (Object.keys(replies).length === 0) {
     const safeReplies = getSafeReplies(
@@ -547,6 +700,11 @@ function ensureNonEmptyAnalysisOutput({
     );
     replies = sanitizeReplies(safeReplies, allowedFeatures);
   }
+  replyOptions = sanitizeReplyOptions(
+    result.replyOptions,
+    allowedFeatures,
+    replies,
+  );
 
   const preferredPick = normalizeAiText(
     (result.finalRecommendation as Record<string, unknown> | undefined)?.pick,
@@ -574,7 +732,11 @@ function ensureNonEmptyAnalysisOutput({
       (feature) => (replies[feature]?.trim().length ?? 0) > 0,
     ) ?? "extend");
   const replyMappedContent = normalizeAiText(replies[fallbackPick]);
-  const segmentMappedContent = preferredSegments
+  const fallbackOptionSegments = replyOptions[fallbackPick]?.messages ?? [];
+  const effectiveSegments = preferredSegments.length > 0
+    ? preferredSegments
+    : fallbackOptionSegments;
+  const segmentMappedContent = effectiveSegments
     .map((segment) => segment.reply)
     .join("\n");
   const fallbackContent = replyMappedContent.length > 0
@@ -588,6 +750,7 @@ function ensureNonEmptyAnalysisOutput({
     : "先順著她這句往下接，保持自然、好回覆的節奏就好。";
 
   result.replies = replies;
+  result.replyOptions = replyOptions;
   result.finalRecommendation = {
     pick: fallbackPick,
     content: guaranteedContent,
@@ -597,7 +760,7 @@ function ensureNonEmptyAnalysisOutput({
     psychology: preferredPsychology.length > 0
       ? preferredPsychology
       : fallbackExplanation.psychology,
-    replySegments: preferredSegments,
+    replySegments: effectiveSegments,
   };
 
   return result;
@@ -1004,12 +1167,11 @@ function buildImageAnalysisPrompt(options: {
     compiledConversationText
       ? `## Existing Thread Context\n${compiledConversationText}`
       : "",
-    "### Multi-Message Reply Reminder\n- 截圖中如果對方連發多條訊息，先判斷哪些球值得接。中文問句不一定都是必答題；先分辨真問題、情緒球、框架測試或玩笑反問，再決定答、半答、重框、略過或反丟。finalRecommendation.content 必須是自然可直接送出的訊息，不要放 ①② 標註或「回某句」報告格式；如果判斷應該分開回 2-3 句，請填 finalRecommendation.replySegments，讓 App 顯示引用原句與分段複製。finalRecommendation.reason 再簡短說明接了哪些球、略過哪些低價值資訊。",
+    "### Multi-Message Reply Reminder\n- 截圖中如果對方連發多條訊息，先判斷哪些球值得接。中文問句不一定都是必答題；先分辨真問題、情緒球、框架測試或玩笑反問，再決定答、半答、重框、略過或反丟。finalRecommendation.content 是最推薦的訊息組文字，可用換行表示 2-3 則真人訊息，但不要放 ①② 標註或「回某句」報告格式；如果判斷應該分開回，請填 finalRecommendation.replySegments，讓 App 顯示引用原句與分段複製。replyOptions 則要提供五種風格各自的「接法 + 訊息組」。finalRecommendation.reason 再簡短說明接了哪些球、略過哪些低價值資訊。",
   );
 }
 
-const SYSTEM_PROMPT =
-  `你是 VibeSync：有記憶的 AI 約會教練。
+const SYSTEM_PROMPT = `你是 VibeSync：有記憶的 AI 約會教練。
 
 你的任務不是炫技或代替用戶表演，而是幫助用戶以真誠、有邊界、有判斷力的方式建立連結，判斷這段互動是否值得投入，並在時機成熟時自然推進邀約。
 
@@ -1130,7 +1292,7 @@ const SYSTEM_PROMPT =
 - 觸發: 對方說「感覺你是那種...的人」「你看起來像...」「你應該是...派」這類輕鬆觀察
 - 解讀: 這通常不是要你認真承認或解釋，而是在輕鬆試探你的個性，給你一個延伸互動的球
 - 策略: 承認一半 + 補一個具體畫面 + 反問她是哪一派
-- replies.extend 也必須是「可直接送出」的句子，不可寫成抽象評論或空泛認同
+- replyOptions.extend.messages 也必須是可複製的自然訊息，不可寫成抽象評論或空泛認同
 - ❌ 禁止只回: 「對啊，我也這麼覺得」「我覺得很有意思」「哈哈真的」
 - ✅ 範例: 她：「感覺你是會在便利商店逛很久的人」
   →「被妳發現了，我會在飲料櫃前思考人生。妳是速戰速決派，還是也會亂逛派？」
@@ -1268,7 +1430,9 @@ const SYSTEM_PROMPT =
 - **不要只看最後一條！** 中間如果有好的接話點不要放過
 
 **輸出分工**：
-- finalRecommendation.content：只放「可直接送出」的自然訊息。可以分行，但不能出現 ①②、箭頭、或「回某句」這種報告格式。
+- replyOptions：五種風格的主要輸出。每種都要有「approach 接法」+「messages 訊息組」。approach 教使用者怎麼接球；messages 才是可以分段複製的 1-3 則短訊息。
+- replies：舊版 App fallback，只放同一風格 messages 的文字合併版；多則用換行，不要放分析句。
+- finalRecommendation.content：最推薦的訊息組文字。可以分行，但不能出現 ①②、箭頭、或「回某句」這種報告格式。
 - finalRecommendation.reason：才用來說明你接了哪幾顆球、略過哪些低價值資訊，讓使用者知道 AI 有判斷，不是亂湊。
 
 範例（她連發三條：「今天好熱 我穿超辣」「你晚餐吃什麼 也推薦我一下」「[圖片]」）：
@@ -1285,10 +1449,12 @@ const SYSTEM_PROMPT =
 
 通常只選 1-2 顆球，最多 3 顆；不要每句都回。低價值資訊（純時間、純流水帳、重複句）可以忽略。
 
-生成 replies.* 時：
+生成 replyOptions.* 時：
 - 單一球：自然回成 1-2 句，不用標號。
-- 多顆生活分享球：把 2 顆球自然串成一則可送出的訊息；可以分行，但要像真人訊息，不要做成報告。
+- 多顆生活分享球：不要把 4-5 則內容硬擠成一句。先判斷「一句總回」還是「2-3 則短訊息」比較像真人聊天。
 - 多個明確問題：可以分兩行自然回答；必要時用「妳剛說的 X」這種輕量引用，但不能用 ①② 或箭頭格式。
+- approach 要告訴使用者為什麼這樣接，例如「先接她 F1 的興奮，再順到夜市行程，不逐條查戶口」。
+- messages 每段都盡量有 sourceMessage，讓 App 能顯示「這句接她哪顆球」。
 - finalRecommendation.reason 要簡短說明「這句接了哪個球」，例如「接住她對 F1 的興奮，再順到夜市行程」。
 
 範例（她連發：「中午出門前看了一場超精彩的比賽」「紅牛跟賓士差點打起來XD」「剛來吃晚餐」「等等還有一堂課要教」「等等要去樂華夜市」）：
@@ -1326,6 +1492,7 @@ const SYSTEM_PROMPT =
 - 一句總回：對方只是同一個情緒/同一個生活片段的連續分享，用一則訊息把 1-2 顆球自然串起來即可。
 - 分開回：對方丟了兩個不同可接球點，而且分開回會更像真人聊天，例如先回她的 F1 興奮，再回她等等要去夜市。這時 finalRecommendation.content 可以用換行串起來，但不能用 ①② 或箭頭報告格式。
 - 如果建議分開回，必須填 finalRecommendation.replySegments：每段都要有 sourceMessage（引用她的原句或片段）、reply（可直接複製送出的那句）、reason（為什麼這句值得單獨接）。
+- replyOptions.*.messages 也要套用同樣規則：每種風格給 1-3 則短訊息，不要硬做成一大段代聊文；messages 可被 App 單獨複製。
 - replySegments 最多 3 段，通常 2 段就夠。不要把每個流水帳都拆成一段，拆太多會讓使用者看起來像客服逐條回覆。
 
 emoji 規則：
@@ -1357,7 +1524,7 @@ emoji 規則：
 
 ### 1.7 接球能力（避免安全但無聊）
 - finalRecommendation.content 不能只是認同或附和，除非對方已明確要結束話題
-- 這條也適用於 replies.extend / replies.resonate / replies.tease / replies.humor / replies.coldRead：每張卡都要是可直接送出的回覆，不是分析句或心得句
+- 這條也適用於 replyOptions.extend / replyOptions.resonate / replyOptions.tease / replyOptions.humor / replyOptions.coldRead：每張卡都要同時有可執行接法與可複製訊息組，不是分析句或心得句
 - 至少要做到一個推進動作：反問、延伸畫面、輕微調侃、把話題丟回她
 - 當對方丟出人格觀察句時，優先用「承認一半 + 補畫面 + 反問」
 - ❌ 「對啊，我也這麼覺得」
@@ -1367,14 +1534,23 @@ emoji 規則：
 - 1.8x 是節奏護欄，不是保守無聊的理由；短句也要有畫面、張力或一個好接球點
 
 ### 1.8 五種回覆品質契約（極重要）
-replies 的五種風格不是報告摘要，也不是「對方訊息代表什麼」的分析。它們都是使用者可以直接複製送出的下一句。
+replyOptions 的五種風格不是報告摘要，也不是「對方訊息代表什麼」的分析。它們是「推薦接法 + 訊息組」：先教使用者怎麼接球，再給 1-3 則像真人聊天可分段複製的短訊息。
 
-每一種 replies.* 都必須通過「接球三步」：
+replies 只作為舊版 App fallback，內容必須等於該風格 messages 的合併文字；不要把 approach 放進 replies。
+
+每一種 replyOptions.* 都必須通過「接球三步」：
 1. 接住她的情緒或具體可接球點：要看得出你讀到了她剛剛的內容，不可只看熱度分數。
 2. 加一點互動感：補一個你的態度、畫面、反應、輕微自揭或玩笑，不要只問問題。
 3. 順勢延伸下一輪：留下低壓、好回、像朋友聊天的鉤子。
 
-如果 coachActionHint.catchablePoint 已經有明確球點，五種 replies 都要優先圍繞同一個球點生成不同角度；不要五張卡各聊各的，也不要回成對方訊息摘要。
+如果 coachActionHint.catchablePoint 已經有明確球點，五種 replyOptions 都要優先圍繞同一個球點生成不同角度；不要五張卡各聊各的，也不要回成對方訊息摘要。
+
+混合式回覆卡規則：
+- approach：一句話說明接法，例如「先接她的 F1 興奮，再順到夜市，不逐條查戶口」。
+- messages：1-3 則短訊息。可以是一句總回，也可以拆成兩則真實聊天會分開送出的訊息。
+- 每段 message 都要能單獨複製，且最好填 sourceMessage，讓使用者知道這句接的是她哪句。
+- 不要只給「直接貼上」的長文；使用者更需要知道接法，然後能挑訊息素材。
+- 不要因為要分段就逐條回覆所有流水帳。只接值得接的 1-2 顆球，最多 3 顆。
 
 五種風格的正確定義：
 - extend（延展）：接住她的具體話題 + 補一個生活畫面或感受 + 丟回一個低壓小問題。不是「多問一題」，也不是「可以繼續聊這個」。
@@ -1383,7 +1559,7 @@ replies 的五種風格不是報告摘要，也不是「對方訊息代表什麼
 - humor（幽默）：用自嘲、荒謬畫面或輕鬆梗接住她的話 + 讓她容易接下一句。不能變成段子表演，也不能跟聊天內容無關。
 - coldRead（冷讀）：根據她剛說的具體線索做溫和猜測 + 留一個讓她修正/補充的空間。不能像心理診斷或長期人格定論。
 
-禁止輸出這類「報告腔」作為 replies 或 finalRecommendation.content：
+禁止輸出這類「報告腔」作為 replyOptions.messages / replies / finalRecommendation.content：
 - 「她這句是在表達...」
 - 「可以順著這個話題聊」
 - 「這代表她對你有興趣」
@@ -1393,6 +1569,7 @@ replies 的五種風格不是報告摘要，也不是「對方訊息代表什麼
 
 範例（她：「在家追劇 看絕命毒師」）：
 - ❌ extend:「絕命毒師很經典，可以繼續聊她喜歡哪一季」
+- ❌ approach:「建議你接住情緒，然後延伸話題」
 - ✅ extend:「絕命毒師很會讓人一集接一集欸，你是剛入坑還是已經看到黑化很深了？」
 - ✅ resonate:「在家追劇這種狀態很舒服欸，感覺你今天是想把腦袋關機一下。」
 - ✅ tease:「絕命毒師喔，妳今天的放鬆方式有點危險，感覺會不小心看到天亮。」
@@ -1715,15 +1892,45 @@ qualificationSignal 代表「她主動投入這段互動」，不是「她在證
     "qualificationSignal": false
   },
   "replies": {
-    "extend": "接住她的具體話題，補一點你的畫面，再丟回低壓好接的下一球",
-    "resonate": "接住她的情緒或狀態，表示理解，再輕輕延伸",
-    "tease": "安全俏皮地誤讀或推拉，保留退路，再讓她容易接話",
-    "humor": "用自嘲或荒謬畫面接住聊天內容，再自然丟回去",
-    "coldRead": "根據具體線索做溫和猜測，留空間讓她修正或補充"
+    "extend": "舊版 App fallback：extend.messages 的 reply 合併文字；多則用換行",
+    "resonate": "舊版 App fallback：resonate.messages 的 reply 合併文字；多則用換行",
+    "tease": "舊版 App fallback：tease.messages 的 reply 合併文字；多則用換行",
+    "humor": "舊版 App fallback：humor.messages 的 reply 合併文字；多則用換行",
+    "coldRead": "舊版 App fallback：coldRead.messages 的 reply 合併文字；多則用換行"
+  },
+  "replyOptions": {
+    "extend": {
+      "approach": "接法：先接她的具體話題，補一點你的畫面，再丟回低壓好接的下一球",
+      "messages": [
+        {
+          "sourceIndex": 2,
+          "label": "接她的 F1 興奮",
+          "sourceMessage": "紅牛跟賓士差點打起來XD",
+          "reply": "紅牛跟賓士沒打起來，但妳這行程已經先熱血起來了XD",
+          "reason": "這句有情緒和畫面，適合單獨接住"
+        }
+      ]
+    },
+    "resonate": {
+      "approach": "接法：先接住她的情緒或狀態，表示理解，再輕輕延伸",
+      "messages": []
+    },
+    "tease": {
+      "approach": "接法：安全俏皮地誤讀或推拉，保留退路，再讓她容易接話",
+      "messages": []
+    },
+    "humor": {
+      "approach": "接法：用自嘲或荒謬畫面接住聊天內容，再自然丟回去",
+      "messages": []
+    },
+    "coldRead": {
+      "approach": "接法：根據具體線索做溫和猜測，留空間讓她修正或補充",
+      "messages": []
+    }
   },
   "finalRecommendation": {
     "pick": "tease",
-    "content": "推薦的完整回覆內容，只能是可直接送出的自然訊息；即使對方連發多條，也不要放 ①②、箭頭或「回某句」報告格式",
+    "content": "推薦的完整訊息組文字；可用換行表示 2-3 則真人訊息，但不要放 ①②、箭頭或「回某句」報告格式",
     "reason": "一句教練式判斷：這句接了哪個球、避開哪個雷、為什麼此刻適合",
     "psychology": "互動判斷：對方為什麼比較容易接、不會有壓力或會感覺被看見",
     "replySegments": [
@@ -1867,7 +2074,8 @@ const MY_MESSAGE_PROMPT =
 ${SAFETY_RULES}`;
 
 // 開場白生成模式的 System Prompt
-const OPENER_PROMPT = `你是 VibeSync 的開場救星教練。根據用戶提供的對方資訊（交友軟體自介截圖、IG/限動、現實認識線索或文字描述），生成 5 種不同風格的開場白。
+const OPENER_PROMPT =
+  `你是 VibeSync 的開場救星教練。根據用戶提供的對方資訊（交友軟體自介截圖、IG/限動、現實認識線索或文字描述），生成 5 種不同風格的開場白。
 
 開場白的北極星：低壓、具體、可回、像真人，而且能讓對方覺得「你真的有看我的資料」。
 
@@ -2311,8 +2519,9 @@ function applySingleVisibleSpeakerPattern(
     };
   }
 
-  const targetSide: RecognizedBubbleSide =
-    pattern === "only_left" ? "left" : "right";
+  const targetSide: RecognizedBubbleSide = pattern === "only_left"
+    ? "left"
+    : "right";
   const targetIsFromMe = targetSide === "right";
   const adjusted = messages.map((message) => ({ ...message }));
   let adjustedCount = 0;
@@ -2409,7 +2618,8 @@ function shouldDeduplicateSequentialMessage(
 
   const previousComparable = normalizeComparableMessageText(previous.content);
   const currentComparable = normalizeComparableMessageText(current.content);
-  const previousCanOverlap = isLikelyMediaPlaceholderContent(previous.content) ||
+  const previousCanOverlap =
+    isLikelyMediaPlaceholderContent(previous.content) ||
     !!previous.quotedReplyPreview ||
     previousComparable.replace(/\s+/g, "").length >= 8;
   const currentCanOverlap = isLikelyMediaPlaceholderContent(current.content) ||
@@ -2765,8 +2975,8 @@ function stripQuotedReplyPreviewMessages(
         !!previous.quotedReplyPreview
       );
 
-    const shouldStripQuotedPreview =
-      shouldStripExplicitQuotedPreview || shouldStripBodyOnlyQuotedPreview;
+    const shouldStripQuotedPreview = shouldStripExplicitQuotedPreview ||
+      shouldStripBodyOnlyQuotedPreview;
 
     if (shouldStripQuotedPreview) {
       const derivedPreview = extractQuotedReplyPreviewContent(current.content);
@@ -3914,7 +4124,9 @@ serve(async (req) => {
 
       try {
         const revenueCatResponse = await fetch(
-          `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.id)}`,
+          `https://api.revenuecat.com/v1/subscribers/${
+            encodeURIComponent(user.id)
+          }`,
           {
             headers: {
               Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
@@ -3956,8 +4168,9 @@ serve(async (req) => {
           return false;
         }
 
-        const refreshedExpiresAt =
-          collectLatestExpirationFromRevenueCatPayload(subscriber);
+        const refreshedExpiresAt = collectLatestExpirationFromRevenueCatPayload(
+          subscriber,
+        );
         const updatePayload: Record<string, unknown> = {
           tier: refreshedTier,
           status: "active",
@@ -4089,7 +4302,8 @@ serve(async (req) => {
       const userContent: string[] = [];
 
       if (rawProfileInfo && typeof rawProfileInfo === "object") {
-        const { name, bio, interests, meetingContext } = rawProfileInfo as Record<string, string>;
+        const { name, bio, interests, meetingContext } =
+          rawProfileInfo as Record<string, string>;
         const parts: string[] = [];
         if (name) parts.push(`對方名字：${name}`);
         if (bio) parts.push(`自我介紹：${bio}`);
@@ -4111,7 +4325,9 @@ serve(async (req) => {
       }
 
       if (imageCount > 0) {
-        userContent.push("用戶上傳了對方的交友軟體自介截圖，請分析照片風格和特質後生成開場白。");
+        userContent.push(
+          "用戶上傳了對方的交友軟體自介截圖，請分析照片風格和特質後生成開場白。",
+        );
       }
 
       // Select model based on tier
@@ -4125,7 +4341,9 @@ serve(async (req) => {
         const imageContents = images.map((img: ImageData | string) => {
           // Support both ImageData objects and plain base64 strings
           const data = typeof img === "string" ? img : (img as ImageData).data;
-          const mediaType = typeof img === "string" ? "image/jpeg" : ((img as ImageData).mediaType || "image/jpeg");
+          const mediaType = typeof img === "string"
+            ? "image/jpeg"
+            : ((img as ImageData).mediaType || "image/jpeg");
           return {
             type: "image",
             source: {
@@ -4165,8 +4383,12 @@ serve(async (req) => {
         );
       } catch (apiError) {
         const errMsg = getErrorMessage(apiError);
-        const errCode = apiError instanceof AiServiceError ? apiError.code : "UNKNOWN";
-        const errMeta = apiError instanceof AiServiceError ? apiError.metadata : {};
+        const errCode = apiError instanceof AiServiceError
+          ? apiError.code
+          : "UNKNOWN";
+        const errMeta = apiError instanceof AiServiceError
+          ? apiError.metadata
+          : {};
         logWarn("opener_api_error", {
           error: errMsg,
           code: errCode,
@@ -4178,7 +4400,10 @@ serve(async (req) => {
         return jsonResponse({ error: `AI 生成失敗：${errMsg}` }, 500);
       }
 
-      const apiData = apiResult.data as { content?: Array<{ text?: string }>; usage?: { input_tokens?: number; output_tokens?: number } };
+      const apiData = apiResult.data as {
+        content?: Array<{ text?: string }>;
+        usage?: { input_tokens?: number; output_tokens?: number };
+      };
       const rawText = apiData.content?.[0]?.text || "";
 
       // Parse JSON from response
@@ -4195,7 +4420,8 @@ serve(async (req) => {
         await supabase
           .from("subscriptions")
           .update({
-            monthly_messages_used: (sub?.monthly_messages_used || 0) + openerCost,
+            monthly_messages_used: (sub?.monthly_messages_used || 0) +
+              openerCost,
             daily_messages_used: (sub?.daily_messages_used || 0) + openerCost,
           })
           .eq("user_id", user.id);
@@ -4538,8 +4764,10 @@ ${recentText}`;
     });
     const totalMessageCount = recognizeOnly ? 0 : countMessages(messages);
     // 繼續對話時只計算新增的訊息額度
-    const prevCount = typeof rawPreviousAnalyzedCount === "number" && rawPreviousAnalyzedCount > 0
-      ? rawPreviousAnalyzedCount : 0;
+    const prevCount = typeof rawPreviousAnalyzedCount === "number" &&
+        rawPreviousAnalyzedCount > 0
+      ? rawPreviousAnalyzedCount
+      : 0;
     const estimatedMessageCount = prevCount > 0
       ? Math.max(1, totalMessageCount - prevCount)
       : totalMessageCount;
@@ -4922,7 +5150,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             max_tokens: recognizeOnly
               ? 1600
               : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)),
-            system: systemPrompt + "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
+            system: systemPrompt +
+              "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
             messages: [
               {
                 role: "user",
@@ -5217,7 +5446,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const normalizedRecommendationPsychology = normalizeAiText(
         recommendation.psychology,
       );
-      const normalizedReplies = (result.replies ?? {}) as Record<string, string>;
+      const normalizedReplies = (result.replies ?? {}) as Record<
+        string,
+        string
+      >;
       const safeRecommendationPick = normalizedRecommendationPick.length > 0 &&
           normalizedReplies[normalizedRecommendationPick]?.trim().length
         ? normalizedRecommendationPick
