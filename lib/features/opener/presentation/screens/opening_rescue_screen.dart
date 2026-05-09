@@ -681,6 +681,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       'avoidTopics': '先避開',
       'frameRead': '框架判斷',
       'positiveHooks': '可接線索',
+      'masterObservation': '高手觀察',
       'curiosityHook': '好奇鉤子',
       'masterMove': '高手手法',
       'talkingPoints': '話題切入點',

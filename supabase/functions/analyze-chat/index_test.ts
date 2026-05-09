@@ -360,10 +360,12 @@ Deno.test({
       new URL("./index.ts", import.meta.url),
     );
 
-    assert(source.includes("你是 VibeSync 的開場救星教練"));
+    assert(source.includes("你是 VibeSync 的開場救星先鋒教練"));
     assert(source.includes("開場白的北極星：低壓、具體、可回、像真人"));
     assert(source.includes("每天可能收到很多罐頭訊息"));
     assert(source.includes("推薦開場必須有一點好奇心鉤子"));
+    assert(source.includes("更偏玩咖"));
+    assert(source.includes("這男的是怎樣？我來跟他尬一下"));
     assert(
       source.includes(
         "先讀資料，再開場（Profile Read → Frame → Hook → Opener）",
@@ -373,6 +375,7 @@ Deno.test({
     assert(source.includes("判斷框架 frameRead"));
     assert(source.includes("界線要被內化，不一定要被唸出來"));
     assert(source.includes("可接線索 positiveHooks"));
+    assert(source.includes("高手觀察 masterObservation"));
     assert(source.includes("好奇心鉤子 curiosityHook"));
     assert(source.includes("推薦策略 openingStrategy"));
     assert(source.includes("如果自介明確說不要問工作、不要約酒、討厭沒誠意"));
@@ -383,6 +386,7 @@ Deno.test({
     assert(source.includes("profileAnalysis.avoidTopics"));
     assert(source.includes("profileAnalysis.frameRead"));
     assert(source.includes("profileAnalysis.positiveHooks"));
+    assert(source.includes("profileAnalysis.masterObservation"));
     assert(source.includes("profileAnalysis.curiosityHook"));
     assert(source.includes("profileAnalysis.openingStrategy"));
     assert(source.includes("場景分流"));
@@ -403,7 +407,13 @@ Deno.test({
     assert(source.includes("輕判斷可反駁"));
     assert(source.includes("非乞求感"));
     assert(source.includes("先畫面再問題"));
+    assert(source.includes("少字有勁"));
     assert(source.includes("觀察 + 小框架 + 好回出口"));
+    assert(source.includes("高手觀察法：規則是背景，反差才是入口"));
+    assert(source.includes("真正高手會看，但不會拿來逐條回覆"));
+    assert(source.includes("規則只是背景紅線"));
+    assert(source.includes("妳是不是那種明明該補眠，結果又突然開一個新坑的人"));
+    assert(source.includes("玩咖但有邊界"));
     assert(source.includes("Specialness Gate：不特別就重寫"));
     assert(source.includes("如果輸出只是一般人也會問的安全句，產品就失去價值"));
     assert(source.includes("拿掉對方資料仍然能套在任何人身上"));
