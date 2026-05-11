@@ -69,6 +69,51 @@ void main() {
       ]);
     });
 
+    test('accepts nested opener text fields from tolerant server payload',
+        () async {
+      final service = OpenerService(
+        invoker: (_, {required body}) async {
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {
+                'extend': {'text': 'You look like trouble in a fun way'},
+              },
+              'recommendation': {'pick': 'extend'},
+              'usage': {'cost': 3},
+            },
+          );
+        },
+      );
+
+      final result = await service.generateOpeners(name: 'Grace');
+
+      expect(result.openers['extend'], 'You look like trouble in a fun way');
+      expect(result.bestOpenerText, 'You look like trouble in a fun way');
+    });
+
+    test('rejects raw json code fence as opener text', () async {
+      final service = OpenerService(
+        invoker: (_, {required body}) async {
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {
+                'extend':
+                    '```json\n{"profileAnalysis":{},"openers":{"extend":"hello"}}\n```',
+              },
+              'usage': {'cost': 5},
+            },
+          );
+        },
+      );
+
+      await expectLater(
+        service.generateOpeners(name: 'Grace'),
+        throwsA(isA<Exception>()),
+      );
+    });
+
     test('maps quota 429 to OpenerQuotaExceededException', () async {
       final service = OpenerService(
         invoker: (_, {required body}) async {

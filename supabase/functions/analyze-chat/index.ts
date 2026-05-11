@@ -87,6 +87,141 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const OPENER_TYPES = ["extend", "resonate", "tease", "humor", "coldRead"] as const;
+
+function stripJsonCodeFence(text: string): string {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return match ? match[1].trim() : trimmed;
+}
+
+function extractBalancedJsonObject(text: string): string | null {
+  const cleaned = stripJsonCodeFence(text);
+  const start = cleaned.indexOf("{");
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < cleaned.length; i++) {
+    const char = cleaned[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === "{") {
+      depth++;
+    } else if (char === "}") {
+      depth--;
+      if (depth === 0) {
+        return cleaned.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseJsonObjectFromText(text: string): Record<string, unknown> | null {
+  const candidates = [
+    text.trim(),
+    stripJsonCodeFence(text),
+    extractBalancedJsonObject(text) ?? "",
+  ].filter((candidate, index, self) =>
+    candidate.trim().length > 0 && self.indexOf(candidate) === index
+  );
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (isPlainObject(parsed)) return parsed;
+    } catch {
+      // Try the next extraction strategy.
+    }
+  }
+
+  return null;
+}
+
+function sanitizeOpenerText(value: unknown): string | null {
+  let text: string | null = null;
+
+  if (typeof value === "string") {
+    text = value;
+  } else if (isPlainObject(value)) {
+    for (const key of ["text", "message", "opener", "content", "line"]) {
+      const nested = value[key];
+      if (typeof nested === "string") {
+        text = nested;
+        break;
+      }
+    }
+  }
+
+  if (text == null) return null;
+
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const lower = trimmed.toLowerCase();
+  if (
+    trimmed.startsWith("```") ||
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[") ||
+    lower.includes('"profileanalysis"') ||
+    lower.includes('"openers"') ||
+    lower.includes("```json")
+  ) {
+    return null;
+  }
+
+  // Opening lines are short by contract. A very long value is usually a model
+  // explanation or malformed JSON that would be embarrassing to show.
+  if (trimmed.length > 180) return null;
+
+  return trimmed;
+}
+
+function normalizeOpenerPayload(
+  parsed: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!parsed) return null;
+
+  const rawOpeners = isPlainObject(parsed.openers) ? parsed.openers : {};
+  const openers: Record<string, string> = {};
+
+  for (const type of OPENER_TYPES) {
+    const opener = sanitizeOpenerText(rawOpeners[type]);
+    if (opener) {
+      openers[type] = opener;
+    }
+  }
+
+  if (Object.keys(openers).length === 0) {
+    return null;
+  }
+
+  return {
+    ...parsed,
+    openers,
+  };
+}
+
 function normalizeTier(value: unknown): "free" | "starter" | "essential" {
   if (typeof value !== "string") return "free";
   const normalized = value.trim().toLowerCase();
@@ -4644,13 +4779,25 @@ serve(async (req) => {
       };
       const rawText = apiData.content?.[0]?.text || "";
 
-      // Parse JSON from response
-      let parsed;
-      try {
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-      } catch {
-        parsed = { openers: { extend: rawText } };
+      // Parse and validate JSON from response. Never surface raw model output
+      // as an opener; a malformed JSON/code-fence response should fail cleanly
+      // instead of charging quota for unusable text.
+      const parsed = normalizeOpenerPayload(parseJsonObjectFromText(rawText));
+      if (!parsed) {
+        logWarn("opener_response_invalid", {
+          user: summarizeUser(user.id),
+          model: apiResult.model,
+          imageCount,
+          textLength: rawText.length,
+          startsWithCodeFence: rawText.trim().startsWith("```"),
+          containsProfileAnalysis: rawText.includes('"profileAnalysis"'),
+          containsOpeners: rawText.includes('"openers"'),
+        });
+        return jsonResponse({
+          error: "開場產生格式異常",
+          message: "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 502);
       }
 
       // Deduct quota

@@ -718,3 +718,22 @@ Deno.test({
     assert(source.includes("互動判斷：對方為什麼比較容易接"));
   },
 });
+
+Deno.test({
+  name: "opener mode rejects raw JSON/code-fence text before charging quota",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("function parseJsonObjectFromText"));
+    assert(source.includes("function normalizeOpenerPayload"));
+    assert(source.includes("function sanitizeOpenerText"));
+    assert(source.includes('lower.includes(\'"profileanalysis"\')'));
+    assert(source.includes('lower.includes(\'"openers"\')'));
+    assert(source.includes("opener_response_invalid"));
+    assert(source.includes("本次不會扣額度"));
+    assertFalse(source.includes("parsed = { openers: { extend: rawText } }"));
+  },
+});

@@ -81,7 +81,7 @@ class OpenerResult {
   factory OpenerResult.fromJson(Map<String, dynamic> json) {
     return OpenerResult(
       profileAnalysis: _dynamicMapOrNull(json['profileAnalysis']),
-      openers: _stringMap(json['openers']),
+      openers: _openerStringMap(json['openers']),
       pioneerPlan:
           json['pioneerPlan'] == null ? null : _stringMap(json['pioneerPlan']),
       recommendedPick: json['recommendedPick'] as String?,
@@ -97,6 +97,57 @@ class OpenerResult {
     return value.map(
       (key, value) => MapEntry(key.toString(), value.toString()),
     );
+  }
+
+  static Map<String, String> _openerStringMap(dynamic value) {
+    if (value is! Map) {
+      return const {};
+    }
+
+    final result = <String, String>{};
+    for (final entry in value.entries) {
+      final text = _sanitizeOpenerText(entry.value);
+      if (text != null) {
+        result[entry.key.toString()] = text;
+      }
+    }
+    return result;
+  }
+
+  static String? _sanitizeOpenerText(dynamic value) {
+    String? text;
+    if (value is String) {
+      text = value;
+    } else if (value is Map) {
+      for (final key in const ['text', 'message', 'opener', 'content', 'line']) {
+        final nested = value[key];
+        if (nested is String) {
+          text = nested;
+          break;
+        }
+      }
+    }
+
+    final trimmed = text?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+
+    final lower = trimmed.toLowerCase();
+    if (trimmed.startsWith('```') ||
+        trimmed.startsWith('{') ||
+        trimmed.startsWith('[') ||
+        lower.contains('"profileanalysis"') ||
+        lower.contains('"openers"') ||
+        lower.contains('```json')) {
+      return null;
+    }
+
+    if (trimmed.length > 180) {
+      return null;
+    }
+
+    return trimmed;
   }
 
   static Map<String, dynamic>? _dynamicMapOrNull(dynamic value) {
@@ -203,9 +254,11 @@ class OpenerService {
 
     final data = response.data as Map<String, dynamic>;
 
-    // Parse openers
-    final openersRaw = data['openers'] as Map<String, dynamic>? ?? {};
-    final openers = openersRaw.map((k, v) => MapEntry(k, v.toString()));
+    // Parse openers defensively. Raw JSON/code fences are not sendable openers.
+    final openers = OpenerResult._openerStringMap(data['openers']);
+    if (openers.isEmpty) {
+      throw Exception('開場產生格式異常，請重新生成一次。');
+    }
 
     // Parse recommendation
     final recommendation = data['recommendation'] as Map<String, dynamic>?;
