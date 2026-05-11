@@ -26,9 +26,10 @@
 
 - App 登入/購買/恢復/同步時帶上 RevenueCat `originalAppUserId`，Edge Function 同時查 Supabase user id 與 RevenueCat appUserId。
 - Edge Function 遇到 client 期望 paid、DB/RevenueCat 都未確認 paid 時回 409，不再把疑似付費同步失敗誤寫成 free。
-- AppConfig 支援 `REVENUECAT_SANDBOX_KEY`，CI 同時傳 `REVENUECAT_API_KEY` 作為兼容 fallback。
+- AppConfig 對 RevenueCat key 做 public SDK key guard；只接受 `appl_` key，其他 server/API key 一律 fallback 到 iOS public key。
 - Paywall package 對應不再只靠 product id 字串，同時讀 RevenueCat package id、package type、`P1M/P3M` 訂閱週期與 title，避免 offerings 已載入但方案卡仍判定 package 為空。
 - Paywall 新增 direct StoreKit product fallback：若 RevenueCat Offerings 為空或未回 packages，App 會改用 `getProducts()` 直接抓新舊 iOS product id，仍可顯示價格並購買。
+- App 端 RevenueCat SDK key 現在只接受 `appl_` public SDK key；GitHub App build 不再把 `REVENUECAT_PROD_KEY/SANDBOX_KEY` server key 塞進 Flutter，避免購買時 `Invalid API Key`。
 
 **驗證**:
 

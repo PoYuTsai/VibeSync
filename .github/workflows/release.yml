@@ -175,7 +175,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
-          REVENUECAT_KEY: ${{ secrets.REVENUECAT_PROD_KEY }}
+          REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           echo "Building with build number: ${{ github.run_number }}"
           flutter build ipa --release \
@@ -315,7 +315,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_PROD_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
-          REVENUECAT_KEY: ${{ secrets.REVENUECAT_PROD_KEY }}
+          REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           flutter build appbundle --release \
             --dart-define=ENV=prod \

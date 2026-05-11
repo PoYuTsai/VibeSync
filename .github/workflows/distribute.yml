@@ -62,7 +62,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
-          REVENUECAT_KEY: ${{ secrets.REVENUECAT_SANDBOX_KEY }}
+          REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           flutter build apk --release \
             --dart-define=ENV=staging \
@@ -150,7 +150,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
-          REVENUECAT_KEY: ${{ secrets.REVENUECAT_SANDBOX_KEY }}
+          REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           flutter build ipa --release \
             --dart-define=ENV=staging \

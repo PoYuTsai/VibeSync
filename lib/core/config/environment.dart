@@ -79,9 +79,10 @@ class AppConfig {
 
   /// RevenueCat API Key (iOS)
   /// Dev/Staging 使用同一個 key，Production 可透過環境變數覆蓋
+  static const _defaultRevenueCatPublicKey = 'appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY';
   static const _revenueCatApiKey = String.fromEnvironment(
     'REVENUECAT_API_KEY',
-    defaultValue: 'appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY',
+    defaultValue: _defaultRevenueCatPublicKey,
   );
   static const _revenueCatSandboxKey = String.fromEnvironment(
     'REVENUECAT_SANDBOX_KEY',
@@ -90,14 +91,26 @@ class AppConfig {
     'REVENUECAT_PROD_KEY',
   );
 
+  static bool _isRevenueCatPublicSdkKey(String key) {
+    return key.trim().startsWith('appl_');
+  }
+
   static String get revenueCatApiKey {
-    if (isProduction && _revenueCatProdKey.isNotEmpty) {
-      return _revenueCatProdKey;
+    final candidates = [
+      if (isProduction) _revenueCatProdKey,
+      if (!isProduction) _revenueCatSandboxKey,
+      _revenueCatApiKey,
+      _defaultRevenueCatPublicKey,
+    ];
+
+    for (final candidate in candidates) {
+      final trimmed = candidate.trim();
+      if (_isRevenueCatPublicSdkKey(trimmed)) {
+        return trimmed;
+      }
     }
-    if (!isProduction && _revenueCatSandboxKey.isNotEmpty) {
-      return _revenueCatSandboxKey;
-    }
-    return _revenueCatApiKey;
+
+    return _defaultRevenueCatPublicKey;
   }
 
   static const String _nativeAuthRedirectUri =
