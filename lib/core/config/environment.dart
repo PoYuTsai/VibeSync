@@ -83,6 +83,9 @@ class AppConfig {
     'REVENUECAT_API_KEY',
     defaultValue: 'appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY',
   );
+  static const _revenueCatSandboxKey = String.fromEnvironment(
+    'REVENUECAT_SANDBOX_KEY',
+  );
   static const _revenueCatProdKey = String.fromEnvironment(
     'REVENUECAT_PROD_KEY',
   );
@@ -90,6 +93,9 @@ class AppConfig {
   static String get revenueCatApiKey {
     if (isProduction && _revenueCatProdKey.isNotEmpty) {
       return _revenueCatProdKey;
+    }
+    if (!isProduction && _revenueCatSandboxKey.isNotEmpty) {
+      return _revenueCatSandboxKey;
     }
     return _revenueCatApiKey;
   }

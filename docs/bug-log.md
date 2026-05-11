@@ -10,6 +10,30 @@
 
 ## 2026-05
 
+### [2026-05-11] 付費用戶更新後退回 Free，升級/恢復購買卡在同步
+
+**症狀**:
+
+- TestFlight 更新後，已購買 Essential/Starter 的用戶可能顯示為 Free，分析額度被 Free quota 擋住。
+- Paywall 按升級 Starter 可能停在「正在同步方案資訊」，恢復購買後也沒有把 tier 同步回來。
+
+**Root Cause**:
+
+- App 端 RevenueCat SDK 可能能讀到付費訂閱，但 `sync-subscription` 只用 Supabase `user.id` 查 RevenueCat；若訂閱仍掛在 RevenueCat 原始/匿名 appUserId 或 alias 尚未穩定，Server 會查到 free，導致 Supabase `subscriptions` 仍是 free。
+- Staging/Firebase build 傳入 `REVENUECAT_SANDBOX_KEY`，但 AppConfig 沒讀這個 key，可能造成 offerings/package 取不到而購買按鈕卡住。
+
+**修復**:
+
+- App 登入/購買/恢復/同步時帶上 RevenueCat `originalAppUserId`，Edge Function 同時查 Supabase user id 與 RevenueCat appUserId。
+- Edge Function 遇到 client 期望 paid、DB/RevenueCat 都未確認 paid 時回 409，不再把疑似付費同步失敗誤寫成 free。
+- AppConfig 支援 `REVENUECAT_SANDBOX_KEY`，CI 同時傳 `REVENUECAT_API_KEY` 作為兼容 fallback。
+
+**驗證**:
+
+- `flutter analyze`
+- `deno check supabase/functions/sync-subscription/index.ts`
+- `deno test supabase/functions/sync-subscription/usage_reset_test.ts supabase/functions/sync-subscription/revenuecat_identity_test.ts`
+
 ### [2026-05-09] 開場救星返回後結果遺失
 **症狀**:
 

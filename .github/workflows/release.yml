@@ -183,6 +183,7 @@ jobs:
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
             --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY" \
             --export-options-plist=ios/ExportOptions.plist
 
@@ -320,6 +321,7 @@ jobs:
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
+            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
             --dart-define=REVENUECAT_PROD_KEY="$REVENUECAT_KEY"
 
       - name: Upload to Play Store (Internal)

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
+import { buildRevenueCatUserIdCandidates } from "./revenuecat_identity.ts";
 import { shouldResetUsageOnTierSync } from "./usage_reset.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -156,6 +157,7 @@ serve(async (req) => {
     const requestBody = isPlainObject(body) ? body : {};
     const expectedTier = normalizeTier(requestBody.expectedTier);
     const resetUsage = requestBody.resetUsage === true;
+    const revenueCatAppUserId = requestBody.revenueCatAppUserId;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const token = stripBearer(authHeader);
@@ -168,40 +170,67 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid token" }, 401);
     }
 
-    const revenueCatResponse = await fetch(
-      `https://api.revenuecat.com/v1/subscribers/${
-        encodeURIComponent(user.id)
-      }`,
-      {
-        headers: {
-          Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      },
+    const revenueCatCandidates = buildRevenueCatUserIdCandidates(
+      user.id,
+      revenueCatAppUserId,
     );
+    const subscriberSnapshots: Array<{
+      appUserId: string;
+      subscriber: Record<string, unknown>;
+      activeProductIds: string[];
+    }> = [];
+    let lastRevenueCatError: { status: number; detail: string } | null = null;
 
-    if (!revenueCatResponse.ok) {
-      const detail = await revenueCatResponse.text().catch(() => "");
-      console.error("sync-subscription revenuecat error", {
-        status: revenueCatResponse.status,
-        detail,
+    for (const appUserId of revenueCatCandidates) {
+      const revenueCatResponse = await fetch(
+        `https://api.revenuecat.com/v1/subscribers/${
+          encodeURIComponent(appUserId)
+        }`,
+        {
+          headers: {
+            Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      if (!revenueCatResponse.ok) {
+        const detail = await revenueCatResponse.text().catch(() => "");
+        lastRevenueCatError = { status: revenueCatResponse.status, detail };
+        console.error("sync-subscription revenuecat error", {
+          appUserId,
+          status: revenueCatResponse.status,
+          detail,
+        });
+        continue;
+      }
+
+      const revenueCatPayload = await revenueCatResponse.json();
+      if (!isPlainObject(revenueCatPayload)) {
+        continue;
+      }
+
+      const subscriber = isPlainObject(revenueCatPayload.subscriber)
+        ? revenueCatPayload.subscriber
+        : null;
+      if (!subscriber) {
+        continue;
+      }
+
+      subscriberSnapshots.push({
+        appUserId,
+        subscriber,
+        activeProductIds: collectActiveProductIdsFromRevenueCatPayload(
+          subscriber,
+        ),
       });
+    }
+
+    if (subscriberSnapshots.length === 0) {
       return jsonResponse({
         error: "RevenueCat sync failed",
-        detail: revenueCatResponse.status,
+        detail: lastRevenueCatError?.status ?? "invalid_payload",
       }, 502);
-    }
-
-    const revenueCatPayload = await revenueCatResponse.json();
-    if (!isPlainObject(revenueCatPayload)) {
-      return jsonResponse({ error: "Invalid RevenueCat response" }, 502);
-    }
-
-    const subscriber = isPlainObject(revenueCatPayload.subscriber)
-      ? revenueCatPayload.subscriber
-      : null;
-    if (!subscriber) {
-      return jsonResponse({ error: "Missing RevenueCat subscriber" }, 502);
     }
 
     const { data: existingSub, error: existingError } = await supabase
@@ -218,11 +247,36 @@ serve(async (req) => {
     }
 
     const previousTier = normalizeTier(existingSub?.tier);
-    const activeProductIds = collectActiveProductIdsFromRevenueCatPayload(
-      subscriber,
+    const activeProductIds = Array.from(
+      new Set(
+        subscriberSnapshots.flatMap((snapshot) => snapshot.activeProductIds),
+      ),
     );
     const revenueCatTier = highestTier(activeProductIds.map(tierFromProductId));
     const revenueCatProductId = highestActiveProductId(activeProductIds);
+    const matchedRevenueCatAppUserId = subscriberSnapshots.find(
+      (snapshot) => snapshot.activeProductIds.length > 0,
+    )?.appUserId ?? subscriberSnapshots[0].appUserId;
+
+    if (
+      tierRank(expectedTier) > tierRank("free") &&
+      revenueCatTier === "free" &&
+      previousTier === "free"
+    ) {
+      console.error("sync-subscription paid tier not confirmed", {
+        expectedTier,
+        checked: revenueCatCandidates.length,
+        matchedRevenueCatAppUserId,
+      });
+      return jsonResponse({
+        error: "Paid tier not confirmed by RevenueCat",
+        expectedTier,
+        revenueCatTier,
+        matchedRevenueCatAppUserId,
+        revenueCatAppUserIdsChecked: revenueCatCandidates.length,
+      }, 409);
+    }
+
     let finalTier = revenueCatTier;
     let tierPreservedReason: string | null = null;
 
@@ -316,6 +370,8 @@ serve(async (req) => {
       previousTier,
       revenueCatTier,
       activeProductId: finalActiveProductId,
+      matchedRevenueCatAppUserId,
+      revenueCatAppUserIdsChecked: revenueCatCandidates.length,
       expectedTier,
       tierConfirmedByRevenueCat: revenueCatTier === finalTier,
       tierPreservedReason,

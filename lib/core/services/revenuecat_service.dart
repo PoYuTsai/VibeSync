@@ -55,14 +55,16 @@ class RevenueCatService {
 
   /// 關聯用戶 ID（登入後呼叫）
   /// 這讓 RevenueCat 知道訂閱屬於哪個 Supabase 用戶
-  static Future<void> login(String userId) async {
-    if (!_isInitialized) return;
+  static Future<CustomerInfo?> login(String userId) async {
+    if (!_isInitialized) return null;
 
     try {
-      await Purchases.logIn(userId);
+      final result = await Purchases.logIn(userId);
       debugPrint('RevenueCat: User logged in: $userId');
+      return result.customerInfo;
     } catch (e) {
       debugPrint('RevenueCat login error: $e');
+      return null;
     }
   }
 
@@ -233,6 +235,17 @@ class RevenueCatService {
     });
 
     return productIds.first;
+  }
+
+  /// RevenueCat may keep the original subscriber under an anonymous appUserId
+  /// after reinstall / restore. Send it to the server so sync can verify both
+  /// identities instead of accidentally treating a paid user as free.
+  static String? getRevenueCatAppUserId(CustomerInfo? customerInfo) {
+    final trimmed = customerInfo?.originalAppUserId.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
   }
 
   /// Returns the best-known premium expiration date from RevenueCat.

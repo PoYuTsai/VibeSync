@@ -377,15 +377,23 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   Future<String?> _syncSubscriptionViaEdgeFunction({
     required String expectedTier,
     required bool resetUsage,
+    String? revenueCatAppUserId,
   }) async {
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
+        final body = <String, dynamic>{
+          'expectedTier': expectedTier,
+          'resetUsage': resetUsage,
+        };
+        final cleanedRevenueCatAppUserId = revenueCatAppUserId?.trim();
+        if (cleanedRevenueCatAppUserId != null &&
+            cleanedRevenueCatAppUserId.isNotEmpty) {
+          body['revenueCatAppUserId'] = cleanedRevenueCatAppUserId;
+        }
+
         final response = await SupabaseService.invokeFunction(
           'sync-subscription',
-          body: {
-            'expectedTier': expectedTier,
-            'resetUsage': resetUsage,
-          },
+          body: body,
         );
 
         if (response.status < 200 || response.status >= 300) {
@@ -564,7 +572,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         return;
       }
 
-      await RevenueCatService.login(user.id);
+      var customerInfo = await RevenueCatService.login(user.id);
+      customerInfo ??= await RevenueCatService.getCustomerInfo();
 
       final response = await _loadOrCreateSubscriptionRecord(
         userId: user.id,
@@ -574,30 +583,43 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final initialTier = SubscriptionTierHelper.normalizeTier(
         response['tier'] as String?,
       );
-      final initialLimits = SubscriptionTierHelper.limitsFor(initialTier);
       final renewsAt = _parseDateTime(response['expires_at']);
+      final revenueCatTier =
+          RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      final revenueCatAppUserId =
+          RevenueCatService.getRevenueCatAppUserId(customerInfo);
+      final revenueCatProductId = _cleanProductId(
+        RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
+      );
+      final displayTier = _highestTier([initialTier, revenueCatTier]);
+      final displayLimits = SubscriptionTierHelper.limitsFor(displayTier);
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
-        tier: initialTier,
+        tier: displayTier,
         monthlyMessagesUsed: _readInt(response['monthly_messages_used']),
         dailyMessagesUsed: _readInt(response['daily_messages_used']),
-        monthlyLimit: initialLimits.monthly,
-        dailyLimit: initialLimits.daily,
+        monthlyLimit: displayLimits.monthly,
+        dailyLimit: displayLimits.daily,
         renewsAt: renewsAt,
+        activeProductId: displayTier == SubscriptionTierHelper.free
+            ? null
+            : revenueCatProductId ?? state.activeProductId,
         isLoading: false,
         error: null,
       ));
       UsageService.syncSubscriptionSnapshot(
-        tier: initialTier,
-        monthlyLimit: initialLimits.monthly,
-        dailyLimit: initialLimits.daily,
+        tier: displayTier,
+        monthlyLimit: displayLimits.monthly,
+        dailyLimit: displayLimits.daily,
         monthlyUsed: _readInt(response['monthly_messages_used']),
         dailyUsed: _readInt(response['daily_messages_used']),
       );
 
       await _syncSubscriptionViaEdgeFunction(
-        expectedTier: initialTier,
-        resetUsage: false,
+        expectedTier: displayTier,
+        resetUsage: initialTier != displayTier &&
+            displayTier != SubscriptionTierHelper.free,
+        revenueCatAppUserId: revenueCatAppUserId,
       );
     } catch (e) {
       debugPrint('Load subscription error: $e');
@@ -707,10 +729,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
           ) ??
           packageProductId;
+      final revenueCatAppUserId =
+          RevenueCatService.getRevenueCatAppUserId(customerInfo);
       final syncedTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier: resolvedTier,
         resetUsage: previousTier != resolvedTier &&
             resolvedTier != SubscriptionTierHelper.free,
+        revenueCatAppUserId: revenueCatAppUserId,
       );
       final tier = syncedTier ?? resolvedTier;
       final limits = SubscriptionTierHelper.limitsFor(tier);
@@ -780,9 +805,12 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
 
     debugPrint('[forceSyncTier] Starting sync: tier=$tier, user=${user.id}');
+    final customerInfo = await RevenueCatService.getCustomerInfo();
     final syncedTier = await _syncSubscriptionViaEdgeFunction(
       expectedTier: tier,
       resetUsage: tier != SubscriptionTierHelper.free,
+      revenueCatAppUserId:
+          RevenueCatService.getRevenueCatAppUserId(customerInfo),
     );
     if (syncedTier == null) {
       throw Exception('訂閱同步失敗');
@@ -803,6 +831,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final restoredProductId = _cleanProductId(
         RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
       );
+      final revenueCatAppUserId =
+          RevenueCatService.getRevenueCatAppUserId(customerInfo);
       final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
       final previousTier = state.tier;
       final isScheduledDowngradeSnapshot = _isScheduledPaidDowngradeSnapshot(
@@ -821,6 +851,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             !shouldPreservePaidFreeSnapshot &&
             previousTier != restoredTier &&
             restoredTier != SubscriptionTierHelper.free,
+        revenueCatAppUserId: revenueCatAppUserId,
       );
       final tier =
           isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
@@ -862,6 +893,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final activeProductId = _cleanProductId(
         RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
       );
+      final revenueCatAppUserId =
+          RevenueCatService.getRevenueCatAppUserId(customerInfo);
       final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
 
       if (_isScheduledPaidDowngradeSnapshot(
@@ -874,6 +907,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         await _syncSubscriptionViaEdgeFunction(
           expectedTier: state.tier,
           resetUsage: false,
+          revenueCatAppUserId: revenueCatAppUserId,
         );
         if (renewsAt != null && renewsAt != state.renewsAt) {
           state = _applyPendingDowngradeMetadata(state.copyWith(
@@ -897,6 +931,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           expectedTier: rcTier,
           resetUsage:
               state.tier != rcTier && rcTier != SubscriptionTierHelper.free,
+          revenueCatAppUserId: revenueCatAppUserId,
         );
         final tier = syncedTier ?? rcTier;
         final limits = SubscriptionTierHelper.limitsFor(tier);
