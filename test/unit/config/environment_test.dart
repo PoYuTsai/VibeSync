@@ -53,6 +53,44 @@ void main() {
         startsWith('com.poyutsai.vibesync://login-callback'),
       );
     });
+
+    test('RevenueCat key selection rejects server keys in production', () {
+      final selected = AppConfig.selectRevenueCatPublicSdkKey(
+        isProduction: true,
+        revenueCatApiKey: 'sk_live_should_not_enter_app',
+        revenueCatSandboxKey: 'sk_sandbox_should_not_enter_app',
+        revenueCatProdKey: 'sk_prod_should_not_enter_app',
+        fallback: 'appl_fallback_public_key',
+      );
+
+      expect(selected, 'appl_fallback_public_key');
+    });
+
+    test('RevenueCat key selection prefers valid prod public key', () {
+      final selected = AppConfig.selectRevenueCatPublicSdkKey(
+        isProduction: true,
+        revenueCatApiKey: 'appl_generic_public_key',
+        revenueCatSandboxKey: 'appl_sandbox_public_key',
+        revenueCatProdKey: 'appl_prod_public_key',
+        fallback: 'appl_fallback_public_key',
+      );
+
+      expect(selected, 'appl_prod_public_key');
+    });
+
+    test(
+        'RevenueCat key selection prefers valid sandbox public key outside prod',
+        () {
+      final selected = AppConfig.selectRevenueCatPublicSdkKey(
+        isProduction: false,
+        revenueCatApiKey: 'appl_generic_public_key',
+        revenueCatSandboxKey: 'appl_sandbox_public_key',
+        revenueCatProdKey: 'appl_prod_public_key',
+        fallback: 'appl_fallback_public_key',
+      );
+
+      expect(selected, 'appl_sandbox_public_key');
+    });
   });
 
   group('Environment enum', () {

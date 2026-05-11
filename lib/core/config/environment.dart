@@ -95,12 +95,19 @@ class AppConfig {
     return key.trim().startsWith('appl_');
   }
 
-  static String get revenueCatApiKey {
+  @visibleForTesting
+  static String selectRevenueCatPublicSdkKey({
+    required bool isProduction,
+    required String revenueCatApiKey,
+    required String revenueCatSandboxKey,
+    required String revenueCatProdKey,
+    String fallback = _defaultRevenueCatPublicKey,
+  }) {
     final candidates = [
-      if (isProduction) _revenueCatProdKey,
-      if (!isProduction) _revenueCatSandboxKey,
-      _revenueCatApiKey,
-      _defaultRevenueCatPublicKey,
+      if (isProduction) revenueCatProdKey,
+      if (!isProduction) revenueCatSandboxKey,
+      revenueCatApiKey,
+      fallback,
     ];
 
     for (final candidate in candidates) {
@@ -110,7 +117,16 @@ class AppConfig {
       }
     }
 
-    return _defaultRevenueCatPublicKey;
+    return fallback;
+  }
+
+  static String get revenueCatApiKey {
+    return selectRevenueCatPublicSdkKey(
+      isProduction: isProduction,
+      revenueCatApiKey: _revenueCatApiKey,
+      revenueCatSandboxKey: _revenueCatSandboxKey,
+      revenueCatProdKey: _revenueCatProdKey,
+    );
   }
 
   static const String _nativeAuthRedirectUri =

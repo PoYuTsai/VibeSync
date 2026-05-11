@@ -68,8 +68,7 @@ jobs:
             --dart-define=ENV=staging \
             --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
-            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY"
+            --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY"
 
       - name: Prepare release notes
         run: |
@@ -157,7 +156,6 @@ jobs:
             --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
             --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
-            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY" \
             --export-options-plist=ios/ExportOptions.plist
 
       - name: Prepare release notes
