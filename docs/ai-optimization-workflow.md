@@ -82,5 +82,5 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx \
 
 ## 相關文件
 
-- System Prompt 優化設計：`docs/plans/2026-03-04-system-prompt-optimization-design.md`
-- System Prompt 優化實作：`docs/plans/2026-03-04-system-prompt-optimization-impl.md`
+- System Prompt 優化設計：`docs/archive/plans/2026-03-04-system-prompt-optimization-design.md`
+- System Prompt 優化實作：`docs/archive/plans/2026-03-04-system-prompt-optimization-impl.md`

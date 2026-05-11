@@ -28,6 +28,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: flutter-ci-${{ github.ref }}
   cancel-in-progress: true

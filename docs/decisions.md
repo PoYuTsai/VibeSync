@@ -172,8 +172,8 @@
 - 負面反饋自動發送 Discord 通知
 
 **相關文件**:
-- 設計: `docs/plans/2026-03-04-system-prompt-optimization-design.md`
-- 實作: `docs/plans/2026-03-04-system-prompt-optimization-impl.md`
+- 設計: `docs/archive/plans/2026-03-04-system-prompt-optimization-design.md`
+- 實作: `docs/archive/plans/2026-03-04-system-prompt-optimization-impl.md`
 
 ---
 
@@ -242,8 +242,8 @@
 **Phase 2/3**: HomeScreen / LoginScreen / SettingsScreen / AnalysisScreen / 動態光球動畫
 
 **相關文件**:
-- 設計: `docs/plans/2026-03-10-ui-redesign-design.md`
-- 實作: `docs/plans/2026-03-10-ui-redesign-impl.md`
+- 設計: `docs/archive/plans/2026-03-10-ui-redesign-design.md`
+- 實作: `docs/archive/plans/2026-03-10-ui-redesign-impl.md`
 
 ---
 
@@ -277,8 +277,8 @@
 - `lib/shared/widgets/image_picker_widget.dart`
 
 **相關文件**:
-- 設計: `docs/plans/2026-03-12-screenshot-upload-design.md`
-- 實作: `docs/plans/2026-03-12-screenshot-upload-impl.md`
+- 設計: `docs/archive/plans/2026-03-12-screenshot-upload-design.md`
+- 實作: `docs/archive/plans/2026-03-12-screenshot-upload-impl.md`
 
 ---
 
@@ -302,8 +302,8 @@
 **相關 commits**: `491b634`, `cfbf04a`, `21154bf`, `d9f7d9e`, `43b591a`
 
 **相關文件**:
-- 設計: `docs/plans/*opener*design.md`
-- 實作: `docs/plans/*opener*impl.md`
+- 設計: `docs/archive/plans/*opener*design.md`
+- 實作: `docs/archive/plans/*opener*impl.md`
 
 ---
 
@@ -328,7 +328,7 @@
 **送審影響**: 延 ~2 週。Eric 接受（trade-off：上線後修 data model 成本 10×）。
 
 **相關文件**:
-- 設計: `docs/plans/2026-04-25-partner-entity-design.md`
+- 設計: `docs/archive/plans/2026-04-25-partner-entity-design.md`
 - Live tracking: `docs/reviews/ai-arbitration-queue.md`
 
 ---
@@ -420,7 +420,7 @@
 - `ScoreActionHint` cleanup 已完成；Phase 1.5 再評估 softInvite / pausePursuit 文章或 Learning tab 真實 route
 
 **相關文件**:
-- `docs/plans/2026-05-01-spec4-phase1-coach-action-card-impl.md` — 實作計畫（Codex APPROVED-WITH-AMENDMENTS）
+- `docs/archive/plans/2026-05-01-spec4-phase1-coach-action-card-impl.md` — 實作計畫（Codex APPROVED-WITH-AMENDMENTS）
 - `docs/plans/2026-04-30-memory-coach-spec4-coach-action-loop-draft.md` — 早期 brainstorm draft（已 superseded）
 
 **相關 commits（main 線性）**:

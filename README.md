@@ -72,7 +72,8 @@ lib/shared/         # 共用 UI 元件 + services
 | Bug 歷史 | [docs/bug-log.md](docs/bug-log.md) |
 | 整合配置 | [docs/integrations/](docs/integrations/) |
 | 定價方案 | [docs/pricing-final.md](docs/pricing-final.md) |
-| 設計規格 | [docs/plans/2026-02-26-vibesync-design.md](docs/plans/2026-02-26-vibesync-design.md) |
+| Active plans | [docs/plans/README.md](docs/plans/README.md) |
+| 歷史設計規格 | [docs/archive/plans/2026-02-26-vibesync-design.md](docs/archive/plans/2026-02-26-vibesync-design.md) |
 
 ## 授權
 

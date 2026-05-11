@@ -17,6 +17,9 @@ on:
           - android
           - both
 
+permissions:
+  contents: read
+
 jobs:
   release-ios:
     if: inputs.platform == 'ios' || inputs.platform == 'both'

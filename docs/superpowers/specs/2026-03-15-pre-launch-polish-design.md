@@ -243,4 +243,4 @@ final version = '${packageInfo.version} (${packageInfo.buildNumber})';
 
 - 隱私權政策：`docs/legal/privacy-policy.md`
 - 使用條款：`docs/legal/terms-of-service.md`
-- UI 重構設計：`docs/plans/2026-03-10-ui-redesign-design.md`
+- UI 重構設計：`docs/archive/plans/2026-03-10-ui-redesign-design.md`

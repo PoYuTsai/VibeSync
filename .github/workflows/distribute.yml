@@ -17,6 +17,9 @@ on:
           - staging
           - dev
 
+permissions:
+  contents: read
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -61,11 +64,11 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
           REVENUECAT_KEY: ${{ secrets.REVENUECAT_SANDBOX_KEY }}
         run: |
-          flutter build apk --release --verbose \
+          flutter build apk --release \
             --dart-define=ENV=staging \
             --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
-            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY" 2>&1 | tee build.log || (cat build.log | tail -100 && exit 1)
+            --dart-define=REVENUECAT_SANDBOX_KEY="$REVENUECAT_KEY"
 
       - name: Prepare release notes
         run: |

@@ -2,7 +2,7 @@
 
 > Date: 2026-05-04
 > Purpose: Manual QA set for Coach Follow-up quality.
-> Related design: `docs/plans/2026-05-04-spec5-v1.1-coach-quality-design.md`
+> Related design: `docs/archive/plans/2026-05-04-spec5-v1.1-coach-quality-design.md`
 
 ---
 
