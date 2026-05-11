@@ -21,3 +21,19 @@ Scope: public-repo readiness before switching VibeSync to private.
 - Confirm GitHub Actions budget is non-zero for Actions.
 - Rotate any keys that were ever pasted into public issue/commit history outside this scan.
 - Keep Supabase service-role keys only in GitHub Secrets / Supabase Secrets, never in Flutter code.
+
+## Supabase Apply Status
+
+Applied to linked production project on 2026-05-11:
+
+- `20260401_auth_diagnostics.sql`
+- `20260509_fix_check_and_reset_usage_limits.sql`
+- `20260511000000_harden_auth_diagnostics.sql`
+
+Verified:
+
+- `auth_diagnostics` exists, RLS is enabled, 2 policies are present, and payload constraints are present.
+- `check_and_reset_usage` now matches pricing: Free 30/15, Starter 300/50, Essential 800/120.
+- `check_and_reset_usage` and `increment_usage` are executable by `service_role` only, not `anon` or `authenticated`.
+
+Note: `supabase migration list --linked` still shows two old `20260315` local rows missing from remote history because the repo has duplicate `20260315_*` migration filenames. Do not run `supabase db push` blindly; use targeted SQL or clean up migration history deliberately.
