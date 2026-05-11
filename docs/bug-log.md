@@ -27,10 +27,12 @@
 - App 登入/購買/恢復/同步時帶上 RevenueCat `originalAppUserId`，Edge Function 同時查 Supabase user id 與 RevenueCat appUserId。
 - Edge Function 遇到 client 期望 paid、DB/RevenueCat 都未確認 paid 時回 409，不再把疑似付費同步失敗誤寫成 free。
 - AppConfig 支援 `REVENUECAT_SANDBOX_KEY`，CI 同時傳 `REVENUECAT_API_KEY` 作為兼容 fallback。
+- Paywall package 對應不再只靠 product id 字串，同時讀 RevenueCat package id、package type、`P1M/P3M` 訂閱週期與 title，避免 offerings 已載入但方案卡仍判定 package 為空。
 
 **驗證**:
 
 - `flutter analyze`
+- `flutter test test/unit/features/subscription/data/subscription_state_package_test.dart`
 - `deno check supabase/functions/sync-subscription/index.ts`
 - `deno test supabase/functions/sync-subscription/usage_reset_test.ts supabase/functions/sync-subscription/revenuecat_identity_test.ts`
 

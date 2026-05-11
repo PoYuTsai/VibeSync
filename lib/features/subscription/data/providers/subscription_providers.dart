@@ -60,7 +60,7 @@ class SubscriptionState {
     if (packages == null || packages.isEmpty) return null;
 
     return packages.cast<Package?>().firstWhere(
-          (p) => p?.storeProduct.identifier.contains('starter') ?? false,
+          (p) => p != null && _packageMatchesTier(p, 'starter'),
           orElse: () => null,
         );
   }
@@ -70,9 +70,48 @@ class SubscriptionState {
     if (packages == null || packages.isEmpty) return null;
 
     return packages.cast<Package?>().firstWhere(
-          (p) => p?.storeProduct.identifier.contains('essential') ?? false,
+          (p) => p != null && _packageMatchesTier(p, 'essential'),
           orElse: () => null,
         );
+  }
+
+  String _packageSearchText(Package package) {
+    return [
+      package.identifier,
+      package.packageType.name,
+      package.storeProduct.identifier,
+      package.storeProduct.title,
+      package.storeProduct.description,
+      package.storeProduct.subscriptionPeriod,
+    ].whereType<String>().join(' ').toLowerCase();
+  }
+
+  bool _packageMatchesTier(Package package, String tierKeyword) {
+    return _packageSearchText(package).contains(tierKeyword);
+  }
+
+  bool _packageMatchesPeriod(Package package, String periodKeyword) {
+    final text = _packageSearchText(package);
+    switch (periodKeyword) {
+      case 'monthly':
+        return package.packageType == PackageType.monthly ||
+            package.storeProduct.subscriptionPeriod == 'P1M' ||
+            text.contains('monthly') ||
+            text.contains('month') ||
+            text.contains('月');
+      case 'quarterly':
+        return package.packageType == PackageType.threeMonth ||
+            package.storeProduct.subscriptionPeriod == 'P3M' ||
+            text.contains('quarter') ||
+            text.contains('three_month') ||
+            text.contains('three month') ||
+            text.contains('3month') ||
+            text.contains('3 month') ||
+            text.contains('3-month') ||
+            text.contains('季');
+      default:
+        return text.contains(periodKeyword);
+    }
   }
 
   Package? _findPackage(String tierKeyword, String periodKeyword) {
@@ -81,8 +120,9 @@ class SubscriptionState {
 
     return packages.cast<Package?>().firstWhere(
       (p) {
-        final id = (p?.storeProduct.identifier ?? '').toLowerCase();
-        return id.contains(tierKeyword) && id.contains(periodKeyword);
+        if (p == null) return false;
+        return _packageMatchesTier(p, tierKeyword) &&
+            _packageMatchesPeriod(p, periodKeyword);
       },
       orElse: () => null,
     );
@@ -635,9 +675,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final offerings = await RevenueCatService.getOfferings();
       if (offerings != null) {
         state = state.copyWith(offerings: offerings);
+        final packages = offerings.current?.availablePackages ?? const [];
         debugPrint(
-          'Offerings loaded: ${offerings.current?.availablePackages.length} packages',
+          'Offerings loaded: ${packages.length} packages',
         );
+        for (final package in packages) {
+          debugPrint(
+            'Offering package: package=${package.identifier}, type=${package.packageType.name}, product=${package.storeProduct.identifier}, period=${package.storeProduct.subscriptionPeriod}, title=${package.storeProduct.title}',
+          );
+        }
       }
     } catch (e) {
       debugPrint('Load offerings error: $e');
