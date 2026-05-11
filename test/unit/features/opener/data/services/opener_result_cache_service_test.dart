@@ -48,6 +48,33 @@ void main() {
     expect(restored.costUsed, result.costUsed);
   });
 
+  test('OpenerResult picks recommended opener for conversation handoff', () {
+    const result = OpenerResult(
+      openers: {
+        'extend': 'First line',
+        'coldRead': 'Better line',
+      },
+      recommendedPick: 'coldRead',
+    );
+
+    expect(result.bestOpenerType, 'coldRead');
+    expect(result.bestOpenerText, 'Better line');
+  });
+
+  test('OpenerResult falls back to first usable opener when pick is missing',
+      () {
+    const result = OpenerResult(
+      openers: {
+        'extend': '',
+        'humor': 'Fallback line',
+      },
+      recommendedPick: 'missing',
+    );
+
+    expect(result.bestOpenerType, 'humor');
+    expect(result.bestOpenerText, 'Fallback line');
+  });
+
   test('cache persists latest opener result in settings box', () async {
     const result = OpenerResult(
       openers: {

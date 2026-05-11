@@ -6,14 +6,20 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../opener/data/services/opener_result_cache_service.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
 
 class NewConversationScreen extends ConsumerStatefulWidget {
   final String? partnerId;
+  final bool seedFromLatestOpener;
 
-  const NewConversationScreen({super.key, this.partnerId});
+  const NewConversationScreen({
+    super.key,
+    this.partnerId,
+    this.seedFromLatestOpener = false,
+  });
 
   @override
   ConsumerState<NewConversationScreen> createState() =>
@@ -25,12 +31,17 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final _herMessageController = TextEditingController();
   final _myMessageController = TextEditingController();
   final _targetDescriptionController = TextEditingController();
+  final _openerResultCacheService = OpenerResultCacheService();
 
   final List<Map<String, dynamic>> _messages = [];
 
   bool _isLoading = false;
   bool _showPersonalization = false;
   bool _showAnalysisSettings = false;
+  bool _hasOpenerSeed = false;
+  String? _openerSeedText;
+  String? _openerSeedLabel;
+  String? _openerSeedReason;
 
   MeetingContext _meetingContext = MeetingContext.datingApp;
   AcquaintanceDuration _duration = AcquaintanceDuration.justMet;
@@ -42,11 +53,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   bool get _endsWithMyMessage =>
       _messages.isNotEmpty && (_messages.last['isFromMe'] as bool);
 
-  String get _primaryButtonText => _hasIncomingMessage ? '建立對話' : '先儲存對話';
+  String get _primaryButtonText {
+    if (_hasIncomingMessage) return '建立對話';
+    if (_hasOpenerSeed) return '先儲存開場草稿';
+    return '先儲存對話';
+  }
 
   String get _conversationHint {
     if (_messages.isEmpty) {
       return '依序輸入對話，至少先加入一則訊息。';
+    }
+
+    if (_hasOpenerSeed && !_hasIncomingMessage) {
+      return '已先帶入你準備送出的開場白。送出後，等她回覆再貼到「她說」；也可以先儲存成草稿。';
     }
 
     if (!_hasIncomingMessage) {
@@ -61,12 +80,76 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.seedFromLatestOpener) {
+      _seedFromLatestOpener();
+    }
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _herMessageController.dispose();
     _myMessageController.dispose();
     _targetDescriptionController.dispose();
     super.dispose();
+  }
+
+  void _seedFromLatestOpener() {
+    try {
+      final result = _openerResultCacheService.loadLatest();
+      if (result == null) return;
+      final openerText = result.bestOpenerText;
+      if (openerText == null) return;
+
+      _messages.add({
+        'isFromMe': true,
+        'content': openerText,
+      });
+      _hasOpenerSeed = true;
+      _openerSeedText = openerText;
+      _openerSeedLabel = _openerLabel(result.bestOpenerType);
+      _openerSeedReason = result.recommendedReason?.trim();
+    } catch (_) {
+      _hasOpenerSeed = false;
+      _openerSeedText = null;
+      _openerSeedLabel = null;
+      _openerSeedReason = null;
+    }
+  }
+
+  String _openerLabel(String? type) {
+    switch (type) {
+      case 'extend':
+        return '延展';
+      case 'resonate':
+        return '共鳴';
+      case 'tease':
+        return '調情';
+      case 'humor':
+        return '幽默';
+      case 'coldRead':
+        return '冷讀';
+      default:
+        return 'AI 推薦';
+    }
+  }
+
+  void _clearOpenerSeed() {
+    final seed = _openerSeedText;
+    setState(() {
+      if (seed != null) {
+        _messages.removeWhere(
+          (message) =>
+              message['isFromMe'] == true && message['content'] == seed,
+        );
+      }
+      _hasOpenerSeed = false;
+      _openerSeedText = null;
+      _openerSeedLabel = null;
+      _openerSeedReason = null;
+    });
   }
 
   void _addHerMessage() {
@@ -97,7 +180,14 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   void _removeMessage(int index) {
     setState(() {
-      _messages.removeAt(index);
+      final removed = _messages.removeAt(index);
+      if (removed['isFromMe'] == true &&
+          removed['content'] == _openerSeedText) {
+        _hasOpenerSeed = false;
+        _openerSeedText = null;
+        _openerSeedLabel = null;
+        _openerSeedReason = null;
+      }
     });
   }
 
@@ -111,7 +201,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     final typedName = _nameController.text.trim();
     final name = widget.partnerId != null
         ? (typedName.isEmpty ? '新對話' : typedName)
-        : typedName;
+        : (typedName.isEmpty && _hasOpenerSeed ? '開場草稿' : typedName);
 
     if (widget.partnerId == null && name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -481,6 +571,73 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     ];
   }
 
+  Widget _buildOpenerSeedNotice() {
+    final reason = _openerSeedReason;
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.auto_awesome,
+                color: AppColors.ctaStart,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '已帶入剛剛的開場白',
+                      style: AppTypography.bodyLarge.copyWith(
+                        color: AppColors.glassTextPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '這則已放進「我說」。送出後，把她的回覆貼到「她說」，就能接著分析或問教練。名字不確定也能先存成「開場草稿」。',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.glassTextSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (reason != null && reason.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'AI 選擇：${_openerSeedLabel ?? '推薦'}，$reason',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextHint,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _clearOpenerSeed,
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('不帶入'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.glassTextSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GradientBackground(
@@ -489,7 +646,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: Text('手動輸入', style: AppTypography.titleLarge),
+          title: Text(
+            _hasOpenerSeed ? '接續開場' : '手動輸入',
+            style: AppTypography.titleLarge,
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => context.pop(),
@@ -500,6 +660,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_hasOpenerSeed) ...[
+                _buildOpenerSeedNotice(),
+                const SizedBox(height: 24),
+              ],
               // 「對話對象」 input — only shown for legacy / orphan-conversation
               // entries (partnerId == null). When entered from PartnerDetail
               // (partnerId set) the Partner already owns the relationship

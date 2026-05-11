@@ -61,6 +61,7 @@ final router = GoRouter(
       path: '/new',
       builder: (context, state) => NewConversationScreen(
         partnerId: state.uri.queryParameters['partnerId'],
+        seedFromLatestOpener: state.uri.queryParameters['source'] == 'opener',
       ),
     ),
     GoRoute(

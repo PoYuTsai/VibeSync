@@ -647,7 +647,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: () => context.push('/new'),
+              onPressed: () => context.push('/new?source=opener'),
               icon: const Icon(Icons.add_comment_outlined, size: 18),
               label: const Text('她回覆了，開始分析對話'),
               style: FilledButton.styleFrom(

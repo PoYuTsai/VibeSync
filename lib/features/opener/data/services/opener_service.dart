@@ -34,6 +34,39 @@ class OpenerResult {
     this.costUsed = 3,
   });
 
+  String? get bestOpenerType {
+    final pick = recommendedPick;
+    if (pick != null && (openers[pick]?.trim().isNotEmpty ?? false)) {
+      return pick;
+    }
+
+    for (final type in const [
+      'extend',
+      'resonate',
+      'tease',
+      'humor',
+      'coldRead',
+    ]) {
+      if (openers[type]?.trim().isNotEmpty ?? false) {
+        return type;
+      }
+    }
+
+    for (final entry in openers.entries) {
+      if (entry.value.trim().isNotEmpty) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  String? get bestOpenerText {
+    final type = bestOpenerType;
+    if (type == null) return null;
+    final text = openers[type]?.trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
   Map<String, dynamic> toJson() {
     return {
       if (profileAnalysis != null) 'profileAnalysis': profileAnalysis,
