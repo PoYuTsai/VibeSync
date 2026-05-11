@@ -9,6 +9,7 @@ import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import { validateRequest } from "./validate.ts";
 import {
   applyResetsIfNeeded,
+  buildQuotaExceededPayload,
   checkQuota,
   isPlainObject,
   normalizeTier,
@@ -24,7 +25,7 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
 
 const COST_PER_GENERATION = 1;
-const PREFLIGHT_QUOTA_COST = 0;
+const PREFLIGHT_QUOTA_COST = COST_PER_GENERATION;
 const MAX_REQUEST_BODY_BYTES = 48 * 1024;
 const SUBSCRIPTION_COLUMNS =
   "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at";
@@ -306,14 +307,13 @@ export async function handleRequest(req: Request): Promise<Response> {
       limit: gate.limit,
     });
     return jsonResponse(
-      {
-        error: gate.reason === "monthly_limit_exceeded"
-          ? "Monthly limit exceeded"
-          : "Daily limit exceeded",
-        quotaNeeded: COST_PER_GENERATION,
-        used: gate.used,
-        limit: gate.limit,
-      },
+      buildQuotaExceededPayload({
+        sub,
+        cost: COST_PER_GENERATION,
+        reason: gate.reason,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
+      }),
       429,
     );
   }

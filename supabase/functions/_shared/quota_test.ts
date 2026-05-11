@@ -17,6 +17,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   applyResetsIfNeeded,
+  buildQuotaExceededPayload,
   checkQuota,
   isPlainObject,
   normalizeTier,
@@ -270,6 +271,33 @@ Deno.test("checkQuota: test account bypasses ALL caps regardless of usage", () =
     dailyLimit: 15,
   });
   assertEquals(r.ok, true);
+});
+
+Deno.test("buildQuotaExceededPayload returns consistent remaining fields", () => {
+  const payload = buildQuotaExceededPayload({
+    sub: { ...baseSub(), monthly_messages_used: 30, daily_messages_used: 8 },
+    cost: 5,
+    reason: "monthly_limit_exceeded",
+    monthlyLimit: 30,
+    dailyLimit: 15,
+  });
+
+  assertObjectMatch(payload, {
+    error: "Monthly limit exceeded",
+    quotaNeeded: 5,
+    used: 30,
+    limit: 30,
+    monthlyLimit: 30,
+    dailyLimit: 15,
+    monthlyUsed: 30,
+    dailyUsed: 8,
+    monthlyRemaining: 0,
+    dailyRemaining: 7,
+  });
+  assertEquals(
+    payload.message,
+    "本月額度已用完，升級方案可取得更多分析與教練額度。",
+  );
 });
 
 Deno.test("checkQuota: cost > 1 uses cost in calculation (boundary)", () => {

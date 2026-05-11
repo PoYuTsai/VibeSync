@@ -20,6 +20,7 @@ import { validateRequest } from "./validate.ts";
 import { callClaudeAPI, runCoachFollowUp } from "./generation.ts";
 import {
   applyResetsIfNeeded,
+  buildQuotaExceededPayload,
   checkQuota,
   isPlainObject,
   normalizeTier,
@@ -381,14 +382,13 @@ export async function handleRequest(req: Request): Promise<Response> {
       limit: gate.limit,
     });
     return jsonResponse(
-      {
-        error: gate.reason === "monthly_limit_exceeded"
-          ? "Monthly limit exceeded"
-          : "Daily limit exceeded",
-        quotaNeeded: COST_PER_GENERATION,
-        used: gate.used,
-        limit: gate.limit,
-      },
+      buildQuotaExceededPayload({
+        sub,
+        cost: COST_PER_GENERATION,
+        reason: gate.reason,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
+      }),
       429,
     );
   }

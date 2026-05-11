@@ -184,7 +184,9 @@ class CoachChatApiService {
         final data = response.data;
         final asMap = data is Map ? data : const {};
         throw CoachChatQuotaExceededException(
-          asMap['error']?.toString() ?? 'quota_exceeded',
+          asMap['message']?.toString() ??
+              asMap['error']?.toString() ??
+              'quota_exceeded',
           used: asMap['used'] is int ? asMap['used'] as int : null,
           limit: asMap['limit'] is int ? asMap['limit'] as int : null,
         );

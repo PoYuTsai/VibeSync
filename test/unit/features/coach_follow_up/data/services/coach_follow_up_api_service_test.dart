@@ -379,6 +379,7 @@ void main() {
           status: 429,
           data: {
             'error': 'Daily limit exceeded',
+            'message': 'server quota message',
             'used': 15,
             'limit': 15,
             'quotaNeeded': 1,
@@ -394,6 +395,7 @@ void main() {
         );
         fail('Expected QuotaExceededException');
       } on QuotaExceededException catch (e) {
+        expect(e.message, 'server quota message');
         expect(e.used, 15);
         expect(e.limit, 15);
       }

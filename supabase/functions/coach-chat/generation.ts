@@ -5,6 +5,7 @@ import {
   truncateCard,
   validateResponseCard,
 } from "./validate.ts";
+import { quotaExceededMessage } from "../_shared/quota.ts";
 
 export interface GenerationLogger {
   info: (event: string, data?: Record<string, unknown>) => void;
@@ -149,6 +150,7 @@ export async function runCoachChat(
             error: e.reason === "monthly_limit_exceeded"
               ? "Monthly limit exceeded"
               : "Daily limit exceeded",
+            message: quotaExceededMessage(e.reason),
             quotaNeeded: 1,
             used: e.used,
             limit: e.limit,

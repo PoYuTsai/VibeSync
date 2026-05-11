@@ -16,6 +16,7 @@ import {
 import { applyLayoutFirstParser } from "./layout_parser.ts";
 import { extractTokenUsage, logAiCall } from "./logger.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
+import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -5035,12 +5036,16 @@ ${recentText}`;
           requested: quotaUsage.chargedMessageCount,
           limit: monthlyLimit,
         });
-        return jsonResponse({
-          error: "Monthly limit exceeded",
-          monthlyLimit,
-          used: sub.monthly_messages_used,
-          requested: quotaUsage.chargedMessageCount,
-        }, 429);
+        return jsonResponse(
+          buildQuotaExceededPayload({
+            sub,
+            cost: quotaUsage.chargedMessageCount,
+            reason: "monthly_limit_exceeded",
+            monthlyLimit,
+            dailyLimit,
+          }),
+          429,
+        );
       }
     }
     if (
@@ -5060,13 +5065,16 @@ ${recentText}`;
           requested: quotaUsage.chargedMessageCount,
           limit: dailyLimit,
         });
-        return jsonResponse({
-          error: "Daily limit exceeded",
-          dailyLimit,
-          used: sub.daily_messages_used,
-          requested: quotaUsage.chargedMessageCount,
-          resetAt: "tomorrow",
-        }, 429);
+        return jsonResponse(
+          buildQuotaExceededPayload({
+            sub,
+            cost: quotaUsage.chargedMessageCount,
+            reason: "daily_limit_exceeded",
+            monthlyLimit,
+            dailyLimit,
+          }),
+          429,
+        );
       }
     }
     const isOptimizeMessageMode = requestType === "optimize_message";
@@ -5745,11 +5753,17 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       estimatedMessages: quotaUsage.estimatedMessageCount,
       monthlyRemaining: accountIsTest
         ? 999999
-        : monthlyLimit - sub.monthly_messages_used -
-          quotaUsage.chargedMessageCount,
+        : Math.max(
+          0,
+          monthlyLimit - sub.monthly_messages_used -
+            quotaUsage.chargedMessageCount,
+        ),
       dailyRemaining: accountIsTest
         ? 999999
-        : dailyLimit - sub.daily_messages_used - quotaUsage.chargedMessageCount,
+        : Math.max(
+          0,
+          dailyLimit - sub.daily_messages_used - quotaUsage.chargedMessageCount,
+        ),
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,

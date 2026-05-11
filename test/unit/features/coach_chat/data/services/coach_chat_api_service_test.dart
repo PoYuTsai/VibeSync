@@ -295,12 +295,17 @@ void main() {
       expect(result.frictionType, 'unclearIntent');
     });
 
-    test('throws quota exception on 429', () async {
+    test('throws quota exception on 429 and prefers server message', () async {
       final service = CoachChatApiService(
         invoker: _stub(
           const CoachChatInvokeResponse(
             status: 429,
-            data: {'error': 'quota_exceeded', 'used': 15, 'limit': 15},
+            data: {
+              'error': 'Daily limit exceeded',
+              'message': 'server quota message',
+              'used': 15,
+              'limit': 15,
+            },
           ),
         ),
       );
@@ -315,6 +320,37 @@ void main() {
         ),
         throwsA(isA<CoachChatQuotaExceededException>()),
       );
+    });
+
+    test('quota exception exposes the server message', () async {
+      final service = CoachChatApiService(
+        invoker: _stub(
+          const CoachChatInvokeResponse(
+            status: 429,
+            data: {
+              'error': 'Daily limit exceeded',
+              'message': 'server quota message',
+              'used': 15,
+              'limit': 15,
+            },
+          ),
+        ),
+      );
+
+      try {
+        await service.ask(
+          conversationId: 'c-1',
+          partnerId: 'p-1',
+          question: 'should I reply?',
+          recentMessages: const [],
+          dataQualityFlagged: false,
+        );
+        fail('Expected CoachChatQuotaExceededException');
+      } on CoachChatQuotaExceededException catch (e) {
+        expect(e.message, 'server quota message');
+        expect(e.used, 15);
+        expect(e.limit, 15);
+      }
     });
 
     test('throws generation failure when visible card contains banned token',

@@ -189,6 +189,48 @@ export function checkQuota(opts: {
   return { ok: true };
 }
 
+export function quotaExceededMessage(
+  reason: "monthly_limit_exceeded" | "daily_limit_exceeded",
+): string {
+  return reason === "monthly_limit_exceeded"
+    ? "本月額度已用完，升級方案可取得更多分析與教練額度。"
+    : "今日額度已用完，明天會自動恢復；也可以升級取得更多額度。";
+}
+
+export function buildQuotaExceededPayload(opts: {
+  sub: SubscriptionRow;
+  cost: number;
+  reason: "monthly_limit_exceeded" | "daily_limit_exceeded";
+  monthlyLimit: number;
+  dailyLimit: number;
+}) {
+  const monthlyRemaining = Math.max(
+    0,
+    opts.monthlyLimit - opts.sub.monthly_messages_used,
+  );
+  const dailyRemaining = Math.max(
+    0,
+    opts.dailyLimit - opts.sub.daily_messages_used,
+  );
+  const isMonthly = opts.reason === "monthly_limit_exceeded";
+
+  return {
+    error: isMonthly ? "Monthly limit exceeded" : "Daily limit exceeded",
+    message: quotaExceededMessage(opts.reason),
+    quotaNeeded: opts.cost,
+    used: isMonthly
+      ? opts.sub.monthly_messages_used
+      : opts.sub.daily_messages_used,
+    limit: isMonthly ? opts.monthlyLimit : opts.dailyLimit,
+    monthlyLimit: opts.monthlyLimit,
+    dailyLimit: opts.dailyLimit,
+    monthlyUsed: opts.sub.monthly_messages_used,
+    dailyUsed: opts.sub.daily_messages_used,
+    monthlyRemaining,
+    dailyRemaining,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // RevenueCat subscriber payload parser
 // ---------------------------------------------------------------------------
