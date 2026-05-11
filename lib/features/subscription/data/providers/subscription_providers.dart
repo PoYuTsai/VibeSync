@@ -15,19 +15,31 @@ const _starterMonthlyProductId = 'starter_monthly';
 const _starterQuarterlyProductId = 'starter_quarterly';
 const _essentialMonthlyProductId = 'essential_monthly';
 const _essentialQuarterlyProductId = 'essential_quarterly';
-const _subscriptionProductIds = [
+const _starterMonthlyProductIds = [
   _starterMonthlyProductId,
-  _starterQuarterlyProductId,
-  _essentialMonthlyProductId,
-  _essentialQuarterlyProductId,
   'vibesync_starter_monthly',
-  'vibesync_starter_quarterly',
-  'vibesync_essential_monthly',
-  'vibesync_essential_quarterly',
   'vibesync_starter_monthly_v2',
+];
+const _starterQuarterlyProductIds = [
+  _starterQuarterlyProductId,
+  'vibesync_starter_quarterly',
   'vibesync_starter_quarterly_v2',
+];
+const _essentialMonthlyProductIds = [
+  _essentialMonthlyProductId,
+  'vibesync_essential_monthly',
   'vibesync_essential_monthly_v2',
+];
+const _essentialQuarterlyProductIds = [
+  _essentialQuarterlyProductId,
+  'vibesync_essential_quarterly',
   'vibesync_essential_quarterly_v2',
+];
+const _subscriptionProductIds = [
+  ..._starterMonthlyProductIds,
+  ..._starterQuarterlyProductIds,
+  ..._essentialMonthlyProductIds,
+  ..._essentialQuarterlyProductIds,
 ];
 
 class SubscriptionState {
@@ -98,7 +110,6 @@ class SubscriptionState {
   String _packageSearchText(Package package) {
     return [
       package.identifier,
-      package.packageType.name,
       package.storeProduct.identifier,
       package.storeProduct.title,
       package.storeProduct.description,
@@ -110,8 +121,60 @@ class SubscriptionState {
     return _packageSearchText(package).contains(tierKeyword);
   }
 
+  bool _productIdMatchesAny(String productId, List<String> productIds) {
+    final normalized = productId.trim().toLowerCase();
+    return productIds.any((id) => id.toLowerCase() == normalized);
+  }
+
+  bool _packageProductMatchesAny(Package package, List<String> productIds) {
+    return _productIdMatchesAny(package.storeProduct.identifier, productIds);
+  }
+
+  String _normalizedPeriod(String? period) {
+    return period?.trim().toUpperCase() ?? '';
+  }
+
+  bool _containsMonthlyToken(String text) {
+    return text.contains('monthly') ||
+        text.contains('p1m') ||
+        text.contains('1 month') ||
+        text.contains('1-month') ||
+        text.contains('one month');
+  }
+
+  bool _containsQuarterlyToken(String text) {
+    return text.contains('quarter') ||
+        text.contains('quarterly') ||
+        text.contains('three_month') ||
+        text.contains('three month') ||
+        text.contains('3month') ||
+        text.contains('3 month') ||
+        text.contains('3-month') ||
+        text.contains('p3m');
+  }
+
   bool _packageMatchesPeriod(Package package, String periodKeyword) {
     final text = _packageSearchText(package);
+    final period = _normalizedPeriod(package.storeProduct.subscriptionPeriod);
+    if (periodKeyword == 'monthly') {
+      if (package.packageType == PackageType.threeMonth ||
+          period == 'P3M' ||
+          _containsQuarterlyToken(text)) {
+        return false;
+      }
+      return package.packageType == PackageType.monthly ||
+          period == 'P1M' ||
+          _containsMonthlyToken(text);
+    } else if (periodKeyword == 'quarterly') {
+      if (package.packageType == PackageType.monthly ||
+          period == 'P1M' ||
+          _containsMonthlyToken(text)) {
+        return false;
+      }
+      return package.packageType == PackageType.threeMonth ||
+          period == 'P3M' ||
+          _containsQuarterlyToken(text);
+    }
     switch (periodKeyword) {
       case 'monthly':
         return package.packageType == PackageType.monthly ||
@@ -134,9 +197,19 @@ class SubscriptionState {
     }
   }
 
-  Package? _findPackage(String tierKeyword, String periodKeyword) {
+  Package? _findPackage(
+    List<String> exactProductIds,
+    String tierKeyword,
+    String periodKeyword,
+  ) {
     final packages = offerings?.current?.availablePackages;
     if (packages == null || packages.isEmpty) return null;
+
+    final exact = packages.cast<Package?>().firstWhere(
+          (p) => p != null && _packageProductMatchesAny(p, exactProductIds),
+          orElse: () => null,
+        );
+    if (exact != null) return exact;
 
     return packages.cast<Package?>().firstWhere(
       (p) {
@@ -148,11 +221,23 @@ class SubscriptionState {
     );
   }
 
-  Package? get starterMonthlyPackage => _findPackage('starter', 'monthly');
-  Package? get starterQuarterlyPackage => _findPackage('starter', 'quarterly');
-  Package? get essentialMonthlyPackage => _findPackage('essential', 'monthly');
+  Package? get starterMonthlyPackage => _findPackage(
+        _starterMonthlyProductIds,
+        'starter',
+        'monthly',
+      );
+  Package? get starterQuarterlyPackage => _findPackage(
+        _starterQuarterlyProductIds,
+        'starter',
+        'quarterly',
+      );
+  Package? get essentialMonthlyPackage => _findPackage(
+        _essentialMonthlyProductIds,
+        'essential',
+        'monthly',
+      );
   Package? get essentialQuarterlyPackage =>
-      _findPackage('essential', 'quarterly');
+      _findPackage(_essentialQuarterlyProductIds, 'essential', 'quarterly');
 
   String _storeProductSearchText(StoreProduct product) {
     return [
@@ -172,7 +257,14 @@ class SubscriptionState {
     String periodKeyword,
   ) {
     final text = _storeProductSearchText(product);
-    final period = product.subscriptionPeriod;
+    final period = _normalizedPeriod(product.subscriptionPeriod);
+    if (periodKeyword == 'monthly') {
+      if (period == 'P3M' || _containsQuarterlyToken(text)) return false;
+      return period == 'P1M' || _containsMonthlyToken(text);
+    } else if (periodKeyword == 'quarterly') {
+      if (period == 'P1M' || _containsMonthlyToken(text)) return false;
+      return period == 'P3M' || _containsQuarterlyToken(text);
+    }
     switch (periodKeyword) {
       case 'monthly':
         return period == 'P1M' ||
@@ -194,16 +286,21 @@ class SubscriptionState {
   }
 
   StoreProduct? _findStoreProduct(
-    String exactProductId,
+    List<String> exactProductIds,
     String tierKeyword,
     String periodKeyword,
   ) {
-    final exact = storeProducts[exactProductId];
-    if (exact != null) return exact;
+    for (final productId in exactProductIds) {
+      final exact = storeProducts[productId];
+      if (exact != null) return exact;
+    }
 
     return storeProducts.values.cast<StoreProduct?>().firstWhere(
       (product) {
         if (product == null) return false;
+        if (_productIdMatchesAny(product.identifier, exactProductIds)) {
+          return true;
+        }
         return _storeProductMatchesTier(product, tierKeyword) &&
             _storeProductMatchesPeriod(product, periodKeyword);
       },
@@ -212,22 +309,22 @@ class SubscriptionState {
   }
 
   StoreProduct? get starterMonthlyStoreProduct => _findStoreProduct(
-        _starterMonthlyProductId,
+        _starterMonthlyProductIds,
         'starter',
         'monthly',
       );
   StoreProduct? get starterQuarterlyStoreProduct => _findStoreProduct(
-        _starterQuarterlyProductId,
+        _starterQuarterlyProductIds,
         'starter',
         'quarterly',
       );
   StoreProduct? get essentialMonthlyStoreProduct => _findStoreProduct(
-        _essentialMonthlyProductId,
+        _essentialMonthlyProductIds,
         'essential',
         'monthly',
       );
   StoreProduct? get essentialQuarterlyStoreProduct => _findStoreProduct(
-        _essentialQuarterlyProductId,
+        _essentialQuarterlyProductIds,
         'essential',
         'quarterly',
       );

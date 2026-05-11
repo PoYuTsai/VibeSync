@@ -124,19 +124,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         .firstWhere((o) => o?.isReady == true, orElse: () => null);
   }
 
-  _PaywallOption? _resolvedSelectedOption(List<_PaywallOption> options) {
-    final selected = _selectedOption(options);
-    if (selected == null || selected.isReady) {
-      return selected;
-    }
-    return _firstAvailableOption(options) ?? selected;
-  }
-
-  void _scheduleSelectedOptionFallback(_PaywallOption? resolved) {
-    if (resolved == null || resolved.id == _selectedOptionId) return;
+  void _scheduleSelectedOptionFallback(_PaywallOption? fallback) {
+    if (fallback == null || fallback.id == _selectedOptionId) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || resolved.id == _selectedOptionId) return;
-      setState(() => _selectedOptionId = resolved.id);
+      if (!mounted || fallback.id == _selectedOptionId) return;
+      setState(() => _selectedOptionId = fallback.id);
     });
   }
 
@@ -191,8 +183,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
     final options = _buildOptions(subscription);
-    final selected = _resolvedSelectedOption(options);
-    _scheduleSelectedOptionFallback(selected);
+    final selected = _selectedOption(options);
+    final fallbackOption = selected == null || selected.isReady
+        ? null
+        : _firstAvailableOption(options);
+    _scheduleSelectedOptionFallback(fallbackOption);
     final selectedProduct = selected?.purchasableProduct;
     final selectedTier = selected?.tier ?? SubscriptionTierHelper.essential;
     final plansReady = options.any((o) => o.isReady);

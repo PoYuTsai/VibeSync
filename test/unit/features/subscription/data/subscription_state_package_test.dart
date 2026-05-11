@@ -84,6 +84,82 @@ void main() {
         state.essentialQuarterlyPackage?.storeProduct.identifier, 'essential');
   });
 
+  test('does not map three-month packages as monthly plans', () {
+    final state = stateWithPackages([
+      package(
+        packageId: r'$rc_three_month',
+        packageType: PackageType.threeMonth,
+        productId: 'starter',
+        title: 'Starter',
+        subscriptionPeriod: 'P3M',
+      ),
+      package(
+        packageId: r'$rc_monthly',
+        packageType: PackageType.monthly,
+        productId: 'starter',
+        title: 'Starter',
+        subscriptionPeriod: 'P1M',
+      ),
+    ]);
+
+    expect(state.starterMonthlyPackage?.packageType, PackageType.monthly);
+    expect(state.starterMonthlyPackage?.storeProduct.subscriptionPeriod, 'P1M');
+    expect(
+      state.starterQuarterlyPackage?.packageType,
+      PackageType.threeMonth,
+    );
+  });
+
+  test('maps all exact package product ids to the selected paywall option', () {
+    final state = stateWithPackages([
+      package(
+        packageId: 'starter_quarterly',
+        packageType: PackageType.threeMonth,
+        productId: 'vibesync_starter_quarterly_v2',
+        title: 'Starter quarterly',
+        subscriptionPeriod: 'P3M',
+      ),
+      package(
+        packageId: 'starter_monthly',
+        packageType: PackageType.monthly,
+        productId: 'vibesync_starter_monthly_v2',
+        title: 'Starter monthly',
+        subscriptionPeriod: 'P1M',
+      ),
+      package(
+        packageId: 'essential_quarterly',
+        packageType: PackageType.threeMonth,
+        productId: 'vibesync_essential_quarterly_v2',
+        title: 'Essential quarterly',
+        subscriptionPeriod: 'P3M',
+      ),
+      package(
+        packageId: 'essential_monthly',
+        packageType: PackageType.monthly,
+        productId: 'vibesync_essential_monthly_v2',
+        title: 'Essential monthly',
+        subscriptionPeriod: 'P1M',
+      ),
+    ]);
+
+    expect(
+      state.starterMonthlyPackage?.storeProduct.identifier,
+      'vibesync_starter_monthly_v2',
+    );
+    expect(
+      state.starterQuarterlyPackage?.storeProduct.identifier,
+      'vibesync_starter_quarterly_v2',
+    );
+    expect(
+      state.essentialMonthlyPackage?.storeProduct.identifier,
+      'vibesync_essential_monthly_v2',
+    );
+    expect(
+      state.essentialQuarterlyPackage?.storeProduct.identifier,
+      'vibesync_essential_quarterly_v2',
+    );
+  });
+
   test('uses package title and subscription period when product ids are terse',
       () {
     final state = stateWithPackages([
@@ -113,6 +189,50 @@ void main() {
     expect(
       state.essentialMonthlyStoreProduct?.identifier,
       'vibesync_essential_monthly_v2',
+    );
+  });
+
+  test('maps direct store products to the exact selected period', () {
+    final state = SubscriptionState(
+      storeProducts: {
+        'vibesync_starter_quarterly_v2': storeProduct(
+          productId: 'vibesync_starter_quarterly_v2',
+          title: 'Starter quarterly',
+          subscriptionPeriod: 'P3M',
+        ),
+        'vibesync_starter_monthly_v2': storeProduct(
+          productId: 'vibesync_starter_monthly_v2',
+          title: 'Starter monthly',
+          subscriptionPeriod: 'P1M',
+        ),
+        'vibesync_essential_quarterly_v2': storeProduct(
+          productId: 'vibesync_essential_quarterly_v2',
+          title: 'Essential quarterly',
+          subscriptionPeriod: 'P3M',
+        ),
+        'vibesync_essential_monthly_v2': storeProduct(
+          productId: 'vibesync_essential_monthly_v2',
+          title: 'Essential monthly',
+          subscriptionPeriod: 'P1M',
+        ),
+      },
+    );
+
+    expect(
+      state.starterMonthlyStoreProduct?.identifier,
+      'vibesync_starter_monthly_v2',
+    );
+    expect(
+      state.starterQuarterlyStoreProduct?.identifier,
+      'vibesync_starter_quarterly_v2',
+    );
+    expect(
+      state.essentialMonthlyStoreProduct?.identifier,
+      'vibesync_essential_monthly_v2',
+    );
+    expect(
+      state.essentialQuarterlyStoreProduct?.identifier,
+      'vibesync_essential_quarterly_v2',
     );
   });
 

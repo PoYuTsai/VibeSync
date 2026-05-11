@@ -10,6 +10,33 @@
 
 ## 2026-05
 
+### [2026-05-11] Paywall 月繳選項誤送季繳商品
+
+**症狀**:
+
+- Free 升 Starter 後，再點月繳升級時，系統購買 sheet 顯示成季繳商品。
+- 這是 P0 誤購風險，因為 UI 選項與實際送進 RevenueCat/StoreKit 的商品不一致。
+
+**Root Cause**:
+
+- Paywall package 對應使用 `text.contains('month')` 這類 fuzzy matching。
+- RevenueCat 的 `PackageType.threeMonth` 轉成文字後也包含 `month`，導致季繳 package 可能被月繳 getter 吃到。
+- `_resolvedSelectedOption` 在 selected option 尚未 ready 時會立即解析成第一個 available option，存在同一幀 UI 選月繳、purchase 使用 fallback 商品的風險。
+
+**修復**:
+
+- 訂閱商品對應改成先用 exact product id 白名單，再用 `PackageType.monthly/threeMonth` 與 `P1M/P3M` 精準判斷。
+- 月繳判斷明確排除 `threeMonth/P3M/quarterly`；季繳判斷明確排除 `monthly/P1M`。
+- Paywall 不再用 fallback option 直接購買；目前選項未 ready 時先禁用，等 UI 明確切到 fallback 後才可按。
+- 補測試覆蓋 Offering packages 與 direct StoreProduct 的四產品 mapping，並防 threeMonth 被月繳誤吃。
+
+**驗證**:
+
+- `flutter test test/unit/features/subscription/data/subscription_state_package_test.dart`
+- `flutter test test/widget/screens/paywall_screen_test.dart`
+- `flutter test test/unit/services/subscription_tier_helper_test.dart`
+- `flutter analyze`
+
 ### [2026-05-11] 付費用戶更新後退回 Free，升級/恢復購買卡在同步
 
 **症狀**:
