@@ -57,6 +57,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '入門',
         discount: null,
         package: subscription.starterMonthlyPackage,
+        storeProduct: subscription.starterMonthlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
           '五種風格全開 + Sonnet AI',
@@ -71,6 +72,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '入門',
         discount: '省 27%',
         package: subscription.starterQuarterlyPackage,
+        storeProduct: subscription.starterQuarterlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
           '五種風格全開 + Sonnet AI',
@@ -85,6 +87,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '推薦',
         discount: null,
         package: subscription.essentialMonthlyPackage,
+        storeProduct: subscription.essentialMonthlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '五種風格全開 + Sonnet AI',
@@ -99,6 +102,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         badge: '最划算',
         discount: '省 36%',
         package: subscription.essentialQuarterlyPackage,
+        storeProduct: subscription.essentialQuarterlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '五種風格全開 + Sonnet AI',
@@ -117,12 +121,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   _PaywallOption? _firstAvailableOption(List<_PaywallOption> options) {
     return options
         .cast<_PaywallOption?>()
-        .firstWhere((o) => o?.package != null, orElse: () => null);
+        .firstWhere((o) => o?.isReady == true, orElse: () => null);
   }
 
   _PaywallOption? _resolvedSelectedOption(List<_PaywallOption> options) {
     final selected = _selectedOption(options);
-    if (selected == null || selected.package != null) {
+    if (selected == null || selected.isReady) {
       return selected;
     }
     return _firstAvailableOption(options) ?? selected;
@@ -137,7 +141,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   String? _productIdForOption(_PaywallOption? option) {
-    final productId = option?.package?.storeProduct.identifier.trim();
+    final productId = option?.productId?.trim();
     if (productId == null || productId.isEmpty) return null;
     return productId;
   }
@@ -189,9 +193,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final options = _buildOptions(subscription);
     final selected = _resolvedSelectedOption(options);
     _scheduleSelectedOptionFallback(selected);
-    final selectedPackage = selected?.package;
+    final selectedProduct = selected?.purchasableProduct;
     final selectedTier = selected?.tier ?? SubscriptionTierHelper.essential;
-    final offeringsReady = options.any((o) => o.package != null);
+    final plansReady = options.any((o) => o.isReady);
     final isCurrentPlan = _isCurrentOption(subscription, selected);
     final isDowngrade = SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
@@ -211,11 +215,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       };
     } else if (isCurrentPlan ||
         pendingDowngradeMatchesSelection ||
-        selectedPackage == null) {
+        selected == null ||
+        !selected.isReady) {
       primaryAction = null;
     } else {
       primaryAction = () {
-        _subscribe(selectedPackage, selectedTier);
+        _subscribe(selected, selectedTier);
       };
     }
 
@@ -264,7 +269,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     const SizedBox(height: 16),
                     _buildPendingDowngradeCard(subscription),
                   ],
-                  if (!offeringsReady) ...[
+                  if (!plansReady) ...[
                     const SizedBox(height: 16),
                     _buildInfoCard(
                       icon: subscription.isLoading
@@ -314,7 +319,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       isCurrentPlan,
                       canManagePendingDowngrade,
                       pendingDowngradeMatchesSelection,
-                      selectedPackage,
+                      selectedProduct,
                     ),
                     onPressed: primaryAction,
                     isLoading: _isPurchasing,
@@ -391,7 +396,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool isCurrentPlan,
     bool canManagePendingDowngrade,
     bool pendingDowngradeMatchesSelection,
-    Package? selectedPackage,
+    StoreProduct? selectedProduct,
   ) {
     if (_isPurchasing) return '處理中...';
     if (canManagePendingDowngrade) return '取消降級 / 管理訂閱';
@@ -399,7 +404,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '已排程降級到 ${_tierLabel(selectedTier)}';
     }
     if (isCurrentPlan) return '目前方案';
-    if (selectedPackage == null) return '正在同步方案資訊...';
+    if (selectedProduct == null) return '正在同步方案資訊...';
     if (subscription.tier == selectedTier) {
       return '改用 ${_tierLabel(selectedTier)} ${selected?.period ?? ''}';
     }
@@ -728,8 +733,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required bool isCurrentPlan,
     required VoidCallback onTap,
   }) {
-    final priceLabel = option.package?.storeProduct.priceString ?? '價格同步中';
-    final periodSuffix = option.package == null
+    final priceLabel = option.priceString ?? '價格同步中';
+    final periodSuffix = !option.isReady
         ? ''
         : (option.id.contains('quarterly') ? ' / 季' : ' / 月');
     final isRecommended = option.id == 'essential_quarterly';
@@ -875,16 +880,25 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
-  Future<void> _subscribe(Package package, String selectedTier) async {
+  Future<void> _subscribe(_PaywallOption option, String selectedTier) async {
     if (kIsWeb) {
       _showSnackBar('Please manage subscriptions in the iOS app.');
+      return;
+    }
+
+    final package = option.package;
+    final storeProduct = option.storeProduct;
+    if (package == null && storeProduct == null) {
+      _showSnackBar('方案資訊仍在同步中，請稍後再試一次。');
       return;
     }
 
     setState(() => _isPurchasing = true);
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
-      final result = await notifier.purchase(package);
+      final result = package != null
+          ? await notifier.purchase(package)
+          : await notifier.purchaseStoreProduct(storeProduct!);
       if (!mounted || result.cancelled) return;
 
       if (!result.success) {
@@ -1115,6 +1129,7 @@ class _PaywallOption {
     required this.badge,
     required this.discount,
     required this.package,
+    required this.storeProduct,
     required this.highlights,
   });
 
@@ -1125,5 +1140,11 @@ class _PaywallOption {
   final String badge;
   final String? discount;
   final Package? package;
+  final StoreProduct? storeProduct;
   final List<String> highlights;
+
+  StoreProduct? get purchasableProduct => package?.storeProduct ?? storeProduct;
+  bool get isReady => purchasableProduct != null;
+  String? get productId => purchasableProduct?.identifier;
+  String? get priceString => purchasableProduct?.priceString;
 }

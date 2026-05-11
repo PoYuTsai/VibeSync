@@ -93,6 +93,25 @@ class RevenueCatService {
     }
   }
 
+  /// Fetches App Store subscription products directly by product id.
+  /// This is a safety net when RevenueCat Offerings are temporarily empty or
+  /// misconfigured, so the paywall can still show prices and start purchase.
+  static Future<List<StoreProduct>> getSubscriptionProducts(
+    List<String> productIds,
+  ) async {
+    if (!_isInitialized) return const [];
+
+    try {
+      return Purchases.getProducts(
+        productIds,
+        productCategory: ProductCategory.subscription,
+      );
+    } catch (e) {
+      debugPrint('RevenueCat getProducts error: $e');
+      return const [];
+    }
+  }
+
   /// 購買訂閱
   /// 回傳 CustomerInfo，購買失敗會拋出例外
   static Future<CustomerInfo> purchase(Package package) async {
@@ -106,6 +125,23 @@ class RevenueCatService {
       return result.customerInfo;
     } catch (e) {
       debugPrint('RevenueCat purchase error: $e');
+      rethrow;
+    }
+  }
+
+  /// Purchases a store product directly when no RevenueCat Package is present.
+  static Future<CustomerInfo> purchaseStoreProduct(StoreProduct product) async {
+    if (!_isInitialized) {
+      throw Exception('RevenueCat not initialized');
+    }
+
+    try {
+      final result =
+          await Purchases.purchase(PurchaseParams.storeProduct(product));
+      debugPrint('RevenueCat: Store product purchase successful');
+      return result.customerInfo;
+    } catch (e) {
+      debugPrint('RevenueCat store product purchase error: $e');
       rethrow;
     }
   }

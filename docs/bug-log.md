@@ -28,6 +28,7 @@
 - Edge Function 遇到 client 期望 paid、DB/RevenueCat 都未確認 paid 時回 409，不再把疑似付費同步失敗誤寫成 free。
 - AppConfig 支援 `REVENUECAT_SANDBOX_KEY`，CI 同時傳 `REVENUECAT_API_KEY` 作為兼容 fallback。
 - Paywall package 對應不再只靠 product id 字串，同時讀 RevenueCat package id、package type、`P1M/P3M` 訂閱週期與 title，避免 offerings 已載入但方案卡仍判定 package 為空。
+- Paywall 新增 direct StoreKit product fallback：若 RevenueCat Offerings 為空或未回 packages，App 會改用 `getProducts()` 直接抓新舊 iOS product id，仍可顯示價格並購買。
 
 **驗證**:
 

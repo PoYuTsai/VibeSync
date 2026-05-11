@@ -26,6 +26,22 @@ void main() {
     );
   }
 
+  StoreProduct storeProduct({
+    required String productId,
+    required String title,
+    String? subscriptionPeriod,
+  }) {
+    return StoreProduct(
+      productId,
+      'description',
+      title,
+      590,
+      r'$590',
+      'TWD',
+      subscriptionPeriod: subscriptionPeriod,
+    );
+  }
+
   SubscriptionState stateWithPackages(List<Package> packages) {
     final offering = Offering(
       'default',
@@ -81,5 +97,46 @@ void main() {
     ]);
 
     expect(state.starterQuarterlyPackage?.storeProduct.identifier, 'ios_001');
+  });
+
+  test('maps direct store products when offerings are unavailable', () {
+    final state = SubscriptionState(
+      storeProducts: {
+        'vibesync_essential_monthly_v2': storeProduct(
+          productId: 'vibesync_essential_monthly_v2',
+          title: 'Essential',
+          subscriptionPeriod: 'P1M',
+        ),
+      },
+    );
+
+    expect(
+      state.essentialMonthlyStoreProduct?.identifier,
+      'vibesync_essential_monthly_v2',
+    );
+  });
+
+  test('prefers package product over direct store product for purchases', () {
+    final packageProduct = package(
+      packageId: r'$rc_monthly',
+      packageType: PackageType.monthly,
+      productId: 'starter_monthly',
+      title: 'Starter',
+      subscriptionPeriod: 'P1M',
+    );
+    final state = stateWithPackages([packageProduct]).copyWith(
+      storeProducts: {
+        'vibesync_starter_monthly_v2': storeProduct(
+          productId: 'vibesync_starter_monthly_v2',
+          title: 'Starter',
+          subscriptionPeriod: 'P1M',
+        ),
+      },
+    );
+
+    expect(state.starterMonthlyPackage?.storeProduct.identifier,
+        'starter_monthly');
+    expect(state.starterMonthlyStoreProduct?.identifier,
+        'vibesync_starter_monthly_v2');
   });
 }
