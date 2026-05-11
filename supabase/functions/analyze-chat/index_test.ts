@@ -753,3 +753,18 @@ Deno.test({
     assert(source.includes("looksLikeRawModelPayload(normalized) ? \"\""));
   },
 });
+
+Deno.test({
+  name: "analysis parse failure returns before quota deduction",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("AI_RESPONSE_INVALID"));
+    assert(source.includes("本次不會扣額度"));
+    assertFalse(source.includes("無法生成建議，請重試"));
+    assertFalse(source.includes("分析失敗，請重試"));
+  },
+});

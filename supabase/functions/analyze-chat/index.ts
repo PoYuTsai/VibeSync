@@ -5614,26 +5614,16 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         });
       }
 
-      // 如果重試也失敗，返回 fallback
+      // If both parse attempts fail, return before usage deduction. A generic
+      // fallback would be low-value and unfair for free users with tiny quotas.
       if (!retrySucceeded) {
-        result = {
-          enthusiasm: { score: 50, level: "warm" },
-          replies: {
-            extend: "無法生成建議，請重試",
+        return jsonResponse(
+          {
+            error: "AI_RESPONSE_INVALID",
+            message: "這次分析結果格式異常，請再試一次。本次不會扣額度。",
           },
-          warnings: [],
-          strategy: "分析失敗，請重試",
-          // 如果有 userDraft，也返回 fallback
-          ...(userDraft
-            ? {
-              optimizedMessage: {
-                original: userDraft,
-                optimized: "優化失敗，請重試",
-                reason: "AI 回應解析錯誤",
-              },
-            }
-            : {}),
-        };
+          502,
+        );
       }
     }
 
