@@ -472,3 +472,30 @@ Deno.test("assertCardSafe ignores null suggestedLine", () => {
     boundaryReminder: "b",
   });
 });
+
+Deno.test("assertCardSafe rejects raw JSON/code-fence payloads", () => {
+  assertThrows(
+    () =>
+      assertCardSafe({
+        headline: '```json\n{"card":{"headline":"hi"}}\n```',
+        observation: "o",
+        task: "t",
+        boundaryReminder: "b",
+      }),
+    Error,
+    "raw_model_payload: headline",
+  );
+
+  assertThrows(
+    () =>
+      assertCardSafe({
+        headline: "h",
+        observation:
+          '{"responseType":"coachAnswer","card":{"observation":"hi"}}',
+        task: "t",
+        boundaryReminder: "b",
+      }),
+    Error,
+    "raw_model_payload: observation",
+  );
+});

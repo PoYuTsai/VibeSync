@@ -84,12 +84,40 @@ const VISIBLE_FIELDS = [
   "reflectionQuestion",
 ] as const;
 
+function looksLikeRawModelPayload(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+
+  const lower = trimmed.toLowerCase();
+  if (trimmed.startsWith("```") || lower.includes("```json")) {
+    return true;
+  }
+
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return false;
+  }
+
+  return [
+    '"replies"',
+    '"replyoptions"',
+    '"finalrecommendation"',
+    '"profileanalysis"',
+    '"coachactionhint"',
+    '"openers"',
+    '"card"',
+    '"responsetype"',
+  ].some((marker) => lower.includes(marker));
+}
+
 export function assertCardSafe(
   card: Record<string, string | number | boolean | null | undefined>,
 ): void {
   for (const field of VISIBLE_FIELDS) {
     const value = card[field];
     if (typeof value !== "string") continue;
+    if (looksLikeRawModelPayload(value)) {
+      throw new Error(`raw_model_payload: ${field}`);
+    }
     const token = containsBannedToken(value);
     if (token != null) {
       throw new Error(`banned_token: ${token} found in ${field}`);

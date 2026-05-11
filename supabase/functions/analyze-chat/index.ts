@@ -505,15 +505,42 @@ function getSafeReplyLevelFromScore(score: number): string {
   return "very_hot";
 }
 
+function looksLikeRawModelPayload(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+
+  const lower = trimmed.toLowerCase();
+  if (trimmed.startsWith("```") || lower.includes("```json")) {
+    return true;
+  }
+
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return false;
+  }
+
+  return [
+    '"replies"',
+    '"replyoptions"',
+    '"finalrecommendation"',
+    '"profileanalysis"',
+    '"coachactionhint"',
+    '"openers"',
+    '"card"',
+    '"responsetype"',
+  ].some((marker) => lower.includes(marker));
+}
+
 function normalizeAiText(value: unknown): string {
   if (typeof value !== "string") {
     return "";
   }
 
-  return value
+  const normalized = value
     .replace(/\r\n/g, "\n")
     .replace(/\u200b/g, "")
     .trim();
+
+  return looksLikeRawModelPayload(normalized) ? "" : normalized;
 }
 
 function normalizeReplyTextValue(value: unknown): string {

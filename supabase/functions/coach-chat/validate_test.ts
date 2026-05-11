@@ -237,3 +237,24 @@ Deno.test("assertCardSafe rejects shared banned tokens", () => {
     "banned_token: PUA",
   );
 });
+
+Deno.test("assertCardSafe rejects raw JSON/code-fence payloads", () => {
+  assertThrows(
+    () =>
+      assertCardSafe({
+        answer: '```json\n{"responseType":"coachAnswer","answer":"hi"}\n```',
+      }),
+    Error,
+    "raw_model_payload: answer",
+  );
+
+  assertThrows(
+    () =>
+      assertCardSafe({
+        suggestedLine:
+          '{"responseType":"coachAnswer","card":{"answer":"hi"}}',
+      }),
+    Error,
+    "raw_model_payload: suggestedLine",
+  );
+});

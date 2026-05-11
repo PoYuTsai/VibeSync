@@ -737,3 +737,19 @@ Deno.test({
     assertFalse(source.includes("parsed = { openers: { extend: rawText } }"));
   },
 });
+
+Deno.test({
+  name: "visible AI text sanitizer rejects raw model payload strings",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("function looksLikeRawModelPayload"));
+    assert(source.includes('"finalrecommendation"'));
+    assert(source.includes('"profileanalysis"'));
+    assert(source.includes('"openers"'));
+    assert(source.includes("looksLikeRawModelPayload(normalized) ? \"\""));
+  },
+});
