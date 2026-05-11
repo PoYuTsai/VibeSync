@@ -490,6 +490,8 @@ Deno.test({
     assert(source.includes("handoff"));
     assert(source.includes("貼回對話分析"));
     assert(source.includes("問 1:1 coach"));
+    assert(source.includes("opener_quota_exceeded"));
+    assert(source.includes("本月額度不足，升級方案可取得更多開場與分析額度。"));
     assert(source.includes("交友軟體"));
     assert(source.includes("IG / 限動"));
     assert(source.includes("現實認識"));

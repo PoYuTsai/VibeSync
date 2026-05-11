@@ -181,8 +181,14 @@ class OpenerService {
     if (response.status != 200) {
       final errorData = response.data;
       if (response.status == 429 && errorData is Map) {
+        final rawError = errorData['error']?.toString().toLowerCase() ?? '';
+        final fallbackMessage = rawError.contains('monthly')
+            ? '本月額度不足，升級方案可取得更多開場與分析額度。'
+            : rawError.contains('daily')
+                ? '今日額度不足，明天會自動恢復；也可以升級取得更多額度。'
+                : '額度不足，請先升級方案。';
         throw OpenerQuotaExceededException(
-          message: errorData['message'] as String? ?? '額度不足，請先升級方案。',
+          message: errorData['message'] as String? ?? fallbackMessage,
           monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),
           dailyRemaining: (errorData['dailyRemaining'] as num?)?.round(),
           quotaNeeded: (errorData['quotaNeeded'] as num?)?.round(),

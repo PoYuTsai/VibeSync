@@ -92,7 +92,8 @@ function buildWebhookLogPayload(
     purchased_at_ms: typeof event.purchased_at_ms === "number"
       ? event.purchased_at_ms
       : null,
-    transferred_to: options.transferTo ?? extractValidUuidList(event.transferred_to),
+    transferred_to: options.transferTo ??
+      extractValidUuidList(event.transferred_to),
     transferred_from: options.transferFrom ??
       extractValidUuidList(event.transferred_from),
     processed_tier: options.processedTier ?? null,
@@ -296,6 +297,7 @@ Deno.serve(async (req) => {
     let newTier = "free";
     let shouldUpdate = false;
     let subscriptionUpdate: Record<string, unknown> | null = null;
+    const nowIso = new Date().toISOString();
     const currentTier = typeof existingSubscription?.tier === "string"
       ? existingSubscription.tier
       : "free";
@@ -334,12 +336,11 @@ Deno.serve(async (req) => {
         }
 
         newTier = derivedTier;
-        const isUpgrade = getTierFromProductId(currentTier) == null
-          ? false
-          : (
-            (currentTier === "free" && (newTier === "starter" || newTier === "essential")) ||
-            (currentTier === "starter" && newTier === "essential")
-          );
+        const isUpgrade = getTierFromProductId(currentTier) == null ? false : (
+          (currentTier === "free" &&
+            (newTier === "starter" || newTier === "essential")) ||
+          (currentTier === "starter" && newTier === "essential")
+        );
 
         if (isUpgrade) {
           shouldUpdate = true;
@@ -373,6 +374,10 @@ Deno.serve(async (req) => {
           tier: newTier,
           status: "expired",
           expires_at: expiresAt,
+          monthly_messages_used: 0,
+          daily_messages_used: 0,
+          monthly_reset_at: nowIso,
+          daily_reset_at: nowIso,
         };
         console.log(`Downgrading user ${app_user_id} to free`);
         break;
@@ -413,10 +418,11 @@ Deno.serve(async (req) => {
         );
 
         if (transferredTo.length > 0) {
-          const { data: existingRows, error: existingRowsError } = await supabase
-            .from("subscriptions")
-            .select("user_id")
-            .in("user_id", transferredTo);
+          const { data: existingRows, error: existingRowsError } =
+            await supabase
+              .from("subscriptions")
+              .select("user_id")
+              .in("user_id", transferredTo);
 
           if (existingRowsError) {
             console.error(
@@ -486,6 +492,10 @@ Deno.serve(async (req) => {
               tier: "free",
               status: "expired",
               expires_at: expiresAt ?? nowIso,
+              monthly_messages_used: 0,
+              daily_messages_used: 0,
+              monthly_reset_at: nowIso,
+              daily_reset_at: nowIso,
             })
             .in("user_id", transferredFromOnly);
 
@@ -499,7 +509,9 @@ Deno.serve(async (req) => {
         }
 
         console.log(
-          `Processed transfer: tier=${transferTier}, to=${transferredTo.join(",")}, from=${transferredFromOnly.join(",")}`,
+          `Processed transfer: tier=${transferTier}, to=${
+            transferredTo.join(",")
+          }, from=${transferredFromOnly.join(",")}`,
         );
         shouldUpdate = false;
         break;
@@ -512,8 +524,6 @@ Deno.serve(async (req) => {
     }
 
     if (shouldUpdate) {
-      const nowIso = new Date().toISOString();
-
       const { data: updatedRows, error: updateError } = await supabase
         .from("subscriptions")
         .update(subscriptionUpdate ?? { tier: newTier })

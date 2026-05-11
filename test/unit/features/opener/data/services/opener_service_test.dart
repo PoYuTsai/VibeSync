@@ -96,5 +96,31 @@ void main() {
         ),
       );
     });
+
+    test('maps generic monthly 429 to user-facing quota message', () async {
+      final service = OpenerService(
+        invoker: (_, {required body}) async {
+          return const OpenerInvokeResponse(
+            status: 429,
+            data: {
+              'error': 'Monthly limit exceeded',
+              'monthlyLimit': 30,
+              'used': 30,
+            },
+          );
+        },
+      );
+
+      await expectLater(
+        service.generateOpeners(name: 'Candy'),
+        throwsA(
+          isA<OpenerQuotaExceededException>().having(
+            (e) => e.message,
+            'message',
+            '本月額度不足，升級方案可取得更多開場與分析額度。',
+          ),
+        ),
+      );
+    });
   });
 }

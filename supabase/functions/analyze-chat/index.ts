@@ -4426,8 +4426,9 @@ serve(async (req) => {
 
     let monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
       TIER_MONTHLY_LIMITS.free;
+    let dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
     if (
-      !recognizeOnly && !accountIsTest &&
+      !recognizeOnly && !isOpenerMode && !accountIsTest &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -4442,16 +4443,22 @@ serve(async (req) => {
         });
         return jsonResponse({
           error: "Monthly limit exceeded",
+          message: "本月額度已用完，升級方案可取得更多分析額度。",
           monthlyLimit,
           used: sub.monthly_messages_used,
+          quotaNeeded: 1,
+          monthlyRemaining: Math.max(
+            0,
+            monthlyLimit - sub.monthly_messages_used,
+          ),
+          dailyRemaining: Math.max(0, dailyLimit - sub.daily_messages_used),
         }, 429);
       }
     }
 
     // Check daily limit (測試帳號跳過)
-    let dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
     if (
-      !recognizeOnly && !accountIsTest &&
+      !recognizeOnly && !isOpenerMode && !accountIsTest &&
       sub.daily_messages_used >= dailyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -4466,9 +4473,16 @@ serve(async (req) => {
         });
         return jsonResponse({
           error: "Daily limit exceeded",
+          message: "今日額度已用完，明天會自動恢復；也可以升級取得更多額度。",
           dailyLimit,
           used: sub.daily_messages_used,
           resetAt: "tomorrow",
+          quotaNeeded: 1,
+          monthlyRemaining: Math.max(
+            0,
+            monthlyLimit - sub.monthly_messages_used,
+          ),
+          dailyRemaining: Math.max(0, dailyLimit - sub.daily_messages_used),
         }, 429);
       }
     }
@@ -4480,15 +4494,43 @@ serve(async (req) => {
 
       // Quota check for opener
       if (!accountIsTest) {
-        if (
+        const openerExceedsQuota = () =>
           sub.monthly_messages_used + openerCost > monthlyLimit ||
-          sub.daily_messages_used + openerCost > dailyLimit
-        ) {
+          sub.daily_messages_used + openerCost > dailyLimit;
+
+        if (openerExceedsQuota()) {
+          const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+            "opener_quota_exceeded",
+          );
+          if (refreshed) {
+            monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+              TIER_MONTHLY_LIMITS.free;
+            dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+          }
+        }
+
+        if (openerExceedsQuota()) {
+          const monthlyRemaining = Math.max(
+            0,
+            monthlyLimit - sub.monthly_messages_used,
+          );
+          const dailyRemaining = Math.max(
+            0,
+            dailyLimit - sub.daily_messages_used,
+          );
+          const message = monthlyRemaining < openerCost
+            ? "本月額度不足，升級方案可取得更多開場與分析額度。"
+            : "今日額度不足，明天會自動恢復；也可以升級取得更多額度。";
           return jsonResponse({
             error: "額度不足",
+            message,
             quotaNeeded: openerCost,
-            monthlyRemaining: monthlyLimit - sub.monthly_messages_used,
-            dailyRemaining: dailyLimit - sub.daily_messages_used,
+            monthlyRemaining,
+            dailyRemaining,
+            monthlyLimit,
+            dailyLimit,
+            monthlyUsed: sub.monthly_messages_used,
+            dailyUsed: sub.daily_messages_used,
           }, 429);
         }
       }
