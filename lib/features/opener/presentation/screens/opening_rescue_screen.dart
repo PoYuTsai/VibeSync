@@ -783,31 +783,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: entry.value));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('已複製「$label」備案'),
-                          duration: const Duration(seconds: 2),
-                          backgroundColor: AppColors.backgroundGradientMid
-                              .withValues(alpha: 0.9),
-                        ),
-                      );
-                    },
-                    icon: Icon(
-                      Icons.copy,
-                      size: 15,
-                      color: AppColors.glassTextHint,
-                    ),
-                  ),
                 ],
               ),
             );
