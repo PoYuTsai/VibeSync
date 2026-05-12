@@ -10,6 +10,30 @@
 
 ## 2026-05
 
+### [2026-05-12] 開場救星同圖偶發格式異常 502
+
+**症狀**:
+
+- Essential 月繳與 Essential 季繳用同一組交友軟體截圖生成開場時，一台成功、一台回 `開場產生格式異常` / 502。
+- 錯誤 payload 顯示 `shouldChargeQuota: false`，代表 quota 沒被扣，但使用者會誤以為方案或帳號權限壞掉。
+
+**Root Cause**:
+
+- 開場救星 prompt 在 5 種開場、profileAnalysis、pioneerPlan 都變完整後，原本 `max_tokens: 1024` 偶爾不足，Claude 可能回傳被截斷或帶說明的 JSON。
+- opener 解析器只做一次 `parseJsonObjectFromText`，沒有走既有 `repairJson` 或格式修復重試；因此同圖會因模型輸出長短差異出現偶發 502。
+
+**修復**:
+
+- opener 輸出 token 提升到 1800，降低 schema 截斷率。
+- `parseJsonObjectFromText` 增加 `repairJson(candidate)` 嘗試，先補齊常見缺括號/尾逗號。
+- 新增 `repairMalformedOpenerPayload`：初次格式不合時，用 Sonnet 做一次「只修 JSON 格式」的 repair pass；成功才扣原本 opener quota，不額外扣用戶額度。
+- opener 有圖片時強制 Sonnet，符合「有圖片時所有層走 Sonnet」穩定基線。
+
+**驗證**:
+
+- `deno check supabase/functions/analyze-chat/index.ts`
+- `deno test --allow-read supabase/functions/analyze-chat/index_test.ts supabase/functions/analyze-chat/opener_prompt_test.ts`
+
 ### [2026-05-11] Paywall 月繳選項誤送季繳商品
 
 **症狀**:

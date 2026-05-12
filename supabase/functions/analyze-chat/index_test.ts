@@ -728,8 +728,16 @@ Deno.test({
     );
 
     assert(source.includes("function parseJsonObjectFromText"));
+    assert(source.includes("repairJson(candidate)"));
     assert(source.includes("function normalizeOpenerPayload"));
     assert(source.includes("function sanitizeOpenerText"));
+    assert(source.includes("repairMalformedOpenerPayload"));
+    assert(source.includes("OPENER_REPAIR_PROMPT"));
+    assert(source.includes("opener_response_repaired"));
+    assert(source.includes("opener_repair_failed"));
+    assert(source.includes("opener_repair_error"));
+    assert(source.includes("max_tokens: 1800"));
+    assert(source.includes('imageCount > 0 || effectiveTier !== "free"'));
     assert(source.includes('lower.includes(\'"profileanalysis"\')'));
     assert(source.includes('lower.includes(\'"openers"\')'));
     assert(source.includes("opener_response_invalid"));

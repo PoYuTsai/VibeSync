@@ -147,11 +147,19 @@ function parseJsonObjectFromText(text: string): Record<string, unknown> | null {
   );
 
   for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate);
-      if (isPlainObject(parsed)) return parsed;
-    } catch {
-      // Try the next extraction strategy.
+    const attempts = [candidate, repairJson(candidate)].filter((
+      attempt,
+      index,
+      self,
+    ) => attempt.trim().length > 0 && self.indexOf(attempt) === index);
+
+    for (const attempt of attempts) {
+      try {
+        const parsed = JSON.parse(attempt);
+        if (isPlainObject(parsed)) return parsed;
+      } catch {
+        // Try the next repair/extraction strategy.
+      }
     }
   }
 
@@ -219,6 +227,108 @@ function normalizeOpenerPayload(
   return {
     ...parsed,
     openers,
+  };
+}
+
+const OPENER_REPAIR_PROMPT =
+  `你是 VibeSync 開場救星的 JSON 格式修復器。
+
+任務：
+- 只把上一次 AI 回覆修成合法 JSON。
+- 不要重新分析圖片，不要新增不存在的線索。
+- 若原文已有可用開場白，保留其語氣但整理進指定欄位。
+- openers 必須包含 extend / resonate / tease / humor / coldRead 五個 key。
+- 每個 opener 必須是可直接傳出的繁體中文短句，不能是 JSON、Markdown、解釋文字或空字串。
+- 請只輸出 JSON object，不要 code fence，不要前後說明。
+
+必要 schema：
+{
+  "profileAnalysis": {
+    "style": "可見風格 / 氛圍",
+    "personality": "互動切入判斷，不是人格診斷",
+    "avoidTopics": ["明確不該問/不該踩的點"],
+    "frameRead": "如何尊重界線但不被自介框架綁死",
+    "positiveHooks": ["最值得接的可回線索1", "線索2"],
+    "masterObservation": "高手會抓到的一個反差、畫面或一句話觀察",
+    "curiosityHook": "本次用哪一種好奇心鉤子",
+    "masterMove": "本次借用的高手開場手法",
+    "twoBallPlan": "是否用兩顆球；第一球推拉/畫面感，第二球冷讀/觀察",
+    "talkingPoints": ["具體可聊線索1", "線索2", "線索3"],
+    "openingStrategy": "教用戶怎麼回"
+  },
+  "openers": {
+    "extend": "延展風格的開場白",
+    "resonate": "共鳴風格的開場白",
+    "tease": "調情風格的開場白",
+    "humor": "幽默風格的開場白",
+    "coldRead": "冷讀風格的開場白"
+  },
+  "pioneerPlan": {
+    "ifCold": "她冷回時下一步",
+    "ifShortPositive": "她短回但有接時下一步",
+    "ifEngaged": "她認真回覆時下一步",
+    "handoff": "何時接到對話分析或 1:1 coach"
+  },
+  "recommendation": {
+    "pick": "extend/resonate/tease/humor/coldRead",
+    "reason": "這句示範了什麼框架、接哪顆球、刪掉哪種錯誤接法、女生可以怎麼接回來"
+  }
+}`;
+
+function buildOpenerRepairPrompt(rawText: string): string {
+  const clippedRawText = rawText.trim().slice(0, 7000);
+  return [
+    "以下是上一次開場救星 AI 回覆，格式不穩或不符合 schema。",
+    "請只修成合法 JSON；如果原文有 code fence、前後說明、欄位缺漏、key 名稱不對，全部整理成指定 schema。",
+    "如果部分欄位缺漏，請用原文可推得出的最保守內容補齊；不要編造截圖裡不存在的事實。",
+    "",
+    "原始回覆：",
+    clippedRawText || "(empty)",
+  ].join("\n");
+}
+
+async function repairMalformedOpenerPayload({
+  rawText,
+  apiKey,
+}: {
+  rawText: string;
+  apiKey: string;
+}): Promise<{
+  parsed: Record<string, unknown> | null;
+  rawText: string;
+  model?: string;
+  fallbackUsed?: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+}> {
+  const repairResult = await callClaudeWithFallback(
+    {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1400,
+      system: OPENER_REPAIR_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: buildOpenerRepairPrompt(rawText),
+        },
+      ],
+    },
+    apiKey,
+    { timeout: 20000, maxRetries: 1, allowModelFallback: false },
+  );
+  const repairData = repairResult.data as {
+    content?: Array<{ text?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
+  };
+  const repairedText = repairData.content?.[0]?.text || "";
+
+  return {
+    parsed: normalizeOpenerPayload(parseJsonObjectFromText(repairedText)),
+    rawText: repairedText,
+    model: repairResult.model,
+    fallbackUsed: repairResult.fallbackUsed,
+    inputTokens: repairData.usage?.input_tokens,
+    outputTokens: repairData.usage?.output_tokens,
   };
 }
 
@@ -4731,9 +4841,9 @@ serve(async (req) => {
       }
 
       // Select model based on tier
-      const openerModel = (effectiveTier === "free")
-        ? "claude-haiku-4-5-20251001"
-        : "claude-sonnet-4-20250514";
+      const openerModel = imageCount > 0 || effectiveTier !== "free"
+        ? "claude-sonnet-4-20250514"
+        : "claude-haiku-4-5-20251001";
 
       // Build messages for Claude API
       let claudeMessages;
@@ -4774,7 +4884,7 @@ serve(async (req) => {
         apiResult = await callClaudeWithFallback(
           {
             model: openerModel,
-            max_tokens: 1024,
+            max_tokens: 1800,
             system: OPENER_PROMPT,
             messages: claudeMessages,
           },
@@ -4807,9 +4917,49 @@ serve(async (req) => {
       const rawText = apiData.content?.[0]?.text || "";
 
       // Parse and validate JSON from response. Never surface raw model output
-      // as an opener; a malformed JSON/code-fence response should fail cleanly
-      // instead of charging quota for unusable text.
-      const parsed = normalizeOpenerPayload(parseJsonObjectFromText(rawText));
+      // as an opener; malformed output gets one format-only repair pass before
+      // failing cleanly without charging quota.
+      let parsed = normalizeOpenerPayload(parseJsonObjectFromText(rawText));
+      let repairMetadata: Awaited<
+        ReturnType<typeof repairMalformedOpenerPayload>
+      > | null = null;
+      if (!parsed) {
+        try {
+          repairMetadata = await repairMalformedOpenerPayload({
+            rawText,
+            apiKey,
+          });
+          parsed = repairMetadata.parsed;
+          if (parsed) {
+            logInfo("opener_response_repaired", {
+              user: summarizeUser(user.id),
+              model: apiResult.model,
+              repairModel: repairMetadata.model,
+              imageCount,
+              originalTextLength: rawText.length,
+              repairedTextLength: repairMetadata.rawText.length,
+              repairInputTokens: repairMetadata.inputTokens,
+              repairOutputTokens: repairMetadata.outputTokens,
+            });
+          } else {
+            logWarn("opener_repair_failed", {
+              user: summarizeUser(user.id),
+              model: apiResult.model,
+              repairModel: repairMetadata.model,
+              imageCount,
+              originalTextLength: rawText.length,
+              repairedTextLength: repairMetadata.rawText.length,
+            });
+          }
+        } catch (repairError) {
+          logWarn("opener_repair_error", {
+            user: summarizeUser(user.id),
+            model: apiResult.model,
+            imageCount,
+            error: getErrorMessage(repairError),
+          });
+        }
+      }
       if (!parsed) {
         logWarn("opener_response_invalid", {
           user: summarizeUser(user.id),
@@ -4848,6 +4998,7 @@ serve(async (req) => {
         inputTokens: apiData.usage?.input_tokens,
         outputTokens: apiData.usage?.output_tokens,
         fallbackUsed: apiResult.fallbackUsed,
+        repaired: !!repairMetadata?.parsed,
       });
 
       return jsonResponse({
@@ -4857,6 +5008,8 @@ serve(async (req) => {
           inputTokens: apiData.usage?.input_tokens,
           outputTokens: apiData.usage?.output_tokens,
           cost: openerCost,
+          repaired: !!repairMetadata?.parsed,
+          repairModel: repairMetadata?.parsed ? repairMetadata.model : undefined,
         },
       });
     }
