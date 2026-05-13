@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/services/revenuecat_service.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
@@ -48,15 +50,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   @override
   void initState() {
     super.initState();
-    _restoreLatestResult();
+    _nameController.addListener(_clearGeneratedResultOnInputChange);
+    _bioController.addListener(_clearGeneratedResultOnInputChange);
+    _interestsController.addListener(_clearGeneratedResultOnInputChange);
   }
 
-  void _restoreLatestResult() {
-    try {
-      _result = _resultCacheService.loadLatest();
-    } catch (_) {
-      _result = null;
+  void _clearGeneratedResultOnInputChange() {
+    if (!mounted || (_result == null && _error == null)) {
+      return;
     }
+    setState(() {
+      _result = null;
+      _error = null;
+    });
   }
 
   UsageData _currentUsageSnapshot() {
@@ -102,6 +108,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   @override
   void dispose() {
+    _nameController.removeListener(_clearGeneratedResultOnInputChange);
+    _bioController.removeListener(_clearGeneratedResultOnInputChange);
+    _interestsController.removeListener(_clearGeneratedResultOnInputChange);
     _nameController.dispose();
     _bioController.dispose();
     _interestsController.dispose();
@@ -137,6 +146,24 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     });
 
     try {
+      final subscriptionSnapshot = ref.read(subscriptionProvider);
+      var expectedTier = subscriptionSnapshot.tier;
+      String? revenueCatAppUserId;
+      try {
+        final customerInfo = await RevenueCatService.getCustomerInfo();
+        final revenueCatTier =
+            RevenueCatService.getTierFromCustomerInfo(customerInfo);
+        revenueCatAppUserId =
+            RevenueCatService.getRevenueCatAppUserId(customerInfo);
+        if (SubscriptionTierHelper.rankOf(revenueCatTier) >
+            SubscriptionTierHelper.rankOf(expectedTier)) {
+          expectedTier = revenueCatTier;
+        }
+      } catch (e) {
+        debugPrint('OpeningRescueScreen RevenueCat hint failed: $e');
+      }
+      if (!mounted) return;
+
       final service = OpenerService();
       final result = await service.generateOpeners(
         images: _images.isNotEmpty ? _images : null,
@@ -144,6 +171,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         bio: _bioController.text,
         interests: _interestsController.text,
         meetingContext: _meetingContext,
+        expectedTier: expectedTier,
+        revenueCatAppUserId: revenueCatAppUserId,
       );
       try {
         await _resultCacheService.saveLatest(result);
@@ -331,7 +360,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         const SizedBox(height: 12),
         ImagePickerWidget(
           maxImages: 3,
-          onImagesChanged: (images) => setState(() => _images = images),
+          onImagesChanged: (images) => setState(() {
+            _images = images;
+            _result = null;
+            _error = null;
+          }),
           externalImages: _images,
         ),
       ],
@@ -401,6 +434,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 onSelected: (selected) {
                   setState(() {
                     _meetingContext = selected ? option : null;
+                    _result = null;
+                    _error = null;
                   });
                 },
                 selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
@@ -662,7 +697,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '最近一次開場結果已保留在本機，離開再回來也看得到。',
+            '這次結果只套用在目前這組輸入；換對象或換截圖時會清空，避免混到上一個人的開場。',
             style: AppTypography.caption.copyWith(
               color: AppColors.glassTextHint,
               height: 1.4,

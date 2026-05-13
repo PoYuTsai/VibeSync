@@ -119,7 +119,13 @@ class OpenerResult {
     if (value is String) {
       text = value;
     } else if (value is Map) {
-      for (final key in const ['text', 'message', 'opener', 'content', 'line']) {
+      for (final key in const [
+        'text',
+        'message',
+        'opener',
+        'content',
+        'line'
+      ]) {
         final nested = value[key];
         if (nested is String) {
           text = nested;
@@ -187,6 +193,8 @@ class OpenerService {
     String? bio,
     String? interests,
     String? meetingContext,
+    String? expectedTier,
+    String? revenueCatAppUserId,
   }) async {
     // Build image list as ImageData objects (matching existing format)
     List<Map<String, dynamic>>? imageDataList;
@@ -225,6 +233,10 @@ class OpenerService {
       'mode': 'opener',
       if (imageDataList != null) 'images': imageDataList,
       if (profileInfo != null) 'profileInfo': profileInfo,
+      if (expectedTier != null && expectedTier.trim().isNotEmpty)
+        'expectedTier': expectedTier.trim(),
+      if (revenueCatAppUserId != null && revenueCatAppUserId.trim().isNotEmpty)
+        'revenueCatAppUserId': revenueCatAppUserId.trim(),
     };
 
     final response = await _invoke('analyze-chat', body: body);

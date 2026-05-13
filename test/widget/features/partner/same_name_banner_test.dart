@@ -20,10 +20,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/data/providers/partner_banner_providers.dart';
+import 'package:vibesync/features/partner/data/providers/partner_write_controller.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+
+import '_fakes/recording_partner_write_controller.dart';
 
 const _uid = 'u1';
 
@@ -46,8 +49,7 @@ GoRouter _router({void Function(String location)? onPush}) {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) =>
-            const Scaffold(body: PartnerListScreen()),
+        builder: (context, state) => const Scaffold(body: PartnerListScreen()),
       ),
       GoRoute(
         path: '/partner/:partnerId/merge',
@@ -205,30 +207,35 @@ void main() {
   );
 
   testWidgets(
-    'tap "立即合併" pushes /partner/{newer.id}/merge?target={older.id}',
+    'tap "立即合併" merges newer duplicate into older partner directly',
     (t) async {
-      String? pushed;
+      final fakeWrite = RecordingPartnerWriteController();
+      SharedPreferences.setMockInitialValues(const {});
       await t.pumpWidget(ProviderScope(
-        overrides: _baseOverrides(
-          partners: [
-            // older = 'a' (Apr 1), newer = 'b' (Apr 10) — D-P4-2 contract
-            _p('a', 'Alice', createdAt: DateTime(2026, 4, 1)),
-            _p('b', 'Alice', createdAt: DateTime(2026, 4, 10)),
-          ],
-          dismissedSeed: false,
-        ),
-        child: MaterialApp.router(
-          routerConfig: _router(onPush: (loc) => pushed = loc),
-        ),
+        overrides: [
+          ..._baseOverrides(
+            partners: [
+              // older = 'a' (Apr 1), newer = 'b' (Apr 10) — D-P4-2 contract
+              _p('a', 'Alice', createdAt: DateTime(2026, 4, 1)),
+              _p('b', 'Alice', createdAt: DateTime(2026, 4, 10)),
+            ],
+          ),
+          partnerWriteControllerProvider.overrideWith(() => fakeWrite),
+        ],
+        child: MaterialApp.router(routerConfig: _router()),
       ));
       await t.pumpAndSettle();
 
       await t.tap(find.text('立即合併'));
       await t.pumpAndSettle();
 
-      expect(pushed, isNotNull);
-      expect(pushed, '/partner/b/merge?target=a');
-      expect(find.text('merge-stub-from=b-target=a'), findsOneWidget);
+      expect(fakeWrite.mergeCalled, isTrue);
+      expect(fakeWrite.fromId, 'b');
+      expect(fakeWrite.toId, 'a');
+      expect(find.text('merge-stub-from=b-target=a'), findsNothing);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('partner_dedupe_banner_dismissed_$_uid'), isTrue);
     },
   );
 }

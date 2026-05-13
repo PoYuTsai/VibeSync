@@ -10,6 +10,31 @@
 
 ## 2026-05
 
+### [2026-05-14] 開場救星付費用戶被 Free quota 擋住
+
+**症狀**:
+
+- Settings 顯示 Essential 月繳與 800/120 額度，但開場救星回 429，payload 顯示 `monthlyLimit: 30`、`dailyLimit: 15`。
+- 同一輪 dogfood 也發現開場救星會帶出上一個對象的舊結果，以及同名對象合併多跳一層選擇頁。
+
+**Root Cause**:
+
+- `analyze-chat` 只用 Supabase `user.id` 去 RevenueCat 查 subscriber。TestFlight/RevenueCat 可能把 active entitlement 掛在 `originalAppUserId` 或 alias，導致 Edge Function 補 tier 失敗，沿用 DB 內舊 Free quota。
+- 開場救星結果用全域 latest cache 自動 restore，沒有跟目前輸入或對象 scope 綁定。
+- 同名對象 banner 的 CTA 仍導到舊 merge route，而不是直接執行明確的同名合併。
+
+**修復**:
+
+- opener client 傳 `expectedTier` 與 `revenueCatAppUserId`；Edge Function 仍只在 RevenueCat 驗證到 paid entitlement 後才提升 DB tier。
+- `analyze-chat` quota refresh 改為依序查 RevenueCat app user id 與 Supabase user id，避免 alias/匿名 ID 對不上時誤用 Free quota。
+- 新開場頁不再自動 restore 全域 latest result；更換截圖、文字或來源會清掉舊結果，避免跨對象殘留。
+- 同名對象「立即合併」直接 merge newer duplicate into older partner，成功後 dismiss banner。
+
+**驗證**:
+
+- `flutter test test/unit/features/opener/data/services/opener_service_test.dart test/widget/features/partner/same_name_banner_test.dart`
+- `deno test --allow-read supabase/functions/analyze-chat/index_test.ts`
+
 ### [2026-05-12] 開場救星同圖偶發格式異常 502
 
 **症狀**:

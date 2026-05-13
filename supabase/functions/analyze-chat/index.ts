@@ -87,7 +87,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const OPENER_TYPES = ["extend", "resonate", "tease", "humor", "coldRead"] as const;
+const OPENER_TYPES = [
+  "extend",
+  "resonate",
+  "tease",
+  "humor",
+  "coldRead",
+] as const;
 
 function stripJsonCodeFence(text: string): string {
   const trimmed = text.trim();
@@ -230,8 +236,7 @@ function normalizeOpenerPayload(
   };
 }
 
-const OPENER_REPAIR_PROMPT =
-  `你是 VibeSync 開場救星的 JSON 格式修復器。
+const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復器。
 
 任務：
 - 只把上一次 AI 回覆修成合法 JSON。
@@ -4483,6 +4488,8 @@ serve(async (req) => {
       mode: rawMode,
       profileInfo: rawProfileInfo,
       previousAnalyzedCount: rawPreviousAnalyzedCount,
+      expectedTier: rawExpectedTier,
+      revenueCatAppUserId: rawRevenueCatAppUserId,
     } = requestBody;
 
     if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
@@ -4490,6 +4497,19 @@ serve(async (req) => {
     }
     const recognizeOnly = rawRecognizeOnly === true;
     const isOpenerMode = rawMode === "opener";
+    if (rawExpectedTier != null && typeof rawExpectedTier !== "string") {
+      return jsonResponse({ error: "Invalid expectedTier" }, 400);
+    }
+    if (
+      rawRevenueCatAppUserId != null &&
+      typeof rawRevenueCatAppUserId !== "string"
+    ) {
+      return jsonResponse({ error: "Invalid revenueCatAppUserId" }, 400);
+    }
+    const expectedTier = normalizeTier(rawExpectedTier);
+    const revenueCatAppUserId = typeof rawRevenueCatAppUserId === "string"
+      ? rawRevenueCatAppUserId.trim()
+      : "";
 
     // Check subscription
     let { data: sub, error: subError } = await supabase
@@ -4578,6 +4598,13 @@ serve(async (req) => {
     // Check monthly limit (測試帳號跳過)
     let effectiveTier = accountIsTest ? "essential" : sub.tier;
     let allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
+    const revenueCatUserIdCandidates = Array.from(
+      new Set(
+        [revenueCatAppUserId, user.id]
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter((value) => value.length > 0),
+      ),
+    );
     const maybeRefreshSubscriptionTierFromRevenueCat = async (
       reason: string,
     ): Promise<boolean> => {
@@ -4591,101 +4618,110 @@ serve(async (req) => {
       }
 
       try {
-        const revenueCatResponse = await fetch(
-          `https://api.revenuecat.com/v1/subscribers/${
-            encodeURIComponent(user.id)
-          }`,
-          {
-            headers: {
-              Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
-              "Content-Type": "application/json",
+        for (const revenueCatUserId of revenueCatUserIdCandidates) {
+          const revenueCatResponse = await fetch(
+            `https://api.revenuecat.com/v1/subscribers/${
+              encodeURIComponent(revenueCatUserId)
+            }`,
+            {
+              headers: {
+                Authorization: `Bearer ${REVENUECAT_IOS_API_KEY}`,
+                "Content-Type": "application/json",
+              },
             },
-          },
-        );
+          );
 
-        if (!revenueCatResponse.ok) {
-          const detail = await revenueCatResponse.text().catch(() => "");
-          logWarn("subscription_revenuecat_refresh_failed", {
+          if (!revenueCatResponse.ok) {
+            const detail = await revenueCatResponse.text().catch(() => "");
+            logWarn("subscription_revenuecat_refresh_failed", {
+              user: summarizeUser(user.id),
+              revenueCatUser: summarizeUser(revenueCatUserId),
+              reason,
+              previousTier,
+              status: revenueCatResponse.status,
+              detail,
+            });
+            continue;
+          }
+
+          const revenueCatPayload = await revenueCatResponse.json().catch(() =>
+            null
+          );
+          if (
+            !isPlainObject(revenueCatPayload) ||
+            !isPlainObject(revenueCatPayload.subscriber)
+          ) {
+            logWarn("subscription_revenuecat_refresh_invalid_payload", {
+              user: summarizeUser(user.id),
+              revenueCatUser: summarizeUser(revenueCatUserId),
+              reason,
+              previousTier,
+            });
+            continue;
+          }
+
+          const subscriber = revenueCatPayload.subscriber;
+          const refreshedTier = collectTiersFromRevenueCatPayload(subscriber);
+          if (tierRank(refreshedTier) <= tierRank(previousTier)) {
+            continue;
+          }
+
+          const refreshedExpiresAt =
+            collectLatestExpirationFromRevenueCatPayload(
+              subscriber,
+            );
+          const updatePayload: Record<string, unknown> = {
+            tier: refreshedTier,
+            status: "active",
+          };
+          if (refreshedExpiresAt) {
+            updatePayload.expires_at = refreshedExpiresAt;
+          }
+
+          const { data: refreshedSub, error: refreshedError } = await supabase
+            .from("subscriptions")
+            .update(updatePayload)
+            .eq("user_id", user.id)
+            .select(
+              "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
+            )
+            .maybeSingle();
+
+          if (refreshedSub) {
+            sub = refreshedSub;
+          } else {
+            sub = { ...sub, tier: refreshedTier };
+          }
+
+          effectiveTier = accountIsTest ? "essential" : sub.tier;
+          allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
+          monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+            TIER_MONTHLY_LIMITS.free;
+          dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+
+          if (refreshedError) {
+            logError("subscription_revenuecat_refresh_persist_failed", {
+              user: summarizeUser(user.id),
+              revenueCatUser: summarizeUser(revenueCatUserId),
+              reason,
+              previousTier,
+              refreshedTier,
+              error: refreshedError.message,
+            });
+          }
+
+          logInfo("subscription_revenuecat_refresh_applied", {
             user: summarizeUser(user.id),
-            reason,
-            previousTier,
-            status: revenueCatResponse.status,
-            detail,
-          });
-          return false;
-        }
-
-        const revenueCatPayload = await revenueCatResponse.json().catch(() =>
-          null
-        );
-        if (
-          !isPlainObject(revenueCatPayload) ||
-          !isPlainObject(revenueCatPayload.subscriber)
-        ) {
-          logWarn("subscription_revenuecat_refresh_invalid_payload", {
-            user: summarizeUser(user.id),
-            reason,
-            previousTier,
-          });
-          return false;
-        }
-
-        const subscriber = revenueCatPayload.subscriber;
-        const refreshedTier = collectTiersFromRevenueCatPayload(subscriber);
-        if (tierRank(refreshedTier) <= tierRank(previousTier)) {
-          return false;
-        }
-
-        const refreshedExpiresAt = collectLatestExpirationFromRevenueCatPayload(
-          subscriber,
-        );
-        const updatePayload: Record<string, unknown> = {
-          tier: refreshedTier,
-          status: "active",
-        };
-        if (refreshedExpiresAt) {
-          updatePayload.expires_at = refreshedExpiresAt;
-        }
-
-        const { data: refreshedSub, error: refreshedError } = await supabase
-          .from("subscriptions")
-          .update(updatePayload)
-          .eq("user_id", user.id)
-          .select(
-            "tier, monthly_messages_used, daily_messages_used, daily_reset_at, monthly_reset_at",
-          )
-          .maybeSingle();
-
-        if (refreshedSub) {
-          sub = refreshedSub;
-        } else {
-          sub = { ...sub, tier: refreshedTier };
-        }
-
-        effectiveTier = accountIsTest ? "essential" : sub.tier;
-        allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
-        monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
-          TIER_MONTHLY_LIMITS.free;
-        dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
-
-        if (refreshedError) {
-          logError("subscription_revenuecat_refresh_persist_failed", {
-            user: summarizeUser(user.id),
+            revenueCatUser: summarizeUser(revenueCatUserId),
             reason,
             previousTier,
             refreshedTier,
-            error: refreshedError.message,
+            persisted: !refreshedError,
           });
+          return true;
         }
 
-        logInfo("subscription_revenuecat_refresh_applied", {
-          user: summarizeUser(user.id),
-          reason,
-          previousTier,
-          refreshedTier,
-          persisted: !refreshedError,
-        });
-        return true;
+        return false;
       } catch (error) {
         logWarn("subscription_revenuecat_refresh_exception", {
           user: summarizeUser(user.id),
@@ -4700,6 +4736,14 @@ serve(async (req) => {
     let monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
       TIER_MONTHLY_LIMITS.free;
     let dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+    if (
+      !recognizeOnly && !accountIsTest &&
+      tierRank(expectedTier) > tierRank(normalizeTier(sub.tier))
+    ) {
+      await maybeRefreshSubscriptionTierFromRevenueCat(
+        "client_expected_paid_tier",
+      );
+    }
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
       sub.monthly_messages_used >= monthlyLimit
@@ -4920,9 +4964,11 @@ serve(async (req) => {
       // as an opener; malformed output gets one format-only repair pass before
       // failing cleanly without charging quota.
       let parsed = normalizeOpenerPayload(parseJsonObjectFromText(rawText));
-      let repairMetadata: Awaited<
-        ReturnType<typeof repairMalformedOpenerPayload>
-      > | null = null;
+      let repairMetadata:
+        | Awaited<
+          ReturnType<typeof repairMalformedOpenerPayload>
+        >
+        | null = null;
       if (!parsed) {
         try {
           repairMetadata = await repairMalformedOpenerPayload({
@@ -5009,7 +5055,9 @@ serve(async (req) => {
           outputTokens: apiData.usage?.output_tokens,
           cost: openerCost,
           repaired: !!repairMetadata?.parsed,
-          repairModel: repairMetadata?.parsed ? repairMetadata.model : undefined,
+          repairModel: repairMetadata?.parsed
+            ? repairMetadata.model
+            : undefined,
         },
       });
     }
@@ -6068,19 +6116,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     result.usage = {
       messagesUsed: quotaUsage.chargedMessageCount,
       estimatedMessages: quotaUsage.estimatedMessageCount,
-      monthlyRemaining: accountIsTest
-        ? 999999
-        : Math.max(
-          0,
-          monthlyLimit - sub.monthly_messages_used -
-            quotaUsage.chargedMessageCount,
-        ),
-      dailyRemaining: accountIsTest
-        ? 999999
-        : Math.max(
-          0,
-          dailyLimit - sub.daily_messages_used - quotaUsage.chargedMessageCount,
-        ),
+      monthlyRemaining: accountIsTest ? 999999 : Math.max(
+        0,
+        monthlyLimit - sub.monthly_messages_used -
+          quotaUsage.chargedMessageCount,
+      ),
+      dailyRemaining: accountIsTest ? 999999 : Math.max(
+        0,
+        dailyLimit - sub.daily_messages_used - quotaUsage.chargedMessageCount,
+      ),
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
       retries: claudeResult.retries,

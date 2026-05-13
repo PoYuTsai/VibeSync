@@ -738,8 +738,8 @@ Deno.test({
     assert(source.includes("opener_repair_error"));
     assert(source.includes("max_tokens: 1800"));
     assert(source.includes('imageCount > 0 || effectiveTier !== "free"'));
-    assert(source.includes('lower.includes(\'"profileanalysis"\')'));
-    assert(source.includes('lower.includes(\'"openers"\')'));
+    assert(source.includes("lower.includes('\"profileanalysis\"')"));
+    assert(source.includes("lower.includes('\"openers\"')"));
     assert(source.includes("opener_response_invalid"));
     assert(source.includes("本次不會扣額度"));
     assertFalse(source.includes("parsed = { openers: { extend: rawText } }"));
@@ -758,7 +758,24 @@ Deno.test({
     assert(source.includes('"finalrecommendation"'));
     assert(source.includes('"profileanalysis"'));
     assert(source.includes('"openers"'));
-    assert(source.includes("looksLikeRawModelPayload(normalized) ? \"\""));
+    assert(source.includes('looksLikeRawModelPayload(normalized) ? ""'));
+  },
+});
+
+Deno.test({
+  name: "quota refresh accepts client RevenueCat identity hints safely",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("expectedTier: rawExpectedTier"));
+    assert(source.includes("revenueCatAppUserId: rawRevenueCatAppUserId"));
+    assert(source.includes("Invalid revenueCatAppUserId"));
+    assert(source.includes("revenueCatUserIdCandidates"));
+    assert(source.includes("client_expected_paid_tier"));
+    assert(source.includes("revenueCatUser: summarizeUser(revenueCatUserId)"));
   },
 });
 

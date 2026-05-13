@@ -89,9 +89,7 @@ class PartnerListScreen extends ConsumerWidget {
         if (showBanner && i == 0) {
           return SameNameDedupeBanner(
             partnerName: dupPair.newer.name,
-            onMergeTap: () => context.push(
-              '/partner/${dupPair.newer.id}/merge?target=${dupPair.older.id}',
-            ),
+            onMergeTap: () => _onMergeDuplicate(context, ref, uid!, dupPair),
             onDismissTap: () async {
               await PartnerBannerService.markDismissed(uid!);
               try {
@@ -147,6 +145,37 @@ class PartnerListScreen extends ConsumerWidget {
       }
     }
     return null;
+  }
+
+  Future<void> _onMergeDuplicate(
+    BuildContext context,
+    WidgetRef ref,
+    String uid,
+    ({Partner older, Partner newer}) dupPair,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(partnerWriteControllerProvider.notifier).merge(
+            fromId: dupPair.newer.id,
+            toId: dupPair.older.id,
+          );
+      await PartnerBannerService.markDismissed(uid);
+      try {
+        ref.invalidate(partnerDedupeBannerDismissedProvider(uid));
+      } catch (e, st) {
+        debugPrint(
+          'PartnerListScreen merge invalidation skipped: $e\n$st',
+        );
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('已合併「${dupPair.older.name}」')),
+      );
+    } catch (e, st) {
+      debugPrint('PartnerListScreen direct merge failed: $e\n$st');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('合併失敗，請稍後再試')),
+      );
+    }
   }
 
   Future<void> _onDelete(

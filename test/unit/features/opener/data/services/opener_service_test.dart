@@ -41,6 +41,8 @@ void main() {
         bio: '喜歡旅行',
         interests: '咖啡',
         meetingContext: 'IG',
+        expectedTier: 'essential',
+        revenueCatAppUserId: r'$RCAnonymousID:abc',
       );
 
       expect(result.openers['extend'], '嗨，你也喜歡看展嗎？');
@@ -54,6 +56,8 @@ void main() {
       expect(calls.single['functionName'], 'analyze-chat');
       final body = calls.single['body'] as Map<String, dynamic>;
       expect(body['mode'], 'opener');
+      expect(body['expectedTier'], 'essential');
+      expect(body['revenueCatAppUserId'], r'$RCAnonymousID:abc');
       expect(body['profileInfo'], {
         'name': 'Candy',
         'bio': '喜歡旅行',
