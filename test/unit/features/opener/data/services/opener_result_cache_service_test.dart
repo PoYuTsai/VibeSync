@@ -94,4 +94,68 @@ void main() {
     expect(restored.recommendedPick, result.recommendedPick);
     expect(restored.costUsed, result.costUsed);
   });
+
+  test('draft cache stores opener result with local metadata', () async {
+    const result = OpenerResult(
+      openers: {
+        'extend': 'First line',
+        'humor': 'Second line',
+      },
+      recommendedPick: 'extend',
+      recommendedReason: 'Best first hook.',
+      costUsed: 5,
+    );
+    final service = OpenerResultCacheService();
+
+    final draft = await service.saveDraft(
+      result: result,
+      displayName: 'Grace',
+      sourceLabel: '截圖自介',
+      inputPreview: '2 張截圖',
+    );
+
+    final drafts = service.loadDrafts();
+    expect(drafts, hasLength(1));
+    expect(drafts.first.id, draft.id);
+    expect(drafts.first.title, 'Grace');
+    expect(drafts.first.preview, '2 張截圖');
+    expect(drafts.first.result.bestOpenerText, 'First line');
+    expect(service.loadLatest()!.bestOpenerText, 'First line');
+  });
+
+  test('draft cache keeps only newest 10 drafts', () async {
+    final service = OpenerResultCacheService();
+
+    for (var i = 0; i < 12; i += 1) {
+      await service.saveDraft(
+        result: OpenerResult(
+          openers: {'extend': 'line $i'},
+          recommendedPick: 'extend',
+        ),
+        displayName: 'draft $i',
+      );
+    }
+
+    final drafts = service.loadDrafts();
+    expect(drafts, hasLength(OpenerResultCacheService.maxDrafts));
+    expect(drafts.first.title, 'draft 11');
+    expect(drafts.last.title, 'draft 2');
+  });
+
+  test('draft cache can mark continued and delete draft', () async {
+    final service = OpenerResultCacheService();
+    final draft = await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'Grace',
+    );
+
+    await service.markDraftContinued(draft.id);
+    expect(service.loadDraft(draft.id)!.continuedAt, isNotNull);
+
+    await service.deleteDraft(draft.id);
+    expect(service.loadDrafts(), isEmpty);
+  });
 }

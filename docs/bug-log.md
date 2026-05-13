@@ -35,6 +35,13 @@
 - `flutter test test/unit/features/opener/data/services/opener_service_test.dart test/widget/features/partner/same_name_banner_test.dart`
 - `deno test --allow-read supabase/functions/analyze-chat/index_test.ts`
 
+**後續 UX 收斂（2026-05-14）**:
+
+- 開場結果從單筆 latest cache 升級為最多 10 筆本機加密草稿，只存 AI 結果與輸入摘要，不存原始截圖。
+- 開場頁不再自動恢復舊結果；使用者要主動點「最近開場草稿 / 回看」，避免 A 對象結果遺留到 B 對象。
+- 從草稿接續到新對話前會把目前草稿設成 handoff source，避免 `latest` 被其他對象覆蓋。
+- 驗證：`flutter test test/unit/features/opener/data/services/opener_result_cache_service_test.dart`、`flutter analyze`。
+
 ### [2026-05-12] 開場救星同圖偶發格式異常 502
 
 **症狀**:

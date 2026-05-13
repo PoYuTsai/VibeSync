@@ -34,6 +34,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   String? _error;
   final _scrollController = ScrollController();
   final _resultCacheService = OpenerResultCacheService();
+  List<OpenerDraft> _drafts = const [];
+  String? _currentDraftId;
+  bool _suppressInputClear = false;
 
   static const _meetingOptions = ['交友軟體', 'IG', '現實認識', '其他'];
 
@@ -50,18 +53,22 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   @override
   void initState() {
     super.initState();
+    _drafts = _resultCacheService.loadDrafts();
     _nameController.addListener(_clearGeneratedResultOnInputChange);
     _bioController.addListener(_clearGeneratedResultOnInputChange);
     _interestsController.addListener(_clearGeneratedResultOnInputChange);
   }
 
   void _clearGeneratedResultOnInputChange() {
-    if (!mounted || (_result == null && _error == null)) {
+    if (_suppressInputClear ||
+        !mounted ||
+        (_result == null && _error == null)) {
       return;
     }
     setState(() {
       _result = null;
       _error = null;
+      _currentDraftId = null;
     });
   }
 
@@ -106,6 +113,89 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return false;
   }
 
+  String _buildDraftInputPreview() {
+    if (_selectedTab == 0 && _images.isNotEmpty) {
+      return '${_images.length} 張截圖';
+    }
+
+    final parts = [
+      _nameController.text.trim(),
+      _bioController.text.trim(),
+      _interestsController.text.trim(),
+      _meetingContext,
+    ].whereType<String>().where((part) => part.isNotEmpty).toList();
+
+    if (parts.isEmpty) {
+      return '手動輸入';
+    }
+
+    return parts.join(' · ');
+  }
+
+  void _reloadDrafts() {
+    _drafts = _resultCacheService.loadDrafts();
+  }
+
+  Future<void> _saveLatestForHandoff() async {
+    final result = _result;
+    if (result == null) return;
+
+    try {
+      await _resultCacheService.saveLatest(result);
+      final draftId = _currentDraftId;
+      if (draftId != null) {
+        await _resultCacheService.markDraftContinued(draftId);
+      }
+    } catch (_) {
+      // Starting a conversation should not fail because local metadata failed.
+    }
+  }
+
+  Future<void> _openDraft(OpenerDraft draft) async {
+    try {
+      await _resultCacheService.saveLatest(draft.result);
+    } catch (_) {
+      // Best effort only; the visible result is still useful.
+    }
+
+    _suppressInputClear = true;
+    _nameController.clear();
+    _bioController.clear();
+    _interestsController.clear();
+    _suppressInputClear = false;
+
+    if (!mounted) return;
+    setState(() {
+      _images = [];
+      _meetingContext = null;
+      _result = draft.result;
+      _currentDraftId = draft.id;
+      _error = null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _deleteDraft(String id) async {
+    await _resultCacheService.deleteDraft(id);
+    if (!mounted) return;
+    setState(() {
+      _reloadDrafts();
+      if (_currentDraftId == id) {
+        _currentDraftId = null;
+        _result = null;
+      }
+    });
+  }
+
   @override
   void dispose() {
     _nameController.removeListener(_clearGeneratedResultOnInputChange);
@@ -143,6 +233,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       _isGenerating = true;
       _error = null;
       _result = null;
+      _currentDraftId = null;
     });
 
     try {
@@ -175,7 +266,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         revenueCatAppUserId: revenueCatAppUserId,
       );
       try {
-        await _resultCacheService.saveLatest(result);
+        final draft = await _resultCacheService.saveDraft(
+          result: result,
+          displayName: _nameController.text,
+          sourceLabel: _selectedTab == 0 ? '截圖自介' : '手動輸入',
+          inputPreview: _buildDraftInputPreview(),
+        );
+        _currentDraftId = draft.id;
+        _reloadDrafts();
       } catch (_) {
         // The paid result should still be shown even if local persistence fails.
       }
@@ -183,6 +281,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         setState(() {
           _result = result;
           _isGenerating = false;
+          _reloadDrafts();
         });
 
         try {
@@ -268,13 +367,23 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   GlassSegment(value: 1, label: '手動輸入'),
                 ],
                 selected: _selectedTab,
-                onChanged: (val) => setState(() => _selectedTab = val),
+                onChanged: (val) => setState(() {
+                  _selectedTab = val;
+                  _result = null;
+                  _error = null;
+                  _currentDraftId = null;
+                }),
               ),
               const SizedBox(height: 20),
 
               // Tab content
               if (_selectedTab == 0) _buildScreenshotTab(),
               if (_selectedTab == 1) _buildManualTab(),
+
+              if (_drafts.isNotEmpty && _result == null) ...[
+                const SizedBox(height: 16),
+                _buildRecentDraftsCard(),
+              ],
 
               const SizedBox(height: 16),
 
@@ -364,10 +473,128 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             _images = images;
             _result = null;
             _error = null;
+            _currentDraftId = null;
           }),
           externalImages: _images,
         ),
       ],
+    );
+  }
+
+  Widget _buildRecentDraftsCard() {
+    final drafts = _drafts.take(3).toList(growable: false);
+
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.history_rounded,
+                size: 18,
+                color: AppColors.ctaStart,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '最近開場草稿',
+                style: AppTypography.titleSmall.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '已生成的開場會保留在本機。新截圖不會自動帶入舊結果，想回看再點「回看」。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextHint,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...drafts.map(_buildDraftRow),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDraftRow(OpenerDraft draft) {
+    final continued = draft.continuedAt != null;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.glassWhite.withValues(alpha: 0.42),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          draft.title,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.glassTextPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (continued) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '已接續',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.ctaStart,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    draft.preview,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.glassTextHint,
+                      height: 1.25,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => _openDraft(draft),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.ctaStart,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              child: const Text('回看'),
+            ),
+            IconButton(
+              tooltip: '刪除草稿',
+              onPressed: () => _deleteDraft(draft.id),
+              icon: const Icon(Icons.close, size: 18),
+              color: AppColors.glassTextHint,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -436,6 +663,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     _meetingContext = selected ? option : null;
                     _result = null;
                     _error = null;
+                    _currentDraftId = null;
                   });
                 },
                 selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
@@ -603,6 +831,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         ],
 
         const SizedBox(height: 16),
+        _buildSavedDraftNotice(),
+        const SizedBox(height: 12),
         _buildNextStepCard(),
 
         const SizedBox(height: 16),
@@ -626,6 +856,36 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSavedDraftNotice() {
+    final saved = _currentDraftId != null;
+
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            saved ? Icons.bookmark_added_outlined : Icons.info_outline,
+            size: 18,
+            color: AppColors.ctaStart,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              saved
+                  ? '這次開場已保存成草稿。你可以離開後再回到開場救星回看，不會自動混到下一個對象。'
+                  : '這次結果只顯示在目前頁面；若本機保存失敗，建議先複製想用的開場。',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -682,7 +942,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: () => context.push('/new?source=opener'),
+              onPressed: () async {
+                await _saveLatestForHandoff();
+                if (!mounted) return;
+                setState(_reloadDrafts);
+                context.push('/new?source=opener');
+              },
               icon: const Icon(Icons.add_comment_outlined, size: 18),
               label: const Text('她回覆了，開始分析對話'),
               style: FilledButton.styleFrom(
