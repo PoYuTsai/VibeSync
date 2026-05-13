@@ -49,7 +49,7 @@ Current OCR-stable baseline: 28c0965
 看 `docs/snapshot.md`（每月 1 號或重大階段變更時刷新）。
 
 **一句話**：送審前最後穩定化，**不做大功能擴張**，持續收 OCR 邊界 + 開場救星品質。
-
+**CC hotfix 接手（保鮮期到 2026-05-21）**：先讀 `docs/reviews/ai-arbitration-queue.md` 最新 OPEN handoff，再看 `git log --oneline -20` 與 `docs/bug-log.md` 2026-05-14 / 05-12 / 05-11。
 ---
 
 ## 🎯 Product Overview

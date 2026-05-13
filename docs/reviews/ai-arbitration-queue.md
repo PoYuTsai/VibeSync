@@ -129,6 +129,67 @@ Close-Condition:
 
 ## Live Queue
 
+## [2026-05-14] CC Frontline Hotfix Handoff — Opener / Paywall / Quota Stabilization
+Status: OPEN
+Request-Type: handoff
+Raised-By: Codex
+Owner: Claude
+Scope: bug
+Branch/Commit: `main` @ `5f267c5`
+
+Question:
+- Eric 要外出交給 CC 修第一線 TestFlight bug；CC 需要知道 Codex 最近幾輪已經動過哪些高風險區域，避免重踩或反向修壞。
+
+Context:
+- 5/11-5/14 主要在收 P0/P1：Free quota 可用性、RevenueCat tier 不同步、Paywall 月/季商品誤配、開場救星 JSON/502、開場救星結果遺留/草稿管理。
+- 目前不是大功能擴張階段；第一線 bug 應 fix-forward，小刀、可測、commit 後立即 push。
+
+Changed:
+- `5f267c5` 開場救星結果改成本機加密草稿清單，最多 10 筆；新開場頁不自動帶入舊結果，點「回看」才載入。
+- `e660bcd` 開場救星送 `expectedTier` + `revenueCatAppUserId`，Edge Function 查 RevenueCat 時先用 RC appUserId 再 fallback Supabase user id，避免 Essential 被 Free quota 擋。
+- `b979198` 移除 pioneer/備案內容的複製入口，只保留可直接送出的開場白複製。
+- `1f49470` opener JSON 修復重試，降低同圖偶發 502；格式異常不扣額度。
+- `54c0906` Paywall 商品選擇改走 exact product/package mapping，避免月繳點購買卻跳季繳。
+- `ce4aa9e` / `f0546c0` 加固 RevenueCat public SDK key guard；Flutter app 只應吃 `appl_` public key，不吃 server/API key。
+- `a01cb0f` / `6dc38a2` Paywall offerings 不完整時加 direct StoreKit fallback，但仍必須用正確 product id 對應月/季。
+- `4954581` sync-subscription 防止 paid tier 被暫時空的 RevenueCat 結果降回 Free。
+- `6b18863` / `304e3da` 統一 Free quota：Free 月 30 / 日 15；有圖片仍可用，只要額度足夠，額度不足導 paywall。
+
+Evidence:
+- `git log --oneline -20`
+- `docs/bug-log.md` 2026-05-14 / 2026-05-12 / 2026-05-11 entries
+- `flutter analyze` → 0 issues on `5f267c5`
+- `flutter test test/unit/features/opener/data/services/opener_service_test.dart test/unit/features/opener/data/services/opener_result_cache_service_test.dart` → 12/12 pass on `5f267c5`
+
+Open-Risks:
+- RevenueCat / StoreKit sandbox 仍需真機 TestFlight 覆蓋所有升降級矩陣：Free→Starter/Essential（月/季）、Starter（月/季）→Essential（月/季）、Essential（月/季）→Starter（月/季）、同 tier 月↔季、restore purchase。
+- 開場救星草稿現在只在本機保存 AI 結果與摘要，不存原始截圖；若產品要首頁顯示草稿入口，需另開 UI 小刀，不要把 latest cache 自動恢復回來。
+- `analyze-chat` OCR deploy 仍必須 `--no-verify-jwt`，且 OCR 相關改動不可混 subscription / prompt / opener hotfix。
+- 如果再看到 Essential UI 但 Edge 回 Free quota，優先查 request payload 是否帶 `expectedTier` / `revenueCatAppUserId`，再查 `sync-subscription` / RevenueCat alias，不要先改 quota 常數。
+- 如果再看到 Paywall「正在同步方案資訊」卡住，優先查 `RevenueCatService.getOfferings()` + direct products fallback 是否拿到 `appl_` public key與 4 個 product id。
+
+Claude-Position:
+- Pending. CC 接手第一線 hotfix 時請把每個 TF bug 對應到上方風險區，再做最小改動。
+
+Codex-Position:
+- 建議 CC 優先處理可重現的 TF bug，不重構、不改 opener prompt 大方向；每個修正至少跑 touched unit/widget test + `flutter analyze`。若改到 Edge Function schema / subscription / quota，修完請回交 Codex review。
+
+Verdict:
+- Handoff ready.
+
+Eric-Decision:
+- Pending TF dogfood.
+
+Action-Items:
+- [ ] CC 修第一線 TF bug 時先讀本 item + `docs/bug-log.md` 5/14, 5/12, 5/11。
+- [ ] 若改 subscription/paywall/quota/opener handoff，commit message trailers 要寫明 `Reviewer-Hint` 與 `Next-Step`。
+- [ ] 高風險修正完成後交 Codex 做 diff review。
+
+Close-Condition:
+- 這批 opener/paywall/quota TF dogfood 過關，或 Eric 開下一個明確階段。
+
+---
+
 ## [2026-04-28] AddPartner UI Redesign — Code Review (post-A2 follow-up)
 Status: CLOSED
 Request-Type: review

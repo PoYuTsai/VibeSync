@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-05-14
+
+### 階段
+**送審前最後穩定化：P0 opener / Paywall / quota 收斂中。** 近期主線不是大功能擴張，而是 TestFlight dogfood 後的第一線 bug fix-forward。CC 接手前先看 `docs/reviews/ai-arbitration-queue.md` 最新 OPEN handoff。
+
+### 最近高風險區
+- 開場救星：圖片/手動輸入、格式修復重試、原始 JSON 阻擋、502 不扣額度、本機草稿保存、A/B 對象不混用。
+- 訂閱與額度：Free 月 30 / 日 15 可正常使用；Starter 300/50；Essential 800/120；額度不足才導 Paywall。
+- RevenueCat：App 端只可使用 `appl_` public SDK key；Edge / sync 要處理 RC appUserId alias，避免 paid tier 被空 entitlement 暫時降回 Free。
+- Paywall：4 產品（月/季 × Starter/Essential）必須用 exact product/package mapping；不要再用 title fuzzy contains month 判斷。
+
+### 近期驗證
+- `flutter analyze`：0 issues（`5f267c5`）
+- `flutter test test/unit/features/opener/data/services/opener_service_test.dart test/unit/features/opener/data/services/opener_result_cache_service_test.dart`：12/12 pass
+- 相關 Edge tests 見 `docs/bug-log.md` 2026-05-14 / 05-12 / 05-11 entries
+
+### 下步
+- Eric / Bruce / CC 以 TestFlight 跑 opener/paywall/quota matrix。
+- 若修到 `analyze-chat` schema / quota / subscription / Paywall package mapping，完成後交 Codex 做 diff review。
+- 不做大型 IA / prompt 重構，除非 TF P0 已穩。
+
+---
+
 ## 2026-05-03
 
 ### 階段
