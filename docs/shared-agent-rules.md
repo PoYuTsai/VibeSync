@@ -1,296 +1,200 @@
 # Shared Agent Rules
 
-> Audience: Shared
-> Purpose: single source of truth for rules that both Claude and Codex must follow.
+> Audience: Claude + Codex.
+> Purpose: one durable operating contract for VibeSync agents.
 
 ## Ownership
 
-- Precedence is:
-  1. global `~/.claude/CLAUDE.md`
-  2. this file
-  3. `AGENTS.md` / `CLAUDE.md` agent-specific addenda
-- Shared workflow rules live here.
-- `AGENTS.md` only keeps Codex-specific additions plus a pointer here.
-- `CLAUDE.md` only keeps Claude-specific additions plus a pointer here.
-- If a rule applies to both agents, edit this file instead of editing both agent files.
-- If a local rule duplicates or conflicts with global constitution, remove the local copy.
-- If a rule is not truly shared, keep it out of this file.
+Precedence:
 
-## Closeout Trigger
+1. global model/system/developer rules
+2. this file
+3. `AGENTS.md` / `CLAUDE.md`
+4. task-specific prompt
 
-Run this check whenever:
+If a rule applies to both Claude and Codex, edit this file. Do not duplicate it into both agent files.
 
-- Daisy explicitly asks for `commit+push`
-- a task is clearly done and about to be wrapped
-- a small test / validation round is being closed out
+## Current Truth Contract
+
+At every new session, rotation, or handoff:
+
+1. Read `docs/snapshot.md`.
+2. Read `git log --oneline -15`.
+3. Read latest handoff if one exists.
+4. Read newest OPEN item in `docs/reviews/ai-arbitration-queue.md`.
+
+These override old chat memory, Claude persisted output, and stale screenshots.
+
+Current project truth as of 2026-05-14:
+
+- Coach 1:1 is shipped into dogfood.
+- The active phase is TestFlight dogfood / App Review stabilization.
+- Active risk zones are subscription, quota, RevenueCat, paywall, opener, analyze-chat, Coach 1:1, and OCR.
+- Do not revive A2 Phase 4, Two-Layer Profile, or old Spec 6 labels unless Eric explicitly asks.
 
 ## Closeout Matrix
 
-Default: **write nothing beyond git history** unless one of these is true.
+Default: write nothing beyond git history unless one of these applies.
 
-1. Bug with root cause or new recurring trap
-   - Update `docs/bug-log.md`
-   - Update `AGENTS.md` / `CLAUDE.md` Common Pitfalls only if it is likely to recur
+- Bug with durable root cause -> update `docs/bug-log.md`.
+- Shared agent rule changed -> update this file.
+- Major stage changed -> update `docs/snapshot.md`.
+- ADR-level decision -> update `docs/decisions.md`.
+- Review/arbitration/handoff needed -> update `docs/reviews/`.
+- Onboarding commands changed -> update `README.md`.
 
-2. Review, rebuttal, or arbitration output
-   - Update one file under `docs/reviews/`
-   - Use `docs/reviews/ai-arbitration-queue.md` for live cross-agent discussion
+Every finished code/doc task should still commit and push.
 
-3. Lasting project rule that both agents must know
-   - Update this file
+## Role Split
 
-4. Major stage / release posture change
-   - Update `docs/snapshot.md`
+Claude leads:
 
-5. ADR-level decision
-   - Update `docs/decisions.md`
+- Flutter/UI/product flow/copy execution.
+- First-line dogfood bug fixes.
+- Small scoped implementation when product intent is clear.
 
-6. New contributor onboarding would fail or be materially misled
-   - Update `README.md`
-   - Triggers:
-     - setup / install / run / test / deploy commands changed
-     - required env vars, third-party services, or platform support changed
-     - top-level feature map or project entrypoints changed enough that README overview is stale
-     - docs entrypoint changed for first-30-minute onboarding
+Codex leads:
 
-7. Another agent may later need to continue, review, or sanity-check this work
-   - Update `docs/reviews/ai-arbitration-queue.md`
-   - Required when:
-     - Claude handled a DC / mobile-driven round that Codex may later read
-     - Codex finished a pass that Claude may later validate
-     - a task remains partially open across sessions or devices
-     - the next agent would otherwise need human re-translation of context
+- Read-only code review.
+- OCR, algorithmic logic, refactor plans, performance, architecture risk.
+- Adversarial checks on payment/quota/auth/data/AI prompt changes.
 
-If none apply:
+Eric/Bruce lead:
 
-- leave docs untouched
-- let `git log` be the history
+- Product feel, TestFlight smoke, real dating/chat UX judgment.
+- Final call when product/payment/data tradeoffs are ambiguous.
 
-## Test Responsibility Split
+## High-Risk Changes Need Codex Review
 
-Default testing owner is the implementation agent in the primary dev runtime.
+High-risk includes:
 
-- Claude / WSL runs Flutter TDD loops, `flutter test`, and `flutter analyze` for implementation work, and includes exact commands plus pass/fail output in handoff summaries.
-- Codex does diff review, architecture / risk checks, grep contract checks, and targeted verification for touched or high-risk files only.
-- Codex should not rerun full Flutter test suites when Claude already supplied credible exact commands/results, unless the diff contradicts the result or a high-risk invariant needs independent verification.
-- If Codex does run Flutter locally, prefer the smallest relevant test scope; full-suite or repeated Flutter runs belong in WSL unless explicitly needed.
+- subscription, paywall, quota, RevenueCat, 429
+- auth, account deletion, Hive/local persistence
+- `analyze-chat`, opener, OCR, Edge response schema
+- AI prompt changes affecting quality, safety, or token/cost
 
-## Task Routing And Role Split
+Rule:
 
-Use this section when Eric, Bruce, Claude, or Codex are unsure who should handle the next step.
+- Claude may fix first.
+- Before telling Eric/Bruce the build is safe to test, run Codex read-only review.
+- A valid Codex review must leave evidence: job id/result, review doc, queue update, or linked commit.
+- Do not claim "Codex approved" from memory or vibes.
 
-Short rule:
+Verdicts:
 
-- Unclear direction -> Codex.
-- Clear implementation -> Claude.
-- Finished work review -> Codex.
-- Product feel / TF smoke -> Eric and Bruce.
+- `APPROVED`: no P0/P1/P2.
+- `REVISE_REQUIRED`: P0/P1/P2 exists; Claude fixes only required findings.
+- `NEEDS_ERIC`: product/payment/data ambiguity or unresolved second-round disagreement.
 
-### Start With Codex
+Review loop:
 
-Start with Codex before implementation when the question is about product direction, positioning, architecture, risk, or AI quality.
+- Maximum two Claude-fix + Codex-review rounds.
+- After two rounds, stop and wait for Eric if still blocked.
 
-Examples:
+## Discord Frontline Response Contract
 
-- Product positioning changes, such as "reply consultant" -> "dating learning coach".
-- Category / differentiation questions, such as whether VibeSync is just a reply generator or a memory + review + next-step learning app.
-- Business / pricing / cost questions, especially second-layer AI, proactive review, long-term memory, or token cost.
-- Major IA or flow changes, such as reshaping "My Report" into a learning / review center.
-- Prompt, memory, user profile, partner profile, or AI-quality changes.
-- OCR, `analyze-chat`, Edge schema, Hive migration, auth, payment, or subscription changes.
-- Bruce or competitor research provides a broad product signal that must be converted into a testable spec.
+Applies to Claude Code sessions listening in VibeSync Discord.
 
-Codex output should clarify:
+- Treat every non-bot message from Eric or Bruce as requiring explicit acknowledgment unless it is clearly a duplicate/reaction/already answered.
+- If Eric and Bruce both speak before the agent replies, answer both in the same response.
+- Use `Eric:` / `Bruce:` or quote the key phrase when ambiguity is possible.
+- If one person's message is only context, still say `Bruce 補充我有收到` or `Eric 這點我先記下`.
+- If a report is ambiguous or has billing/data/product risk, ask a concise clarifying question before editing files.
+- Read-only investigation is allowed before asking; write operations need a clear task.
+- Keep Discord replies phone-screen friendly: 8 lines or fewer whenever possible.
+- Bug status format: `收到 -> 正在查 -> root cause -> 已修什麼 -> 是否已 commit/push -> 是否需要重 build`.
+- Discord text/screenshots are reliable; videos are not. For video-only reports, ask for key screenshots, timestamps, repro steps, expected result, and actual result.
+- If Eric says to queue a bug, update the newest OPEN item in `docs/reviews/ai-arbitration-queue.md`. Do not invent root cause before intake.
 
-- the core problem
-- product positioning
-- differentiation
-- scope boundary
-- roadmap / phase split
-- what to do now vs later
-- clear inputs for Claude to draft an executable plan
+## External Codex Review Gate
 
-### Start With Claude
+Phase 1 commands:
 
-Start with Claude when Eric already knows what should change and the task is a clear Flutter/UI/hotfix execution item.
+- `!codex setup`
+- `!codex review latest`
+- `!codex adversarial-review latest`
+- `!codex status <job-id>`
+- `!codex result <job-id>`
+- `!codex cancel <job-id>`
 
-Examples:
+Disabled in Discord Phase 1:
 
-- UI bugs: overflow, broken back navigation, dead buttons, blocked screens.
-- Visual polish: spacing, colors, glass/card feel, chip styling.
-- Copy tweaks that do not change product strategy.
-- Flutter-only screen or widget work.
-- Small TF dogfood regressions.
-- Hotfixes with a known root cause.
+- `!codex task`
+- `!codex rescue`
+- `!codex login`
+- write-enabled Codex commands
 
-Claude output should include:
+External mode rule:
 
-- commit hash
-- changed files
-- tests run
-- open risks
-- whether Codex review is needed
+- Codex is read-only.
+- Codex reports findings.
+- Claude applies required fixes.
+- Eric/Bruce dogfood after `APPROVED` or explicit Eric decision.
 
-### Standard Workflows
+Setup:
 
-Product strategy or high-risk feature:
+- If `!codex setup` says auth is missing, run once in Ubuntu terminal: `codex login --device-auth`.
 
-1. Eric + Codex strategy discovery.
-2. Codex writes direction, scope, and roadmap.
-3. Claude drafts executable spec / plan.
-4. Eric sanity-checks product intent.
-5. Codex reviews the spec.
-6. Claude executes.
-7. Codex reviews the code.
-8. Eric / Bruce run TF smoke.
+## Rotation Protocol: `!cc-rotate`
 
-Routine UI / hotfix:
+`!cc-rotate` is the only v1 phone/DC rotation command. There is no `!cc-handoff`, no `--force`, and no `!cc-status`.
 
-1. Eric / Bruce report the issue.
-2. Claude writes a mini-spec and executes.
-3. Claude runs tests.
-4. Codex reviews if the change is risky or Eric wants another pass.
-5. Eric / Bruce run TF smoke.
+Use it when context approaches the orange/red zone or after a scoped external task is complete.
 
-### High-Risk Changes Require Codex Review First
+Green-context bands:
 
-Do not let one agent implement these end-to-end without Codex review:
+- 35-45%: yellow reminder.
+- 45-55%: orange, prepare `!cc-rotate`; high-risk work should avoid starting here.
+- 55%+: hard stop; rotate before new work.
 
-- OCR / `analyze-chat` prompt
-- Edge Function schema or response format
-- Hive schema or migration
-- auth, payment, or subscription
-- memory, partner aggregate, or conversation write path
-- user profile / partner profile prompt injection
-- changes affecting token cost, AI quality, OCR baseline, or App Review stability
-- IA changes spanning multiple features
+When receiving `!cc-rotate`, the current session must:
 
-Required flow:
+1. Reply: `Validating rotate conditions...`
+2. Run `tools/cc-rotate/validate.sh`.
+3. Self-check internal blockers:
+   - B5 TodoWrite has `in_progress`.
+   - B6 background Bash still alive.
+   - B7 background Task agent pending.
+   - B8 plan mode not exited.
+   - B9 permission request pending.
+   - B10 long-running command active.
+4. If any hard block exists, reply with blockers and stop.
+5. Fold warnings into handoff.
+6. Run handoff skill; it must write `reference_session_handoff_latest.md`.
+7. Verify handoff mtime is within 60 seconds.
+8. Write `cc-rotate.request.json` to `$CC_ROTATE_DIR`.
+9. Reply: `Handoff OK. Rotating in ~5s. New session will read it.`
+10. Stop accepting new tool calls and wait for supervisor SIGTERM.
 
-`Codex strategy/spec -> Claude plan/execute -> Codex review -> TF smoke`
+Failure format:
 
-### TF Build Gate
+```text
+!cc-rotate refused:
+- <CODE>: <reason>
 
-After several hotfixes accumulate, pause before starting a larger feature.
-
-- Build from `main`.
-- Eric / Bruce dogfood in TestFlight.
-- If OK, start the next feature.
-- If regression appears, fix-forward first.
-- Do not mix a large feature with a hotfix batch.
-
-### Context Hygiene
-
-- Claude should open a new session for each major phase; long sessions are for short hotfixes, not architecture judgment.
-- Claude's new session should read the latest handoff / queue / git log before acting.
-- After `!cc-rotate`, the new session must treat `docs/snapshot.md` + `git log --oneline -12` + the latest handoff as authoritative. Memory index is only supporting context; do not revive older roadmap tracks such as A2 Phase 4 / Two-Layer Profile unless Eric explicitly asks.
-- Codex should put review verdicts, risks, and durable decisions in `docs/reviews/`, queue, memory, or ADRs as appropriate.
-- Shared facts come from git log + docs + memory, not any single model's chat memory.
-
-### Discord Frontline Response Contract
-
-`Shared`. Applies to Claude Code sessions listening in the VibeSync Discord channel, especially phone / dogfood / bug-report mode.
-
-- Treat every non-bot message from Eric or Bruce as requiring an explicit acknowledgment unless it is clearly just a duplicate, reaction, or already answered by the same reply.
-- If Eric and Bruce both speak before the agent replies, answer both in the same response. Use a short mention / name prefix (`Eric:` / `Bruce:`) and quote the key phrase when needed so nobody has to guess which message was handled.
-- Do not answer only the latest speaker when earlier unresolved messages in the batch still need a response. If one person's message is only context, still say `Bruce 補充我有收到` / `Eric 這點我先記下`.
-- If the request is ambiguous, has hidden product / billing / data-risk consequences, or mixes several possible tasks, ask a concise clarifying question before editing files or committing. Read-only inspection is allowed to clarify root cause; write operations require a clear task.
-- Keep Discord replies phone-screen friendly: short, concrete, and no wall-of-text. If the answer needs depth, give the decision first and offer to expand.
-- When fixing a reported bug, reply with the current status in plain language: `收到 -> 正在查 -> root cause -> 修了什麼 -> 是否已 commit/push -> 是否要重 build`.
-- Discord frontline can depend on text and screenshots, not deep video review. If a bug report is a video or unclear media-only report, ask for key screenshots, timestamps, repro steps, expected result, and actual result before making product/code judgments.
-- If Eric says to queue a bug for later, update the current OPEN item in `docs/reviews/ai-arbitration-queue.md` with a pending intake note. Do not invent a root cause before the actual report arrives.
-- After `!cc-rotate`, the new session must read the newest OPEN queue item before taking new work. That queue item is the durable place for dogfood bugs that Eric cannot summarize every time while mobile.
-
-### External Codex Review Gate
-
-`Shared`. Applies when Eric is away from the computer and Claude is doing first-line Discord hotfixes.
-
-- Claude may fix small dogfood bugs first, but high-risk changes must be reviewed by Codex before Eric/Bruce are told the build is safe to test. High-risk includes subscription, paywall, quota, RevenueCat, auth, data deletion, Hive schema, `analyze-chat`, opener, OCR, Edge response schema, AI prompt, or token/cost behavior.
-- A Codex review only counts if it was triggered by a deterministic bridge command/job or this Codex session, and leaves evidence: job id/result, `docs/reviews/*_codex-review.md`, queue update, or a linked commit. Claude must not say "Codex approved" from memory or vibes.
-- Discord Phase 1 commands are read-only only: `!codex review latest`, `!codex adversarial-review latest`, `!codex setup`, `!codex status <job-id>`, `!codex result <job-id>`, `!codex cancel <job-id>`. `!codex task`, `!codex rescue`, `!codex login`, and write-enabled commands are disabled.
-- Codex review is read-only in external mode. Codex reports findings; Claude applies only the required fixes.
-- Verdicts are fixed: `APPROVED`, `REVISE_REQUIRED`, or `NEEDS_ERIC`. P0/P1/P2 findings block dogfood. P3 suggestions do not block dogfood; record them in queue if useful.
-- Review loop limit: Claude fix + Codex review can run at most two rounds. If the second review still has P1/P2 or the agents disagree on product/payment/data direction, stop and mark `WAITING_ON_ERIC`; do not keep ping-ponging.
-- Every required finding must cite evidence: commit hash, file path/line, failing test/log, or exact diff behavior. Claims like "probably safe", "seems fixed", or "Codex agrees" without evidence are invalid.
-- If the bug report itself is unclear, no review loop starts yet. First ask Eric/Bruce for repro steps, screenshots, expected vs actual, account/tier/build, and whether the issue is reproducible.
-
-## Rotation Protocol (!cc-rotate)
-
-`Shared`. Phone-DC rotation command for Claude Code sessions when context approaches the 55% hook block. Triggered exclusively by Discord message `!cc-rotate` — v1 has **no other** `!cc-*` commands. The receiving Claude session MUST follow this 10-step SOP verbatim.
-
-Full design and risk register: `docs/plans/2026-05-14-cc-rotate-design.md`.
-
-### Step list (current session, after receiving the Discord `!cc-rotate` message)
-
-1. Reply Discord immediately: `🔄 Validating rotate conditions...`
-2. Execute `tools/cc-rotate/validate.sh` via Bash. Parse JSON output. Exit codes: 0 = pass; 1 = blocked (see `blocks[]`); 2 = setup error.
-3. Self-report B5-B10 (internal state, not visible to validate.sh):
-   - **B5** TodoWrite has `in_progress` items
-   - **B6** background Bash (`run_in_background: true`) still alive
-   - **B7** background Task agent un-reported
-   - **B8** in plan mode (ExitPlanMode unfired)
-   - **B9** pending permission request
-   - **B10** long-running command active (test / build / deploy / archive / export — including non-background)
-4. **Any hard block (B1-B10) → reply Discord with full failure list (format below) and STOP.** Do NOT offer "handoff-only" or any alternative command — they violate single-command discipline.
-5. Fold W1-W3 warnings (from validate output and self-check) into handoff context.
-6. Invoke the `handoff` skill — must write `reference_session_handoff_latest.md` containing: HEAD, open loops, next-step, risk notes, and any W1-W3 warnings.
-7. Verify the handoff file: its `mtime` MUST be within the last 60 seconds. Otherwise abort rotation, reply Discord with the failure, and STOP.
-8. Write `cc-rotate.request.json` to `$CC_ROTATE_DIR` (path resolved from `cc-rotate.local.env` in the channel runtime). Schema:
-
-   ```json
-   {
-     "type": "rotate",
-     "ts": "<ISO 8601 with timezone>",
-     "old_pid": <int>,
-     "discord_channel_id": "<id>",
-     "discord_user_id": "<id>",
-     "handoff_path": "<absolute path>",
-     "head_commit": "<7-char SHA>",
-     "warnings": ["W1: ...", "W2: ..."]
-   }
-   ```
-
-9. Reply Discord: `✅ Handoff OK. Rotating in ~5s. New session will read it.`
-10. Stop accepting new tool calls. Wait for SIGTERM from supervisor.
-
-### Failure message format (Step 4)
-
-```
-❌ !cc-rotate 拒絕。原因：
-  - <CODE>: <reason>
-  - <CODE>: <reason>
-
-下一步：
-  - 解 <CODE>：<how>
-  - 全部解掉後在 DC 重打 !cc-rotate
+Next:
+- Fix <CODE>: <how>
+- After blockers are cleared, type !cc-rotate again
 ```
 
-Do NOT suggest `!cc-handoff` or `!cc-rotate --force` — neither exists in v1.
+New session bootstrap must:
 
-### Hard rules
+- read `AGENTS.md`
+- read this file
+- read `docs/snapshot.md`
+- read newest OPEN queue item
+- read latest handoff
+- run `git log --oneline -15` and `git status --short --branch`
+- reply to Discord that it is ready
+- delete `cc-rotate.bootstrap.json`
 
-- **Single command only**: `!cc-rotate`. v1 has no `!cc-handoff`, no `--force`, no `!cc-status`. Do not invent any.
-- **Context reminders** follow the unified green-context bands: 35-45% = yellow reminder, 45-55% = orange prepare-to-rotate, 55%+ = hard stop. High-risk work at 45%+ should already be treated as orange. Reminders say only `建議準備 !cc-rotate` — never ask the user to choose between handoff and rotate.
-- **Phone-screen friendly**: every Discord reply ≤ 8 lines, no wall-of-text.
-- **New session bootstrap** is the supervisor + `SessionStart` hook's responsibility, not the old session's — the old session's last action is Step 10 (wait for SIGTERM). Because `SessionStart` only injects context and may not trigger an autonomous model turn, `UserPromptSubmit` must also reinject bootstrap context while `cc-rotate.bootstrap.json` exists; if the user sends `ready?` after rotation, the new session must first complete bootstrap before answering the prompt.
+The new session must not trust old persisted context over these files.
 
 ## Anti-Bloat Rules
 
 - One change should map to one primary shared document.
-- Do not write the same summary into `bug-log`, `snapshot`, and `reviews`.
 - `docs/snapshot.md` is a periodic rewrite, not an append-only diary.
-- `docs/reviews/` should capture decisions, findings, or rebuttals; not routine changelogs.
-- `docs/reviews/ai-arbitration-queue.md` is a live handoff/review queue, not an append-only log; one task should keep one live item.
-- `AGENTS.md` / `CLAUDE.md` should stay short and point here for shared rules.
-- `README.md` is an onboarding doc, not a changelog; only update it when first-30-minute developer understanding would otherwise drift.
+- `docs/reviews/ai-arbitration-queue.md` is a live queue, not a history dump.
+- Do not copy the same summary into `bug-log`, `snapshot`, and `reviews`.
+- `AGENTS.md` and `CLAUDE.md` stay short and point here for shared rules.
 - If a note is only useful for the current session, keep it out of permanent docs.
-
-## Audience Tags
-
-When adding a new operating rule, label it mentally as one of:
-
-- `Shared`
-- `Claude-only`
-- `Codex-only`
-
-Only `Shared` rules belong here.

@@ -1,187 +1,125 @@
 # VibeSync Snapshot
 
-> **動態狀態**—每月 1 號或重大階段變更時刷新。
-> 靜態規則（Pitfalls / Conventions / OCR Guardrail）在 `CLAUDE.md`。
+> Rewrite when the project phase changes. This file is the current-state anchor for Claude/Codex sessions.
 
----
+## 2026-05-14 Current Focus Guardrail
 
-## 2026-05-14
+Rotate / new sessions must treat this file plus `git log --oneline -15` as the source of truth.
+Old chat memory, Claude persisted output, and terminal screenshots are supporting context only.
 
-### Current Focus Guardrail
-Rotate / new session must treat this section plus `git log --oneline -12` as the source of truth. Memory index is only supporting context.
+Do not revive old tracks such as A2 Phase 4, Two-Layer Profile, or "Spec 6A planning" unless Eric explicitly asks.
 
-Do not revive A2 Phase 4 / Two-Layer Profile unless Eric explicitly asks for it. That is older roadmap context, not the current default track.
+Current state:
 
-Current default priority:
-1. TestFlight / dogfood frontline bug fixes.
-2. Subscription, quota, RevenueCat, 429, upgrade/downgrade safety.
-3. Opener / analyze-chat / coach 1:1 quality and UX stability.
-4. App Review / launch-readiness stabilization.
-5. `cc-rotate` is workflow tooling, not product roadmap.
+- Coach 1:1 is shipped into dogfood. It is not a planning/spec item anymore.
+- Spec 1-5 context is product fuel, not the active task label.
+- The current product positioning is "AI dating coach with memory": remembers the person, the conversation, user intent, coaching context, and helps users converge on a better next action.
+- We are in TestFlight dogfood / App Review readiness stabilization.
 
-### 階段
-**送審前最後穩定化：P0 opener / Paywall / quota 收斂中。** 近期主線不是大功能擴張，而是 TestFlight dogfood 後的第一線 bug fix-forward。CC 接手前先看 `docs/reviews/ai-arbitration-queue.md` 最新 OPEN handoff。
+Default priority:
 
-### 最近高風險區
-- 開場救星：圖片/手動輸入、格式修復重試、原始 JSON 阻擋、502 不扣額度、本機草稿保存、A/B 對象不混用。
-- 訂閱與額度：Free 月 30 / 日 15 可正常使用；Starter 300/50；Essential 800/120；額度不足才導 Paywall。
-- RevenueCat：App 端只可使用 `appl_` public SDK key；Edge / sync 要處理 RC appUserId alias，避免 paid tier 被空 entitlement 暫時降回 Free。
-- Paywall：4 產品（月/季 × Starter/Essential）必須用 exact product/package mapping；不要再用 title fuzzy contains month 判斷。
+1. P0/P1 dogfood bugs from Eric/Bruce.
+2. Subscription, quota, RevenueCat, 429, paywall upgrade/downgrade safety.
+3. Opener, analyze-chat, Coach 1:1 quality and UX stability.
+4. App Review / launch-readiness cleanup.
+5. Workflow tooling such as `!cc-rotate` and `!codex`.
 
-### 近期驗證
-- `flutter analyze`：0 issues（`5f267c5`）
-- `flutter test test/unit/features/opener/data/services/opener_service_test.dart test/unit/features/opener/data/services/opener_result_cache_service_test.dart`：12/12 pass
-- 相關 Edge tests 見 `docs/bug-log.md` 2026-05-14 / 05-12 / 05-11 entries
+## Recent Stabilization Train
 
-### 下步
-- Eric / Bruce / CC 以 TestFlight 跑 opener/paywall/quota matrix。
-- 若修到 `analyze-chat` schema / quota / subscription / Paywall package mapping，完成後交 Codex 做 diff review。
-- 不做大型 IA / prompt 重構，除非 TF P0 已穩。
+Recent commit themes, newest first:
 
----
+- `!codex` Phase 1 read-only Discord review gate: `dfde5f2`, `ec84bb0`.
+- `!cc-rotate` external/mobile session rotation and bootstrap hardening: `80ce48a` through `abd8200`.
+- CC dogfood handoff, queue, and current-state correction: `8b748c4`, `050f50e`, `e111550`, `128879f`, `2f72839`.
+- Opener/paywall/quota/RevenueCat P0 fixes:
+  - `6b18863` Free quota thresholds.
+  - `4184c75`, `7c19994`, `1f49470` opener/analyze malformed JSON protection.
+  - `26790b4` format failure no quota charge.
+  - `4954581` paid tier cannot regress to Free on transient RevenueCat miss.
+  - `a01cb0f`, `6dc38a2`, `54c0906` Paywall package mapping/fallback fixes.
+  - `f0546c0`, `ce4aa9e`, `e660bcd` RevenueCat client key and paid quota sync.
+  - `5f267c5` opener draft/save path.
 
-## 2026-05-03
+If a new session sees older memory mentioning Spec 6A, A2 Phase 4, or Two-Layer as the current track, override it with this snapshot.
 
-### 階段
-**Spec 5 Coach Follow-up v1 已 merge main 並完成 TF smoke。** Branch `feature/spec5-coach-follow-up-v1` fast-forward merge 到 `main`，HEAD 後續 CI-only 修正為 `6e140e5`，`coach-follow-up` Edge Function deploy green。
+## Active Risk Areas
 
-### Ship 重點
-- Partner detail 新增「教練跟進」區塊，三個 phase：準備邀約 / 約會前提醒 / 約會後復盤。
-- 新增獨立 Supabase Edge Function `coach-follow-up`，JWT-verified，不碰 `analyze-chat` / OCR baseline。
-- Result card 固定 5 欄：headline / observation / task / suggestedLine / boundaryReminder。
-- q3 補充文字納入高優先 prompt context，支援露骨、辱罵、打錯字、語意不足等真實輸入，原則是「不控制用戶輸入，只收斂 AI 輸出」。
-- hard banned output tokens 維持 7 個：`PUA / 收割 / 控住 / 攻略 / 壞女人 / 高分妹 / 玩咖`。
-- 成功生成後立即 refresh usage snapshot；已修正 ordering，卡片先顯示，再刷新額度，避免 subscription refresh hang 擋住成功卡片。
+High-risk changes require Codex review before telling Eric/Bruce the build is safe to test:
 
-### 驗證
-- Deno `coach-follow-up` suite：146/146 green。
-- Flutter scoped tests：186/186 green。
-- `flutter analyze`：0 issues。
-- GitHub Actions `Deploy Edge Function #150`：success。
-- Eric 深度 TF smoke：30 題人工測試效果優於預期，回覆皆滿意，標記 **TF SMOKE PASSED**。
+- subscription, paywall, quota, RevenueCat, 429
+- auth, account deletion, Hive/local persistence
+- `analyze-chat`, opener, OCR, Edge response schema
+- AI prompt changes that affect reply quality, safety, or token/cost behavior
 
-### 下步
-- 下一次 main build 補測 app-side ordering polish（抽 3-5 題即可，不需重跑 30 題）。
-- 後續若擴充，優先做 Spec 5 golden cases / quality rubric，再把 Spec 4 Learning / Practice 接回真實情境。
+Free user rule:
 
----
+- Free users must be able to try core features until monthly/daily quota is exhausted.
+- When exhausted, show a clear quota/paywall path.
+- Do not accidentally block first-use opener/analyze/coach before quota is actually consumed.
 
-## 2026-05-02
+RevenueCat rule:
 
-### 階段
-**Spec 4 Phase 1 — Coach Action Card + Learning Deep Link** 全 ship 至 main，TF dogfood smoke 已過（Eric 回報「還可以」）。`ScoreActionHint` rollback 安全網已於 cleanup commit `0d7ff06` 移除，production path 只剩 `CoachActionCard`。Spec 3 (Partner Data Quality Guard) 已 dogfood 通過。
+- App client uses public `appl_` SDK key.
+- Server/Edge uses secret RevenueCat key.
+- Paid tier must not be downgraded to Free just because RevenueCat temporarily returns empty or delayed entitlement data.
 
-### Phase 1 ship 重點
-- 9 個 deterministic actionType（softInvite / lowerPressureReply / extendTopicStoryFrame / emotionalResonance / rightSizeReply / playfulReply / pausePursuit / preferenceSignal / fitCheck）
-- App-side `CoachActionPolicy.evaluate()` pure function，10 條 top-down 規則
-- Spec 3 flagged-partner gating 走 safe-set {emotionalResonance / rightSizeReply / lowerPressureReply / fitCheck}，flagged 時 practiceGoals 完全忽略
-- ScoreActionHint 的 13-keyword meeting suppression 契約 byte-for-byte 遷移到 policy
-- LearningLinkResolver 對 7/9 actionType 提供 exact articleId（softInvite / pausePursuit 沒對到文章 → CTA 隱藏；無 category fallback）
-- 37 個 Spec 4 policy/widget tests，cleanup 後 full-suite sweep `+638 ~1 -76`，baseline `-76` 不變
+Paywall rule:
 
-### Phase 1 不做（保留 Phase 1.5+）
-- 不改 analyze-chat schema / prompt / OCR
-- 不新增 Edge endpoint，不做 AI practice generation
-- 不重寫 20 篇文章；softInvite/pausePursuit 文章補上是 Phase 1.5
-- 沒 Learning tab 真實 route → 沒對到文章時 CTA 直接隱藏（Codex amendment 2）
-- `ScoreActionHint` cleanup 已完成；下一步若要補強，走 Phase 1.5（softInvite/pausePursuit 文章或 Learning tab 真實 route）
+- Monthly/quarterly products must map by exact product/package id.
+- Do not use fuzzy title matching.
+- Upgrade/downgrade behavior must be safe for all Free/Starter/Essential monthly/quarterly paths.
 
-詳見 ADR #16。
+Opener rule:
 
----
+- Opener is a "pioneer" feature: generate a useful first move, cache/save the paid result, and make the next step into analyze-chat/Coach 1:1 clear.
+- If AI returns raw JSON or malformed schema, repair/retry and do not show raw JSON to users.
+- Format failure should not charge quota.
 
-## 2026-04-28
+Coach 1:1 rule:
 
-### 階段
-**Partner Entity Refactor A1 + A2 全 ship**（branch `feature/partner-entity-A2-polish` Phase 4 收尾，含 PartnerListCard 5 件套、partner delete cascade guard、per-account dedupe banner、merge picker preselect、copy sweep、砍 `@Deprecated HomeContent`）→ TF soak 進行中，準備送審。詳見 ADR #15 v2 ship section。
+- Coach should be practical, grounded, non-judgmental, and on the user's side.
+- It can discuss dating escalation, nightlife, sexuality, short-term intent, and safety maturely.
+- It must still maintain consent, boundaries, STI/contraception, and personal safety reminders without becoming preachy.
 
-### Phase 4 ship 重點
-- D-P4-1 partner delete = block-when-non-empty（cascade guard 走 `conversationsByPartnerProvider.length`，非 `aggregate.totalRounds`）
-- D-P4-5 dedupe banner dismissed key per-account (`partner_dedupe_banner_dismissed_$uid`)
-- TF regression checklist 補 J 段落 13 項
+Analyze-chat rule:
 
----
+- Reply suggestions should read the actual conversation.
+- Prefer "接住情緒 -> 互動感 -> 順勢延伸" over summary-like suggestions.
+- For multiple incoming messages, identify catchable points and when useful suggest split replies; not every point needs a reply.
 
-## 2026-04-24
+## Current Workflow State
 
-### 階段
-送審前最後穩定化 + TestFlight 邊界驗證 + 功能密集擴充剛收尾。
+External/mobile mode:
 
-### 主線
-- OCR 邊界案例持續收斂
-- 開場救星品質優化
-- 文章學習體驗優化
-- 個人檔案卡 AI 摘要穩定化
+- Discord listener runs via tmux / `~/.claude/channels/discord-vibesync/start.sh`.
+- Use `!cc-rotate` to handoff and start a fresh CC session when context approaches the orange/red zone.
+- `!cc-rotate` must read this snapshot, shared rules, newest OPEN queue item, latest handoff, and recent commits before taking work.
+- `!codex review latest` is the read-only Codex review gate. Codex does not edit files in external mode.
 
-### 已打通
-- Auth（Apple + Google，見 `docs/integrations/auth.md`）
-- 訂閱 4 產品（Starter/Essential 月繳+季繳，見 `docs/integrations/revenuecat.md`）
-- 截圖上傳（Claude Vision，最多 3 張）
-- 開場救星（basic + 截圖輔助）
-- 學習專區 Tab（20 篇繁中文章）
-- 我的報告 Tab（5 維雷達圖 + 歷史趨勢）
-- 手動輸入分析
-- TestFlight release workflow
+Known setup note:
 
-### 送審前剩餘
-- [ ] 真機跑 auth / restore / 升級後權限刷新
-- [ ] 驗 OCR 邊界：LINE 引用、長截圖、多張截圖、名字錯字、圖片/貼圖/影片 bubble
-- [ ] 驗開場救星：無截圖 / 1-3 張截圖、計費正確（基本 3 則 + 每截圖 +2）
-- [ ] 驗學習專區：免費每日 3 篇限制、文章實戰練習按鈕導向開場救星
-- [ ] 驗我的報告：雷達圖 Free 隱藏、Starter/Essential 可見
-- [ ] 核對 privacy / terms / support email / App Store Connect privacy disclosure
+- Codex CLI in WSL may need one-time login: `codex login --device-auth`.
+- Verify with `!codex setup`.
 
-### 不做大功能擴張
-持續收邊界案例與品質優化，避免 feature creep。
+## Validation Baseline
 
----
+Recent targeted validations have included:
 
-## 三大 Tab（目前結構）
+- `flutter analyze` after major Flutter changes.
+- opener service/cache unit tests.
+- targeted Edge Function tests around schema, quota, and malformed JSON.
+- local bridge tests for `!cc-rotate` and `!codex` wrappers.
 
-- **首頁** — 對話列表 / 新增對話（手動 + 截圖）/ 新用戶三步引導 / 開場救星入口
-- **我的報告** — 5 維雷達圖 + 健康分數卡 + 歷史趨勢（Starter/Essential 限定）
-- **學習專區** — 20 篇繁中翻譯文章（4 分類）+ 實戰練習入口（→ 開場救星）
+Before claiming a fix is safe, state what was actually tested. Do not imply full regression if only targeted tests ran.
 
----
+## Next Default Action
 
-## 訂閱方案（2026-04-22 起）
+When Eric or Bruce reports a bug:
 
-| Tier | 月繳 | 季繳 | 月訊息 | 日上限 | AI 模型 |
-|------|------|------|--------|--------|---------|
-| Free | NT$0 | — | 30 | 15 | Haiku |
-| Starter | NT$590 | `starter_quarterly` | 300 | 50 | Sonnet |
-| Essential | NT$1,290 | `essential_quarterly` | 800 | 120 | Sonnet |
-
-詳見 `docs/pricing-final.md` 與 ADR #10 / #11。
-
----
-
-## 最近重大 commit highlights
-
-（**不列已完成功能清單**，只列 snapshot 當下值得知道的近期改動；列不到的去 `git log --oneline -30` 查）
-
-- [feat] AI 自動提取對方興趣、特質、備註，顯示個人檔案卡
-- [feat] 對話訊息長按選單：換邊（她說↔我說）+ 刪除
-- [feat] 繼續對話只收增量計費
-- [feat] 設定頁 / Paywall 加入月繳/季繳標示 + 下次續約日期
-- [feat] 開場救星：頁面 UI + Edge Function opener 模式
-- [feat] 更新定價方案：Starter NT$590 / Essential NT$1,290 + 4 產品
-- [feat] 學習專區 20 篇文章 + 免費每日 3 篇限制
-- [feat] 我的報告 Tab：5 維雷達圖 + 圖表
-- [fix] GAME 階段改名為「對話進度」（破冰/升溫/深入/連結/邀約）
-
----
-
-## 更新規則
-
-### 何時該改這份檔
-- 每月 1 號 review（scheduled agent 會提醒）
-- 大 feature 上線後
-- 送審階段變更時（送審 → 審核中 → 上架）
-- 定價或產品結構變更時
-
-### 何時**不**該改這份檔
-- Bug 修復 → 去 `docs/bug-log.md`
-- 新決策 → 去 `docs/decisions.md`
-- 硬規則變化 → 去 `CLAUDE.md`
-- 日常 commit → git log 自己會記
+1. Acknowledge the specific reporter and symptom.
+2. Ask for missing repro details if needed: build number, account/tier, expected vs actual, screenshots, exact steps, reproducibility.
+3. Investigate root cause.
+4. Fix only the scoped issue.
+5. Run targeted tests.
+6. Commit + push.
+7. If high risk, trigger Codex read-only review before saying "safe to build/test".
