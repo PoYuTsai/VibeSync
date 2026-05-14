@@ -12,6 +12,7 @@ class OpenerDraft {
     this.sourceLabel,
     this.inputPreview,
     this.continuedAt,
+    this.partnerId,
   });
 
   final String id;
@@ -21,6 +22,7 @@ class OpenerDraft {
   final String? sourceLabel;
   final String? inputPreview;
   final DateTime? continuedAt;
+  final String? partnerId;
 
   String get title {
     final name = displayName?.trim();
@@ -57,6 +59,7 @@ class OpenerDraft {
       sourceLabel: sourceLabel,
       inputPreview: inputPreview,
       continuedAt: continuedAt ?? this.continuedAt,
+      partnerId: partnerId,
     );
   }
 
@@ -68,6 +71,7 @@ class OpenerDraft {
         'sourceLabel': sourceLabel,
         'inputPreview': inputPreview,
         'continuedAt': continuedAt?.toIso8601String(),
+        'partnerId': partnerId,
       };
 
   static OpenerDraft? fromJson(Map<String, dynamic> json) {
@@ -103,6 +107,7 @@ class OpenerDraft {
       sourceLabel: json['sourceLabel']?.toString(),
       inputPreview: json['inputPreview']?.toString(),
       continuedAt: parseNullableDate(json['continuedAt']),
+      partnerId: json['partnerId']?.toString(),
     );
   }
 }
@@ -117,6 +122,7 @@ class OpenerResultCacheService {
     String? displayName,
     String? sourceLabel,
     String? inputPreview,
+    String? partnerId,
   }) async {
     final now = DateTime.now();
     final draft = OpenerDraft(
@@ -126,6 +132,7 @@ class OpenerResultCacheService {
       displayName: _blankToNull(displayName),
       sourceLabel: _blankToNull(sourceLabel),
       inputPreview: _blankToNull(inputPreview),
+      partnerId: _blankToNull(partnerId),
     );
 
     final drafts = [

@@ -142,6 +142,42 @@ void main() {
     expect(drafts.last.title, 'draft 2');
   });
 
+  test('draft cache persists partnerId so drafts can be linked to a person',
+      () async {
+    final service = OpenerResultCacheService();
+
+    final draft = await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '小美',
+      partnerId: 'partner-123',
+    );
+
+    expect(draft.partnerId, 'partner-123');
+
+    final reloaded = service.loadDraft(draft.id);
+    expect(reloaded, isNotNull);
+    expect(reloaded!.partnerId, 'partner-123');
+    expect(reloaded.displayName, '小美');
+  });
+
+  test('legacy drafts without partnerId still parse', () async {
+    final service = OpenerResultCacheService();
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'legacy'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'legacy',
+    );
+
+    final drafts = service.loadDrafts();
+    expect(drafts, hasLength(1));
+    expect(drafts.first.partnerId, isNull);
+  });
+
   test('draft cache can mark continued and delete draft', () async {
     final service = OpenerResultCacheService();
     final draft = await service.saveDraft(
