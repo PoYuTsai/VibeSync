@@ -22,9 +22,9 @@ If memory conflicts with the files above, trust the files and latest commits.
 
 Current product state as of 2026-05-14:
 
-- Coach 1:1 is already shipped into dogfood and is not "Spec 6A planning" anymore.
+- Coach 1:1 is already shipped into dogfood and is part of the core product.
 - Analyze-chat, opener, paywall, quota, RevenueCat, and TestFlight dogfood are the active stabilization tracks.
-- Do not revive A2 Phase 4, Two-Layer Profile, or old Spec 6 labels unless Eric explicitly asks.
+- Do not revive archived roadmap labels or old planning tracks unless Eric explicitly asks.
 - We are in pre-review / pre-launch stabilization, not large feature expansion.
 
 ---

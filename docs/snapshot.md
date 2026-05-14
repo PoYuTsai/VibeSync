@@ -7,12 +7,12 @@
 Rotate / new sessions must treat this file plus `git log --oneline -15` as the source of truth.
 Old chat memory, Claude persisted output, and terminal screenshots are supporting context only.
 
-Do not revive old tracks such as A2 Phase 4, Two-Layer Profile, or "Spec 6A planning" unless Eric explicitly asks.
+Do not revive archived roadmap labels or old planning tracks unless Eric explicitly asks.
 
 Current state:
 
-- Coach 1:1 is shipped into dogfood. It is not a planning/spec item anymore.
-- Spec 1-5 context is product fuel, not the active task label.
+- Coach 1:1 is shipped into dogfood and is part of the core product.
+- Older spec discussions are product fuel, not active task labels.
 - The current product positioning is "AI dating coach with memory": remembers the person, the conversation, user intent, coaching context, and helps users converge on a better next action.
 - We are in TestFlight dogfood / App Review readiness stabilization.
 
@@ -40,7 +40,7 @@ Recent commit themes, newest first:
   - `f0546c0`, `ce4aa9e`, `e660bcd` RevenueCat client key and paid quota sync.
   - `5f267c5` opener draft/save path.
 
-If a new session sees older memory mentioning Spec 6A, A2 Phase 4, or Two-Layer as the current track, override it with this snapshot.
+If a new session sees older memory claiming an archived roadmap label is the current track, override it with this snapshot.
 
 ## Active Risk Areas
 

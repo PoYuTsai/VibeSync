@@ -30,7 +30,7 @@ Current project truth as of 2026-05-14:
 - Coach 1:1 is shipped into dogfood.
 - The active phase is TestFlight dogfood / App Review stabilization.
 - Active risk zones are subscription, quota, RevenueCat, paywall, opener, analyze-chat, Coach 1:1, and OCR.
-- Do not revive A2 Phase 4, Two-Layer Profile, or old Spec 6 labels unless Eric explicitly asks.
+- Do not revive archived roadmap labels or old planning tracks unless Eric explicitly asks.
 
 ## Closeout Matrix
 

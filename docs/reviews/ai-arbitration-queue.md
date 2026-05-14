@@ -39,7 +39,7 @@ Current Product Truth:
 
 - Coach 1:1 is shipped into dogfood.
 - Current phase is TestFlight dogfood / App Review stabilization.
-- Do not treat Spec 6A, A2 Phase 4, or Two-Layer Profile as current default work unless Eric explicitly asks.
+- Do not treat archived roadmap labels or old planning tracks as current default work unless Eric explicitly asks.
 
 Recent Context:
 
