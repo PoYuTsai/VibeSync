@@ -97,11 +97,22 @@ exec "$VIBESYNC_REPO/tools/cc-rotate/supervisor.sh"
 
 ### 步驟 5：重啟 bridge
 
+如果你人在電腦前，直接在 WSL terminal 執行 `start.sh` 即可：
+
 ```bash
 # 殺舊 bridge
 pkill -F ~/.claude/channels/discord-vibesync/bridge.pid 2>/dev/null || true
 # 用新 start.sh 重啟
 ~/.claude/channels/discord-vibesync/start.sh
+```
+
+如果要讓它背景常駐，不能用純 `nohup start.sh`，因為 Claude Code channel mode 需要 pseudo-tty。用 `script` 包一層：
+
+```bash
+CHANNEL="$HOME/.claude/channels/discord-vibesync"
+nohup script -q -f -c "$CHANNEL/start.sh" "$CHANNEL/bridge.pty.log" \
+  > "$CHANNEL/bridge.out" 2>&1 < /dev/null &
+echo $! > "$CHANNEL/wrapper.pid"
 ```
 
 從手機 DC 確認新 session 起來能正常聊天。
