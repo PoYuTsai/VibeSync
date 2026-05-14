@@ -31,6 +31,7 @@ Current project truth as of 2026-05-14:
 - The active phase is TestFlight dogfood / App Review stabilization.
 - Active risk zones are subscription, quota, RevenueCat, paywall, opener, analyze-chat, Coach 1:1, and OCR.
 - Do not revive archived roadmap labels or old planning tracks unless Eric explicitly asks.
+- Discord ready replies should suggest only current tracks: P0/P1 dogfood bug intake, workflow verification, Codex review gate, or App Review stabilization.
 
 ## Closeout Matrix
 

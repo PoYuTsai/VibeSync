@@ -61,6 +61,13 @@ Reply to channel `{{DISCORD_CHANNEL_ID}}` with 8 lines or fewer:
 - warnings summary if any
 - `Awaiting next task.`
 
+Do not offer a menu of archived roadmap options. If you include suggested next
+actions, only use current tracks:
+
+- P0/P1 dogfood bug intake
+- cc-rotate / Codex workflow verification
+- TestFlight / App Review stabilization
+
 If Eric and Bruce both have unresolved messages, explicitly acknowledge both.
 
 ### Step 6 - Cleanup
@@ -69,8 +76,8 @@ Do not delete `{{BOOTSTRAP_JSON_PATH}}` yourself from inside Claude Code.
 That file lives in the Discord channel runtime and may trigger a sensitive-file
 permission prompt. Cleanup is handled by the cc-rotate hook/supervisor layer.
 
-If you notice the file still exists after you have replied to Discord, mention
-`bootstrap cleanup pending` briefly, but do not block the next task on it.
+Do not mention bootstrap cleanup in the ready reply unless there is an actual
+cleanup error that blocks operation.
 
 ## Warnings carried over
 
@@ -80,6 +87,7 @@ If you notice the file still exists after you have replied to Discord, mention
 
 - Do not trust old chat memory over snapshot / git log / handoff.
 - Do not revive old roadmap tracks unless Eric asks.
+- Do not offer archived roadmap labels as next actions in Discord ready replies.
 - Do not claim a build is safe without saying what was tested.
 - High-risk hotfixes need Codex read-only review before dogfood approval.
 - When reporting fixes/reviews to Discord, use the closeout format in `docs/shared-agent-rules.md`.
