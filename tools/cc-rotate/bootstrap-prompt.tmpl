@@ -16,6 +16,7 @@ This is **NOT** a cold start. The user is on mobile Discord and is **waiting for
 - 1a. Read `{{AGENTS_MD_PATH}}` (full)
 - 1b. Read `{{SHARED_RULES_PATH}}` (full)
 - 1c. Read `{{SNAPSHOT_PATH}}` (full)
+- Treat the top `Current Focus Guardrail` in snapshot as authoritative over memory index. Do not revive older roadmap items unless Eric explicitly asks.
 
 **Step 2 — Read handoff** (single Read, full file):
 
@@ -23,8 +24,9 @@ This is **NOT** a cold start. The user is on mobile Discord and is **waiting for
 
 **Step 3 — Verify repo state** (single Bash, two commands chained):
 
-- Run `git log --oneline -5 && git status` via Bash.
+- Run `git log --oneline -12 && git status --short --branch` via Bash.
 - Confirm HEAD still equals `{{OLD_HEAD}}` — no concurrent commits should have happened during rotation. If mismatch, flag in step 5 reply.
+- Use the latest 12 commits to understand the last few rounds before taking any task. If memory index conflicts with these commits or snapshot, trust commits + snapshot.
 
 **Step 4 — Optional bug-log peek** (only if file ≤ 200 lines):
 
@@ -55,6 +57,7 @@ Keep it phone-screen friendly (≤ 8 lines total, no wall-of-text).
 **Hard rules during bootstrap:**
 
 - ❌ Do NOT start any new work until Steps 1-6 complete.
+- ❌ Do NOT trust memory index over snapshot / git log. Snapshot + latest commits define current product track.
 - ❌ Do NOT skip Step 5 — the user is on mobile waiting for confirmation.
 - ❌ Do NOT skip Step 6 — leftover bootstrap.json poisons next session.
 - ❌ Do NOT echo warnings verbatim in Step 5 — summarize codes only (e.g. "W1, W2").

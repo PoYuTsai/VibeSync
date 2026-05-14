@@ -7,6 +7,18 @@
 
 ## 2026-05-14
 
+### Current Focus Guardrail
+Rotate / new session must treat this section plus `git log --oneline -12` as the source of truth. Memory index is only supporting context.
+
+Do not revive A2 Phase 4 / Two-Layer Profile unless Eric explicitly asks for it. That is older roadmap context, not the current default track.
+
+Current default priority:
+1. TestFlight / dogfood frontline bug fixes.
+2. Subscription, quota, RevenueCat, 429, upgrade/downgrade safety.
+3. Opener / analyze-chat / coach 1:1 quality and UX stability.
+4. App Review / launch-readiness stabilization.
+5. `cc-rotate` is workflow tooling, not product roadmap.
+
 ### 階段
 **送審前最後穩定化：P0 opener / Paywall / quota 收斂中。** 近期主線不是大功能擴張，而是 TestFlight dogfood 後的第一線 bug fix-forward。CC 接手前先看 `docs/reviews/ai-arbitration-queue.md` 最新 OPEN handoff。
 

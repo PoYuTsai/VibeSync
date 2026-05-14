@@ -183,6 +183,7 @@ After several hotfixes accumulate, pause before starting a larger feature.
 
 - Claude should open a new session for each major phase; long sessions are for short hotfixes, not architecture judgment.
 - Claude's new session should read the latest handoff / queue / git log before acting.
+- After `!cc-rotate`, the new session must treat `docs/snapshot.md` + `git log --oneline -12` + the latest handoff as authoritative. Memory index is only supporting context; do not revive older roadmap tracks such as A2 Phase 4 / Two-Layer Profile unless Eric explicitly asks.
 - Codex should put review verdicts, risks, and durable decisions in `docs/reviews/`, queue, memory, or ADRs as appropriate.
 - Shared facts come from git log + docs + memory, not any single model's chat memory.
 
