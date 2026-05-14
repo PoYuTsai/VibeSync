@@ -127,6 +127,34 @@ Behavior:
 
 Phase 1 should be **read-only by default**.
 
+### External Review Loop Contract
+
+This bridge is the safety gate for Eric-away-from-keyboard mode:
+
+```text
+Claude fixes a first-line bug
+→ Claude commits + pushes
+→ Discord triggers `!codex review latest` or `!codex adversarial-review latest`
+→ Codex performs read-only diff review
+→ Claude fixes only P0/P1/P2 if required
+→ At most one second Codex review
+→ Then APPROVED or WAITING_ON_ERIC
+```
+
+Fixed verdicts:
+
+- `APPROVED`: no P0/P1/P2; Eric/Bruce can dogfood.
+- `REVISE_REQUIRED`: P0/P1/P2 exists; Claude may apply only those fixes, then run one more review.
+- `NEEDS_ERIC`: product/payment/data ambiguity, or the second review still has P1/P2.
+
+Anti-hallucination rules:
+
+- The bridge must return a job id or concrete result. Claude must not claim Codex reviewed without that evidence.
+- Required findings must cite commit hash plus file/line, failing test/log, or exact diff behavior.
+- P3 suggestions never block external dogfood; record them in `docs/reviews/ai-arbitration-queue.md` if useful.
+- If bug intake is unclear, do not call Codex yet. Ask for repro steps, screenshots, expected vs actual, build number, account tier, and whether it reproduces.
+- No infinite bot loop. Two review rounds maximum; unresolved after that becomes `WAITING_ON_ERIC`.
+
 ### Phase 2: Rescue / Task Delegation
 
 Add:

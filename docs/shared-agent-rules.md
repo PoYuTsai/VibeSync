@@ -201,6 +201,18 @@ After several hotfixes accumulate, pause before starting a larger feature.
 - If Eric says to queue a bug for later, update the current OPEN item in `docs/reviews/ai-arbitration-queue.md` with a pending intake note. Do not invent a root cause before the actual report arrives.
 - After `!cc-rotate`, the new session must read the newest OPEN queue item before taking new work. That queue item is the durable place for dogfood bugs that Eric cannot summarize every time while mobile.
 
+### External Codex Review Gate
+
+`Shared`. Applies when Eric is away from the computer and Claude is doing first-line Discord hotfixes.
+
+- Claude may fix small dogfood bugs first, but high-risk changes must be reviewed by Codex before Eric/Bruce are told the build is safe to test. High-risk includes subscription, paywall, quota, RevenueCat, auth, data deletion, Hive schema, `analyze-chat`, opener, OCR, Edge response schema, AI prompt, or token/cost behavior.
+- A Codex review only counts if it was triggered by a deterministic bridge command/job or this Codex session, and leaves evidence: job id/result, `docs/reviews/*_codex-review.md`, queue update, or a linked commit. Claude must not say "Codex approved" from memory or vibes.
+- Codex review is read-only in external mode. Codex reports findings; Claude applies only the required fixes.
+- Verdicts are fixed: `APPROVED`, `REVISE_REQUIRED`, or `NEEDS_ERIC`. P0/P1/P2 findings block dogfood. P3 suggestions do not block dogfood; record them in queue if useful.
+- Review loop limit: Claude fix + Codex review can run at most two rounds. If the second review still has P1/P2 or the agents disagree on product/payment/data direction, stop and mark `WAITING_ON_ERIC`; do not keep ping-ponging.
+- Every required finding must cite evidence: commit hash, file path/line, failing test/log, or exact diff behavior. Claims like "probably safe", "seems fixed", or "Codex agrees" without evidence are invalid.
+- If the bug report itself is unclear, no review loop starts yet. First ask Eric/Bruce for repro steps, screenshots, expected vs actual, account/tier/build, and whether the issue is reproducible.
+
 ## Rotation Protocol (!cc-rotate)
 
 `Shared`. Phone-DC rotation command for Claude Code sessions when context approaches the 55% hook block. Triggered exclusively by Discord message `!cc-rotate` — v1 has **no other** `!cc-*` commands. The receiving Claude session MUST follow this 10-step SOP verbatim.
