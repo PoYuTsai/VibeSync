@@ -98,13 +98,39 @@ Applies to Claude Code sessions listening in VibeSync Discord.
 - Treat every non-bot message from Eric or Bruce as requiring explicit acknowledgment unless it is clearly a duplicate/reaction/already answered.
 - If Eric and Bruce both speak before the agent replies, answer both in the same response.
 - Use `Eric:` / `Bruce:` or quote the key phrase when ambiguity is possible.
-- If one person's message is only context, still say `Bruce 補充我有收到` or `Eric 這點我先記下`.
+- If one person's message is only context, still say `Bruce: 收到，先當脈絡保留。` or `Eric: 收到，先當脈絡保留。`.
 - If a report is ambiguous or has billing/data/product risk, ask a concise clarifying question before editing files.
 - Read-only investigation is allowed before asking; write operations need a clear task.
 - Keep Discord replies phone-screen friendly: 8 lines or fewer whenever possible.
-- Bug status format: `收到 -> 正在查 -> root cause -> 已修什麼 -> 是否已 commit/push -> 是否需要重 build`.
+- Bug status format: `收到 -> 先查 -> root cause -> 修法 -> commit/push -> 是否需要 rebuild`.
 - Discord text/screenshots are reliable; videos are not. For video-only reports, ask for key screenshots, timestamps, repro steps, expected result, and actual result.
 - If Eric says to queue a bug, update the newest OPEN item in `docs/reviews/ai-arbitration-queue.md`. Do not invent root cause before intake.
+
+## Discord Fix / Review Closeout Format
+
+When Claude reports a completed hotfix, investigation, or Codex review back to Discord, the reply must make Eric and Bruce able to reconstruct the thread without reading terminal logs.
+
+Use this phone-friendly shape, ideally 8 lines or fewer:
+
+```text
+Bug/Task: <who reported + symptom>
+Change: <what changed, 1-2 bullets max>
+Commit: <hash or "not committed yet">
+Codex: <not needed + reason | queued job-id | APPROVED | REVISE_REQUIRED | NEEDS_ERIC>
+Findings: <none | P0/P1/P2 summary>
+Tests: <commands run, or "not run">
+Build: <needs rebuild/TestFlight/Edge deploy? yes/no>
+Next: <owner + exact next action>
+```
+
+Rules:
+
+- If Codex review is only queued, say `Codex: queued`, not approved.
+- If Codex returns `REVISE_REQUIRED`, do not ask Eric/Bruce to dogfood yet; list required fixes first.
+- If Codex returns `NEEDS_ERIC`, pause and ask the exact decision question.
+- If no Codex review ran, explicitly say why: `low-risk docs only`, `read-only investigation`, or `not high-risk`.
+- For high-risk zones, "safe to test" requires both fix evidence and Codex review evidence.
+- Always mention whether a rebuild, TestFlight build, or Edge deploy is needed.
 
 ## External Codex Review Gate
 
