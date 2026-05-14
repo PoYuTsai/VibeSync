@@ -143,7 +143,9 @@ Phase 1 commands:
 
 - `!codex setup`
 - `!codex review latest`
+- `!codex review <base-ref>`
 - `!codex adversarial-review latest`
+- `!codex adversarial-review <base-ref>`
 - `!codex status <job-id>`
 - `!codex result <job-id>`
 - `!codex cancel <job-id>`
@@ -161,7 +163,11 @@ External mode rule:
 - Codex reports findings.
 - Claude applies required fixes.
 - Eric/Bruce dogfood after `APPROVED` or explicit Eric decision.
-- If Eric replies "yes/要" when Claude asks whether to run Codex review, interpret that as `!codex review latest`.
+- If Eric replies "yes/要" when Claude asks whether to run Codex review, Claude must review the actual hotfix diff, not blindly `HEAD~1..HEAD`.
+- `latest` is valid only when the entire hotfix is exactly the current HEAD commit.
+- If a hotfix spans multiple commits, or if docs/workflow commits landed after the hotfix, use an explicit base ref: `!codex review <commit-before-first-hotfix>`.
+- Before queueing Codex review, Claude must state the target range in Discord: `Codex scope: <base>..HEAD, includes <commit list / files>`.
+- If the target range would include unrelated docs/workflow commits, stop and ask Eric whether to review a broader range or create a clean review branch/range.
 - Do not substitute `codex:rescue`, `!codex rescue`, or any write-capable Codex flow for normal external review.
 
 Setup:

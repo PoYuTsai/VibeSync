@@ -194,6 +194,9 @@ start_review_job() {
   echo "Job: $job_id"
   echo "Target: $base_ref..HEAD"
   echo "Mode: read-only background review"
+  if [ "$requested_ref" = "latest" ]; then
+    echo "Note: latest reviews only HEAD~1..HEAD. Use an explicit base ref for multi-commit hotfixes."
+  fi
   echo "Next: !codex status $job_id"
   echo "Then: !codex result $job_id"
 }

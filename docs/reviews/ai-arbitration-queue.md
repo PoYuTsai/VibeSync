@@ -82,7 +82,7 @@ Open Risks:
 Action Items:
 
 - [ ] Keep first-line dogfood bug intake here when Eric is mobile.
-- [ ] For high-risk fixes, run `!codex review latest` and record the job/result.
+- [ ] For high-risk fixes, run Codex review on the actual hotfix range, not blindly `latest`, and record the job/result.
 - [ ] Close this item only after Eric says the current dogfood stabilization window is complete.
 
 Close Condition:
