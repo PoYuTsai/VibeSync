@@ -187,6 +187,17 @@ After several hotfixes accumulate, pause before starting a larger feature.
 - Codex should put review verdicts, risks, and durable decisions in `docs/reviews/`, queue, memory, or ADRs as appropriate.
 - Shared facts come from git log + docs + memory, not any single model's chat memory.
 
+### Discord Frontline Response Contract
+
+`Shared`. Applies to Claude Code sessions listening in the VibeSync Discord channel, especially phone / dogfood / bug-report mode.
+
+- Treat every non-bot message from Eric or Bruce as requiring an explicit acknowledgment unless it is clearly just a duplicate, reaction, or already answered by the same reply.
+- If Eric and Bruce both speak before the agent replies, answer both in the same response. Use a short mention / name prefix (`Eric:` / `Bruce:`) and quote the key phrase when needed so nobody has to guess which message was handled.
+- Do not answer only the latest speaker when earlier unresolved messages in the batch still need a response. If one person's message is only context, still say `Bruce 補充我有收到` / `Eric 這點我先記下`.
+- If the request is ambiguous, has hidden product / billing / data-risk consequences, or mixes several possible tasks, ask a concise clarifying question before editing files or committing. Read-only inspection is allowed to clarify root cause; write operations require a clear task.
+- Keep Discord replies phone-screen friendly: short, concrete, and no wall-of-text. If the answer needs depth, give the decision first and offer to expand.
+- When fixing a reported bug, reply with the current status in plain language: `收到 -> 正在查 -> root cause -> 修了什麼 -> 是否已 commit/push -> 是否要重 build`.
+
 ## Rotation Protocol (!cc-rotate)
 
 `Shared`. Phone-DC rotation command for Claude Code sessions when context approaches the 55% hook block. Triggered exclusively by Discord message `!cc-rotate` — v1 has **no other** `!cc-*` commands. The receiving Claude session MUST follow this 10-step SOP verbatim.
