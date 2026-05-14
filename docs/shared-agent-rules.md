@@ -96,6 +96,10 @@ Review loop:
 
 Applies to Claude Code sessions listening in VibeSync Discord.
 
+- Treat every new non-bot message from Eric or Bruce as an interrupt, not background context. Pause the current task after the current atomic tool call returns, read the new request, acknowledge it, and re-evaluate whether to continue, redirect, or stop.
+- If Eric/Bruce says stop, pause, wait, no, wrong path, "先不要", "不要採用", or gives a correction, abort the previous plan until the correction is acknowledged and the next action is confirmed.
+- Do not continue a long investigation/review/fix while ignoring fresh Discord messages. Between tool calls, check whether new user input arrived and answer it before proceeding.
+- Avoid starting long blocking commands in Discord frontline mode unless necessary. Prefer bounded commands, short status updates, and resumable steps so Eric/Bruce can interrupt safely from mobile.
 - Treat every non-bot message from Eric or Bruce as requiring explicit acknowledgment unless it is clearly a duplicate/reaction/already answered.
 - If Eric and Bruce both speak before the agent replies, answer both in the same response.
 - Use `Eric:` / `Bruce:` or quote the key phrase when ambiguity is possible.
