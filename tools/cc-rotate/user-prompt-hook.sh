@@ -36,6 +36,7 @@ if [ -f "$ENV_FILE" ]; then
   source "$ENV_FILE"
   BOOTSTRAP_FILE="$CC_ROTATE_DIR/cc-rotate.bootstrap.json"
   BOOTSTRAP_HOOK="$VIBESYNC_REPO/tools/cc-rotate/bootstrap-hook.sh"
+  CODEX_BRIDGE="$VIBESYNC_REPO/tools/codex-bridge/codex-discord-bridge.sh"
 
   # SessionStart hooks seed context, but Claude Code does not always create an
   # autonomous model turn after startup. If a bootstrap manifest is still
@@ -48,6 +49,41 @@ if [ -f "$ENV_FILE" ]; then
   fi
 fi
 
+# Match a line that STARTS with !codex (after optional whitespace). This is a
+# Discord bridge command, not ordinary chat. Execute the safe Phase 1 wrapper
+# directly and inject the result so Claude must reply with concrete evidence
+# (job id/result) instead of claiming Codex was consulted from memory.
+if echo "$prompt" | grep -qE '^[[:space:]]*!codex([[:space:]]|$)'; then
+  if [ -n "${CODEX_BRIDGE:-}" ] && [ -x "$CODEX_BRIDGE" ]; then
+    bridge_output="$("$CODEX_BRIDGE" "$prompt" 2>&1 || true)"
+  else
+    bridge_output="Codex bridge is not installed or not executable at ${CODEX_BRIDGE:-unknown}."
+  fi
+
+  reminder="[CODEX BRIDGE REQUEST DETECTED: !codex]
+
+This is NOT a normal chat message. The repo wrapper has already executed (or attempted to execute) the safe Phase 1 Codex bridge.
+
+Bridge output:
+\`\`\`
+$bridge_output
+\`\`\`
+
+Mandatory behavior:
+1. Reply to Discord with the bridge output in a concise phone-friendly form.
+2. Do NOT say Codex reviewed anything unless the bridge output includes a job id or concrete result.
+3. Do NOT start extra implementation work from this message.
+4. If the output says a job was queued, tell Eric/Bruce to use \`!codex status <job-id>\` and then \`!codex result <job-id>\`."
+
+  jq -nc --arg ctx "$reminder" '{
+    hookSpecificOutput: {
+      hookEventName: "UserPromptSubmit",
+      additionalContext: $ctx
+    }
+  }'
+  exit 0
+fi
+
 # Match a line that STARTS with !cc-rotate (after optional whitespace).
 # This avoids false positives on prompts that merely *mention* the command
 # (e.g. "what does !cc-rotate do?").
@@ -56,7 +92,7 @@ if ! echo "$prompt" | grep -qE '^[[:space:]]*!cc-rotate([[:space:]]|$)'; then
 fi
 
 # Inject protocol reminder as additional context
-reminder='🔄 **ROTATION REQUEST DETECTED: `!cc-rotate`**
+reminder='[ROTATION REQUEST DETECTED: !cc-rotate]
 
 This is NOT a normal chat message. It is a Discord bridge command that requires the **Rotation Protocol** defined in `docs/shared-agent-rules.md` (canonical Shared rule).
 
@@ -64,9 +100,9 @@ This is NOT a normal chat message. It is a Discord bridge command that requires 
 
 1. Read `docs/shared-agent-rules.md` section "Rotation Protocol (!cc-rotate)" to load the exact 10-step SOP.
 2. Execute the 10 steps in order. Do NOT improvise reply formats. Do NOT skip validation.
-3. Reply formats, JSON schema for `cc-rotate.request.json`, and failure message format are defined there — use them verbatim.
+3. Reply formats, JSON schema for `cc-rotate.request.json`, and failure message format are defined there - use them verbatim.
 
-**User is on mobile Discord — keep all replies phone-screen friendly (≤ 8 lines).**
+**User is on mobile Discord - keep all replies phone-screen friendly (8 lines or fewer).**
 
 If you have not read the shared-agent-rules Rotation Protocol section in this session, read it NOW as your first action.'
 

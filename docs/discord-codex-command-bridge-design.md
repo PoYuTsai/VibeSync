@@ -45,9 +45,8 @@ Result:
 Use a Discord-only prefix:
 
 ```text
-!codex review
-!codex review --wait
-!codex adversarial-review
+!codex review latest
+!codex adversarial-review latest
 !codex status
 !codex result <job-id>
 !codex cancel <job-id>
@@ -75,7 +74,13 @@ Using `!codex ...` makes it explicit that:
 
 ## Runtime Integration
 
-The bridge should execute the installed Codex plugin script directly:
+Phase 1 implementation note (2026-05-14): implemented via repo wrapper + Claude Code `UserPromptSubmit` hook, not by editing the Discord plugin cache.
+
+- repo wrapper: `tools/codex-bridge/codex-discord-bridge.sh`
+- hook entry: `tools/cc-rotate/user-prompt-hook.sh`
+- details: `tools/codex-bridge/README.md`
+
+The bridge executes the installed Codex plugin script directly:
 
 - Windows plugin cache:
   - `C:\Users\eric1\.claude\plugins\cache\openai-codex\codex\1.0.2\scripts\codex-companion.mjs`
@@ -92,13 +97,13 @@ The command entrypoints supported by that script are:
 - `result`
 - `cancel`
 
-On the live WSL runtime, the Discord plugin should spawn:
+On the live WSL runtime, the wrapper invokes:
 
 ```bash
-node ~/.claude/plugins/cache/openai-codex/codex/1.0.2/scripts/codex-companion.mjs review --background --cwd /mnt/c/Users/eric1/OneDrive/Desktop/VibeSync
+node ~/.claude/plugins/cache/openai-codex/codex/1.0.2/scripts/codex-companion.mjs task --background --fresh --cwd /mnt/c/Users/eric1/OneDrive/Desktop/VibeSync --prompt-file <generated-review-prompt>
 ```
 
-or equivalent for each subcommand.
+Why `task --background` instead of `review --background`: the installed `codex-companion.mjs review` command is foreground-only in the current runtime. The wrapper generates a read-only review prompt and launches it as a background Codex task so phone Discord receives a job id quickly.
 
 ## Phase Plan
 
@@ -106,24 +111,23 @@ or equivalent for each subcommand.
 
 Support:
 
-- `!codex review`
-- `!codex review --wait`
-- `!codex adversarial-review`
-- `!codex adversarial-review --wait`
+- `!codex review latest`
+- `!codex adversarial-review latest`
 - `!codex status`
 - `!codex result <job-id>`
 - `!codex cancel <job-id>`
 
 Behavior:
 
-1. Discord plugin intercepts `msg.content` before normal relay.
-2. If text matches `!codex ...`, do not forward it to Claude chat.
-3. Execute `node .../codex-companion.mjs ...`.
-4. Reply in Discord with:
+1. Discord message reaches Claude Code as normal prompt text.
+2. `UserPromptSubmit` detects `!codex ...` and executes the repo wrapper.
+3. The wrapper executes `node .../codex-companion.mjs ...`.
+4. Hook injects the bridge output into Claude context.
+5. Claude replies in Discord with:
    - accepted command
    - job id if background
-   - concise completion output if wait-mode
-5. Store the latest job IDs in local state so `!codex status` and `!codex result` are easy to use from phone.
+   - concise completion output for status/result
+6. Codex companion stores job state so `!codex status <job-id>` and `!codex result <job-id>` are usable from phone.
 
 Phase 1 should be **read-only by default**.
 
@@ -184,7 +188,7 @@ Optional later:
 
 ## Parsing Rules
 
-The Discord plugin should treat these as bridge commands only when the content starts with:
+Phase 1 does not edit the Discord plugin cache. The repo wrapper and `UserPromptSubmit` hook treat a Discord message as a bridge command only when a line starts with:
 
 ```text
 !codex
@@ -192,13 +196,13 @@ The Discord plugin should treat these as bridge commands only when the content s
 
 Everything else remains normal Claude chat.
 
-Suggested parser:
+Current parser contract:
 
-1. trim message
-2. if not `!codex`, continue existing `handleInbound`
-3. split tokens after prefix
-4. validate subcommand against allowlist
-5. reject unknown commands with short help text
+1. Find the first line that starts with `!codex` after optional whitespace.
+2. If no such line exists, do nothing and let Claude handle the prompt normally.
+3. Split tokens after the prefix.
+4. Validate subcommand against the Phase 1 allowlist.
+5. Reject unknown or write-enabled commands with short help text.
 
 ## Security Rules
 
@@ -225,15 +229,15 @@ If the command is invalid:
 If the background job starts:
 
 - reply with job id and suggested next command:
-  - `!codex status`
+  - `!codex status <job-id>`
   - `!codex result <job-id>`
 
 ## UX Recommendation
 
 For phone use, optimize for the shortest useful set:
 
-- `!codex review`
-- `!codex adversarial-review`
+- `!codex review latest`
+- `!codex adversarial-review latest`
 - `!codex status`
 - `!codex result <job-id>`
 
@@ -243,8 +247,8 @@ This is enough to cover most "I am away from my computer" scenarios.
 
 If this bridge is implemented, start with exactly:
 
-1. `!codex review`
-2. `!codex adversarial-review`
+1. `!codex review latest`
+2. `!codex adversarial-review latest`
 3. `!codex status`
 4. `!codex result <job-id>`
 5. `!codex cancel <job-id>`

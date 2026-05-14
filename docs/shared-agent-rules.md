@@ -207,6 +207,7 @@ After several hotfixes accumulate, pause before starting a larger feature.
 
 - Claude may fix small dogfood bugs first, but high-risk changes must be reviewed by Codex before Eric/Bruce are told the build is safe to test. High-risk includes subscription, paywall, quota, RevenueCat, auth, data deletion, Hive schema, `analyze-chat`, opener, OCR, Edge response schema, AI prompt, or token/cost behavior.
 - A Codex review only counts if it was triggered by a deterministic bridge command/job or this Codex session, and leaves evidence: job id/result, `docs/reviews/*_codex-review.md`, queue update, or a linked commit. Claude must not say "Codex approved" from memory or vibes.
+- Discord Phase 1 commands are read-only only: `!codex review latest`, `!codex adversarial-review latest`, `!codex status <job-id>`, `!codex result <job-id>`, `!codex cancel <job-id>`. `!codex task`, `!codex rescue`, and write-enabled commands are disabled.
 - Codex review is read-only in external mode. Codex reports findings; Claude applies only the required fixes.
 - Verdicts are fixed: `APPROVED`, `REVISE_REQUIRED`, or `NEEDS_ERIC`. P0/P1/P2 findings block dogfood. P3 suggestions do not block dogfood; record them in queue if useful.
 - Review loop limit: Claude fix + Codex review can run at most two rounds. If the second review still has P1/P2 or the agents disagree on product/payment/data direction, stop and mark `WAITING_ON_ERIC`; do not keep ping-ponging.
