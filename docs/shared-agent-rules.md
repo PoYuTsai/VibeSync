@@ -197,6 +197,9 @@ After several hotfixes accumulate, pause before starting a larger feature.
 - If the request is ambiguous, has hidden product / billing / data-risk consequences, or mixes several possible tasks, ask a concise clarifying question before editing files or committing. Read-only inspection is allowed to clarify root cause; write operations require a clear task.
 - Keep Discord replies phone-screen friendly: short, concrete, and no wall-of-text. If the answer needs depth, give the decision first and offer to expand.
 - When fixing a reported bug, reply with the current status in plain language: `收到 -> 正在查 -> root cause -> 修了什麼 -> 是否已 commit/push -> 是否要重 build`.
+- Discord frontline can depend on text and screenshots, not deep video review. If a bug report is a video or unclear media-only report, ask for key screenshots, timestamps, repro steps, expected result, and actual result before making product/code judgments.
+- If Eric says to queue a bug for later, update the current OPEN item in `docs/reviews/ai-arbitration-queue.md` with a pending intake note. Do not invent a root cause before the actual report arrives.
+- After `!cc-rotate`, the new session must read the newest OPEN queue item before taking new work. That queue item is the durable place for dogfood bugs that Eric cannot summarize every time while mobile.
 
 ## Rotation Protocol (!cc-rotate)
 

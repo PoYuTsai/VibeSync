@@ -143,6 +143,7 @@ Question:
 Context:
 - 5/11-5/14 主要在收 P0/P1：Free quota 可用性、RevenueCat tier 不同步、Paywall 月/季商品誤配、開場救星 JSON/502、開場救星結果遺留/草稿管理。
 - 目前不是大功能擴張階段；第一線 bug 應 fix-forward，小刀、可測、commit 後立即 push。
+- 2026-05-14 pending intake：Bruce 有一個 dogfood bug 尚未正式丟出；先 queue 住。等實際回報到 DC 後，CC 必須要求文字/截圖/repro steps/expected vs actual；若只有影片，請 Bruce 補關鍵截圖與時間點，不要直接憑影片腦補。
 
 Changed:
 - `5f267c5` 開場救星結果改成本機加密草稿清單，最多 10 筆；新開場頁不自動帶入舊結果，點「回看」才載入。
@@ -182,6 +183,7 @@ Eric-Decision:
 
 Action-Items:
 - [ ] CC 修第一線 TF bug 時先讀本 item + `docs/bug-log.md` 5/14, 5/12, 5/11。
+- [ ] Bruce pending bug 到 DC 後，先補齊截圖/文字/repro，再判斷是否動手；不清楚先問，不直接改。
 - [ ] 若改 subscription/paywall/quota/opener handoff，commit message trailers 要寫明 `Reviewer-Hint` 與 `Next-Step`。
 - [ ] 高風險修正完成後交 Codex 做 diff review。
 

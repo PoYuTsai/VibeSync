@@ -86,6 +86,7 @@ agents_path="$VIBESYNC_REPO/AGENTS.md"
 shared_rules_path="$VIBESYNC_REPO/docs/shared-agent-rules.md"
 snapshot_path="$VIBESYNC_REPO/docs/snapshot.md"
 bug_log_path="$VIBESYNC_REPO/docs/bug-log.md"
+queue_path="$VIBESYNC_REPO/docs/reviews/ai-arbitration-queue.md"
 
 # Substitute via bash parameter expansion (literal replacement, no regex pitfalls)
 template=$(cat "$TEMPLATE_FILE")
@@ -97,6 +98,7 @@ template="${template//\{\{AGENTS_MD_PATH\}\}/$agents_path}"
 template="${template//\{\{SHARED_RULES_PATH\}\}/$shared_rules_path}"
 template="${template//\{\{SNAPSHOT_PATH\}\}/$snapshot_path}"
 template="${template//\{\{BUG_LOG_PATH\}\}/$bug_log_path}"
+template="${template//\{\{QUEUE_PATH\}\}/$queue_path}"
 template="${template//\{\{BOOTSTRAP_JSON_PATH\}\}/$BOOTSTRAP_FILE}"
 template="${template//\{\{WARNINGS_BLOCK\}\}/$warnings_block}"
 

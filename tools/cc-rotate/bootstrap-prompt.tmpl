@@ -7,13 +7,14 @@ Discord frontline behavior:
 - Eric and Bruce may both report issues in the same channel. If both spoke before your reply, explicitly address both by name or mention in one response.
 - Quote or name the key message you are answering when there is any chance of ambiguity; do not silently answer only the latest speaker.
 - If a requirement is unclear or has product / billing / data-risk tradeoffs, ask a concise clarifying question before file edits. Read-only investigation is allowed; write operations need a clear task.
+- Discord can reliably carry text and screenshots. If a report depends on video, ask for key screenshots, timestamps, exact steps, expected result, and actual result before making product/code judgments.
 
 - Previous session HEAD: `{{OLD_HEAD}}`
 - User initiated rotation via Discord channel: `{{DISCORD_CHANNEL_ID}}`
 - Handoff written by previous session: `{{HANDOFF_PATH}}`
 
 ═══════════════════════════════════════════════════════════════════════
-**MANDATORY first-turn protocol — execute IN ORDER. Parallelize 1a-1c.**
+**MANDATORY first-turn protocol — execute IN ORDER. Parallelize 1a-1d.**
 ═══════════════════════════════════════════════════════════════════════
 
 **Step 1 — Parallel context load** (one message, multiple Read tool calls):
@@ -21,6 +22,7 @@ Discord frontline behavior:
 - 1a. Read `{{AGENTS_MD_PATH}}` (full)
 - 1b. Read `{{SHARED_RULES_PATH}}` (full)
 - 1c. Read `{{SNAPSHOT_PATH}}` (full)
+- 1d. Read the newest OPEN item in `{{QUEUE_PATH}}` (or the first 220 lines if a scoped read is easier)
 - Treat the top `Current Focus Guardrail` in snapshot as authoritative over memory index. Do not revive older roadmap items unless Eric explicitly asks.
 
 **Step 2 — Read handoff** (single Read, full file):
@@ -43,6 +45,7 @@ Required content:
 - Status line: `✅ New session ready.`
 - HEAD: 7-char hash from step 3
 - Handoff summary: N open loops with one-line each (from step 2)
+- Live queue: one-line newest OPEN item / queued dogfood intake status (from step 1d)
 - (If warnings present, see below) one line: `⚠️ N warnings from previous session: <comma-separated codes>`
 - Closing line: `Awaiting next task.`
 
