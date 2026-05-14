@@ -189,7 +189,7 @@ After several hotfixes accumulate, pause before starting a larger feature.
 
 ## Rotation Protocol (!cc-rotate)
 
-`Shared`. Phone-DC rotation command for Claude Code sessions when context approaches the 45% hook block. Triggered exclusively by Discord message `!cc-rotate` — v1 has **no other** `!cc-*` commands. The receiving Claude session MUST follow this 10-step SOP verbatim.
+`Shared`. Phone-DC rotation command for Claude Code sessions when context approaches the 55% hook block. Triggered exclusively by Discord message `!cc-rotate` — v1 has **no other** `!cc-*` commands. The receiving Claude session MUST follow this 10-step SOP verbatim.
 
 Full design and risk register: `docs/plans/2026-05-14-cc-rotate-design.md`.
 
@@ -243,7 +243,7 @@ Do NOT suggest `!cc-handoff` or `!cc-rotate --force` — neither exists in v1.
 ### Hard rules
 
 - **Single command only**: `!cc-rotate`. v1 has no `!cc-handoff`, no `--force`, no `!cc-status`. Do not invent any.
-- **Context reminders** follow the unified green-context bands: 30-40% = yellow reminder, 40-45% = orange prepare-to-rotate, 45%+ = hard stop. High-risk work at 35%+ should already be treated as orange. Reminders say only `建議準備 !cc-rotate` — never ask the user to choose between handoff and rotate.
+- **Context reminders** follow the unified green-context bands: 35-45% = yellow reminder, 45-55% = orange prepare-to-rotate, 55%+ = hard stop. High-risk work at 45%+ should already be treated as orange. Reminders say only `建議準備 !cc-rotate` — never ask the user to choose between handoff and rotate.
 - **Phone-screen friendly**: every Discord reply ≤ 8 lines, no wall-of-text.
 - **New session bootstrap** is the supervisor + `SessionStart` hook's responsibility, not the old session's — the old session's last action is Step 10 (wait for SIGTERM). Because `SessionStart` only injects context and may not trigger an autonomous model turn, `UserPromptSubmit` must also reinject bootstrap context while `cc-rotate.bootstrap.json` exists; if the user sends `ready?` after rotation, the new session must first complete bootstrap before answering the prompt.
 

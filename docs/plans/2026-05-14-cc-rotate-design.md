@@ -10,7 +10,7 @@
 VibeSync 用戶（Eric）外出模式靠手機 Discord 操控 host 上的 Claude Code。受限於：
 
 1. `/clear` 是 Claude Code CLI 層指令，只能本地終端觸發 — Discord 訊息打「/clear」對模型只是普通文字
-2. Context 達 45% 會被 green-context hook 強制阻擋（hard stop）
+2. Context 達 55% 會被 green-context hook 強制阻擋（hard stop）
 3. Bridge 用 MCP 機制跑，Plugin 是 Claude Code 的 MCP child — plugin 不能 kill 自己 parent 還活下來
 
 **結論**：手機 DC 沒辦法清 context、也沒辦法從 plugin 內部 rotate。唯一可行解 = 外層 supervisor wrap 整條啟動鏈，由 supervisor 負責 kill 舊 / spawn 新。
@@ -40,7 +40,7 @@ VibeSync 用戶（Eric）外出模式靠手機 Discord 操控 host 上的 Claude
 **設計後果**：
 
 1. 失敗訊息**不**給「只跑 handoff，不殺 session」的分支選項 — 那等於 `!cc-handoff`，違反 v1 single-command
-2. Context reminder 跟隨統一 green-context bands（30-40% yellow、40-45% orange、45%+ hard stop；高風險工作 35%+ 直接 orange），只說「建議準備 `!cc-rotate`」，**不**讓用戶選 handoff vs rotate
+2. Context reminder 跟隨統一 green-context bands（35-45% yellow、45-55% orange、55%+ hard stop；高風險工作 45%+ 直接 orange），只說「建議準備 `!cc-rotate`」，**不**讓用戶選 handoff vs rotate
 3. 用戶手機只需要記一個指令、做一個動作 — 後果與替代方案都由 host 端決定，**不**把判斷推給手機螢幕
 4. `!cc-handoff` 若有需要 → 一律進 Phase 2 / Future Work（見下方 Phase plan），v1 絕不實作
 
