@@ -65,13 +65,12 @@ If Eric and Bruce both have unresolved messages, explicitly acknowledge both.
 
 ### Step 6 - Cleanup
 
-Run:
+Do not delete `{{BOOTSTRAP_JSON_PATH}}` yourself from inside Claude Code.
+That file lives in the Discord channel runtime and may trigger a sensitive-file
+permission prompt. Cleanup is handled by the cc-rotate hook/supervisor layer.
 
-```bash
-rm "{{BOOTSTRAP_JSON_PATH}}"
-```
-
-If cleanup fails, tell Discord and stop.
+If you notice the file still exists after you have replied to Discord, mention
+`bootstrap cleanup pending` briefly, but do not block the next task on it.
 
 ## Warnings carried over
 

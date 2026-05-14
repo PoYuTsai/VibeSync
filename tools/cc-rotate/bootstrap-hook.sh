@@ -104,10 +104,20 @@ template="${template//\{\{WARNINGS_BLOCK\}\}/$warnings_block}"
 
 # Emit as Claude Code hook JSON for explicit additionalContext attachment.
 hook_event_name="${CC_ROTATE_HOOK_EVENT_NAME:-SessionStart}"
-jq -nc --arg ctx "$template" --arg hook_event_name "$hook_event_name" '{
+output=$(jq -nc --arg ctx "$template" --arg hook_event_name "$hook_event_name" '{
   hookSpecificOutput: {
     hookEventName: $hook_event_name,
     additionalContext: $ctx
   }
-}'
+}')
+
+# SessionStart additionalContext does not always create an autonomous model turn,
+# so keep bootstrap.json for the UserPromptSubmit fallback. Once the fallback has
+# emitted the same context into a real user turn, remove the manifest here instead
+# of asking Claude Code to delete a sensitive channel-runtime file interactively.
+if [ "$hook_event_name" = "UserPromptSubmit" ]; then
+  rm -f "$BOOTSTRAP_FILE" 2>/dev/null || LOG "Unable to remove bootstrap.json after UserPromptSubmit fallback"
+fi
+
+printf '%s\n' "$output"
 exit 0
