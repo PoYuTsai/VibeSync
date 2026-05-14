@@ -25,6 +25,13 @@ At every new session, rotation, or handoff:
 
 These override old chat memory, Claude persisted output, and stale screenshots.
 
+Agent rule files must stay clean:
+
+- `AGENTS.md` and `CLAUDE.md` must not contain injected `<claude-mem-context>` / "Memory Context" blocks.
+- `AGENTS.md` and `CLAUDE.md` must remain synchronized.
+- If either file is polluted or out of sync, stop and clean it before `!cc-rotate`, Codex review, or dogfood approval.
+- The global `claude-mem@thedotmack` plugin is disabled for VibeSync workflow safety; use `docs/snapshot.md`, handoffs, queue, and git history instead.
+
 Current project truth as of 2026-05-14:
 
 - Coach 1:1 is shipped into dogfood.
@@ -165,6 +172,7 @@ External mode rule:
 - Eric/Bruce dogfood after `APPROVED` or explicit Eric decision.
 - If Eric replies "yes/要" when Claude asks whether to run Codex review, Claude must review the actual hotfix diff, not blindly `HEAD~1..HEAD`.
 - `latest` is valid only when the entire hotfix is exactly the current HEAD commit.
+- `latest` is blocked when the current HEAD is a docs/chore commit; pass an explicit base ref if that review is intentional.
 - If a hotfix spans multiple commits, or if docs/workflow commits landed after the hotfix, use an explicit base ref: `!codex review <commit-before-first-hotfix>`.
 - Before queueing Codex review, Claude must state the target range in Discord: `Codex scope: <base>..HEAD, includes <commit list / files>`.
 - If the target range would include unrelated docs/workflow commits, stop and ask Eric whether to review a broader range or create a clean review branch/range.

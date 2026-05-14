@@ -49,6 +49,15 @@ cd "$VIBESYNC_REPO"
 
 blocks=()
 
+# === B0: prompt/context pollution in agent rule files ===
+if grep -q '<claude-mem-context>\|Access .*tokens of past work' AGENTS.md CLAUDE.md 2>/dev/null; then
+  blocks+=("$(jq -nc '{code:"B0", msg:"AGENTS.md/CLAUDE.md 含 claude-mem context 污染；先移除污染並確認 claude-mem plugin 已停用"}')")
+fi
+
+if [ -f AGENTS.md ] && [ -f CLAUDE.md ] && ! cmp -s AGENTS.md CLAUDE.md; then
+  blocks+=("$(jq -nc '{code:"B0", msg:"AGENTS.md 與 CLAUDE.md 不同步；先同步後再 rotate"}')")
+fi
+
 # === B1: working tree dirty ===
 dirty_total=$(git status --porcelain | wc -l | tr -d ' ')
 if [ "$dirty_total" -gt 0 ]; then

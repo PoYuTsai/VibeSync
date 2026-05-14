@@ -77,6 +77,20 @@ require_clean_tree() {
   fi
 }
 
+require_clean_agent_context() {
+  if grep -q '<claude-mem-context>\|Access .*tokens of past work' "$REPO_ROOT/AGENTS.md" "$REPO_ROOT/CLAUDE.md" 2>/dev/null; then
+    echo "❌ Codex review blocked: AGENTS.md/CLAUDE.md contains claude-mem context pollution."
+    echo "Remove the injected <claude-mem-context> block and disable claude-mem before reviewing."
+    return 1
+  fi
+
+  if [ -f "$REPO_ROOT/AGENTS.md" ] && [ -f "$REPO_ROOT/CLAUDE.md" ] && ! cmp -s "$REPO_ROOT/AGENTS.md" "$REPO_ROOT/CLAUDE.md"; then
+    echo "❌ Codex review blocked: AGENTS.md and CLAUDE.md are out of sync."
+    echo "Sync both rule files before asking Codex to review."
+    return 1
+  fi
+}
+
 resolve_base_ref() {
   local requested="${1:-latest}"
   if [ "$requested" = "latest" ]; then
@@ -88,6 +102,25 @@ resolve_base_ref() {
     return 1
   fi
   echo "$requested"
+}
+
+ensure_latest_is_not_docs_only() {
+  local requested="$1"
+  [ "$requested" = "latest" ] || return 0
+
+  local subject
+  subject="$(git -C "$REPO_ROOT" log -1 --pretty=%s HEAD)"
+  if printf '%s' "$subject" | grep -Eq '^(docs|chore)(\(.+\))?:'; then
+    echo "❌ Codex review blocked: latest points to a docs/chore commit:"
+    echo "  $subject"
+    echo
+    echo "If this is an app hotfix review, pass the commit before the first hotfix instead:"
+    echo "  !codex review <commit-before-first-hotfix>"
+    echo
+    echo "If you intentionally want to review this docs/chore commit, use an explicit base ref:"
+    echo "  !codex review HEAD~1"
+    return 1
+  fi
 }
 
 write_review_prompt() {
@@ -148,7 +181,9 @@ start_review_job() {
   local requested_ref="${2:-latest}"
 
   ensure_runtime || return 1
+  require_clean_agent_context || return 1
   require_clean_tree || return 1
+  ensure_latest_is_not_docs_only "$requested_ref" || return 1
 
   local base_ref
   if ! base_ref="$(resolve_base_ref "$requested_ref")"; then

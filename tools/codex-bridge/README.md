@@ -20,6 +20,10 @@ Supported Discord commands:
 `latest` means `HEAD~1..HEAD`.
 
 Use `latest` only when the entire hotfix is exactly the current HEAD commit.
+The bridge blocks `latest` when HEAD is a `docs:` or `chore:` commit, because
+that usually means the app hotfix is behind a workflow/doc commit and the review
+scope would be wrong.
+
 If the hotfix spans multiple commits, or if unrelated docs/workflow commits landed after
 the hotfix, Claude must pass the commit before the first hotfix:
 
@@ -34,6 +38,9 @@ Codex scope: 60f24d0..HEAD, includes d2e995d + 33aeedb opener fix.
 ```
 
 Do not make Eric infer the correct review range from a phone.
+
+The bridge also refuses to run if `AGENTS.md` / `CLAUDE.md` contains injected
+`<claude-mem-context>` blocks or if the two rule files are out of sync.
 
 ## What Does Not Work Yet
 
