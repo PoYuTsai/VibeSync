@@ -47,6 +47,7 @@ Use a Discord-only prefix:
 ```text
 !codex review latest
 !codex adversarial-review latest
+!codex setup
 !codex status
 !codex result <job-id>
 !codex cancel <job-id>
@@ -113,6 +114,7 @@ Support:
 
 - `!codex review latest`
 - `!codex adversarial-review latest`
+- `!codex setup`
 - `!codex status`
 - `!codex result <job-id>`
 - `!codex cancel <job-id>`
@@ -238,6 +240,7 @@ For phone use, optimize for the shortest useful set:
 
 - `!codex review latest`
 - `!codex adversarial-review latest`
+- `!codex setup`
 - `!codex status`
 - `!codex result <job-id>`
 
@@ -249,9 +252,10 @@ If this bridge is implemented, start with exactly:
 
 1. `!codex review latest`
 2. `!codex adversarial-review latest`
-3. `!codex status`
-4. `!codex result <job-id>`
-5. `!codex cancel <job-id>`
+3. `!codex setup`
+4. `!codex status`
+5. `!codex result <job-id>`
+6. `!codex cancel <job-id>`
 
 Do **not** start with open-ended task execution.
 

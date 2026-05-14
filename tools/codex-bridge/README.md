@@ -9,6 +9,7 @@ Supported Discord commands:
 ```text
 !codex review latest
 !codex adversarial-review latest
+!codex setup
 !codex status <job-id>
 !codex result <job-id>
 !codex cancel <job-id>
@@ -22,9 +23,16 @@ Not supported in Phase 1:
 
 - `!codex task`
 - `!codex rescue`
+- `!codex login`
 - any write-enabled Codex command
 - arbitrary shell commands
 - automatic infinite review loops
+
+If `!codex setup` says Codex is not authenticated, run this once in the Ubuntu terminal:
+
+```bash
+codex login --device-auth
+```
 
 ## Runtime Shape
 
@@ -63,6 +71,7 @@ From WSL:
 ```bash
 cd /mnt/c/Users/eric1/OneDrive/Desktop/VibeSync
 bash tools/codex-bridge/codex-discord-bridge.sh '!codex status'
+bash tools/codex-bridge/codex-discord-bridge.sh '!codex setup'
 bash tools/codex-bridge/codex-discord-bridge.sh '!codex review latest'
 ```
 

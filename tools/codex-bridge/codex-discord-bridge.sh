@@ -20,6 +20,7 @@ usage() {
 Usage:
   !codex review [latest|<base-ref>]
   !codex adversarial-review [latest|<base-ref>]
+  !codex setup
   !codex status [job-id]
   !codex result [job-id]
   !codex cancel [job-id]
@@ -169,6 +170,14 @@ start_review_job() {
   rm -f "$prompt_file"
 
   if [ "$status" -ne 0 ]; then
+    if printf '%s' "$output" | grep -qi "not authenticated"; then
+      echo "❌ Codex review failed to start: Codex CLI is not authenticated."
+      echo "On the Ubuntu terminal, run once:"
+      echo "  codex login --device-auth"
+      echo "Then verify from Discord:"
+      echo "  !codex setup"
+      return "$status"
+    fi
     echo "❌ Codex review failed to start."
     echo "$output"
     return "$status"
@@ -195,6 +204,17 @@ run_companion() {
 
   ensure_runtime || return 1
   node "$COMPANION" "$subcommand" "$@" --cwd "$REPO_ROOT" 2>&1
+}
+
+run_setup() {
+  local output
+
+  ensure_runtime || return 1
+  output="$(node "$COMPANION" setup --cwd "$REPO_ROOT" 2>&1)"
+  printf '%s\n' "$output" | sed \
+    -e 's/Run `!codex login`./Run `codex login --device-auth` once in the Ubuntu terminal./' \
+    -e 's/If browser login is blocked, retry with `!codex login --device-auth` or `!codex login --with-api-key`./Discord Phase 1 does not run login. After terminal login, retry `!codex setup`./' \
+    -e '/Optional: run `\/codex:setup --enable-review-gate`/d'
 }
 
 main() {
@@ -238,6 +258,13 @@ main() {
       fi
       start_review_job "adversarial-review" "${arg1:-latest}"
       ;;
+    setup)
+      if [ -n "$arg1" ]; then
+        fail "setup does not accept arguments in Discord Phase 1"
+        return 1
+      fi
+      run_setup
+      ;;
     status)
       run_companion status ${arg1:+"$arg1"}
       ;;
@@ -247,7 +274,15 @@ main() {
     cancel)
       run_companion cancel ${arg1:+"$arg1"}
       ;;
-    task|rescue|fix|write|login|setup)
+    login)
+      echo "❌ Codex login is not run from Discord in Phase 1."
+      echo "On the Ubuntu terminal, run once:"
+      echo "  codex login --device-auth"
+      echo "Then verify from Discord:"
+      echo "  !codex setup"
+      return 1
+      ;;
+    task|rescue|fix|write)
       fail "'$command' is not enabled in Discord Phase 1"
       return 1
       ;;
