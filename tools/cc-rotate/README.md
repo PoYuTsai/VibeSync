@@ -9,6 +9,8 @@
 
 外出模式手機 DC 打 `!cc-rotate` → host 上的 Claude Code 安全交接（validate → handoff → 殺舊 → spawn 新）→ 新 session 載入 context → DC 回 "ready"。
 
+注意：Claude Code 的 `SessionStart` hook 只注入 context，不保證會自動產生一輪模型回覆。若 rotate 後 30 秒內沒有 ready，直接在 Discord 再傳任一句（例如 `ready?`）；`UserPromptSubmit` fallback 會重新注入 bootstrap，讓新 session 先讀 handoff、回 ready、刪 bootstrap，再接新任務。
+
 ---
 
 ## 檔案清單
@@ -123,7 +125,7 @@ echo $! > "$CHANNEL/wrapper.pid"
 
 完整測試在 [design doc 的 Test plan 段](../../docs/plans/2026-05-14-cc-rotate-design.md#test-plan)。最低必跑：
 
-1. **Clean rotate**：clean tree → DC 打 `!cc-rotate` → 新 session ~30s 內在 DC 回 "ready"
+1. **Clean rotate**：clean tree → DC 打 `!cc-rotate` → 新 session ~30s 內在 DC 回 "ready"；若無 ready，DC 補一句 `ready?`，應由 `UserPromptSubmit` fallback 完成 bootstrap
 2. **B1 攔截**：故意改一檔不 commit → 打 `!cc-rotate` → DC 收 B1 拒絕訊息
 3. **B3 攔截**：commit 但不 push → 打 → DC 收 B3 拒絕訊息
 
@@ -137,8 +139,8 @@ echo $! > "$CHANNEL/wrapper.pid"
 | Rotation 後新 session 沒接 context | bootstrap.json 沒生成 / SessionStart hook 沒掛 | `ls ~/.claude/channels/discord-vibesync/cc-rotate.*.json` |
 | Supervisor 起不來 | `jq` 沒裝 / `.local.env` 路徑錯 | `which jq && bash -n ~/.claude/channels/discord-vibesync/start.sh` |
 | Rotate 反應慢幾秒 | `inotify-tools` 沒裝，已 fallback polling | `which inotifywait`（可選裝） |
-| 新 session 起來但 DC 沒回 "ready" | plugin 還在重連 / Discord token 過期 | `tail -50 ~/.claude/channels/discord-vibesync/bridge.out` |
-| Stale bootstrap.json 卡住 | 前次 rotate 中途崩 | `rm ~/.claude/channels/discord-vibesync/cc-rotate.bootstrap.json`（或 wait TTL = 10 min 自動清）|
+| 新 session 起來但 DC 沒回 "ready" | `SessionStart` 只注入 context、未自動觸發模型回覆 / plugin 還在重連 | 先在 DC 補一句 `ready?`；仍無反應再 `tail -50 ~/.claude/channels/discord-vibesync/bridge.out` |
+| Stale bootstrap.json 卡住 | 前次 rotate 中途崩 | `rm ~/.claude/channels/discord-vibesync/cc-rotate.bootstrap.json`（或 wait TTL = 30 min 自動清）|
 | Lock 卡住（B4 一直觸發） | 前次 rotate 中途崩 + lock 沒清 | `rm ~/.claude/channels/discord-vibesync/cc-rotate.lock`（supervisor 也會用 `LOCK_STALE_SECONDS` 自動清）|
 
 ---

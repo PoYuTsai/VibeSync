@@ -11,6 +11,7 @@
 # Design ref: docs/plans/2026-05-14-cc-rotate-design.md §D4 (UserPromptSubmit hook)
 
 set -uo pipefail
+export PATH="$HOME/.local/bin:$PATH"
 
 LOG() { echo "[cc-rotate/user-prompt-hook] $*" >&2; }
 
@@ -27,6 +28,24 @@ fi
 prompt=$(echo "$payload" | jq -r '.prompt // ""' 2>/dev/null || true)
 if [ -z "$prompt" ]; then
   exit 0
+fi
+
+ENV_FILE="${CC_ROTATE_ENV:-$HOME/.claude/channels/discord-vibesync/cc-rotate.local.env}"
+if [ -f "$ENV_FILE" ]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  BOOTSTRAP_FILE="$CC_ROTATE_DIR/cc-rotate.bootstrap.json"
+  BOOTSTRAP_HOOK="$VIBESYNC_REPO/tools/cc-rotate/bootstrap-hook.sh"
+
+  # SessionStart hooks seed context, but Claude Code does not always create an
+  # autonomous model turn after startup. If a bootstrap manifest is still
+  # present when the next Discord/user prompt arrives, inject the same bootstrap
+  # context again for this prompt so the new session must finish handoff intake
+  # before doing fresh work.
+  if [ -f "$BOOTSTRAP_FILE" ] && [ -x "$BOOTSTRAP_HOOK" ]; then
+    CC_ROTATE_HOOK_EVENT_NAME=UserPromptSubmit "$BOOTSTRAP_HOOK"
+    exit 0
+  fi
 fi
 
 # Match a line that STARTS with !cc-rotate (after optional whitespace).

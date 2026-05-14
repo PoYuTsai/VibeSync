@@ -17,6 +17,8 @@ VibeSync 用戶（Eric）外出模式靠手機 Discord 操控 host 上的 Claude
 
 **Goal**：用戶在手機 DC 打 `!cc-rotate` → 安全結束舊 session → 自動開乾淨新 session → 新 session 載入 handoff context → DC 回「ready」。
 
+**v1 實測補充**：Claude Code 的 `SessionStart` hook 只注入 context，不保證會自動產生一輪模型回覆。因此 v1 同時用 `UserPromptSubmit` fallback：若新 session 起來後 30 秒內沒有 ready，Eric 在 DC 補一句 `ready?` 或任何下一步訊息，hook 會在 `cc-rotate.bootstrap.json` 尚存在時重新注入 bootstrap，要求新 session 先讀 handoff、回 ready、刪 bootstrap，再處理新任務。
+
 ---
 
 ## v1 Scope discipline：**只有一個 Discord 指令**
@@ -187,7 +189,10 @@ When Discord message body matches /^!cc-rotate(\s|$)/:
  10. 不再接受新指令，等 supervisor SIGTERM
 ```
 
-**UserPromptSubmit hook** 雙保險：每次 prompt 進入時若內容含 `!cc-rotate` → 注入系統訊息「🔄 You just received !cc-rotate. Follow rotation protocol from AGENTS.md section X」。避免 me 看到 `!cc-rotate` 當成普通對話。
+**UserPromptSubmit hook** 雙保險：
+
+1. 若 `cc-rotate.bootstrap.json` 仍存在 → 重新注入 bootstrap prompt，因為 `SessionStart` 只提供 context，不保證自動開一輪模型回覆。
+2. 否則每次 prompt 進入時若內容含 `!cc-rotate` → 注入系統訊息「🔄 You just received !cc-rotate. Follow rotation protocol from AGENTS.md section X」。避免 me 看到 `!cc-rotate` 當成普通對話。
 
 ---
 
@@ -334,7 +339,7 @@ When Discord message body matches /^!cc-rotate(\s|$)/:
 
 ### R3 — `bootstrap.json` 殘留
 **症狀**：新 session 啟動 crash / 沒走完 step 8 → 下次冷啟動誤觸 rotation context
-**Mitigation**：bootstrap hook 加 TTL — 若檔案 mtime > 10 分鐘 → 視為 stale，刪掉並 echo「stale bootstrap discarded」
+**Mitigation**：bootstrap hook 加 TTL — 若檔案 mtime > 30 分鐘 → 視為 stale，刪掉並 echo「stale bootstrap discarded」。TTL 從 10 分鐘拉到 30 分鐘，因為 mobile flow 可能需要使用者看到「沒有 ready」後補一句 `ready?` 觸發 UserPromptSubmit fallback。
 
 ### R4 — Handoff skill 寫檔失敗
 **症狀**：handoff context 過大被拒 / disk full → rotation 後新 session 沒 context
@@ -346,14 +351,14 @@ When Discord message body matches /^!cc-rotate(\s|$)/:
 
 ### R6 — Discord plugin 在新 process 拒絕連線
 **症狀**：plugin 啟動 token 載入 + WS 連線需 ~3-5s
-**Mitigation**：bootstrap prompt 第 7 步 reply DC — 若 timeout，supervisor 不會偵測。新 session 自己 retry 3 次
+**Mitigation**：bootstrap prompt 第 7 步 reply DC — 若 timeout，supervisor 不會偵測。若 SessionStart 沒自動觸發模型回覆，UserPromptSubmit fallback 會在下一則 Discord 訊息重新注入 bootstrap。
 
 ### R7 — 雙 rotate 並發（誤觸或網路重送）
 **Mitigation**：B4 lock file。第二次直接 reject。Supervisor 完成後刪 lock
 
 ### R8 — 新 session 不認得 bootstrap context
 **症狀**：AGENTS.md 沒寫 protocol / hook 失效 → bootstrap context 被當普通系統訊息
-**Mitigation**：bootstrap prompt 用 `🔄 ROTATION BOOTSTRAP — YOUR VERY FIRST ACTIONS` 強烈 prefix；整合測試覆蓋
+**Mitigation**：bootstrap prompt 用 `🔄 ROTATION BOOTSTRAP — YOUR VERY FIRST ACTIONS` 強烈 prefix；整合測試覆蓋；`UserPromptSubmit` fallback 在 manifest 存在時優先注入 bootstrap，避免新 session 空轉。
 
 ---
 
@@ -410,13 +415,13 @@ D1-D4 全部。**v1 不做 force flag**（任一 hard block 觸發 → 直接拒
 
 ### 整合測試（手動，第一次 ship 必跑）
 
-1. **Clean rotate**：clean tree + 無 active task → `!cc-rotate` → 新 session < 30s 在 DC 回 "ready"
+1. **Clean rotate**：clean tree + 無 active task → `!cc-rotate` → 新 session < 30s 在 DC 回 "ready"；若無自動 ready，DC 補一句 `ready?`，應由 UserPromptSubmit fallback 完成 bootstrap
 2. **B1 攔截**：故意改一檔不 commit → `!cc-rotate` → DC 收 B1 訊息
 3. **B3 攔截**：commit 但不 push → `!cc-rotate` → DC 收 B3 訊息
 4. **B5 攔截**：session 有 TodoWrite in_progress → `!cc-rotate` → DC 收 B5 訊息
 5. **Handoff 驗證**：rotate 後讀 `reference_session_handoff_latest.md`，HEAD / open loops / 下步 / 風險都齊
 6. **Bootstrap 驗證**：新 session 首 reply 涵蓋 1-8 actions
-7. **R3 stale bootstrap**：手動放 10 分鐘前 bootstrap.json，啟動 claude → 應 ignore 且刪除
+7. **R3 stale bootstrap**：手動放 30 分鐘前 bootstrap.json，啟動 claude → 應 ignore 且刪除
 8. **B4 並發**：lock 存在時打第二個 `!cc-rotate` → 立即 reject
 
 ### 測試覆蓋限制

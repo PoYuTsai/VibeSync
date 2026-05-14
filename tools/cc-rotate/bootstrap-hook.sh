@@ -5,6 +5,11 @@
 # (left by supervisor after a rotation), expand the prompt template and inject
 # it as additional context via JSON output.
 #
+# The same script can also be reused by UserPromptSubmit as a fallback by
+# setting CC_ROTATE_HOOK_EVENT_NAME=UserPromptSubmit. This covers the important
+# edge case where SessionStart adds context but does not trigger an autonomous
+# model turn.
+#
 # Defensive principle: NEVER block session start (no exit 2). On any failure,
 # log to stderr and exit 0 with no output — worst case is a missed rotation
 # bootstrap, which the user can recover from manually.
@@ -12,6 +17,7 @@
 # Design ref: docs/plans/2026-05-14-cc-rotate-design.md §D4
 
 set -uo pipefail
+export PATH="$HOME/.local/bin:$PATH"
 
 ENV_FILE="${CC_ROTATE_ENV:-$HOME/.claude/channels/discord-vibesync/cc-rotate.local.env}"
 LOG() { echo "[cc-rotate/bootstrap-hook] $*" >&2; }
@@ -22,7 +28,7 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-BOOTSTRAP_TTL_SECONDS="${BOOTSTRAP_TTL_SECONDS:-600}"
+BOOTSTRAP_TTL_SECONDS="${BOOTSTRAP_TTL_SECONDS:-1800}"
 BOOTSTRAP_FILE="$CC_ROTATE_DIR/cc-rotate.bootstrap.json"
 TEMPLATE_FILE="$VIBESYNC_REPO/tools/cc-rotate/bootstrap-prompt.tmpl"
 
@@ -94,10 +100,11 @@ template="${template//\{\{BUG_LOG_PATH\}\}/$bug_log_path}"
 template="${template//\{\{BOOTSTRAP_JSON_PATH\}\}/$BOOTSTRAP_FILE}"
 template="${template//\{\{WARNINGS_BLOCK\}\}/$warnings_block}"
 
-# Emit as Claude Code hook JSON for explicit additionalContext attachment
-jq -nc --arg ctx "$template" '{
+# Emit as Claude Code hook JSON for explicit additionalContext attachment.
+hook_event_name="${CC_ROTATE_HOOK_EVENT_NAME:-SessionStart}"
+jq -nc --arg ctx "$template" --arg hook_event_name "$hook_event_name" '{
   hookSpecificOutput: {
-    hookEventName: "SessionStart",
+    hookEventName: $hook_event_name,
     additionalContext: $ctx
   }
 }'
