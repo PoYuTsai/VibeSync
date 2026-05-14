@@ -178,4 +178,4 @@
 
 - Account deletion and verification-resend UX were tightened again: the delete-account dialog now uses stronger `DELETE` input styling, the server-side delete flow fails less often on non-blocking cleanup tables and returns clearer failure reasons, and the login screen now only enables the generic resend-verification action when the typed email is valid while using more conservative copy for "we tried to resend" cases.
 
-See `CLAUDE_CODE_HANDOFF_2026-03-16.md` for the full review summary, outstanding risks, and Claude Code notes.
+See `docs/archive/handoffs/CLAUDE_CODE_HANDOFF_2026-03-16.md` for the historical review summary, outstanding risks, and Claude Code notes from that period.
