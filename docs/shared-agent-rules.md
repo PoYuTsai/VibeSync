@@ -173,6 +173,14 @@ Green-context bands:
 - 45-55%: orange, prepare `!cc-rotate`; high-risk work should avoid starting here.
 - 55%+: hard stop; rotate before new work.
 
+Proactive reminder rule:
+
+- Do not rotate after every task by default; keep momentum when context is still healthy.
+- At 35-45%, only mention rotate if the completed task was high-risk/large, or the next requested task is medium/high-risk.
+- At 45%+, do not start a new scoped task without first telling Eric: `建議先 !cc-rotate，再接下一個任務。`
+- At 55%+, refuse new work except handoff/rotate/blocker cleanup.
+- If Eric is mobile or the session is in Discord frontline mode, prefer a short direct reminder over a long explanation.
+
 When receiving `!cc-rotate`, the current session must:
 
 1. Reply: `Validating rotate conditions...`
