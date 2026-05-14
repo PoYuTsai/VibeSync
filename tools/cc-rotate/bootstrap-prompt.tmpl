@@ -39,10 +39,14 @@ Run:
 ```bash
 git log --oneline -15
 git status --short --branch
+git rev-parse --short HEAD
 ```
 
 Confirm whether HEAD still matches `{{OLD_HEAD}}`.
 If it does not match, mention the mismatch in the Discord ready reply.
+The `HEAD:` line in the ready reply must use the live output of
+`git rev-parse --short HEAD`, not the handoff file, bootstrap JSON, memory, or
+previous Discord text.
 
 ### Step 4 - Optional recent bug awareness
 
@@ -55,7 +59,7 @@ If it is longer, skip it and rely on snapshot + handoff + queue.
 Reply to channel `{{DISCORD_CHANNEL_ID}}` with 8 lines or fewer:
 
 - `New session ready.`
-- `HEAD: <7-char hash>`
+- `HEAD: <live 7-char hash from git rev-parse --short HEAD>`
 - `Open loops: <N> - <one-line summary>`
 - `Queue: <newest OPEN item or none>`
 - warnings summary if any

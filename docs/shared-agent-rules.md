@@ -219,11 +219,12 @@ New session bootstrap must:
 - read `docs/snapshot.md`
 - read newest OPEN queue item
 - read latest handoff
-- run `git log --oneline -15` and `git status --short --branch`
+- run `git log --oneline -15`, `git status --short --branch`, and `git rev-parse --short HEAD`
 - reply to Discord that it is ready
 - delete `cc-rotate.bootstrap.json`
 
 The new session must not trust old persisted context over these files.
+The ready reply must report the live `git rev-parse --short HEAD`, not the handoff or bootstrap HEAD.
 
 ## Anti-Bloat Rules
 
