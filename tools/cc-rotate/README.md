@@ -59,6 +59,8 @@ chmod 600 ~/.claude/channels/discord-vibesync/cc-rotate.local.env
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/cc-rotate.local.env"
+export DISCORD_STATE_DIR="$CC_ROTATE_DIR"
+cd "$VIBESYNC_REPO"
 exec "$VIBESYNC_REPO/tools/cc-rotate/supervisor.sh"
 ```
 
