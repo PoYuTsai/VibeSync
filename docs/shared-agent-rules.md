@@ -186,6 +186,66 @@ After several hotfixes accumulate, pause before starting a larger feature.
 - Codex should put review verdicts, risks, and durable decisions in `docs/reviews/`, queue, memory, or ADRs as appropriate.
 - Shared facts come from git log + docs + memory, not any single model's chat memory.
 
+## Rotation Protocol (!cc-rotate)
+
+`Shared`. Phone-DC rotation command for Claude Code sessions when context approaches the 45% hook block. Triggered exclusively by Discord message `!cc-rotate` — v1 has **no other** `!cc-*` commands. The receiving Claude session MUST follow this 10-step SOP verbatim.
+
+Full design and risk register: `docs/plans/2026-05-14-cc-rotate-design.md`.
+
+### Step list (current session, after receiving the Discord `!cc-rotate` message)
+
+1. Reply Discord immediately: `🔄 Validating rotate conditions...`
+2. Execute `tools/cc-rotate/validate.sh` via Bash. Parse JSON output. Exit codes: 0 = pass; 1 = blocked (see `blocks[]`); 2 = setup error.
+3. Self-report B5-B10 (internal state, not visible to validate.sh):
+   - **B5** TodoWrite has `in_progress` items
+   - **B6** background Bash (`run_in_background: true`) still alive
+   - **B7** background Task agent un-reported
+   - **B8** in plan mode (ExitPlanMode unfired)
+   - **B9** pending permission request
+   - **B10** long-running command active (test / build / deploy / archive / export — including non-background)
+4. **Any hard block (B1-B10) → reply Discord with full failure list (format below) and STOP.** Do NOT offer "handoff-only" or any alternative command — they violate single-command discipline.
+5. Fold W1-W3 warnings (from validate output and self-check) into handoff context.
+6. Invoke the `handoff` skill — must write `reference_session_handoff_latest.md` containing: HEAD, open loops, next-step, risk notes, and any W1-W3 warnings.
+7. Verify the handoff file: its `mtime` MUST be within the last 60 seconds. Otherwise abort rotation, reply Discord with the failure, and STOP.
+8. Write `cc-rotate.request.json` to `$CC_ROTATE_DIR` (path resolved from `cc-rotate.local.env` in the channel runtime). Schema:
+
+   ```json
+   {
+     "type": "rotate",
+     "ts": "<ISO 8601 with timezone>",
+     "old_pid": <int>,
+     "discord_channel_id": "<id>",
+     "discord_user_id": "<id>",
+     "handoff_path": "<absolute path>",
+     "head_commit": "<7-char SHA>",
+     "warnings": ["W1: ...", "W2: ..."]
+   }
+   ```
+
+9. Reply Discord: `✅ Handoff OK. Rotating in ~5s. New session will read it.`
+10. Stop accepting new tool calls. Wait for SIGTERM from supervisor.
+
+### Failure message format (Step 4)
+
+```
+❌ !cc-rotate 拒絕。原因：
+  - <CODE>: <reason>
+  - <CODE>: <reason>
+
+下一步：
+  - 解 <CODE>：<how>
+  - 全部解掉後在 DC 重打 !cc-rotate
+```
+
+Do NOT suggest `!cc-handoff` or `!cc-rotate --force` — neither exists in v1.
+
+### Hard rules
+
+- **Single command only**: `!cc-rotate`. v1 has no `!cc-handoff`, no `--force`, no `!cc-status`. Do not invent any.
+- **Context reminders** at 25% / 40% thresholds say only `建議準備 !cc-rotate` — never ask the user to choose between handoff and rotate.
+- **Phone-screen friendly**: every Discord reply ≤ 8 lines, no wall-of-text.
+- **New session bootstrap** is the supervisor + SessionStart hook's responsibility, not the old session's — the old session's last action is Step 10 (wait for SIGTERM).
+
 ## Anti-Bloat Rules
 
 - One change should map to one primary shared document.

@@ -20,6 +20,10 @@ build/
 .env.*
 !.env.example
 
+# cc-rotate per-machine config (real values not tracked; .example is)
+*.local.env
+!*.local.env.example
+
 # Supabase
 supabase/.branches
 supabase/.temp

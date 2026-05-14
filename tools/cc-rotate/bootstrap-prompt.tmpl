@@ -1,0 +1,63 @@
+🔄 **ROTATION BOOTSTRAP — YOUR VERY FIRST ACTIONS**
+
+You just rotated from a previous Claude Code session that intentionally ended at {{TS}}.
+This is **NOT** a cold start. The user is on mobile Discord and is **waiting for your reply**.
+
+- Previous session HEAD: `{{OLD_HEAD}}`
+- User initiated rotation via Discord channel: `{{DISCORD_CHANNEL_ID}}`
+- Handoff written by previous session: `{{HANDOFF_PATH}}`
+
+═══════════════════════════════════════════════════════════════════════
+**MANDATORY first-turn protocol — execute IN ORDER. Parallelize 1a-1c.**
+═══════════════════════════════════════════════════════════════════════
+
+**Step 1 — Parallel context load** (one message, multiple Read tool calls):
+
+- 1a. Read `{{AGENTS_MD_PATH}}` (full)
+- 1b. Read `{{SHARED_RULES_PATH}}` (full)
+- 1c. Read `{{SNAPSHOT_PATH}}` (full)
+
+**Step 2 — Read handoff** (single Read, full file):
+
+- Read `{{HANDOFF_PATH}}`
+
+**Step 3 — Verify repo state** (single Bash, two commands chained):
+
+- Run `git log --oneline -5 && git status` via Bash.
+- Confirm HEAD still equals `{{OLD_HEAD}}` — no concurrent commits should have happened during rotation. If mismatch, flag in step 5 reply.
+
+**Step 4 — Optional bug-log peek** (only if file ≤ 200 lines):
+
+- Check `{{BUG_LOG_PATH}}` line count via `wc -l`. If ≤ 200, grep last 5 entry headings to seed recent bug awareness. If > 200, **skip** — handoff already covers what matters.
+
+**Step 5 — Reply to Discord** (use the Discord reply tool, channel `{{DISCORD_CHANNEL_ID}}`):
+
+Required content:
+- Status line: `✅ New session ready.`
+- HEAD: 7-char hash from step 3
+- Handoff summary: N open loops with one-line each (from step 2)
+- (If warnings present, see below) one line: `⚠️ N warnings from previous session: <comma-separated codes>`
+- Closing line: `Awaiting next task.`
+
+Keep it phone-screen friendly (≤ 8 lines total, no wall-of-text).
+
+**Step 6 — Cleanup** (Bash):
+
+- Run `rm "{{BOOTSTRAP_JSON_PATH}}"` to delete the bootstrap manifest. Skipping this causes R3 stale-bootstrap on next session start.
+
+═══════════════════════════════════════════════════════════════════════
+
+**Warnings carried over from previous session:**
+{{WARNINGS_BLOCK}}
+
+═══════════════════════════════════════════════════════════════════════
+
+**Hard rules during bootstrap:**
+
+- ❌ Do NOT start any new work until Steps 1-6 complete.
+- ❌ Do NOT skip Step 5 — the user is on mobile waiting for confirmation.
+- ❌ Do NOT skip Step 6 — leftover bootstrap.json poisons next session.
+- ❌ Do NOT echo warnings verbatim in Step 5 — summarize codes only (e.g. "W1, W2").
+- ✅ If any step fails, reply to Discord channel `{{DISCORD_CHANNEL_ID}}` with the specific error and `❌ Bootstrap failed at step <N>: <reason>`, then stop.
+
+After Steps 1-6 complete, proceed as a normal Claude Code session for VibeSync. Your context is now seeded with: AGENTS rules · shared agent rules · current product snapshot · full handoff · current repo state. You should know exactly where the previous session left off.
