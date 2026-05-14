@@ -73,7 +73,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   @override
   void initState() {
     super.initState();
-    _drafts = _resultCacheService.loadDrafts();
+    _reloadDrafts();
     _prefillFromPartner();
     _nameController.addListener(_clearGeneratedResultOnInputChange);
     _bioController.addListener(_clearGeneratedResultOnInputChange);
@@ -172,7 +172,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   void _reloadDrafts() {
-    _drafts = _resultCacheService.loadDrafts();
+    _drafts =
+        _resultCacheService.loadDraftsForScope(partnerId: widget.partnerId);
   }
 
   Future<void> _saveLatestForHandoff() async {

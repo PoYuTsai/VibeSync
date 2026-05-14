@@ -163,6 +163,73 @@ void main() {
     expect(reloaded.displayName, '小美');
   });
 
+  test('draft cache filters recent drafts by partner scope', () async {
+    final service = OpenerResultCacheService();
+
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line a'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'A 對象',
+      partnerId: 'partner-a',
+    );
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line global'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '全域入口',
+    );
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line b'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'B 對象',
+      partnerId: 'partner-b',
+    );
+
+    expect(
+      service.loadDraftsForScope(partnerId: 'partner-a').map((d) => d.title),
+      ['A 對象'],
+    );
+    expect(
+      service.loadDraftsForScope(partnerId: 'partner-b').map((d) => d.title),
+      ['B 對象'],
+    );
+    expect(
+      service.loadDraftsForScope(partnerId: 'partner-c'),
+      isEmpty,
+    );
+    expect(
+      service.loadDraftsForScope().map((d) => d.title),
+      ['全域入口'],
+    );
+  });
+
+  test('draft cache trims partner scope before filtering', () async {
+    final service = OpenerResultCacheService();
+
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '小美',
+      partnerId: '  partner-123  ',
+    );
+
+    expect(
+      service.loadDraftsForScope(partnerId: 'partner-123').map((d) => d.title),
+      ['小美'],
+    );
+    expect(
+      service.loadDraftsForScope(partnerId: '   '),
+      isEmpty,
+    );
+  });
+
   test('legacy drafts without partnerId still parse', () async {
     final service = OpenerResultCacheService();
     await service.saveDraft(

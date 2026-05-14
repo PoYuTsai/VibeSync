@@ -173,6 +173,13 @@ class OpenerResultCacheService {
     }
   }
 
+  List<OpenerDraft> loadDraftsForScope({String? partnerId}) {
+    final scopedPartnerId = _blankToNull(partnerId);
+    return loadDrafts()
+        .where((draft) => _blankToNull(draft.partnerId) == scopedPartnerId)
+        .toList(growable: false);
+  }
+
   OpenerDraft? loadDraft(String id) {
     for (final draft in loadDrafts()) {
       if (draft.id == id) {
