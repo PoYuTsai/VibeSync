@@ -29,15 +29,19 @@
 ### 步驟 1：安裝依賴
 
 ```bash
-sudo apt update && sudo apt install -y inotify-tools jq
+sudo apt update && sudo apt install -y jq
+# 建議安裝：讓 supervisor 用檔案事件即時醒來；未安裝時會自動 fallback 短輪詢。
+sudo apt install -y inotify-tools
 ```
 
-`inotify-tools` 給 supervisor 用、`jq` 給 validate / hook 處理 JSON 用。
+`jq` 是必需，給 validate / hook 處理 JSON 用。`inotify-tools` 是建議加速套件；沒有它，supervisor 仍可運作，只是每幾秒輪詢一次 signal file。
 
 ### 步驟 2：建立本機 config
 
+先 `cd` 到 VibeSync repo root，再執行：
+
 ```bash
-cp /mnt/c/Users/eric1/OneDrive/Desktop/VibeSync/tools/cc-rotate/cc-rotate.local.env.example \
+cp "$(pwd)/tools/cc-rotate/cc-rotate.local.env.example" \
    ~/.claude/channels/discord-vibesync/cc-rotate.local.env
 chmod 600 ~/.claude/channels/discord-vibesync/cc-rotate.local.env
 ```
@@ -69,7 +73,7 @@ exec "$VIBESYNC_REPO/tools/cc-rotate/supervisor.sh"
         "hooks": [
           {
             "type": "command",
-            "command": "/mnt/c/Users/eric1/OneDrive/Desktop/VibeSync/tools/cc-rotate/bootstrap-hook.sh"
+            "command": "<absolute-path-to-VibeSync>/tools/cc-rotate/bootstrap-hook.sh"
           }
         ]
       }
@@ -80,7 +84,7 @@ exec "$VIBESYNC_REPO/tools/cc-rotate/supervisor.sh"
         "hooks": [
           {
             "type": "command",
-            "command": "/mnt/c/Users/eric1/OneDrive/Desktop/VibeSync/tools/cc-rotate/user-prompt-hook.sh"
+            "command": "<absolute-path-to-VibeSync>/tools/cc-rotate/user-prompt-hook.sh"
           }
         ]
       }
@@ -120,7 +124,8 @@ pkill -F ~/.claude/channels/discord-vibesync/bridge.pid 2>/dev/null || true
 |------|---------|------|
 | `!cc-rotate` 打了沒反應 | UserPromptSubmit hook 沒掛 / 路徑錯 | `cat ~/.claude/settings.json \| jq .hooks` |
 | Rotation 後新 session 沒接 context | bootstrap.json 沒生成 / SessionStart hook 沒掛 | `ls ~/.claude/channels/discord-vibesync/cc-rotate.*.json` |
-| Supervisor 起不來 | inotify-tools 沒裝 | `which inotifywait` |
+| Supervisor 起不來 | `jq` 沒裝 / `.local.env` 路徑錯 | `which jq && bash -n ~/.claude/channels/discord-vibesync/start.sh` |
+| Rotate 反應慢幾秒 | `inotify-tools` 沒裝，已 fallback polling | `which inotifywait`（可選裝） |
 | 新 session 起來但 DC 沒回 "ready" | plugin 還在重連 / Discord token 過期 | `tail -50 ~/.claude/channels/discord-vibesync/bridge.out` |
 | Stale bootstrap.json 卡住 | 前次 rotate 中途崩 | `rm ~/.claude/channels/discord-vibesync/cc-rotate.bootstrap.json`（或 wait TTL = 10 min 自動清）|
 | Lock 卡住（B4 一直觸發） | 前次 rotate 中途崩 + lock 沒清 | `rm ~/.claude/channels/discord-vibesync/cc-rotate.lock`（supervisor 也會用 `LOCK_STALE_SECONDS` 自動清）|

@@ -1,6 +1,6 @@
 # !cc-rotate — Discord 遠端 session rotation 設計
 
-> **狀態**：v1 設計鎖定，等實作 · **作者**：Claude (Opus 4.7, 1M ctx) · **日期**：2026-05-14
+> **狀態**：v1 已實作，Codex review 補強中 · **作者**：Claude (Opus 4.7, 1M ctx) · **日期**：2026-05-14
 > **來源**：brainstorming dialog（Q1-Q4 4 個決策節點）· **位於 Phase plan 中**：Phase 1
 
 ---
@@ -38,7 +38,7 @@ VibeSync 用戶（Eric）外出模式靠手機 Discord 操控 host 上的 Claude
 **設計後果**：
 
 1. 失敗訊息**不**給「只跑 handoff，不殺 session」的分支選項 — 那等於 `!cc-handoff`，違反 v1 single-command
-2. Context reminder（在 25%/40% 紅線預警時）只說「建議準備 `!cc-rotate`」，**不**讓用戶選 handoff vs rotate
+2. Context reminder 跟隨統一 green-context bands（30-40% yellow、40-45% orange、45%+ hard stop；高風險工作 35%+ 直接 orange），只說「建議準備 `!cc-rotate`」，**不**讓用戶選 handoff vs rotate
 3. 用戶手機只需要記一個指令、做一個動作 — 後果與替代方案都由 host 端決定，**不**把判斷推給手機螢幕
 4. `!cc-handoff` 若有需要 → 一律進 Phase 2 / Future Work（見下方 Phase plan），v1 絕不實作
 
@@ -127,11 +127,11 @@ VibeSync 用戶（Eric）外出模式靠手機 Discord 操控 host 上的 Claude
 
 ### D4. 訊號 + Bootstrap 機制
 
-#### 訊號方式：JSON request file + `inotifywait` watch
+#### 訊號方式：JSON request file + `inotifywait` watch（可 fallback polling）
 
 **為何不用 SIGUSR1**：之後可能加 `!cc-restart` / `!cc-pause` 等命令，structured payload 比訊號可擴展。
 
-**為何不用 polling**：`inotifywait -e create` 零延遲、零 CPU。需 `inotify-tools`（WSL `sudo apt install inotify-tools`）。
+**為何優先用 `inotifywait`**：`inotifywait -e create` 零延遲、零 CPU。若 host 未安裝 `inotify-tools`，v1 supervisor 會 fallback 到短輪詢，避免外出模式因缺一個套件整個不能啟動。
 
 #### 舊 session → supervisor 傳遞
 
@@ -144,7 +144,7 @@ VibeSync 用戶（Eric）外出模式靠手機 Discord 操控 host 上的 Claude
   "old_pid": 12345,
   "discord_channel_id": "...",
   "discord_user_id": "...",
-  "handoff_path": "/home/eric1/.claude/projects/.../reference_session_handoff_latest.md",
+  "handoff_path": "/home/<linux-user>/.claude/projects/.../reference_session_handoff_latest.md",
   "head_commit": "abc1234",
   "warnings": ["W1: ScheduleWakeup 已排 5 分鐘後喚醒"]
 }
@@ -203,10 +203,10 @@ When Discord message body matches /^!cc-rotate(\s|$)/:
 │                                                                 │
 │   cc-rotate.local.env                                           │
 │     VIBESYNC_REPO=/mnt/c/.../VibeSync                           │
-│     CC_ROTATE_DIR=/home/eric1/.claude/channels/discord-vibesync │
+│     CC_ROTATE_DIR=/home/<linux-user>/.claude/channels/discord-vibesync │
 │     CLAUDE_CMD="claude --dangerously-skip-permissions \         │
 │                  --channels plugin:discord@claude-plugins-..."  │
-│     HANDOFF_DIR=/home/eric1/.claude/projects/-mnt-.../memory    │
+│     HANDOFF_DIR=/home/<linux-user>/.claude/projects/<project-slug>/memory │
 │                                                                 │
 │   cc-rotate.request.json   ← transient, written by old session  │
 │   cc-rotate.bootstrap.json ← transient, written by supervisor   │
@@ -262,7 +262,7 @@ When Discord message body matches /^!cc-rotate(\s|$)/:
   │  Step 10: wait for SIGTERM                          │
   └──────────┬──────────────────────────────────────────┘
              │
-             │ (inotifywait fires on request.json)
+             │ (inotifywait or polling sees request.json)
              ▼
   ┌─────────────────────────────────────────────────────┐
   │ supervisor.sh                                       │
@@ -273,7 +273,7 @@ When Discord message body matches /^!cc-rotate(\s|$)/:
   │  5. wait (30s timeout, then SIGKILL)                │
   │  6. spawn new claude with $CLAUDE_CMD               │
   │  7. rm cc-rotate.lock                               │
-  │  8. (loop back to inotifywait)                      │
+  │  8. (loop back to inotifywait / polling)            │
   └──────────┬──────────────────────────────────────────┘
              │
              ▼
@@ -329,8 +329,8 @@ When Discord message body matches /^!cc-rotate(\s|$)/:
 **狀態**：✅ 風險為零，因為我們完全不碰 plugin code
 
 ### R2 — `inotify-tools` 未安裝
-**症狀**：supervisor 啟動即 fail
-**Mitigation**：supervisor 開頭檢查 `command -v inotifywait`，缺則 echo 安裝指令並 exit 1
+**症狀**：監聽延遲從即時事件退回短輪詢
+**Mitigation**：supervisor 只把 `jq` 視為 hard dependency；`inotifywait` 缺失時 warning 並 fallback polling，不阻擋 bridge 啟動
 
 ### R3 — `bootstrap.json` 殘留
 **症狀**：新 session 啟動 crash / 沒走完 step 8 → 下次冷啟動誤觸 rotation context
@@ -368,7 +368,7 @@ D1-D4 全部。**v1 不做 force flag**（任一 hard block 觸發 → 直接拒
 - `!cc-rotate --force`：二次確認流（DC 回「確定？回 yes 5 秒內」），仍強制 handoff
 - `!cc-status`：查當前 session 健康度（context%、active tasks、最後 commit）
 - `!cc-handoff`：**只寫 handoff、不殺 session 的獨立指令**。v1 刻意不做，因為違反 single-command discipline — 多一個指令 = 多一層手機判斷負擔。要在 Phase 2 引入時，需先評估「為何 v1 的『rotate 內建 handoff』不夠用」
-- 自動 rotate：context > 40% 主動觸發（要考慮是否打擾進行中工作）
+- 自動 rotate：依 unified green-context bands 主動觸發（要考慮是否打擾進行中工作）
 
 ### Phase 3（更遠）
 
@@ -384,7 +384,7 @@ D1-D4 全部。**v1 不做 force flag**（任一 hard block 觸發 → 直接拒
 | ❌ `!cc-handoff` 獨立指令 | 違反 v1 single-command discipline；`!cc-rotate` 已內建 handoff |
 | ❌ 任何 `!cc-*` 命令（除 `!cc-rotate`） | 同上；多指令 = 多手機判斷 = 違反外出模式 UX 原則 |
 | ❌ 失敗訊息給「handoff-only」分支 | 同上；不讓用戶在手機選 handoff vs rotate |
-| ❌ Context reminder 提 handoff 選項 | 25%/40% 預警只說「建議準備 `!cc-rotate`」 |
+| ❌ Context reminder 提 handoff 選項 | unified green-context bands 只說「建議準備 `!cc-rotate`」 |
 | ❌ `--force` flag | 手機誤觸成本太高；要做請走 Phase 2 二次確認 |
 | ❌ 自動 rotate | v1 user 主動觸發；自動觸發要先觀察 v1 行為 |
 | ❌ 改 plugin cache | 絕對紅線 |
@@ -440,13 +440,13 @@ D1-D4 全部。**v1 不做 force flag**（任一 hard block 觸發 → 直接拒
 實作完成後**必須**交 Codex review。理由（per VibeSync `CLAUDE.md` 分工原則「OCR / 演算法 / 效能 / 重構 plan / process supervisor → Codex 主導 review」）：
 
 1. **Process 管理風險**：`supervisor.sh` 涉及 SIGTERM / SIGKILL / spawn child / wait timeout — 任一 race condition 都會壞掉 bridge runtime
-2. **訊號與檔案系統**：`inotifywait` + JSON file 之間的時序（write-fsync vs inotify fire vs supervisor read）容易有 race
+2. **訊號與檔案系統**：`inotifywait` / polling fallback + JSON file 之間的時序（write-fsync vs event fire vs supervisor read）容易有 race
 3. **Hook 互動**：SessionStart hook 與 UserPromptSubmit hook 與 me 三方的執行順序保證
 4. **Discord reply 副作用**：失敗 mid-rotation 時，DC 可能只收到「Validating...」沒收到結果 — 用戶以為卡住
 
 ### Codex review 必查清單（寫進 `docs/reviews/` 對應 review 檔）
 
-- [ ] **Race**：舊 session 寫 `request.json` 與 supervisor `inotify` fire 之間是否需要 fsync？
+- [ ] **Race**：舊 session 寫 `request.json` 與 supervisor `inotify` / polling 讀取之間是否需要 fsync？
 - [ ] **Race**：supervisor SIGTERM 後，舊 session 在 `wait` timeout 前若先自己 exit，supervisor `wait` 行為？
 - [ ] **Race**：新 session SessionStart hook 讀 `bootstrap.json` 與新 session 處理第一個 Discord message 是否可能順序顛倒？
 - [ ] **Cleanup**：rotation 中途 supervisor 自己 crash 時，lock / request / bootstrap 殘留如何清？
@@ -468,9 +468,9 @@ Codex review verdict 流程依 VibeSync CLAUDE.md 既有規則：🔴 / 🟡 →
 3. 寫 `bootstrap-prompt.tmpl`（8 first actions 模板）
 4. 寫 `bootstrap-hook.sh`（SessionStart：讀 bootstrap.json + TTL check + 注入 context）
 5. 寫 `user-prompt-hook.sh`（UserPromptSubmit：偵測 !cc-rotate + 注入 protocol reminder）
-6. 寫 `supervisor.sh`（outer loop + inotifywait + SIGTERM/spawn）
+6. 寫 `supervisor.sh`（outer loop + inotifywait/polling + SIGTERM/spawn）
 7. 更新 `AGENTS.md` + `CLAUDE.md`（加 Rotation Protocol 段）
-8. （手動）安裝 `inotify-tools`、寫 `cc-rotate.local.env`、改 `start.sh`、改 `~/.claude/settings.json`
+8. （手動）安裝 `jq`（`inotify-tools` 建議但非必需）、寫 `cc-rotate.local.env`、改 `start.sh`、改 `~/.claude/settings.json`
 9. 跑單元測試 + 整合測試 1-8
 10. Commit + push（按 VibeSync 「commit 後立即 push」規則）
 
@@ -489,4 +489,4 @@ Codex review verdict 流程依 VibeSync CLAUDE.md 既有規則：🔴 / 🟡 →
 
 ---
 
-**設計鎖定，等實作觸發。**
+**v1 已實作；後續以實機整合測試與 Codex review findings 推進。**

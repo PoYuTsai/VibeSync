@@ -33,6 +33,7 @@ source "$ENV_FILE"
 SIGTERM_TIMEOUT_SECONDS="${SIGTERM_TIMEOUT_SECONDS:-30}"
 LOCK_STALE_SECONDS="${LOCK_STALE_SECONDS:-120}"
 INOTIFY_TIMEOUT_SECONDS="${INOTIFY_TIMEOUT_SECONDS:-60}"  # internal: how long to block in inotifywait before re-checking claude liveness
+POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-2}"       # fallback if inotifywait is unavailable
 
 REQUEST_FILE="$CC_ROTATE_DIR/cc-rotate.request.json"
 BOOTSTRAP_FILE="$CC_ROTATE_DIR/cc-rotate.bootstrap.json"
@@ -42,12 +43,17 @@ PID_FILE="$CC_ROTATE_DIR/bridge.pid"
 LOG() { echo "[cc-rotate/supervisor $(date +%H:%M:%S)] $*" >&2; }
 
 # ── Dependency check ────────────────────────────────────────────────
-for dep in inotifywait jq; do
-  if ! command -v "$dep" >/dev/null 2>&1; then
-    LOG "FATAL: '$dep' not installed. Run: sudo apt install inotify-tools jq"
-    exit 2
-  fi
-done
+if ! command -v jq >/dev/null 2>&1; then
+  LOG "FATAL: 'jq' not installed. Run: sudo apt install jq"
+  exit 2
+fi
+
+HAS_INOTIFYWAIT=0
+if command -v inotifywait >/dev/null 2>&1; then
+  HAS_INOTIFYWAIT=1
+else
+  LOG "WARN: 'inotifywait' not installed; falling back to ${POLL_INTERVAL_SECONDS}s polling"
+fi
 
 if [ ! -d "$CC_ROTATE_DIR" ]; then
   LOG "FATAL: CC_ROTATE_DIR does not exist: $CC_ROTATE_DIR"
@@ -106,14 +112,18 @@ wait_for_rotation_or_exit() {
       return 0
     fi
 
-    # Block on directory events with timeout. Timeout lets us re-check claude
-    # liveness periodically — protects against the race where claude exits
-    # while we're blocked in inotifywait.
-    inotifywait -q -t "$INOTIFY_TIMEOUT_SECONDS" \
-      -e create,moved_to,close_write \
-      "$CC_ROTATE_DIR" >/dev/null 2>&1 || true
-    # inotifywait exit codes: 0 = event, 1 = error, 2 = timeout.
-    # We don't branch on exit code — we just re-check REQUEST_FILE and liveness.
+    # Block on directory events with timeout when available. Timeout lets us
+    # re-check claude liveness periodically; polling fallback keeps setup from
+    # hard-failing on machines without inotify-tools.
+    if [ "$HAS_INOTIFYWAIT" -eq 1 ]; then
+      inotifywait -q -t "$INOTIFY_TIMEOUT_SECONDS" \
+        -e create,moved_to,close_write \
+        "$CC_ROTATE_DIR" >/dev/null 2>&1 || true
+      # inotifywait exit codes: 0 = event, 1 = error, 2 = timeout.
+      # We don't branch on exit code — we just re-check REQUEST_FILE and liveness.
+    else
+      sleep "$POLL_INTERVAL_SECONDS"
+    fi
   done
 
   # claude died
@@ -197,12 +207,21 @@ while true; do
   # Clear lock now that fresh session is up (B4 should clear for next rotation)
   rm -f "$LOCK_FILE"
 
-  if wait_for_rotation_or_exit; then
-    perform_rotation
-    # Loop back: spawn replacement claude
-  else
-    LOG "claude exited without rotation request — supervisor exiting cleanly"
-    rm -f "$PID_FILE"
-    exit 0
-  fi
+  while true; do
+    if wait_for_rotation_or_exit; then
+      if perform_rotation; then
+        # Break inner monitor loop and spawn replacement claude.
+        break
+      fi
+
+      # Rotation request was invalid or could not be staged before old claude was
+      # terminated. Keep monitoring the still-running session instead of spawning
+      # a duplicate Discord listener.
+      LOG "Rotation aborted before termination; continuing to monitor claude pid=$CLAUDE_PID"
+    else
+      LOG "claude exited without rotation request — supervisor exiting cleanly"
+      rm -f "$PID_FILE"
+      exit 0
+    fi
+  done
 done

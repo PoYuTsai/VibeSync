@@ -242,7 +242,7 @@ Do NOT suggest `!cc-handoff` or `!cc-rotate --force` — neither exists in v1.
 ### Hard rules
 
 - **Single command only**: `!cc-rotate`. v1 has no `!cc-handoff`, no `--force`, no `!cc-status`. Do not invent any.
-- **Context reminders** at 25% / 40% thresholds say only `建議準備 !cc-rotate` — never ask the user to choose between handoff and rotate.
+- **Context reminders** follow the unified green-context bands: 30-40% = yellow reminder, 40-45% = orange prepare-to-rotate, 45%+ = hard stop. High-risk work at 35%+ should already be treated as orange. Reminders say only `建議準備 !cc-rotate` — never ask the user to choose between handoff and rotate.
 - **Phone-screen friendly**: every Discord reply ≤ 8 lines, no wall-of-text.
 - **New session bootstrap** is the supervisor + SessionStart hook's responsibility, not the old session's — the old session's last action is Step 10 (wait for SIGTERM).
 
