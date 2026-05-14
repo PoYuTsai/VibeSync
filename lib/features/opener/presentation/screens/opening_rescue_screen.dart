@@ -9,11 +9,17 @@ import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../../core/services/usage_service.dart';
+import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
 
 class OpeningRescueScreen extends ConsumerStatefulWidget {
-  const OpeningRescueScreen({super.key});
+  const OpeningRescueScreen({super.key, this.partnerId});
+
+  /// Optional: when entered from a partner-scoped sheet (PartnerDetail / Analysis),
+  /// drafts saved here are tagged with this partnerId so the「最近開場草稿」
+  /// card knows which person each draft belongs to.
+  final String? partnerId;
 
   @override
   ConsumerState<OpeningRescueScreen> createState() =>
@@ -54,9 +60,28 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   void initState() {
     super.initState();
     _drafts = _resultCacheService.loadDrafts();
+    _prefillFromPartner();
     _nameController.addListener(_clearGeneratedResultOnInputChange);
     _bioController.addListener(_clearGeneratedResultOnInputChange);
     _interestsController.addListener(_clearGeneratedResultOnInputChange);
+  }
+
+  void _prefillFromPartner() {
+    final id = widget.partnerId;
+    if (id == null || id.isEmpty) return;
+    final partner = ref.read(partnerByIdProvider(id));
+    if (partner == null) return;
+    final name = partner.name.trim();
+    if (name.isEmpty) return;
+    _nameController.text = name;
+  }
+
+  String? _resolveBoundPartnerName() {
+    final id = widget.partnerId;
+    if (id == null || id.isEmpty) return null;
+    final partner = ref.watch(partnerByIdProvider(id));
+    final name = partner?.name.trim();
+    return (name == null || name.isEmpty) ? null : name;
   }
 
   void _clearGeneratedResultOnInputChange() {
@@ -271,6 +296,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           displayName: _nameController.text,
           sourceLabel: _selectedTab == 0 ? '截圖自介' : '手動輸入',
           inputPreview: _buildDraftInputPreview(),
+          partnerId: widget.partnerId,
         );
         _currentDraftId = draft.id;
         _reloadDrafts();
@@ -324,6 +350,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   @override
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
+    final boundPartnerName = _resolveBoundPartnerName();
 
     return GradientBackground(
       child: Scaffold(
@@ -353,7 +380,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'AI 幫你打造完美開場',
+                boundPartnerName != null
+                    ? '為 $boundPartnerName 想開場'
+                    : 'AI 幫你打造完美開場',
                 style: AppTypography.headlineLarge.copyWith(
                   color: Colors.white,
                 ),

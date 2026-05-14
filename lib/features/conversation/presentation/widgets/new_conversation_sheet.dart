@@ -30,6 +30,15 @@ class NewConversationSheet extends ConsumerWidget {
     ).toString();
   }
 
+  String get _openerLocation {
+    final id = partnerId;
+    if (id == null || id.isEmpty) return '/opener';
+    return Uri(
+      path: '/opener',
+      queryParameters: {'partnerId': id},
+    ).toString();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasPartner = partnerId != null && partnerId!.isNotEmpty;
@@ -137,7 +146,7 @@ class NewConversationSheet extends ConsumerWidget {
             ),
             onTap: () {
               Navigator.pop(context);
-              context.push('/opener');
+              context.push(_openerLocation);
             },
           ),
           const SizedBox(height: 16),

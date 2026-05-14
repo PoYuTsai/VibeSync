@@ -56,7 +56,11 @@ GoRouter _sheetTestRouter(String? partnerId) {
       ),
       GoRoute(
         path: '/opener',
-        builder: (_, __) => const Scaffold(body: Text('opener stub')),
+        builder: (_, state) => Scaffold(
+          body: Text(
+            'opener:${state.uri.queryParameters['partnerId'] ?? 'null'}',
+          ),
+        ),
       ),
     ],
   );
@@ -159,5 +163,45 @@ void main() {
         reason: 'Legacy entry: 從非 PartnerDetail 進入截圖 flow（例如未來新加的 home FAB '
                 '快捷），sheet 不帶 partnerId → controller.create(partnerId: null)。'
                 '與 manual entry path 一致：auto-derive on create 不在現行架構。');
+  });
+
+  testWidgets('sheet partnerId="p-test" + 開場救星 → opener route carries partnerId',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(
+      MaterialApp.router(routerConfig: _sheetTestRouter('p-test')),
+    );
+    await _settle(t);
+
+    await t.tap(find.text('open sheet'));
+    await _settle(t);
+
+    await t.tap(find.text('開場救星'));
+    await _settle(t);
+
+    expect(find.text('opener:p-test'), findsOneWidget,
+        reason: 'opener 入口必須帶上 partnerId — 否則草稿無法綁定對象');
+  });
+
+  testWidgets('sheet partnerId=null + 開場救星 → opener route without partnerId',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(
+      MaterialApp.router(routerConfig: _sheetTestRouter(null)),
+    );
+    await _settle(t);
+
+    await t.tap(find.text('open sheet'));
+    await _settle(t);
+
+    await t.tap(find.text('開場救星'));
+    await _settle(t);
+
+    expect(find.text('opener:null'), findsOneWidget,
+        reason: 'Sheet 無 partnerId 時 opener 走原本無 partner 路徑（學習文章入口）');
   });
 }

@@ -109,7 +109,9 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/opener',
-      builder: (context, state) => const OpeningRescueScreen(),
+      builder: (context, state) => OpeningRescueScreen(
+        partnerId: state.uri.queryParameters['partnerId'],
+      ),
     ),
     // literal '/profile/about-me' MUST come before '/profile/:id' so
     // 'about-me' isn't matched as a conversationId by the parametric route.
