@@ -21,6 +21,20 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   /// card knows which person each draft belongs to.
   final String? partnerId;
 
+  /// Builds the `/new` handoff URL used by the「她回覆了，開始分析對話」CTA.
+  /// Carries partnerId when the screen was entered from a partner-scoped flow
+  /// so the resulting conversation stays bound to the same partner.
+  static String handoffLocationFor({String? partnerId}) {
+    final trimmed = partnerId?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return '/new?source=opener';
+    }
+    return Uri(
+      path: '/new',
+      queryParameters: {'source': 'opener', 'partnerId': trimmed},
+    ).toString();
+  }
+
   @override
   ConsumerState<OpeningRescueScreen> createState() =>
       _OpeningRescueScreenState();
@@ -975,7 +989,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 await _saveLatestForHandoff();
                 if (!mounted) return;
                 setState(_reloadDrafts);
-                context.push('/new?source=opener');
+                context.push(OpeningRescueScreen.handoffLocationFor(
+                  partnerId: widget.partnerId,
+                ));
               },
               icon: const Icon(Icons.add_comment_outlined, size: 18),
               label: const Text('她回覆了，開始分析對話'),
