@@ -345,7 +345,7 @@ Deno.test("runCoachChat forceAnswer fallback returns no-charge conservative answ
   assertEquals(harness.deductCalls, 0);
 });
 
-Deno.test("runCoachChat does not treat old supplements as no-charge answer fallback", async () => {
+Deno.test("runCoachChat does not treat resolved clarifications as no-charge answer fallback", async () => {
   const harness = deps({
     callClaude: () => Promise.resolve(malformedClaudeCard()),
   });
@@ -368,11 +368,6 @@ Deno.test("runCoachChat does not treat old supplements as no-charge answer fallb
             content: "你聽到她這句話後，心裡第一個反應是什麼？",
           },
           {
-            role: "user",
-            kind: "supplement",
-            content: "我覺得她在暗示我太黏，但我還是想知道方向。",
-          },
-          {
             role: "coach",
             kind: "answer",
             content: "先降壓，用一句短訊息接住她的累，再留一個小球。",
@@ -392,7 +387,7 @@ Deno.test("runCoachChat does not treat old supplements as no-charge answer fallb
   assertEquals(harness.deductCalls, 0);
 });
 
-Deno.test("runCoachChat pending supplement fallback remains a no-charge conservative answer", async () => {
+Deno.test("runCoachChat clarification follow-up fallback remains a no-charge conservative answer", async () => {
   const harness = deps({
     callClaude: () => Promise.resolve(malformedClaudeCard()),
   });
@@ -414,11 +409,6 @@ Deno.test("runCoachChat pending supplement fallback remains a no-charge conserva
             kind: "clarification",
             content: "你聽到她這句話後，心裡第一個反應是什麼？",
           },
-          {
-            role: "user",
-            kind: "supplement",
-            content: "我其實怕太急但又想推進。",
-          },
         ],
       },
       tier: "starter",
@@ -434,7 +424,7 @@ Deno.test("runCoachChat pending supplement fallback remains a no-charge conserva
   assertEquals(harness.deductCalls, 0);
 });
 
-Deno.test("runCoachChat repeated clarification fallback rotates the reflection question", async () => {
+Deno.test("runCoachChat clarification continuation fallback does not ask again", async () => {
   const harness = deps({
     callClaude: () => Promise.resolve(malformedClaudeCard()),
   });
@@ -465,12 +455,9 @@ Deno.test("runCoachChat repeated clarification fallback rotates the reflection q
   );
   const card = result.body.card as Record<string, unknown>;
   assertEquals(result.status, 200);
-  assertEquals(card.responseType, "clarifyingQuestion");
+  assertEquals(card.responseType, "coachAnswer");
   assertEquals(card.costDeducted, 0);
-  assertEquals(
-    card.reflectionQuestion,
-    "先補一句你心裡其實想怎麼回，不用修飾。",
-  );
+  assertEquals(card.needsReflection, false);
   assertEquals(harness.deductCalls, 0);
 });
 

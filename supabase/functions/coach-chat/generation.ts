@@ -243,23 +243,14 @@ function buildFallbackClarificationCard(
 
 function shouldUseNoChargeAnswerFallback(request: CoachChatRequest): boolean {
   if (request.forceAnswer) return true;
-  return hasPendingUserSupplement(request.activeSessionTurns);
+  return isAnsweringLatestClarification(request.activeSessionTurns);
 }
 
-function hasPendingUserSupplement(
+function isAnsweringLatestClarification(
   turns: CoachChatRequest["activeSessionTurns"],
 ): boolean {
-  let lastCoachAnswerIndex = -1;
-  for (let index = 0; index < turns.length; index++) {
-    const turn = turns[index];
-    if (turn.role === "coach" && turn.kind === "answer") {
-      lastCoachAnswerIndex = index;
-    }
-  }
-
-  const turnsAfterLastAnswer = turns.slice(lastCoachAnswerIndex + 1);
-  const lastTurn = turnsAfterLastAnswer[turnsAfterLastAnswer.length - 1];
-  return lastTurn?.role === "user" && lastTurn.kind === "supplement";
+  const lastTurn = turns[turns.length - 1];
+  return lastTurn?.role === "coach" && lastTurn.kind === "clarification";
 }
 
 function buildFallbackCoachAnswerShape(
