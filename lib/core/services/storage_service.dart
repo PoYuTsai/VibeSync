@@ -4,6 +4,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/coach_chat/domain/entities/coach_chat_result.dart';
 import '../../features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import '../../features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';
@@ -43,6 +44,10 @@ class StorageService {
     Hive.registerAdapter(NamePairAdapter()); // typeId=15, Spec 3
     Hive.registerAdapter(CoachFollowUpResultAdapter()); // typeId=16, Spec 5
     Hive.registerAdapter(CoachChatResultAdapter()); // typeId=17, Spec 6A
+    Hive.registerAdapter(CoachingOutcomeEventAdapter()); // typeId=18
+    Hive.registerAdapter(CoachingOutcomeSourceAdapter()); // typeId=19
+    Hive.registerAdapter(CoachingUserActionAdapter()); // typeId=20
+    Hive.registerAdapter(CoachingOutcomeSignalAdapter()); // typeId=21
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -80,6 +85,11 @@ class StorageService {
 
     await Hive.openBox<CoachChatResult>(
       'coach_chat_results',
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<CoachingOutcomeEvent>(
+      AppConstants.coachingOutcomeEventsBox,
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -156,6 +166,9 @@ class StorageService {
   static Box<CoachChatResult> get coachChatResultsBox =>
       Hive.box<CoachChatResult>('coach_chat_results');
 
+  static Box<CoachingOutcomeEvent> get coachingOutcomeEventsBox =>
+      Hive.box<CoachingOutcomeEvent>(AppConstants.coachingOutcomeEventsBox);
+
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
@@ -171,6 +184,7 @@ class StorageService {
     await partnerDataQualityStatesBox.clear();
     await coachFollowUpResultsBox.clear();
     await coachChatResultsBox.clear();
+    await coachingOutcomeEventsBox.clear();
     await settingsBox.clear();
     await usageBox.clear();
   }

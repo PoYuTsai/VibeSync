@@ -42,4 +42,5 @@ class AppConstants {
   static const partnersBox = 'partners';
   static const settingsBox = 'settings';
   static const usageBox = 'usage';
+  static const coachingOutcomeEventsBox = 'coaching_outcome_events';
 }
