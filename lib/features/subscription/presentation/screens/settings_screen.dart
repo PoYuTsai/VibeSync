@@ -449,6 +449,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _mapDeleteError(Object error) {
     final normalized = error.toString().toLowerCase();
+    if (normalized.contains('local_user_data_cleanup_failed')) {
+      return '本機資料清理失敗，尚未刪除帳號。請重新開啟 App 後再試一次。';
+    }
     if (_containsAny(normalized, ['confirmation', 'mismatch'])) {
       return '確認文字與 DELETE 不一致。';
     }
@@ -464,6 +467,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _mapLogoutError(Object error) {
     final normalized = error.toString().toLowerCase();
+    if (normalized.contains('local_user_data_cleanup_failed')) {
+      return '本機資料清理失敗，尚未登出。請重新開啟 App 後再試一次。';
+    }
     if (_containsAny(
         normalized, ['network', 'timeout', 'socket', 'connection'])) {
       return '登出時發生網路錯誤。';
@@ -565,14 +571,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await SupabaseService.signOut();
       await _clearLocalUserDataForAuthExit('logout');
+      await SupabaseService.signOut();
     } catch (error) {
       if (!context.mounted) return;
 
       if (!SupabaseService.isAuthenticated) {
-        await _clearLocalUserDataForAuthExit('logout fallback');
-        if (!context.mounted) return;
         _invalidateAuthScopedProviders(ref);
         context.go('/login');
         messenger.showSnackBar(
@@ -593,24 +597,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<bool> _clearLocalUserDataForAuthExit(String reason) async {
-    var succeeded = true;
+  Future<void> _clearLocalUserDataForAuthExit(String reason) async {
+    Object? firstError;
 
     try {
       await StorageService.clearAll();
     } catch (error) {
-      succeeded = false;
+      firstError ??= error;
       debugPrint('Local Hive cleanup failed during $reason: $error');
     }
 
     try {
       await UsageService.clearSnapshot();
     } catch (error) {
-      succeeded = false;
+      firstError ??= error;
       debugPrint('Local usage snapshot cleanup failed during $reason: $error');
     }
 
-    return succeeded;
+    if (firstError != null) {
+      throw StateError('local_user_data_cleanup_failed: $reason: $firstError');
+    }
   }
 
   void _invalidateAuthScopedProviders(WidgetRef ref) {
@@ -714,8 +720,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     try {
-      await SupabaseService.deleteAccount(confirmation: confirmation);
       await _clearLocalUserDataForAuthExit('delete account');
+      await SupabaseService.deleteAccount(confirmation: confirmation);
       await SupabaseService.clearLocalSessionAfterDeletion();
       _invalidateAuthScopedProviders(ref);
       if (!context.mounted) return;

@@ -517,20 +517,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisErrorAction.relogin:
         setState(_resetErrorState);
         try {
-          await SupabaseService.signOut();
-        } catch (error) {
-          // Ignore sign-out cleanup errors and still route back to login.
-          debugPrint('Relogin sign-out cleanup failed: $error');
-        }
-        try {
           await StorageService.clearAll();
         } catch (error) {
           debugPrint('Relogin local data cleanup failed: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('本機資料清理失敗，請重新開啟 App 後再登入。'),
+              ),
+            );
+          }
+          return;
         }
         try {
           await UsageService.clearSnapshot();
         } catch (error) {
           debugPrint('Relogin usage snapshot cleanup failed: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('本機使用量清理失敗，請重新開啟 App 後再登入。'),
+              ),
+            );
+          }
+          return;
+        }
+        try {
+          await SupabaseService.signOut();
+        } catch (error) {
+          // Local data is already cleared; still route back to login.
+          debugPrint('Relogin sign-out cleanup failed: $error');
         }
         ref.invalidate(subscriptionProvider);
         ref.invalidate(conversationsProvider);
