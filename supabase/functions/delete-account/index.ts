@@ -92,15 +92,45 @@ serve(async (req) => {
 
     // Keep this explicit list in sync with user-scoped tables that may block auth deletion.
     const cleanupTargets: CleanupTarget[] = [
-      { table: "revenue_events", column: "user_id", value: user.id, required: true },
-      { table: "test_users", column: "user_id", value: user.id, required: false },
-      { table: "token_usage", column: "user_id", value: user.id, required: false },
-      { table: "rate_limits", column: "user_id", value: user.id, required: false },
-      { table: "ai_logs", column: "user_id", value: user.id, required: false },
-      { table: "subscriptions", column: "user_id", value: user.id, required: false },
-      { table: "users", column: "id", value: user.id, required: false },
-      { table: "feedback", column: "user_id", value: user.id, required: false },
-      { table: "webhook_logs", column: "user_id", value: user.id, required: false },
+      {
+        table: "revenue_events",
+        column: "user_id",
+        value: user.id,
+        required: true,
+      },
+      {
+        table: "test_users",
+        column: "user_id",
+        value: user.id,
+        required: true,
+      },
+      {
+        table: "token_usage",
+        column: "user_id",
+        value: user.id,
+        required: true,
+      },
+      {
+        table: "rate_limits",
+        column: "user_id",
+        value: user.id,
+        required: true,
+      },
+      { table: "ai_logs", column: "user_id", value: user.id, required: true },
+      {
+        table: "subscriptions",
+        column: "user_id",
+        value: user.id,
+        required: true,
+      },
+      { table: "users", column: "id", value: user.id, required: true },
+      { table: "feedback", column: "user_id", value: user.id, required: true },
+      {
+        table: "webhook_logs",
+        column: "user_id",
+        value: user.id,
+        required: true,
+      },
     ];
 
     for (const target of cleanupTargets) {
@@ -134,7 +164,9 @@ serve(async (req) => {
       }
     }
 
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(user.id);
+    const { error: deleteError } = await supabase.auth.admin.deleteUser(
+      user.id,
+    );
     if (deleteError) {
       console.error("Failed to delete auth user:", deleteError);
       return jsonResponse({

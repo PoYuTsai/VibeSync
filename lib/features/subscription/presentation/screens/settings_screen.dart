@@ -566,12 +566,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await SupabaseService.signOut();
+      await StorageService.clearAll();
       await UsageService.clearSnapshot();
     } catch (error) {
       if (!context.mounted) return;
 
       if (!SupabaseService.isAuthenticated) {
-        await UsageService.clearSnapshot();
+        try {
+          await StorageService.clearAll();
+          await UsageService.clearSnapshot();
+        } catch (cleanupError) {
+          debugPrint('Local cleanup after logout failed: $cleanupError');
+        }
         if (!context.mounted) return;
         ref.invalidate(subscriptionProvider);
         ref.invalidate(conversationsProvider);
