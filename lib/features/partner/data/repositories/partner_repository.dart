@@ -3,6 +3,8 @@ import 'package:hive_ce/hive_ce.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import '../../../coach_follow_up/domain/repositories/coach_follow_up_repository.dart';
+import '../../../coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
+import '../../../coaching_memory/domain/repositories/coaching_outcome_repository.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../../user_profile/data/repositories/partner_style_repository.dart';
@@ -38,17 +40,20 @@ class PartnerRepository {
     PartnerStyleRepository? styleRepo,
     PartnerDataQualityRepository? qualityRepo,
     CoachFollowUpRepository? followUpRepo,
+    CoachingOutcomeRepository? outcomeRepo,
   })  : _box = box ?? StorageService.partnersBox,
         _injectedConversationBox = conversationBox,
         _injectedStyleRepo = styleRepo,
         _injectedQualityRepo = qualityRepo,
-        _injectedFollowUpRepo = followUpRepo;
+        _injectedFollowUpRepo = followUpRepo,
+        _injectedOutcomeRepo = outcomeRepo;
 
   final Box<Partner> _box;
   final Box<Conversation>? _injectedConversationBox;
   final PartnerStyleRepository? _injectedStyleRepo;
   final PartnerDataQualityRepository? _injectedQualityRepo;
   final CoachFollowUpRepository? _injectedFollowUpRepo;
+  final CoachingOutcomeRepository? _injectedOutcomeRepo;
 
   // Lazy so callers that never invoke `merge` (e.g. the A1 migration path
   // and its tests) don't pay for opening the conversations box.
@@ -70,6 +75,10 @@ class PartnerRepository {
   CoachFollowUpRepository get _followUpRepo =>
       _injectedFollowUpRepo ??
       CoachFollowUpRepositoryImpl(StorageService.coachFollowUpResultsBox);
+
+  CoachingOutcomeRepository get _outcomeRepo =>
+      _injectedOutcomeRepo ??
+      CoachingOutcomeRepositoryImpl(StorageService.coachingOutcomeEventsBox);
 
   Partner? getById(String id) => _box.get(id);
 
@@ -116,6 +125,8 @@ class PartnerRepository {
     to.updatedAt = DateTime.now();
     await to.save();
 
+    await _outcomeRepo.reassignPartner(
+        fromPartnerId: fromId, toPartnerId: toId);
     await _box.delete(fromId);
     await _styleRepo.delete(fromId);
     await _qualityRepo.delete(fromId);
@@ -157,6 +168,7 @@ class PartnerRepository {
     await _styleRepo.delete(partnerId);
     await _qualityRepo.delete(partnerId);
     await _followUpRepo.delete(partnerId);
+    await _outcomeRepo.deleteByPartner(partnerId);
   }
 
   /// Splits the conversations listed in [matchedConversationIds] off the

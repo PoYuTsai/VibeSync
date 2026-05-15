@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import 'package:vibesync/features/coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
+import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -26,6 +28,21 @@ CoachFollowUpResult _followUp(String partnerId, {String headline = 'h'}) =>
       modelUsed: 'claude-sonnet-4-20250514',
     );
 
+CoachingOutcomeEvent _outcome(
+  String id,
+  String? partnerId, {
+  String summary = 'coach move',
+}) =>
+    CoachingOutcomeEvent.create(
+      id: id,
+      partnerId: partnerId,
+      source: CoachingOutcomeSource.coach,
+      suggestedMoveSummary: summary,
+      userAction: CoachingUserAction.unknown,
+      outcome: CoachingOutcomeSignal.engaged,
+      createdAt: DateTime.utc(2026, 5, 15),
+    );
+
 Partner _partner(String id) {
   final now = DateTime(2026, 5, 1);
   return Partner(
@@ -43,9 +60,11 @@ void main() {
   late Box<PartnerStyleOverride> styleBox;
   late Box<PartnerDataQualityState> qualityBox;
   late Box<CoachFollowUpResult> followUpBox;
+  late Box<CoachingOutcomeEvent> outcomeBox;
   late PartnerStyleRepository styleRepo;
   late PartnerDataQualityRepository qualityRepo;
   late CoachFollowUpRepositoryImpl followUpRepo;
+  late CoachingOutcomeRepositoryImpl outcomeRepo;
   late PartnerRepository repo;
 
   setUpAll(() {
@@ -87,6 +106,18 @@ void main() {
     if (!Hive.isAdapterRegistered(16)) {
       Hive.registerAdapter(CoachFollowUpResultAdapter());
     }
+    if (!Hive.isAdapterRegistered(18)) {
+      Hive.registerAdapter(CoachingOutcomeEventAdapter());
+    }
+    if (!Hive.isAdapterRegistered(19)) {
+      Hive.registerAdapter(CoachingOutcomeSourceAdapter());
+    }
+    if (!Hive.isAdapterRegistered(20)) {
+      Hive.registerAdapter(CoachingUserActionAdapter());
+    }
+    if (!Hive.isAdapterRegistered(21)) {
+      Hive.registerAdapter(CoachingOutcomeSignalAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -99,23 +130,26 @@ void main() {
     conversationBox =
         await Hive.openBox<Conversation>('conversations_cascade_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('pso_cascade_$ts');
-    qualityBox =
-        await Hive.openBox<PartnerDataQualityState>('pdq_cascade_$ts');
-    followUpBox =
-        await Hive.openBox<CoachFollowUpResult>('cfu_cascade_$ts');
+    qualityBox = await Hive.openBox<PartnerDataQualityState>('pdq_cascade_$ts');
+    followUpBox = await Hive.openBox<CoachFollowUpResult>('cfu_cascade_$ts');
+    outcomeBox =
+        await Hive.openBox<CoachingOutcomeEvent>('outcome_cascade_$ts');
     styleRepo = PartnerStyleRepository(box: styleBox);
     qualityRepo = PartnerDataQualityRepository(injectedBox: qualityBox);
     followUpRepo = CoachFollowUpRepositoryImpl(followUpBox);
+    outcomeRepo = CoachingOutcomeRepositoryImpl(outcomeBox);
     repo = PartnerRepository(
       box: partnerBox,
       conversationBox: conversationBox,
       styleRepo: styleRepo,
       qualityRepo: qualityRepo,
       followUpRepo: followUpRepo,
+      outcomeRepo: outcomeRepo,
     );
   });
 
   tearDown(() async {
+    await outcomeBox.deleteFromDisk();
     await followUpBox.deleteFromDisk();
     await qualityBox.deleteFromDisk();
     await styleBox.deleteFromDisk();
@@ -346,8 +380,7 @@ void main() {
   // exists, so it must be cleared. The target's follow-up card is owned by a
   // surviving identity — never cloned, never overwritten.
 
-  test('merge cascades to clear source partner coach follow-up card',
-      () async {
+  test('merge cascades to clear source partner coach follow-up card', () async {
     final source = _partner('p1');
     final target = _partner('p2');
     await partnerBox.put(source.id, source);
@@ -376,7 +409,8 @@ void main() {
     expect(followUpRepo.get('p2')?.headline, 'target survives');
   });
 
-  test('merge guard failure (missing partner) does NOT clear coach '
+  test(
+      'merge guard failure (missing partner) does NOT clear coach '
       'follow-up card', () async {
     // merge() throws ArgumentError when source or target is missing in the
     // partner box — the throw happens BEFORE any cascade, so the source's
@@ -391,5 +425,90 @@ void main() {
       throwsA(isA<ArgumentError>()),
     );
     expect(followUpRepo.get('p1')?.headline, 'survives guard');
+  });
+
+  test('delete cascades to clear coaching outcome events', () async {
+    final p = _partner('p1');
+    await partnerBox.put(p.id, p);
+    await outcomeRepo.put(_outcome('o-1', 'p1'));
+    expect(outcomeRepo.get('o-1'), isNotNull);
+
+    await repo.delete('p1');
+
+    expect(partnerBox.containsKey('p1'), isFalse);
+    expect(outcomeRepo.get('o-1'), isNull);
+  });
+
+  test('delete does NOT touch other partners coaching outcome events',
+      () async {
+    final p1 = _partner('p1');
+    final p2 = _partner('p2');
+    await partnerBox.put(p1.id, p1);
+    await partnerBox.put(p2.id, p2);
+    await outcomeRepo.put(_outcome('o-1', 'p1'));
+    await outcomeRepo.put(_outcome('o-2', 'p2'));
+    await outcomeRepo.put(_outcome('global', null));
+
+    await repo.delete('p1');
+
+    expect(outcomeRepo.get('o-1'), isNull);
+    expect(outcomeRepo.get('o-2')?.partnerId, 'p2');
+    expect(outcomeRepo.get('global'), isNotNull);
+  });
+
+  test('delete blocked by conversations does NOT clear coaching outcome events',
+      () async {
+    final p = _partner('p1');
+    await partnerBox.put(p.id, p);
+    final c = Conversation(
+      id: 'c1',
+      name: 'conv',
+      messages: const [],
+      createdAt: DateTime(2026, 5, 1),
+      updatedAt: DateTime(2026, 5, 1),
+      ownerUserId: 'u1',
+      partnerId: 'p1',
+    );
+    c.currentRound = 1;
+    await conversationBox.put(c.id, c);
+    await outcomeRepo.put(_outcome('o-1', 'p1'));
+
+    expect(
+      () => repo.delete('p1'),
+      throwsA(isA<PartnerHasConversationsException>()),
+    );
+    expect(outcomeRepo.get('o-1')?.partnerId, 'p1');
+  });
+
+  test('merge reassigns source partner coaching outcome events to target',
+      () async {
+    final source = _partner('p1');
+    final target = _partner('p2');
+    await partnerBox.put(source.id, source);
+    await partnerBox.put(target.id, target);
+    await outcomeRepo.put(_outcome('o-source-a', 'p1'));
+    await outcomeRepo.put(_outcome('o-source-b', ' p1 '));
+    await outcomeRepo.put(_outcome('o-target', 'p2'));
+
+    await repo.merge(fromId: 'p1', toId: 'p2');
+
+    expect(outcomeRepo.listByPartner('p1'), isEmpty);
+    expect(outcomeRepo.get('o-source-a')?.partnerId, 'p2');
+    expect(outcomeRepo.get('o-source-b')?.partnerId, 'p2');
+    expect(outcomeRepo.get('o-target')?.partnerId, 'p2');
+  });
+
+  test(
+      'merge guard failure (missing partner) does NOT reassign coaching '
+      'outcome events', () async {
+    final source = _partner('p1');
+    await partnerBox.put(source.id, source);
+    await outcomeRepo.put(_outcome('o-1', 'p1'));
+
+    expect(
+      () => repo.merge(fromId: 'p1', toId: 'p2'),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(outcomeRepo.get('o-1')?.partnerId, 'p1');
   });
 }

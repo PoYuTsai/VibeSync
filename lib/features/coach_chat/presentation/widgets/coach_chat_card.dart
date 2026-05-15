@@ -7,6 +7,8 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../data/providers/coach_chat_providers.dart';
 import '../../data/services/coach_chat_api_service.dart';
 import '../../domain/entities/coach_chat_mode.dart';
@@ -656,7 +658,7 @@ class _CoachChatHistoryTile extends StatelessWidget {
   }
 }
 
-class _CoachChatResultView extends StatelessWidget {
+class _CoachChatResultView extends ConsumerWidget {
   final CoachChatResult result;
   final String? question;
   final int dailyRemaining;
@@ -672,9 +674,16 @@ class _CoachChatResultView extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final mode = CoachChatModeX.fromWire(result.mode);
     final isClarifying = result.isClarifyingQuestion;
+    final outcomeEvent = isClarifying
+        ? null
+        : ref.watch(
+            coachingOutcomeEventProvider(
+              coachingOutcomeIdForCoachResult(result.id),
+            ),
+          );
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -836,9 +845,45 @@ class _CoachChatResultView extends StatelessWidget {
                 ),
             ],
           ),
+          if (!isClarifying) ...[
+            const SizedBox(height: 12),
+            _CoachOutcomeCaptureCard(
+              event: outcomeEvent,
+              onSelected: (option) => _recordOutcome(context, ref, option),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _recordOutcome(
+    BuildContext context,
+    WidgetRef ref,
+    _CoachOutcomeOption option,
+  ) async {
+    try {
+      await ref.read(coachingOutcomeRecorderProvider).recordCoachResultOutcome(
+            result: result,
+            userAction: option.userAction,
+            outcome: option.outcome,
+          );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已記下「${option.label}」，不扣額度。'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('暫時記不起來，晚點再試一次。'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   String _rewriteDecisionLabel(String decision) {
@@ -911,6 +956,164 @@ class _CoachChatResultView extends StatelessWidget {
       const SnackBar(
         content: Text('已複製'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+class _CoachOutcomeOption {
+  final String label;
+  final IconData icon;
+  final CoachingUserAction userAction;
+  final CoachingOutcomeSignal outcome;
+
+  const _CoachOutcomeOption({
+    required this.label,
+    required this.icon,
+    required this.userAction,
+    required this.outcome,
+  });
+
+  bool matches(CoachingOutcomeEvent? event) {
+    if (event == null) return false;
+    return event.userAction == userAction && event.outcome == outcome;
+  }
+}
+
+const _coachOutcomeOptions = <_CoachOutcomeOption>[
+  _CoachOutcomeOption(
+    label: '她有接',
+    icon: Icons.check_circle_outline_rounded,
+    userAction: CoachingUserAction.unknown,
+    outcome: CoachingOutcomeSignal.engaged,
+  ),
+  _CoachOutcomeOption(
+    label: '她冷回',
+    icon: Icons.ac_unit_rounded,
+    userAction: CoachingUserAction.unknown,
+    outcome: CoachingOutcomeSignal.cold,
+  ),
+  _CoachOutcomeOption(
+    label: '她沒回',
+    icon: Icons.hourglass_empty_rounded,
+    userAction: CoachingUserAction.unknown,
+    outcome: CoachingOutcomeSignal.noReply,
+  ),
+  _CoachOutcomeOption(
+    label: '我沒送出',
+    icon: Icons.do_not_disturb_on_outlined,
+    userAction: CoachingUserAction.didNotSend,
+    outcome: CoachingOutcomeSignal.pending,
+  ),
+  _CoachOutcomeOption(
+    label: '我改問教練',
+    icon: Icons.forum_outlined,
+    userAction: CoachingUserAction.askedCoach,
+    outcome: CoachingOutcomeSignal.unknown,
+  ),
+];
+
+class _CoachOutcomeCaptureCard extends StatelessWidget {
+  final CoachingOutcomeEvent? event;
+  final ValueChanged<_CoachOutcomeOption> onSelected;
+
+  const _CoachOutcomeCaptureCard({
+    required this.event,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _coachOutcomeOptions.where((o) => o.matches(event));
+    final selectedLabel = selected.isEmpty ? null : selected.first.label;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.50),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.14),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.auto_stories_outlined,
+                color: AppColors.primary,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '這步後來怎麼樣？',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.glassTextPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      selectedLabel == null
+                          ? '點一下結果，之後教練會更懂你的節奏。'
+                          : '已記下：$selectedLabel。你也可以改選新的結果。',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.glassTextSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _coachOutcomeOptions.map((option) {
+              final isSelected = option.matches(event);
+              return ChoiceChip(
+                selected: isSelected,
+                label: Text(option.label),
+                avatar: Icon(
+                  option.icon,
+                  size: 16,
+                  color: isSelected ? Colors.white : AppColors.primary,
+                ),
+                onSelected: (_) => onSelected(option),
+                selectedColor: AppColors.primary,
+                backgroundColor: Colors.white.withValues(alpha: 0.62),
+                labelStyle: AppTypography.caption.copyWith(
+                  color: isSelected ? Colors.white : AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+                side: BorderSide(
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.glassBorder.withValues(alpha: 0.8),
+                ),
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '回報不扣額度，也不會自動改寫長期記憶；只是先把結果存在本機。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.35,
+            ),
+          ),
+        ],
       ),
     );
   }
