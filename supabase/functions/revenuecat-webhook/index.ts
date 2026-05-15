@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getTierFromProductId,
+  resolveBillingIssueTier,
+  tierRank,
+} from "./tiers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,26 +19,6 @@ function jsonResponse(data: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function getTierFromProductId(productId: string): string | null {
-  const normalized = productId.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized.includes("essential")) return "essential";
-  if (normalized.includes("starter")) return "starter";
-  return null;
-}
-
-function tierRank(tier: string | null | undefined): number {
-  switch ((tier ?? "free").trim().toLowerCase()) {
-    case "essential":
-      return 2;
-    case "starter":
-      return 1;
-    case "free":
-    default:
-      return 0;
-  }
 }
 
 function stripBearer(value: string): string {
@@ -389,18 +374,32 @@ Deno.serve(async (req) => {
         console.log(`Downgrading user ${app_user_id} to free`);
         break;
 
-      case "BILLING_ISSUE":
-        newTier = currentTier;
+      case "BILLING_ISSUE": {
+        const preservedTier = resolveBillingIssueTier({
+          currentTier,
+          productId: effectiveProductId,
+        });
+
+        if (preservedTier == null) {
+          shouldUpdate = false;
+          console.warn(
+            `Ignoring BILLING_ISSUE for user ${app_user_id}: no paid tier in DB or product_id`,
+          );
+          break;
+        }
+
+        newTier = preservedTier;
         shouldUpdate = true;
         subscriptionUpdate = {
-          tier: currentTier,
+          tier: preservedTier,
           status: "active",
           expires_at: expiresAt,
         };
         console.log(
-          `Billing issue for user ${app_user_id}; preserving ${currentTier} quota usage until expiration`,
+          `Billing issue for user ${app_user_id}; preserving ${preservedTier} quota usage until expiration`,
         );
         break;
+      }
 
       case "CANCELLATION":
         newTier = getTierFromProductId(effectiveProductId) ??
