@@ -517,41 +517,54 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisErrorAction.relogin:
         setState(_resetErrorState);
         try {
+          await SupabaseService.signOut();
+        } catch (error) {
+          debugPrint('Relogin sign-out cleanup failed: $error');
+          if (SupabaseService.isAuthenticated) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('登出失敗，請稍後再試。'),
+                ),
+              );
+            }
+            return;
+          }
+        }
+        var localCleanupSucceeded = true;
+        try {
           await StorageService.clearAll();
         } catch (error) {
+          localCleanupSucceeded = false;
           debugPrint('Relogin local data cleanup failed: $error');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('本機資料清理失敗，請重新開啟 App 後再登入。'),
+                content: Text('登入狀態已清除，但本機資料清理失敗。請重新開啟 App 後再登入。'),
               ),
             );
           }
-          return;
         }
         try {
           await UsageService.clearSnapshot();
         } catch (error) {
+          localCleanupSucceeded = false;
           debugPrint('Relogin usage snapshot cleanup failed: $error');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('本機使用量清理失敗，請重新開啟 App 後再登入。'),
+                content: Text('登入狀態已清除，但本機使用量清理失敗。請重新開啟 App 後再登入。'),
               ),
             );
           }
-          return;
-        }
-        try {
-          await SupabaseService.signOut();
-        } catch (error) {
-          // Local data is already cleared; still route back to login.
-          debugPrint('Relogin sign-out cleanup failed: $error');
         }
         ref.invalidate(subscriptionProvider);
         ref.invalidate(conversationsProvider);
         ref.invalidate(usageDataProvider);
         if (!mounted) {
+          return;
+        }
+        if (!localCleanupSucceeded) {
           return;
         }
         context.go('/login');

@@ -571,7 +571,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await _clearLocalUserDataForAuthExit('logout');
       await SupabaseService.signOut();
     } catch (error) {
       if (!context.mounted) return;
@@ -591,13 +590,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
+    final localCleanupSucceeded = await _clearLocalUserDataBestEffort('logout');
     _invalidateAuthScopedProviders(ref);
     if (context.mounted) {
       context.go('/login');
+      if (!localCleanupSucceeded) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('已登出，但本機資料清理失敗。請重新開啟 App 後再登入其他帳號。'),
+          ),
+        );
+      }
     }
   }
 
-  Future<void> _clearLocalUserDataForAuthExit(String reason) async {
+  Future<bool> _clearLocalUserDataBestEffort(String reason) async {
     Object? firstError;
 
     try {
@@ -615,8 +622,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     if (firstError != null) {
-      throw StateError('local_user_data_cleanup_failed: $reason: $firstError');
+      return false;
     }
+    return true;
   }
 
   void _invalidateAuthScopedProviders(WidgetRef ref) {
@@ -720,8 +728,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     try {
-      await _clearLocalUserDataForAuthExit('delete account');
       await SupabaseService.deleteAccount(confirmation: confirmation);
+      final localCleanupSucceeded =
+          await _clearLocalUserDataBestEffort('delete account');
       await SupabaseService.clearLocalSessionAfterDeletion();
       _invalidateAuthScopedProviders(ref);
       if (!context.mounted) return;
@@ -729,8 +738,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       Navigator.of(context, rootNavigator: true).pop();
       context.go('/login');
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('帳號已刪除。'),
+        SnackBar(
+          content: Text(
+            localCleanupSucceeded ? '帳號已刪除。' : '帳號已刪除，但本機資料清理失敗。請重新開啟 App。',
+          ),
           backgroundColor: AppColors.success,
         ),
       );
