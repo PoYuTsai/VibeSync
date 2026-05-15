@@ -174,6 +174,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
+  String _currentPlanLabel() {
+    switch (ref.read(subscriptionProvider).tier) {
+      case SubscriptionTierHelper.starter:
+        return 'Starter';
+      case SubscriptionTierHelper.essential:
+        return 'Essential';
+      case SubscriptionTierHelper.free:
+      default:
+        return 'Free';
+    }
+  }
+
+  String _dailyQuotaExceededMessage(DailyLimitExceededException e) {
+    return '目前方案 ${_currentPlanLabel()}：今日額度已用完 (${e.used}/${e.dailyLimit})，明天會自動恢復；升級方案可取得更多額度。';
+  }
+
+  String _monthlyQuotaExceededMessage(MonthlyLimitExceededException e) {
+    return '目前方案 ${_currentPlanLabel()}：本月額度已用完 (${e.used}/${e.monthlyLimit})，升級方案可取得更多分析額度。';
+  }
+
   Future<void> _handleCoachChatQuotaExceeded() async {
     if (!mounted) return;
     _showFloatingSnackBar('教練額度已用完，帶你去升級方案。');
@@ -2535,7 +2555,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isAnalyzing = false;
         _applyErrorState(
-          message: '今日額度已用完 (${e.used}/${e.dailyLimit})，帶你去升級方案。',
+          message: _dailyQuotaExceededMessage(e),
           action: AnalysisErrorAction.upgrade,
           origin: _AnalysisErrorOrigin.analysis,
         );
@@ -2546,7 +2566,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isAnalyzing = false;
         _applyErrorState(
-          message: '本月額度已用完 (${e.used}/${e.monthlyLimit})，升級方案獲得更多！',
+          message: _monthlyQuotaExceededMessage(e),
           action: AnalysisErrorAction.upgrade,
           origin: _AnalysisErrorOrigin.analysis,
         );
@@ -2690,14 +2710,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isOptimizing = false;
       });
-      _showFloatingSnackBar('今日額度已用完 (${e.used}/${e.dailyLimit})，帶你去升級方案。');
+      _showFloatingSnackBar(_dailyQuotaExceededMessage(e));
       await _showPaywall(context);
     } on MonthlyLimitExceededException catch (e) {
       if (!mounted) return;
       setState(() {
         _isOptimizing = false;
       });
-      _showFloatingSnackBar('本月額度已用完 (${e.used}/${e.monthlyLimit})，帶你去升級方案。');
+      _showFloatingSnackBar(_monthlyQuotaExceededMessage(e));
       await _showPaywall(context);
     } on AnalysisException catch (e) {
       if (!mounted) return;

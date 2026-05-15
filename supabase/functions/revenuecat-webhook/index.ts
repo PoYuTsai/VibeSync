@@ -24,6 +24,18 @@ function getTierFromProductId(productId: string): string | null {
   return null;
 }
 
+function tierRank(tier: string | null | undefined): number {
+  switch ((tier ?? "free").trim().toLowerCase()) {
+    case "essential":
+      return 2;
+    case "starter":
+      return 1;
+    case "free":
+    default:
+      return 0;
+  }
+}
+
 function stripBearer(value: string): string {
   return value.trim().replace(/^Bearer\s+/i, "");
 }
@@ -336,11 +348,7 @@ Deno.serve(async (req) => {
         }
 
         newTier = derivedTier;
-        const isUpgrade = getTierFromProductId(currentTier) == null ? false : (
-          (currentTier === "free" &&
-            (newTier === "starter" || newTier === "essential")) ||
-          (currentTier === "starter" && newTier === "essential")
-        );
+        const isUpgrade = tierRank(newTier) > tierRank(currentTier);
 
         if (isUpgrade) {
           shouldUpdate = true;
@@ -367,7 +375,6 @@ Deno.serve(async (req) => {
       }
 
       case "EXPIRATION":
-      case "BILLING_ISSUE":
         newTier = "free";
         shouldUpdate = true;
         subscriptionUpdate = {
@@ -380,6 +387,19 @@ Deno.serve(async (req) => {
           daily_reset_at: nowIso,
         };
         console.log(`Downgrading user ${app_user_id} to free`);
+        break;
+
+      case "BILLING_ISSUE":
+        newTier = currentTier;
+        shouldUpdate = true;
+        subscriptionUpdate = {
+          tier: currentTier,
+          status: "active",
+          expires_at: expiresAt,
+        };
+        console.log(
+          `Billing issue for user ${app_user_id}; preserving ${currentTier} quota usage until expiration`,
+        );
         break;
 
       case "CANCELLATION":

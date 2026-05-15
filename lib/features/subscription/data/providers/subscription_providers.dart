@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -62,8 +63,8 @@ class SubscriptionState {
     this.tier = SubscriptionTierHelper.free,
     this.monthlyMessagesUsed = 0,
     this.dailyMessagesUsed = 0,
-    this.monthlyLimit = 30,
-    this.dailyLimit = 15,
+    this.monthlyLimit = AppConstants.freeMonthlyLimit,
+    this.dailyLimit = AppConstants.freeDailyLimit,
     this.isLoading = false,
     this.error,
     this.offerings,
@@ -88,23 +89,11 @@ class SubscriptionState {
       pendingDowngradeToTier != null && pendingDowngradeEffectiveAt != null;
 
   Package? get starterPackage {
-    final packages = offerings?.current?.availablePackages;
-    if (packages == null || packages.isEmpty) return null;
-
-    return packages.cast<Package?>().firstWhere(
-          (p) => p != null && _packageMatchesTier(p, 'starter'),
-          orElse: () => null,
-        );
+    return starterMonthlyPackage ?? starterQuarterlyPackage;
   }
 
   Package? get essentialPackage {
-    final packages = offerings?.current?.availablePackages;
-    if (packages == null || packages.isEmpty) return null;
-
-    return packages.cast<Package?>().firstWhere(
-          (p) => p != null && _packageMatchesTier(p, 'essential'),
-          orElse: () => null,
-        );
+    return essentialMonthlyPackage ?? essentialQuarterlyPackage;
   }
 
   String _packageSearchText(Package package) {

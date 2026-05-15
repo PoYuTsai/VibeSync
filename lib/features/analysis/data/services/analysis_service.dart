@@ -807,18 +807,19 @@ class AnalysisService {
             if (status == 429) {
               final monthlyLimit = responseData['monthlyLimit'];
               final dailyLimit = responseData['dailyLimit'];
+              final used = (responseData['used'] as num?)?.toInt() ?? 0;
 
               if (dailyLimit != null) {
                 throw DailyLimitExceededException(
-                  dailyLimit: dailyLimit as int,
-                  used: responseData['used'] as int? ?? 0,
+                  dailyLimit: (dailyLimit as num).toInt(),
+                  used: used,
                 );
               }
 
               if (monthlyLimit != null) {
                 throw MonthlyLimitExceededException(
-                  monthlyLimit: monthlyLimit as int,
-                  used: responseData['used'] as int? ?? 0,
+                  monthlyLimit: (monthlyLimit as num).toInt(),
+                  used: used,
                 );
               }
             }

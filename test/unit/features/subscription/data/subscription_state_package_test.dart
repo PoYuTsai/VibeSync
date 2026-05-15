@@ -160,6 +160,36 @@ void main() {
     );
   });
 
+  test(
+      'bare tier package getters use exact product ids before localized titles',
+      () {
+    final state = stateWithPackages([
+      package(
+        packageId: 'starter_quarterly',
+        packageType: PackageType.threeMonth,
+        productId: 'vibesync_starter_quarterly_v2',
+        title: '入門季繳',
+        subscriptionPeriod: 'P3M',
+      ),
+      package(
+        packageId: 'essential_monthly',
+        packageType: PackageType.monthly,
+        productId: 'vibesync_essential_monthly_v2',
+        title: '進階月繳',
+        subscriptionPeriod: 'P1M',
+      ),
+    ]);
+
+    expect(
+      state.starterPackage?.storeProduct.identifier,
+      'vibesync_starter_quarterly_v2',
+    );
+    expect(
+      state.essentialPackage?.storeProduct.identifier,
+      'vibesync_essential_monthly_v2',
+    );
+  });
+
   test('uses package title and subscription period when product ids are terse',
       () {
     final state = stateWithPackages([

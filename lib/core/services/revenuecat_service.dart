@@ -201,6 +201,13 @@ class RevenueCatService {
     debugPrint(
         'RevenueCat: Active entitlements keys: ${activeEntitlements.keys.toList()}');
 
+    final activeProductIds = <String>{
+      for (final entitlement in activeEntitlements.values)
+        if (entitlement.productIdentifier.isNotEmpty)
+          entitlement.productIdentifier,
+      ...customerInfo.activeSubscriptions.where((id) => id.isNotEmpty),
+    }.toList(growable: false);
+
     // 如果沒有 active entitlements，印出更多資訊
     if (activeEntitlements.isEmpty) {
       debugPrint('RevenueCat: No active entitlements!');
@@ -213,9 +220,8 @@ class RevenueCatService {
       for (final productId in customerInfo.activeSubscriptions) {
         debugPrint('RevenueCat: Checking activeSubscription: $productId');
       }
-      final activeSubscriptionTier = SubscriptionTierHelper.tierFromProductIds(
-        customerInfo.activeSubscriptions,
-      );
+      final activeSubscriptionTier =
+          SubscriptionTierHelper.tierFromProductIds(activeProductIds);
       if (activeSubscriptionTier != SubscriptionTierHelper.free) {
         debugPrint(
           'RevenueCat: Detected tier from activeSubscriptions: $activeSubscriptionTier',
@@ -234,12 +240,12 @@ class RevenueCatService {
 
       debugPrint(
           'RevenueCat: Entitlement "$entitlementId" -> Product "$productId"');
+    }
 
-      final tier = SubscriptionTierHelper.tierFromProductId(productId);
-      if (tier != SubscriptionTierHelper.free) {
-        debugPrint('RevenueCat: Detected tier: $tier');
-        return tier;
-      }
+    final tier = SubscriptionTierHelper.tierFromProductIds(activeProductIds);
+    if (tier != SubscriptionTierHelper.free) {
+      debugPrint('RevenueCat: Detected highest active tier: $tier');
+      return tier;
     }
 
     debugPrint('RevenueCat: No matching tier found, returning free');
