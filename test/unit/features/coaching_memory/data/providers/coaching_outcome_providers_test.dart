@@ -194,6 +194,10 @@ void main() {
     );
     expect(c.read(coachingOutcomeEventProvider('coach:result-1'))?.id,
         'coach:result-1');
+    final digest = c.read(coachingOutcomeDigestProvider('partner-1'));
+    expect(digest.totalEvents, 1);
+    expect(digest.engagedCount, 1);
+    expect(digest.recentMoveSummaries.single, event.suggestedMoveSummary);
   });
 
   test('recording the same coach result overwrites the previous signal',
@@ -241,5 +245,6 @@ void main() {
     expect(event.partnerId, isNull);
     expect(event.suggestedMoveSummary, '先不要急著貼標籤');
     expect(c.read(coachingUnboundOutcomesProvider).single.id, event.id);
+    expect(c.read(coachingUnboundOutcomeDigestProvider).totalEvents, 1);
   });
 }

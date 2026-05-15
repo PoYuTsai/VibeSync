@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/storage_service.dart';
 import '../../../coach_chat/domain/entities/coach_chat_result.dart';
+import '../../domain/entities/coaching_outcome_digest.dart';
 import '../../domain/entities/coaching_outcome_event.dart';
 import '../../domain/repositories/coaching_outcome_repository.dart';
 import '../repositories/coaching_outcome_repository_impl.dart';
@@ -31,6 +32,24 @@ final coachingUnboundOutcomesProvider =
     Provider<List<CoachingOutcomeEvent>>((ref) {
   final repo = ref.watch(coachingOutcomeRepositoryProvider);
   return repo.listUnbound();
+});
+
+final coachingOutcomeDigestProvider =
+    Provider.family<CoachingOutcomeDigest, String>((ref, partnerId) {
+  final events = ref.watch(coachingOutcomesByPartnerProvider(partnerId));
+  return CoachingOutcomeDigest.fromEvents(
+    partnerId: partnerId,
+    events: events,
+  );
+});
+
+final coachingUnboundOutcomeDigestProvider =
+    Provider<CoachingOutcomeDigest>((ref) {
+  final events = ref.watch(coachingUnboundOutcomesProvider);
+  return CoachingOutcomeDigest.fromEvents(
+    partnerId: null,
+    events: events,
+  );
 });
 
 final coachingOutcomeRecorderProvider =
@@ -70,8 +89,10 @@ class CoachingOutcomeRecorder {
     final partnerId = CoachingOutcomeEvent.normalizeScope(event.partnerId);
     if (partnerId != null) {
       _ref.invalidate(coachingOutcomesByPartnerProvider(partnerId));
+      _ref.invalidate(coachingOutcomeDigestProvider(partnerId));
     } else {
       _ref.invalidate(coachingUnboundOutcomesProvider);
+      _ref.invalidate(coachingUnboundOutcomeDigestProvider);
     }
     return event;
   }
