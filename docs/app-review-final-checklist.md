@@ -45,7 +45,7 @@
 
 - [ ] `https://vibesyncai.app/privacy` 可正常開啟
 - [ ] `https://vibesyncai.app/terms` 可正常開啟
-- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面，不使用 `mailto:`；`/support` 未上線前暫用 `https://vibesyncai.app/privacy`
+- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不使用 `mailto:`
 - [ ] `vibesyncaiapp@gmail.com` 可收信
 - [ ] App Store Connect 的 privacy disclosure 已依目前資料流填寫
 - [ ] Privacy Label 已揭露 Email / User ID / Purchase History / User Content / Photos / Usage Data / Diagnostics

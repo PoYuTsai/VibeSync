@@ -57,7 +57,7 @@ Notes:
 | Category | Lifestyle 或 Productivity，送審前依 App Store Connect 可選項擇一 |
 | Age Rating | 建議 17+，因使用者可能輸入成人/曖昧/關係內容 |
 | Privacy Policy URL | `https://vibesyncai.app/privacy` |
-| Support URL | 暫用 `https://vibesyncai.app/privacy`（頁面底部含客服信箱）；`/support` 正式上線後再改 |
+| Support URL | `https://vibesyncai.app/support` |
 
 ### 簡短描述
 
@@ -161,7 +161,7 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 核對原則：
 
 - [ ] Privacy Policy、App Store Connect Privacy Label、Review Notes 三者一致
-- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面，不要填 `mailto:`；`/support` 未上線前暫用 `https://vibesyncai.app/privacy`
+- [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不要填 `mailto:`
 - [ ] 不宣稱「資料永不離開裝置」
 - [ ] 清楚揭露 AI provider 會處理使用者主動送出的內容
 - [ ] 若新增 analytics / crash SDK，要回頭更新此表

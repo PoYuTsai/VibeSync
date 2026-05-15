@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../../core/services/supabase_service.dart';
 
 typedef OpenerInvoker = Future<OpenerInvokeResponse> Function(
   String functionName, {
@@ -302,6 +303,6 @@ Future<OpenerInvokeResponse> _defaultInvoker(
   String fn, {
   required Map<String, dynamic> body,
 }) async {
-  final res = await Supabase.instance.client.functions.invoke(fn, body: body);
+  final res = await SupabaseService.invokeFunction(fn, body: body);
   return OpenerInvokeResponse(status: res.status, data: res.data);
 }

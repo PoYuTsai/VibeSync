@@ -69,7 +69,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
   Widget build(BuildContext context) {
     final article = _findArticle();
     if (article == null) {
-      return const Scaffold(body: Center(child: Text('Article not found')));
+      return const Scaffold(body: Center(child: Text('找不到這篇文章')));
     }
     final practiceGuide = buildArticlePracticeGuide(article);
     final subscription = ref.watch(subscriptionProvider);
