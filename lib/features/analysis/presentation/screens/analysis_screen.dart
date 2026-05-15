@@ -10,7 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/message_calculator.dart';
-import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -518,53 +517,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(_resetErrorState);
         try {
           await SupabaseService.signOut();
-        } catch (error) {
-          debugPrint('Relogin sign-out cleanup failed: $error');
-          if (SupabaseService.isAuthenticated) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('登出失敗，請稍後再試。'),
-                ),
-              );
-            }
-            return;
-          }
+        } catch (_) {
+          // Ignore sign-out cleanup errors and still route back to login.
         }
-        var localCleanupSucceeded = true;
-        try {
-          await StorageService.clearAll();
-        } catch (error) {
-          localCleanupSucceeded = false;
-          debugPrint('Relogin local data cleanup failed: $error');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('登入狀態已清除，但本機資料清理失敗。請重新開啟 App 後再登入。'),
-              ),
-            );
-          }
-        }
-        try {
-          await UsageService.clearSnapshot();
-        } catch (error) {
-          localCleanupSucceeded = false;
-          debugPrint('Relogin usage snapshot cleanup failed: $error');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('登入狀態已清除，但本機使用量清理失敗。請重新開啟 App 後再登入。'),
-              ),
-            );
-          }
-        }
-        ref.invalidate(subscriptionProvider);
-        ref.invalidate(conversationsProvider);
-        ref.invalidate(usageDataProvider);
         if (!mounted) {
-          return;
-        }
-        if (!localCleanupSucceeded) {
           return;
         }
         context.go('/login');

@@ -449,9 +449,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _mapDeleteError(Object error) {
     final normalized = error.toString().toLowerCase();
-    if (normalized.contains('local_user_data_cleanup_failed')) {
-      return '本機資料清理失敗，尚未刪除帳號。請重新開啟 App 後再試一次。';
-    }
     if (_containsAny(normalized, ['confirmation', 'mismatch'])) {
       return '確認文字與 DELETE 不一致。';
     }
@@ -467,9 +464,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _mapLogoutError(Object error) {
     final normalized = error.toString().toLowerCase();
-    if (normalized.contains('local_user_data_cleanup_failed')) {
-      return '本機資料清理失敗，尚未登出。請重新開啟 App 後再試一次。';
-    }
     if (_containsAny(
         normalized, ['network', 'timeout', 'socket', 'connection'])) {
       return '登出時發生網路錯誤。';
@@ -572,11 +566,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await SupabaseService.signOut();
+      await UsageService.clearSnapshot();
     } catch (error) {
       if (!context.mounted) return;
 
       if (!SupabaseService.isAuthenticated) {
-        _invalidateAuthScopedProviders(ref);
+        await UsageService.clearSnapshot();
+        if (!context.mounted) return;
+        ref.invalidate(subscriptionProvider);
+        ref.invalidate(conversationsProvider);
+        ref.invalidate(usageDataProvider);
         context.go('/login');
         messenger.showSnackBar(
           const SnackBar(
@@ -590,47 +589,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    final localCleanupSucceeded = await _clearLocalUserDataBestEffort('logout');
-    _invalidateAuthScopedProviders(ref);
-    if (context.mounted) {
-      context.go('/login');
-      if (!localCleanupSucceeded) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('已登出，但本機資料清理失敗。請重新開啟 App 後再登入其他帳號。'),
-          ),
-        );
-      }
-    }
-  }
-
-  Future<bool> _clearLocalUserDataBestEffort(String reason) async {
-    Object? firstError;
-
-    try {
-      await StorageService.clearAll();
-    } catch (error) {
-      firstError ??= error;
-      debugPrint('Local Hive cleanup failed during $reason: $error');
-    }
-
-    try {
-      await UsageService.clearSnapshot();
-    } catch (error) {
-      firstError ??= error;
-      debugPrint('Local usage snapshot cleanup failed during $reason: $error');
-    }
-
-    if (firstError != null) {
-      return false;
-    }
-    return true;
-  }
-
-  void _invalidateAuthScopedProviders(WidgetRef ref) {
     ref.invalidate(subscriptionProvider);
     ref.invalidate(conversationsProvider);
     ref.invalidate(usageDataProvider);
+    if (context.mounted) {
+      context.go('/login');
+    }
   }
 
   Future<void> _confirmDeleteAccount(
@@ -729,19 +693,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       await SupabaseService.deleteAccount(confirmation: confirmation);
-      final localCleanupSucceeded =
-          await _clearLocalUserDataBestEffort('delete account');
+      await StorageService.clearAll();
       await SupabaseService.clearLocalSessionAfterDeletion();
-      _invalidateAuthScopedProviders(ref);
+      ref.invalidate(subscriptionProvider);
+      ref.invalidate(conversationsProvider);
+      ref.invalidate(usageDataProvider);
       if (!context.mounted) return;
 
       Navigator.of(context, rootNavigator: true).pop();
       context.go('/login');
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            localCleanupSucceeded ? '帳號已刪除。' : '帳號已刪除，但本機資料清理失敗。請重新開啟 App。',
-          ),
+        const SnackBar(
+          content: Text('帳號已刪除。'),
           backgroundColor: AppColors.success,
         ),
       );
