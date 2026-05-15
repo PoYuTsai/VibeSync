@@ -99,6 +99,59 @@ Review loop:
 - Maximum two Claude-fix + Codex-review rounds.
 - After two rounds, stop and wait for Eric if still blocked.
 
+### High-Risk Patch Stop Rule
+
+Use this rule for auth, account deletion, Hive/local persistence, subscription,
+quota, RevenueCat, OCR, Edge schema, and AI cost/token behavior.
+
+- A Codex `REVISE_REQUIRED` finding is first a design signal, not a todo list.
+- Before editing high-risk code, write the invariants in the reply or review doc.
+- If the bug involves ordering, atomicity, identity scope, or money/data loss,
+  include a small failure matrix before changing code.
+- If two Claude-fix + Codex-review rounds do not converge, stop patching.
+- After the stop, choose one:
+  - revert to the last known-safe baseline,
+  - mark `WAITING_ON_ERIC`,
+  - write a design/ADR and reopen as a new scoped task.
+- Do not start round 3+ by "just moving the ordering" unless Eric explicitly
+  approves the design and tradeoff.
+- For state-machine bugs, prefer a new helper/service with targeted regression
+  tests over more conditional branches inside a screen widget.
+
+High-risk invariant examples:
+
+- Remote delete failure must not erase local-only data.
+- Remote delete success must not be reported as fully complete if local cleanup
+  failed.
+- Logout/session expiry is not the same lifecycle as account deletion.
+- A new user on the same device must not see the previous user's private data.
+- A paid user must not be downgraded to Free unless the signal is authoritative.
+
+### Review Evidence And False Positives
+
+- Repo grep is not enough for external facts such as live web URLs, App Store
+  metadata, RevenueCat dashboard state, or deployed Edge behavior.
+- Close external-fact findings with direct evidence, for example `curl -I -L`,
+  deployment logs, dashboard screenshots, or TestFlight repro notes.
+- If a finding is closed by external evidence, record it as
+  `accepted with external evidence`; do not claim `Codex APPROVED` unless Codex
+  actually returned `APPROVED`.
+- Do not rerun review only to get a cleaner label when the only blocker was
+  already resolved by stronger external evidence.
+
+### Multi-Thread Review Hygiene
+
+- One thread owns one workstream. Do not let another thread fix over a dirty
+  worktree unless Eric explicitly reassigns ownership.
+- Before editing, check `git status --short` and name any unrelated dirty files.
+- Before queueing Codex, state the exact review range and why it is the right
+  range.
+- If a review range mixes unrelated feature/code/docs changes, either explain
+  why it is intentional or stop and create a cleaner range.
+- If one thread has an unresolved high-risk `REVISE_REQUIRED`, other threads
+  should avoid building on top of that scope until it is approved, reverted, or
+  moved to `WAITING_ON_ERIC`.
+
 ## Discord Frontline Response Contract
 
 Applies to Claude Code sessions listening in VibeSync Discord.

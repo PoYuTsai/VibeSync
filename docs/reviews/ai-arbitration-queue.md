@@ -45,6 +45,8 @@ Recent Context:
 
 - Opener, paywall, quota, RevenueCat, and subscription sync have had repeated P0/P1 fixes.
 - 2026-05-15 Eric accepted keeping the `restorePurchases()` paid-to-free snapshot guard during dogfood; do not "fix" it without an explicit new decision. See `docs/integrations/revenuecat.md`.
+- 2026-05-15 auth/logout/delete-account local cleanup patches were reverted after repeated Codex `REVISE_REQUIRED` loops. Do not patch that scope again without a design/failure matrix.
+- 2026-05-15 Support URL finding was closed by live evidence: `curl -I -L https://vibesyncai.app/support` returns 301 -> 200 OK.
 - `!cc-rotate` is implemented for mobile session rotation.
 - `!codex` Phase 1 is implemented as a read-only Discord review gate.
 - WSL Codex CLI may still need one-time `codex login --device-auth`; verify with `!codex setup`.
@@ -79,6 +81,7 @@ Open Risks:
 - Free users must be able to use opener/analyze/coach until quota is actually exhausted.
 - Opener/analyze must never show raw JSON.
 - Format failure must not charge quota.
+- Auth/logout/delete-account/local Hive isolation remains baseline behavior and needs design-first treatment before launch hardening.
 
 Action Items:
 
