@@ -52,6 +52,7 @@ export interface GenerationResult {
 }
 
 const MAX_CARD_GENERATION_ATTEMPTS = 3;
+const FALLBACK_NO_CHARGE = 0;
 
 export async function runCoachChat(
   input: GenerationInput,
@@ -121,7 +122,7 @@ export async function runCoachChat(
           errorClass: lastValidationError,
           attempts: attempt,
         });
-        card = buildFallbackClarificationCard(input.request);
+        card = buildFallbackCard(input.request);
         break;
       }
     }
@@ -131,7 +132,8 @@ export async function runCoachChat(
     return { status: 500, body: { error: lastValidationError } };
   }
 
-  const shouldDeduct = card.responseType === "coachAnswer";
+  const shouldDeduct = card.responseType === "coachAnswer" &&
+    card.costDeducted !== FALLBACK_NO_CHARGE;
 
   if (shouldDeduct && !input.accountIsTest) {
     try {
@@ -219,6 +221,18 @@ function parseAndValidateCard(
   return card;
 }
 
+function buildFallbackCard(
+  request: CoachChatRequest,
+): CoachChatResponseCard {
+  if (shouldUseNoChargeAnswerFallback(request)) {
+    const card = validateResponseCard(buildFallbackCoachAnswerShape(request));
+    assertCardSafe(card);
+    return { ...card, costDeducted: FALLBACK_NO_CHARGE };
+  }
+
+  return buildFallbackClarificationCard(request);
+}
+
 function buildFallbackClarificationCard(
   request: CoachChatRequest,
 ): CoachChatResponseCard {
@@ -227,11 +241,76 @@ function buildFallbackClarificationCard(
   return card;
 }
 
+function shouldUseNoChargeAnswerFallback(request: CoachChatRequest): boolean {
+  if (request.forceAnswer) return true;
+  return request.activeSessionTurns.some((turn) =>
+    turn.role === "user" && turn.kind === "supplement"
+  );
+}
+
+function buildFallbackCoachAnswerShape(
+  request: CoachChatRequest,
+): Record<string, string | number | boolean | null | undefined> {
+  const hasPriorAnswer = request.activeSessionTurns.some((turn) =>
+    turn.role === "coach" && turn.kind === "answer"
+  );
+  const hasPriorClarification = request.activeSessionTurns.some((turn) =>
+    turn.role === "coach" && turn.kind === "clarification"
+  );
+  const baseLine = request.rawReplyDraft?.trim();
+  return {
+    responseType: "coachAnswer",
+    mode: inferFallbackAnswerMode(request),
+    headline: "先給你保守版",
+    answer: hasPriorAnswer
+      ? "我先沿用前一輪判斷補一個保守方向：不要重複解釋，也不要急著推進。先用一句低壓訊息接住她的狀態，再把球丟回一個好回答的小問題。這版是系統保守建議，本次不扣額度。"
+      : hasPriorClarification
+      ? "你已經補充了，我先不再追問同一題。保守做法是先回得短一點、不要自證太多，把重點放在接住她的情緒或狀態，再留一個她容易回的小球。本次保守版不扣額度。"
+      : "我先給你保守方向：不要把訊息寫得太滿，也不要急著證明自己。先接住她話裡最明確的情緒或線索，再順手丟一個輕、好回的小問題。本次保守版不扣額度。",
+    userTruth: null,
+    userState: "你現在需要先拿到可執行方向，而不是再被追問同一題。",
+    frictionType: "unclearIntent",
+    nextStep: "先送短版低壓回覆；如果她有接，再依她回的球延伸。",
+    suggestedLine: baseLine && baseLine.length <= 80
+      ? baseLine
+      : "感覺你今天真的有點累，我先不鬧你。那你比較想被放空，還是被轉移注意力一下？",
+    rewriteDecision: baseLine ? "light_edit" : "rewrite",
+    rewriteReason:
+      "這是低信心 fallback，先給保守可用版本，不當成正式生成扣額度。",
+    boundaryReminder: "如果她明顯冷或累，先降壓，不要追問或逼她立刻表態。",
+    needsReflection: false,
+    reflectionQuestion: null,
+    costDeducted: FALLBACK_NO_CHARGE,
+  };
+}
+
+function inferFallbackAnswerMode(request: CoachChatRequest): string {
+  const question = request.userQuestion.toLowerCase();
+  if (/推進|約|邀|升溫|收尾|關門|轉場/.test(question)) {
+    return "moveForward";
+  }
+  if (/界線|男友|女友|伴侶|不舒服|拒絕|停止|不要/.test(question)) {
+    return "boundaryRisk";
+  }
+  return "replyCraft";
+}
+
 function buildFallbackClarificationShape(
   request: CoachChatRequest,
 ): Record<string, string | number | boolean | null | undefined> {
   const question = request.userQuestion.toLowerCase();
   const isMoveForward = /推進|約|邀|升溫|收尾|關門|轉場/.test(question);
+  const primaryReflection = isMoveForward
+    ? "你說推進，是想邀約、升溫，還是確認她意願？"
+    : "你聽到她這句話後，心裡第一個反應是什麼？";
+  const alternateReflection = isMoveForward
+    ? "先補一句你真正想達成的下一步：見面、升溫，還是先確認她願不願意聊下去？"
+    : "先補一句你心裡其實想怎麼回，不用修飾。";
+  const usedPrimaryReflection = request.activeSessionTurns.some((turn) =>
+    turn.role === "coach" &&
+    turn.kind === "clarification" &&
+    turn.content.trim() === primaryReflection
+  );
   return {
     responseType: "clarifyingQuestion",
     mode: isMoveForward ? "moveForward" : "clarifyIntent",
@@ -252,9 +331,9 @@ function buildFallbackClarificationShape(
     rewriteReason: null,
     boundaryReminder: "釐清不扣額度；正式建議才扣 1 則。",
     needsReflection: true,
-    reflectionQuestion: isMoveForward
-      ? "你說推進，是想邀約、升溫，還是確認她意願？"
-      : "你聽到她這句話後，心裡第一個反應是什麼？",
+    reflectionQuestion: usedPrimaryReflection
+      ? alternateReflection
+      : primaryReflection,
   };
 }
 
@@ -334,7 +413,9 @@ function repairCoachAnswerCard(
 ): Record<string, string | number | boolean | null | undefined> {
   const answer = nonEmptyString(raw.answer);
   if (answer == null) {
-    return buildFallbackClarificationShape(request);
+    return shouldUseNoChargeAnswerFallback(request)
+      ? buildFallbackCoachAnswerShape(request)
+      : buildFallbackClarificationShape(request);
   }
   const isMoveForward = /推進|約|邀|升溫|收尾|關門|轉場/.test(
     request.userQuestion.toLowerCase(),

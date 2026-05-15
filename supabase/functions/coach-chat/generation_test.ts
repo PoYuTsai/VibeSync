@@ -302,6 +302,89 @@ Deno.test("runCoachChat falls back to a free clarification when all card attempt
   assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
 });
 
+Deno.test("runCoachChat forceAnswer fallback returns no-charge conservative answer", async () => {
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        userQuestion: "她最近很累，我要不要直接約？",
+        forceAnswer: true,
+        activeSessionTurns: [
+          {
+            role: "user",
+            kind: "question",
+            content: "她最近很累，我要不要直接約？",
+          },
+          {
+            role: "coach",
+            kind: "clarification",
+            content: "你聽到她這句話後，心裡第一個反應是什麼？",
+          },
+          {
+            role: "user",
+            kind: "supplement",
+            content: "我覺得她在暗示我太黏，但我還是想知道方向。",
+          },
+        ],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(card.responseType, "coachAnswer");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(card.needsReflection, false);
+  assertEquals(harness.deductCalls, 0);
+});
+
+Deno.test("runCoachChat repeated clarification fallback rotates the reflection question", async () => {
+  const harness = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        userQuestion: "她剛剛說最近很累，我是不是太急？",
+        activeSessionTurns: [
+          {
+            role: "user",
+            kind: "question",
+            content: "她剛剛說最近很累，我是不是太急？",
+          },
+          {
+            role: "coach",
+            kind: "clarification",
+            content: "你聽到她這句話後，心裡第一個反應是什麼？",
+          },
+        ],
+      },
+      tier: "starter",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(card.responseType, "clarifyingQuestion");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(
+    card.reflectionQuestion,
+    "先補一句你心裡其實想怎麼回，不用修飾。",
+  );
+  assertEquals(harness.deductCalls, 0);
+});
+
 Deno.test("runCoachChat skips deduction for test account", async () => {
   const harness = deps({});
   const result = await runCoachChat(
