@@ -44,6 +44,7 @@ Current Product Truth:
 Recent Context:
 
 - Opener, paywall, quota, RevenueCat, and subscription sync have had repeated P0/P1 fixes.
+- 2026-05-15 Eric accepted keeping the `restorePurchases()` paid-to-free snapshot guard during dogfood; do not "fix" it without an explicit new decision. See `docs/integrations/revenuecat.md`.
 - `!cc-rotate` is implemented for mobile session rotation.
 - `!codex` Phase 1 is implemented as a read-only Discord review gate.
 - WSL Codex CLI may still need one-time `codex login --device-auth`; verify with `!codex setup`.
