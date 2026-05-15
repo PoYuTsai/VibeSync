@@ -566,22 +566,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await SupabaseService.signOut();
-      await StorageService.clearAll();
-      await UsageService.clearSnapshot();
+      await _clearLocalUserDataForAuthExit('logout');
     } catch (error) {
       if (!context.mounted) return;
 
       if (!SupabaseService.isAuthenticated) {
-        try {
-          await StorageService.clearAll();
-          await UsageService.clearSnapshot();
-        } catch (cleanupError) {
-          debugPrint('Local cleanup after logout failed: $cleanupError');
-        }
+        await _clearLocalUserDataForAuthExit('logout fallback');
         if (!context.mounted) return;
-        ref.invalidate(subscriptionProvider);
-        ref.invalidate(conversationsProvider);
-        ref.invalidate(usageDataProvider);
+        _invalidateAuthScopedProviders(ref);
         context.go('/login');
         messenger.showSnackBar(
           const SnackBar(
@@ -595,12 +587,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    ref.invalidate(subscriptionProvider);
-    ref.invalidate(conversationsProvider);
-    ref.invalidate(usageDataProvider);
+    _invalidateAuthScopedProviders(ref);
     if (context.mounted) {
       context.go('/login');
     }
+  }
+
+  Future<bool> _clearLocalUserDataForAuthExit(String reason) async {
+    var succeeded = true;
+
+    try {
+      await StorageService.clearAll();
+    } catch (error) {
+      succeeded = false;
+      debugPrint('Local Hive cleanup failed during $reason: $error');
+    }
+
+    try {
+      await UsageService.clearSnapshot();
+    } catch (error) {
+      succeeded = false;
+      debugPrint('Local usage snapshot cleanup failed during $reason: $error');
+    }
+
+    return succeeded;
+  }
+
+  void _invalidateAuthScopedProviders(WidgetRef ref) {
+    ref.invalidate(subscriptionProvider);
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(usageDataProvider);
   }
 
   Future<void> _confirmDeleteAccount(
@@ -699,11 +715,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       await SupabaseService.deleteAccount(confirmation: confirmation);
-      await StorageService.clearAll();
+      await _clearLocalUserDataForAuthExit('delete account');
       await SupabaseService.clearLocalSessionAfterDeletion();
-      ref.invalidate(subscriptionProvider);
-      ref.invalidate(conversationsProvider);
-      ref.invalidate(usageDataProvider);
+      _invalidateAuthScopedProviders(ref);
       if (!context.mounted) return;
 
       Navigator.of(context, rootNavigator: true).pop();

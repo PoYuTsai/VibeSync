@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/message_calculator.dart';
+import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -517,9 +518,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(_resetErrorState);
         try {
           await SupabaseService.signOut();
-        } catch (_) {
+        } catch (error) {
           // Ignore sign-out cleanup errors and still route back to login.
+          debugPrint('Relogin sign-out cleanup failed: $error');
         }
+        try {
+          await StorageService.clearAll();
+        } catch (error) {
+          debugPrint('Relogin local data cleanup failed: $error');
+        }
+        try {
+          await UsageService.clearSnapshot();
+        } catch (error) {
+          debugPrint('Relogin usage snapshot cleanup failed: $error');
+        }
+        ref.invalidate(subscriptionProvider);
+        ref.invalidate(conversationsProvider);
+        ref.invalidate(usageDataProvider);
         if (!mounted) {
           return;
         }
