@@ -180,6 +180,15 @@ class OpenerResultCacheService {
         .toList(growable: false);
   }
 
+  OpenerResult? loadLatestForScope({String? partnerId}) {
+    final scopedPartnerId = _blankToNull(partnerId);
+    if (scopedPartnerId == null) {
+      return loadLatest();
+    }
+    final scopedDrafts = loadDraftsForScope(partnerId: scopedPartnerId);
+    return scopedDrafts.isEmpty ? null : scopedDrafts.first.result;
+  }
+
   OpenerDraft? loadDraft(String id) {
     for (final draft in loadDrafts()) {
       if (draft.id == id) {

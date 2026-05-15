@@ -98,7 +98,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   void _seedFromLatestOpener() {
     try {
-      final result = _openerResultCacheService.loadLatest();
+      final result = _openerResultCacheService.loadLatestForScope(
+          partnerId: widget.partnerId);
       if (result == null) return;
       final openerText = result.bestOpenerText;
       if (openerText == null) return;

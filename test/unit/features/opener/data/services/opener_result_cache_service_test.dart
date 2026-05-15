@@ -208,6 +208,43 @@ void main() {
     );
   });
 
+  test('scoped latest uses partner draft instead of global latest', () async {
+    final service = OpenerResultCacheService();
+
+    await service.saveLatest(const OpenerResult(
+      openers: {'extend': 'global line'},
+      recommendedPick: 'extend',
+    ));
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'partner line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'A partner',
+      partnerId: 'partner-a',
+    );
+
+    expect(
+      service.loadLatestForScope(partnerId: 'partner-a')!.bestOpenerText,
+      'partner line',
+    );
+  });
+
+  test('scoped latest does not fall back to another partner draft', () async {
+    final service = OpenerResultCacheService();
+
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'partner b line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'B partner',
+      partnerId: 'partner-b',
+    );
+
+    expect(service.loadLatestForScope(partnerId: 'partner-a'), isNull);
+  });
+
   test('draft cache trims partner scope before filtering', () async {
     final service = OpenerResultCacheService();
 
