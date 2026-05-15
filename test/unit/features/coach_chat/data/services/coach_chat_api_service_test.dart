@@ -95,7 +95,6 @@ void main() {
           keySignals: ['人格觀察', '可接球'],
         ),
         effectiveStyleContext: '  - Preferred voice: 幽默  ',
-        outcomeDigestContext: '  本地結果摘要：最近 3 次，有接 2、冷回 1。  ',
         partnerHint: const CoachChatPartnerHint(
           name: 'Mia',
           traits: ['活潑', '喜歡旅行'],
@@ -126,10 +125,6 @@ void main() {
       expect(calls.single.body['conversationSummary'], '最近在升溫。');
       expect(
           calls.single.body['effectiveStyleContext'], '- Preferred voice: 幽默');
-      expect(
-        calls.single.body['outcomeDigestContext'],
-        '本地結果摘要：最近 3 次，有接 2、冷回 1。',
-      );
       expect(calls.single.body['dataQualityFlagged'], isFalse);
       expect(calls.single.body['partnerHint'], {
         'name': 'Mia',
@@ -188,14 +183,12 @@ void main() {
         recentMessages: const [],
         conversationSummary: '   ',
         effectiveStyleContext: '   ',
-        outcomeDigestContext: '   ',
         dataQualityFlagged: false,
       );
 
       expect(calls.single.body.containsKey('partnerId'), isFalse);
       expect(calls.single.body.containsKey('conversationSummary'), isFalse);
       expect(calls.single.body.containsKey('effectiveStyleContext'), isFalse);
-      expect(calls.single.body.containsKey('outcomeDigestContext'), isFalse);
       expect(calls.single.body.containsKey('partnerHint'), isFalse);
     });
   });

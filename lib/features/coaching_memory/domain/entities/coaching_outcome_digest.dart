@@ -4,9 +4,9 @@ import 'coaching_outcome_event.dart';
 
 /// Small, local-only summary of recent coaching outcomes for one partner.
 ///
-/// This is intentionally derived data. It is not written back to Hive. Only a
-/// compact, high-signal summary may be used as coach context; raw events stay
-/// local until a later long-term strategy memory phase exists.
+/// This is intentionally derived data. It is not written back to Hive and it is
+/// not injected into prompts yet. Later phases can decide which fields are safe
+/// enough to become long-term strategy memory.
 @immutable
 class CoachingOutcomeDigest {
   static const defaultMaxEvents = 20;

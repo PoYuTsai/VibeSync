@@ -67,7 +67,6 @@ export async function runCoachChat(
     tier: input.tier,
     hasSummary: !!input.request.conversationSummary,
     hasStyleContext: !!input.request.effectiveStyleContext,
-    hasOutcomeDigestContext: !!input.request.outcomeDigestContext,
     hasSessionTurns: input.request.activeSessionTurns.length > 0,
     forceAnswer: input.request.forceAnswer,
     dataQualityFlagged: input.request.dataQualityFlagged,

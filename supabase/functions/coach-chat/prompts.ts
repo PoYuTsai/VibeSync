@@ -10,10 +10,6 @@ export function buildCoachChatPrompt(input: CoachChatRequest): string {
     section("舊對話摘要", input.conversationSummary),
     section("最新分析快照", formatAnalysis(input.analysisSnapshot)),
     section("使用者風格設定", input.effectiveStyleContext),
-    section(
-      "教練結果記憶（本機摘要，僅作輔助線索）",
-      input.outcomeDigestContext,
-    ),
     section("對方提示", formatPartnerHint(input)),
   ].filter(Boolean).join("\n\n");
 
@@ -62,8 +58,7 @@ const SYSTEM_PROMPT_BASE =
 - coachAnswer 的 answer 必須有「可以立刻照做」的密度：一般問題至少給 1 個具體動作；複雜社交/成人推進問題給 2-3 個短步驟，但仍要收斂成一條主線，不要變成百科。
 
 記憶使用規則：
-- 回答不是憑空建議；要優先使用最近對話、舊摘要、最新分析快照、使用者風格設定、教練結果記憶、對方提示。
-- 教練結果記憶只是本機統計摘要，不是定論；只能用來校準節奏與建議顆粒度，不可過度推論對方性格。
+- 回答不是憑空建議；要優先使用最近對話、舊摘要、最新分析快照、使用者風格設定、對方提示。
 - coachAnswer 至少自然點出一個具體依據，例如對方某句話、目前熱度/階段訊號、使用者風格、或可信的對方提示；但不要寫成「我參考了 A/B/C」的報告。
 - 如果 dataQualityFlagged=true，只能說「以這段對話看」，不要引用長期對象特質。
 - 如果上下文真的不足，誠實說目前只能先做低信心判斷，並用 clarifyingQuestion 或 reflectionQuestion 收斂，不要假裝有記憶。

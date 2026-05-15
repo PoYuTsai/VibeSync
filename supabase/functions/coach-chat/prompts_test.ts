@@ -28,23 +28,6 @@ Deno.test("buildCoachChatPrompt includes coach 1:1 positioning and JSON contract
   assertStringIncludes(prompt, '"boundaryReminder"');
 });
 
-Deno.test("buildCoachChatPrompt carries outcome digest as auxiliary memory", () => {
-  const prompt = buildCoachChatPrompt({
-    conversationId: "c1",
-    userQuestion: "我下一句要怎麼接？",
-    activeSessionTurns: [],
-    forceAnswer: false,
-    recentMessages: [{ sender: "partner", text: "最近工作有點忙" }],
-    outcomeDigestContext:
-      "本地結果摘要：最近 3 次教練建議回報，對方有接 2、冷回 1。",
-    dataQualityFlagged: false,
-  });
-  assertStringIncludes(prompt, "教練結果記憶");
-  assertStringIncludes(prompt, "僅作輔助線索");
-  assertStringIncludes(prompt, "對方有接 2");
-  assertStringIncludes(prompt, "不可過度推論對方性格");
-});
-
 Deno.test("buildCoachChatPrompt carries active coaching turns and clarification rule", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",

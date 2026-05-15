@@ -140,7 +140,6 @@ class CoachChatApiService {
     String? conversationSummary,
     CoachChatAnalysisSnapshot? analysisSnapshot,
     String? effectiveStyleContext,
-    String? outcomeDigestContext,
     CoachChatPartnerHint? partnerHint,
     required bool dataQualityFlagged,
   }) async {
@@ -164,9 +163,6 @@ class CoachChatApiService {
       if (effectiveStyleContext != null &&
           effectiveStyleContext.trim().isNotEmpty)
         'effectiveStyleContext': effectiveStyleContext.trim(),
-      if (outcomeDigestContext != null &&
-          outcomeDigestContext.trim().isNotEmpty)
-        'outcomeDigestContext': outcomeDigestContext.trim(),
       if (partnerHint != null)
         'partnerHint': _partnerHintToWire(
           partnerHint,

@@ -6,8 +6,6 @@ import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
-import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
-import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_digest.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
@@ -183,10 +181,8 @@ ProviderContainer _container({
   ),
   DataQualityFlag flag = const DataQualityFlag.unflagged(),
   String? styleContext = '- Preferred voice: 幽默；回覆要輕鬆、有留白',
-  CoachingOutcomeDigest? outcomeDigest,
   Future<void> Function()? usageSync,
 }) {
-  final digest = outcomeDigest ?? CoachingOutcomeDigest.empty(partnerId: 'p-1');
   return ProviderContainer(overrides: [
     coachChatRepositoryProvider.overrideWithValue(repo),
     coachChatApiServiceProvider
@@ -195,7 +191,6 @@ ProviderContainer _container({
     conversationProvider('c-1').overrideWithValue(conversation),
     partnerByIdProvider('p-1').overrideWithValue(partner),
     partnerAggregateProvider('p-1').overrideWithValue(aggregate),
-    coachingOutcomeDigestProvider('p-1').overrideWithValue(digest),
     dataQualityFlagProvider('p-1').overrideWithValue(flag),
     coachChatStyleContextResolverProvider.overrideWithValue(({
       required String? partnerId,
@@ -206,37 +201,6 @@ ProviderContainer _container({
       return styleContext;
     }),
   ]);
-}
-
-CoachingOutcomeDigest _digest({
-  int totalEvents = 3,
-  int engagedCount = 2,
-  int coldCount = 1,
-  int noReplyCount = 0,
-  int negativeCount = 0,
-  int pendingCount = 0,
-  int sentAsIsCount = 1,
-  int editedAndSentCount = 1,
-  int didNotSendCount = 0,
-  int askedCoachCount = 1,
-}) {
-  return CoachingOutcomeDigest(
-    partnerId: 'p-1',
-    totalEvents: totalEvents,
-    engagedCount: engagedCount,
-    coldCount: coldCount,
-    noReplyCount: noReplyCount,
-    negativeCount: negativeCount,
-    pendingCount: pendingCount,
-    unknownOutcomeCount: 0,
-    sentAsIsCount: sentAsIsCount,
-    editedAndSentCount: editedAndSentCount,
-    didNotSendCount: didNotSendCount,
-    askedCoachCount: askedCoachCount,
-    unknownActionCount: 0,
-    latestAt: DateTime(2026, 5, 15, 12),
-    recentMoveSummaries: const ['自然接球後問一個小問題'],
-  );
 }
 
 CoachChatAnalysisSnapshot _snapshot() => const CoachChatAnalysisSnapshot(
@@ -327,53 +291,6 @@ void main() {
         {'sender': 'me', 'text': '哈哈哪有', 'createdAt': isA<String>()},
       ]);
       expect(calls.single.body['conversationSummary'], '前面在聊旅行和工作生活。');
-    });
-
-    test('ask sends outcome digest context only after enough signal', () async {
-      final repo = _FakeRepo();
-      final calls = <_RecordedCall>[];
-      final c = _container(
-        repo: repo,
-        invoker: _invoker(calls: calls),
-        conversation: _conversation(),
-        partner: _partner(),
-        outcomeDigest: _digest(),
-      );
-      addTearDown(c.dispose);
-
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
-            question: '我下一句要怎麼接？',
-            analysisSnapshot: _snapshot(),
-          );
-
-      final context = calls.single.body['outcomeDigestContext'] as String?;
-      expect(context, isNotNull);
-      expect(context, contains('本地結果摘要'));
-      expect(context, contains('最近 3 次'));
-      expect(context, contains('對方有接 2'));
-      expect(context, contains('近期建議主題'));
-    });
-
-    test('ask omits outcome digest context while signal is too thin', () async {
-      final repo = _FakeRepo();
-      final calls = <_RecordedCall>[];
-      final c = _container(
-        repo: repo,
-        invoker: _invoker(calls: calls),
-        conversation: _conversation(),
-        partner: _partner(),
-        outcomeDigest: _digest(totalEvents: 2, engagedCount: 1),
-      );
-      addTearDown(c.dispose);
-
-      await c.read(coachChatControllerProvider('c-1').future);
-      await c.read(coachChatControllerProvider('c-1').notifier).ask(
-            question: '我下一句要怎麼接？',
-            analysisSnapshot: _snapshot(),
-          );
-
-      expect(calls.single.body.containsKey('outcomeDigestContext'), isFalse);
     });
 
     test('clarification result persists but does not refresh usage', () async {

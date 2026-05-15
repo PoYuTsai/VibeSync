@@ -77,7 +77,6 @@ export const RequestSchema = z.object({
   conversationSummary: z.string().max(500).nullable().optional(),
   analysisSnapshot: AnalysisSnapshotSchema.nullable().optional(),
   effectiveStyleContext: z.string().max(500).nullable().optional(),
-  outcomeDigestContext: z.string().max(500).nullable().optional(),
   partnerHint: PartnerHintSchema.nullable().optional(),
   dataQualityFlagged: z.boolean().default(false),
 }).strict().superRefine((payload, ctx) => {
