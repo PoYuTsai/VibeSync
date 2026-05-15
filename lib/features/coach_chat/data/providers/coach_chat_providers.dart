@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/storage_service.dart';
+import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
+import '../../../coaching_memory/domain/entities/coaching_outcome_digest.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
@@ -26,6 +28,8 @@ final coachChatUsageSyncProvider = Provider<Future<void> Function()>((ref) {
     await ref.read(subscriptionProvider.notifier).refresh();
   };
 });
+
+const _maxOutcomeDigestContextChars = 500;
 
 typedef CoachChatStyleContextArgs = ({
   String? partnerId,
@@ -132,6 +136,7 @@ class CoachChatController
           partnerId: partnerId,
           includePartnerOverride: !flagged,
         ),
+        outcomeDigestContext: _outcomeDigestContext(partnerId),
         partnerHint: _partnerHint(
           partnerId: partnerId,
           dataQualityFlagged: flagged,
@@ -263,6 +268,44 @@ class CoachChatController
       name: partner.name,
       traits: aggregate.unionTraits.take(5).toList(growable: false),
     );
+  }
+
+  String? _outcomeDigestContext(String? partnerId) {
+    if (partnerId == null) return null;
+    final digest = ref.read(coachingOutcomeDigestProvider(partnerId));
+    if (!digest.hasEnoughSignal) return null;
+    final lines = <String>[
+      '本地結果摘要（僅作輔助，不要過度推論）：最近 ${digest.totalEvents} 次教練建議回報；對方有接 ${digest.engagedCount}、冷回 ${digest.coldCount}、未回 ${digest.noReplyCount}、負面 ${digest.negativeCount}、待觀察 ${digest.pendingCount}。',
+      '使用者行動：直接送出 ${digest.sentAsIsCount}、修改後送出 ${digest.editedAndSentCount}、沒送出 ${digest.didNotSendCount}、又問教練 ${digest.askedCoachCount}。',
+      ..._outcomeDigestGuidance(digest),
+    ];
+    final text = lines
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .join('\n');
+    if (text.length <= _maxOutcomeDigestContextChars) return text;
+    return '${text.substring(0, _maxOutcomeDigestContextChars - 3).trimRight()}...';
+  }
+
+  List<String> _outcomeDigestGuidance(CoachingOutcomeDigest digest) {
+    final guidance = <String>[];
+    if (digest.userOftenDoesNotSend) {
+      guidance.add('觀察：使用者常沒送出，優先降低心理阻力，給更小步驟。');
+    } else if (digest.oftenReturnsToCoach) {
+      guidance.add('觀察：使用者常回來問教練，回答要更明確、少分岔。');
+    } else if (digest.engagementRate >= 0.6 &&
+        digest.resolvedOutcomeCount >= 3) {
+      guidance.add('觀察：先前建議較常被接住，可以延續自然接球與輕推進。');
+    } else if (digest.stalledOutcomeCount >= digest.engagedCount &&
+        digest.resolvedOutcomeCount >= 3) {
+      guidance.add('觀察：近期較常卡住，先校準語氣與節奏，不要硬推進。');
+    }
+    if (digest.recentMoveSummaries.isNotEmpty) {
+      guidance.add(
+        '近期建議主題：${digest.recentMoveSummaries.take(2).join(' / ')}',
+      );
+    }
+    return guidance;
   }
 
   Future<void> _syncUsageSnapshot() async {

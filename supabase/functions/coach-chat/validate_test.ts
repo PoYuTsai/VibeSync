@@ -23,6 +23,30 @@ Deno.test("validateRequest accepts minimal coach chat payload", () => {
   assertEquals(parsed.recentMessages.length, 1);
 });
 
+Deno.test("validateRequest accepts bounded outcome digest context", () => {
+  const parsed = validateRequest({
+    ...baseRequest,
+    outcomeDigestContext:
+      "本地結果摘要：最近 3 次教練建議回報，對方有接 2、冷回 1。",
+  });
+  assertEquals(
+    parsed.outcomeDigestContext,
+    "本地結果摘要：最近 3 次教練建議回報，對方有接 2、冷回 1。",
+  );
+});
+
+Deno.test("validateRequest rejects oversized outcome digest context", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...baseRequest,
+        outcomeDigestContext: "x".repeat(501),
+      }),
+    Error,
+    "String must contain at most 500",
+  );
+});
+
 Deno.test("validateRequest accepts dialogue session fields", () => {
   const parsed = validateRequest({
     ...baseRequest,
@@ -251,8 +275,7 @@ Deno.test("assertCardSafe rejects raw JSON/code-fence payloads", () => {
   assertThrows(
     () =>
       assertCardSafe({
-        suggestedLine:
-          '{"responseType":"coachAnswer","card":{"answer":"hi"}}',
+        suggestedLine: '{"responseType":"coachAnswer","card":{"answer":"hi"}}',
       }),
     Error,
     "raw_model_payload: suggestedLine",
