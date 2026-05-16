@@ -1178,7 +1178,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     };
 
     for (final entry in analysis.entries) {
-      final label = labelMap[entry.key] ?? entry.key;
+      // Whitelist: backend may include telemetry keys (e.g. insufficientInfo)
+      // in profileAnalysis; only render fields we have a Chinese label for.
+      final label = labelMap[entry.key];
+      if (label == null) continue;
       final value = entry.value;
       if (value == null) continue;
 
