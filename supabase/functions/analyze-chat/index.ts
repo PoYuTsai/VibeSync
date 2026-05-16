@@ -2407,6 +2407,7 @@ const OPENER_PROMPT =
 - 自介只有一句話：不要硬分析人格。把那一句變成一個好回問題；如果那句太空，就用照片/場景/共同平台語境補一個低壓問題。
 - 幾乎沒有自介、只有自拍：不要評論身材、臉、性感。若照片沒有明確場景，就用「不亂猜」的輕鬆方式開一個安全題，但仍要像真人，不要說教。
 - 寫「不約 / 不聊色 / 請看完自介」：理解為反低成本、反油膩、反快速性邀約。這些只進內部判斷，不要在開場白複述「我知道妳不約」；可以幽默地避開罐頭題，但不要把自己放成被審核的姿態。
+- **沒有截圖、只有用戶手填的文字（name/bio/interests/meetingContext）**：這是「用戶口中的對方」**二手**資訊，密度遠低於對方原始自介或照片。請把它當「用戶覺得對方在意的點」而不是「對方真實人設」。優先做兩件事：(1) 用「請對方補充」型問句把模糊線索變成具體可聊內容，例如用戶寫 interests=咖啡 → 開場可問「咖啡是手沖派還是隨便來都好」「最近有沒有踩到喜歡的店」之類有指向的補充題；(2) 用「觀察 + 輕假設可反駁」開場，把模糊變成有趣，例如「感覺妳是那種一杯咖啡能喝整個下午的人，對不對」。避開「比較喜歡 A 還是 B」「最近怎麼樣」這類沒有線索支撐的興趣猜題或通用萬能句；除非用戶手填內容本身已給出明確 A/B 對比關鍵字，否則不要硬塞 A/B 題型。這個 case 仍要產出 5 種風格，但 reason 必須誠實說明「線索是用戶補述、不是對方一手資料，這幾句重點在引對方多說一點」。
 
 ## 資訊不足自評（profileAnalysis.insufficientInfo）
 profileAnalysis.insufficientInfo 是 AI 對自己輸出品質的誠實自評，用於後端品質觀察與 dogfood 監控。請依以下條件設定，不要為了取悅用戶或避免被扣帳而扭曲：
@@ -4823,7 +4824,11 @@ serve(async (req) => {
     // ── Opener mode: generate opening lines ──
     if (isOpenerMode) {
       const imageCount = Array.isArray(images) ? images.length : 0;
-      const openerCost = 3 + (imageCount * 2);
+      // Flat cost regardless of image count: image processing cost is
+      // absorbed by the platform; users perceive opener as predictable
+      // (3 quota per request) and multi-image bills no longer feel
+      // punitive for low-value gains.
+      const openerCost = 3;
 
       // Server-side eligibility for no-charge: when input is objectively
       // too thin (no image + no bio/interests/meetingContext content),

@@ -115,3 +115,40 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "opener flat-cost: 3 quota per request regardless of image count, user-text-only case prompted to avoid blind A/B guessing",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // Cost is now flat 3 regardless of image count. The per-image
+    // surcharge formula must not come back.
+    assert(source.includes("const openerCost = 3;"));
+    assert(
+      !source.includes("const openerCost = 3 + (imageCount * 2);"),
+      "openerCost must be flat 3, not 3 + imageCount*2",
+    );
+    // Comment explaining the flat-cost decision should stay close to
+    // the assignment so future readers don't reintroduce per-image surcharge.
+    assert(
+      source.includes("Flat cost regardless of image count"),
+    );
+
+    // The system prompt must now include guidance for the
+    // "user-supplied text but no image" case so the model doesn't fall
+    // back to generic "比較喜歡 A 還是 B" guessing on second-hand info.
+    assert(
+      source.includes("沒有截圖、只有用戶手填的文字"),
+    );
+    assert(
+      source.includes("「用戶口中的對方」**二手**資訊"),
+    );
+    assert(
+      source.includes("避開「比較喜歡 A 還是 B」"),
+    );
+  },
+});

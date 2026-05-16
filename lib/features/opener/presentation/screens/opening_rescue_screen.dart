@@ -68,7 +68,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     'coldRead': '🔮 冷讀',
   };
 
-  int get _estimatedCost => 3 + (_images.length * 2);
+  // Flat 3-quota cost per opener request. Image processing cost is
+  // platform-absorbed; the predictable price is more important than
+  // strict per-image cost recovery, and discourages users from skipping
+  // screenshots just to save quota.
+  int get _estimatedCost => 3;
 
   @override
   void initState() {
@@ -431,13 +435,30 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
               const SizedBox(height: 16),
 
-              // Cost indicator
+              // Cost indicator + 柔性提示
+              // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
+              // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
               Center(
-                child: Text(
-                  '將使用 $_estimatedCost 則額度',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                  ),
+                child: Column(
+                  children: [
+                    Text(
+                      '將使用 $_estimatedCost 則額度',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                      ),
+                    ),
+                    if (_images.isEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '附上對方截圖，AI 看到的線索更具體，開場通常更準',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.onBackgroundSecondary
+                              .withValues(alpha: 0.72),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
