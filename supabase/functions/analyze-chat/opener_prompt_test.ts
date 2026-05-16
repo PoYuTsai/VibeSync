@@ -25,30 +25,63 @@ Deno.test({
 
 Deno.test({
   name:
-    "OPENER_PROMPT declares insufficientInfo self-evaluation and no-charge contract",
+    "opener no-charge billing is decided server-side, AI insufficientInfo flag is telemetry only",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
 
+    // Prompt: AI is told the flag is observability, not a billing lever.
     assert(
       source.includes("## 資訊不足自評（profileAnalysis.insufficientInfo）"),
     );
-    assert(source.includes("設為 true 的條件：以下三項**同時**成立"));
-    assert(source.includes("套用到任何人都通用的句子"));
-    assert(source.includes("否則一律設為 false"));
-    assert(source.includes("不要為了幫使用者省額度而濫用 true"));
-    assert(source.includes("後端只是會跳過扣帳"));
-    assert(source.includes('"insufficientInfo": false'));
+    assert(source.includes("AI 對自己輸出品質的誠實自評"));
+    assert(source.includes("這個欄位**不**直接決定扣帳"));
     assert(
       source.includes(
-        "// Honor AI self-evaluation: when input is too thin to produce a",
+        "後端會獨立依請求內容（是否有圖、是否有 bio/interests/meetingContext 實質內容）判斷",
       ),
     );
-    assert(source.includes("profileAnalysisObj?.insufficientInfo === true"));
-    assert(source.includes("const effectiveOpenerCost = insufficientInfo ? 0 : openerCost"));
+    assert(source.includes('"insufficientInfo": false'));
+
+    // Handler: server-side eligibility is the source of truth for billing.
+    assert(
+      source.includes(
+        "// Server-side eligibility for no-charge: when input is objectively",
+      ),
+    );
+    assert(source.includes("const hasProfileSubstance ="));
+    assert(
+      source.includes(
+        "const serverEligibleForNoCharge =\n        imageCount === 0 && !hasProfileSubstance;",
+      ),
+    );
+    assert(
+      source.includes(
+        "const upfrontGateCost = serverEligibleForNoCharge ? 0 : openerCost;",
+      ),
+    );
+    // Upfront 429 gate must use the eligibility-aware cost.
+    assert(
+      source.includes(
+        "sub.monthly_messages_used + upfrontGateCost > monthlyLimit",
+      ),
+    );
+    assert(
+      source.includes(
+        "sub.daily_messages_used + upfrontGateCost > dailyLimit",
+      ),
+    );
+    // Final billing must be driven by server eligibility, not the AI flag.
+    assert(
+      source.includes(
+        "const effectiveOpenerCost = serverEligibleForNoCharge ? 0 : openerCost;",
+      ),
+    );
     assert(source.includes("!accountIsTest && effectiveOpenerCost > 0"));
-    assert(source.includes("insufficientInfo,"));
+    // AI flag is captured for telemetry only.
+    assert(source.includes("const aiInsufficientFlag ="));
+    assert(source.includes("serverEligibleForNoCharge,\n        aiInsufficientFlag,"));
   },
 });

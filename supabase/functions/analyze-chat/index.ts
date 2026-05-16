@@ -2405,14 +2405,14 @@ const OPENER_PROMPT =
 - 寫「不約 / 不聊色 / 請看完自介」：理解為反低成本、反油膩、反快速性邀約。這些只進內部判斷，不要在開場白複述「我知道妳不約」；可以幽默地避開罐頭題，但不要把自己放成被審核的姿態。
 
 ## 資訊不足自評（profileAnalysis.insufficientInfo）
-profileAnalysis.insufficientInfo 是給後端讀的扣帳依據，務必誠實設定：
+profileAnalysis.insufficientInfo 是 AI 對自己輸出品質的誠實自評，用於後端品質觀察與 dogfood 監控。請依以下條件設定，不要為了取悅用戶或避免被扣帳而扭曲：
 - 設為 true 的條件：以下三項**同時**成立
   1. 對方資訊極少（只有名字，或 bio 不到 8 個有效字，或單一籠統興趣關鍵字）
   2. 沒有截圖 / 照片可分析
   3. 你產出的 openers 確實只能是「比較喜歡 A 還是 B」「最近怎麼樣」這類沒有特定指向、套用到任何人都通用的句子（沒有任何線索可冷讀、沒有具體可接的話題）
 - 否則一律設為 false（哪怕只有一個能抓的線索 — 一個名字諧音、一個提到的興趣關鍵字、一個照片背景物件 — 就是 false）
-- 不要為了幫使用者省額度而濫用 true；只在你自己也承認本次產出對這個人沒有獨特性時才設 true
-- 設為 true 時 openers 仍要照常產出（給用戶看可以怎麼開），後端只是會跳過扣帳
+- 重要：這個欄位**不**直接決定扣帳。後端會獨立依請求內容（是否有圖、是否有 bio/interests/meetingContext 實質內容）判斷是否扣帳；這欄位只是給 dogfood 監控品質用
+- 設為 true 時 openers 仍要照常產出（給用戶看可以怎麼開）
 
 ## 脫穎而出：好奇心鉤子
 開場不是履歷投遞，也不是客服回覆。每次至少選一種鉤子：
@@ -4821,11 +4821,38 @@ serve(async (req) => {
       const imageCount = Array.isArray(images) ? images.length : 0;
       const openerCost = 3 + (imageCount * 2);
 
+      // Server-side eligibility for no-charge: when input is objectively
+      // too thin (no image + no bio/interests/meetingContext content),
+      // the server independently decides not to bill. This is the
+      // authoritative billing decision — the model's
+      // profileAnalysis.insufficientInfo is logged for observability
+      // but cannot grant free use on its own. Required to keep
+      // prompt-injection in user-controlled profileInfo fields from
+      // creating an unbilled opener path.
+      const profileInfoRecord =
+        rawProfileInfo && typeof rawProfileInfo === "object"
+          ? (rawProfileInfo as Record<string, unknown>)
+          : null;
+      const hasProfileSubstance = profileInfoRecord
+        ? [
+            profileInfoRecord.bio,
+            profileInfoRecord.interests,
+            profileInfoRecord.meetingContext,
+          ].some(
+            (v) => typeof v === "string" && v.trim().length > 0,
+          )
+        : false;
+      const serverEligibleForNoCharge =
+        imageCount === 0 && !hasProfileSubstance;
+      // Use 0 as the gate cost so a user at the quota cap can still
+      // reach the model when the server already plans to bill nothing.
+      const upfrontGateCost = serverEligibleForNoCharge ? 0 : openerCost;
+
       // Quota check for opener
       if (!accountIsTest) {
         const openerExceedsQuota = () =>
-          sub.monthly_messages_used + openerCost > monthlyLimit ||
-          sub.daily_messages_used + openerCost > dailyLimit;
+          sub.monthly_messages_used + upfrontGateCost > monthlyLimit ||
+          sub.daily_messages_used + upfrontGateCost > dailyLimit;
 
         if (openerExceedsQuota()) {
           const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -4847,13 +4874,13 @@ serve(async (req) => {
             0,
             dailyLimit - sub.daily_messages_used,
           );
-          const message = monthlyRemaining < openerCost
+          const message = monthlyRemaining < upfrontGateCost
             ? "本月額度不足，升級方案可取得更多開場與分析額度。"
             : "今日額度不足，明天會自動恢復；也可以升級取得更多額度。";
           return jsonResponse({
             error: "額度不足",
             message,
-            quotaNeeded: openerCost,
+            quotaNeeded: upfrontGateCost,
             monthlyRemaining,
             dailyRemaining,
             monthlyLimit,
@@ -5035,17 +5062,18 @@ serve(async (req) => {
         }, 502);
       }
 
-      // Honor AI self-evaluation: when input is too thin to produce a
-      // meaningful opener, the model sets profileAnalysis.insufficientInfo
-      // to true and we skip the quota charge. Mirrors the existing
-      // malformed-output no-charge contract so users are not billed for
-      // fundamentally unusable input.
+      // Billing decision: driven by server-side eligibility computed
+      // before the model call (no image + no profile substance). The
+      // model's profileAnalysis.insufficientInfo is captured for
+      // telemetry but cannot grant free use on its own — keeps the
+      // quota path safe from prompt-injection in user-controlled
+      // profileInfo fields.
       const profileAnalysisObj = isPlainObject(parsed.profileAnalysis)
         ? (parsed.profileAnalysis as Record<string, unknown>)
         : null;
-      const insufficientInfo =
+      const aiInsufficientFlag =
         profileAnalysisObj?.insufficientInfo === true;
-      const effectiveOpenerCost = insufficientInfo ? 0 : openerCost;
+      const effectiveOpenerCost = serverEligibleForNoCharge ? 0 : openerCost;
 
       // Deduct quota
       if (!accountIsTest && effectiveOpenerCost > 0) {
@@ -5066,7 +5094,8 @@ serve(async (req) => {
         model: apiResult.model,
         imageCount,
         cost: effectiveOpenerCost,
-        insufficientInfo,
+        serverEligibleForNoCharge,
+        aiInsufficientFlag,
         inputTokens: apiData.usage?.input_tokens,
         outputTokens: apiData.usage?.output_tokens,
         fallbackUsed: apiResult.fallbackUsed,
@@ -5080,7 +5109,8 @@ serve(async (req) => {
           inputTokens: apiData.usage?.input_tokens,
           outputTokens: apiData.usage?.output_tokens,
           cost: effectiveOpenerCost,
-          insufficientInfo,
+          serverEligibleForNoCharge,
+          aiInsufficientFlag,
           repaired: !!repairMetadata?.parsed,
           repairModel: repairMetadata?.parsed
             ? repairMetadata.model
