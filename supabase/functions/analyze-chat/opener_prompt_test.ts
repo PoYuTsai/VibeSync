@@ -83,5 +83,35 @@ Deno.test({
     // AI flag is captured for telemetry only.
     assert(source.includes("const aiInsufficientFlag ="));
     assert(source.includes("serverEligibleForNoCharge,\n        aiInsufficientFlag,"));
+
+    // Single chokepoint: both the substance check and the prompt builder
+    // must read from the same normalized profileInfo. A non-string field
+    // (e.g. `interests: ["咖啡"]`) cannot bypass billing while slipping
+    // into the prompt via JS string coercion.
+    assert(
+      source.includes(
+        'import {\n  hasOpenerProfileSubstance,\n  normalizeOpenerProfileInfo,\n} from "./opener_profile.ts";',
+      ),
+    );
+    assert(
+      source.includes(
+        "const normalizedProfile = normalizeOpenerProfileInfo(rawProfileInfo);",
+      ),
+    );
+    assert(
+      source.includes(
+        "const hasProfileSubstance = hasOpenerProfileSubstance(normalizedProfile);",
+      ),
+    );
+    assert(
+      source.includes(
+        "const { name, bio, interests, meetingContext } = normalizedProfile;",
+      ),
+    );
+    // The prior fragile read pattern must not come back.
+    assert(
+      !source.includes("rawProfileInfo as Record<string, string>"),
+      "prompt builder must not cast rawProfileInfo to Record<string,string>; use normalizedProfile instead",
+    );
   },
 });

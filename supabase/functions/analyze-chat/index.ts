@@ -15,6 +15,10 @@ import {
 } from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
 import { extractTokenUsage, logAiCall } from "./logger.ts";
+import {
+  hasOpenerProfileSubstance,
+  normalizeOpenerProfileInfo,
+} from "./opener_profile.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 
@@ -4829,19 +4833,15 @@ serve(async (req) => {
       // but cannot grant free use on its own. Required to keep
       // prompt-injection in user-controlled profileInfo fields from
       // creating an unbilled opener path.
-      const profileInfoRecord =
-        rawProfileInfo && typeof rawProfileInfo === "object"
-          ? (rawProfileInfo as Record<string, unknown>)
-          : null;
-      const hasProfileSubstance = profileInfoRecord
-        ? [
-            profileInfoRecord.bio,
-            profileInfoRecord.interests,
-            profileInfoRecord.meetingContext,
-          ].some(
-            (v) => typeof v === "string" && v.trim().length > 0,
-          )
-        : false;
+      //
+      // normalizeOpenerProfileInfo() is the single chokepoint that maps
+      // raw payload → string-only fields. Both the substance check below
+      // and the prompt builder further down read from this normalized
+      // object, so a non-string value (e.g. `interests: ["咖啡"]`) cannot
+      // simultaneously slip into the prompt while being treated as "no
+      // substance" for billing.
+      const normalizedProfile = normalizeOpenerProfileInfo(rawProfileInfo);
+      const hasProfileSubstance = hasOpenerProfileSubstance(normalizedProfile);
       const serverEligibleForNoCharge =
         imageCount === 0 && !hasProfileSubstance;
       // Use 0 as the gate cost so a user at the quota cap can still
@@ -4894,9 +4894,11 @@ serve(async (req) => {
       // Build user prompt
       const userContent: string[] = [];
 
-      if (rawProfileInfo && typeof rawProfileInfo === "object") {
-        const { name, bio, interests, meetingContext } =
-          rawProfileInfo as Record<string, string>;
+      {
+        // Prompt builder reads from the same normalized object as the
+        // billing decision above, so a non-string profileInfo field can
+        // never leak into the prompt while bypassing the substance check.
+        const { name, bio, interests, meetingContext } = normalizedProfile;
         const parts: string[] = [];
         if (name) parts.push(`對方名字：${name}`);
         if (bio) parts.push(`自我介紹：${bio}`);
