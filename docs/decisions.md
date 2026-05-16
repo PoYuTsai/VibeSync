@@ -291,7 +291,7 @@
 - 獨立頁面（`lib/features/opener/`）
 - Edge Function `analyze-chat` 新增 opener 模式
 - 最多 3 張截圖輔助（選填）
-- 計費：基本 **3 則** + 每張截圖 **+2 則**（最多 3 張 = 最多 9 則）
+- 計費：基本 **3 則** + 每張截圖 **+2 則**（最多 3 張 = 最多 9 則）— 已於 2026-05-16 改為一律 3 則，詳見 ADR #18
 - 文章學習頁「實戰練習」按鈕導向開場救星
 
 **技術重點**:
@@ -455,3 +455,35 @@
 **驗收**:
 - 「在家追劇 看絕命毒師」這類對話，卡片應顯示「她丟出的球：在家追劇 / 絕命毒師」，而不是泛用「先別下定論」。
 - 如果 AI 回 low confidence，app 不採用 hint，回 deterministic fallback。
+
+---
+
+## ADR #18 — [2026-05-16] 開場救星扣費改為一律 3 則（取代 per-image surcharge）
+
+**狀態**: ✅ Active（取代 ADR #14 的計費條目）
+
+**決定**: 開場救星扣費由「基本 3 則 + 每張截圖 +2 則（最多 9 則）」改為**一律 3 則**，不論上傳幾張截圖（仍上限 3 張）。
+
+**Eric 拍板於**: 2026-05-16 Discord 對話（Bruce dogfood 反饋 + Codex r2 APPROVED 安全洞修補之後）。
+
+**主要原因**:
+1. **效果與張數不線性**：多附幾張圖 AI 看到的「新增線索」邊際遞減；2 張 5 則、3 張 7 則的價格相對品質提升偏貴，會勸退用戶上傳第 2、3 張。
+2. **可預期 > 嚴格成本回收**：用戶不容易在送出前計算「3+2+2」這種公式；統一 3 則讓用戶心智簡單，反而更願意上傳截圖、提升 AI 輸入品質。
+3. **使用頻率不高**：opener 是「遇到新對象才開」的低頻動作，per-image 收費省下的單次成本相對整體 quota 池微小，但對 UX 反而是負擔。
+4. **與品質策略一致**：同步在 system prompt 強化「用戶手填文字 + 無圖」case 的指引（避開「比較喜歡 A 還是 B」式瞎猜），讓無圖路徑也保有最低品質基準。Eric 主動吸收圖片 Sonnet 成本，換取「附圖效果通常較好」可以變成柔性建議而非硬扣費懲罰。
+
+**不做**:
+- 不強制截圖（保留 Tab 切換結構：截圖 / 手動輸入）。
+- 不改 Tier quota 上限（Free 30、Starter 300、Essential 800）。
+- 不動 model 選擇（仍 imageCount>0 或 effectiveTier!=free → Sonnet）。
+
+**實作 commit**: `e27ba03`（同 commit 動 Edge Function `openerCost = 3`、OPENER_PROMPT 新增「沒有截圖、只有用戶手填的文字」段落、Flutter `_estimatedCost` 常數化 + 無圖時柔性副文）。
+
+**前置 commit**:
+- `8356dab`（quota bypass 安全洞修補，Codex r2 APPROVED — 必須先收這個再改定價，否則攻擊路徑會搭定價變動順風車）
+- `16f01a7`（扣帳決定改由 server-side 條件主導）
+
+**相關文件**:
+- `docs/pricing-final.md:166` 已同步
+- `docs/cost-optimization.md:55` 已同步
+- ADR #14 計費條目已加上「2026-05-16 改」註記指向本 ADR
