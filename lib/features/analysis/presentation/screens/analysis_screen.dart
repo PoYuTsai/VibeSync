@@ -4114,25 +4114,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               ),
                               child: Column(
                                 children: [
-                                  const Text('🎯',
-                                      style: TextStyle(fontSize: 48)),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    '準備好分析這段對話了嗎？',
-                                    style: AppTypography.titleMedium,
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'AI 會分析她的熱度、讀懂她話裡的意思，\n教你最適合的回覆方式。',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // 截圖上傳區
+                                  // 動作優先：選圖按鈕置頂，介紹文字降到 caption。
                                   ImagePickerWidget(
                                     maxImages: 3,
                                     externalImages: _selectedImages, // 同步外部狀態
@@ -4380,6 +4362,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       ),
                                     ),
                                   ],
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'AI 會分析她的熱度、讀懂語意，教你最適合的回覆方式',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
                                 ],
                               ),
                             ),
