@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPANION="${CODEX_COMPANION:-$HOME/.claude/plugins/cache/openai-codex/codex/1.0.2/scripts/codex-companion.mjs}"
 export CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/codex-openai-codex}"
+CODEX_BRIDGE_MODEL="${CODEX_BRIDGE_MODEL:-gpt-5.4}"
 
 usage() {
   cat <<'EOF'
@@ -199,7 +200,7 @@ start_review_job() {
 
   local output status job_id
   output="$(
-    node "$COMPANION" task --background --fresh --cwd "$REPO_ROOT" --prompt-file "$prompt_file" --json 2>&1
+    node "$COMPANION" task --background --fresh --model "$CODEX_BRIDGE_MODEL" --cwd "$REPO_ROOT" --prompt-file "$prompt_file" --json 2>&1
   )"
   status=$?
   rm -f "$prompt_file"
