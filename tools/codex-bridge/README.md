@@ -61,18 +61,21 @@ codex login --device-auth
 
 ## Model Selection
 
-The bridge pins review tasks to `gpt-5.4` by default instead of leaving the
+The bridge pins review tasks to `gpt-5.5` by default instead of leaving the
 Codex companion model unset. This avoids account/model drift when the companion
 runtime default points at a model unavailable to ChatGPT-authenticated Codex
 sessions.
 
-`gpt-5.5` is the preferred Codex model in newer runtimes, but older Codex CLI
-builds can reject it. Use `gpt-5.4` until the WSL Codex CLI is upgraded.
+If `gpt-5.5` is rejected, upgrade the WSL Codex CLI first:
+
+```bash
+npm install -g @openai/codex@latest --prefix ~/.local
+```
 
 Override locally if needed:
 
 ```bash
-export CODEX_BRIDGE_MODEL=gpt-5.5
+export CODEX_BRIDGE_MODEL=gpt-5.4
 ```
 
 ## Runtime Shape

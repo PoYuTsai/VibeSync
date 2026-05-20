@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPANION="${CODEX_COMPANION:-$HOME/.claude/plugins/cache/openai-codex/codex/1.0.2/scripts/codex-companion.mjs}"
 export CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/codex-openai-codex}"
-CODEX_BRIDGE_MODEL="${CODEX_BRIDGE_MODEL:-gpt-5.4}"
+CODEX_BRIDGE_MODEL="${CODEX_BRIDGE_MODEL:-gpt-5.5}"
 
 usage() {
   cat <<'EOF'
@@ -40,6 +40,7 @@ extract_command_line() {
   local raw="$1"
   local line trimmed
   while IFS= read -r line; do
+    line="${line%$'\r'}"
     trimmed="${line#"${line%%[![:space:]]*}"}"
     case "$trimmed" in
       "!codex"|"!codex "*) printf '%s\n' "$trimmed"; return 0 ;;
