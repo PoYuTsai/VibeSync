@@ -33,6 +33,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../data/services/ocr_recognition_cache_service.dart';
+import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../domain/coach/coach_action_policy.dart';
@@ -129,6 +130,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _lastManualAddedContent;
   bool? _lastManualAddedIsFromMe;
   int _coachChatFocusRequest = 0;
+
+  // 首次分析完成時提示用戶長按 bubble 可編輯。
+  OverlayEntry? _editMessageCoachMarkEntry;
 
   // 截圖上傳功能
   List<Uint8List> _selectedImages = [];
@@ -696,12 +700,44 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    final coachMark = _editMessageCoachMarkEntry;
+    if (coachMark != null && coachMark.mounted) {
+      coachMark.remove();
+    }
+    _editMessageCoachMarkEntry = null;
     _messageController.dispose();
     _messageFocusNode.dispose();
     _scrollController.dispose();
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
     super.dispose();
+  }
+
+  /// 首次分析完成後浮出 coach mark，引導用戶長按 bubble 編輯訊息。
+  /// 已讀取過或當前已有 overlay 顯示時 no-op。
+  Future<void> _maybeShowEditMessageCoachMark() async {
+    if (!mounted) return;
+    if (_editMessageCoachMarkEntry != null) return;
+    if (await AnalysisHintService.hasSeenEditMessage()) return;
+    if (!mounted) return;
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => _EditMessageCoachMark(
+        onDismiss: () async {
+          if (entry.mounted) entry.remove();
+          if (_editMessageCoachMarkEntry == entry) {
+            _editMessageCoachMarkEntry = null;
+          }
+          await AnalysisHintService.markEditMessageSeen();
+        },
+      ),
+    );
+    _editMessageCoachMarkEntry = entry;
+    overlay.insert(entry);
   }
 
   /// 退出時自動刪除空對話（沒有訊息的「新對話」）
@@ -2550,6 +2586,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       }
 
       _syncSubscriptionUsageFromResult(result);
+      unawaited(_maybeShowEditMessageCoachMark());
     } on DailyLimitExceededException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -6602,6 +6639,87 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 第一次分析結果出現時的 coach mark。
+/// 暗色 backdrop + 卡片置於螢幕下半，向上的箭頭視覺指向上方 bubble 區。
+class _EditMessageCoachMark extends StatelessWidget {
+  const _EditMessageCoachMark({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.6),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onDismiss,
+        child: SafeArea(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 80),
+              child: GestureDetector(
+                onTap: () {}, // 吸收卡片內部點擊，避免穿透到 backdrop dismiss
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.keyboard_double_arrow_up_rounded,
+                        size: 44,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '💡 你知道嗎？',
+                        style: AppTypography.titleLarge,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '長按上方的訊息泡泡可以\n編輯內容、切換角色、或刪除整則',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: onDismiss,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('知道了'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
