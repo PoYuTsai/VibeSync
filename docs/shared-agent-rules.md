@@ -241,18 +241,22 @@ Setup:
 
 Use it when context approaches the orange/red zone or after a scoped external task is complete.
 
+Important: `!cc-rotate` is the manual safety rope, not the warning system. The warning system is the green-context hook/statusline. Keep their thresholds aligned so Eric is warned before the terminal becomes hard to use.
+
 Green-context bands:
 
-- 35-45%: yellow reminder.
-- 45-55%: orange, prepare `!cc-rotate`; high-risk work should avoid starting here.
-- 55%+: hard stop; rotate before new work.
+- 20-25%: soft notice in external/Discord mode. If a bugfix/review is finishing, remind Eric that `!cc-rotate` is available before the next task.
+- 25-35%: yellow reminder. Finish the current scoped task; do not start medium/high-risk work casually.
+- 35-45%: orange, prepare `!cc-rotate`; high-risk work should avoid starting here.
+- 45%+: hard stop; rotate before new work.
 
 Proactive reminder rule:
 
 - Do not rotate after every task by default; keep momentum when context is still healthy.
-- At 35-45%, only mention rotate if the completed task was high-risk/large, or the next requested task is medium/high-risk.
-- At 45%+, do not start a new scoped task without first telling Eric: `建議先 !cc-rotate，再接下一個任務。`
-- At 55%+, refuse new work except handoff/rotate/blocker cleanup.
+- At 20-25%, mention rotate only when the current item is wrapping up or the next item is likely to be non-trivial.
+- At 25-35%, include a one-line rotation reminder in Discord closeout for bugfix/review work.
+- At 35%+, do not start a new scoped task without first telling Eric: `建議先 !cc-rotate，再接下一個任務。`
+- At 45%+, refuse new work except handoff/rotate/blocker cleanup.
 - If Eric is mobile or the session is in Discord frontline mode, prefer a short direct reminder over a long explanation.
 
 When receiving `!cc-rotate`, the current session must:

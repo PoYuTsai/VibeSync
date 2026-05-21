@@ -11,6 +11,8 @@
 
 注意：Claude Code 的 `SessionStart` hook 只注入 context，不保證會自動產生一輪模型回覆。若 rotate 後 30 秒內沒有 ready，直接在 Discord 再傳任一句（例如 `ready?`）；`UserPromptSubmit` fallback 會重新注入 bootstrap，讓新 session 先讀 handoff、回 ready、刪 bootstrap，再接新任務。
 
+`!cc-rotate` 是手動安全繩，不是預警器。預警由 `~/.claude/hooks/green-context.sh` 與 `~/.claude/statusline.sh` 負責：20% soft notice、25% yellow、35% orange、45% hard stop。外出模式如果一輪 bugfix/review 收尾時已達 20% 以上，Claude 應在 Discord closeout 補一句是否建議先 rotate。
+
 `validate.sh` 會拒絕 `AGENTS.md` / `CLAUDE.md` 中的 `<claude-mem-context>` 注入，或兩份規則檔不同步的狀態。這是為了避免舊記憶污染覆蓋 `docs/snapshot.md` 與 live queue。
 
 ---
