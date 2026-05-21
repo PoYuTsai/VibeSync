@@ -134,6 +134,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 首次分析完成時提示用戶長按 bubble 可編輯。
   OverlayEntry? _editMessageCoachMarkEntry;
 
+  // 截圖 root ScaffoldMessenger reference，避免 dispose 時 context lookup 失敗。
+  // 用於 dispose 時清除可能殘留的 SnackBar，避免綠色 banner 跨頁殘留
+  // （`Colors.green` 的 OCR 匯入 SnackBar duration=7s，用戶離開頁面後 root
+  // messenger 會繼續顯示在其他頁面上，Bruce 2026-05-21 dogfood 回報）。
+  ScaffoldMessengerState? _scaffoldMessenger;
+
   // 截圖上傳功能
   List<Uint8List> _selectedImages = [];
   List<SelectedImageMetrics> _selectedImageMetrics = [];
@@ -572,6 +578,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
+  }
+
+  @override
   void didChangeMetrics() {
     super.didChangeMetrics();
     if (_messageFocusNode.hasFocus) {
@@ -700,6 +712,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // 清掉可能殘留的 root SnackBar（OCR 匯入綠色 banner 等），避免跨頁顯示。
+    _scaffoldMessenger?.clearSnackBars();
     final coachMark = _editMessageCoachMarkEntry;
     if (coachMark != null && coachMark.mounted) {
       coachMark.remove();
