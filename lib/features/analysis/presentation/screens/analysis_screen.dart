@@ -163,6 +163,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   bool _showContinueConversation = false;
 
   Future<void> _showPaywall(BuildContext context) async {
+    _clearAnalysisSnackBarsBeforePush();
     final unlockedTier = await context.push<String>('/paywall');
     if (!mounted) {
       return;
@@ -725,6 +726,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
     super.dispose();
+  }
+
+  /// Push 到別的 route 之前先清掉 analysis-screen 本頁觸發的 root SnackBar，
+  /// 避免 OCR 匯入綠色 banner（duration=7s）跟著用戶飄到下一頁。
+  /// Pop 路徑由 dispose 清；push 路徑（profile / article / paywall）走這裡。
+  void _clearAnalysisSnackBarsBeforePush() {
+    _scaffoldMessenger?.clearSnackBars();
   }
 
   /// 首次分析完成後浮出 coach mark，引導用戶長按 bubble 編輯訊息。
@@ -3900,8 +3908,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             IconButton(
               icon: const Icon(Icons.person_outline),
               tooltip: '對方檔案',
-              onPressed: () =>
-                  context.push('/profile/${widget.conversationId}'),
+              onPressed: () {
+                _clearAnalysisSnackBarsBeforePush();
+                context.push('/profile/${widget.conversationId}');
+              },
             ),
             // 匯出按鈕
             IconButton(
@@ -4658,8 +4668,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                                   return CoachActionCard(
                                     data: cardData,
-                                    onLearningLinkTap: (articleId) =>
-                                        context.push('/article/$articleId'),
+                                    onLearningLinkTap: (articleId) {
+                                      _clearAnalysisSnackBarsBeforePush();
+                                      context.push('/article/$articleId');
+                                    },
                                   );
                                 },
                               ),
