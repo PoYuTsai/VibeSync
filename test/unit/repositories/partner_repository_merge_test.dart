@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import 'package:vibesync/features/coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
+import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -19,6 +21,7 @@ late Box<Partner> partnerBox;
 late Box<PartnerStyleOverride> styleBox;
 late Box<PartnerDataQualityState> qualityBox;
 late Box<CoachFollowUpResult> followUpBox;
+late Box<CoachingOutcomeEvent> outcomeBox;
 late PartnerDataQualityRepository qualityRepo;
 late PartnerRepository repo;
 
@@ -96,6 +99,18 @@ void main() {
     if (!Hive.isAdapterRegistered(16)) {
       Hive.registerAdapter(CoachFollowUpResultAdapter());
     }
+    if (!Hive.isAdapterRegistered(18)) {
+      Hive.registerAdapter(CoachingOutcomeEventAdapter());
+    }
+    if (!Hive.isAdapterRegistered(19)) {
+      Hive.registerAdapter(CoachingOutcomeSourceAdapter());
+    }
+    if (!Hive.isAdapterRegistered(20)) {
+      Hive.registerAdapter(CoachingUserActionAdapter());
+    }
+    if (!Hive.isAdapterRegistered(21)) {
+      Hive.registerAdapter(CoachingOutcomeSignalAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -109,8 +124,8 @@ void main() {
     styleBox = await Hive.openBox<PartnerStyleOverride>('merge_style_$ts');
     qualityBox =
         await Hive.openBox<PartnerDataQualityState>('merge_quality_$ts');
-    followUpBox =
-        await Hive.openBox<CoachFollowUpResult>('merge_followup_$ts');
+    followUpBox = await Hive.openBox<CoachFollowUpResult>('merge_followup_$ts');
+    outcomeBox = await Hive.openBox<CoachingOutcomeEvent>('merge_outcome_$ts');
     qualityRepo = PartnerDataQualityRepository(injectedBox: qualityBox);
     repo = PartnerRepository(
       box: partnerBox,
@@ -118,10 +133,12 @@ void main() {
       styleRepo: PartnerStyleRepository(box: styleBox),
       qualityRepo: qualityRepo,
       followUpRepo: CoachFollowUpRepositoryImpl(followUpBox),
+      outcomeRepo: CoachingOutcomeRepositoryImpl(outcomeBox),
     );
   });
 
   tearDown(() async {
+    await outcomeBox.deleteFromDisk();
     await followUpBox.deleteFromDisk();
     await qualityBox.deleteFromDisk();
     await styleBox.deleteFromDisk();
