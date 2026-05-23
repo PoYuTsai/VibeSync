@@ -208,6 +208,54 @@ void main() {
     );
   });
 
+  test('partner-scoped drafts do not overwrite unscoped handoff latest',
+      () async {
+    final service = OpenerResultCacheService();
+
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'global line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '全域入口',
+    );
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'partner line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'A partner',
+      partnerId: 'partner-a',
+    );
+
+    expect(service.loadLatest()!.bestOpenerText, 'global line');
+    expect(service.loadLatestForScope()!.bestOpenerText, 'global line');
+    expect(
+      service.loadLatestForScope(partnerId: 'partner-a')!.bestOpenerText,
+      'partner line',
+    );
+  });
+
+  test('unscoped handoff ignores partner-only drafts', () async {
+    final service = OpenerResultCacheService();
+
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'partner line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'A partner',
+      partnerId: 'partner-a',
+    );
+
+    expect(service.loadLatest(), isNull);
+    expect(service.loadLatestForScope(), isNull);
+    expect(
+      service.loadLatestForScope(partnerId: 'partner-a')!.bestOpenerText,
+      'partner line',
+    );
+  });
+
   test('scoped latest uses partner draft instead of global latest', () async {
     final service = OpenerResultCacheService();
 

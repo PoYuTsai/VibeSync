@@ -74,6 +74,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   // screenshots just to save quota.
   int get _estimatedCost => 3;
 
+  bool get _hasBoundPartner =>
+      widget.partnerId != null && widget.partnerId!.trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
@@ -185,7 +188,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     if (result == null) return;
 
     try {
-      await _resultCacheService.saveLatest(result);
+      if (!_hasBoundPartner) {
+        await _resultCacheService.saveLatest(result);
+      }
       final draftId = _currentDraftId;
       if (draftId != null) {
         await _resultCacheService.markDraftContinued(draftId);
@@ -197,7 +202,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   Future<void> _openDraft(OpenerDraft draft) async {
     try {
-      await _resultCacheService.saveLatest(draft.result);
+      if ((draft.partnerId ?? '').trim().isEmpty) {
+        await _resultCacheService.saveLatest(draft.result);
+      }
     } catch (_) {
       // Best effort only; the visible result is still useful.
     }

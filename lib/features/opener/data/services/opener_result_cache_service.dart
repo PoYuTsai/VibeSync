@@ -116,6 +116,7 @@ class OpenerResultCacheService {
   static const _latestResultKey = 'opener_latest_result_v1';
   static const _draftsKey = 'opener_drafts_v1';
   static const maxDrafts = 10;
+  static int _draftSequence = 0;
 
   Future<OpenerDraft> saveDraft({
     required OpenerResult result,
@@ -125,14 +126,16 @@ class OpenerResultCacheService {
     String? partnerId,
   }) async {
     final now = DateTime.now();
+    final scopedPartnerId = _blankToNull(partnerId);
+    final draftSequence = (_draftSequence = (_draftSequence + 1) & 0x3fffffff);
     final draft = OpenerDraft(
-      id: 'opener_${now.microsecondsSinceEpoch}',
+      id: 'opener_${now.microsecondsSinceEpoch}_$draftSequence',
       result: result,
       createdAt: now,
       displayName: _blankToNull(displayName),
       sourceLabel: _blankToNull(sourceLabel),
       inputPreview: _blankToNull(inputPreview),
-      partnerId: _blankToNull(partnerId),
+      partnerId: scopedPartnerId,
     );
 
     final drafts = [
@@ -141,7 +144,9 @@ class OpenerResultCacheService {
     ].take(maxDrafts).toList(growable: false);
 
     await _saveDrafts(drafts);
-    await saveLatest(result);
+    if (scopedPartnerId == null) {
+      await saveLatest(result);
+    }
     return draft;
   }
 
@@ -182,11 +187,19 @@ class OpenerResultCacheService {
 
   OpenerResult? loadLatestForScope({String? partnerId}) {
     final scopedPartnerId = _blankToNull(partnerId);
-    if (scopedPartnerId == null) {
-      return loadLatest();
+    final drafts = loadDrafts();
+    final scopedDrafts = drafts
+        .where((draft) => _blankToNull(draft.partnerId) == scopedPartnerId)
+        .toList(growable: false);
+    if (scopedDrafts.isNotEmpty) {
+      return scopedDrafts.first.result;
     }
-    final scopedDrafts = loadDraftsForScope(partnerId: scopedPartnerId);
-    return scopedDrafts.isEmpty ? null : scopedDrafts.first.result;
+
+    if (scopedPartnerId != null) {
+      return null;
+    }
+
+    return drafts.isEmpty ? loadLatest() : null;
   }
 
   OpenerDraft? loadDraft(String id) {
