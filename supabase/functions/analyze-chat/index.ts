@@ -4847,8 +4847,8 @@ serve(async (req) => {
       // substance" for billing.
       const normalizedProfile = normalizeOpenerProfileInfo(rawProfileInfo);
       const hasProfileSubstance = hasOpenerProfileSubstance(normalizedProfile);
-      const serverEligibleForNoCharge =
-        imageCount === 0 && !hasProfileSubstance;
+      const serverEligibleForNoCharge = imageCount === 0 &&
+        !hasProfileSubstance;
       // Use 0 as the gate cost so a user at the quota cap can still
       // reach the model when the server already plans to bill nothing.
       const upfrontGateCost = serverEligibleForNoCharge ? 0 : openerCost;
@@ -5078,21 +5078,26 @@ serve(async (req) => {
       const profileAnalysisObj = isPlainObject(parsed.profileAnalysis)
         ? (parsed.profileAnalysis as Record<string, unknown>)
         : null;
-      const aiInsufficientFlag =
-        profileAnalysisObj?.insufficientInfo === true;
+      const aiInsufficientFlag = profileAnalysisObj?.insufficientInfo === true;
       const effectiveOpenerCost = serverEligibleForNoCharge ? 0 : openerCost;
 
       // Deduct quota
       if (!accountIsTest && effectiveOpenerCost > 0) {
-        await supabase
-          .from("subscriptions")
-          .update({
-            monthly_messages_used: (sub?.monthly_messages_used || 0) +
-              effectiveOpenerCost,
-            daily_messages_used: (sub?.daily_messages_used || 0) +
-              effectiveOpenerCost,
-          })
-          .eq("user_id", user.id);
+        const { error: usageError } = await supabase.rpc("increment_usage", {
+          p_user_id: user.id,
+          p_messages: effectiveOpenerCost,
+        });
+
+        if (usageError) {
+          logError("opener_credit_deduct_failed", {
+            user: summarizeUser(user.id),
+            error: usageError.message,
+          });
+          return jsonResponse({
+            error: "credit_deduct_failed",
+            message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
+          }, 500);
+        }
       }
 
       // Log
@@ -6172,7 +6177,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       });
 
       if (usageError) {
-        console.error("Failed to increment usage:", usageError);
+        logError("analysis_credit_deduct_failed", {
+          user: summarizeUser(user.id),
+          error: usageError.message,
+          chargedMessageCount: quotaUsage.chargedMessageCount,
+        });
+        return jsonResponse({
+          error: "credit_deduct_failed",
+          message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
+        }, 500);
       }
     }
 

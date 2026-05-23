@@ -54,7 +54,7 @@ Deno.test({
     assert(source.includes("const hasProfileSubstance ="));
     assert(
       source.includes(
-        "const serverEligibleForNoCharge =\n        imageCount === 0 && !hasProfileSubstance;",
+        "const serverEligibleForNoCharge = imageCount === 0 &&\n        !hasProfileSubstance;",
       ),
     );
     assert(
@@ -80,9 +80,23 @@ Deno.test({
       ),
     );
     assert(source.includes("!accountIsTest && effectiveOpenerCost > 0"));
+    assert(source.includes('await supabase.rpc("increment_usage"'));
+    assert(source.includes("p_messages: effectiveOpenerCost"));
+    assert(source.includes("opener_credit_deduct_failed"));
+    assert(source.includes('error: "credit_deduct_failed"'));
+    assert(
+      !source.includes(
+        "monthly_messages_used: (sub?.monthly_messages_used || 0) +",
+      ),
+      "opener billing must use the canonical increment_usage RPC",
+    );
     // AI flag is captured for telemetry only.
     assert(source.includes("const aiInsufficientFlag ="));
-    assert(source.includes("serverEligibleForNoCharge,\n        aiInsufficientFlag,"));
+    assert(
+      source.includes(
+        "serverEligibleForNoCharge,\n        aiInsufficientFlag,",
+      ),
+    );
 
     // Single chokepoint: both the substance check and the prompt builder
     // must read from the same normalized profileInfo. A non-string field

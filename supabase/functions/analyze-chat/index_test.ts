@@ -793,3 +793,19 @@ Deno.test({
     assertFalse(source.includes("分析失敗，請重試"));
   },
 });
+
+Deno.test({
+  name: "analysis quota deduction failure returns credit_deduct_failed",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes('await supabase.rpc("increment_usage"'));
+    assert(source.includes("analysis_credit_deduct_failed"));
+    assert(source.includes('error: "credit_deduct_failed"'));
+    assert(source.includes("本次不會扣額度"));
+    assertFalse(source.includes('console.error("Failed to increment usage:"'));
+  },
+});
