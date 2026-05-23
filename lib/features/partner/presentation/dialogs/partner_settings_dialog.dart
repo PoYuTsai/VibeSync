@@ -71,6 +71,10 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final fieldLabelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+        );
+
     return AlertDialog(
       title: const Text('對象設定'),
       content: SingleChildScrollView(
@@ -78,11 +82,12 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text('名稱', style: fieldLabelStyle),
+            const SizedBox(height: 6),
             TextField(
               controller: _nameController,
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: '名稱',
                 hintText: '例如：小雲',
               ),
               textInputAction: TextInputAction.next,
@@ -90,15 +95,15 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
               onSubmitted: (_) => FocusScope.of(context).nextFocus(),
             ),
             const SizedBox(height: 16),
+            Text('一次性資訊 / 目前目標 / 備註', style: fieldLabelStyle),
+            const SizedBox(height: 6),
             TextField(
               controller: _noteController,
               minLines: 4,
               maxLines: 7,
               maxLength: 300,
               decoration: const InputDecoration(
-                labelText: '一次性資訊 / 目前目標 / 備註',
                 hintText: '例如：在 Bumble 認識、慢熱、喜歡戶外活動，目前想先約咖啡。',
-                alignLabelWithHint: true,
               ),
             ),
             const SizedBox(height: 6),
