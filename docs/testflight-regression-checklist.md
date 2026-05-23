@@ -1,11 +1,40 @@
 # TestFlight 回歸與簽核清單
 
-最後更新：2026-04-24
+最後更新：2026-05-23
 適用範圍：送審前所有 TestFlight build
 
 目的：
 - 每次新的 TestFlight build 出來後，用同一份清單驗證核心流程
 - 避免只看 CI 綠燈就誤判可發版
+
+## 0.1 Phase 13 送審候選版最小 smoke
+
+這段是 2026-05-23 送審候選 build 的最小必跑路徑；下面 A-J 仍保留作完整回歸清單。
+
+### Repo 端已完成
+
+- [x] HEAD：`50dda0c`
+- [x] `flutter analyze` passed
+- [x] Targeted tests passed：analysis hint、analysis screen、analysis service、opener cache、coach follow-up provider、paywall、settings、partner delete/cascade、partner-scoped new conversation，共 103 tests
+
+### 真機 TestFlight 必跑
+
+- [ ] Reviewer path：登入 reviewer account → 建立對象/對話 → 手動貼 2-5 則訊息 → 分析 → 問 Coach → Settings 查看 subscription/quota → Restore Purchases → Privacy / Terms / Support → 找到 Delete Account 入口。
+- [ ] OCR path：清楚聊天截圖 → OCR confirm → 修改我說/她說 → 匯入目前對話 → 分析 → 長按 bubble 編輯。
+- [ ] Analysis coach mark：同一對象只跳一次；換新對象會再跳一次；OCR 匯入後的下方區塊不應遮住必要操作。
+- [ ] Subscription path：Paywall 顯示 4 個產品；Starter / Essential package 對應正確；Restore Purchases、管理訂閱、升級、降級排程都能跑到可理解狀態。
+- [ ] Privacy/legal path：Privacy、Terms、Support URL 都可從 app 內打開；support email 可接住帳號、付款、OCR 失敗回報。
+- [ ] Recent regression path：純 OCR 不扣額度、完整分析扣額度失敗有可理解 fallback、opener 草稿不跨對象污染、partner delete 有 conversation-count guard。
+
+### Phase 13 No-Go
+
+- reviewer 無法登入
+- monthly / quarterly 或 Starter / Essential package 對錯
+- OCR / analyze / Coach 主路徑 crash
+- raw JSON、raw exception、internal schema error 外漏給使用者
+- Privacy / Terms / Support dead link
+- 未完成 IAP 或 booster 入口在送審 build 可見
+- logout / delete account 後有本地 session 或資料污染
 
 ## 0. 開始前
 
