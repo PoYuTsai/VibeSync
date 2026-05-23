@@ -283,7 +283,7 @@ class _SplashScreenState extends State<SplashScreen>
                       return Opacity(
                         opacity: _subtitleOpacity.value,
                         child: Text(
-                          '有記憶的 AI 約會教練',
+                          '你專屬的 AI 約會教練',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,

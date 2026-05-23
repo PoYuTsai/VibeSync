@@ -13,7 +13,8 @@ Current state:
 
 - Coach 1:1 is shipped into dogfood and is part of the core product.
 - Older spec discussions are product fuel, not active task labels.
-- The current product positioning is "AI dating coach with memory": remembers the person, the conversation, user intent, coaching context, and helps users converge on a better next action.
+- Consumer-facing headline: `你專屬的 AI 約會教練`.
+- Internal moat: VibeSync remembers the person, conversation, user intent, and coaching context, then helps users converge on a better next action.
 - We are in TestFlight dogfood / App Review readiness stabilization.
 
 Default priority:
