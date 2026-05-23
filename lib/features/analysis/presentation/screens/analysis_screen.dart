@@ -133,9 +133,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   // 首次看到對話 bubble 時提示用戶長按可編輯。
   OverlayEntry? _editMessageCoachMarkEntry;
-  // Latch：messages 從 0 變 ≥1 後 schedule 一次 coach mark check，避免每次
-  // rebuild 都重複 schedule post-frame callback。hint 旗標讀過就 no-op。
-  bool _coachMarkBubbleCheckScheduled = false;
+  // 上次觸發 coach mark check 時的 messages.length。每次 messages 變多
+  // （手動輸入新訊息 / 截圖再次匯入）都重新 schedule callback，讓 dogfood
+  // 反覆測試每個 action 都看得到提醒。production 由 hint 旗標 gate 成
+  // first-run only。
+  int _coachMarkLastSeenMessageCount = 0;
 
   // 截圖 root ScaffoldMessenger reference，避免 dispose 時 context lookup 失敗。
   // 用於 dispose 時清除可能殘留的 SnackBar，避免綠色 banner 跨頁殘留
@@ -3893,9 +3895,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       );
     }
 
-    if (!_coachMarkBubbleCheckScheduled &&
-        conversation.messages.isNotEmpty) {
-      _coachMarkBubbleCheckScheduled = true;
+    if (conversation.messages.length > _coachMarkLastSeenMessageCount) {
+      _coachMarkLastSeenMessageCount = conversation.messages.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_maybeShowEditMessageCoachMark());
       });

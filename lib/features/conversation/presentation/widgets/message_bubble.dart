@@ -36,6 +36,10 @@ class MessageBubble extends StatelessWidget {
         onSwapSide != null || onDelete != null || onEdit != null;
 
     return GestureDetector(
+      // opaque：整個 bubble（含 padding / border 邊框 dead zone）都接收
+      // long-press。預設 deferToChild 只認 Text 渲染區，user 必須按到「字」
+      // 才觸發 — Bruce/Eric 2026-05-23 dogfood 點出這個跟視覺直覺落差。
+      behavior: HitTestBehavior.opaque,
       onLongPress: hasActions
           ? () => _showActionMenu(context)
           : null,
