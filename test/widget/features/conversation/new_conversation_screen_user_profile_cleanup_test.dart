@@ -92,22 +92,16 @@ void main() {
     expect(find.text('對方特質'), findsOneWidget);
   });
 
-  testWidgets('Optional hint 想讓建議更像你的語氣 renders without blocking submit',
+  testWidgets('Legacy user-style CTA no longer renders in manual input',
       (tester) async {
     await tester.pumpWidget(_harness());
     await _settle(tester);
     await _expandPersonalization(tester);
-    final hint = find.text('想讓建議更像你的語氣？可到「報告 > 關於我」設定一次。');
-    expect(hint, findsOneWidget);
-    expect(find.textContaining('我的報告 > 關於我'), findsNothing);
-    // Tappable check: must not be wrapped in InkWell / GestureDetector that
-    // navigates somewhere — design §7.3 requires a plain text hint, no CTA.
-    final ancestorTap = find.ancestor(
-      of: hint,
-      matching: find.byWidgetPredicate(
-        (w) => w is InkWell || w is GestureDetector,
-      ),
+    expect(
+      find.text('想讓建議更像你的語氣？可到「報告 > 關於我」設定一次。'),
+      findsNothing,
     );
-    expect(ancestorTap, findsNothing);
+    expect(find.textContaining('我的報告 > 關於我'), findsNothing);
+    expect(find.text('這些對方資訊可到對象卡的「對方特質」齒輪設定一次。'), findsOneWidget);
   });
 }

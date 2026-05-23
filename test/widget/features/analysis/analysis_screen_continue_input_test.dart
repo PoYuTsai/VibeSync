@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
@@ -42,9 +43,24 @@ Future<void> _pumpAnalysisScreen(
     ),
   );
   await tester.pump();
+  await _dismissEditHintIfVisible(tester);
+}
+
+Future<void> _dismissEditHintIfVisible(WidgetTester tester) async {
+  await tester.pump();
+  final dismissButton = find.text('知道了');
+  if (dismissButton.evaluate().isEmpty) {
+    return;
+  }
+  await tester.tap(dismissButton);
+  await tester.pump();
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   group('AnalysisScreen continue input', () {
     testWidgets('explains that text must be entered before choosing speaker',
         (tester) async {
@@ -127,6 +143,7 @@ void main() {
         find.text('先貼上或輸入對方的新回覆，再點「這句是她說」。'),
         findsOneWidget,
       );
+      await tester.pump(const Duration(seconds: 5));
     });
 
     testWidgets('empty conversation explains the first manual-input step',

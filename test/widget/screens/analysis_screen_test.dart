@@ -8,13 +8,7 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 void main() {
   group('AnalysisScreen', () {
-    // Helper to pump with enough time for the 2-second delay to complete
-    Future<void> pumpWithDelay(WidgetTester tester) async {
-      await tester.pump(const Duration(seconds: 3));
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('shows loading state initially', (tester) async {
+    testWidgets('shows manual analysis action initially', (tester) async {
       final testConversation = Conversation(
         id: 'test-123',
         name: 'Test User',
@@ -33,7 +27,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            conversationProvider('test-123').overrideWithValue(testConversation),
+            conversationProvider('test-123')
+                .overrideWithValue(testConversation),
           ],
           child: const MaterialApp(
             home: AnalysisScreen(conversationId: 'test-123'),
@@ -41,11 +36,8 @@ void main() {
         ),
       );
 
-      // Should show loading indicator initially
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
-
-      // Let the timer complete to avoid pending timer error
-      await pumpWithDelay(tester);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('開始分析'), findsOneWidget);
     });
 
     testWidgets('shows back button', (tester) async {
@@ -60,7 +52,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            conversationProvider('test-123').overrideWithValue(testConversation),
+            conversationProvider('test-123')
+                .overrideWithValue(testConversation),
           ],
           child: const MaterialApp(
             home: AnalysisScreen(conversationId: 'test-123'),
@@ -69,9 +62,6 @@ void main() {
       );
 
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-
-      // Let the timer complete to avoid pending timer error
-      await pumpWithDelay(tester);
     });
 
     testWidgets('shows conversation name in app bar', (tester) async {
@@ -86,7 +76,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            conversationProvider('test-123').overrideWithValue(testConversation),
+            conversationProvider('test-123')
+                .overrideWithValue(testConversation),
           ],
           child: const MaterialApp(
             home: AnalysisScreen(conversationId: 'test-123'),
@@ -95,9 +86,6 @@ void main() {
       );
 
       expect(find.text('Alice'), findsOneWidget);
-
-      // Let the timer complete to avoid pending timer error
-      await pumpWithDelay(tester);
     });
 
     testWidgets('shows not found when conversation does not exist',
@@ -114,12 +102,9 @@ void main() {
       );
 
       expect(find.text('找不到對話'), findsOneWidget);
-
-      // Let the timer complete (it will still run even with null conversation)
-      await pumpWithDelay(tester);
     });
 
-    testWidgets('shows analysis results after loading', (tester) async {
+    testWidgets('shows message preview and manual-input guide', (tester) async {
       final testConversation = Conversation(
         id: 'test-123',
         name: 'Alice',
@@ -138,7 +123,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            conversationProvider('test-123').overrideWithValue(testConversation),
+            conversationProvider('test-123')
+                .overrideWithValue(testConversation),
           ],
           child: const MaterialApp(
             home: AnalysisScreen(conversationId: 'test-123'),
@@ -146,13 +132,9 @@ void main() {
         ),
       );
 
-      // Wait for analysis to complete (mock delay is 2 seconds)
-      await pumpWithDelay(tester);
-
-      // Should show analysis sections
-      expect(find.text('熱度分析'), findsOneWidget);
-      expect(find.text('建議回覆'), findsOneWidget);
-      expect(find.text('AI 推薦回覆'), findsOneWidget);
+      expect(find.text('週末我去爬抹茶山'), findsOneWidget);
+      expect(find.text('建立這段對話'), findsOneWidget);
+      expect(find.text('貼上或輸入新的一則訊息...'), findsOneWidget);
     });
   });
 }

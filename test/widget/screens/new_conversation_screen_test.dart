@@ -12,7 +12,7 @@ void main() {
         ),
       );
 
-      expect(find.text('新增對話'), findsOneWidget);
+      expect(find.text('手動輸入'), findsOneWidget);
     });
 
     testWidgets('shows name input field', (tester) async {
@@ -22,7 +22,8 @@ void main() {
         ),
       );
 
-      expect(find.text('對話對象暱稱'), findsOneWidget);
+      expect(find.text('對話對象'), findsOneWidget);
+      expect(find.text('例如：小安'), findsOneWidget);
     });
 
     testWidgets('shows content input field', (tester) async {
@@ -32,7 +33,9 @@ void main() {
         ),
       );
 
-      expect(find.text('貼上對話內容'), findsOneWidget);
+      expect(find.text('對話內容'), findsOneWidget);
+      expect(find.text('她說了什麼...'), findsOneWidget);
+      expect(find.text('我說了什麼...'), findsOneWidget);
     });
 
     testWidgets('shows meeting context selector', (tester) async {
@@ -42,9 +45,9 @@ void main() {
         ),
       );
 
-      expect(find.text('認識場景'), findsOneWidget);
+      expect(find.text('認識情境'), findsOneWidget);
       expect(find.text('交友軟體'), findsOneWidget);
-      expect(find.text('現實搭訕'), findsOneWidget);
+      expect(find.text('現實認識'), findsOneWidget);
       expect(find.text('朋友介紹'), findsOneWidget);
     });
 
@@ -59,7 +62,7 @@ void main() {
       expect(find.text('剛認識'), findsOneWidget);
       expect(find.text('幾天'), findsOneWidget);
       expect(find.text('幾週'), findsOneWidget);
-      expect(find.text('一個月+'), findsOneWidget);
+      expect(find.text('一個月以上'), findsOneWidget);
     });
 
     testWidgets('shows goal selector', (tester) async {
@@ -69,10 +72,10 @@ void main() {
         ),
       );
 
-      expect(find.text('你的目標'), findsOneWidget);
-      expect(find.text('約出來'), findsOneWidget);
+      expect(find.text('目前目標'), findsOneWidget);
+      expect(find.text('邀約見面'), findsOneWidget);
       expect(find.text('維持熱度'), findsOneWidget);
-      expect(find.text('隨意聊'), findsOneWidget);
+      expect(find.text('自然聊天'), findsOneWidget);
     });
 
     testWidgets('shows analyze button', (tester) async {
@@ -82,18 +85,17 @@ void main() {
         ),
       );
 
-      expect(find.text('開始分析'), findsOneWidget);
-      expect(find.byType(ElevatedButton), findsOneWidget);
+      expect(find.text('先儲存對話'), findsOneWidget);
     });
 
-    testWidgets('shows format hint', (tester) async {
+    testWidgets('shows current message-entry hint', (tester) async {
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: NewConversationScreen()),
         ),
       );
 
-      expect(find.text('格式：每行一則訊息，以「她:」或「我:」開頭'), findsOneWidget);
+      expect(find.text('依序輸入對話，至少先加入一則訊息。'), findsOneWidget);
     });
   });
 }
