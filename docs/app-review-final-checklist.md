@@ -1,12 +1,20 @@
 # App Review Final Checklist
 
-最後更新：2026-05-09
+最後更新：2026-05-23
 
 這份清單是送審前最後核對用，不是功能願望清單。
 
 送審主控台與 App Review Notes 草稿見：
 
 - `docs/app-review-submission-package.md`
+
+## 0. Phase 14 目前判定
+
+目前判定：`Repo GO / Submit HOLD`。
+
+Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targeted tests 103 tests PASS、Edge live probes / Deno tests 已在 Phase 12 PASS。
+
+送出前仍需人工完成：最新 TestFlight 真機 smoke、RevenueCat / App Store sandbox 訂閱矩陣、App Store Connect Privacy Label / IAP / reviewer account、Supabase live secrets / `ai_logs` dashboard 抽查。
 
 ## 1. 帳號與登入
 

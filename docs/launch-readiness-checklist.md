@@ -1,11 +1,17 @@
 # Launch Readiness Checklist
 
-最後更新：2026-05-09
+最後更新：2026-05-23
 目前目標：iOS / TestFlight / App Review 上線前最後收尾
 
 送審主控台、App Review Notes 草稿、Privacy Label 對照見：
 
 - `docs/app-review-submission-package.md`
+
+## 0. Phase 14 目前判定
+
+目前判定：`Repo GO / Submit HOLD`。
+
+可繼續進入最後人工 gate；不要直接送出，直到最新 TestFlight 真機 smoke、RevenueCat / App Store sandbox、App Store Connect privacy/IAP/reviewer 資訊、Supabase secrets/logs dashboard 都完成。
 
 ## 1. 核心功能
 

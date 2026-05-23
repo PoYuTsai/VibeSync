@@ -302,6 +302,28 @@ App 內 AI 邊界：
 - [ ] `vibesyncaiapp@gmail.com` 可收信；Support URL 頁面有可聯絡資訊。
 - [ ] TestFlight build 完成 Phase 13 smoke，再由 Eric 做 Phase 14 final dogfood。
 
+### 6.2 Phase 14 Final Submit Gate - 2026-05-23
+
+目前判定：`Repo GO / Submit HOLD`。
+
+Repo 端已達送審候選狀態：
+
+- Latest pushed commit：`b515cad`
+- Working tree：clean
+- `flutter analyze`：PASS
+- Phase 13 targeted Flutter tests：PASS，103 tests
+- Edge validation：live probes + Deno tests/checks 已在 Phase 12 PASS
+- Submission package：Review Notes、metadata、privacy label draft、manual gate 都已整理在本文件
+
+送出前仍不可跳過：
+
+- Eric 或 CC 需在最新 TestFlight build 勾完 `docs/testflight-regression-checklist.md` 的 Phase 13 最小 smoke。
+- RevenueCat / App Store sandbox 需確認 purchase、restore、upgrade、downgrade、cancel / expiration webhook delivery。
+- App Store Connect 需填完 Privacy Label、IAP review info、reviewer account password、build number、contact phone/email。
+- Supabase Dashboard 需確認 live secrets 與 `ai_logs` 可查。
+
+只有上述人工 gate 全部完成，且沒有 P1 / No-Go 條件，才把 `Submit HOLD` 改成 `Submit GO`。
+
 ---
 
 ## 7. 參考來源
