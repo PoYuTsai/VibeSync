@@ -1,10 +1,29 @@
 ﻿# App Review Submission Package
 
-最後更新：2026-05-09
+最後更新：2026-05-23
 
 這份文件是送審前的「主控台」：App Store Connect 審核說明、Reviewer 測試步驟、Privacy Label 對照、Go/No-Go gate 都先放這裡。密碼、API key、Apple sandbox 帳密不要 commit，請只填在 App Store Connect 的 App Review Information。
 
 ---
+
+## 0. 2026-05-23 送審狀態摘要
+
+目前 repo 端的送審包已整理到「文件與技術 gate 可交叉檢查」狀態；真正送出前仍要在 App Store Connect、RevenueCat、Supabase Dashboard、真機 TestFlight 做最後人工確認。
+
+已完成的穩定化證據：
+
+- Legal / support：Privacy、Terms、Support URL、Settings / Paywall / Login legal links 已核對。
+- Backend：live OPTIONS probe 已確認 7 個 Edge Functions 有 CORS；`analyze-chat` 未被平台 JWT 擋住；RevenueCat webhook health 可回應。
+- Edge validation：Deno Edge tests 307 passed；7 個主要 Edge Function `deno check` passed。
+- Core flow targeted tests：quota、OCR、analyze 分段回覆、coach context、opener draft、partner memory、UX guide 等階段已補測或補 review。
+- Privacy label 草稿：已依 app 與第三方服務的資料處理列出 Email、User ID、Purchase History、User Content、Photos/Videos、Usage Data、Diagnostics；目前不勾 Tracking、Location、Contacts。
+
+送出前仍需人工 gate：
+
+- App Store Connect：填入 reviewer account password、build number、App Review contact、Privacy Label、IAP 審核資訊。
+- IAP / RevenueCat：確認 4 個產品同一 subscription group、entitlement `premium` 綁定、sandbox purchase / restore / upgrade / downgrade matrix。
+- Supabase Dashboard：確認 live secrets 包含 `CLAUDE_API_KEY`、`REVENUECAT_IOS_API_KEY`、`REVENUECAT_WEBHOOK_SECRET`，並抽查 `ai_logs`。
+- TestFlight 真機：跑 Phase 13 smoke，含登入、手動分析、截圖 OCR、Coach、Paywall、Restore、刪帳入口。
 
 ## 1. App Review Information 草稿
 
@@ -54,7 +73,7 @@ Notes:
 |------|----------|
 | App Name | VibeSync |
 | Subtitle | AI 對話分析與社交回覆教練 |
-| Category | Lifestyle 或 Productivity，送審前依 App Store Connect 可選項擇一 |
+| Category | Primary 建議 Lifestyle；若 App Store Connect 需要 secondary，可再考慮 Productivity |
 | Age Rating | 建議 17+，因使用者可能輸入成人/曖昧/關係內容 |
 | Privacy Policy URL | `https://vibesyncai.app/privacy` |
 | Support URL | `https://vibesyncai.app/support` |
@@ -77,7 +96,7 @@ Key features:
 - AI reply suggestions with multiple tones
 - Screenshot recognition for chat screenshots
 - 1:1 coach follow-up for deeper context
-- Conversation memory and personal notes
+- Partner-aware conversation context and personal style memory
 - Learning articles for communication practice
 
 Privacy-first:
@@ -261,17 +280,35 @@ App 內 AI 邊界：
 
 | Gate | Go 條件 | 狀態 |
 |------|---------|------|
-| Auth | Apple / Google / Email / 登出登入 / 刪帳主流程無 P1 | 未驗 |
-| Subscription | 購買、restore、升降級、quota refresh 無 P1 | 未驗 |
-| OCR | 清楚單圖、長圖、多圖、fallback 無 P1 | 未驗 |
-| Core AI | 分析、5 種回覆、Coach 1:1 無 P1 | dogfood 中 |
-| Privacy | URL、policy、ASC privacy label、Review Notes 一致 | 未完成 |
-| Backend | Edge deploy 綠、`analyze-chat --no-verify-jwt` 維持、webhook 正常 | 未驗 |
-| Review Notes | 測試帳號、測試步驟、IAP 說明已填 ASC | 未完成 |
+| Auth | Apple / Google / Email / 登出登入 / 刪帳主流程無 P1 | Targeted review passed；TestFlight 真機 round-trip / delete-account smoke 待 Phase 13 |
+| Subscription | 購買、restore、升降級、quota refresh 無 P1 | Code review / targeted tests passed；RevenueCat sandbox matrix 與 ASC IAP 狀態待人工 |
+| OCR | 清楚單圖、長圖、多圖、fallback 無 P1 | Targeted tests passed；真機截圖集 smoke 待 Phase 13 |
+| Core AI | 分析、5 種回覆、Coach 1:1 無 P1 | Analyze / Coach / Opener targeted tests passed；Eric 最後 dogfood 待 Phase 14 |
+| Privacy | URL、policy、ASC privacy label、Review Notes 一致 | Repo 端已對齊；ASC Privacy Label / support email manual check 待人工 |
+| Backend | Edge deploy 綠、`analyze-chat --no-verify-jwt` 維持、webhook 正常 | Live probes + Deno tests passed；Supabase secrets / live logs / RevenueCat delivery 待 dashboard |
+| Review Notes | 測試帳號、測試步驟、IAP 說明已填 ASC | 草稿 ready；password、build number、ASC contact 只填 App Store Connect |
+
+### 6.1 最後人工確認清單
+
+這些項目無法只靠 repo 端驗證，送出前逐項打勾：
+
+- [ ] App Store Connect Privacy Label 按 3.1 填完並 Publish / attach to version。
+- [ ] App Review Information 填入不會過期的 demo account、contact phone / email、build number。
+- [ ] 4 個 auto-renewable subscriptions 已可供審核，且在同一 subscription group。
+- [ ] RevenueCat Dashboard entitlement / offering / package 對應 4 個 Apple product id。
+- [ ] RevenueCat sandbox：purchase、restore、upgrade、downgrade、cancel / expiration webhook delivery。
+- [ ] Supabase Dashboard secrets：`CLAUDE_API_KEY`、`REVENUECAT_IOS_API_KEY`、`REVENUECAT_WEBHOOK_SECRET`。
+- [ ] Supabase `ai_logs` 最近紀錄可查 timeout、429、schema error、OCR failure。
+- [ ] `vibesyncaiapp@gmail.com` 可收信；Support URL 頁面有可聯絡資訊。
+- [ ] TestFlight build 完成 Phase 13 smoke，再由 Eric 做 Phase 14 final dogfood。
 
 ---
 
 ## 7. 參考來源
 
 - Apple App Privacy Details: https://developer.apple.com/app-store/app-privacy-details/
+- Apple App Review Guidelines: https://developer.apple.com/app-store/review/guidelines/
+- App Store Connect App Review Information: https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information
+- App Store Connect Submit an App: https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app
+- App Store Connect Manage App Privacy: https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy
 - App Store Connect App Privacy Reference: https://developer.apple.com/help/app-store-connect/reference/app-information/app-privacy
