@@ -16,4 +16,11 @@ class AnalysisHintService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_editMessageKey, true);
   }
+
+  /// Debug-only：清除旗標，讓下次符合條件的 build 重新浮出 coach mark。
+  /// dogfood 階段重複驗證觸發點時用，production 不會呼叫到。
+  static Future<void> resetEditMessageSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_editMessageKey);
+  }
 }
