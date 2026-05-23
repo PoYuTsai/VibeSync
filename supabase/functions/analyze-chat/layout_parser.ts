@@ -271,7 +271,7 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
 ): LayoutFirstParseResult<TMessage> {
   // Filter out any null/undefined messages to prevent runtime errors
   const validMessages = messages.filter(
-    (m): m is TMessage => m != null && typeof m.side === "string"
+    (m): m is TMessage => m != null && typeof m.side === "string",
   );
 
   const stripped = stripLikelySystemRows(validMessages);
@@ -313,8 +313,9 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
         continue;
       }
 
-      const neighborSide = previous?.side !== "unknown" &&
-          previous?.side === next?.side
+      const neighborSide = previous && next &&
+          previous.side !== "unknown" &&
+          previous.side === next.side
         ? previous.side
         : undefined;
       const currentHasSupportElsewhere = otherRunSupportsSide(
