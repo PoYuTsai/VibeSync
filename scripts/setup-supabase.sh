@@ -47,7 +47,7 @@ supabase functions deploy analyze-chat
 echo ""
 echo "🔑 設定 Claude API Key..."
 echo "   請到 Supabase Dashboard > Project Settings > Edge Functions"
-echo "   新增 Secret: CLAUDE_API_KEY = your-anthropic-api-key"
+echo "   新增 Secret: CLAUDE_API_KEY = your-claude-api-key"
 echo ""
 read -p "是否已設定 CLAUDE_API_KEY? (y/n): " -n 1 -r
 echo ""
