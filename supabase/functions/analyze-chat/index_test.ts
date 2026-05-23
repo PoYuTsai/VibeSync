@@ -763,6 +763,29 @@ Deno.test({
 });
 
 Deno.test({
+  name: "final recommendation sanitizer preserves split reply segments",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(
+      source.includes(
+        "const normalizedRecommendationSegments =",
+      ),
+    );
+    assert(
+      source.includes("sanitizeReplySegments(recommendation.replySegments)"),
+    );
+    assert(
+      source.includes("const fallbackOptionSegments = sanitizeReplySegments"),
+    );
+    assert(source.includes("replySegments: safeRecommendationSegments"));
+  },
+});
+
+Deno.test({
   name: "quota refresh accepts client RevenueCat identity hints safely",
   permissions: { read: true },
   fn: async () => {

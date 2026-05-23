@@ -6135,9 +6135,32 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         : (allowedFeatures.find((feature) =>
           (normalizedReplies[feature]?.trim().length ?? 0) > 0
         ) ?? "extend");
+      const normalizedRecommendationSegments =
+        normalizedRecommendationPick === safeRecommendationPick
+          ? sanitizeReplySegments(recommendation.replySegments)
+          : [];
+      const normalizedReplyOptions = (result.replyOptions ?? {}) as Record<
+        string,
+        { messages?: unknown }
+      >;
+      const fallbackOptionSegments = sanitizeReplySegments(
+        normalizedReplyOptions[safeRecommendationPick]?.messages,
+      );
+      const safeRecommendationSegments =
+        normalizedRecommendationSegments.length > 0
+          ? normalizedRecommendationSegments
+          : fallbackOptionSegments;
+      const segmentRecommendationContent = safeRecommendationSegments
+        .map((segment) => segment.reply)
+        .filter((reply) => reply.trim().length > 0)
+        .join("\n")
+        .trim();
       const safeRecommendationContent = normalizeAiText(
         normalizedReplies[safeRecommendationPick],
-      );
+      ) || segmentRecommendationContent ||
+        (normalizedRecommendationPick === safeRecommendationPick
+          ? normalizeAiText(recommendation.content)
+          : "");
       const fallbackExplanation = buildFallbackRecommendationText(
         safeRecommendationPick,
       );
@@ -6151,6 +6174,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         psychology: normalizedRecommendationPsychology.length > 0
           ? normalizedRecommendationPsychology
           : fallbackExplanation.psychology,
+        replySegments: safeRecommendationSegments,
       };
     }
 
