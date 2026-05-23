@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// First-run hint dismissal flags for the analysis screen.
@@ -8,6 +9,10 @@ class AnalysisHintService {
   static const _editMessageKey = 'analysis_edit_message_hint_seen';
 
   static Future<bool> hasSeenEditMessage() async {
+    // Debug build：永遠當成沒看過，dogfood 階段可以反覆驗證 coach mark
+    // 觸發點而不用刪 app / 處理 SharedPreferences race。Release/TestFlight
+    // 不受影響，維持 first-run only 行為。
+    if (kDebugMode) return false;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_editMessageKey) ?? false;
   }
@@ -15,12 +20,5 @@ class AnalysisHintService {
   static Future<void> markEditMessageSeen() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_editMessageKey, true);
-  }
-
-  /// Debug-only：清除旗標，讓下次符合條件的 build 重新浮出 coach mark。
-  /// dogfood 階段重複驗證觸發點時用，production 不會呼叫到。
-  static Future<void> resetEditMessageSeen() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_editMessageKey);
   }
 }

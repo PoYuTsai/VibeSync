@@ -578,12 +578,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     WidgetsBinding.instance.addObserver(this);
     _messageFocusNode.addListener(_handleMessageInputFocus);
     _restorePersistedAnalysis();
-    // Debug build：每次進 analysis 頁清掉 coach mark hint 旗標，讓 dogfood
-    // 可以反覆驗證觸發點而不用每次刪 app 重灌。production/TestFlight 維持
-    // first-run only 行為。
-    if (kDebugMode) {
-      unawaited(AnalysisHintService.resetEditMessageSeen());
-    }
     // 不再自動分析，讓用戶手動點擊
   }
 
