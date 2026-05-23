@@ -742,10 +742,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// 首次看到對話 bubble 時浮出 coach mark，引導用戶長按 bubble 編輯訊息。
   /// 已讀取過或當前已有 overlay 顯示時 no-op。
-  Future<void> _maybeShowEditMessageCoachMark() async {
+  Future<void> _maybeShowEditMessageCoachMark({String? partnerId}) async {
     if (!mounted) return;
     if (_editMessageCoachMarkEntry != null) return;
-    if (await AnalysisHintService.hasSeenEditMessage()) return;
+    if (await AnalysisHintService.hasSeenEditMessage(partnerId: partnerId)) {
+      return;
+    }
     if (!mounted) return;
 
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
@@ -759,7 +761,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           if (_editMessageCoachMarkEntry == entry) {
             _editMessageCoachMarkEntry = null;
           }
-          await AnalysisHintService.markEditMessageSeen();
+          await AnalysisHintService.markEditMessageSeen(partnerId: partnerId);
         },
       ),
     );
@@ -3898,7 +3900,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (conversation.messages.length > _coachMarkLastSeenMessageCount) {
       _coachMarkLastSeenMessageCount = conversation.messages.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_maybeShowEditMessageCoachMark());
+        if (mounted) {
+          unawaited(
+            _maybeShowEditMessageCoachMark(partnerId: conversation.partnerId),
+          );
+        }
       });
     }
 
