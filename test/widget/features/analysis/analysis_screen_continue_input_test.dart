@@ -188,7 +188,8 @@ void main() {
         find.text('已修改已分析過的訊息，重新分析後會更新熱度與回覆建議。'),
         findsOneWidget,
       );
-      expect(find.text('重新分析'), findsOneWidget);
+      expect(find.text('已儲存，點重新分析更新結果。'), findsOneWidget);
+      expect(find.text('重新分析'), findsWidgets);
     });
 
     testWidgets(

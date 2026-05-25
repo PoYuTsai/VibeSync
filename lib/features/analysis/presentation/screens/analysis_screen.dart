@@ -631,7 +631,35 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (_lastAnalyzedMessageCount > 0) {
       return _lastAnalyzedMessageCount;
     }
-    return conversation.lastAnalyzedMessageCount ?? 0;
+    if (conversation.lastAnalyzedMessageCount != null) {
+      return conversation.lastAnalyzedMessageCount!;
+    }
+    final hasVisibleAnalysis = _enthusiasmScore != null ||
+        conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true;
+    return hasVisibleAnalysis ? conversation.messages.length : 0;
+  }
+
+  void _showEditedAnalyzedMessageSnackBar() {
+    if (!mounted) return;
+
+    final messenger = _scaffoldMessenger ?? ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('已儲存，點重新分析更新結果。'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: '重新分析',
+          onPressed: () {
+            if (_isAnalyzing) return;
+            unawaited(_runAnalysis());
+          },
+        ),
+      ),
+    );
   }
 
   void _restorePersistedAnalysis() {
@@ -841,6 +869,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _hasEditedAnalyzedMessage = true;
       }
     });
+    if (editedAnalyzedMessage) {
+      _showEditedAnalyzedMessageSnackBar();
+    }
   }
 
   /// 編輯訊息文字（供 OCR 錯字現場修正用）
@@ -933,6 +964,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _hasEditedAnalyzedMessage = true;
       }
     });
+    if (editedAnalyzedMessage) {
+      _showEditedAnalyzedMessageSnackBar();
+    }
   }
 
   /// 刪除訊息
