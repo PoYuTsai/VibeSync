@@ -720,13 +720,6 @@ class _CoachChatResultView extends ConsumerWidget {
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: '複製教練回覆',
-                icon: const Icon(Icons.copy_rounded, size: 18),
-                visualDensity: VisualDensity.compact,
-                color: AppColors.glassTextSecondary,
-                onPressed: () => _copyCoachAnswer(context),
-              ),
             ],
           ),
           if (question != null && question!.trim().isNotEmpty) ...[
@@ -932,21 +925,6 @@ class _CoachChatResultView extends ConsumerWidget {
     if (confirmed == true) {
       onForceAnswer();
     }
-  }
-
-  Future<void> _copyCoachAnswer(BuildContext context) async {
-    final parts = <String>[
-      result.headline,
-      result.answer,
-      '這輪卡點：${_frictionTypeLabel(result.frictionType)}',
-      '你現在卡在：${result.userState}',
-      '這次先做：${result.nextStep}',
-      if (result.suggestedLine != null) '可以這樣說：${result.suggestedLine}',
-      '邊界提醒：${result.boundaryReminder}',
-      if (result.needsReflection && result.reflectionQuestion != null)
-        '教練追問：${result.reflectionQuestion}',
-    ];
-    await _copyText(context, parts.join('\n'));
   }
 
   Future<void> _copyText(BuildContext context, String text) async {

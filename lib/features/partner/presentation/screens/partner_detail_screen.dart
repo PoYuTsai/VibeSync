@@ -668,9 +668,7 @@ class _PartnerNextStepCard extends StatelessWidget {
                 if (suggestion != null && suggestion != nextStep) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '可參考：$suggestion',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    '幫你接話：$suggestion',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.onBackgroundSecondary,
                       height: 1.35,
