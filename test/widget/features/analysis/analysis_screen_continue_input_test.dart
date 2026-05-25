@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,37 +7,46 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
+import '../conversation/_fakes/recording_conversation_write_controller.dart';
+
 Future<void> _pumpAnalysisScreen(
   WidgetTester tester, {
+  Conversation? conversation,
   List<Message>? messages,
+  ConversationWriteController? writeController,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final conversation = Conversation(
-    id: 'continue-input-test',
-    name: '小雲',
-    messages: messages ??
-        [
-          Message(
-            id: 'm1',
-            content: '昨天那家甜點不錯耶',
-            isFromMe: false,
-            timestamp: DateTime(2026, 5, 4),
-          ),
-        ],
-    createdAt: DateTime(2026, 5, 4),
-    updatedAt: DateTime(2026, 5, 4),
-  );
+  final testConversation = conversation ??
+      Conversation(
+        id: 'continue-input-test',
+        name: '小雲',
+        messages: messages ??
+            [
+              Message(
+                id: 'm1',
+                content: '昨天那家甜點不錯耶',
+                isFromMe: false,
+                timestamp: DateTime(2026, 5, 4),
+              ),
+            ],
+        createdAt: DateTime(2026, 5, 4),
+        updatedAt: DateTime(2026, 5, 4),
+      );
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         conversationProvider('continue-input-test')
-            .overrideWithValue(conversation),
+            .overrideWithValue(testConversation),
+        if (writeController != null)
+          conversationWriteControllerProvider
+              .overrideWith(() => writeController),
       ],
       child: const MaterialApp(
         home: AnalysisScreen(conversationId: 'continue-input-test'),
@@ -127,6 +138,57 @@ void main() {
       expect(field.style?.color, AppColors.glassTextPrimary);
       expect(field.decoration?.filled, isTrue);
       expect(field.decoration?.fillColor, Colors.white);
+    });
+
+    testWidgets('editing an analyzed bubble shows a reanalysis call to action',
+        (tester) async {
+      final conversation = Conversation(
+        id: 'continue-input-test',
+        name: '小雲',
+        messages: [
+          Message(
+            id: 'm1',
+            content: 'Original analyzed text',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 4),
+          ),
+        ],
+        createdAt: DateTime(2026, 5, 4),
+        updatedAt: DateTime(2026, 5, 4),
+        lastAnalyzedMessageCount: 1,
+        lastAnalysisSnapshotJson: jsonEncode({
+          'enthusiasm': {'score': 65},
+        }),
+      );
+
+      await _pumpAnalysisScreen(
+        tester,
+        conversation: conversation,
+        writeController: RecordingConversationWriteController(),
+      );
+
+      final bubble = find.text('Original analyzed text').first;
+      await tester.ensureVisible(bubble);
+      await tester.longPress(bubble);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tap(find.text('編輯文字'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final fieldFinder = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(fieldFinder, 'Updated analyzed text');
+      await tester.tap(find.widgetWithText(TextButton, '儲存'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        find.text('已修改已分析過的訊息，重新分析後會更新熱度與回覆建議。'),
+        findsOneWidget,
+      );
+      expect(find.text('重新分析'), findsOneWidget);
     });
 
     testWidgets(

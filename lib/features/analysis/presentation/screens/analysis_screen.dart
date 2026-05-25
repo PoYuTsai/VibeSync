@@ -129,6 +129,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _lastManualAddedMessageId;
   String? _lastManualAddedContent;
   bool? _lastManualAddedIsFromMe;
+  bool _hasEditedAnalyzedMessage = false;
   int _coachChatFocusRequest = 0;
 
   // 首次看到對話 bubble 時提示用戶長按可編輯。
@@ -626,6 +627,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     });
   }
 
+  int _effectiveLastAnalyzedMessageCount(Conversation conversation) {
+    if (_lastAnalyzedMessageCount > 0) {
+      return _lastAnalyzedMessageCount;
+    }
+    return conversation.lastAnalyzedMessageCount ?? 0;
+  }
+
   void _restorePersistedAnalysis() {
     final repository = ref.read(conversationRepositoryProvider);
     final conversation = repository.getConversation(widget.conversationId);
@@ -805,6 +813,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       Conversation conversation, Message message) async {
     final index = conversation.messages.indexWhere((m) => m.id == message.id);
     if (index == -1) return;
+    final analyzedCount = _effectiveLastAnalyzedMessageCount(conversation);
+    final editedAnalyzedMessage = index < analyzedCount &&
+        (_enthusiasmScore != null ||
+            conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true);
 
     conversation.messages[index] = Message(
       id: message.id,
@@ -823,6 +835,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     setState(() {
       if (_lastManualAddedMessageId == message.id) {
         _lastManualAddedIsFromMe = !message.isFromMe;
+      }
+      if (editedAnalyzedMessage) {
+        _lastAnalyzedMessageCount = analyzedCount;
+        _hasEditedAnalyzedMessage = true;
       }
     });
   }
@@ -888,6 +904,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     final index = conversation.messages.indexWhere((m) => m.id == message.id);
     if (index == -1) return;
+    final analyzedCount = _effectiveLastAnalyzedMessageCount(conversation);
+    final editedAnalyzedMessage = index < analyzedCount &&
+        (_enthusiasmScore != null ||
+            conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true);
 
     conversation.messages[index] = Message(
       id: message.id,
@@ -907,6 +927,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (_lastManualAddedMessageId == message.id) {
         _lastManualAddedContent = edited;
         _lastManualAddedIsFromMe = message.isFromMe;
+      }
+      if (editedAnalyzedMessage) {
+        _lastAnalyzedMessageCount = analyzedCount;
+        _hasEditedAnalyzedMessage = true;
       }
     });
   }
@@ -2582,6 +2606,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
       // 記錄已分析的訊息數量
       _lastAnalyzedMessageCount = conversation.messages.length;
+      _hasEditedAnalyzedMessage = false;
 
       // 分析完成後清除殘留的 SnackBar（例如識別完成後的匯入提示）
       if (mounted) {
@@ -5723,6 +5748,42 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 ),
                               ),
                             ],
+                          ],
+
+                          if (_hasEditedAnalyzedMessage &&
+                              conversation.messages.length <=
+                                  _lastAnalyzedMessageCount) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.warning.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color:
+                                      AppColors.warning.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.update,
+                                      color: AppColors.warning),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '已修改已分析過的訊息，重新分析後會更新熱度與回覆建議。',
+                                      style: AppTypography.bodyMedium,
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed:
+                                        _isAnalyzing ? null : _runAnalysis,
+                                    icon: const Icon(Icons.refresh, size: 18),
+                                    label: const Text('重新分析'),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
 
                           // 新訊息提示 (根據最後一則是誰來顯示不同內容)
