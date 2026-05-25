@@ -140,10 +140,12 @@ class PartnerDetailScreen extends ConsumerWidget {
                   hasConversations: conversations.isNotEmpty,
                 ),
                 const SizedBox(height: 16),
-                CoachFollowUpSection(
-                  partnerId: partnerId,
-                  onTelemetry: _logCoachFollowUpTelemetry,
-                  onQuotaExceeded: () async => context.push('/paywall'),
+                _PartnerDetailSection(
+                  child: CoachFollowUpSection(
+                    partnerId: partnerId,
+                    onTelemetry: _logCoachFollowUpTelemetry,
+                    onQuotaExceeded: () async => context.push('/paywall'),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 PartnerStyleEntryCard(

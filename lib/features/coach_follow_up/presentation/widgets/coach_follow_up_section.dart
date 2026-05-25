@@ -412,15 +412,18 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
 class _StatusText extends StatelessWidget {
   final String text;
   final Color color;
+  final bool isLoading;
 
   const _StatusText._({
     required this.text,
     required this.color,
+    this.isLoading = false,
   });
 
   factory _StatusText.loading() => const _StatusText._(
         text: '正在產生跟進建議...',
-        color: AppColors.glassTextSecondary,
+        color: AppColors.ctaStart,
+        isLoading: true,
       );
 
   factory _StatusText.error(Object error) {
@@ -438,11 +441,42 @@ class _StatusText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
+    final label = Text(
       text,
-      style: AppTypography.bodySmall.copyWith(
+      style: AppTypography.bodyMedium.copyWith(
         color: color,
+        fontWeight: FontWeight.w600,
         height: 1.35,
+      ),
+    );
+
+    if (!isLoading) {
+      return label;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.ctaStart.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.ctaStart.withValues(alpha: 0.32),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: label),
+        ],
       ),
     );
   }
