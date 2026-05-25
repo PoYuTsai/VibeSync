@@ -452,12 +452,12 @@ class PartnerDetailScreen extends ConsumerWidget {
 
 class _PartnerLatestInsight {
   final String? nextStep;
-  final String? recentSuggestion;
+  final String? recentInsight;
   final DateTime? analyzedAt;
 
   const _PartnerLatestInsight({
     this.nextStep,
-    this.recentSuggestion,
+    this.recentInsight,
     this.analyzedAt,
   });
 
@@ -476,16 +476,20 @@ class _PartnerLatestInsight {
         final result = AnalysisResult.fromJson(
           decoded.map((key, value) => MapEntry(key.toString(), value)),
         );
+        final hint = result.coachActionHint;
+        final hintInsight = (hint != null && hint.isUsable)
+            ? '她丟出的球：${hint.catchablePoint}。${hint.read}'
+            : null;
         return _PartnerLatestInsight(
           nextStep: _firstNonEmpty([
             result.gameStage.nextStep,
             result.strategy,
             result.recommendation.reason,
           ]),
-          recentSuggestion: _firstNonEmpty([
-            result.recommendation.content,
+          recentInsight: _firstNonEmpty([
+            hintInsight,
             result.strategy,
-            result.recommendation.reason,
+            result.psychology.subtext,
           ]),
           analyzedAt: conversation.updatedAt,
         );
@@ -627,7 +631,7 @@ class _PartnerNextStepCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final nextStep = latestInsight.nextStep ??
         (hasConversations ? '先分析最近一段互動，讓這裡變成關係下一步。' : '先新增第一段互動紀錄，再回來看下一步。');
-    final suggestion = latestInsight.recentSuggestion;
+    final insight = latestInsight.recentInsight;
 
     return _PartnerDetailSection(
       child: Row(
@@ -665,10 +669,10 @@ class _PartnerNextStepCard extends StatelessWidget {
                     height: 1.42,
                   ),
                 ),
-                if (suggestion != null && suggestion != nextStep) ...[
+                if (insight != null && insight != nextStep) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '幫你接話：$suggestion',
+                    '本回合怎麼接：$insight',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.onBackgroundSecondary,
                       height: 1.35,
