@@ -192,6 +192,42 @@ void main() {
       expect(find.text('重新分析'), findsWidgets);
     });
 
+    testWidgets('editing any bubble shows an immediate reanalysis snackbar',
+        (tester) async {
+      await _pumpAnalysisScreen(
+        tester,
+        messages: [
+          Message(
+            id: 'm1',
+            content: 'Draft text before analysis',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 4),
+          ),
+        ],
+        writeController: RecordingConversationWriteController(),
+      );
+
+      final bubble = find.text('Draft text before analysis').first;
+      await tester.ensureVisible(bubble);
+      await tester.longPress(bubble);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tap(find.text('編輯文字'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final fieldFinder = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(fieldFinder, 'Edited draft text');
+      await tester.tap(find.widgetWithText(TextButton, '儲存'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('已儲存，點重新分析更新結果。'), findsOneWidget);
+      expect(find.text('重新分析'), findsWidgets);
+    });
+
     testWidgets(
         'shows a reminder when tapping her-message button with empty input',
         (tester) async {

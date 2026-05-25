@@ -842,9 +842,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final index = conversation.messages.indexWhere((m) => m.id == message.id);
     if (index == -1) return;
     final analyzedCount = _effectiveLastAnalyzedMessageCount(conversation);
-    final editedAnalyzedMessage = index < analyzedCount &&
-        (_enthusiasmScore != null ||
-            conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true);
+    final editedAnalyzedMessage = index < analyzedCount;
 
     conversation.messages[index] = Message(
       id: message.id,
@@ -869,9 +867,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _hasEditedAnalyzedMessage = true;
       }
     });
-    if (editedAnalyzedMessage) {
-      _showEditedAnalyzedMessageSnackBar();
-    }
+    _showEditedAnalyzedMessageSnackBar();
   }
 
   /// 編輯訊息文字（供 OCR 錯字現場修正用）
@@ -936,9 +932,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final index = conversation.messages.indexWhere((m) => m.id == message.id);
     if (index == -1) return;
     final analyzedCount = _effectiveLastAnalyzedMessageCount(conversation);
-    final editedAnalyzedMessage = index < analyzedCount &&
-        (_enthusiasmScore != null ||
-            conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true);
+    final editedAnalyzedMessage = index < analyzedCount;
 
     conversation.messages[index] = Message(
       id: message.id,
@@ -964,9 +958,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _hasEditedAnalyzedMessage = true;
       }
     });
-    if (editedAnalyzedMessage) {
-      _showEditedAnalyzedMessageSnackBar();
-    }
+    _showEditedAnalyzedMessageSnackBar();
   }
 
   /// 刪除訊息
