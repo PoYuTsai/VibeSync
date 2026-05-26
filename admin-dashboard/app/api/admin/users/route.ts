@@ -244,10 +244,11 @@ export async function GET() {
   );
 
   const paidUsers = tierCounts.starter + tierCounts.essential;
+  const audienceTypeForUser = (user: DbUser) =>
+    normalizeAudienceType(labelByUserId.get(user.id)?.audience_type);
   const audienceCounts = realUsers.reduce<Record<AudienceType, number>>(
     (counts, user) => {
-      const label = labelByUserId.get(user.id);
-      const audienceType = normalizeAudienceType(label?.audience_type);
+      const audienceType = audienceTypeForUser(user);
       counts[audienceType] += 1;
       return counts;
     },
@@ -257,6 +258,12 @@ export async function GET() {
       production: 0,
     }
   );
+  const postLaunchUsers = realUsers.filter(
+    (user) => audienceTypeForUser(user) !== "prelaunch_sandbox"
+  );
+  const postLaunchPaidUsers = postLaunchUsers.filter(
+    (user) => effectiveTier(subscriptionByUserId.get(user.id)) !== "free"
+  ).length;
 
   return NextResponse.json({
     users: enrichedUsers,
@@ -270,6 +277,12 @@ export async function GET() {
       conversionRate:
         realUsers.length > 0
           ? Math.round((paidUsers / realUsers.length) * 100)
+          : 0,
+      postLaunchTotal: postLaunchUsers.length,
+      postLaunchPaidUsers,
+      postLaunchConversionRate:
+        postLaunchUsers.length > 0
+          ? Math.round((postLaunchPaidUsers / postLaunchUsers.length) * 100)
           : 0,
       tiers: tierCounts,
       audiences: audienceCounts,

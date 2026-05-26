@@ -97,7 +97,7 @@ export default function ActivityPage() {
         <div>
           <h1 className="text-3xl font-bold">用戶活動</h1>
           <p className="mt-1 text-sm text-gray-500">
-            以 ai_logs 的實際 user_id 活動計算 DAU / WAU / MAU，並排除 test_users。
+            看有多少人真的回來用 VibeSync。這裡用 AI 功能使用紀錄計算，並排除 test_users。
           </p>
         </div>
         <Button
@@ -121,63 +121,82 @@ export default function ActivityPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              今日 DAU
+              今日活躍 DAU
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.todayDAU}</div>
+            <p className="text-xs text-gray-500">今天至少用過一次 AI 功能</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              平均 DAU
+              平均每日活躍
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.avgDAU}</div>
-            <p className="text-xs text-gray-500">近 30 天實際資料</p>
+            <p className="text-xs text-gray-500">近 30 天平均每天回來幾人</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              峰值 DAU
+              單日最高活躍
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
               {summary.peakDAU}
             </div>
+            <p className="text-xs text-gray-500">近 30 天最多的一天</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              實際 WAU
+              近 7 天活躍 WAU
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.wau}</div>
-            <p className="text-xs text-gray-500">近 7 天 distinct users</p>
+            <p className="text-xs text-gray-500">這週有回來使用的人數</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              實際 MAU
+              近 30 天活躍 MAU
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summary.mau}</div>
-            <p className="text-xs text-gray-500">近 30 天 distinct users</p>
+            <p className="text-xs text-gray-500">這個月有回來使用的人數</p>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardContent className="grid gap-3 text-sm text-gray-600 md:grid-cols-3">
+          <div>
+            <div className="font-semibold text-gray-900">DAU 看今天熱不熱</div>
+            <p className="mt-1">適合看發文、廣告、朋友測試後，當天有沒有真的啟動使用。</p>
+          </div>
+          <div>
+            <div className="font-semibold text-gray-900">WAU 看這週有沒有回來</div>
+            <p className="mt-1">比 DAU 穩一點，適合早期用來看朋友測試或小流量。</p>
+          </div>
+          <div>
+            <div className="font-semibold text-gray-900">MAU 看整體活躍盤</div>
+            <p className="mt-1">之後行銷放量時，用來看這個月真正留下多少活躍用戶。</p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
