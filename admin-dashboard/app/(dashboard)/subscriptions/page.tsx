@@ -1,113 +1,134 @@
-// app/(dashboard)/subscriptions/page.tsx
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/lib/supabase";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCcw } from "lucide-react";
 import {
-  PieChart,
-  Pie,
   Cell,
-  ResponsiveContainer,
   Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
   Tooltip,
 } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+type Tier = "free" | "starter" | "essential";
 
 interface TierStats {
-  tier: string;
+  tier: Tier;
   count: number;
   percentage: number;
 }
 
-const TIER_COLORS: Record<string, string> = {
+interface SubscriptionTotals {
+  totalUsers: number;
+  activePaid: number;
+  cancelled: number;
+  expired: number;
+  conversionRate: number;
+}
+
+interface SubscriptionsResponse {
+  totals: SubscriptionTotals;
+  tierStats: TierStats[];
+  error?: string;
+}
+
+const emptyTotals: SubscriptionTotals = {
+  totalUsers: 0,
+  activePaid: 0,
+  cancelled: 0,
+  expired: 0,
+  conversionRate: 0,
+};
+
+const tierLabels: Record<Tier, string> = {
+  free: "Free",
+  starter: "Starter",
+  essential: "Essential",
+};
+
+const tierColors: Record<Tier, string> = {
   free: "#9CA3AF",
-  starter: "#3B82F6",
-  essential: "#8B5CF6",
+  starter: "#2563EB",
+  essential: "#7C3AED",
 };
 
 export default function SubscriptionsPage() {
   const [tierStats, setTierStats] = useState<TierStats[]>([]);
+  const [totals, setTotals] = useState<SubscriptionTotals>(emptyTotals);
   const [loading, setLoading] = useState(true);
-  const [totals, setTotals] = useState({
-    active: 0,
-    churned: 0,
-    conversionRate: 0,
-  });
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchSubscriptions() {
-      try {
-        // 取得各 tier 用戶數
-        const { data: subs } = await supabase
-          .from("real_subscriptions")
-          .select("tier, status");
+  const fetchSubscriptions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-        const { count: totalUsers } = await supabase
-          .from("real_users")
-          .select("*", { count: "exact", head: true });
+    try {
+      const response = await fetch("/api/admin/subscriptions", {
+        credentials: "same-origin",
+      });
+      const payload = (await response.json()) as SubscriptionsResponse;
 
-        const activeSubs = subs?.filter((s) => s.status === "active") || [];
-        const churnedSubs = subs?.filter((s) => s.status === "cancelled") || [];
-
-        // 計算 tier 分佈
-        const tierCounts: Record<string, number> = {
-          free: (totalUsers || 0) - activeSubs.length,
-          starter: 0,
-          essential: 0,
-        };
-
-        activeSubs.forEach((sub) => {
-          if (sub.tier in tierCounts) {
-            tierCounts[sub.tier]++;
-          }
-        });
-
-        const total = Object.values(tierCounts).reduce((a, b) => a + b, 0);
-        const stats = Object.entries(tierCounts).map(([tier, count]) => ({
-          tier: tier.charAt(0).toUpperCase() + tier.slice(1),
-          count,
-          percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-        }));
-
-        setTierStats(stats);
-        setTotals({
-          active: activeSubs.length,
-          churned: churnedSubs.length,
-          conversionRate:
-            totalUsers && totalUsers > 0
-              ? Math.round((activeSubs.length / totalUsers) * 100)
-              : 0,
-        });
-      } catch (error) {
-        console.error("Failed to fetch subscriptions:", error);
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error(payload.error ?? "讀取訂閱資料失敗");
       }
-    }
 
-    fetchSubscriptions();
+      setTierStats(payload.tierStats);
+      setTotals(payload.totals);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "讀取失敗");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const pieData = tierStats.map((t) => ({
-    name: t.tier,
-    value: t.count,
+  useEffect(() => {
+    void fetchSubscriptions();
+  }, [fetchSubscriptions]);
+
+  const pieData = tierStats.map((tier) => ({
+    name: tierLabels[tier.tier],
+    tier: tier.tier,
+    value: tier.count,
   }));
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">訂閱</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">訂閱</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            以 Supabase subscriptions 的 active paid tier 作為目前方案來源。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void fetchSubscriptions()}
+          disabled={loading}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          重新整理
+        </Button>
+      </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              活躍訂閱
+              付費訂閱
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totals.active}</div>
+            <div className="text-2xl font-bold">{totals.activePaid}</div>
             <p className="text-xs text-gray-500">Starter + Essential</p>
           </CardContent>
         </Card>
@@ -119,18 +140,29 @@ export default function SubscriptionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totals.conversionRate}%</div>
-            <p className="text-xs text-gray-500">Free → Paid</p>
+            <p className="text-xs text-gray-500">付費 / 總用戶</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              流失數
+              已取消
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totals.churned}</div>
-            <p className="text-xs text-gray-500">已取消訂閱</p>
+            <div className="text-2xl font-bold">{totals.cancelled}</div>
+            <p className="text-xs text-gray-500">status = cancelled</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              已過期
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totals.expired}</div>
+            <p className="text-xs text-gray-500">status = expired</p>
           </CardContent>
         </Card>
       </div>
@@ -138,12 +170,12 @@ export default function SubscriptionsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>訂閱分佈</CardTitle>
+            <CardTitle>方案分布</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+              <div className="flex h-64 items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
               </div>
             ) : (
               <div className="h-64">
@@ -158,11 +190,8 @@ export default function SubscriptionsPage() {
                       paddingAngle={5}
                       dataKey="value"
                     >
-                      {pieData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={TIER_COLORS[entry.name.toLowerCase()] || "#ccc"}
-                        />
+                      {pieData.map((entry) => (
+                        <Cell key={entry.tier} fill={tierColors[entry.tier]} />
                       ))}
                     </Pie>
                     <Tooltip />
@@ -183,33 +212,34 @@ export default function SubscriptionsPage() {
               {tierStats.map((tier) => (
                 <div key={tier.tier} className="flex items-center gap-4">
                   <div
-                    className="w-3 h-3 rounded-full"
-                    style={{
-                      backgroundColor:
-                        TIER_COLORS[tier.tier.toLowerCase()] || "#ccc",
-                    }}
-                  ></div>
+                    className="h-3 w-3 rounded-full"
+                    style={{ backgroundColor: tierColors[tier.tier] }}
+                  />
                   <div className="flex-1">
                     <div className="flex justify-between">
-                      <span className="font-medium">{tier.tier}</span>
+                      <span className="font-medium">{tierLabels[tier.tier]}</span>
                       <span className="text-gray-500">{tier.count} 人</span>
                     </div>
-                    <div className="mt-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-100">
                       <div
                         className="h-full rounded-full"
                         style={{
                           width: `${tier.percentage}%`,
-                          backgroundColor:
-                            TIER_COLORS[tier.tier.toLowerCase()] || "#ccc",
+                          backgroundColor: tierColors[tier.tier],
                         }}
-                      ></div>
+                      />
                     </div>
                   </div>
-                  <span className="text-sm text-gray-500 w-12 text-right">
+                  <span className="w-12 text-right text-sm text-gray-500">
                     {tier.percentage}%
                   </span>
                 </div>
               ))}
+              {tierStats.length === 0 && !loading ? (
+                <div className="py-8 text-center text-gray-500">
+                  目前沒有訂閱資料
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
