@@ -98,9 +98,9 @@ export default function CostsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">成本</h1>
+          <h1 className="text-3xl font-bold">AI 成本明細</h1>
           <p className="mt-1 text-sm text-gray-500">
-            以 {source} 計算 AI 成本與營運毛利；手動共同成本請在財務月結頁登錄。
+            以 {source} 計算 Claude / token usage 成本；手動共同成本請在財務月結頁登錄。
           </p>
         </div>
         <Button

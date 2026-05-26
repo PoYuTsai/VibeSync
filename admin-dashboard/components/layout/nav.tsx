@@ -8,31 +8,28 @@ import {
   Activity,
   AlertCircle,
   BookOpen,
-  CreditCard,
-  DollarSign,
   ExternalLink,
   Globe2,
   HandCoins,
-  KeyRound,
   LayoutDashboard,
   LogOut,
   TrendingUp,
   Users,
-  Zap,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "總覽", icon: LayoutDashboard },
   { href: "/users", label: "用戶", icon: Users },
-  { href: "/subscriptions", label: "訂閱", icon: CreditCard },
-  { href: "/revenue", label: "收入", icon: TrendingUp },
-  { href: "/costs", label: "成本", icon: DollarSign },
-  { href: "/finance", label: "財務月結", icon: HandCoins },
-  { href: "/articles", label: "文章專區", icon: BookOpen },
-  { href: "/ai-health", label: "AI 健康", icon: Zap },
-  { href: "/errors", label: "錯誤追蹤", icon: AlertCircle },
+  { href: "/revenue", label: "營收", icon: TrendingUp, aliases: ["/subscriptions"] },
   { href: "/activity", label: "用戶活動", icon: Activity },
-  { href: "/auth-diagnostics", label: "Auth 診斷", icon: KeyRound },
+  { href: "/finance", label: "財務月結", icon: HandCoins, aliases: ["/costs"] },
+  { href: "/articles", label: "文章專區", icon: BookOpen },
+  {
+    href: "/system",
+    label: "系統狀態",
+    icon: AlertCircle,
+    aliases: ["/ai-health", "/errors", "/auth-diagnostics"],
+  },
 ];
 
 export function Nav() {
@@ -77,7 +74,8 @@ export function Nav() {
       <ul className="flex-1 space-y-1.5">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive =
+            pathname === item.href || item.aliases?.includes(pathname);
 
           return (
             <li key={item.href}>

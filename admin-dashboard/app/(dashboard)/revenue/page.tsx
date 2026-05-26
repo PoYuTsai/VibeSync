@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCcw } from "lucide-react";
+import { CreditCard, HandCoins, RefreshCcw } from "lucide-react";
 import {
   CartesianGrid,
   Legend,
@@ -92,21 +93,35 @@ export default function RevenuePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">收入</h1>
+          <h1 className="text-3xl font-bold">營收</h1>
           <p className="mt-1 text-sm text-gray-500">
             以 {source} 為營運觀察來源；正式月結仍以 App Store / Google Play
             proceeds 為準。
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => void fetchRevenue()}
-          disabled={loading}
-        >
-          <RefreshCcw className="h-4 w-4" />
-          重新整理
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild type="button" variant="outline">
+            <Link href="/subscriptions">
+              <CreditCard className="h-4 w-4" />
+              訂閱狀態
+            </Link>
+          </Button>
+          <Button asChild type="button" variant="outline">
+            <Link href="/finance">
+              <HandCoins className="h-4 w-4" />
+              月結
+            </Link>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void fetchRevenue()}
+            disabled={loading}
+          >
+            <RefreshCcw className="h-4 w-4" />
+            重新整理
+          </Button>
+        </div>
       </div>
 
       {error ? (
