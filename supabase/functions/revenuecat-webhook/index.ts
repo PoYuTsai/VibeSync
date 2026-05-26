@@ -42,6 +42,33 @@ function normalizeExpirationAt(value: unknown): string | null {
   return new Date(value).toISOString();
 }
 
+function inferBillingPeriod(productId: string): string | null {
+  const normalized = productId.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("quarter") || normalized.includes("p3m")) {
+    return "quarterly";
+  }
+  if (normalized.includes("monthly") || normalized.includes("p1m")) {
+    return "monthly";
+  }
+  return "unknown";
+}
+
+function buildSubscriptionProductMetadata(
+  productId: string,
+  event: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalizedProductId = productId.trim();
+  return {
+    active_product_id: normalizedProductId || null,
+    billing_period: inferBillingPeriod(normalizedProductId),
+    store: typeof event.store === "string" ? event.store.trim() : null,
+    revenuecat_environment: typeof event.environment === "string"
+      ? event.environment.trim()
+      : null,
+  };
+}
+
 function extractStringList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -318,6 +345,7 @@ Deno.serve(async (req) => {
           tier: newTier,
           status: "active",
           expires_at: expiresAt,
+          ...buildSubscriptionProductMetadata(effectiveProductId, event),
         };
         console.log(`Upgrading user ${app_user_id} to ${newTier}`);
         break;
@@ -341,6 +369,7 @@ Deno.serve(async (req) => {
             tier: newTier,
             status: "active",
             expires_at: expiresAt,
+            ...buildSubscriptionProductMetadata(effectiveProductId, event),
           };
           console.log(
             `Applying PRODUCT_CHANGE upgrade for user ${app_user_id}: ${currentTier} -> ${newTier}`,
@@ -351,6 +380,7 @@ Deno.serve(async (req) => {
             tier: currentTier,
             status: "active",
             expires_at: expiresAt,
+            ...buildSubscriptionProductMetadata(product_id, event),
           };
           console.log(
             `Ignoring PRODUCT_CHANGE downgrade until renewal for user ${app_user_id}: ${currentTier} -> ${newTier}`,
@@ -366,6 +396,7 @@ Deno.serve(async (req) => {
           tier: newTier,
           status: "expired",
           expires_at: expiresAt,
+          ...buildSubscriptionProductMetadata(effectiveProductId, event),
           monthly_messages_used: 0,
           daily_messages_used: 0,
           monthly_reset_at: nowIso,
@@ -394,6 +425,7 @@ Deno.serve(async (req) => {
           tier: preservedTier,
           status: "active",
           expires_at: expiresAt,
+          ...buildSubscriptionProductMetadata(effectiveProductId, event),
         };
         console.log(
           `Billing issue for user ${app_user_id}; preserving ${preservedTier} quota usage until expiration`,
@@ -412,6 +444,7 @@ Deno.serve(async (req) => {
           tier: newTier,
           status: "cancelled",
           expires_at: expiresAt,
+          ...buildSubscriptionProductMetadata(effectiveProductId, event),
         };
         break;
 
@@ -466,6 +499,7 @@ Deno.serve(async (req) => {
               tier: transferTier,
               status: "active",
               expires_at: expiresAt,
+              ...buildSubscriptionProductMetadata(effectiveProductId, event),
             })
             .in("user_id", transferredTo);
 
@@ -483,6 +517,7 @@ Deno.serve(async (req) => {
               tier: transferTier,
               status: "active",
               expires_at: expiresAt,
+              ...buildSubscriptionProductMetadata(effectiveProductId, event),
               monthly_messages_used: 0,
               daily_messages_used: 0,
               daily_reset_at: nowIso,
@@ -511,6 +546,7 @@ Deno.serve(async (req) => {
               tier: "free",
               status: "expired",
               expires_at: expiresAt ?? nowIso,
+              ...buildSubscriptionProductMetadata(effectiveProductId, event),
               monthly_messages_used: 0,
               daily_messages_used: 0,
               monthly_reset_at: nowIso,

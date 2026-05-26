@@ -127,6 +127,18 @@ function highestActiveProductId(productIds: string[]): string | null {
   return ranked[0]?.productId ?? null;
 }
 
+function inferBillingPeriod(productId: string | null | undefined): string | null {
+  const normalized = productId?.trim().toLowerCase() ?? "";
+  if (!normalized) return null;
+  if (normalized.includes("quarter") || normalized.includes("p3m")) {
+    return "quarterly";
+  }
+  if (normalized.includes("monthly") || normalized.includes("p1m")) {
+    return "monthly";
+  }
+  return "unknown";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -236,7 +248,7 @@ serve(async (req) => {
     const { data: existingSub, error: existingError } = await supabase
       .from("subscriptions")
       .select(
-        "user_id, tier, monthly_messages_used, daily_messages_used, expires_at",
+        "user_id, tier, monthly_messages_used, daily_messages_used, expires_at, active_product_id, billing_period",
       )
       .eq("user_id", user.id)
       .maybeSingle();
@@ -303,9 +315,13 @@ serve(async (req) => {
       tierPreservedReason = "paid_tier_free_snapshot_guard";
     }
 
-    const finalActiveProductId = finalTier === revenueCatTier
-      ? revenueCatProductId
-      : null;
+    const existingProductId =
+      typeof existingSub?.active_product_id === "string"
+        ? existingSub.active_product_id
+        : null;
+    const finalActiveProductId = finalTier === "free"
+      ? null
+      : revenueCatProductId ?? existingProductId;
 
     const limits = TIER_LIMITS[finalTier] ?? TIER_LIMITS.free;
     // A confirmed paid upgrade starts the new plan with a fresh usage bucket.
@@ -322,6 +338,8 @@ serve(async (req) => {
     const updatePayload: Record<string, unknown> = {
       tier: finalTier,
       status: finalTier == "free" ? "active" : "active",
+      active_product_id: finalActiveProductId,
+      billing_period: inferBillingPeriod(finalActiveProductId),
     };
     if (shouldResetUsage) {
       updatePayload.monthly_messages_used = 0;
@@ -342,7 +360,7 @@ serve(async (req) => {
         daily_reset_at: nowIso,
         started_at: nowIso,
       }).select(
-        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at",
+        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at, active_product_id, billing_period",
       ).single();
 
       if (error) {
@@ -354,7 +372,7 @@ serve(async (req) => {
       const { data, error } = await supabase.from("subscriptions").update(
         updatePayload,
       ).eq("user_id", user.id).select(
-        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at",
+        "tier, monthly_messages_used, daily_messages_used, monthly_reset_at, daily_reset_at, expires_at, active_product_id, billing_period",
       ).single();
 
       if (error) {
@@ -370,6 +388,8 @@ serve(async (req) => {
       previousTier,
       revenueCatTier,
       activeProductId: finalActiveProductId,
+      billingPeriod: syncedRow?.billing_period ??
+        inferBillingPeriod(finalActiveProductId),
       matchedRevenueCatAppUserId,
       revenueCatAppUserIdsChecked: revenueCatCandidates.length,
       expectedTier,

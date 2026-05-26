@@ -14,6 +14,12 @@ import {
 } from "@/components/ui/table";
 
 type Tier = "free" | "starter" | "essential";
+type AudienceType =
+  | "unknown"
+  | "prelaunch_sandbox"
+  | "internal"
+  | "friend_test"
+  | "production";
 
 interface AdminUser {
   id: string;
@@ -25,9 +31,14 @@ interface AdminUser {
   subscription_tier: Tier;
   raw_subscription_tier: Tier;
   subscription_status: string;
+  active_product_id: string | null;
+  billing_period: string;
   expires_at: string | null;
   monthly_messages_used: number;
   daily_messages_used: number;
+  audience_type: AudienceType;
+  audience_notes: string | null;
+  audience_updated_at: string | null;
 }
 
 interface UserStats {
@@ -37,6 +48,7 @@ interface UserStats {
   paidUsers: number;
   conversionRate: number;
   tiers: Record<Tier, number>;
+  audiences: Record<AudienceType, number>;
 }
 
 interface UsersResponse {
@@ -52,6 +64,13 @@ const emptyStats: UserStats = {
   paidUsers: 0,
   conversionRate: 0,
   tiers: { free: 0, starter: 0, essential: 0 },
+  audiences: {
+    unknown: 0,
+    prelaunch_sandbox: 0,
+    internal: 0,
+    friend_test: 0,
+    production: 0,
+  },
 };
 
 const tierLabels: Record<Tier, string> = {
@@ -65,6 +84,28 @@ const tierBadgeClasses: Record<Tier, string> = {
   starter: "bg-blue-100 text-blue-700",
   essential: "bg-purple-100 text-purple-700",
 };
+
+const billingPeriodLabels: Record<string, string> = {
+  monthly: "月繳",
+  quarterly: "季繳",
+  unknown: "週期未同步",
+};
+
+const audienceLabels: Record<AudienceType, string> = {
+  unknown: "未分類",
+  prelaunch_sandbox: "上線前沙箱",
+  internal: "內部測試",
+  friend_test: "朋友測試",
+  production: "正式用戶",
+};
+
+const audienceOptions: AudienceType[] = [
+  "prelaunch_sandbox",
+  "internal",
+  "friend_test",
+  "production",
+  "unknown",
+];
 
 const statusLabels: Record<string, string> = {
   active: "有效",
@@ -94,6 +135,17 @@ function formatUsage(user: AdminUser): string {
   return `${user.monthly_messages_used} / ${user.daily_messages_used}`;
 }
 
+function formatPlan(user: AdminUser): string {
+  if (user.subscription_tier === "free") {
+    return "Free";
+  }
+
+  const tier = tierLabels[user.subscription_tier];
+  const period = billingPeriodLabels[user.billing_period] ??
+    billingPeriodLabels.unknown;
+  return `${tier} ${period}`;
+}
+
 function TierBadge({ tier }: { tier: Tier }) {
   return (
     <span
@@ -108,6 +160,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [stats, setStats] = useState<UserStats>(emptyStats);
   const [loading, setLoading] = useState(true);
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
@@ -137,6 +190,69 @@ export default function UsersPage() {
     void fetchUsers();
   }, [fetchUsers]);
 
+  const updateAudienceType = async (
+    userId: string,
+    audienceType: AudienceType
+  ) => {
+    setSavingUserId(userId);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, audienceType }),
+      });
+      const payload = (await response.json()) as {
+        label?: {
+          audience_type: AudienceType;
+          notes: string | null;
+          updated_at: string | null;
+        };
+        error?: string;
+      };
+
+      if (!response.ok || !payload.label) {
+        throw new Error(payload.error ?? "更新用戶分類失敗");
+      }
+
+      setUsers((current) =>
+        current.map((user) =>
+          user.id === userId
+            ? {
+                ...user,
+                audience_type: payload.label!.audience_type,
+                audience_notes: payload.label!.notes,
+                audience_updated_at: payload.label!.updated_at,
+              }
+            : user
+        )
+      );
+      setStats((current) => {
+        const previous = users.find((user) => user.id === userId)
+          ?.audience_type;
+        if (!previous || previous === payload.label!.audience_type) {
+          return current;
+        }
+
+        return {
+          ...current,
+          audiences: {
+            ...current.audiences,
+            [previous]: Math.max(0, current.audiences[previous] - 1),
+            [payload.label!.audience_type]:
+              current.audiences[payload.label!.audience_type] + 1,
+          },
+        };
+      });
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "更新失敗");
+    } finally {
+      setSavingUserId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -163,7 +279,7 @@ export default function UsersPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
@@ -206,6 +322,21 @@ export default function UsersPage() {
             <p className="text-xs text-gray-500">付費 / 總用戶</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              正式用戶
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {stats.audiences.production}
+            </div>
+            <p className="text-xs text-gray-500">
+              朋友測試 {stats.audiences.friend_test}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -224,6 +355,7 @@ export default function UsersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Email</TableHead>
+                  <TableHead>用戶分類</TableHead>
                   <TableHead>訂閱方案</TableHead>
                   <TableHead>狀態</TableHead>
                   <TableHead>月 / 日用量</TableHead>
@@ -236,7 +368,31 @@ export default function UsersPage() {
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.email}</TableCell>
                     <TableCell>
-                      <TierBadge tier={user.subscription_tier} />
+                      <select
+                        className="h-9 rounded-md border bg-white px-2 text-sm"
+                        value={user.audience_type}
+                        disabled={savingUserId === user.id}
+                        onChange={(event) =>
+                          void updateAudienceType(
+                            user.id,
+                            event.target.value as AudienceType
+                          )
+                        }
+                      >
+                        {audienceOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {audienceLabels[option]}
+                          </option>
+                        ))}
+                      </select>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <TierBadge tier={user.subscription_tier} />
+                        <div className="text-xs text-gray-500">
+                          {formatPlan(user)}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="capitalize">
                       {formatStatus(user.subscription_status)}
@@ -248,8 +404,8 @@ export default function UsersPage() {
                 ))}
                 {users.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-gray-500">
-                      目前沒有正式用戶資料
+                    <TableCell colSpan={7} className="py-8 text-center text-gray-500">
+                      目前沒有用戶資料
                     </TableCell>
                   </TableRow>
                 ) : null}
