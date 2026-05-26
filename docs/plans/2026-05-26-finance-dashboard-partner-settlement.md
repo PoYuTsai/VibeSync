@@ -425,6 +425,219 @@ Early months use contribution_split or no_distribution
 Later months may switch to net_profit_split after costs are agreed
 ```
 
+## Cost Category Defaults
+
+These defaults are product defaults, not permanent partnership decisions. Eric
+and Bruce can override each row before a month is locked.
+
+| Cost | Typical payer | Billing cycle | Cost role | Default settlement treatment |
+| --- | --- | --- | --- | --- |
+| Claude API production usage | Eric | usage-based | direct variable cost | deducted before split |
+| Claude credits/top-up | Eric | one-time/prepayment | fixed overhead or prepayment | not deducted directly; recognize actual API usage instead |
+| Apple Developer Program | Eric | annual | fixed overhead | visible, excluded for early burn unless agreed |
+| Domain | Bruce or Eric | annual | fixed overhead | visible, excluded for early burn unless agreed |
+| Supabase baseline | Eric | monthly | fixed overhead | visible, excluded for early burn unless agreed |
+| Vercel baseline | Eric | monthly | fixed overhead | visible, excluded for early burn unless agreed |
+| RevenueCat paid plan | Eric | monthly or revenue-based | fixed overhead | visible, excluded unless agreed |
+| Ads / paid acquisition | Eric or Bruce | campaign-based | growth investment | pending agreement by default |
+| Design/tools/software | Eric or Bruce | monthly/annual/one-time | fixed overhead or personal | excluded for now unless agreed |
+| Personal labor/time | Eric or Bruce | none | personal | not shared |
+
+The guiding rule:
+
+```text
+If the cost scales directly with real users using VibeSync, deduct it before
+sharing.
+If the cost is early fixed burn, show it transparently but do not make it a
+partner debt by default.
+If the cost is growth spend, keep it pending until Eric and Bruce agree.
+```
+
+## Worked Examples
+
+### Example 1: First Month With Tiny Revenue
+
+Inputs:
+
+```text
+App Store proceeds: TWD 1,000, received by Eric
+Claude production cost: TWD 180, paid by Eric, direct variable cost, included
+Apple Developer amortization: TWD 260, paid by Eric, fixed overhead, excluded
+Domain amortization: TWD 80, paid by Bruce, fixed overhead, excluded
+Settlement mode: contribution_split
+```
+
+Calculation:
+
+```text
+settlement revenue = 1,000
+deducted direct variable cost = 180
+distributable amount = 820
+Eric entitlement = 410
+Bruce entitlement = 410
+Eric actual cash = 1,000 - 180 = 820
+Bruce actual cash = 0
+Eric should transfer Bruce = 410
+```
+
+Dashboard should still show:
+
+```text
+Recorded operating costs = 180 + 260 + 80 = 520
+Operating profit view = 1,000 - 520 = 480
+Settlement distributable amount = 820
+Early burn excluded from settlement = 340
+```
+
+This keeps operating truth visible without making excluded fixed burn change
+Bruce's share.
+
+### Example 2: Pre-Revenue Month
+
+Inputs:
+
+```text
+Revenue: 0
+Claude testing/development usage: TWD 300, paid by Eric, fixed overhead, excluded
+Apple Developer amortization: TWD 260, paid by Eric, fixed overhead, excluded
+Settlement mode: no_distribution
+```
+
+Calculation:
+
+```text
+distributable amount = 0
+transfer amount = 0
+Eric absorbed early burn = 560
+```
+
+The dashboard should avoid presenting this as Bruce owing Eric money.
+
+### Example 3: Mature Month After Agreement To Deduct Fixed Costs
+
+Inputs:
+
+```text
+App Store proceeds: TWD 80,000, received by Eric
+Claude production cost: TWD 8,000, paid by Eric, included
+Supabase/Vercel: TWD 2,000, paid by Eric, included
+Domain amortization: TWD 80, paid by Bruce, included
+Settlement mode: net_profit_split
+```
+
+Calculation:
+
+```text
+settlement revenue = 80,000
+deducted expenses = 10,080
+distributable amount = 69,920
+Eric entitlement = 34,960
+Bruce entitlement = 34,960
+
+Eric actual cash = 80,000 - 10,000 = 70,000
+Bruce actual cash = 0 - 80 = -80
+Eric should transfer Bruce = 35,040
+```
+
+The transfer includes Bruce's profit share plus reimbursement for the included
+domain cost he paid.
+
+## UI Information Architecture
+
+V1 should avoid feeling like a spreadsheet dumped onto a web page. The pages
+should guide monthly operation.
+
+### Home
+
+Default view: current month.
+
+Top row:
+
+- settlement mode,
+- settlement status,
+- distributable amount,
+- proposed transfer,
+- pending decisions.
+
+Second row:
+
+- revenue,
+- direct variable costs,
+- excluded fixed burn,
+- operating profit,
+- partner split.
+
+### Ledger
+
+Filters:
+
+- month,
+- revenue / expense,
+- paid by,
+- cost role,
+- included / excluded / pending,
+- billing cycle.
+
+Important row labels:
+
+- "Deducted before split"
+- "Visible only, not deducted"
+- "Pending agreement"
+- "Annual cost, amortized"
+- "Direct user cost"
+
+### Cost Detail Drawer
+
+Open from any cost row.
+
+Fields:
+
+- title,
+- category,
+- payer,
+- payment date,
+- amount/currency,
+- billing cycle,
+- cost role,
+- settlement treatment,
+- receipt,
+- notes,
+- recognition schedule if annual/campaign-based.
+
+The drawer should show a plain-language effect statement:
+
+```text
+This cost will reduce this month's distributable amount.
+```
+
+or:
+
+```text
+This cost is recorded for transparency but does not affect this month's split.
+```
+
+### Settlement Review
+
+Before locking a month, show three sections:
+
+1. Included in calculation.
+2. Visible but excluded.
+3. Pending agreement.
+
+Then show:
+
+```text
+Revenue
+- Direct / included costs
+= Distributable amount
+Eric share
+Bruce share
+Cash already held/paid by each person
+Final transfer
+```
+
+This is the page Eric and Bruce should be able to review together.
+
 ## UX
 
 The UX should feel equal and transparent.
