@@ -91,14 +91,14 @@ const costRoleLabels: Record<CostRole, string> = {
 
 const modeLabels: Record<SettlementMode, string> = {
   contribution_split: "扣指定成本後平分",
-  net_profit_split: "扣全部成本後平分",
+  net_profit_split: "扣全部成本後平分（等正式上線付費用戶達一定基數再使用）",
 };
 
 const modeExamples: Record<SettlementMode, string> = {
   contribution_split:
     "例：收入 100,000，只扣 Claude 12,000 和廣告 20,000，剩 68,000 平分；未約定雜支先只記帳。",
   net_profit_split:
-    "例：收入 100,000，扣 Claude 12,000、Apple 年費攤提 250、廣告 20,000、網域攤提 100，剩 67,650 平分。",
+    "例：收入 100,000，扣 Claude 12,000、Apple 年費攤提 283、廣告 20,000、網域攤提 100，剩 67,617 平分。",
 };
 
 const statusLabels: Record<SettlementStatus, string> = {
