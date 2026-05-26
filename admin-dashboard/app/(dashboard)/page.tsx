@@ -1,9 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CreditCard, DollarSign, RefreshCcw, Users, Zap } from "lucide-react";
+import {
+  CreditCard,
+  DollarSign,
+  ExternalLink,
+  Globe2,
+  RefreshCcw,
+  Users,
+  Zap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OFFICIAL_SITE_LABEL, OFFICIAL_SITE_URL } from "@/lib/external-links";
 
 interface DashboardStats {
   totalUsers: number;
@@ -120,6 +129,29 @@ export default function DashboardPage() {
           {error}
         </div>
       ) : null}
+
+      <section className="overflow-hidden rounded-lg border border-white/20 bg-[#0e0a24] bg-[linear-gradient(135deg,#09090e_0%,#171236_48%,#2a0b36_100%)] p-5 text-white shadow-xl shadow-indigo-950/15">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-300/25 bg-white/10 px-3 py-1 text-xs font-semibold text-indigo-100 backdrop-blur">
+              <Globe2 className="h-3.5 w-3.5" />
+              官方網站
+            </div>
+            <h2 className="bg-gradient-to-r from-indigo-200 via-fuchsia-200 to-indigo-100 bg-clip-text text-2xl font-black text-transparent">
+              {OFFICIAL_SITE_LABEL}
+            </h2>
+            <p className="mt-1 truncate text-sm text-indigo-100/75">
+              {OFFICIAL_SITE_URL}
+            </p>
+          </div>
+          <Button asChild className="w-full md:w-auto">
+            <a href={OFFICIAL_SITE_URL} target="_blank" rel="noreferrer">
+              開啟網站
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+        </div>
+      </section>
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
