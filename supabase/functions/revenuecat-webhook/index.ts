@@ -1,4 +1,7 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import {
   getTierFromProductId,
   resolveBillingIssueTier,
@@ -12,7 +15,14 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const DEPLOY_VERSION = "2026-04-03-rc-webhook-v4";
+const DEPLOY_VERSION = "2026-05-26-rc-webhook-v5";
+const REVENUE_EVENT_TYPES = new Set([
+  "INITIAL_PURCHASE",
+  "RENEWAL",
+  "CANCELLATION",
+  "BILLING_ISSUE",
+  "PRODUCT_CHANGE",
+]);
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -40,6 +50,31 @@ function normalizeExpirationAt(value: unknown): string | null {
   }
 
   return new Date(value).toISOString();
+}
+
+function normalizeTimestampMs(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return new Date(value).toISOString();
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return value;
+}
+
+function optionalString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function inferBillingPeriod(productId: string): string | null {
@@ -123,6 +158,64 @@ function buildWebhookLogPayload(
     processed_tier: options.processedTier ?? null,
     ignored_reason: options.ignoredReason ?? null,
   };
+}
+
+function buildRevenueEventPayload(
+  event: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...buildWebhookLogPayload(event),
+    revenuecat_event_id: optionalString(event.id),
+    price_usd: normalizeNumber(event.price),
+    price_in_purchased_currency: normalizeNumber(
+      event.price_in_purchased_currency,
+    ),
+    currency: optionalString(event.currency),
+    transaction_id: optionalString(event.transaction_id),
+    event_timestamp_ms: normalizeNumber(event.event_timestamp_ms),
+  };
+}
+
+async function recordRevenueEvent(
+  supabase: SupabaseClient,
+  event: Record<string, unknown>,
+  eventType: string,
+  userId: string,
+  productId: string,
+) {
+  if (!REVENUE_EVENT_TYPES.has(eventType) || !productId) {
+    return;
+  }
+
+  const eventTimestamp =
+    normalizeTimestampMs(event.event_timestamp_ms) ??
+      normalizeTimestampMs(event.purchased_at_ms) ??
+      new Date().toISOString();
+
+  const { error } = await supabase.from("revenue_events").insert({
+    user_id: userId,
+    event_type: eventType,
+    product_id: productId,
+    price_usd: normalizeNumber(event.price) ?? 0,
+    currency: optionalString(event.currency),
+    transaction_id: optionalString(event.transaction_id),
+    event_timestamp: eventTimestamp,
+    revenuecat_event_id: optionalString(event.id),
+    raw_payload: buildRevenueEventPayload(event),
+  });
+
+  if (!error) {
+    return;
+  }
+
+  if (error.code === "23505") {
+    console.log(
+      `Skipped duplicate revenue event ${optionalString(event.id) ?? eventType}`,
+    );
+    return;
+  }
+
+  console.error("Failed to record revenue event (non-fatal):", error);
 }
 
 function extractValidUuidList(value: unknown): string[] {
@@ -577,6 +670,14 @@ Deno.serve(async (req) => {
         shouldUpdate = false;
         break;
     }
+
+    await recordRevenueEvent(
+      supabase,
+      event,
+      type,
+      app_user_id,
+      effectiveProductId,
+    );
 
     if (shouldUpdate) {
       const { data: updatedRows, error: updateError } = await supabase
