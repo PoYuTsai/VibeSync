@@ -20,12 +20,38 @@ function normalizeTier(tier: string | null | undefined): Tier {
   return tier === "starter" || tier === "essential" ? tier : "free";
 }
 
+function hasFutureExpiration(subscription: DbSubscription): boolean {
+  if (!subscription.expires_at) {
+    return false;
+  }
+
+  const expiresAt = new Date(subscription.expires_at).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
+function hasPaidEntitlement(subscription: DbSubscription | undefined): boolean {
+  if (!subscription) {
+    return false;
+  }
+
+  const tier = normalizeTier(subscription.tier);
+  if (tier === "free") {
+    return false;
+  }
+
+  if (subscription.status === "active") {
+    return true;
+  }
+
+  return subscription.status === "cancelled" && hasFutureExpiration(subscription);
+}
+
 function effectiveTier(subscription: DbSubscription | undefined): Tier {
-  if (!subscription || subscription.status !== "active") {
+  if (!hasPaidEntitlement(subscription)) {
     return "free";
   }
 
-  return normalizeTier(subscription.tier);
+  return normalizeTier(subscription?.tier);
 }
 
 export async function GET() {
@@ -109,6 +135,10 @@ export async function GET() {
   const cancelled = subscriptions.filter(
     (subscription) => subscription.status === "cancelled"
   ).length;
+  const cancelledButUsable = subscriptions.filter(
+    (subscription) =>
+      subscription.status === "cancelled" && hasPaidEntitlement(subscription)
+  ).length;
   const expired = subscriptions.filter(
     (subscription) => subscription.status === "expired"
   ).length;
@@ -120,6 +150,7 @@ export async function GET() {
       totalUsers,
       activePaid,
       cancelled,
+      cancelledButUsable,
       expired,
       conversionRate:
         totalUsers > 0 ? Math.round((activePaid / totalUsers) * 100) : 0,

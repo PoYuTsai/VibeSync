@@ -25,6 +25,7 @@ interface SubscriptionTotals {
   totalUsers: number;
   activePaid: number;
   cancelled: number;
+  cancelledButUsable: number;
   expired: number;
   conversionRate: number;
 }
@@ -39,6 +40,7 @@ const emptyTotals: SubscriptionTotals = {
   totalUsers: 0,
   activePaid: 0,
   cancelled: 0,
+  cancelledButUsable: 0,
   expired: 0,
   conversionRate: 0,
 };
@@ -100,7 +102,7 @@ export default function SubscriptionsPage() {
         <div>
           <h1 className="text-3xl font-bold">訂閱</h1>
           <p className="mt-1 text-sm text-gray-500">
-            以 Supabase subscriptions 的 active paid tier 作為目前方案來源。
+            以目前可用付費權益統計；已取消續訂但未到期仍算付費權益。
           </p>
         </div>
         <Button
@@ -129,7 +131,7 @@ export default function SubscriptionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totals.activePaid}</div>
-            <p className="text-xs text-gray-500">Starter + Essential</p>
+            <p className="text-xs text-gray-500">含取消續訂但未到期</p>
           </CardContent>
         </Card>
         <Card>
@@ -151,7 +153,9 @@ export default function SubscriptionsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totals.cancelled}</div>
-            <p className="text-xs text-gray-500">status = cancelled</p>
+            <p className="text-xs text-gray-500">
+              其中 {totals.cancelledButUsable} 人仍有效
+            </p>
           </CardContent>
         </Card>
         <Card>

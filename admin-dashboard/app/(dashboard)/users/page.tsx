@@ -23,6 +23,7 @@ interface AdminUser {
   total_analyses: number | null;
   total_conversations: number | null;
   subscription_tier: Tier;
+  raw_subscription_tier: Tier;
   subscription_status: string;
   expires_at: string | null;
   monthly_messages_used: number;
@@ -65,6 +66,14 @@ const tierBadgeClasses: Record<Tier, string> = {
   essential: "bg-purple-100 text-purple-700",
 };
 
+const statusLabels: Record<string, string> = {
+  active: "有效",
+  cancelled: "已取消續訂",
+  cancelled_until_expiry: "已取消續訂，仍有效",
+  expired: "已過期",
+  missing: "缺少訂閱列",
+};
+
 function formatDate(date: string | null): string {
   if (!date) {
     return "-";
@@ -75,6 +84,10 @@ function formatDate(date: string | null): string {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+function formatStatus(status: string): string {
+  return statusLabels[status] ?? status;
 }
 
 function formatUsage(user: AdminUser): string {
@@ -130,7 +143,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-3xl font-bold">用戶</h1>
           <p className="mt-1 text-sm text-gray-500">
-            依 Supabase subscriptions 真實狀態顯示 tier，並排除測試帳號。
+            依 Supabase subscriptions 顯示目前可用權益，cancelled 但未到期仍列為付費權益。
           </p>
         </div>
         <Button
@@ -226,7 +239,7 @@ export default function UsersPage() {
                       <TierBadge tier={user.subscription_tier} />
                     </TableCell>
                     <TableCell className="capitalize">
-                      {user.subscription_status}
+                      {formatStatus(user.subscription_status)}
                     </TableCell>
                     <TableCell>{formatUsage(user)}</TableCell>
                     <TableCell>{formatDate(user.expires_at)}</TableCell>
