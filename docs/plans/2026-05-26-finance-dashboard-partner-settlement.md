@@ -102,6 +102,7 @@ Proposed columns:
 | `received_by` | `eric` / `bruce` / `platform` / `none` |
 | `billing_cycle` | `monthly` / `annual` / `one_time` / `usage_based` / `campaign_based` |
 | `recognition_method` | `cash_basis` / `amortize_evenly` / `usage_based` / `manual_schedule` |
+| `cost_role` | `direct_variable_cost` / `fixed_overhead` / `growth_investment` / `personal` / `other` |
 | `include_before_profit_split` | Boolean checkbox; whether this row is deducted before 50/50 profit sharing |
 | `settlement_treatment` | `included_before_profit_split` / `excluded_for_now` / `pending_agreement` |
 | `service_period_start` | Nullable; start of service period for annual/campaign costs |
@@ -120,10 +121,14 @@ Defaults for V1:
 
 - `paid_by` default: Eric for expense rows, unless changed.
 - `received_by` default: Eric for revenue rows, unless changed.
-- `include_before_profit_split` default: false for manually added expenses.
-- `settlement_treatment` default: `excluded_for_now` for early operating costs,
-  unless Eric and Bruce explicitly agree to include that cost before profit
-  sharing.
+- `cost_role` default: `fixed_overhead` for manual expenses, unless changed.
+- `include_before_profit_split` default:
+  - true for `direct_variable_cost`,
+  - false for `fixed_overhead`, `growth_investment`, `personal`, and `other`.
+- `settlement_treatment` default:
+  - `included_before_profit_split` for direct variable costs,
+  - `excluded_for_now` for early fixed overhead,
+  - `pending_agreement` for uncertain growth investment such as ads.
 - Store proceeds imported/entered from Apple/Google reports default to
   included revenue.
 
@@ -131,8 +136,10 @@ This preserves the early-stage agreement:
 
 ```text
 Eric may keep paying Claude, Apple Developer, tools, and other burn for now.
-Those rows are visible for transparency, but they do not automatically reduce
-Bruce's share or create debt unless the include checkbox is enabled.
+Fixed overhead rows are visible for transparency, but they do not automatically
+reduce Bruce's share or create debt unless the include checkbox is enabled.
+Direct user-driven costs, such as Claude API usage for real users, should still
+be deducted before profit sharing by default.
 ```
 
 ### `cost_recognition_schedule`
@@ -167,7 +174,7 @@ Proposed columns:
 | `id` | UUID primary key |
 | `settlement_month` | Unique month |
 | `status` | `draft` / `locked` / `paid` |
-| `settlement_mode` | `revenue_split` / `net_profit_split` / `no_distribution` |
+| `settlement_mode` | `contribution_split` / `net_profit_split` / `no_distribution` |
 | `revenue_total_twd` | Settlement revenue |
 | `recorded_expense_total_twd` | All visible operating expenses, whether included or not |
 | `deducted_expense_total_twd` | Expenses checked for deduction before split |
@@ -266,6 +273,17 @@ recognition_method = usage_based
 The cost should be based on actual API usage for the month when possible, not
 credit-card top-up or prepaid balance movement.
 
+Claude production usage should usually be marked:
+
+```text
+cost_role = direct_variable_cost
+include_before_profit_split = true
+```
+
+Reason: this cost scales with real user usage. Even during the early stage, it
+is cleaner to split revenue after direct AI cost, while Eric can still absorb
+fixed overhead such as Apple Developer fee, tools, and other baseline burn.
+
 ### Campaign-Based
 
 Use for ads.
@@ -291,6 +309,7 @@ Counts before profit split.
 Examples:
 
 - Claude actual API usage for production.
+- other direct per-user generation or fulfillment costs.
 - Apple Developer annual fee, amortized monthly if agreed.
 - Domain fee, amortized monthly if agreed.
 - Hosting/tools/marketing if Eric and Bruce agree it belongs to VibeSync
@@ -322,30 +341,35 @@ Examples:
 
 V1 supports three settlement modes per month.
 
-### Mode A: `revenue_split`
+### Mode A: `contribution_split`
 
-Early-stage default when Eric is absorbing ongoing burn.
+Early-stage default when Eric is absorbing fixed overhead, but direct user-driven
+costs still need to be deducted.
 
 ```text
-distributable_amount = settlement revenue
-deducted expenses = 0
-Eric/Bruce split distributable_amount 50/50
-recorded operating expenses are visible but not deducted
+settlement revenue = App Store / Google Play proceeds
+direct variable costs = Claude API production usage and similar per-user costs
+distributable_amount = settlement revenue - direct variable costs
+Eric/Bruce split max(distributable_amount, 0) 50/50
+fixed overhead is visible but not deducted
 ```
 
 Use this when:
 
 - revenue is still low,
-- Eric is choosing to absorb early operating costs,
-- Bruce should not accumulate debt from early burn,
-- the goal is transparent revenue sharing without complex cost recovery.
+- Eric is choosing to absorb early fixed burn,
+- Bruce should not accumulate debt from fixed overhead,
+- Claude/API costs should still be paid from the revenue they helped generate,
+- the goal is transparent contribution-margin sharing without complex cost
+  recovery.
 
 ### Mode B: `net_profit_split`
 
-Use when Eric and Bruce agree that specific costs should be deducted first.
+Use when Eric and Bruce agree that more costs should be deducted first.
 
-Only rows with `include_before_profit_split = true` participate as deducted
-expenses.
+Rows with `include_before_profit_split = true` participate as deducted expenses.
+This usually includes direct variable costs plus any fixed overhead or growth
+investment Eric/Bruce explicitly agree to include.
 
 Definitions:
 
@@ -394,9 +418,10 @@ Current likely default:
 
 ```text
 App Store proceeds received_by = Eric
-Most infrastructure expenses paid_by = Eric
-Domain or some future costs may be paid_by = Bruce
-Early months use revenue_split or no_distribution
+Claude production usage = direct variable cost, deducted before split
+Most fixed infrastructure expenses paid_by = Eric, visible but excluded at first
+Domain or some future costs may be paid_by = Bruce, visible but excluded unless agreed
+Early months use contribution_split or no_distribution
 Later months may switch to net_profit_split after costs are agreed
 ```
 
@@ -433,7 +458,7 @@ Cards:
 - Eric 本月已收 / 已付 / 應得
 - Bruce 本月已收 / 已付 / 應得
 - 本月應轉帳方向與金額
-- 月結模式: 營收對分 / 淨利對分 / 暫不分潤
+- 月結模式: 直接成本後對分 / 淨利對分 / 暫不分潤
 
 Charts:
 
@@ -480,7 +505,7 @@ Important UI behavior:
 
 Draft state:
 
-- choose settlement mode: revenue split / net profit split / no distribution,
+- choose settlement mode: contribution split / net profit split / no distribution,
 - show included rows,
 - show excluded early-burn rows for transparency,
 - show pending rows excluded from calculation,
@@ -627,8 +652,8 @@ Recommended implementation guardrails:
 - Build monthly settlement draft page.
 - Support manual entries, paid dates, billing cycles, treatment flags, receipts,
   include-before-profit checkbox, and amortization.
-- Support monthly settlement mode selection: revenue split, net profit split, or
-  no distribution.
+- Support monthly settlement mode selection: contribution split, net profit
+  split, or no distribution.
 
 ### Phase 3: Store Proceeds Workflow
 
@@ -665,10 +690,11 @@ Recommended implementation guardrails:
   manually entered rate?
 - Should Apple Developer annual fee and domain fee create monthly amortization
   schedules automatically, even when not included in settlement yet?
-- Should the default month mode be `revenue_split` or `no_distribution` before
-  meaningful user revenue exists?
-- When should Eric and Bruce switch from revenue split/no distribution to net
-  profit split?
+- Should the default month mode be `contribution_split` or `no_distribution`
+  before meaningful user revenue exists?
+- Which costs besides Claude should be treated as direct variable costs?
+- When should Eric and Bruce switch from contribution split/no distribution to
+  net profit split?
 - Should Bruce be allowed to edit `pending_agreement` rows entered by Eric, or
   only comment?
 - When should a settlement be considered locked: after Apple proceeds report,
@@ -684,8 +710,8 @@ The first valuable version is:
 ```text
 Eric/Bruce enter revenue and expenses
 each expense records paid date, amount, cycle, and payer
-each expense has a checkbox for whether it is deducted before profit split
-each month chooses revenue split, net profit split, or no distribution
+each expense has a cost role and checkbox for whether it is deducted before profit split
+each month chooses contribution split, net profit split, or no distribution
 system calculates fair 50/50 settlement based on the selected mode
 Eric manually transfers Bruce if needed
 month gets locked and marked paid
