@@ -15,6 +15,10 @@ function AuthCallbackContent() {
     async function completeLogin() {
       const code = searchParams.get("code");
       const error = searchParams.get("error_description") ?? searchParams.get("error");
+      const hashParams =
+        typeof window === "undefined"
+          ? new URLSearchParams()
+          : new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
       if (error) {
         setFailed(true);
@@ -22,18 +26,29 @@ function AuthCallbackContent() {
         return;
       }
 
-      if (!code) {
-        setFailed(true);
-        setMessage("Missing OAuth callback code");
-        return;
+      let accessToken = hashParams.get("access_token");
+
+      if (code) {
+        const { data, error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(code);
+
+        if (exchangeError || !data.session?.access_token) {
+          setFailed(true);
+          setMessage(exchangeError?.message || "Unable to complete Google login");
+          return;
+        }
+
+        accessToken = data.session.access_token;
       }
 
-      const { data, error: exchangeError } =
-        await supabase.auth.exchangeCodeForSession(code);
+      if (!accessToken) {
+        const { data } = await supabase.auth.getSession();
+        accessToken = data.session?.access_token ?? null;
+      }
 
-      if (exchangeError || !data.session?.access_token) {
+      if (!accessToken) {
         setFailed(true);
-        setMessage(exchangeError?.message || "Unable to complete Google login");
+        setMessage("請從登入頁按「使用 Google 登入」，不要直接打開 callback URL。");
         return;
       }
 
@@ -42,7 +57,7 @@ function AuthCallbackContent() {
       const response = await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken: data.session.access_token }),
+        body: JSON.stringify({ accessToken }),
       });
 
       if (!response.ok) {
@@ -64,7 +79,11 @@ function AuthCallbackContent() {
     <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
       <div className="w-full max-w-md rounded-lg border bg-white p-8 text-center shadow-sm">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-gray-900 text-white">
-          {failed ? <Icon className="h-6 w-6" /> : <Loader2 className="h-6 w-6 animate-spin" />}
+          {failed ? (
+            <Icon className="h-6 w-6" />
+          ) : (
+            <Loader2 className="h-6 w-6 animate-spin" />
+          )}
         </div>
         <h1 className="text-xl font-semibold">VibeSync Admin</h1>
         <p className="mt-2 text-sm text-gray-600">{message}</p>
