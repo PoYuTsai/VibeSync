@@ -76,8 +76,10 @@ Each row answers:
 - Which month should it belong to?
 - Was it income or expense?
 - Who actually received or paid it?
-- Should it be included in partner settlement?
-- Is it confirmed, excluded, or still pending agreement?
+- When was it paid?
+- Is it monthly, annual, one-time, usage-based, or campaign-based?
+- Should it be deducted before profit sharing this month?
+- Is it confirmed, excluded for now, or still pending agreement?
 
 ### `finance_entries`
 
@@ -87,6 +89,7 @@ Proposed columns:
 | --- | --- |
 | `id` | UUID primary key |
 | `entry_date` | Actual date of payment, charge, report, or receipt |
+| `paid_at` | Actual payment date; useful when invoice month and payment date differ |
 | `settlement_month` | Month this row belongs to, e.g. `2026-06-01` |
 | `type` | `revenue` / `expense` |
 | `title` | Human-readable item name |
@@ -97,9 +100,15 @@ Proposed columns:
 | `fx_rate_to_twd` | Optional, used when source is not TWD |
 | `paid_by` | `eric` / `bruce` / `platform` / `none` |
 | `received_by` | `eric` / `bruce` / `platform` / `none` |
-| `settlement_treatment` | `included_in_profit_split` / `personal_not_shared` / `pending_agreement` |
+| `billing_cycle` | `monthly` / `annual` / `one_time` / `usage_based` / `campaign_based` |
+| `recognition_method` | `cash_basis` / `amortize_evenly` / `usage_based` / `manual_schedule` |
+| `include_before_profit_split` | Boolean checkbox; whether this row is deducted before 50/50 profit sharing |
+| `settlement_treatment` | `included_before_profit_split` / `excluded_for_now` / `pending_agreement` |
+| `service_period_start` | Nullable; start of service period for annual/campaign costs |
+| `service_period_end` | Nullable; end of service period for annual/campaign costs |
 | `amortization_months` | Nullable; e.g. 12 for annual developer/domain fees |
 | `amortization_start_month` | Nullable month |
+| `next_renewal_date` | Nullable reminder for annual/monthly recurring costs |
 | `receipt_url` | Private receipt/report URL |
 | `source` | `manual`, `apple_report`, `google_report`, `revenuecat_observation`, `system_estimate` |
 | `notes` | Free-form note |
@@ -111,10 +120,43 @@ Defaults for V1:
 
 - `paid_by` default: Eric for expense rows, unless changed.
 - `received_by` default: Eric for revenue rows, unless changed.
-- `settlement_treatment` default: `pending_agreement` for manually added
-  expenses, so uncertain costs do not silently affect settlement.
+- `include_before_profit_split` default: false for manually added expenses.
+- `settlement_treatment` default: `excluded_for_now` for early operating costs,
+  unless Eric and Bruce explicitly agree to include that cost before profit
+  sharing.
 - Store proceeds imported/entered from Apple/Google reports default to
-  `included_in_profit_split`.
+  included revenue.
+
+This preserves the early-stage agreement:
+
+```text
+Eric may keep paying Claude, Apple Developer, tools, and other burn for now.
+Those rows are visible for transparency, but they do not automatically reduce
+Bruce's share or create debt unless the include checkbox is enabled.
+```
+
+### `cost_recognition_schedule`
+
+Optional but recommended once annual costs matter.
+
+One payment can generate monthly recognition rows:
+
+| Column | Notes |
+| --- | --- |
+| `id` | UUID primary key |
+| `finance_entry_id` | Parent payment/cost row |
+| `recognition_month` | Month this portion belongs to |
+| `amount` | Original currency amount recognized in this month |
+| `amount_twd` | TWD amount recognized in this month |
+| `include_before_profit_split` | Copied from parent by default, editable before lock |
+| `created_at` | Timestamp |
+
+Examples:
+
+- Apple Developer annual fee: one payment row, 12 monthly recognition rows.
+- Domain annual fee: one payment row, 12 monthly recognition rows.
+- Ad campaign crossing two months: one payment row, manual schedule by campaign
+  dates or manual split.
 
 ### `monthly_settlements`
 
@@ -125,14 +167,17 @@ Proposed columns:
 | `id` | UUID primary key |
 | `settlement_month` | Unique month |
 | `status` | `draft` / `locked` / `paid` |
-| `revenue_total_twd` | Included revenue |
-| `expense_total_twd` | Included expenses |
-| `profit_twd` | Revenue minus included expenses |
-| `distributable_profit_twd` | `max(profit_twd, 0)` |
-| `eric_actual_cash_twd` | Eric received included revenue minus Eric paid included expenses |
-| `bruce_actual_cash_twd` | Bruce received included revenue minus Bruce paid included expenses |
-| `eric_entitlement_twd` | Default 50 percent of distributable profit |
-| `bruce_entitlement_twd` | Default 50 percent of distributable profit |
+| `settlement_mode` | `revenue_split` / `net_profit_split` / `no_distribution` |
+| `revenue_total_twd` | Settlement revenue |
+| `recorded_expense_total_twd` | All visible operating expenses, whether included or not |
+| `deducted_expense_total_twd` | Expenses checked for deduction before split |
+| `operating_profit_twd` | Revenue minus all recorded operating expenses; informational |
+| `settlement_profit_twd` | Revenue minus deducted expenses; used only in net-profit mode |
+| `distributable_amount_twd` | Amount to split for the selected settlement mode |
+| `eric_actual_cash_twd` | Eric received settlement revenue minus Eric paid deducted expenses |
+| `bruce_actual_cash_twd` | Bruce received settlement revenue minus Bruce paid deducted expenses |
+| `eric_entitlement_twd` | Default 50 percent of distributable amount |
+| `bruce_entitlement_twd` | Default 50 percent of distributable amount |
 | `carry_in_twd` | Prior unpaid balance |
 | `amount_eric_should_transfer_to_bruce_twd` | Positive when Eric pays Bruce |
 | `amount_bruce_should_transfer_to_eric_twd` | Positive when Bruce pays Eric |
@@ -164,11 +209,82 @@ Track:
 
 This is partner money, so history matters.
 
+## Billing Cycles And Cost Recognition
+
+V1 should separate real payment from monthly settlement recognition.
+
+### Monthly
+
+Use for costs like Vercel, Supabase, RevenueCat paid plan, or monthly tools.
+
+Recommended recognition:
+
+```text
+billing_cycle = monthly
+recognition_method = cash_basis
+settlement_month = invoice/payment month
+```
+
+### Annual
+
+Use for Apple Developer annual fee, domains, or annual tools.
+
+Recommended recognition:
+
+```text
+billing_cycle = annual
+recognition_method = amortize_evenly
+amortization_months = 12
+```
+
+The parent row records the actual payment. The schedule records monthly cost
+recognition. Whether each monthly recognition row affects settlement depends on
+the include checkbox.
+
+Example:
+
+```text
+Payment:
+Apple Developer Program, USD 99, paid by Eric, paid_at 2026-02-28
+
+Recognition:
+2026-03 through 2027-02, USD 8.25 per month
+include_before_profit_split = false by default during early burn
+```
+
+### Usage-Based
+
+Use for Claude API.
+
+Recommended recognition:
+
+```text
+billing_cycle = usage_based
+recognition_method = usage_based
+```
+
+The cost should be based on actual API usage for the month when possible, not
+credit-card top-up or prepaid balance movement.
+
+### Campaign-Based
+
+Use for ads.
+
+Recommended recognition:
+
+```text
+billing_cycle = campaign_based
+recognition_method = manual_schedule
+```
+
+Ad spend should default to `pending_agreement` until Eric and Bruce decide how
+that campaign affects settlement.
+
 ## Settlement Treatment
 
 Each expense should be explicitly categorized by settlement treatment:
 
-### `included_in_profit_split`
+### `included_before_profit_split`
 
 Counts before profit split.
 
@@ -180,12 +296,13 @@ Examples:
 - Hosting/tools/marketing if Eric and Bruce agree it belongs to VibeSync
   operating cost.
 
-### `personal_not_shared`
+### `excluded_for_now`
 
 Visible in ledger if desired, but does not affect settlement.
 
 Examples:
 
+- early-stage burn Eric chooses to absorb,
 - personal time,
 - personal device costs,
 - unrelated tools,
@@ -203,26 +320,51 @@ Examples:
 
 ## Calculation
 
-Only rows with `settlement_treatment = included_in_profit_split` participate.
+V1 supports three settlement modes per month.
+
+### Mode A: `revenue_split`
+
+Early-stage default when Eric is absorbing ongoing burn.
+
+```text
+distributable_amount = settlement revenue
+deducted expenses = 0
+Eric/Bruce split distributable_amount 50/50
+recorded operating expenses are visible but not deducted
+```
+
+Use this when:
+
+- revenue is still low,
+- Eric is choosing to absorb early operating costs,
+- Bruce should not accumulate debt from early burn,
+- the goal is transparent revenue sharing without complex cost recovery.
+
+### Mode B: `net_profit_split`
+
+Use when Eric and Bruce agree that specific costs should be deducted first.
+
+Only rows with `include_before_profit_split = true` participate as deducted
+expenses.
 
 Definitions:
 
 ```text
-included_revenue = sum(included revenue rows)
-included_expense = sum(included expense rows)
-profit = included_revenue - included_expense
-distributable_profit = max(profit, 0)
+settlement_revenue = sum(settlement revenue rows)
+deducted_expense = sum(expense rows checked for deduction)
+settlement_profit = settlement_revenue - deducted_expense
+distributable_amount = max(settlement_profit, 0)
 
-eric_entitlement = distributable_profit * 50%
-bruce_entitlement = distributable_profit * 50%
+eric_entitlement = distributable_amount * 50%
+bruce_entitlement = distributable_amount * 50%
 
 eric_actual_cash =
-  included revenue received by Eric
-  - included expenses paid by Eric
+  settlement revenue received by Eric
+  - deducted expenses paid by Eric
 
 bruce_actual_cash =
-  included revenue received by Bruce
-  - included expenses paid by Bruce
+  settlement revenue received by Bruce
+  - deducted expenses paid by Bruce
 
 eric_balance = eric_actual_cash - eric_entitlement
 bruce_balance = bruce_actual_cash - bruce_entitlement
@@ -234,8 +376,19 @@ Interpretation:
   money to Bruce.
 - If `bruce_balance > 0`, Bruce has more cash than his share and should transfer
   money to Eric.
-- If `profit < 0`, there is no distributable profit; expense imbalance becomes
-  carry-forward unless Eric and Bruce manually settle the loss.
+- If `settlement_profit < 0`, there is no distributable profit. The loss does
+  not automatically become Bruce's debt unless Eric and Bruce explicitly agree
+  to carry it forward.
+
+### Mode C: `no_distribution`
+
+Use when Eric and Bruce want to observe the month but not distribute anything.
+
+```text
+distributable_amount = 0
+transfer amount = 0
+all revenue/cost/profit metrics remain visible
+```
 
 Current likely default:
 
@@ -243,7 +396,8 @@ Current likely default:
 App Store proceeds received_by = Eric
 Most infrastructure expenses paid_by = Eric
 Domain or some future costs may be paid_by = Bruce
-System usually calculates Eric should transfer Bruce's share after month close.
+Early months use revenue_split or no_distribution
+Later months may switch to net_profit_split after costs are agreed
 ```
 
 ## UX
@@ -271,12 +425,15 @@ Prefer:
 Cards:
 
 - 本月收入
-- 本月支出
-- 本月利潤
+- 本月記錄支出
+- 本月列入扣除支出
+- 本月營運損益
+- 本月可分配金額
 - 待協議支出
 - Eric 本月已收 / 已付 / 應得
 - Bruce 本月已收 / 已付 / 應得
 - 本月應轉帳方向與金額
+- 月結模式: 營收對分 / 淨利對分 / 暫不分潤
 
 Charts:
 
@@ -291,11 +448,14 @@ Main table:
 
 - month,
 - date,
+- paid date,
 - type,
 - title,
+- billing cycle,
 - amount,
 - paid by / received by,
 - settlement treatment,
+- include-before-profit checkbox,
 - receipt,
 - notes.
 
@@ -305,18 +465,24 @@ Primary actions:
 - Add expense.
 - Mark as included / pending / not shared.
 - Attach receipt.
+- Set monthly/annual/one-time/usage/campaign cycle.
+- Generate or edit amortization schedule.
 
 Important UI behavior:
 
 - `pending_agreement` rows should be visibly separate.
 - Included rows should show how they affect settlement.
 - Annual costs can show monthly amortization preview.
+- Excluded early-burn rows should remain visible but clearly say they do not
+  create partner debt.
 
 ### Page 3: Monthly Settlement
 
 Draft state:
 
+- choose settlement mode: revenue split / net profit split / no distribution,
 - show included rows,
+- show excluded early-burn rows for transparency,
 - show pending rows excluded from calculation,
 - show calculation details,
 - show proposed transfer.
@@ -333,9 +499,47 @@ Paid state:
 - show paid date,
 - optionally attach transfer proof.
 
-### Page 4: Users / Subscriptions
+### Page 4: Upcoming / Forecast
 
-Reuse existing admin data but clean copy and focus on operational metrics:
+This page helps Eric and Bruce see the next month before it happens.
+
+Sections:
+
+- upcoming recurring monthly costs,
+- annual costs still being amortized,
+- next renewal dates,
+- planned ad campaigns,
+- pending cost decisions,
+- estimated store payout if available,
+- estimated Claude usage cost if available.
+
+This view is informational. It should not lock a settlement.
+
+### Page 5: History
+
+Show monthly / quarterly / yearly perspective:
+
+- total revenue,
+- recorded costs,
+- deducted costs,
+- operating profit,
+- distributable amount,
+- transfers completed,
+- Eric/Bruce cumulative paid costs,
+- Eric/Bruce cumulative received transfers,
+- early burn absorbed by each partner.
+
+Useful filters:
+
+- this month,
+- last month,
+- quarter,
+- year-to-date,
+- all-time.
+
+### Page 6: Users / Subscriptions
+
+Reuse existing admin data but clean copy and focus on operating metrics:
 
 - new users,
 - paid users,
@@ -346,7 +550,7 @@ Reuse existing admin data but clean copy and focus on operational metrics:
 
 This page is not the official revenue settlement source.
 
-### Page 5: RevenueCat / Store Reports
+### Page 7: RevenueCat / Store Reports
 
 Separate official money from operating signals:
 
@@ -421,7 +625,10 @@ Recommended implementation guardrails:
 
 - Build ledger page.
 - Build monthly settlement draft page.
-- Support manual entries, treatment flags, receipts, and amortization.
+- Support manual entries, paid dates, billing cycles, treatment flags, receipts,
+  include-before-profit checkbox, and amortization.
+- Support monthly settlement mode selection: revenue split, net profit split, or
+  no distribution.
 
 ### Phase 3: Store Proceeds Workflow
 
@@ -443,14 +650,25 @@ Recommended implementation guardrails:
 - Attach transfer proof.
 - Carry forward unpaid/loss balance.
 
+### Phase 6: Forecast + Long-Term Views
+
+- Add upcoming costs and renewal reminders.
+- Add monthly/quarterly/yearly history.
+- Add cumulative early-burn view for transparency.
+- Add export for Eric/Bruce review and tax/accounting prep.
+
 ## Open Questions
 
 - Should settlement currency be TWD by default, even if Apple proceeds arrive
   in THB?
 - Which FX rate should be used: actual bank conversion, Apple report rate, or
   manually entered rate?
-- Should Apple Developer annual fee and domain fee be amortized automatically
-  by default, or entered manually each month?
+- Should Apple Developer annual fee and domain fee create monthly amortization
+  schedules automatically, even when not included in settlement yet?
+- Should the default month mode be `revenue_split` or `no_distribution` before
+  meaningful user revenue exists?
+- When should Eric and Bruce switch from revenue split/no distribution to net
+  profit split?
 - Should Bruce be allowed to edit `pending_agreement` rows entered by Eric, or
   only comment?
 - When should a settlement be considered locked: after Apple proceeds report,
@@ -465,12 +683,15 @@ The first valuable version is:
 
 ```text
 Eric/Bruce enter revenue and expenses
-each row says who paid/received and whether it is included
-system calculates fair 50/50 settlement
+each expense records paid date, amount, cycle, and payer
+each expense has a checkbox for whether it is deducted before profit split
+each month chooses revenue split, net profit split, or no distribution
+system calculates fair 50/50 settlement based on the selected mode
 Eric manually transfers Bruce if needed
 month gets locked and marked paid
 ```
 
 That gives VibeSync a fair operating back office without pretending the bank
 account, legal control, or cost payment pattern is more symmetrical than it
-currently is.
+currently is. Early burn can stay transparent without automatically becoming a
+partner debt.
