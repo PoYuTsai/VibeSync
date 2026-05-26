@@ -46,8 +46,8 @@ export async function getAdminSession(): Promise<
   const { data: adminUser, error: adminError } = await supabase
     .from("admin_users")
     .select("id")
-    .eq("email", user.email)
-    .single();
+    .ilike("email", user.email)
+    .maybeSingle();
 
   if (adminError || !adminUser?.id) {
     return { ok: false, status: 403, error: "Forbidden" };

@@ -49,8 +49,8 @@ export async function POST(request: Request) {
   const { data: adminUser, error: adminError } = await supabase
     .from("admin_users")
     .select("id")
-    .eq("email", user.email)
-    .single();
+    .ilike("email", user.email)
+    .maybeSingle();
 
   if (adminError || !adminUser) {
     return jsonError("Forbidden", 403);

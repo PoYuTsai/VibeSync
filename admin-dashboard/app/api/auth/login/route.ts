@@ -54,8 +54,8 @@ export async function POST(request: Request) {
   const { data: adminUser, error: adminError } = await adminCheckClient
     .from("admin_users")
     .select("id")
-    .eq("email", data.user.email)
-    .single();
+    .ilike("email", data.user.email ?? email)
+    .maybeSingle();
 
   if (adminError || !adminUser) {
     await supabase.auth.signOut();

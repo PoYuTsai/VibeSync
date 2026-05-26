@@ -59,8 +59,8 @@ export async function middleware(request: NextRequest) {
   const { data: adminUser } = await supabase
     .from("admin_users")
     .select("id")
-    .eq("email", user.email)
-    .single();
+    .ilike("email", user.email)
+    .maybeSingle();
 
   if (!adminUser) {
     const response = NextResponse.redirect(new URL("/403", request.url));
