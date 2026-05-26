@@ -1,23 +1,21 @@
-// app/(dashboard)/ai-health/page.tsx
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/lib/supabase";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCcw } from "lucide-react";
 import {
-  LineChart,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  AreaChart,
-  Area,
 } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface AIHealthData {
   date: string;
@@ -28,82 +26,105 @@ interface AIHealthData {
   success_rate: number;
 }
 
+interface AIHealthSummary {
+  avgSuccessRate: number | null;
+  totalRequests: number;
+  totalFailed: number;
+  totalFiltered: number;
+}
+
+interface AIHealthResponse {
+  healthData: AIHealthData[];
+  summary: AIHealthSummary;
+  error?: string;
+}
+
+const emptySummary: AIHealthSummary = {
+  avgSuccessRate: null,
+  totalRequests: 0,
+  totalFailed: 0,
+  totalFiltered: 0,
+};
+
+function formatDateLabel(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("zh-TW", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getHealthColor(rate: number | null): string {
+  if (rate === null) return "text-gray-900";
+  if (rate >= 95) return "text-green-600";
+  if (rate >= 90) return "text-yellow-600";
+  return "text-red-600";
+}
+
 export default function AIHealthPage() {
   const [healthData, setHealthData] = useState<AIHealthData[]>([]);
+  const [summary, setSummary] = useState<AIHealthSummary>(emptySummary);
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState({
-    avgSuccessRate: 0,
-    totalRequests: 0,
-    totalFailed: 0,
-    totalFiltered: 0,
-  });
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchAIHealth() {
-      try {
-        const { data } = await supabase
-          .from("ai_success_rate")
-          .select("*")
-          .order("date", { ascending: true })
-          .limit(30);
+  const fetchAIHealth = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-        if (data && data.length > 0) {
-          const formattedData = data.map((d) => ({
-            date: new Date(d.date).toLocaleDateString("zh-TW", {
-              month: "short",
-              day: "numeric",
-            }),
-            total_requests: Number(d.total_requests),
-            success_count: Number(d.success_count),
-            failed_count: Number(d.failed_count),
-            filtered_count: Number(d.filtered_count),
-            success_rate: Number(d.success_rate),
-          }));
+    try {
+      const response = await fetch("/api/admin/ai-health", {
+        credentials: "same-origin",
+      });
+      const payload = (await response.json()) as AIHealthResponse;
 
-          setHealthData(formattedData);
-
-          const totalRequests = formattedData.reduce(
-            (sum, d) => sum + d.total_requests,
-            0
-          );
-          const totalFailed = formattedData.reduce(
-            (sum, d) => sum + d.failed_count,
-            0
-          );
-          const totalFiltered = formattedData.reduce(
-            (sum, d) => sum + d.filtered_count,
-            0
-          );
-          const avgSuccessRate =
-            formattedData.reduce((sum, d) => sum + d.success_rate, 0) /
-            formattedData.length;
-
-          setSummary({
-            avgSuccessRate: Math.round(avgSuccessRate * 100) / 100,
-            totalRequests,
-            totalFailed,
-            totalFiltered,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to fetch AI health:", error);
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error(payload.error ?? "讀取 AI 健康資料失敗");
       }
-    }
 
-    fetchAIHealth();
+      setHealthData(
+        payload.healthData.map((row) => ({
+          ...row,
+          date: formatDateLabel(row.date),
+        }))
+      );
+      setSummary(payload.summary);
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error ? fetchError.message : "讀取 AI 健康資料失敗"
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const getHealthColor = (rate: number) => {
-    if (rate >= 95) return "text-green-600";
-    if (rate >= 90) return "text-yellow-600";
-    return "text-red-600";
-  };
+  useEffect(() => {
+    void fetchAIHealth();
+  }, [fetchAIHealth]);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">AI 健康度</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">AI 健康</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            直接讀取 ai_logs，統計近 30 天成功、失敗與 guardrail 過濾狀態。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void fetchAIHealth()}
+          disabled={loading}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          重新整理
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -114,13 +135,18 @@ export default function AIHealthPage() {
           </CardHeader>
           <CardContent>
             <div
-              className={`text-2xl font-bold ${getHealthColor(summary.avgSuccessRate)}`}
+              className={`text-2xl font-bold ${getHealthColor(
+                summary.avgSuccessRate
+              )}`}
             >
-              {summary.avgSuccessRate}%
+              {summary.avgSuccessRate === null
+                ? "尚無資料"
+                : `${summary.avgSuccessRate}%`}
             </div>
             <p className="text-xs text-gray-500">近 30 天</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
@@ -134,30 +160,32 @@ export default function AIHealthPage() {
             <p className="text-xs text-gray-500">近 30 天</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              失敗次數
+              失敗數
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
               {summary.totalFailed.toLocaleString()}
             </div>
-            <p className="text-xs text-gray-500">需要關注</p>
+            <p className="text-xs text-gray-500">status = failed</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              被過濾
+              過濾數
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">
               {summary.totalFiltered.toLocaleString()}
             </div>
-            <p className="text-xs text-gray-500">Guardrails 攔截</p>
+            <p className="text-xs text-gray-500">status = filtered</p>
           </CardContent>
         </Card>
       </div>
@@ -168,8 +196,12 @@ export default function AIHealthPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-80 flex items-center justify-center">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            <div className="flex h-80 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            </div>
+          ) : healthData.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+              目前沒有 ai_logs 可統計。
             </div>
           ) : (
             <div className="h-80">
@@ -177,7 +209,7 @@ export default function AIHealthPage() {
                 <LineChart data={healthData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
-                  <YAxis domain={[80, 100]} />
+                  <YAxis domain={[0, 100]} />
                   <Tooltip />
                   <Legend />
                   <Line
@@ -197,12 +229,16 @@ export default function AIHealthPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>請求分佈</CardTitle>
+          <CardTitle>請求結果分布</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-80 flex items-center justify-center">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            <div className="flex h-80 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            </div>
+          ) : healthData.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+              尚無請求結果資料。
             </div>
           ) : (
             <div className="h-80">

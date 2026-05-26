@@ -1,118 +1,135 @@
-// app/(dashboard)/page.tsx
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { CreditCard, DollarSign, RefreshCcw, Users, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/lib/supabase";
-import { Users, CreditCard, DollarSign, Zap } from "lucide-react";
 
 interface DashboardStats {
   totalUsers: number;
   activeSubscriptions: number;
   monthlyRevenue: number;
-  aiSuccessRate: number;
+  aiSuccessRate: number | null;
+}
+
+interface DashboardResponse {
+  stats: DashboardStats;
+  error?: string;
+}
+
+const emptyStats: DashboardStats = {
+  totalUsers: 0,
+  activeSubscriptions: 0,
+  monthlyRevenue: 0,
+  aiSuccessRate: null,
+};
+
+function formatUsd(value: number): string {
+  return `$${value.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatPercent(value: number | null): string {
+  return value === null ? "尚無資料" : `${value}%`;
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalUsers: 0,
-    activeSubscriptions: 0,
-    monthlyRevenue: 0,
-    aiSuccessRate: 0,
-  });
+  const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/admin/overview", {
+        credentials: "same-origin",
+      });
+      const payload = (await response.json()) as DashboardResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "讀取總覽資料失敗");
+      }
+
+      setStats(payload.stats);
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error ? fetchError.message : "讀取總覽資料失敗"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchStats() {
-      try {
-        // 取得真實用戶數 (排除測試帳號)
-        const { count: userCount } = await supabase
-          .from("real_users")
-          .select("*", { count: "exact", head: true });
-
-        // 取得活躍訂閱數
-        const { count: subCount } = await supabase
-          .from("real_subscriptions")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "active");
-
-        // 取得本月營收
-        const { data: profitData } = await supabase
-          .from("monthly_profit")
-          .select("revenue")
-          .order("month", { ascending: false })
-          .limit(1)
-          .single();
-
-        // 取得 AI 成功率 (近 7 天平均)
-        const { data: aiData } = await supabase
-          .from("ai_success_rate")
-          .select("success_rate")
-          .order("date", { ascending: false })
-          .limit(7);
-
-        const avgSuccessRate = aiData?.length
-          ? aiData.reduce((sum, d) => sum + Number(d.success_rate), 0) / aiData.length
-          : 0;
-
-        setStats({
-          totalUsers: userCount || 0,
-          activeSubscriptions: subCount || 0,
-          monthlyRevenue: profitData?.revenue || 0,
-          aiSuccessRate: Math.round(avgSuccessRate * 100) / 100,
-        });
-      } catch (error) {
-        console.error("Failed to fetch stats:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchStats();
-  }, []);
+    void fetchStats();
+  }, [fetchStats]);
 
   const kpiCards = [
     {
       title: "總用戶數",
       value: stats.totalUsers.toLocaleString(),
       icon: Users,
-      description: "排除測試帳號",
+      description: "扣除 test_users 後的正式用戶",
     },
     {
-      title: "活躍訂閱",
+      title: "有效付費用戶",
       value: stats.activeSubscriptions.toLocaleString(),
       icon: CreditCard,
-      description: "Starter + Essential",
+      description: "Starter / Essential 權益仍有效",
     },
     {
-      title: "本月營收",
-      value: `$${stats.monthlyRevenue.toLocaleString()}`,
+      title: "本月收入",
+      value: formatUsd(stats.monthlyRevenue),
       icon: DollarSign,
-      description: "USD",
+      description: "RevenueCat revenue_events，USD",
     },
     {
       title: "AI 成功率",
-      value: `${stats.aiSuccessRate}%`,
+      value: formatPercent(stats.aiSuccessRate),
       icon: Zap,
-      description: "近 7 天平均",
+      description: "近 7 天 ai_logs",
     },
   ];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">總覽</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">總覽</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            透過 Admin API 讀取 Supabase 真實資料，沒有資料時不使用假數字。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void fetchStats()}
+          disabled={loading}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          重新整理
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="animate-pulse">
+          {[1, 2, 3, 4].map((item) => (
+            <Card key={item} className="animate-pulse">
               <CardHeader className="pb-2">
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-4 w-1/2 rounded bg-gray-200" />
               </CardHeader>
               <CardContent>
-                <div className="h-8 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-8 w-3/4 rounded bg-gray-200" />
               </CardContent>
             </Card>
           ))}
@@ -129,7 +146,9 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{card.value}</div>
-                <p className="text-xs text-gray-500 mt-1">{card.description}</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {card.description}
+                </p>
               </CardContent>
             </Card>
           ))}

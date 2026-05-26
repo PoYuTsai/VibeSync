@@ -1,21 +1,19 @@
-// app/(dashboard)/revenue/page.tsx
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/lib/supabase";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCcw } from "lucide-react";
 import {
-  LineChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
 } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface MonthlyRevenue {
   month: string;
@@ -25,112 +23,138 @@ interface MonthlyRevenue {
   cancellations: number;
 }
 
+interface RevenueTotals {
+  thisMonth: number;
+  lastMonth: number;
+  growth: number;
+  totalSubscriptions: number;
+}
+
+interface RevenueResponse {
+  revenueData: MonthlyRevenue[];
+  totals: RevenueTotals;
+  source: string;
+  error?: string;
+}
+
+const emptyTotals: RevenueTotals = {
+  thisMonth: 0,
+  lastMonth: 0,
+  growth: 0,
+  totalSubscriptions: 0,
+};
+
+function formatUsd(value: number): string {
+  return `$${value.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export default function RevenuePage() {
   const [revenueData, setRevenueData] = useState<MonthlyRevenue[]>([]);
+  const [totals, setTotals] = useState<RevenueTotals>(emptyTotals);
+  const [source, setSource] = useState("revenue_events");
   const [loading, setLoading] = useState(true);
-  const [totals, setTotals] = useState({
-    thisMonth: 0,
-    lastMonth: 0,
-    growth: 0,
-    totalSubscriptions: 0,
-  });
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchRevenue = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/admin/revenue", {
+        credentials: "same-origin",
+      });
+      const payload = (await response.json()) as RevenueResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "讀取收入資料失敗");
+      }
+
+      setRevenueData(payload.revenueData);
+      setTotals(payload.totals);
+      setSource(payload.source);
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error ? fetchError.message : "讀取收入資料失敗"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchRevenue() {
-      try {
-        const { data } = await supabase
-          .from("monthly_revenue")
-          .select("*")
-          .order("month", { ascending: true })
-          .limit(12);
-
-        if (data && data.length > 0) {
-          const formattedData = data.map((d) => ({
-            month: new Date(d.month).toLocaleDateString("zh-TW", {
-              year: "2-digit",
-              month: "short",
-            }),
-            revenue: Number(d.revenue),
-            new_subscriptions: Number(d.new_subscriptions),
-            renewals: Number(d.renewals),
-            cancellations: Number(d.cancellations),
-          }));
-
-          setRevenueData(formattedData);
-
-          const thisMonth = formattedData[formattedData.length - 1];
-          const lastMonth =
-            formattedData.length > 1
-              ? formattedData[formattedData.length - 2]
-              : null;
-
-          const growth = lastMonth
-            ? lastMonth.revenue > 0
-              ? Math.round(
-                  ((thisMonth.revenue - lastMonth.revenue) / lastMonth.revenue) *
-                    100
-                )
-              : 100
-            : 0;
-
-          setTotals({
-            thisMonth: thisMonth.revenue,
-            lastMonth: lastMonth?.revenue || 0,
-            growth,
-            totalSubscriptions:
-              thisMonth.new_subscriptions + thisMonth.renewals,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to fetch revenue:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchRevenue();
-  }, []);
+    void fetchRevenue();
+  }, [fetchRevenue]);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">營收</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">收入</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            以 {source} 為營運觀察來源；正式月結仍以 App Store / Google Play
+            proceeds 為準。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void fetchRevenue()}
+          disabled={loading}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          重新整理
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              本月營收
+              本月收入
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${totals.thisMonth.toLocaleString()}
+              {formatUsd(totals.thisMonth)}
             </div>
             <p className="text-xs text-gray-500">USD</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              上月營收
+              上月收入
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${totals.lastMonth.toLocaleString()}
+              {formatUsd(totals.lastMonth)}
             </div>
             <p className="text-xs text-gray-500">USD</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              月成長率
+              月增率
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div
-              className={`text-2xl font-bold ${totals.growth >= 0 ? "text-green-600" : "text-red-600"}`}
+              className={`text-2xl font-bold ${
+                totals.growth >= 0 ? "text-green-600" : "text-red-600"
+              }`}
             >
               {totals.growth >= 0 ? "+" : ""}
               {totals.growth}%
@@ -138,10 +162,11 @@ export default function RevenuePage() {
             <p className="text-xs text-gray-500">MoM</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              本月交易數
+              本月付費事件
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -155,12 +180,16 @@ export default function RevenuePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>營收趨勢</CardTitle>
+          <CardTitle>收入趨勢</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-80 flex items-center justify-center">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            <div className="flex h-80 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            </div>
+          ) : revenueData.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+              目前沒有 revenue_events。等 RevenueCat webhook 進來後，這裡才會有真實收入事件。
             </div>
           ) : (
             <div className="h-80">
@@ -174,8 +203,8 @@ export default function RevenuePage() {
                   <Line
                     type="monotone"
                     dataKey="revenue"
-                    name="營收 (USD)"
-                    stroke="#3B82F6"
+                    name="收入 USD"
+                    stroke="#2563EB"
                     strokeWidth={2}
                   />
                   <Line
@@ -189,7 +218,7 @@ export default function RevenuePage() {
                     type="monotone"
                     dataKey="renewals"
                     name="續訂"
-                    stroke="#8B5CF6"
+                    stroke="#7C3AED"
                     strokeWidth={2}
                   />
                 </LineChart>

@@ -1,9 +1,17 @@
-// app/(dashboard)/costs/page.tsx
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCcw } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,16 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/lib/supabase";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 
 interface ProfitData {
   month: string;
@@ -33,83 +31,110 @@ interface ProfitData {
   cost_per_user: number;
 }
 
+interface CostSummary {
+  totalCost: number;
+  avgCostPerUser: number;
+  avgMargin: number;
+}
+
+interface CostsResponse {
+  profitData: ProfitData[];
+  summary: CostSummary;
+  source: string;
+  error?: string;
+}
+
+const emptySummary: CostSummary = {
+  totalCost: 0,
+  avgCostPerUser: 0,
+  avgMargin: 0,
+};
+
+function formatUsd(value: number, digits = 2): string {
+  return `$${value.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
 export default function CostsPage() {
   const [profitData, setProfitData] = useState<ProfitData[]>([]);
+  const [summary, setSummary] = useState<CostSummary>(emptySummary);
+  const [source, setSource] = useState("token_usage + revenue_events");
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState({
-    totalCost: 0,
-    avgCostPerUser: 0,
-    avgMargin: 0,
-  });
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCosts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/admin/costs", {
+        credentials: "same-origin",
+      });
+      const payload = (await response.json()) as CostsResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "讀取成本資料失敗");
+      }
+
+      setProfitData(payload.profitData);
+      setSummary(payload.summary);
+      setSource(payload.source);
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error ? fetchError.message : "讀取成本資料失敗"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchCosts() {
-      try {
-        const { data } = await supabase
-          .from("monthly_profit")
-          .select("*")
-          .order("month", { ascending: false })
-          .limit(12);
-
-        if (data && data.length > 0) {
-          const formattedData = data
-            .reverse()
-            .map((d) => ({
-              month: new Date(d.month).toLocaleDateString("zh-TW", {
-                year: "2-digit",
-                month: "short",
-              }),
-              revenue: Number(d.revenue),
-              cost: Number(d.cost),
-              profit: Number(d.profit),
-              margin_percent: Number(d.margin_percent),
-              cost_per_user: Number(d.cost_per_user),
-            }));
-
-          setProfitData(formattedData);
-
-          const totalCost = formattedData.reduce((sum, d) => sum + d.cost, 0);
-          const avgCostPerUser =
-            formattedData.reduce((sum, d) => sum + d.cost_per_user, 0) /
-            formattedData.length;
-          const avgMargin =
-            formattedData.reduce((sum, d) => sum + d.margin_percent, 0) /
-            formattedData.length;
-
-          setSummary({
-            totalCost: Math.round(totalCost * 100) / 100,
-            avgCostPerUser: Math.round(avgCostPerUser * 10000) / 10000,
-            avgMargin: Math.round(avgMargin * 100) / 100,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to fetch costs:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchCosts();
-  }, []);
+    void fetchCosts();
+  }, [fetchCosts]);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">成本</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">成本</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            以 {source} 計算 AI 成本與營運毛利；手動共同成本請在財務月結頁登錄。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void fetchCosts()}
+          disabled={loading}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          重新整理
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              累計 AI 成本
+              近 12 月 AI 成本
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${summary.totalCost.toLocaleString()}
+              {formatUsd(summary.totalCost)}
             </div>
-            <p className="text-xs text-gray-500">USD (近 12 個月)</p>
+            <p className="text-xs text-gray-500">USD</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
@@ -117,10 +142,13 @@ export default function CostsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${summary.avgCostPerUser}</div>
-            <p className="text-xs text-gray-500">USD / 月</p>
+            <div className="text-2xl font-bold">
+              {formatUsd(summary.avgCostPerUser, 4)}
+            </div>
+            <p className="text-xs text-gray-500">USD / active AI user</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
@@ -129,23 +157,29 @@ export default function CostsPage() {
           </CardHeader>
           <CardContent>
             <div
-              className={`text-2xl font-bold ${summary.avgMargin >= 50 ? "text-green-600" : "text-orange-600"}`}
+              className={`text-2xl font-bold ${
+                summary.avgMargin >= 50 ? "text-green-600" : "text-orange-600"
+              }`}
             >
               {summary.avgMargin}%
             </div>
-            <p className="text-xs text-gray-500">目標: &gt;90%</p>
+            <p className="text-xs text-gray-500">收入扣 AI 用量成本</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>營收 vs 成本</CardTitle>
+          <CardTitle>收入 vs AI 成本</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="h-80 flex items-center justify-center">
-              <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            <div className="flex h-80 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+            </div>
+          ) : profitData.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+              目前沒有 token_usage 或 revenue_events 可計算成本。
             </div>
           ) : (
             <div className="h-80">
@@ -155,8 +189,8 @@ export default function CostsPage() {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="revenue" name="營收" fill="#3B82F6" />
-                  <Bar dataKey="cost" name="成本" fill="#EF4444" />
+                  <Bar dataKey="revenue" name="收入" fill="#2563EB" />
+                  <Bar dataKey="cost" name="AI 成本" fill="#EF4444" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -166,23 +200,27 @@ export default function CostsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>月度利潤明細</CardTitle>
+          <CardTitle>月度成本明細</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="animate-pulse space-y-2">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-10 bg-gray-100 rounded"></div>
+              {[1, 2, 3, 4, 5].map((item) => (
+                <div key={item} className="h-10 rounded bg-gray-100" />
               ))}
+            </div>
+          ) : profitData.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+              尚無月份資料。
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>月份</TableHead>
-                  <TableHead className="text-right">營收</TableHead>
-                  <TableHead className="text-right">成本</TableHead>
-                  <TableHead className="text-right">利潤</TableHead>
+                  <TableHead className="text-right">收入</TableHead>
+                  <TableHead className="text-right">AI 成本</TableHead>
+                  <TableHead className="text-right">毛利</TableHead>
                   <TableHead className="text-right">毛利率</TableHead>
                 </TableRow>
               </TableHeader>
@@ -191,15 +229,17 @@ export default function CostsPage() {
                   <TableRow key={row.month}>
                     <TableCell className="font-medium">{row.month}</TableCell>
                     <TableCell className="text-right">
-                      ${row.revenue.toLocaleString()}
+                      {formatUsd(row.revenue)}
                     </TableCell>
                     <TableCell className="text-right">
-                      ${row.cost.toLocaleString()}
+                      {formatUsd(row.cost)}
                     </TableCell>
                     <TableCell
-                      className={`text-right ${row.profit >= 0 ? "text-green-600" : "text-red-600"}`}
+                      className={`text-right ${
+                        row.profit >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
                     >
-                      ${row.profit.toLocaleString()}
+                      {formatUsd(row.profit)}
                     </TableCell>
                     <TableCell className="text-right">
                       {row.margin_percent}%

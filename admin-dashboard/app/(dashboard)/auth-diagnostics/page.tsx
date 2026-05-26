@@ -1,15 +1,22 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type AuthDiagnosticRow = {
   id: string;
   event: string;
-  status: "info" | "success" | "warning" | "error";
+  status: string;
   email_redacted: string | null;
   platform: string | null;
   app_version: string | null;
@@ -20,6 +27,11 @@ type AuthDiagnosticRow = {
   created_at: string;
 };
 
+interface AuthDiagnosticsResponse {
+  rows: AuthDiagnosticRow[];
+  error?: string;
+}
+
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-TW", {
     month: "short",
@@ -29,7 +41,7 @@ function formatDateTime(value: string) {
   });
 }
 
-function statusPillClass(status: AuthDiagnosticRow["status"]) {
+function statusPillClass(status: string) {
   switch (status) {
     case "success":
       return "bg-green-100 text-green-700";
@@ -47,38 +59,33 @@ export default function AuthDiagnosticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchDiagnostics() {
-      if (!isSupabaseConfigured()) {
-        setError("Supabase 尚未設定，無法讀取 Auth 診斷資料。");
-        setLoading(false);
-        return;
+  const fetchDiagnostics = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/admin/auth-diagnostics", {
+        credentials: "same-origin",
+      });
+      const payload = (await response.json()) as AuthDiagnosticsResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "讀取 Auth 診斷資料失敗");
       }
 
-      try {
-        const { data, error } = await supabase
-          .from("auth_diagnostics")
-          .select(
-            "id, event, status, email_redacted, platform, app_version, build_number, error_code, message, metadata, created_at"
-          )
-          .order("created_at", { ascending: false })
-          .limit(100);
-
-        if (error) {
-          throw error;
-        }
-
-        setRows((data ?? []) as AuthDiagnosticRow[]);
-      } catch (error) {
-        console.error("Failed to fetch auth diagnostics:", error);
-        setError("讀取 Auth 診斷資料失敗。");
-      } finally {
-        setLoading(false);
-      }
+      setRows(payload.rows);
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error ? fetchError.message : "讀取 Auth 診斷資料失敗"
+      );
+    } finally {
+      setLoading(false);
     }
-
-    fetchDiagnostics();
   }, []);
+
+  useEffect(() => {
+    void fetchDiagnostics();
+  }, [fetchDiagnostics]);
 
   const summary = useMemo(() => {
     const last24Hours = Date.now() - 24 * 60 * 60 * 1000;
@@ -103,12 +110,29 @@ export default function AuthDiagnosticsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Auth 診斷</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          用來追查註冊、驗證信、重設密碼、deep link 是否真的走完。
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Auth 診斷</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            追蹤註冊、登入、重設密碼與 deep link 相關事件，資料來自 auth_diagnostics。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void fetchDiagnostics()}
+          disabled={loading}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          重新整理
+        </Button>
       </div>
+
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-5">
         <Card>
@@ -178,37 +202,33 @@ export default function AuthDiagnosticsPage() {
             <div className="flex h-40 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
             </div>
-          ) : error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          ) : rows.length == 0 ? (
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              目前還沒有 Auth 診斷資料。
+          ) : rows.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+              目前沒有 Auth 診斷資料。
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b text-gray-500">
-                    <th className="px-3 py-2 font-medium">時間</th>
-                    <th className="px-3 py-2 font-medium">事件</th>
-                    <th className="px-3 py-2 font-medium">狀態</th>
-                    <th className="px-3 py-2 font-medium">Email</th>
-                    <th className="px-3 py-2 font-medium">平台</th>
-                    <th className="px-3 py-2 font-medium">版本</th>
-                    <th className="px-3 py-2 font-medium">錯誤碼</th>
-                    <th className="px-3 py-2 font-medium">訊息</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>時間</TableHead>
+                    <TableHead>事件</TableHead>
+                    <TableHead>狀態</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>平台</TableHead>
+                    <TableHead>版本</TableHead>
+                    <TableHead>錯誤碼</TableHead>
+                    <TableHead>訊息</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {rows.map((row) => (
-                    <tr key={row.id} className="border-b align-top">
-                      <td className="px-3 py-2 whitespace-nowrap text-gray-600">
+                    <TableRow key={row.id} className="align-top">
+                      <TableCell className="whitespace-nowrap text-gray-600">
                         {formatDateTime(row.created_at)}
-                      </td>
-                      <td className="px-3 py-2 font-medium">{row.event}</td>
-                      <td className="px-3 py-2">
+                      </TableCell>
+                      <TableCell className="font-medium">{row.event}</TableCell>
+                      <TableCell>
                         <span
                           className={`rounded-full px-2 py-1 text-xs font-medium ${statusPillClass(
                             row.status
@@ -216,22 +236,22 @@ export default function AuthDiagnosticsPage() {
                         >
                           {row.status}
                         </span>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">
+                      </TableCell>
+                      <TableCell className="text-gray-600">
                         {row.email_redacted ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">
+                      </TableCell>
+                      <TableCell className="text-gray-600">
                         {row.platform ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">
+                      </TableCell>
+                      <TableCell className="text-gray-600">
                         {row.app_version
                           ? `${row.app_version} (${row.build_number ?? "-"})`
                           : "-"}
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">
+                      </TableCell>
+                      <TableCell className="text-gray-600">
                         {row.error_code ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
+                      </TableCell>
+                      <TableCell className="max-w-lg text-gray-700">
                         <div className="space-y-2">
                           <div>{row.message ?? "-"}</div>
                           {row.metadata &&
@@ -246,11 +266,11 @@ export default function AuthDiagnosticsPage() {
                             </details>
                           ) : null}
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
