@@ -55,6 +55,7 @@ export interface FinanceEntry {
   amount: number | string;
   currency: string;
   amount_twd: number | string | null;
+  fx_rate_to_twd: number | string | null;
   paid_by: FinanceParty;
   received_by: FinanceParty;
   billing_cycle: BillingCycle;

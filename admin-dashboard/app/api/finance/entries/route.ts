@@ -146,11 +146,22 @@ export async function POST(request: Request) {
     : "excluded_for_now";
   const currency = (asText(body.currency) || "TWD").toUpperCase();
   const amountTwdInput = asNumber(body.amount_twd);
-  const amountTwd = Number.isFinite(amountTwdInput)
-    ? amountTwdInput
-    : currency === "TWD"
+  const fxRateInput = asNumber(body.fx_rate_to_twd);
+  const hasFxRate = Number.isFinite(fxRateInput) && fxRateInput > 0;
+  const hasAmountTwd = Number.isFinite(amountTwdInput);
+  const fxRateToTwd = currency === "TWD" ? 1 : hasFxRate ? fxRateInput : null;
+  const amountTwd =
+    currency === "TWD"
       ? amount
-      : null;
+      : hasAmountTwd
+        ? amountTwdInput
+        : hasFxRate
+          ? Math.round((amount * fxRateInput + Number.EPSILON) * 100) / 100
+          : null;
+
+  if (currency !== "TWD" && !amountTwd) {
+    return jsonError("Non-TWD entries require an FX rate or TWD amount", 400);
+  }
 
   const payload = {
     entry_date: entryDate,
@@ -162,6 +173,7 @@ export async function POST(request: Request) {
     amount,
     currency,
     amount_twd: amountTwd,
+    fx_rate_to_twd: fxRateToTwd,
     paid_by:
       type === "expense"
         ? asEnum(body.paid_by, PARTIES, "eric")

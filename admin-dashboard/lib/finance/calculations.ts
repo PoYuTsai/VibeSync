@@ -29,8 +29,22 @@ export function monthKeyFromDate(dateValue: string | Date) {
 }
 
 export function toTwdAmount(entry: FinanceEntry) {
-  const raw = entry.amount_twd ?? entry.amount;
-  return Number(raw || 0);
+  const amountTwd = Number(entry.amount_twd);
+  if (Number.isFinite(amountTwd)) {
+    return amountTwd;
+  }
+
+  const amount = Number(entry.amount || 0);
+  if (entry.currency.toUpperCase() === "TWD") {
+    return amount;
+  }
+
+  const fxRate = Number(entry.fx_rate_to_twd);
+  if (Number.isFinite(fxRate) && fxRate > 0) {
+    return amount * fxRate;
+  }
+
+  return 0;
 }
 
 function expenseAmount(entry: FinanceEntry) {

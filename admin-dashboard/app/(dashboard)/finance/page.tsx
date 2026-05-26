@@ -39,6 +39,7 @@ interface EntryFormState {
   category: FinanceCategory;
   amount: string;
   currency: string;
+  fx_rate_to_twd: string;
   amount_twd: string;
   entry_date: string;
   paid_by: FinanceParty;
@@ -49,9 +50,11 @@ interface EntryFormState {
   notes: string;
 }
 
+const currencyOptions = ["TWD", "USD", "THB", "JPY", "EUR"];
+
 const categoryLabels: Record<FinanceCategory, string> = {
-  app_store_proceeds: "App Store 入帳",
-  google_play_proceeds: "Google Play 入帳",
+  app_store_proceeds: "App Store proceeds",
+  google_play_proceeds: "Google Play proceeds",
   claude: "Claude API",
   apple_developer: "Apple Developer",
   domain: "網域",
@@ -114,7 +117,8 @@ function defaultForm(): EntryFormState {
     title: "",
     category: "claude",
     amount: "",
-    currency: "TWD",
+    currency: "USD",
+    fx_rate_to_twd: "",
     amount_twd: "",
     entry_date: todayKey(),
     paid_by: "eric",
@@ -134,8 +138,36 @@ function formatTwd(value: number) {
   }).format(value);
 }
 
-function amountToNumber(value: number | string | null) {
+function amountToNumber(value: number | string | null | undefined) {
   return Number(value || 0);
+}
+
+function optionalNumber(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function twdAmountForEntry(entry: FinanceEntry) {
+  const amountTwd = Number(entry.amount_twd);
+  if (Number.isFinite(amountTwd)) {
+    return amountTwd;
+  }
+
+  const amount = Number(entry.amount || 0);
+  if (entry.currency.toUpperCase() === "TWD") {
+    return amount;
+  }
+
+  const fxRate = Number(entry.fx_rate_to_twd);
+  if (Number.isFinite(fxRate) && fxRate > 0) {
+    return amount * fxRate;
+  }
+
+  return 0;
 }
 
 function transferText(summary: FinanceSummary | null) {
@@ -168,14 +200,28 @@ export default function FinancePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const currency = form.currency.trim().toUpperCase() || "TWD";
   const isRevenue = form.type === "revenue";
+  const requiresFx = currency !== "TWD";
+  const amountValue = optionalNumber(form.amount);
+  const fxRateValue = optionalNumber(form.fx_rate_to_twd);
+  const manualTwdValue = optionalNumber(form.amount_twd);
+  const autoTwdAmount =
+    amountValue !== null && amountValue !== 0
+      ? currency === "TWD"
+        ? amountValue
+        : fxRateValue !== null && fxRateValue > 0
+          ? Math.round((amountValue * fxRateValue + Number.EPSILON) * 100) / 100
+          : null
+      : null;
+  const previewTwdAmount = manualTwdValue ?? autoTwdAmount;
 
   const metricCards = useMemo(
     () => [
       {
         title: "本月官方入帳",
         value: formatTwd(summary?.revenueTotalTwd ?? 0),
-        caption: "以 App Store / Google Play proceeds 為準",
+        caption: "以 App Store / Google Play proceeds 為準，月結統一換算 TWD",
       },
       {
         title: "納入分潤前扣除",
@@ -205,7 +251,9 @@ export default function FinancePage() {
       const payload = (await response.json()) as FinanceApiResponse | { error: string };
 
       if (!response.ok) {
-        throw new Error("error" in payload ? payload.error : "Failed to load finance data");
+        throw new Error(
+          "error" in payload ? payload.error : "Failed to load finance data"
+        );
       }
 
       const data = payload as FinanceApiResponse;
@@ -237,6 +285,9 @@ export default function FinancePage() {
         ...current,
         type,
         category: "app_store_proceeds",
+        currency: "THB",
+        fx_rate_to_twd: "",
+        amount_twd: "",
         paid_by: "none",
         received_by: "eric",
         billing_cycle: "monthly",
@@ -250,11 +301,24 @@ export default function FinancePage() {
       ...current,
       type,
       category: "claude",
+      currency: "USD",
+      fx_rate_to_twd: "",
+      amount_twd: "",
       paid_by: "eric",
       received_by: "none",
       billing_cycle: "usage_based",
       cost_role: "direct_variable_cost",
       include_before_profit_split: true,
+    }));
+  }
+
+  function handleCurrencyChange(nextCurrency: string) {
+    const normalized = nextCurrency.toUpperCase();
+    setForm((current) => ({
+      ...current,
+      currency: normalized,
+      fx_rate_to_twd: normalized === "TWD" ? "" : current.fx_rate_to_twd,
+      amount_twd: normalized === "TWD" ? "" : current.amount_twd,
     }));
   }
 
@@ -270,7 +334,11 @@ export default function FinancePage() {
         body: JSON.stringify({
           ...form,
           month,
+          currency,
           amount: Number(form.amount),
+          fx_rate_to_twd: form.fx_rate_to_twd
+            ? Number(form.fx_rate_to_twd)
+            : undefined,
           amount_twd: form.amount_twd ? Number(form.amount_twd) : undefined,
         }),
       });
@@ -347,7 +415,7 @@ export default function FinancePage() {
         <div>
           <h1 className="text-3xl font-bold">財務與夥伴月結</h1>
           <p className="mt-2 text-sm text-gray-600">
-            共同視角記錄收入、成本、誰先支付，並自動試算 Eric / Bruce 50/50 分潤。
+            共同視角記錄收入、成本、誰先支付。原幣可用 USD / THB / TWD，月結一律換算成 TWD。
           </p>
         </div>
 
@@ -384,7 +452,7 @@ export default function FinancePage() {
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_460px]">
         <Card className="rounded-lg">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
@@ -497,6 +565,10 @@ export default function FinancePage() {
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={(event) => void handleSubmit(event)}>
+              <div className="rounded-md border bg-blue-50 p-3 text-sm text-blue-900">
+                月結基準是 TWD。Claude 通常填 USD + 匯率；Apple 若實收進泰國帳戶，可填 THB + 匯率；台幣支出直接填 TWD。
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <label className="space-y-1 text-sm font-medium text-gray-700">
                   類型
@@ -529,7 +601,11 @@ export default function FinancePage() {
                   value={form.title}
                   onChange={(event) => updateForm("title", event.target.value)}
                   className="h-10 w-full rounded-md border bg-white px-3"
-                  placeholder={isRevenue ? "Apple proceeds 2026-05" : "Claude API production usage"}
+                  placeholder={
+                    isRevenue
+                      ? "Apple proceeds 2026-05"
+                      : "Claude API production usage"
+                  }
                   required
                 />
               </label>
@@ -570,18 +646,22 @@ export default function FinancePage() {
                 </label>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <label className="space-y-1 text-sm font-medium text-gray-700">
-                  幣別
-                  <input
-                    value={form.currency}
-                    onChange={(event) =>
-                      updateForm("currency", event.target.value.toUpperCase())
-                    }
+                  原幣幣別
+                  <select
+                    value={currency}
+                    onChange={(event) => handleCurrencyChange(event.target.value)}
                     className="h-10 w-full rounded-md border bg-white px-3"
-                    maxLength={8}
-                  />
+                  >
+                    {currencyOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </label>
+
                 <label className="space-y-1 text-sm font-medium text-gray-700">
                   原幣金額
                   <input
@@ -593,6 +673,25 @@ export default function FinancePage() {
                     required
                   />
                 </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1 text-sm font-medium text-gray-700">
+                  匯率到 TWD
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    value={requiresFx ? form.fx_rate_to_twd : "1"}
+                    onChange={(event) =>
+                      updateForm("fx_rate_to_twd", event.target.value)
+                    }
+                    disabled={!requiresFx}
+                    className="h-10 w-full rounded-md border bg-white px-3 disabled:bg-gray-100"
+                    placeholder={currency === "USD" ? "例：32.30" : "例：0.90"}
+                  />
+                </label>
+
                 <label className="space-y-1 text-sm font-medium text-gray-700">
                   TWD 金額
                   <input
@@ -601,9 +700,23 @@ export default function FinancePage() {
                     value={form.amount_twd}
                     onChange={(event) => updateForm("amount_twd", event.target.value)}
                     className="h-10 w-full rounded-md border bg-white px-3"
-                    placeholder="同 TWD 可留空"
+                    placeholder={
+                      autoTwdAmount === null
+                        ? "可手動覆寫"
+                        : `自動試算 ${formatTwd(autoTwdAmount)}`
+                    }
                   />
                 </label>
+              </div>
+
+              <div className="rounded-md border bg-gray-50 p-3 text-sm">
+                <div className="font-medium">月結認列金額</div>
+                <div className="mt-1 text-lg font-semibold">
+                  {previewTwdAmount === null ? "-" : formatTwd(previewTwdAmount)}
+                </div>
+                <div className="mt-1 text-xs text-gray-500">
+                  TWD 金額可留空，系統會用原幣金額 x 匯率；若帳單或銀行有實際台幣值，可手動覆寫。
+                </div>
               </div>
 
               {isRevenue ? (
@@ -725,60 +838,69 @@ export default function FinancePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>{entry.entry_date}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">{entry.title}</div>
-                      <div className="text-xs text-gray-500">
-                        {categoryLabels[entry.category]}
-                      </div>
-                    </TableCell>
-                    <TableCell>{entry.type === "revenue" ? "收入" : "成本"}</TableCell>
-                    <TableCell>
-                      {entry.type === "revenue"
-                        ? `收款：${partyLabels[entry.received_by]}`
-                        : `支付：${partyLabels[entry.paid_by]}`}
-                    </TableCell>
-                    <TableCell>{billingCycleLabels[entry.billing_cycle]}</TableCell>
-                    <TableCell>
-                      {entry.type === "revenue"
-                        ? "官方 proceeds"
-                        : entry.include_before_profit_split
-                          ? "納入扣除"
-                          : "先不扣除"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div
-                        className={
-                          entry.type === "revenue" ? "text-green-700" : "text-red-700"
-                        }
-                      >
-                        {entry.type === "revenue" ? "+" : "-"}
-                        {formatTwd(Math.abs(amountToNumber(entry.amount_twd ?? entry.amount)))}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {entry.currency} {amountToNumber(entry.amount).toLocaleString()}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => void deleteEntry(entry.id)}
-                        disabled={
-                          saving ||
-                          settlement?.status === "locked" ||
-                          settlement?.status === "paid"
-                        }
-                        aria-label="刪除"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {entries.map((entry) => {
+                  const rowTwdAmount = Math.abs(twdAmountForEntry(entry));
+                  const entryFxRate = Number(entry.fx_rate_to_twd);
+
+                  return (
+                    <TableRow key={entry.id}>
+                      <TableCell>{entry.entry_date}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{entry.title}</div>
+                        <div className="text-xs text-gray-500">
+                          {categoryLabels[entry.category]}
+                        </div>
+                      </TableCell>
+                      <TableCell>{entry.type === "revenue" ? "收入" : "成本"}</TableCell>
+                      <TableCell>
+                        {entry.type === "revenue"
+                          ? `收款：${partyLabels[entry.received_by]}`
+                          : `支付：${partyLabels[entry.paid_by]}`}
+                      </TableCell>
+                      <TableCell>{billingCycleLabels[entry.billing_cycle]}</TableCell>
+                      <TableCell>
+                        {entry.type === "revenue"
+                          ? "官方 proceeds"
+                          : entry.include_before_profit_split
+                            ? "納入扣除"
+                            : "先不扣除"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div
+                          className={
+                            entry.type === "revenue" ? "text-green-700" : "text-red-700"
+                          }
+                        >
+                          {entry.type === "revenue" ? "+" : "-"}
+                          {formatTwd(rowTwdAmount)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {entry.currency} {amountToNumber(entry.amount).toLocaleString()}
+                          {entry.currency.toUpperCase() !== "TWD" &&
+                          Number.isFinite(entryFxRate)
+                            ? ` x ${entryFxRate.toLocaleString()}`
+                            : ""}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => void deleteEntry(entry.id)}
+                          disabled={
+                            saving ||
+                            settlement?.status === "locked" ||
+                            settlement?.status === "paid"
+                          }
+                          aria-label="刪除"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
