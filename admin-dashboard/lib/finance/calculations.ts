@@ -13,6 +13,10 @@ function money(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function normalizeSettlementMode(value: unknown): SettlementMode {
+  return value === "net_profit_split" ? "net_profit_split" : DEFAULT_MODE;
+}
+
 export function monthDateFromKey(monthKey?: string | null) {
   const now = new Date();
   const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -52,7 +56,7 @@ function expenseAmount(entry: FinanceEntry) {
 }
 
 function isDeductedExpense(entry: FinanceEntry, mode: SettlementMode) {
-  if (entry.type !== "expense" || mode === "no_distribution") {
+  if (entry.type !== "expense") {
     return false;
   }
 
@@ -72,7 +76,7 @@ export function calculateFinanceSummary(params: {
   entries: FinanceEntry[];
   settlement?: MonthlySettlement | null;
 }): FinanceSummary {
-  const mode = params.settlement?.settlement_mode ?? DEFAULT_MODE;
+  const mode = normalizeSettlementMode(params.settlement?.settlement_mode);
   const status = params.settlement?.status ?? DEFAULT_STATUS;
   const reserveAmountTwd = money(Number(params.settlement?.reserve_amount_twd || 0));
 
@@ -104,10 +108,9 @@ export function calculateFinanceSummary(params: {
 
   const operatingProfitTwd = money(revenueTotalTwd - recordedExpenseTotalTwd);
   const settlementProfitTwd = money(revenueTotalTwd - deductedExpenseTotalTwd);
-  const distributableAmountTwd =
-    mode === "no_distribution"
-      ? 0
-      : money(Math.max(settlementProfitTwd - reserveAmountTwd, 0));
+  const distributableAmountTwd = money(
+    Math.max(settlementProfitTwd - reserveAmountTwd, 0)
+  );
 
   const ericEntitlementTwd = money(distributableAmountTwd / 2);
   const bruceEntitlementTwd = money(distributableAmountTwd / 2);
@@ -131,7 +134,7 @@ export function calculateFinanceSummary(params: {
   let amountEricShouldTransferToBruceTwd = 0;
   let amountBruceShouldTransferToEricTwd = 0;
 
-  if (mode !== "no_distribution" && distributableAmountTwd > 0) {
+  if (distributableAmountTwd > 0) {
     const ericBalance = money(ericActualCashTwd - ericEntitlementTwd);
     const bruceBalance = money(bruceActualCashTwd - bruceEntitlementTwd);
 
@@ -144,7 +147,7 @@ export function calculateFinanceSummary(params: {
         Math.min(bruceBalance, Math.abs(ericBalance))
       );
     }
-  } else if (mode !== "no_distribution" && settlementProfitTwd < 0) {
+  } else if (settlementProfitTwd < 0) {
     if (ericActualCashTwd > 0 && bruceActualCashTwd < 0) {
       amountEricShouldTransferToBruceTwd = money(
         Math.min(ericActualCashTwd, Math.abs(bruceActualCashTwd))
@@ -175,7 +178,6 @@ export function calculateFinanceSummary(params: {
     bruceEntitlementTwd,
     amountEricShouldTransferToBruceTwd,
     amountBruceShouldTransferToEricTwd,
-    carryOutTwd:
-      mode === "no_distribution" ? 0 : money(Math.max(-settlementProfitTwd, 0)),
+    carryOutTwd: money(Math.max(-settlementProfitTwd, 0)),
   };
 }

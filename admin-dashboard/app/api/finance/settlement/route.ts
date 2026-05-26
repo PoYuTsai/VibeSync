@@ -13,7 +13,6 @@ export const dynamic = "force-dynamic";
 const SETTLEMENT_MODES: SettlementMode[] = [
   "contribution_split",
   "net_profit_split",
-  "no_distribution",
 ];
 const STATUSES: SettlementStatus[] = ["draft", "review", "locked", "paid"];
 

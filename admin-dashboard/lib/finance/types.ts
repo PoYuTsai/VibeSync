@@ -1,9 +1,6 @@
 export type FinanceParty = "eric" | "bruce" | "platform" | "none";
 export type FinanceEntryType = "revenue" | "expense";
-export type SettlementMode =
-  | "contribution_split"
-  | "net_profit_split"
-  | "no_distribution";
+export type SettlementMode = "contribution_split" | "net_profit_split";
 export type SettlementStatus = "draft" | "review" | "locked" | "paid";
 
 export type FinanceCategory =

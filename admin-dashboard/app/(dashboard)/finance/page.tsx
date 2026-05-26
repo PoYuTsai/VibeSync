@@ -90,9 +90,15 @@ const costRoleLabels: Record<CostRole, string> = {
 };
 
 const modeLabels: Record<SettlementMode, string> = {
-  contribution_split: "貢獻分潤",
-  net_profit_split: "淨利分潤",
-  no_distribution: "只觀察不分配",
+  contribution_split: "扣指定成本後平分",
+  net_profit_split: "扣全部成本後平分",
+};
+
+const modeExamples: Record<SettlementMode, string> = {
+  contribution_split:
+    "例：收入 3,000，指定扣 Claude 用量 500，剩下 2,500，Eric / Bruce 各 1,250。",
+  net_profit_split:
+    "例：收入 3,000，扣全部共同成本 1,200，剩下 1,800，Eric / Bruce 各 900。",
 };
 
 const statusLabels: Record<SettlementStatus, string> = {
@@ -226,12 +232,12 @@ export default function FinancePage() {
       {
         title: "納入分潤前扣除",
         value: formatTwd(summary?.deductedExpenseTotalTwd ?? 0),
-        caption: "依目前模式與勾選成本計算",
+        caption: "這個月實際拿來扣的成本",
       },
       {
         title: "可分配金額",
         value: formatTwd(summary?.distributableAmountTwd ?? 0),
-        caption: "負數月份不分潤，留作 carry",
+        caption: "扣完成本後，正數才 50/50",
       },
       {
         title: "建議互轉",
@@ -485,6 +491,9 @@ export default function FinancePage() {
                     </option>
                   ))}
                 </select>
+                <p className="rounded-md bg-slate-50 px-3 py-2 text-xs font-normal leading-relaxed text-slate-600">
+                  {modeExamples[mode]}
+                </p>
               </label>
 
               <label className="space-y-1 text-sm font-medium text-gray-700">
@@ -521,7 +530,7 @@ export default function FinancePage() {
                 onChange={(event) => setSettlementNotes(event.target.value)}
                 rows={3}
                 className="w-full rounded-md border bg-white px-3 py-2"
-                placeholder="例：本月先採貢獻分潤；固定營運成本暫由 Eric 吸收。"
+                placeholder="例：本月採扣指定成本後平分；前期固定成本只記帳。"
               />
             </label>
 
