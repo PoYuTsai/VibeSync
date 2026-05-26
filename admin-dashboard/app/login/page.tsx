@@ -1,98 +1,70 @@
-// app/login/page.tsx
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Chrome, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
 
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: email.trim(),
-        password,
-      }),
-    });
-
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-
-    if (!response.ok) {
-      setError(payload?.error || "登入失敗");
+    if (!isSupabaseConfigured()) {
+      setError("Supabase is not configured");
       setLoading(false);
       return;
     }
 
-    router.push("/");
-    router.refresh();
-    setLoading(false);
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (oauthError) {
+      setError(oauthError.message);
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl">
-            VibeSync Admin Dashboard
-          </CardTitle>
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 dark:bg-gray-900">
+      <Card className="w-full max-w-md rounded-lg">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-md bg-gray-900 text-white">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <CardTitle className="text-2xl">VibeSync Admin Dashboard</CardTitle>
+          <p className="text-sm text-gray-500">
+            使用白名單 Google 帳號登入 Eric / Bruce 後台。
+          </p>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
-                {error}
-              </div>
-            )}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
-              />
+        <CardContent className="space-y-4">
+          {error ? (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">
+              {error}
             </div>
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "登入中..." : "登入"}
-            </Button>
-          </form>
+          ) : null}
+
+          <Button
+            type="button"
+            className="w-full"
+            onClick={() => void handleGoogleLogin()}
+            disabled={loading}
+          >
+            <Chrome className="h-4 w-4" />
+            {loading ? "正在前往 Google..." : "使用 Google 登入"}
+          </Button>
+
+          <p className="text-center text-xs text-gray-500">
+            登入後仍會檢查 Supabase `admin_users` 白名單。
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -1,28 +1,42 @@
-// admin-dashboard/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_ACCESS_COOKIE } from "@/lib/auth";
 
+const PUBLIC_PATHS = ["/login", "/403", "/auth/callback"];
+
+function clearAdminCookie(response: NextResponse) {
+  response.cookies.set({
+    name: ADMIN_ACCESS_COOKIE,
+    value: "",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+}
+
 export async function middleware(request: NextRequest) {
-  // 跳過登入頁面和 403
-  if (
-    request.nextUrl.pathname === "/login" ||
-    request.nextUrl.pathname === "/403"
-  ) {
+  if (PUBLIC_PATHS.includes(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
-  // 從 cookie 取得 session token
   const accessToken = request.cookies.get(ADMIN_ACCESS_COOKIE)?.value;
 
   if (!accessToken) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // 驗證 token 並檢查 admin 權限
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    clearAdminCookie(response);
+    return response;
+  }
+
   const supabase = createClient(supabaseUrl, supabaseKey, {
     global: {
       headers: {
@@ -36,21 +50,12 @@ export async function middleware(request: NextRequest) {
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user) {
+  if (authError || !user?.email) {
     const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.set({
-      name: ADMIN_ACCESS_COOKIE,
-      value: "",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 0,
-    });
+    clearAdminCookie(response);
     return response;
   }
 
-  // 檢查是否在 admin 白名單
   const { data: adminUser } = await supabase
     .from("admin_users")
     .select("id")
@@ -59,15 +64,7 @@ export async function middleware(request: NextRequest) {
 
   if (!adminUser) {
     const response = NextResponse.redirect(new URL("/403", request.url));
-    response.cookies.set({
-      name: ADMIN_ACCESS_COOKIE,
-      value: "",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 0,
-    });
+    clearAdminCookie(response);
     return response;
   }
 
@@ -75,5 +72,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|login|403).*)"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|login|403|auth/callback).*)",
+  ],
 };
