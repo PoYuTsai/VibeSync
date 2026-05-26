@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_ACCESS_COOKIE, ADMIN_ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import { checkAdminAccess } from "@/lib/admin-check";
 
 interface LoginBody {
   email?: string;
@@ -51,13 +52,12 @@ export async function POST(request: Request) {
     },
   });
 
-  const { data: adminUser, error: adminError } = await adminCheckClient
-    .from("admin_users")
-    .select("id")
-    .ilike("email", data.user.email ?? email)
-    .maybeSingle();
+  const adminAccess = await checkAdminAccess(
+    adminCheckClient,
+    data.user.email ?? email
+  );
 
-  if (adminError || !adminUser) {
+  if (!adminAccess.allowed) {
     await supabase.auth.signOut();
     return jsonError("You do not have access to this dashboard", 403);
   }

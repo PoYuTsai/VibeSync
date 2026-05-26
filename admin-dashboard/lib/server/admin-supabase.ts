@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { ADMIN_ACCESS_COOKIE } from "@/lib/auth";
+import { checkAdminAccess } from "@/lib/admin-check";
 
 export interface AdminSession {
   supabase: SupabaseClient;
@@ -43,13 +44,9 @@ export async function getAdminSession(): Promise<
     return { ok: false, status: 401, error: "Unauthorized" };
   }
 
-  const { data: adminUser, error: adminError } = await supabase
-    .from("admin_users")
-    .select("id")
-    .ilike("email", user.email)
-    .maybeSingle();
+  const adminAccess = await checkAdminAccess(supabase, user.email);
 
-  if (adminError || !adminUser?.id) {
+  if (!adminAccess.allowed) {
     return { ok: false, status: 403, error: "Forbidden" };
   }
 
@@ -58,7 +55,7 @@ export async function getAdminSession(): Promise<
     session: {
       supabase,
       user,
-      adminId: adminUser.id,
+      adminId: user.id,
     },
   };
 }

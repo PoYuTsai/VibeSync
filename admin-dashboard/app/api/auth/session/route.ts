@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_ACCESS_COOKIE, ADMIN_ACCESS_COOKIE_MAX_AGE } from "@/lib/auth";
+import { checkAdminAccess } from "@/lib/admin-check";
 
 interface SessionBody {
   accessToken?: string;
@@ -46,14 +47,17 @@ export async function POST(request: Request) {
     return jsonError("Unauthorized", 401);
   }
 
-  const { data: adminUser, error: adminError } = await supabase
-    .from("admin_users")
-    .select("id")
-    .ilike("email", user.email)
-    .maybeSingle();
+  const adminAccess = await checkAdminAccess(supabase, user.email);
 
-  if (adminError || !adminUser) {
-    return jsonError("Forbidden", 403);
+  if (!adminAccess.allowed) {
+    return NextResponse.json(
+      {
+        error: "Forbidden",
+        email: user.email,
+        detail: adminAccess.error,
+      },
+      { status: 403 }
+    );
   }
 
   const response = NextResponse.json({ success: true });

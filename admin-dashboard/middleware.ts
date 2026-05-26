@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ADMIN_ACCESS_COOKIE } from "@/lib/auth";
+import { checkAdminAccess } from "@/lib/admin-check";
 
 const PUBLIC_PATHS = ["/login", "/403", "/auth/callback"];
 
@@ -56,13 +57,9 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const { data: adminUser } = await supabase
-    .from("admin_users")
-    .select("id")
-    .ilike("email", user.email)
-    .maybeSingle();
+  const adminAccess = await checkAdminAccess(supabase, user.email);
 
-  if (!adminUser) {
+  if (!adminAccess.allowed) {
     const response = NextResponse.redirect(new URL("/403", request.url));
     clearAdminCookie(response);
     return response;
