@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   Activity,
   AlertCircle,
+  BookOpen,
   CreditCard,
   DollarSign,
   ExternalLink,
@@ -27,6 +28,7 @@ const navItems = [
   { href: "/revenue", label: "收入", icon: TrendingUp },
   { href: "/costs", label: "成本", icon: DollarSign },
   { href: "/finance", label: "財務月結", icon: HandCoins },
+  { href: "/articles", label: "文章專區", icon: BookOpen },
   { href: "/ai-health", label: "AI 健康", icon: Zap },
   { href: "/errors", label: "錯誤追蹤", icon: AlertCircle },
   { href: "/activity", label: "用戶活動", icon: Activity },
