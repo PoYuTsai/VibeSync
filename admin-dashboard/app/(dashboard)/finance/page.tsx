@@ -96,9 +96,9 @@ const modeLabels: Record<SettlementMode, string> = {
 
 const modeExamples: Record<SettlementMode, string> = {
   contribution_split:
-    "例：收入 3,000，指定扣 Claude 用量 500，剩下 2,500，Eric / Bruce 各 1,250。",
+    "例：收入 100,000，只扣 Claude 12,000 和廣告 20,000，剩 68,000 平分；未約定雜支先只記帳。",
   net_profit_split:
-    "例：收入 3,000，扣全部共同成本 1,200，剩下 1,800，Eric / Bruce 各 900。",
+    "例：收入 100,000，扣 Claude 12,000、Apple 年費攤提 250、廣告 20,000、網域攤提 100，剩 67,650 平分。",
 };
 
 const statusLabels: Record<SettlementStatus, string> = {
