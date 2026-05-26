@@ -59,6 +59,32 @@ Official settlement income should use store financial reports / actual proceeds:
 - RevenueCat tracks subscriptions, entitlements, renewals, cancellations, and
   events, but is not the official receiving account.
 
+The dashboard should separate three related but different concepts:
+
+```text
+1. Subscription signal
+   RevenueCat / app state / Supabase tier.
+
+2. Revenue confirmation
+   App Store / Google Play financial reports and proceeds.
+
+3. Cash confirmation
+   Actual bank deposit, bank currency, FX rate, and bank fee.
+```
+
+Do not force these to reconcile on the same day. A user may subscribe in one
+month, show up in RevenueCat immediately, appear in an Apple fiscal report later,
+and arrive in the bank account even later.
+
+Important timing rules:
+
+- Store financial reports may use Apple/Google fiscal periods, not simple
+  calendar months.
+- The store may hold proceeds until a minimum payment threshold is met.
+- A payment can be returned by the bank; the dashboard should support a failed
+  or returned deposit status.
+- Refunds, chargebacks, and adjustments can create negative revenue rows.
+
 Current App Store banking direction as of 2026-05-26:
 
 - App Store Connect banking was changed to a Thai Kasikorn account for Eric.
@@ -91,6 +117,9 @@ Proposed columns:
 | `entry_date` | Actual date of payment, charge, report, or receipt |
 | `paid_at` | Actual payment date; useful when invoice month and payment date differ |
 | `settlement_month` | Month this row belongs to, e.g. `2026-06-01` |
+| `store_report_month` | Nullable Apple/Google report month if different from settlement month |
+| `store_fiscal_period_start` | Nullable fiscal period start |
+| `store_fiscal_period_end` | Nullable fiscal period end |
 | `type` | `revenue` / `expense` |
 | `title` | Human-readable item name |
 | `category` | Optional helper: `app_store_proceeds`, `google_play_proceeds`, `claude`, `apple_developer`, `domain`, `hosting`, `marketing`, `tooling`, `other` |
@@ -98,6 +127,10 @@ Proposed columns:
 | `currency` | `TWD`, `USD`, `THB`, etc. |
 | `amount_twd` | Optional normalized amount for settlement display |
 | `fx_rate_to_twd` | Optional, used when source is not TWD |
+| `bank_received_amount` | Nullable actual bank deposit amount |
+| `bank_received_currency` | Nullable actual bank deposit currency, e.g. `THB` |
+| `bank_fee_amount` | Nullable bank fee amount |
+| `deposit_status` | `not_applicable` / `pending` / `received` / `returned` / `held_below_threshold` |
 | `paid_by` | `eric` / `bruce` / `platform` / `none` |
 | `received_by` | `eric` / `bruce` / `platform` / `none` |
 | `billing_cycle` | `monthly` / `annual` / `one_time` / `usage_based` / `campaign_based` |
@@ -112,6 +145,7 @@ Proposed columns:
 | `next_renewal_date` | Nullable reminder for annual/monthly recurring costs |
 | `receipt_url` | Private receipt/report URL |
 | `source` | `manual`, `apple_report`, `google_report`, `revenuecat_observation`, `system_estimate` |
+| `external_reference` | Nullable transaction/report id, payout id, or bank reference |
 | `notes` | Free-form note |
 | `created_by` | Admin user id |
 | `created_at` | Timestamp |
@@ -176,10 +210,14 @@ Proposed columns:
 | `status` | `draft` / `locked` / `paid` |
 | `settlement_mode` | `contribution_split` / `net_profit_split` / `no_distribution` |
 | `revenue_total_twd` | Settlement revenue |
+| `refund_adjustment_total_twd` | Negative revenue adjustments |
 | `recorded_expense_total_twd` | All visible operating expenses, whether included or not |
 | `deducted_expense_total_twd` | Expenses checked for deduction before split |
+| `direct_variable_cost_total_twd` | Claude/user-driven cost summary |
 | `operating_profit_twd` | Revenue minus all recorded operating expenses; informational |
 | `settlement_profit_twd` | Revenue minus deducted expenses; used only in net-profit mode |
+| `reserve_amount_twd` | Optional cash reserve before distribution |
+| `reserve_reason` | Optional reserve note, e.g. refunds, next Claude bill, ads |
 | `distributable_amount_twd` | Amount to split for the selected settlement mode |
 | `eric_actual_cash_twd` | Eric received settlement revenue minus Eric paid deducted expenses |
 | `bruce_actual_cash_twd` | Bruce received settlement revenue minus Bruce paid deducted expenses |
@@ -215,6 +253,27 @@ Track:
 - old/new values for money fields.
 
 This is partner money, so history matters.
+
+### `bank_deposits`
+
+Optional V1.5 table if bank reconciliation becomes useful.
+
+| Column | Notes |
+| --- | --- |
+| `id` | UUID primary key |
+| `deposit_date` | Actual bank deposit date |
+| `bank_account_label` | e.g. `Kasikorn Central Chiangmai` |
+| `amount` | Actual bank amount |
+| `currency` | Actual bank currency |
+| `fx_rate_to_twd` | Optional manual or statement rate |
+| `bank_fee_amount` | Optional fee |
+| `related_finance_entry_id` | Link to store proceeds row |
+| `status` | `received` / `returned` / `unmatched` |
+| `statement_url` | Private bank screenshot/report |
+| `notes` | Free-form note |
+
+This keeps the system honest when Apple reports proceeds in one way but the
+bank deposit arrives in another currency after FX and bank fees.
 
 ## Billing Cycles And Cost Recognition
 
@@ -283,6 +342,19 @@ include_before_profit_split = true
 Reason: this cost scales with real user usage. Even during the early stage, it
 is cleaner to split revenue after direct AI cost, while Eric can still absorb
 fixed overhead such as Apple Developer fee, tools, and other baseline burn.
+
+Claude cost should be split by usage purpose:
+
+| Purpose | Default role | Included before split? | Notes |
+| --- | --- | --- | --- |
+| `production_user` | direct variable cost | yes | Real user analyze/opener/coach usage |
+| `production_failed_billable` | direct variable cost | yes, but shown separately | Claude cost happened even if user was not charged quota |
+| `dogfood_test` | fixed overhead | no | Internal TestFlight / Eric / Bruce testing |
+| `prompt_experiment` | fixed overhead | no | Internal prompt or schema experiments |
+| `development` | fixed overhead | no | Dev/debug usage |
+
+This avoids making Bruce subsidize early experimentation while still treating
+real user AI cost as a direct cost of revenue.
 
 ### Campaign-Based
 
@@ -453,6 +525,73 @@ partner debt by default.
 If the cost is growth spend, keep it pending until Eric and Bruce agree.
 ```
 
+## Revenue And Adjustment Handling
+
+Revenue entries should support both positive and negative rows.
+
+Positive rows:
+
+- App Store proceeds.
+- Google Play proceeds.
+- Any later non-store revenue Eric/Bruce explicitly include.
+
+Negative rows:
+
+- refunds,
+- chargebacks,
+- Apple/Google financial adjustments,
+- bank returned payment reversal,
+- currency/bank fee correction if not modeled separately.
+
+RevenueCat events can suggest that something happened, but the settlement row
+should be reconciled against Apple/Google financial reports when possible.
+
+### Minimum Payment Threshold
+
+If Apple/Google reports proceeds but does not pay out because the amount is
+below threshold:
+
+```text
+deposit_status = held_below_threshold
+cash confirmation = not received yet
+settlement decision = Eric/Bruce choose whether to distribute on report or wait
+```
+
+Recommended V1 default:
+
+```text
+Do not mark settlement paid until cash is actually received,
+unless Eric and Bruce manually agree to settle from reported proceeds.
+```
+
+### Cash Reserve
+
+Even after proceeds arrive, Eric/Bruce may choose not to distribute 100 percent
+of the distributable amount.
+
+Examples:
+
+- keep a refund buffer,
+- reserve next month's Claude bill,
+- reserve planned ad spend,
+- avoid tiny transfers.
+
+Fields:
+
+```text
+reserve_amount_twd
+reserve_reason
+```
+
+Formula:
+
+```text
+amount_to_split = max(distributable_amount - reserve_amount, 0)
+Eric/Bruce split amount_to_split 50/50
+```
+
+Reserve should be visible and reviewed by both partners before lock.
+
 ## Worked Examples
 
 ### Example 1: First Month With Tiny Revenue
@@ -555,7 +694,10 @@ Top row:
 
 - settlement mode,
 - settlement status,
+- revenue confirmation status,
+- cash/deposit status,
 - distributable amount,
+- reserve amount,
 - proposed transfer,
 - pending decisions.
 
@@ -564,6 +706,7 @@ Second row:
 - revenue,
 - direct variable costs,
 - excluded fixed burn,
+- refunds/adjustments,
 - operating profit,
 - partner split.
 
@@ -627,8 +770,10 @@ Before locking a month, show three sections:
 Then show:
 
 ```text
-Revenue
+Revenue confirmed by Apple/Google report
+- Refunds / adjustments
 - Direct / included costs
+- Optional reserve
 = Distributable amount
 Eric share
 Bruce share
@@ -637,6 +782,20 @@ Final transfer
 ```
 
 This is the page Eric and Bruce should be able to review together.
+
+### Reconciliation Status
+
+Each month should have a simple status strip:
+
+```text
+RevenueCat signal: observed / missing / mismatch
+Store report: missing / imported / reviewed
+Bank deposit: pending / received / returned / held below threshold
+Settlement: draft / review / locked / paid
+```
+
+This prevents confusion when RevenueCat, Apple reports, and bank deposits do not
+match on the same day.
 
 ## UX
 
@@ -794,12 +953,14 @@ Separate official money from operating signals:
 
 - RevenueCat events: operational health.
 - App Store / Google Play proceeds: official settlement input.
+- Bank deposits: cash confirmation.
 
 Display both, but label clearly:
 
 ```text
 RevenueCat MRR is an estimate / operating signal.
 Apple/Google proceeds are settlement source of truth.
+Bank deposits confirm cash timing and FX.
 ```
 
 ## Permissions
@@ -873,12 +1034,16 @@ Recommended implementation guardrails:
 - Add manual Apple/Google proceeds entry flow.
 - Later support CSV/import helper if useful.
 - Clearly separate proceeds from RevenueCat estimates.
+- Track store fiscal period, report month, and bank deposit status.
+- Support refunds/adjustments as negative revenue rows.
 
 ### Phase 4: Operating Metrics
 
 - Clean admin dashboard Traditional Chinese copy.
 - Connect users/subscriptions/AI cost pages.
 - Fix or replace legacy `monthly_profit` with settlement-aware views.
+- Split Claude cost by production user, failed billable production, dogfood,
+  prompt experiment, and development usage.
 
 ### Phase 5: Settlement Lock + Paid Flow
 
@@ -895,6 +1060,13 @@ Recommended implementation guardrails:
 - Add cumulative early-burn view for transparency.
 - Add export for Eric/Bruce review and tax/accounting prep.
 
+### Phase 7: Cash Reconciliation
+
+- Add bank deposit tracking if manual reconciliation becomes painful.
+- Match Apple/Google proceeds to actual Kasikorn/Taiwan bank deposits.
+- Track bank fees, FX, returned payments, and held-below-threshold months.
+- Add reserve workflow before settlement lock.
+
 ## Open Questions
 
 - Should settlement currency be TWD by default, even if Apple proceeds arrive
@@ -906,6 +1078,11 @@ Recommended implementation guardrails:
 - Should the default month mode be `contribution_split` or `no_distribution`
   before meaningful user revenue exists?
 - Which costs besides Claude should be treated as direct variable costs?
+- Should failed-but-billable production AI calls be deducted before split or
+  shown as an excluded reliability cost until volume grows?
+- Should settlement distribution wait for actual bank deposit, or can Eric/Bruce
+  settle from Apple/Google proceeds reports before cash arrives?
+- What minimum reserve should the business keep before transfers?
 - When should Eric and Bruce switch from contribution split/no distribution to
   net profit split?
 - Should Bruce be allowed to edit `pending_agreement` rows entered by Eric, or
