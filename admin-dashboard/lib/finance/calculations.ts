@@ -72,15 +72,19 @@ function isDeductedExpense(entry: FinanceEntry, mode: SettlementMode) {
     return false;
   }
 
+  if (entry.cost_role === "personal") {
+    return false;
+  }
+
   const isExplicitlyIncluded =
     entry.include_before_profit_split ||
     entry.settlement_treatment === "included_before_profit_split";
 
   if (mode === "contribution_split") {
-    return entry.cost_role === "direct_variable_cost" && isExplicitlyIncluded;
+    return isExplicitlyIncluded;
   }
 
-  return isExplicitlyIncluded;
+  return true;
 }
 
 export function calculateFinanceSummary(params: {

@@ -48,11 +48,6 @@ const COST_ROLES: CostRole[] = [
   "personal",
   "other",
 ];
-const SETTLEMENT_TREATMENTS: SettlementTreatment[] = [
-  "included_before_profit_split",
-  "excluded_for_now",
-  "pending_agreement",
-];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -143,7 +138,9 @@ export async function POST(request: Request) {
   const costRole = asEnum(body.cost_role, COST_ROLES, "fixed_overhead");
   const defaultIncluded = type === "expense" && costRole === "direct_variable_cost";
   const includeBeforeProfitSplit =
-    typeof body.include_before_profit_split === "boolean"
+    costRole === "personal"
+      ? false
+      : typeof body.include_before_profit_split === "boolean"
       ? body.include_before_profit_split
       : defaultIncluded;
   const settlementTreatment: SettlementTreatment = includeBeforeProfitSplit
@@ -195,11 +192,7 @@ export async function POST(request: Request) {
     ),
     cost_role: costRole,
     include_before_profit_split: includeBeforeProfitSplit,
-    settlement_treatment: asEnum(
-      body.settlement_treatment,
-      SETTLEMENT_TREATMENTS,
-      settlementTreatment
-    ),
+    settlement_treatment: settlementTreatment,
     receipt_url: asNullableText(body.receipt_url),
     notes: asNullableText(body.notes),
     created_by: admin.session.user.id,

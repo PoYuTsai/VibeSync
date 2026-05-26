@@ -53,15 +53,15 @@ interface EntryFormState {
 const currencyOptions = ["TWD", "USD", "THB", "JPY", "EUR"];
 
 const categoryLabels: Record<FinanceCategory, string> = {
-  app_store_proceeds: "App Store proceeds",
-  google_play_proceeds: "Google Play proceeds",
+  app_store_proceeds: "App Store 入帳",
+  google_play_proceeds: "Google Play 入帳",
   claude: "Claude API",
-  apple_developer: "Apple Developer",
-  domain: "網域",
-  hosting: "Hosting / Vercel / Supabase",
+  apple_developer: "Apple Developer 年費",
+  domain: "網域費",
+  hosting: "Vercel / Supabase / Hosting",
   revenuecat: "RevenueCat",
-  marketing: "行銷",
-  tooling: "工具費",
+  marketing: "行銷 / 廣告",
+  tooling: "工具 / 雜支",
   refund_adjustment: "退款 / 調整",
   other: "其他",
 };
@@ -82,23 +82,31 @@ const billingCycleLabels: Record<BillingCycle, string> = {
 };
 
 const costRoleLabels: Record<CostRole, string> = {
-  direct_variable_cost: "直接變動成本",
-  fixed_overhead: "固定營運成本",
-  growth_investment: "成長投資",
+  direct_variable_cost: "用戶使用成本",
+  fixed_overhead: "固定開銷",
+  growth_investment: "廣告 / 成長",
   personal: "個人吸收",
-  other: "其他",
+  other: "其他 / 待討論",
+};
+
+const costRoleDescriptions: Record<CostRole, string> = {
+  direct_variable_cost: "跟正式用戶使用量直接相關，例如 Claude API。",
+  fixed_overhead: "每月或每年固定支出，例如 Apple 年費 USD 99/年、網域、Vercel。",
+  growth_investment: "為了拉新用戶的支出，例如廣告或活動。",
+  personal: "只記錄，不會拿來向另一方追補。",
+  other: "先記錄，月底再一起決定怎麼處理。",
 };
 
 const modeLabels: Record<SettlementMode, string> = {
-  contribution_split: "扣指定成本後平分",
-  net_profit_split: "扣全部成本後平分（等正式上線付費用戶達一定基數再使用）",
+  contribution_split: "只扣勾選成本後平分",
+  net_profit_split: "扣所有成本後平分（付費用戶穩定後使用）",
 };
 
 const modeExamples: Record<SettlementMode, string> = {
   contribution_split:
-    "例：收入 100,000，只扣 Claude 12,000 和廣告 20,000，剩 68,000 平分；未約定雜支先只記帳。",
+    "例：收入 100,000，只扣有勾「本月先扣」的 Claude 12,000 和廣告 20,000，剩 68,000 平分。",
   net_profit_split:
-    "例：收入 100,000，扣 Claude 12,000、Apple 年費攤提 283、廣告 20,000、網域攤提 100，剩 67,617 平分。",
+    "例：收入 100,000，扣 Claude 12,000、Apple 年費 USD 99/年攤 12 個月、廣告 20,000、網域攤提後再平分；個人吸收的雜支不扣。",
 };
 
 const statusLabels: Record<SettlementStatus, string> = {
@@ -241,17 +249,17 @@ export default function FinancePage() {
       {
         title: "本月官方入帳",
         value: formatTwd(summary?.revenueTotalTwd ?? 0),
-        caption: "以 App Store / Google Play proceeds 為準，月結統一換算 TWD",
+        caption: "以 App Store / Google Play 實際入帳為準",
       },
       {
-        title: "納入分潤前扣除",
+        title: "本月先扣成本",
         value: formatTwd(summary?.deductedExpenseTotalTwd ?? 0),
-        caption: "這個月實際拿來扣的成本",
+        caption: "平分前會先扣掉的成本",
       },
       {
         title: "可分配金額",
         value: formatTwd(summary?.distributableAmountTwd ?? 0),
-        caption: "扣完成本後，正數才 50/50",
+        caption: "扣完成本後，正數才平分",
       },
       {
         title: "建議互轉",
@@ -329,6 +337,19 @@ export default function FinancePage() {
       billing_cycle: "usage_based",
       cost_role: "direct_variable_cost",
       include_before_profit_split: true,
+    }));
+  }
+
+  function handleCostRoleChange(costRole: CostRole) {
+    setForm((current) => ({
+      ...current,
+      cost_role: costRole,
+      include_before_profit_split:
+        costRole === "personal"
+          ? false
+          : costRole === "direct_variable_cost"
+            ? true
+            : current.include_before_profit_split,
     }));
   }
 
@@ -435,7 +456,7 @@ export default function FinancePage() {
         <div>
           <h1 className="text-3xl font-bold">財務與夥伴月結</h1>
           <p className="mt-2 text-sm text-gray-600">
-            共同視角記錄收入、成本、誰先支付。原幣可用 USD / THB / TWD，月結一律換算成 TWD。
+            記錄本月收入、成本、誰先付。系統會算出扣完成本後可平分多少，以及誰要轉給誰。
           </p>
         </div>
 
@@ -529,7 +550,7 @@ export default function FinancePage() {
               </label>
 
               <label className="space-y-1 text-sm font-medium text-gray-700">
-                保留款 TWD
+                先留在帳上 TWD
                 <input
                   type="number"
                   min="0"
@@ -537,6 +558,9 @@ export default function FinancePage() {
                   onChange={(event) => setReserveAmount(event.target.value)}
                   className="h-10 w-full rounded-md border bg-white px-3"
                 />
+                <p className="text-xs font-normal leading-relaxed text-gray-500">
+                  例如先留一點當下月帳單預備金；不需要就填 0。
+                </p>
               </label>
             </div>
 
@@ -547,31 +571,31 @@ export default function FinancePage() {
                 onChange={(event) => setSettlementNotes(event.target.value)}
                 rows={3}
                 className="w-full rounded-md border bg-white px-3 py-2"
-                placeholder="例：本月採扣指定成本後平分；前期固定成本只記帳。"
+                placeholder="例：本月只先扣 Claude 用量與已同意廣告費，Apple 年費先記帳。"
               />
             </label>
 
             <div className="grid gap-3 text-sm md:grid-cols-3">
               <div className="rounded-md border bg-gray-50 p-3">
-                <div className="font-medium">營運損益</div>
+                <div className="font-medium">全部成本後結果</div>
                 <div className="mt-1 text-lg font-semibold">
                   {formatTwd(summary?.operatingProfitTwd ?? 0)}
                 </div>
-                <div className="mt-1 text-xs text-gray-500">收入扣全部已記錄成本</div>
+                <div className="mt-1 text-xs text-gray-500">收入 - 本月全部已記錄成本</div>
               </div>
               <div className="rounded-md border bg-gray-50 p-3">
-                <div className="font-medium">月結損益</div>
+                <div className="font-medium">本月分潤前結果</div>
                 <div className="mt-1 text-lg font-semibold">
                   {formatTwd(summary?.settlementProfitTwd ?? 0)}
                 </div>
-                <div className="mt-1 text-xs text-gray-500">收入扣納入分潤成本</div>
+                <div className="mt-1 text-xs text-gray-500">收入 - 本月先扣成本</div>
               </div>
               <div className="rounded-md border bg-gray-50 p-3">
-                <div className="font-medium">Carry</div>
+                <div className="font-medium">未打平金額</div>
                 <div className="mt-1 text-lg font-semibold">
                   {formatTwd(summary?.carryOutTwd ?? 0)}
                 </div>
-                <div className="mt-1 text-xs text-gray-500">負數月份待下月處理</div>
+                <div className="mt-1 text-xs text-gray-500">本月分潤前結果為負時顯示</div>
               </div>
             </div>
 
@@ -592,7 +616,7 @@ export default function FinancePage() {
           <CardContent>
             <form className="space-y-4" onSubmit={(event) => void handleSubmit(event)}>
               <div className="rounded-md border bg-blue-50 p-3 text-sm text-blue-900">
-                月結基準是 TWD。Claude 通常填 USD + 匯率；Apple 若實收進泰國帳戶，可填 THB + 匯率；台幣支出直接填 TWD。
+                所有金額最後都換成 TWD。外幣先填原幣與匯率；帳單已有台幣金額時，直接填 TWD 金額。
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -629,7 +653,7 @@ export default function FinancePage() {
                   className="h-10 w-full rounded-md border bg-white px-3"
                   placeholder={
                     isRevenue
-                      ? "Apple proceeds 2026-05"
+                      ? "App Store 入帳 2026-05"
                       : "Claude API production usage"
                   }
                   required
@@ -674,7 +698,7 @@ export default function FinancePage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="space-y-1 text-sm font-medium text-gray-700">
-                  原幣幣別
+                  幣別
                   <select
                     value={currency}
                     onChange={(event) => handleCurrencyChange(event.target.value)}
@@ -703,7 +727,7 @@ export default function FinancePage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="space-y-1 text-sm font-medium text-gray-700">
-                  匯率到 TWD
+                  匯率
                   <input
                     type="number"
                     step="0.0001"
@@ -719,7 +743,7 @@ export default function FinancePage() {
                 </label>
 
                 <label className="space-y-1 text-sm font-medium text-gray-700">
-                  TWD 金額
+                  換算後 TWD
                   <input
                     type="number"
                     step="0.01"
@@ -736,12 +760,12 @@ export default function FinancePage() {
               </div>
 
               <div className="rounded-md border bg-gray-50 p-3 text-sm">
-                <div className="font-medium">月結認列金額</div>
+                <div className="font-medium">換算後金額</div>
                 <div className="mt-1 text-lg font-semibold">
                   {previewTwdAmount === null ? "-" : formatTwd(previewTwdAmount)}
                 </div>
                 <div className="mt-1 text-xs text-gray-500">
-                  TWD 金額可留空，系統會用原幣金額 x 匯率；若帳單或銀行有實際台幣值，可手動覆寫。
+                  換算後 TWD 可留空，系統會用原幣金額 x 匯率；若帳單或銀行有實際台幣值，可手動覆寫。
                 </div>
               </div>
 
@@ -778,11 +802,11 @@ export default function FinancePage() {
                   </label>
 
                   <label className="space-y-1 text-sm font-medium text-gray-700">
-                    成本角色
+                    成本性質
                     <select
                       value={form.cost_role}
                       onChange={(event) =>
-                        updateForm("cost_role", event.target.value as CostRole)
+                        handleCostRoleChange(event.target.value as CostRole)
                       }
                       className="h-10 w-full rounded-md border bg-white px-3"
                     >
@@ -792,6 +816,9 @@ export default function FinancePage() {
                         </option>
                       ))}
                     </select>
+                    <p className="text-xs font-normal leading-relaxed text-gray-500">
+                      {costRoleDescriptions[form.cost_role]}
+                    </p>
                   </label>
                 </div>
               )}
@@ -800,16 +827,21 @@ export default function FinancePage() {
                 <label className="flex items-start gap-3 rounded-md border bg-gray-50 p-3 text-sm">
                   <input
                     type="checkbox"
-                    checked={form.include_before_profit_split}
+                    checked={
+                      form.cost_role === "personal"
+                        ? false
+                        : form.include_before_profit_split
+                    }
+                    disabled={form.cost_role === "personal"}
                     onChange={(event) =>
                       updateForm("include_before_profit_split", event.target.checked)
                     }
                     className="mt-1"
                   />
                   <span>
-                    <span className="block font-medium">納入分潤前扣除</span>
+                    <span className="block font-medium">本月先扣</span>
                     <span className="text-gray-500">
-                      例如正式用戶造成的 Claude usage；前期固定燃燒成本可先不勾。
+                      勾選後，扣指定成本模式會先扣這筆再平分；個人吸收只記錄不扣。
                     </span>
                   </span>
                 </label>
@@ -858,7 +890,7 @@ export default function FinancePage() {
                   <TableHead>類型</TableHead>
                   <TableHead>付款 / 收款</TableHead>
                   <TableHead>週期</TableHead>
-                  <TableHead>月結處理</TableHead>
+                  <TableHead>這筆怎麼記</TableHead>
                   <TableHead className="text-right">金額</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -875,6 +907,9 @@ export default function FinancePage() {
                         <div className="font-medium">{entry.title}</div>
                         <div className="text-xs text-gray-500">
                           {categoryLabels[entry.category]}
+                          {entry.type === "expense"
+                            ? ` · ${costRoleLabels[entry.cost_role]}`
+                            : ""}
                         </div>
                       </TableCell>
                       <TableCell>{entry.type === "revenue" ? "收入" : "成本"}</TableCell>
@@ -886,10 +921,12 @@ export default function FinancePage() {
                       <TableCell>{billingCycleLabels[entry.billing_cycle]}</TableCell>
                       <TableCell>
                         {entry.type === "revenue"
-                          ? "官方 proceeds"
-                          : entry.include_before_profit_split
-                            ? "納入扣除"
-                            : "先不扣除"}
+                          ? "收入"
+                          : entry.cost_role === "personal"
+                            ? "個人吸收"
+                            : entry.include_before_profit_split
+                              ? "本月先扣"
+                              : "先記帳"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div
