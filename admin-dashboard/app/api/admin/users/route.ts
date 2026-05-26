@@ -5,16 +5,12 @@ export const dynamic = "force-dynamic";
 
 type Tier = "free" | "starter" | "essential";
 type AudienceType =
-  | "unknown"
   | "prelaunch_sandbox"
-  | "internal"
   | "friend_test"
   | "production";
 
 const AUDIENCE_TYPES: AudienceType[] = [
-  "unknown",
   "prelaunch_sandbox",
-  "internal",
   "friend_test",
   "production",
 ];
@@ -66,7 +62,7 @@ function normalizeBillingPeriod(value: string | null | undefined): string {
 }
 
 function normalizeAudienceType(value: unknown): AudienceType {
-  return isAudienceType(value) ? value : "unknown";
+  return isAudienceType(value) ? value : "prelaunch_sandbox";
 }
 
 function hasFutureExpiration(subscription: DbSubscription): boolean {
@@ -256,9 +252,7 @@ export async function GET() {
       return counts;
     },
     {
-      unknown: 0,
       prelaunch_sandbox: 0,
-      internal: 0,
       friend_test: 0,
       production: 0,
     }

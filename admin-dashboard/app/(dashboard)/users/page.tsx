@@ -15,9 +15,7 @@ import {
 
 type Tier = "free" | "starter" | "essential";
 type AudienceType =
-  | "unknown"
   | "prelaunch_sandbox"
-  | "internal"
   | "friend_test"
   | "production";
 
@@ -65,9 +63,7 @@ const emptyStats: UserStats = {
   conversionRate: 0,
   tiers: { free: 0, starter: 0, essential: 0 },
   audiences: {
-    unknown: 0,
     prelaunch_sandbox: 0,
-    internal: 0,
     friend_test: 0,
     production: 0,
   },
@@ -92,19 +88,15 @@ const billingPeriodLabels: Record<string, string> = {
 };
 
 const audienceLabels: Record<AudienceType, string> = {
-  unknown: "未分類",
   prelaunch_sandbox: "上線前沙箱",
-  internal: "內部測試",
   friend_test: "朋友測試",
-  production: "正式用戶",
+  production: "正式測試",
 };
 
 const audienceOptions: AudienceType[] = [
   "prelaunch_sandbox",
-  "internal",
   "friend_test",
   "production",
-  "unknown",
 ];
 
 const statusLabels: Record<string, string> = {
@@ -325,7 +317,7 @@ export default function UsersPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">
-              正式用戶
+              正式測試
             </CardTitle>
           </CardHeader>
           <CardContent>
