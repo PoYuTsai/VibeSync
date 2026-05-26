@@ -131,8 +131,13 @@ export async function POST(request: Request) {
     return jsonError(settlementLockError.message, 500);
   }
 
-  if (settlementLock?.status === "locked" || settlementLock?.status === "paid") {
-    return jsonError("This settlement month is locked", 409);
+  if (
+    settlementLock?.status === "transfer_pending" ||
+    settlementLock?.status === "completed" ||
+    settlementLock?.status === "locked" ||
+    settlementLock?.status === "paid"
+  ) {
+    return jsonError("This settlement month is already confirmed", 409);
   }
 
   const costRole = asEnum(body.cost_role, COST_ROLES, "fixed_overhead");
@@ -255,8 +260,13 @@ export async function DELETE(request: Request) {
     return jsonError(settlementLockError.message, 500);
   }
 
-  if (settlementLock?.status === "locked" || settlementLock?.status === "paid") {
-    return jsonError("This settlement month is locked", 409);
+  if (
+    settlementLock?.status === "transfer_pending" ||
+    settlementLock?.status === "completed" ||
+    settlementLock?.status === "locked" ||
+    settlementLock?.status === "paid"
+  ) {
+    return jsonError("This settlement month is already confirmed", 409);
   }
 
   const { error } = await admin.session.supabase

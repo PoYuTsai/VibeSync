@@ -14,7 +14,7 @@ const SETTLEMENT_MODES: SettlementMode[] = [
   "contribution_split",
   "net_profit_split",
 ];
-const STATUSES: SettlementStatus[] = ["draft", "review", "locked", "paid"];
+const STATUSES: SettlementStatus[] = ["open", "transfer_pending", "completed"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -61,7 +61,7 @@ export async function PATCH(request: Request) {
   );
   const monthKey = settlementMonth.slice(0, 7);
   const mode = asEnum(body.settlement_mode, SETTLEMENT_MODES, "contribution_split");
-  const status = asEnum(body.status, STATUSES, "draft");
+  const status = asEnum(body.status, STATUSES, "open");
 
   const { data: entriesData, error: entriesError } = await admin.session.supabase
     .from("finance_entries")
@@ -110,9 +110,9 @@ export async function PATCH(request: Request) {
     amount_bruce_should_transfer_to_eric_twd:
       summary.amountBruceShouldTransferToEricTwd,
     carry_out_twd: summary.carryOutTwd,
-    locked_by: status === "locked" ? admin.session.user.id : null,
-    locked_at: status === "locked" ? new Date().toISOString() : null,
-    paid_at: status === "paid" ? new Date().toISOString() : null,
+    locked_by: status === "open" ? null : admin.session.user.id,
+    locked_at: status === "open" ? null : new Date().toISOString(),
+    paid_at: status === "completed" ? new Date().toISOString() : null,
     notes: settlementDraft.notes,
     created_by: admin.session.user.id,
     updated_by: admin.session.user.id,

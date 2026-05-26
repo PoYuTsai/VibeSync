@@ -102,10 +102,15 @@ const modeExamples: Record<SettlementMode, string> = {
 };
 
 const statusLabels: Record<SettlementStatus, string> = {
-  draft: "草稿",
-  review: "對帳中",
-  locked: "已鎖定",
-  paid: "已付款",
+  open: "記帳中",
+  transfer_pending: "待轉帳",
+  completed: "已完成",
+};
+
+const statusDescriptions: Record<SettlementStatus, string> = {
+  open: "還在補收入或成本，可以修改。",
+  transfer_pending: "金額已確認，等待手動轉帳。",
+  completed: "已轉帳，或本月沒有需要互轉的金額。",
 };
 
 function currentMonthKey() {
@@ -192,6 +197,15 @@ function transferText(summary: FinanceSummary | null) {
   return "本月暫無需互轉";
 }
 
+function isConfirmedStatus(status: string | null | undefined) {
+  return (
+    status === "transfer_pending" ||
+    status === "completed" ||
+    status === "locked" ||
+    status === "paid"
+  );
+}
+
 export default function FinancePage() {
   const [month, setMonth] = useState(currentMonthKey());
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
@@ -199,7 +213,7 @@ export default function FinancePage() {
   const [settlement, setSettlement] = useState<MonthlySettlement | null>(null);
   const [form, setForm] = useState<EntryFormState>(defaultForm());
   const [mode, setMode] = useState<SettlementMode>("contribution_split");
-  const [status, setStatus] = useState<SettlementStatus>("draft");
+  const [status, setStatus] = useState<SettlementStatus>("open");
   const [reserveAmount, setReserveAmount] = useState("0");
   const [settlementNotes, setSettlementNotes] = useState("");
   const [loading, setLoading] = useState(true);
@@ -509,6 +523,9 @@ export default function FinancePage() {
                     </option>
                   ))}
                 </select>
+                <p className="rounded-md bg-slate-50 px-3 py-2 text-xs font-normal leading-relaxed text-slate-600">
+                  {statusDescriptions[status]}
+                </p>
               </label>
 
               <label className="space-y-1 text-sm font-medium text-gray-700">
@@ -897,11 +914,7 @@ export default function FinancePage() {
                           variant="ghost"
                           size="icon-sm"
                           onClick={() => void deleteEntry(entry.id)}
-                          disabled={
-                            saving ||
-                            settlement?.status === "locked" ||
-                            settlement?.status === "paid"
-                          }
+                          disabled={saving || isConfirmedStatus(settlement?.status)}
                           aria-label="刪除"
                         >
                           <Trash2 className="h-4 w-4" />

@@ -7,7 +7,7 @@ import type {
 } from "@/lib/finance/types";
 
 const DEFAULT_MODE: SettlementMode = "contribution_split";
-const DEFAULT_STATUS: SettlementStatus = "draft";
+const DEFAULT_STATUS: SettlementStatus = "open";
 
 function money(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -15,6 +15,18 @@ function money(value: number) {
 
 function normalizeSettlementMode(value: unknown): SettlementMode {
   return value === "net_profit_split" ? "net_profit_split" : DEFAULT_MODE;
+}
+
+function normalizeSettlementStatus(value: unknown): SettlementStatus {
+  if (value === "transfer_pending" || value === "locked") {
+    return "transfer_pending";
+  }
+
+  if (value === "completed" || value === "paid") {
+    return "completed";
+  }
+
+  return DEFAULT_STATUS;
 }
 
 export function monthDateFromKey(monthKey?: string | null) {
@@ -77,7 +89,7 @@ export function calculateFinanceSummary(params: {
   settlement?: MonthlySettlement | null;
 }): FinanceSummary {
   const mode = normalizeSettlementMode(params.settlement?.settlement_mode);
-  const status = params.settlement?.status ?? DEFAULT_STATUS;
+  const status = normalizeSettlementStatus(params.settlement?.status);
   const reserveAmountTwd = money(Number(params.settlement?.reserve_amount_twd || 0));
 
   const revenueEntries = params.entries.filter((entry) => entry.type === "revenue");
