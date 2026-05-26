@@ -15,6 +15,7 @@ import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
+import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
@@ -2280,6 +2281,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final sourceImages = overrideImages ?? _selectedImages;
     final sourceMetrics = overrideMetrics ?? _selectedImageMetrics;
     if (sourceImages.isEmpty) return;
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: '截圖辨識',
+    );
+    if (!consented || !mounted) return;
+
     _selectedImages = List<Uint8List>.from(sourceImages);
     _selectedImageMetrics = List<SelectedImageMetrics>.from(sourceMetrics);
 
@@ -2608,6 +2615,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (!confirmed || !mounted) {
         return;
       }
+      final consented = await AiDataSharingConsent.ensure(
+        context,
+        featureLabel: '對話分析',
+      );
+      if (!consented || !mounted) {
+        return;
+      }
 
       setState(() {
         _isAnalyzing = true;
@@ -2711,6 +2725,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// 「我說」話題延續分析（Essential 專屬）
   Future<void> _runMyMessageAnalysis() async {
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: '我的訊息分析',
+    );
+    if (!consented || !mounted) return;
+
     setState(() {
       _isAnalyzingMyMessage = true;
       _myMessageAnalysis = null;
@@ -2774,6 +2794,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       await _showPaywall(context);
       return;
     }
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: '草稿潤飾',
+    );
+    if (!consented || !mounted) return;
 
     _dismissKeyboard();
     setState(() {

@@ -30,6 +30,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../data/providers/coach_follow_up_providers.dart';
 import '../../data/services/coach_follow_up_api_service.dart';
 import '../../domain/entities/coach_follow_up_phase.dart';
@@ -220,6 +221,11 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
     );
     if (answers == null) return;
     if (!mounted) return;
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'Coach 跟進',
+    );
+    if (!consented || !mounted) return;
 
     _emit(CoachFollowUpInvokedEvent(
       phase: phase,
@@ -241,10 +247,15 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
     });
   }
 
-  void _onRegenerate() {
+  Future<void> _onRegenerate() async {
     final phase = _lastPhase;
     final answers = _lastAnswers;
     if (phase == null || answers == null) return;
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'Coach 跟進',
+    );
+    if (!consented || !mounted) return;
     final since = _lastGeneratedAt != null
         ? DateTime.now().difference(_lastGeneratedAt!)
         : Duration.zero;

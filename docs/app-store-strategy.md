@@ -52,7 +52,7 @@ KEY POINTS FOR REVIEW:
    - Conversation content is stored locally on the user's device by default.
    - When a user explicitly requests analysis or screenshot recognition, only the
      content required for that request is sent through our backend processing
-     service and AI providers to generate the response.
+     service and Anthropic Claude API to generate the response.
    - We do not use users' raw conversation content to train our own models.
 
 3. CONTENT AND SAFETY
@@ -96,7 +96,7 @@ Conversation content is local-first.
 
 When the user explicitly taps analysis or screenshot-recognition features,
 the minimum required content for that request is transmitted to our backend
-processing service and AI providers so we can generate the requested result.
+processing service and Anthropic Claude API so we can generate the requested result.
 
 We do not position the app as a social network, we do not expose user content
 to other users, and we do not use raw conversation submissions to train our own model.
@@ -134,7 +134,7 @@ dating manipulation tool, and it does not guarantee social or romantic outcomes.
 Regarding privacy:
 - user conversation content is stored locally by default
 - when the user explicitly requests analysis or screenshot recognition, the
-  minimum required content is sent through backend processing and AI providers
+  minimum required content is sent through backend processing and Anthropic Claude API
   to generate that request's result
 - we do not use raw user conversations to train our own model
 

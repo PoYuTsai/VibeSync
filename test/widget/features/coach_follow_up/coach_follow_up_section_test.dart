@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/coach_follow_up/data/providers/coach_follow_up_providers.dart';
 import 'package:vibesync/features/coach_follow_up/data/services/coach_follow_up_api_service.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_phase.dart';
@@ -27,6 +28,7 @@ import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
+import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -190,6 +192,12 @@ Future<void> _pump(
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues(
+      {AiDataSharingConsent.acceptedKeyForTesting: true},
+    );
+  });
+
   group('CoachFollowUpSection — default state (no stored result)', () {
     testWidgets('renders 3 chips + quota caption, no result-card surface',
         (t) async {

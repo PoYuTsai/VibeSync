@@ -10,6 +10,7 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
 
@@ -270,6 +271,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       setState(() => _error = '請上傳截圖或輸入對方資料');
       return;
     }
+
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: '開場救星',
+    );
+    if (!consented || !mounted) return;
 
     final cost = _estimatedCost;
     if (!await _canStartGeneration(cost)) {

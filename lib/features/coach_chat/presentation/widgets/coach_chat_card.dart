@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
@@ -273,10 +274,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                 results: timeline,
                 dailyRemaining: subscription.dailyRemaining,
                 onFollowUp: _focusInputForFollowUp,
-                onForceAnswer: () => ref
-                    .read(coachChatControllerProvider(widget.conversationId)
-                        .notifier)
-                    .forceAnswer(analysisSnapshot: widget.analysisSnapshot),
+                onForceAnswer: _forceAnswer,
               ),
             ],
           ] else if (timeline.isNotEmpty) ...[
@@ -285,10 +283,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
               results: timeline,
               dailyRemaining: subscription.dailyRemaining,
               onFollowUp: _focusInputForFollowUp,
-              onForceAnswer: () => ref
-                  .read(coachChatControllerProvider(widget.conversationId)
-                      .notifier)
-                  .forceAnswer(analysisSnapshot: widget.analysisSnapshot),
+              onForceAnswer: _forceAnswer,
             ),
           ],
         ],
@@ -358,7 +353,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
         snapshot.keySignals.any((signal) => signal.trim().isNotEmpty);
   }
 
-  void _ask() {
+  Future<void> _ask() async {
     if (ref
         .read(coachChatControllerProvider(widget.conversationId))
         .isLoading) {
@@ -366,6 +361,16 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     }
     final question = _controller.text.trim();
     if (question.isEmpty) return;
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'Coach 1:1',
+    );
+    if (!consented || !mounted) return;
+    if (ref
+        .read(coachChatControllerProvider(widget.conversationId))
+        .isLoading) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() {
       _lastAskedQuestion = question;
@@ -382,12 +387,23 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
     _controller.selection = TextSelection.collapsed(offset: question.length);
   }
 
-  void _retryLastQuestion() {
+  Future<void> _retryLastQuestion() async {
     final question = _lastAskedQuestion?.trim();
     if (question == null || question.isEmpty) return;
     _controller.text = question;
     _controller.selection = TextSelection.collapsed(offset: question.length);
-    _ask();
+    await _ask();
+  }
+
+  Future<void> _forceAnswer() async {
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'Coach 1:1',
+    );
+    if (!consented || !mounted) return;
+    await ref
+        .read(coachChatControllerProvider(widget.conversationId).notifier)
+        .forceAnswer(analysisSnapshot: widget.analysisSnapshot);
   }
 
   void _focusInputForFollowUp() {
