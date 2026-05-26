@@ -1,4 +1,3 @@
-// components/layout/nav.tsx
 "use client";
 
 import Link from "next/link";
@@ -9,6 +8,7 @@ import {
   AlertCircle,
   CreditCard,
   DollarSign,
+  HandCoins,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -21,8 +21,9 @@ const navItems = [
   { href: "/", label: "總覽", icon: LayoutDashboard },
   { href: "/users", label: "用戶", icon: Users },
   { href: "/subscriptions", label: "訂閱", icon: CreditCard },
-  { href: "/revenue", label: "營收", icon: TrendingUp },
+  { href: "/revenue", label: "收入", icon: TrendingUp },
   { href: "/costs", label: "成本", icon: DollarSign },
+  { href: "/finance", label: "財務月結", icon: HandCoins },
   { href: "/ai-health", label: "AI 健康", icon: Zap },
   { href: "/errors", label: "錯誤追蹤", icon: AlertCircle },
   { href: "/activity", label: "用戶活動", icon: Activity },
