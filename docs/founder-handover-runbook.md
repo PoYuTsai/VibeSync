@@ -232,6 +232,12 @@ Critical rule:
 | Paid apps / bank / tax area | Business / Agreements, Tax, and Banking |
 | Current owner context | Eric / Po Yu Tsai individual account |
 
+Visual reference:
+
+![Apple App Overview](handover-screenshots/01-apple-app-overview.png)
+
+This screenshot shows the App Store Connect app entry, the current Distribution area, and the TestFlight entry point.
+
 Revenue flow:
 
 1. User buys subscription through Apple In-App Purchase.
