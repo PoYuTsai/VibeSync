@@ -28,9 +28,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   static const _termsUrl = 'https://vibesyncai.app/terms';
   static const _manageSubscriptionsUrl =
       'https://apps.apple.com/account/subscriptions';
+  static const _purchaseTimeout = Duration(seconds: 45);
+  static const _planRefreshTimeout = Duration(seconds: 20);
 
   String _selectedOptionId = 'essential_monthly';
   bool _isPurchasing = false;
+  bool _isRefreshingPlans = false;
 
   @override
   void initState() {
@@ -202,7 +205,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final canManagePendingDowngrade = hasPendingDowngrade && isCurrentPlan;
 
     VoidCallback? primaryAction;
-    if (_isPurchasing) {
+    if (_isPurchasing || _isRefreshingPlans) {
       primaryAction = null;
     } else if (canManagePendingDowngrade) {
       primaryAction = () {
@@ -210,9 +213,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       };
     } else if (isCurrentPlan ||
         pendingDowngradeMatchesSelection ||
-        selected == null ||
-        !selected.isReady) {
+        selected == null) {
       primaryAction = null;
+    } else if (!selected.isReady) {
+      primaryAction = () {
+        _refreshPlanProducts();
+      };
     } else {
       primaryAction = () {
         _subscribe(selected, selectedTier);
@@ -305,6 +311,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       ),
                     ),
                   ),
+                  if (selected != null) ...[
+                    const SizedBox(height: 4),
+                    _buildSelectedBillingCard(
+                      option: selected,
+                      isDowngrade: isDowngrade,
+                      isCurrentPlan: isCurrentPlan,
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   GradientButton(
                     text: _primaryButtonText(
@@ -317,7 +331,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       selectedProduct,
                     ),
                     onPressed: primaryAction,
-                    isLoading: _isPurchasing,
+                    isLoading: _isPurchasing || _isRefreshingPlans,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -394,22 +408,25 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     StoreProduct? selectedProduct,
   ) {
     if (_isPurchasing) return '處理中...';
+    if (_isRefreshingPlans) return '重新整理中...';
     if (canManagePendingDowngrade) return '取消降級 / 管理訂閱';
     if (pendingDowngradeMatchesSelection) {
       return '已排程降級到 ${_tierLabel(selectedTier)}';
     }
     if (isCurrentPlan) return '目前方案';
-    if (selectedProduct == null) return '正在同步方案資訊...';
+    if (selectedProduct == null) return '重新載入 App Store 價格';
+    final price = selected?.priceString ?? selectedProduct.priceString;
+    final planName = '${_tierLabel(selectedTier)} ${selected?.period ?? ''}';
     if (subscription.tier == selectedTier) {
-      return '改用 ${_tierLabel(selectedTier)} ${selected?.period ?? ''}';
+      return '以 $price 改用 $planName';
     }
     if (SubscriptionTierHelper.isDowngrade(
       fromTier: subscription.tier,
       toTier: selectedTier,
     )) {
-      return '安排降級到 ${_tierLabel(selectedTier)}';
+      return '安排降級到 $planName';
     }
-    return '升級到 ${_tierLabel(selectedTier)}';
+    return '以 $price 訂閱 $planName';
   }
 
   String _primaryFootnote(
@@ -436,6 +453,58 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       return '降級會在下次續訂時生效；在那之前你仍可使用目前額度，今天不會再次扣款。';
     }
     return '升級會立即生效並立刻刷新額度，Apple 也會自動按比例調整本期費用。';
+  }
+
+  Widget _buildSelectedBillingCard({
+    required _PaywallOption option,
+    required bool isDowngrade,
+    required bool isCurrentPlan,
+  }) {
+    final price = option.priceString ?? '正在向 App Store 取得價格';
+    final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每 1 個月自動續訂';
+    final title = isCurrentPlan ? '目前方案' : '本次扣款金額';
+    final note = isDowngrade
+        ? '降級會在下次續訂時生效；今天不會再次扣款。'
+        : '付款會由 Apple ID 扣款，除非在到期前取消，否則會自動續訂。';
+
+    return GlassmorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            price,
+            style: AppTypography.headlineLarge.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${option.name} ${option.period}，$billingCycle',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            note,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildFeatureComparisonTable() {
@@ -729,9 +798,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required VoidCallback onTap,
   }) {
     final priceLabel = option.priceString ?? '價格同步中';
-    final periodSuffix = !option.isReady
-        ? ''
-        : (option.id.contains('quarterly') ? ' / 季' : ' / 月');
+    final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每 1 個月自動續訂';
     final isRecommended = option.id == 'essential_quarterly';
 
     return GestureDetector(
@@ -809,9 +876,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              '$priceLabel$periodSuffix',
+              priceLabel,
               style: AppTypography.headlineMedium.copyWith(
                 color: AppColors.glassTextPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              option.isReady ? billingCycle : '請重新載入 App Store 價格',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
               ),
             ),
             const SizedBox(height: 8),
@@ -892,8 +967,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
       final result = package != null
-          ? await notifier.purchase(package)
-          : await notifier.purchaseStoreProduct(storeProduct!);
+          ? await notifier.purchase(package).timeout(_purchaseTimeout)
+          : await notifier
+              .purchaseStoreProduct(storeProduct!)
+              .timeout(_purchaseTimeout);
       if (!mounted || result.cancelled) return;
 
       if (!result.success) {
@@ -927,12 +1004,46 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         backgroundColor: AppColors.success,
       );
       context.pop(result.activeTier);
+    } on TimeoutException catch (error) {
+      debugPrint('Paywall purchase timeout: $error');
+      _showSnackBar('App Store 付款確認逾時，請稍後再試；如果已付款，可按「恢復購買」。');
     } catch (error) {
       debugPrint('Paywall purchase error: $error');
       _showSnackBar('訂閱處理失敗，請稍後再試。');
     } finally {
       if (mounted) {
         setState(() => _isPurchasing = false);
+      }
+    }
+  }
+
+  Future<void> _refreshPlanProducts() async {
+    if (_isRefreshingPlans || _isPurchasing) return;
+
+    setState(() => _isRefreshingPlans = true);
+    try {
+      await ref
+          .read(subscriptionScreenRefreshProvider)()
+          .timeout(_planRefreshTimeout);
+      if (!mounted) return;
+
+      final refreshedOptions = _buildOptions(ref.read(subscriptionProvider));
+      final hasReadyPlans = refreshedOptions.any((option) => option.isReady);
+      _showSnackBar(
+        hasReadyPlans ? 'App Store 價格已更新。' : '仍未取得 App Store 價格，請確認網路後再試。',
+        backgroundColor: hasReadyPlans ? AppColors.success : AppColors.warning,
+      );
+    } on TimeoutException catch (error) {
+      debugPrint('Paywall plan refresh timeout: $error');
+      if (!mounted) return;
+      _showSnackBar('App Store 價格同步逾時，請稍後再試。');
+    } catch (error) {
+      debugPrint('Paywall plan refresh error: $error');
+      if (!mounted) return;
+      _showSnackBar('無法重新載入 App Store 價格，請稍後再試。');
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingPlans = false);
       }
     }
   }
@@ -1140,6 +1251,7 @@ class _PaywallOption {
 
   StoreProduct? get purchasableProduct => package?.storeProduct ?? storeProduct;
   bool get isReady => purchasableProduct != null;
+  bool get isQuarterly => id.contains('quarterly');
   String? get productId => purchasableProduct?.identifier;
   String? get priceString => purchasableProduct?.priceString;
 }

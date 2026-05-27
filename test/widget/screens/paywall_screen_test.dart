@@ -91,7 +91,11 @@ void main() {
       expect(find.text('推薦'), findsOneWidget);
       expect(find.text('最划算'), findsOneWidget);
       expect(find.text('價格同步中'), findsNWidgets(4));
+      expect(find.text('請重新載入 App Store 價格'), findsNWidgets(4));
       expect(find.text('方案資訊尚未就緒'), findsOneWidget);
+      expect(find.text('本次扣款金額'), findsOneWidget);
+      expect(find.text('正在向 App Store 取得價格'), findsOneWidget);
+      expect(find.text('重新載入 App Store 價格'), findsOneWidget);
     });
 
     testWidgets('Essential monthly option is selected by default',

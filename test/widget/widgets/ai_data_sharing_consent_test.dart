@@ -38,15 +38,39 @@ void main() {
     await pumpConsentLauncher(tester);
 
     expect(find.text('第三方 AI 資料使用同意'), findsOneWidget);
-    expect(find.textContaining('Anthropic Claude API'), findsOneWidget);
+    expect(
+        find.textContaining('Anthropic Claude API'), findsAtLeastNWidgets(1));
     expect(find.textContaining('聊天文字'), findsOneWidget);
+    expect(find.text('查看服務條款'), findsOneWidget);
+    expect(find.text('查看隱私權政策'), findsOneWidget);
+    expect(find.textContaining('我已閱讀並同意服務條款與隱私權政策'), findsOneWidget);
     expect(find.text('我同意並送出'), findsOneWidget);
+  });
+
+  testWidgets('requires explicit checkbox agreement before accepting',
+      (tester) async {
+    await pumpConsentLauncher(tester);
+
+    final acceptButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '我同意並送出'),
+    );
+    expect(acceptButton.onPressed, isNull);
+
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+
+    final enabledAcceptButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '我同意並送出'),
+    );
+    expect(enabledAcceptButton.onPressed, isNotNull);
   });
 
   testWidgets('accepting persists consent', (tester) async {
     var result = await pumpConsentLauncher(tester);
     expect(result, isNull);
 
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('我同意並送出'));
     await tester.pumpAndSettle();
 
