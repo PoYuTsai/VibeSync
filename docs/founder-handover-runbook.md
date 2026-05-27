@@ -6,6 +6,8 @@ This document is safe to keep in the repository. It explains where VibeSync is o
 
 Do not put passwords, full API keys, recovery codes, credit card numbers, bank details, private keys, or passport/ID images in this file. Store those in a password manager emergency vault or an offline sealed handover packet.
 
+Screenshot guide: use `docs/founder-handover-screenshot-checklist.md` to capture and redact the visual proof for each platform. Repo-safe screenshots can live in `docs/handover-screenshots/`; sensitive screenshots must stay in the private handover packet.
+
 ## Purpose
 
 If Eric is unavailable, the priority is:
