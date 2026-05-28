@@ -37,3 +37,35 @@ export function normalizeRequestMode(
 
   return { responseMode, analysisRunId };
 }
+
+// ---------------------------------------------------------------------------
+// shouldRejectFullMode — Phase 1 stub guard.
+//
+// Codex round-2 review fix: the full-mode rejection MUST fire BEFORE quota
+// preflight / prompt building / Claude call. If it fires late, a user whose
+// quota was exhausted by quick mode gets 429 quota_exceeded instead of
+// MISSING_RUN_ID / FULL_MODE_NOT_READY — breaking the two-stage contract
+// (full is not quota-gated in Phase 1).
+//
+// This helper is intentionally pure and has no awareness of quota, user,
+// or upstream state. The handler in `index.ts` calls it immediately after
+// `normalizeRequestMode` and returns the response if `reject === true`.
+// Phase 2.1 will replace this helper's `FULL_MODE_NOT_READY` branch with
+// the real anchor handler — at that point this function should be removed
+// (or made always return `{ reject: false }`).
+// ---------------------------------------------------------------------------
+
+export type FullRejection =
+  | { reject: false }
+  | { reject: true; status: 400; code: "MISSING_RUN_ID" }
+  | { reject: true; status: 503; code: "FULL_MODE_NOT_READY" };
+
+export function shouldRejectFullMode(
+  state: NormalizedRequestMode,
+): FullRejection {
+  if (state.responseMode !== "full") return { reject: false };
+  if (!state.analysisRunId) {
+    return { reject: true, status: 400, code: "MISSING_RUN_ID" };
+  }
+  return { reject: true, status: 503, code: "FULL_MODE_NOT_READY" };
+}

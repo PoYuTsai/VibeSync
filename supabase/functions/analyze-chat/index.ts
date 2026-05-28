@@ -24,6 +24,7 @@ import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 import {
   normalizeRequestMode,
   type ResponseMode,
+  shouldRejectFullMode,
 } from "./request_mode.ts";
 import {
   AnalysisRunStore,
@@ -4539,6 +4540,47 @@ serve(async (req) => {
       analysisRunId: rawAnalysisRunId,
     });
 
+    // ------------------------------------------------------------------
+    // Codex round-2 fix — Full-mode Phase 1 stub MUST fire BEFORE quota
+    // preflight, prompt building, and any Claude call.
+    // ------------------------------------------------------------------
+    // Phase 2.1 will replace this stub with the real anchor handler.
+    // Until then we reject full requests early so a user with exhausted
+    // quota still receives 400/503 (the deterministic routing-level
+    // response) rather than 429 quota_exceeded fired from the preflight
+    // around line ~5492. Full mode is NOT quota-gated in Phase 1 — quick
+    // already charged via atomic RPC, and full is a no-op stub here.
+    //
+    // Invariants pinned by this placement:
+    //   - I1: no double-charge (no Claude call → no increment_usage)
+    //   - Routing determinism: same status code regardless of quota state
+    //   - Phase 1 stub is greppable — `shouldRejectFullMode` call site is
+    //     the single source of truth for full's pre-Phase-2 behavior.
+    const fullRejection = shouldRejectFullMode({ responseMode, analysisRunId });
+    if (fullRejection.reject) {
+      if (fullRejection.code === "MISSING_RUN_ID") {
+        logInfo("full_mode_rejected_missing_run_id", {
+          user: summarizeUser(user.id),
+        });
+      } else {
+        logWarn("full_mode_requested_before_phase2", {
+          user: summarizeUser(user.id),
+          analysisRunId,
+        });
+      }
+      return jsonResponse(
+        {
+          error: fullRejection.code,
+          code: fullRejection.code,
+          message: fullRejection.code === "MISSING_RUN_ID"
+            ? "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。"
+            : "完整分析模式即將推出，目前請使用 responseMode=quick 或 legacy。",
+          retryable: false,
+        },
+        fullRejection.status,
+      );
+    }
+
     if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
       return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
     }
@@ -5712,53 +5754,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       contextMode: compiledContextMode,
     };
 
-    // ------------------------------------------------------------------
-    // Phase 1.3 / Codex P1-2 guard — Two-stage analyze: FULL branch (NOT
-    // YET IMPLEMENTED; Phase 2.1 will replace this stub).
-    // ------------------------------------------------------------------
-    //
-    // Until Phase 2.1 ships the anchor-injection + run validation handler,
-    // any client request with `responseMode === "full"` MUST be rejected
-    // here — falling through to the legacy path would call increment_usage
-    // a second time on top of the quick charge, double-charging the user
-    // (violates I1).
-    //
-    //   - missing analysisRunId → 400 MISSING_RUN_ID (matches Phase 2 contract I2)
-    //   - has analysisRunId but Phase 2 unbuilt → 503 FULL_MODE_NOT_READY
-    //
-    // Both branches return BEFORE the Claude call and BEFORE any quota
-    // accounting, so quota is never touched on the full path during this
-    // gap.
-    if (responseMode === "full") {
-      if (!analysisRunId) {
-        logInfo("full_mode_rejected_missing_run_id", {
-          user: summarizeUser(user.id),
-          requestType,
-        });
-        return jsonResponse(
-          {
-            error: "MISSING_RUN_ID",
-            code: "MISSING_RUN_ID",
-            message: "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
-          },
-          400,
-        );
-      }
-      logWarn("full_mode_requested_before_phase2", {
-        user: summarizeUser(user.id),
-        analysisRunId,
-        requestType,
-      });
-      return jsonResponse(
-        {
-          error: "FULL_MODE_NOT_READY",
-          code: "FULL_MODE_NOT_READY",
-          message: "完整分析模式即將推出，目前請使用 responseMode=quick 或 legacy。",
-          retryable: false,
-        },
-        503,
-      );
-    }
+    // Note: `responseMode === "full"` was already rejected by
+    // shouldRejectFullMode() near line ~4530 (above subscription lookup +
+    // quota preflight). By the time control reaches here, responseMode is
+    // either "quick" or "legacy". Do not add a second full-mode branch
+    // — there is exactly one rejection site so Codex can grep for it.
 
     // ------------------------------------------------------------------
     // Phase 1.3 — Two-stage analyze: QUICK branch.
