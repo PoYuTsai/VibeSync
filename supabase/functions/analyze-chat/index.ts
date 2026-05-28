@@ -29,6 +29,7 @@ import {
 import {
   AnalysisRunStore,
   createSupabaseAnalysisRunDriver,
+  MAX_FULL_RETRIES,
 } from "./analysis_run_store.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
@@ -37,6 +38,11 @@ import {
   estimateFullSeconds,
   parseQuickResponse,
 } from "./quick_response.ts";
+import {
+  buildFullPromptAnchor,
+  parseFullPayload,
+} from "./full_response.ts";
+import { detectAnchorDrift } from "./anchor_drift.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -4541,40 +4547,30 @@ serve(async (req) => {
     });
 
     // ------------------------------------------------------------------
-    // Codex round-2 fix — Full-mode Phase 1 stub MUST fire BEFORE quota
-    // preflight, prompt building, and any Claude call.
+    // Phase 1.3 (Codex round-2) — early MISSING_RUN_ID bounce.
+    // Phase 2.1 — full+runId now flows through to the real handler below.
     // ------------------------------------------------------------------
-    // Phase 2.1 will replace this stub with the real anchor handler.
-    // Until then we reject full requests early so a user with exhausted
-    // quota still receives 400/503 (the deterministic routing-level
-    // response) rather than 429 quota_exceeded fired from the preflight
-    // around line ~5492. Full mode is NOT quota-gated in Phase 1 — quick
-    // already charged via atomic RPC, and full is a no-op stub here.
+    // Why early: a full request with NO runId is unrecoverable. We don't
+    // want to pay for subscription lookup / hash / DB / Claude work to
+    // reject something the request shape alone can refuse. A user whose
+    // quick mode just exhausted their quota also needs to get 400 here,
+    // not 429 from the quota preflight (full is not quota-gated — see
+    // the `responseMode !== "full"` skips on the preflights below).
     //
-    // Invariants pinned by this placement:
-    //   - I1: no double-charge (no Claude call → no increment_usage)
-    //   - Routing determinism: same status code regardless of quota state
-    //   - Phase 1 stub is greppable — `shouldRejectFullMode` call site is
-    //     the single source of truth for full's pre-Phase-2 behavior.
+    // The full handler with valid runId lives next to the quick branch
+    // (~line 6080) and uses `AnalysisRunStore.validateRunForFull` for
+    // the runId / owner / hash / expiry / charged checks.
     const fullRejection = shouldRejectFullMode({ responseMode, analysisRunId });
     if (fullRejection.reject) {
-      if (fullRejection.code === "MISSING_RUN_ID") {
-        logInfo("full_mode_rejected_missing_run_id", {
-          user: summarizeUser(user.id),
-        });
-      } else {
-        logWarn("full_mode_requested_before_phase2", {
-          user: summarizeUser(user.id),
-          analysisRunId,
-        });
-      }
+      logInfo("full_mode_rejected_missing_run_id", {
+        user: summarizeUser(user.id),
+      });
       return jsonResponse(
         {
           error: fullRejection.code,
           code: fullRejection.code,
-          message: fullRejection.code === "MISSING_RUN_ID"
-            ? "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。"
-            : "完整分析模式即將推出，目前請使用 responseMode=quick 或 legacy。",
+          message:
+            "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
           retryable: false,
         },
         fullRejection.status,
@@ -4833,8 +4829,15 @@ serve(async (req) => {
         "client_expected_paid_tier",
       );
     }
+    // Phase 2.1 — `responseMode === "full"` skips the monthly/daily
+    // preflight: quick already charged via atomic RPC and the run row
+    // exists, so the post-quick full call MUST NOT be 429'd just because
+    // quick's charge pushed the user to the cap. I1 (single charge) is
+    // enforced by full not calling increment_usage. The full handler
+    // validates the run via AnalysisRunStore.validateRunForFull instead.
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      responseMode !== "full" &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -4862,9 +4865,10 @@ serve(async (req) => {
       }
     }
 
-    // Check daily limit (測試帳號跳過)
+    // Check daily limit (測試帳號跳過, full mode 跳過 — 同上)
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      responseMode !== "full" &&
       sub.daily_messages_used >= dailyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5537,6 +5541,7 @@ ${recentText}`;
       quotaUsage.chargedMessageCount;
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      responseMode !== "full" &&
       projectedMonthlyUsage > monthlyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5566,6 +5571,7 @@ ${recentText}`;
     }
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      responseMode !== "full" &&
       projectedDailyUsage > dailyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -6069,6 +6075,357 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           totalTokens:
             (quickTokenUsage.inputTokens ?? 0) +
             (quickTokenUsage.outputTokens ?? 0),
+        },
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 2.1 — Two-stage analyze: FULL branch.
+    // ------------------------------------------------------------------
+    // Preconditions enforced upstream:
+    //   - responseMode === "full" AND analysisRunId is non-empty
+    //     (shouldRejectFullMode bounced the empty case at line ~4559).
+    //   - Monthly/daily/projected quota preflights skipped earlier for
+    //     `responseMode !== "full"` so quick's charge doesn't 429 us.
+    //
+    // What this branch does, in order:
+    //   1. Reject images (vision is not part of two-stage in build 213).
+    //   2. Re-hash the canonical request context (must match what quick
+    //      stored, per I5).
+    //   3. validateRunForFull — pure read (owner / hash / expiry / charged).
+    //      Status code per validation error:
+    //        RUN_NOT_FOUND        → 404
+    //        RUN_FORBIDDEN        → 403
+    //        RUN_NOT_CHARGED      → 409 (defensive — atomic RPC makes this
+    //                               unreachable in production but we keep
+    //                               the test pin so future regressions fail
+    //                               loudly)
+    //        RUN_EXPIRED          → 410
+    //        RUN_CONVERSATION_MISMATCH → 409
+    //   4. reserveRetrySlot — atomic UPDATE that bumps retry_count BEFORE
+    //      the Claude call. 0 rows → 429 RUN_RETRY_EXHAUSTED. Reserving
+    //      first means every Claude attempt (success OR failure) consumes
+    //      one of the 3 slots — I6.
+    //   5. Build the ANCHOR block (plan I7: confirm/supplement/light-polish
+    //      only) and prepend it to the existing userPrompt.
+    //   6. Call Claude with selectedModel / SYSTEM_PROMPT / 30s timeout.
+    //      I1 — NO RPC. NO increment_usage. NO quota changes.
+    //   7. Parse + checkAiOutput guardrail (same safety swap as legacy).
+    //   8. detectAnchorDrift — warn-only telemetry; never blocks success.
+    //
+    // On Claude failure or parse failure the reservation IS consumed
+    // (already counted by step 4). Returning 502 with `retriesRemaining`
+    // lets the client decide whether to send another full request.
+    if (responseMode === "full") {
+      // Vision: quick already rejects images, so a run-from-quick can never
+      // have come from a vision request. Reject early with the same code
+      // for symmetry — saves a DB hit + Claude call on a malformed flow.
+      if (hasImages) {
+        logWarn("full_mode_rejected_images", {
+          user: summarizeUser(user.id),
+          imageCount: images.length,
+        });
+        return jsonResponse(
+          {
+            error: "FULL_MODE_IMAGES_UNSUPPORTED",
+            code: "FULL_MODE_IMAGES_UNSUPPORTED",
+            message:
+              "圖片分析尚未支援兩階段流程，請改用 responseMode=legacy 或省略此欄位。",
+          },
+          400,
+        );
+      }
+
+      // I2 already enforced by shouldRejectFullMode, but TS narrowing needs
+      // an explicit check here.
+      if (!analysisRunId) {
+        return jsonResponse(
+          {
+            error: "MISSING_RUN_ID",
+            code: "MISSING_RUN_ID",
+            message: "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
+            retryable: false,
+          },
+          400,
+        );
+      }
+
+      const conversationHashValue = await hashConversation({
+        messages,
+        userDraft,
+        partnerSummary,
+        sessionContext,
+        conversationSummary,
+        effectiveStyleContext,
+        knownContactName,
+      });
+
+      const fullStore = new AnalysisRunStore(
+        createSupabaseAnalysisRunDriver(
+          supabase as unknown as Parameters<
+            typeof createSupabaseAnalysisRunDriver
+          >[0],
+        ),
+      );
+
+      // Step 3 — pure read validation.
+      const validation = await fullStore.validateRunForFull({
+        runId: analysisRunId,
+        userId: user.id,
+        conversationHash: conversationHashValue,
+      });
+      if (!validation.ok) {
+        const statusByError: Record<string, number> = {
+          MISSING_RUN_ID: 400,
+          RUN_NOT_FOUND: 404,
+          RUN_FORBIDDEN: 403,
+          RUN_NOT_CHARGED: 409,
+          RUN_EXPIRED: 410,
+          RUN_CONVERSATION_MISMATCH: 409,
+        };
+        logWarn("full_validation_failed", {
+          user: summarizeUser(user.id),
+          analysisRunId,
+          code: validation.error,
+        });
+        return jsonResponse(
+          {
+            error: validation.error,
+            code: validation.error,
+          },
+          statusByError[validation.error] ?? 400,
+        );
+      }
+
+      // Step 4 — atomic retry reservation. MUST happen before Claude.
+      const reservation = await fullStore.reserveRetrySlot({
+        runId: analysisRunId,
+        userId: user.id,
+        conversationHash: conversationHashValue,
+      });
+      if (!reservation.ok) {
+        logWarn("full_retry_exhausted", {
+          user: summarizeUser(user.id),
+          analysisRunId,
+        });
+        return jsonResponse(
+          {
+            error: "RUN_RETRY_EXHAUSTED",
+            code: "RUN_RETRY_EXHAUSTED",
+            message: "完整分析已達重試上限。請重新進行一次快速分析。",
+          },
+          429,
+        );
+      }
+      const run = reservation.run;
+      // retry_count has just been incremented by the RPC — remaining slots
+      // is (MAX - current count). 0 means the NEXT request would be refused.
+      const retriesRemaining = Math.max(0, MAX_FULL_RETRIES - run.retry_count);
+
+      // Step 5 — anchor injection.
+      const anchorBlock = buildFullPromptAnchor(run.quick_result);
+      const fullUserPrompt = joinPromptSections(userPrompt, anchorBlock);
+
+      const fullStart = Date.now();
+      logInfo("full_request_started", {
+        user: summarizeUser(user.id),
+        analysisRunId: run.id,
+        model: selectedModel,
+        retryCount: run.retry_count,
+        retriesRemaining,
+        requestType,
+      });
+
+      // Step 6 — Claude. I1: NO `supabase.rpc("increment_usage", ...)`
+      // anywhere in this branch. (Greppable comment so reviewers can verify.)
+      let fullClaude;
+      try {
+        fullClaude = await callClaudeWithFallback(
+          {
+            model: selectedModel,
+            max_tokens: 1536,
+            system: SYSTEM_PROMPT,
+            messages: [{ role: "user", content: fullUserPrompt }],
+          },
+          CLAUDE_API_KEY,
+          { timeout: 30000, allowModelFallback: true },
+        );
+      } catch (error) {
+        // Reservation already consumed — surface to client with remaining
+        // slot count so they can decide whether to retry.
+        const latencyMs = Date.now() - fullStart;
+        const code = error instanceof AiServiceError
+          ? error.code
+          : "FULL_AI_FAILED";
+        const message = error instanceof AiServiceError
+          ? error.message
+          : "完整分析暫時失敗，請再試一次。";
+        logWarn("full_request_failed", {
+          user: summarizeUser(user.id),
+          analysisRunId: run.id,
+          latencyMs,
+          code,
+          message,
+          retriesRemaining,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: selectedModel,
+          requestType,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs,
+          status: "failed",
+          errorCode: code,
+          errorMessage: message,
+          requestBody: {
+            ...requestObservability,
+            responseMode: "full",
+            analysisRunId: run.id,
+          },
+          responseBody: {
+            failureStage: "full_upstream",
+            retriesRemaining,
+          },
+        });
+        return jsonResponse(
+          {
+            error: "FULL_AI_FAILED",
+            code: "FULL_AI_FAILED",
+            message,
+            retriesRemaining,
+          },
+          502,
+        );
+      }
+
+      // Step 7 — parse + guardrail.
+      const fullData = fullClaude.data as {
+        content?: Array<{ text?: string }>;
+        [key: string]: unknown;
+      };
+      const fullText = fullData.content?.[0]?.text ?? "";
+      const fullTokenUsage = extractTokenUsage(fullData);
+      const fullLatencyMs = Date.now() - fullStart;
+
+      const parsed = parseFullPayload(fullText);
+      if (!parsed.ok) {
+        // Parse failure: same accounting as upstream failure (reservation
+        // already burned). Client may retry while slots remain.
+        logWarn("full_response_parse_failed", {
+          user: summarizeUser(user.id),
+          analysisRunId: run.id,
+          model: fullClaude.model,
+          error: parsed.error,
+          textLength: fullText.length,
+          retriesRemaining,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: fullClaude.model,
+          requestType,
+          inputTokens: fullTokenUsage.inputTokens,
+          outputTokens: fullTokenUsage.outputTokens,
+          latencyMs: fullLatencyMs,
+          status: "failed",
+          errorCode: "FULL_RESPONSE_INVALID",
+          errorMessage: parsed.error,
+          requestBody: {
+            ...requestObservability,
+            responseMode: "full",
+            analysisRunId: run.id,
+          },
+          responseBody: {
+            failureStage: "full_parse",
+            parseError: parsed.error,
+            retriesRemaining,
+          },
+        });
+        return jsonResponse(
+          {
+            error: "FULL_RESPONSE_INVALID",
+            code: "FULL_RESPONSE_INVALID",
+            message: "這次完整分析格式異常，請再試一次。",
+            retriesRemaining,
+          },
+          502,
+        );
+      }
+
+      const guarded = checkAiOutput(
+        parsed.result.payload as GuardrailAnalysisResult,
+      ) as Record<string, unknown>;
+
+      // Step 8 — drift detector (warn only in v1, per plan I7).
+      const drift = detectAnchorDrift(
+        run.quick_result as Record<string, unknown>,
+        guarded,
+      );
+      if (drift.driftedFields.length > 0) {
+        logWarn("full_anchor_drift_detected", {
+          user: summarizeUser(user.id),
+          analysisRunId: run.id,
+          driftedFields: drift.driftedFields,
+          replyOverlapRatio: drift.replyOverlapRatio,
+        });
+      }
+
+      logInfo("full_request_succeeded", {
+        user: summarizeUser(user.id),
+        analysisRunId: run.id,
+        model: fullClaude.model,
+        latencyMs: fullLatencyMs,
+        inputTokens: fullTokenUsage.inputTokens,
+        outputTokens: fullTokenUsage.outputTokens,
+        retryCount: run.retry_count,
+        retriesRemaining,
+        parseSource: parsed.result.source,
+        driftedFields: drift.driftedFields,
+      });
+
+      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        userId: user.id,
+        model: fullClaude.model,
+        requestType,
+        inputTokens: fullTokenUsage.inputTokens,
+        outputTokens: fullTokenUsage.outputTokens,
+        latencyMs: fullLatencyMs,
+        status: "success",
+        fallbackUsed: fullClaude.fallbackUsed,
+        retryCount: fullClaude.retries,
+        requestBody: {
+          ...requestObservability,
+          responseMode: "full",
+          analysisRunId: run.id,
+        },
+        responseBody: {
+          parseSource: parsed.result.source,
+          driftedFields: drift.driftedFields,
+          replyOverlapRatio: drift.replyOverlapRatio,
+          retryCount: run.retry_count,
+          retriesRemaining,
+          cacheReadTokens: fullTokenUsage.cacheReadTokens ?? 0,
+          cacheCreationTokens: fullTokenUsage.cacheCreationTokens ?? 0,
+        },
+      });
+
+      return jsonResponse({
+        responseMode: "full",
+        analysisRunId: run.id,
+        quickResult: run.quick_result,
+        result: guarded,
+        retriesRemaining,
+        telemetry: {
+          requestType,
+          serverAiLatencyMs: fullLatencyMs,
+          fallbackUsed: fullClaude.fallbackUsed,
+          retries: fullClaude.retries,
+          parseSource: parsed.result.source,
+          driftedFields: drift.driftedFields,
+          replyOverlapRatio: drift.replyOverlapRatio,
+          totalTokens:
+            (fullTokenUsage.inputTokens ?? 0) +
+            (fullTokenUsage.outputTokens ?? 0),
         },
       });
     }

@@ -108,10 +108,15 @@ Deno.test("output type is the canonical 3-value union (negative assertion)", () 
 });
 
 // ----------------------------------------------------------------------
-// shouldRejectFullMode — Phase 1 stub guard. Must fire BEFORE quota
-// preflight / Claude call so a quota-exhausted user gets MISSING_RUN_ID
-// or FULL_MODE_NOT_READY instead of an out-of-band 429. Codex round-2
-// review regression coverage.
+// shouldRejectFullMode — early MISSING_RUN_ID bouncer.
+//
+// Phase 1.3 contract (Codex round-2 fix): must fire BEFORE quota preflight
+// / Claude call so a quota-exhausted user still gets 400 MISSING_RUN_ID
+// instead of 429 quota_exceeded — full is not quota-gated.
+//
+// Phase 2.1 update: full+runId now passes through to the real handler in
+// index.ts (which calls AnalysisRunStore.validateRunForFull). Only the
+// no-runId case still short-circuits here.
 // ----------------------------------------------------------------------
 
 Deno.test("shouldRejectFullMode — legacy never rejected", () => {
@@ -143,28 +148,23 @@ Deno.test("shouldRejectFullMode — full + missing runId → 400 MISSING_RUN_ID"
   }
 });
 
-Deno.test("shouldRejectFullMode — full + runId present → 503 FULL_MODE_NOT_READY (Phase 2 stub)", () => {
-  // Phase 2.1 will replace this with the real anchor handler; until then,
-  // a valid-looking runId still gets rejected (no Claude call, no quota touch).
+Deno.test("shouldRejectFullMode — full + runId present passes through to handler (Phase 2.1)", () => {
+  // Phase 2.1: the real full handler now lives in index.ts and validates
+  // the run via AnalysisRunStore. The pure router only short-circuits the
+  // no-runId case to avoid paying for hash/DB/Claude work that would be
+  // rejected downstream anyway.
   const r = shouldRejectFullMode({
     responseMode: "full",
     analysisRunId: "11111111-1111-1111-1111-111111111111",
   });
-  assert(r.reject);
-  if (r.reject) {
-    assertEquals(r.status, 503);
-    assertEquals(r.code, "FULL_MODE_NOT_READY");
-  }
+  assertFalse(r.reject);
 });
 
-Deno.test("shouldRejectFullMode — precedence: full routing decision is independent of quota state", () => {
-  // The helper is pure — it does not know about quota. The handler MUST call
-  // it before quota preflight so a quota-exhausted user still gets the
-  // routing-level rejection (400/503), not 429. This test pins the contract:
-  // the helper only looks at responseMode + analysisRunId.
-  //
-  // Codex round-2 regression: input shape minimal; no quota / no claude call
-  // anywhere in this code path.
+Deno.test("shouldRejectFullMode — precedence: routing decision uses only mode + runId", () => {
+  // The helper is pure — it does not know about quota / user / DB. The handler
+  // MUST call it before quota preflight so a quota-exhausted user still gets
+  // 400 MISSING_RUN_ID (not 429). With runId present the helper defers to the
+  // downstream handler, which is responsible for validating the run.
   const noRunId = shouldRejectFullMode({
     responseMode: "full",
     analysisRunId: null,
@@ -174,7 +174,6 @@ Deno.test("shouldRejectFullMode — precedence: full routing decision is indepen
     analysisRunId: "abc",
   });
   assert(noRunId.reject);
-  assert(withRunId.reject);
   if (noRunId.reject) assertEquals(noRunId.code, "MISSING_RUN_ID");
-  if (withRunId.reject) assertEquals(withRunId.code, "FULL_MODE_NOT_READY");
+  assertFalse(withRunId.reject);
 });
