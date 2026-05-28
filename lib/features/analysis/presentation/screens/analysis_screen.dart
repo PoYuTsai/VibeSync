@@ -122,9 +122,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
 
-  // Two-stage analyze (Phase 3) — quick result mirror + last-args cache for
-  // retry. State machine lives in [TwoStageAnalyzeNotifier]; these fields
-  // shadow it so the existing setState-based render code keeps working.
+  // Two-stage analyze (Phase 3) — local mirrors of the notifier state machine
+  // so the existing setState-based render tree keeps working. The notifier
+  // (TwoStageAnalyzeNotifier) is the source of truth and owns the retry
+  // payload; these fields are populated by `_onTwoStageStateChanged` and the
+  // initial hydration in `initState`.
   // Render gate: while `_quickResult != null && _enthusiasmScore == null` the
   // build() tree shows quick summary + placeholder/retry. Once full lands,
   // `_enthusiasmScore != null` flips and the existing detailed-analysis tree
@@ -132,7 +134,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   QuickAnalysisResult? _quickResult;
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
-  _TwoStageAnalysisArgs? _lastTwoStageArgs;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
 
   // 對話延續功能
@@ -597,7 +598,100 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     WidgetsBinding.instance.addObserver(this);
     _messageFocusNode.addListener(_handleMessageInputFocus);
     _restorePersistedAnalysis();
+    // Hydrate from existing two-stage notifier state on remount.
+    // ref.listen (set up in build) only fires on future transitions, so a
+    // screen rebuilt while the provider is mid-analyze would otherwise lose
+    // the current quick/full state. Post-frame so ref reads are safe and
+    // setState lands on the next frame (I-P1-a).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final current =
+          ref.read(twoStageAnalyzeProvider(widget.conversationId));
+      if (current.phase != TwoStagePhase.idle) {
+        _hydrateTwoStageState(current);
+      }
+    });
     // 不再自動分析，讓用戶手動點擊
+  }
+
+  /// Apply the current two-stage notifier state to local mirrors without
+  /// triggering side-effects (paywall, persistence, subscription sync) that
+  /// the original transition already handled. Called on screen remount so a
+  /// user who navigates away mid-analyze sees the correct state when they
+  /// come back.
+  void _hydrateTwoStageState(TwoStageAnalysisState s) {
+    if (!mounted) return;
+    switch (s.phase) {
+      case TwoStagePhase.runningQuick:
+        setState(() {
+          _isAnalyzing = true;
+          _quickResult = null;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+        });
+        break;
+      case TwoStagePhase.quickReady:
+      case TwoStagePhase.runningFull:
+        setState(() {
+          _isAnalyzing = false;
+          _quickResult = s.quick;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+        });
+        break;
+      case TwoStagePhase.fullReady:
+        final result = s.full;
+        if (result == null) return;
+        setState(() {
+          _isAnalyzing = false;
+          _quickResult = s.quick;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+          _applyAnalysisResult(result);
+          _enthusiasmScore = result.enthusiasmScore;
+          _dimensionScores = result.dimensionScores;
+          _strategy = result.strategy;
+          _replies = result.replies;
+          _replyOptions = result.replyOptions;
+          _topicDepth = result.topicDepth;
+          _healthCheck = result.healthCheck;
+          _gameStage = result.gameStage;
+          _psychology = result.psychology;
+          _finalRecommendation = result.recommendation;
+          _coachActionHint = result.coachActionHint;
+          _reminder = result.reminder;
+          _shouldGiveUp = result.shouldGiveUp;
+          _lastAiResponse = result.rawResponse;
+        });
+        // Skip _persistLatestAnalysisSnapshot + _syncSubscriptionUsageFromResult
+        // — the original quickReady→fullReady transition already ran them.
+        break;
+      case TwoStagePhase.fullFailed:
+        setState(() {
+          _isAnalyzing = false;
+          _quickResult = s.quick;
+          _fullErrorMessage = s.fullErrorMessage;
+          _fullErrorRetriesRemaining = s.retriesRemaining;
+        });
+        break;
+      case TwoStagePhase.quickFailed:
+        final isQuotaError = s.quickErrorCode == 'DAILY_LIMIT_EXCEEDED' ||
+            s.quickErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: s.quickErrorMessage ?? '分析暫時失敗，請稍後再試。',
+            action: isQuotaError
+                ? AnalysisErrorAction.upgrade
+                : AnalysisErrorAction.retry,
+            origin: _AnalysisErrorOrigin.analysis,
+          );
+        });
+        // Skip _showPaywall — already opened on the original transition.
+        break;
+      case TwoStagePhase.idle:
+        break;
+    }
   }
 
   @override
@@ -2645,36 +2739,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _fullErrorRetriesRemaining = 0;
       });
 
-      final args = _TwoStageAnalysisArgs(
-        messages: analysisContext.requestMessages,
-        sessionContext: conversation.sessionContext,
-        conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: _resolvePartnerSummary(conversation),
-        effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
-        knownContactName:
-            ScreenshotRecognitionHelper.isPlaceholderConversationName(
-          conversation.name,
-        )
-                ? null
-                : conversation.name.trim(),
-        previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
-      );
-      _lastTwoStageArgs = args;
-
-      // Fire-and-forget; ref.listen in build() converts notifier transitions
-      // into setState calls below. This preserves analyze state across screen
-      // navigation (Eric 2026-05-28 UX spec).
+      // Fire-and-forget. The notifier caches the payload for retryFull and
+      // keeps itself alive across screen navigation; ref.listen + the initState
+      // hydration path mirror provider state back into local fields so the
+      // legacy render tree (which reads _enthusiasmScore, _quickResult, etc.)
+      // keeps working (Eric 2026-05-28 UX spec).
       unawaited(
         ref
             .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
             .start(
-              messages: args.messages,
-              sessionContext: args.sessionContext,
-              conversationSummary: args.conversationSummary,
-              partnerSummary: args.partnerSummary,
-              effectiveStyleContext: args.effectiveStyleContext,
-              knownContactName: args.knownContactName,
-              previousAnalyzedCount: args.previousAnalyzedCount,
+              messages: analysisContext.requestMessages,
+              sessionContext: conversation.sessionContext,
+              conversationSummary: analysisContext.conversationSummary,
+              partnerSummary: _resolvePartnerSummary(conversation),
+              effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
+              knownContactName:
+                  ScreenshotRecognitionHelper.isPlaceholderConversationName(
+                conversation.name,
+              )
+                      ? null
+                      : conversation.name.trim(),
+              previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
             ),
       );
     } catch (e) {
@@ -2801,22 +2886,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
-  /// Retry the last failed full analysis with the cached conversation hash.
-  /// Same `analysisRunId` is echoed so the server does not re-charge quota
-  /// (invariant I1).
+  /// Retry the last failed full analysis. The notifier owns the cached
+  /// payload from the most recent `start()` (survives screen remount via
+  /// `ref.keepAlive`), so we just delegate. I-P1-b.
   void _retryFullAnalysis() {
-    final args = _lastTwoStageArgs;
-    if (args == null) return;
     unawaited(
-      ref.read(twoStageAnalyzeProvider(widget.conversationId).notifier).retryFull(
-            messages: args.messages,
-            sessionContext: args.sessionContext,
-            conversationSummary: args.conversationSummary,
-            partnerSummary: args.partnerSummary,
-            effectiveStyleContext: args.effectiveStyleContext,
-            knownContactName: args.knownContactName,
-            previousAnalyzedCount: args.previousAnalyzedCount,
-          ),
+      ref
+          .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
+          .retryFull(),
     );
   }
 
@@ -7058,26 +7135,3 @@ class _EditMessageCoachMark extends StatelessWidget {
   }
 }
 
-/// Snapshot of the arguments passed to the most recent
-/// `TwoStageAnalyzeNotifier.start()` call. Cached on the screen so a retry
-/// after `FullModeException` can re-issue `analyzeFull` with the same
-/// conversation hash — otherwise the server returns RUN_CONVERSATION_MISMATCH.
-class _TwoStageAnalysisArgs {
-  final List<Message> messages;
-  final SessionContext? sessionContext;
-  final String? conversationSummary;
-  final String? partnerSummary;
-  final String? effectiveStyleContext;
-  final String? knownContactName;
-  final int? previousAnalyzedCount;
-
-  const _TwoStageAnalysisArgs({
-    required this.messages,
-    this.sessionContext,
-    this.conversationSummary,
-    this.partnerSummary,
-    this.effectiveStyleContext,
-    this.knownContactName,
-    this.previousAnalyzedCount,
-  });
-}

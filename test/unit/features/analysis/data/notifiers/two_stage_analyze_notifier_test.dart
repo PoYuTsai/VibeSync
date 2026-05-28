@@ -79,6 +79,7 @@ class _FakeAnalysisService extends AnalysisService {
   int quickCallCount = 0;
   int fullCallCount = 0;
   String? lastFullRunId;
+  List<Message>? capturedFullMessages;
 
   @override
   Future<QuickAnalysisResult> analyzeQuick({
@@ -108,6 +109,7 @@ class _FakeAnalysisService extends AnalysisService {
   }) async {
     fullCallCount++;
     lastFullRunId = analysisRunId;
+    capturedFullMessages = List<Message>.from(messages);
     if (fullGate != null) await fullGate!.future;
     if (fullError != null) throw fullError!;
     return fullResult!;
@@ -259,7 +261,7 @@ void main() {
       fake.fullError = null;
       fake.fullResult = _full();
 
-      await notifier.retryFull(messages: [_msg('hi')]);
+      await notifier.retryFull();
 
       expect(fake.quickCallCount, 1); // unchanged
       expect(fake.fullCallCount, 2);
@@ -286,7 +288,7 @@ void main() {
           container.read(twoStageAnalyzeProvider('conv-1').notifier);
 
       await notifier.start(messages: [_msg('hi')]);
-      await notifier.retryFull(messages: [_msg('hi')]);
+      await notifier.retryFull();
 
       final state = container.read(twoStageAnalyzeProvider('conv-1'));
       expect(state.phase, TwoStagePhase.fullFailed);
@@ -360,7 +362,7 @@ void main() {
       fake.fullResult = _full();
       fake.fullGate = Completer<void>();
 
-      final retryFuture = notifier.retryFull(messages: [_msg('hi')]);
+      final retryFuture = notifier.retryFull();
 
       // Let retryFull push the runningFull transition.
       await Future<void>.delayed(Duration.zero);
@@ -381,6 +383,100 @@ void main() {
       expect(done.fullErrorMessage, isNull,
           reason: 'I-P2-c: fullReady must not carry stale error');
       expect(done.fullErrorCode, isNull);
+    });
+  });
+
+  group('TwoStageAnalyzeNotifier — retry args caching (P1)', () {
+    test('retryFull() with no args reuses messages cached from start()',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..quickResult = _quick(runId: 'run_cached')
+        ..fullError = FullModeException(
+          'transient',
+          code: 'FULL_FAILED',
+          retriesRemaining: 2,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      final original = [_msg('original-1'), _msg('original-2')];
+      await notifier.start(messages: original);
+      expect(fake.fullCallCount, 1);
+
+      // Reconfigure for retry success and capture the messages the service sees.
+      fake.fullError = null;
+      fake.fullResult = _full();
+      fake.capturedFullMessages = null;
+
+      // Caller passes nothing — notifier must reuse cached args from start().
+      await notifier.retryFull();
+
+      expect(fake.fullCallCount, 2);
+      expect(fake.lastFullRunId, 'run_cached');
+      expect(
+        fake.capturedFullMessages?.map((m) => m.content).toList(),
+        ['original-1', 'original-2'],
+        reason: 'I-P1-b: retryFull must reuse messages cached from start()',
+      );
+
+      final state = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(state.phase, TwoStagePhase.fullReady);
+    });
+
+    test('a second start() supersedes the cached retry args', () async {
+      final fake = _FakeAnalysisService()
+        ..quickResult = _quick(runId: 'run_A')
+        ..fullError = FullModeException(
+          'fail-A',
+          code: 'FULL_FAILED',
+          retriesRemaining: 2,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('first-call')]);
+
+      // Reconfigure for second start with different runId + different messages.
+      fake.quickResult = _quick(runId: 'run_B');
+      // keep fullError so this run also lands in fullFailed
+      await notifier.start(messages: [_msg('second-call')]);
+
+      fake.fullError = null;
+      fake.fullResult = _full();
+      fake.capturedFullMessages = null;
+
+      await notifier.retryFull();
+
+      expect(fake.lastFullRunId, 'run_B');
+      expect(
+        fake.capturedFullMessages?.map((m) => m.content).toList(),
+        ['second-call'],
+        reason: 'I-P1-c: second start() must supersede cached args',
+      );
+    });
+
+    test('retryFull is no-op when called before start (no cached runId)',
+        () async {
+      final fake = _FakeAnalysisService();
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      await notifier.retryFull();
+
+      expect(fake.fullCallCount, 0);
+      final state = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(state.phase, TwoStagePhase.idle);
     });
   });
 

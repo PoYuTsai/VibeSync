@@ -109,6 +109,18 @@ class TwoStageAnalyzeNotifier
   int _generation = 0;
   KeepAliveLink? _keepAliveLink;
 
+  // Retry payload cached from the most recent [start] call. The notifier
+  // outlives the screen via [Ref.keepAlive], so these fields survive screen
+  // remount — [retryFull] then does not depend on screen-instance local state
+  // (invariant I-P1-b). A second [start] overwrites them (I-P1-c).
+  List<Message>? _cachedMessages;
+  SessionContext? _cachedSessionContext;
+  String? _cachedConversationSummary;
+  String? _cachedPartnerSummary;
+  String? _cachedEffectiveStyleContext;
+  String? _cachedKnownContactName;
+  int? _cachedPreviousAnalyzedCount;
+
   @override
   TwoStageAnalysisState build(String conversationId) {
     return const TwoStageAnalysisState.idle();
@@ -131,6 +143,16 @@ class TwoStageAnalyzeNotifier
   }) async {
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
+
+    // Cache the payload so retryFull can replay analyzeFull with the same
+    // conversation hash even after the calling screen is disposed/remounted.
+    _cachedMessages = List<Message>.unmodifiable(messages);
+    _cachedSessionContext = sessionContext;
+    _cachedConversationSummary = conversationSummary;
+    _cachedPartnerSummary = partnerSummary;
+    _cachedEffectiveStyleContext = effectiveStyleContext;
+    _cachedKnownContactName = knownContactName;
+    _cachedPreviousAnalyzedCount = previousAnalyzedCount;
 
     state = const TwoStageAnalysisState(phase: TwoStagePhase.runningQuick);
 
@@ -179,20 +201,19 @@ class TwoStageAnalyzeNotifier
     );
   }
 
-  /// Retry the full call with the cached [TwoStageAnalysisState.analysisRunId].
-  /// Does NOT call analyzeQuick. If state has no cached runId this is a no-op
-  /// — the caller should invoke [start] instead.
-  Future<void> retryFull({
-    required List<Message> messages,
-    SessionContext? sessionContext,
-    String? conversationSummary,
-    String? partnerSummary,
-    String? effectiveStyleContext,
-    String? knownContactName,
-    int? previousAnalyzedCount,
-  }) async {
+  /// Retry the full call with the cached [TwoStageAnalysisState.analysisRunId]
+  /// and the payload captured by the most recent [start]. Does NOT call
+  /// analyzeQuick and does NOT re-charge quick quota. No-op if there is no
+  /// cached run (caller should invoke [start] instead).
+  ///
+  /// Caller passes no args so the retry survives screen remount — see
+  /// invariant I-P1-b. The screen that triggered [start] may have been
+  /// disposed by the time the user taps "重試"; the notifier itself owns the
+  /// payload because it outlives the screen via [Ref.keepAlive].
+  Future<void> retryFull() async {
     final runId = state.analysisRunId;
-    if (runId == null) return;
+    final cachedMessages = _cachedMessages;
+    if (runId == null || cachedMessages == null) return;
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
 
@@ -200,18 +221,19 @@ class TwoStageAnalyzeNotifier
       phase: TwoStagePhase.runningFull,
       fullErrorMessage: null,
       fullErrorCode: null,
+      retriesRemaining: 0,
     );
 
     await _runFull(
       generation: myGen,
       analysisRunId: runId,
-      messages: messages,
-      sessionContext: sessionContext,
-      conversationSummary: conversationSummary,
-      partnerSummary: partnerSummary,
-      effectiveStyleContext: effectiveStyleContext,
-      knownContactName: knownContactName,
-      previousAnalyzedCount: previousAnalyzedCount,
+      messages: cachedMessages,
+      sessionContext: _cachedSessionContext,
+      conversationSummary: _cachedConversationSummary,
+      partnerSummary: _cachedPartnerSummary,
+      effectiveStyleContext: _cachedEffectiveStyleContext,
+      knownContactName: _cachedKnownContactName,
+      previousAnalyzedCount: _cachedPreviousAnalyzedCount,
     );
   }
 
