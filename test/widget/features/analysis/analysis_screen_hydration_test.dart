@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,7 @@ import 'package:vibesync/features/analysis/domain/entities/quick_analysis_result
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/two_stage_loading_widgets.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
@@ -115,7 +118,11 @@ AnalysisResult _full() {
   );
 }
 
-Conversation _conversation() {
+Conversation _conversation({
+  String? lastAnalysisSnapshotJson,
+  int? lastAnalyzedMessageCount,
+  int? lastEnthusiasmScore,
+}) {
   return Conversation(
     id: _conversationId,
     name: '小雲',
@@ -129,22 +136,109 @@ Conversation _conversation() {
     ],
     createdAt: DateTime(2026, 5, 28, 12),
     updatedAt: DateTime(2026, 5, 28, 12),
+    lastAnalysisSnapshotJson: lastAnalysisSnapshotJson,
+    lastAnalyzedMessageCount: lastAnalyzedMessageCount,
+    lastEnthusiasmScore: lastEnthusiasmScore,
   );
+}
+
+/// Stub repository so `_restorePersistedAnalysis()` and
+/// `_persistLatestAnalysisSnapshot()` flow through a controllable source.
+/// Records `updateConversation` calls so P2 idempotency tests can assert
+/// whether persist actually ran on hydrate.
+class _StubConversationRepository extends ConversationRepository {
+  _StubConversationRepository(this._conversation);
+
+  Conversation _conversation;
+  int updateCalls = 0;
+  Conversation? lastSaved;
+
+  @override
+  Conversation? getConversation(String id) {
+    if (id != _conversation.id) return null;
+    return _conversation;
+  }
+
+  @override
+  Future<void> updateConversation(Conversation c) async {
+    updateCalls++;
+    lastSaved = c;
+    _conversation = c;
+  }
+}
+
+/// Old-run analysis snapshot used to seed `lastAnalysisSnapshotJson` so
+/// `_restorePersistedAnalysis()` populates `_enthusiasmScore` etc. The
+/// numbers/labels intentionally differ from `_full()` so a stale value
+/// would be visually distinguishable from a freshly hydrated full result.
+Map<String, dynamic> _staleSnapshotJson() {
+  return <String, dynamic>{
+    'enthusiasm': {'score': 33},
+    'strategy': '舊策略：保守',
+    'gameStage': {
+      'current': 'opening',
+      'status': 'normal',
+      'nextStep': '舊 next step',
+    },
+    'psychology': {
+      'subtext': '舊推論',
+      'qualificationSignal': false,
+    },
+    'topicDepth': {
+      'current': 'small_talk',
+      'suggestion': '舊 suggestion',
+    },
+    'replies': {
+      'extend': '舊 extend',
+      'resonate': '舊 resonate',
+      'tease': '舊 tease',
+      'humor': '舊 humor',
+      'coldRead': '舊 coldRead',
+    },
+    'recommendation': {
+      'pick': 'extend',
+      'content': '舊建議內容',
+      'reason': '舊理由',
+      'psychology': '舊心理',
+    },
+    'reminder': '舊提醒',
+  };
 }
 
 Future<_RecordingAnalysisService> _pumpHydratedAnalysisScreen(
   WidgetTester tester, {
   required TwoStageAnalysisState seed,
 }) async {
+  return (await _pumpHydratedAnalysisScreenWithRepo(
+    tester,
+    seed: seed,
+    conversation: _conversation(),
+  ))
+      .recorder;
+}
+
+class _HydrationHarness {
+  _HydrationHarness({required this.recorder, required this.repo});
+  final _RecordingAnalysisService recorder;
+  final _StubConversationRepository repo;
+}
+
+Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
+  WidgetTester tester, {
+  required TwoStageAnalysisState seed,
+  required Conversation conversation,
+}) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final recorder = _RecordingAnalysisService();
+  final repo = _StubConversationRepository(conversation);
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        conversationProvider(_conversationId).overrideWithValue(_conversation()),
+        conversationRepositoryProvider.overrideWithValue(repo),
+        conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
         twoStageAnalyzeProvider
             .overrideWith(() => _SeededTwoStageNotifier(seed)),
@@ -157,7 +251,7 @@ Future<_RecordingAnalysisService> _pumpHydratedAnalysisScreen(
   // Let initState's post-frame hydration callback land.
   await tester.pump();
   await tester.pump();
-  return recorder;
+  return _HydrationHarness(recorder: recorder, repo: repo);
 }
 
 void main() {
@@ -260,4 +354,109 @@ void main() {
       },
     );
   });
+
+  // Codex round-2 P1: when a conversation already has a persisted detailed
+  // analysis (`lastAnalysisSnapshotJson`), `_restorePersistedAnalysis()` seeds
+  // `_enthusiasmScore` and the rest of the detailed-analysis local mirrors in
+  // initState. If hydration of a *partial* two-stage phase (quickReady /
+  // runningFull / fullFailed / quickFailed) doesn't clear those mirrors, the
+  // render gate `_quickResult != null && _enthusiasmScore == null` stays
+  // false and the build tree keeps showing the stale detailed analysis on top
+  // of (or instead of) the new quick summary and FullAnalysisPlaceholder /
+  // FullAnalysisRetryCard. I-P1-c.
+  group(
+    'AnalysisScreen hydration with stale persisted snapshot (Codex round-2 P1)',
+    () {
+      testWidgets(
+        'quickReady hydrate over stale snapshot → quick summary + placeholder, no stale detailed analysis',
+        (tester) async {
+          final convWithStaleSnapshot = _conversation(
+            lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 33,
+          );
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: TwoStageAnalysisState(
+              phase: TwoStagePhase.quickReady,
+              quick: _quick(runId: 'run_qr_stale'),
+              analysisRunId: 'run_qr_stale',
+            ),
+            conversation: convWithStaleSnapshot,
+          );
+
+          expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.byType(FullAnalysisPlaceholder), findsOneWidget,
+              reason:
+                  'I-P1-c: stale _enthusiasmScore from persisted snapshot must be cleared so the render gate flips to placeholder.');
+          expect(find.byType(FullAnalysisRetryCard), findsNothing);
+          // Stale detailed copy must not bleed through.
+          expect(find.text('舊建議內容'), findsNothing);
+          expect(find.text('舊策略：保守'), findsNothing);
+          expect(harness.recorder.quickCalls, 0);
+          expect(harness.recorder.fullCalls, 0);
+        },
+      );
+
+      testWidgets(
+        'runningFull hydrate over stale snapshot → quick summary + placeholder, no stale detailed analysis',
+        (tester) async {
+          final convWithStaleSnapshot = _conversation(
+            lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 33,
+          );
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: TwoStageAnalysisState(
+              phase: TwoStagePhase.runningFull,
+              quick: _quick(runId: 'run_rf_stale'),
+              analysisRunId: 'run_rf_stale',
+            ),
+            conversation: convWithStaleSnapshot,
+          );
+
+          expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
+          expect(find.byType(FullAnalysisRetryCard), findsNothing);
+          expect(find.text('舊建議內容'), findsNothing);
+          expect(harness.recorder.quickCalls, 0);
+          expect(harness.recorder.fullCalls, 0);
+        },
+      );
+
+      testWidgets(
+        'fullFailed hydrate over stale snapshot → retry card, no stale detailed analysis',
+        (tester) async {
+          final convWithStaleSnapshot = _conversation(
+            lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 33,
+          );
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: TwoStageAnalysisState(
+              phase: TwoStagePhase.fullFailed,
+              quick: _quick(runId: 'run_ff_stale'),
+              analysisRunId: 'run_ff_stale',
+              fullErrorMessage: '完整分析失敗，可以重試。',
+              fullErrorCode: 'FULL_FAILED',
+              retriesRemaining: 2,
+            ),
+            conversation: convWithStaleSnapshot,
+          );
+
+          expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
+          expect(find.byType(FullAnalysisPlaceholder), findsNothing);
+          expect(find.text('舊建議內容'), findsNothing);
+          expect(harness.recorder.quickCalls, 0);
+          expect(harness.recorder.fullCalls, 0);
+        },
+      );
+    },
+  );
 }

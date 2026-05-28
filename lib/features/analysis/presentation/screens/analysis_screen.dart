@@ -598,6 +598,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     WidgetsBinding.instance.addObserver(this);
     _messageFocusNode.addListener(_handleMessageInputFocus);
     _restorePersistedAnalysis();
+    // If the provider is already mid-analyze on remount, the snapshot we just
+    // restored is from a *previous* completed run. Clear the detailed mirrors
+    // synchronously so the first frame does not flash the old detailed
+    // analysis on top of the new run's quick summary / placeholder / retry
+    // (I-P1-c, Codex round-2).
+    final initialState =
+        ref.read(twoStageAnalyzeProvider(widget.conversationId));
+    if (_isTwoStagePartialPhase(initialState.phase)) {
+      _clearDetailedAnalysisStateForTwoStagePartial();
+    }
     // Hydrate from existing two-stage notifier state on remount.
     // ref.listen (set up in build) only fires on future transitions, so a
     // screen rebuilt while the provider is mid-analyze would otherwise lose
@@ -614,6 +624,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // 不再自動分析，讓用戶手動點擊
   }
 
+  bool _isTwoStagePartialPhase(TwoStagePhase p) {
+    switch (p) {
+      case TwoStagePhase.runningQuick:
+      case TwoStagePhase.quickReady:
+      case TwoStagePhase.runningFull:
+      case TwoStagePhase.fullFailed:
+      case TwoStagePhase.quickFailed:
+        return true;
+      case TwoStagePhase.fullReady:
+      case TwoStagePhase.idle:
+        return false;
+    }
+  }
+
   /// Apply the current two-stage notifier state to local mirrors without
   /// triggering side-effects (paywall, persistence, subscription sync) that
   /// the original transition already handled. Called on screen remount so a
@@ -628,6 +652,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
       case TwoStagePhase.quickReady:
@@ -637,6 +662,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
       case TwoStagePhase.fullReady:
@@ -672,6 +698,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = s.quick;
           _fullErrorMessage = s.fullErrorMessage;
           _fullErrorRetriesRemaining = s.retriesRemaining;
+          _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
       case TwoStagePhase.quickFailed:
@@ -686,12 +713,39 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 : AnalysisErrorAction.retry,
             origin: _AnalysisErrorOrigin.analysis,
           );
+          _clearDetailedAnalysisStateForTwoStagePartial();
         });
         // Skip _showPaywall — already opened on the original transition.
         break;
       case TwoStagePhase.idle:
         break;
     }
+  }
+
+  /// Wipe the local mirrors of a *previous* completed analysis so the render
+  /// gate `_quickResult != null && _enthusiasmScore == null` flips back to
+  /// "quick summary + placeholder/retry" during a fresh two-stage run.
+  /// `_restorePersistedAnalysis()` seeds these from `lastAnalysisSnapshotJson`
+  /// in initState; without clearing on hydrate of a partial phase the build
+  /// tree would keep showing the stale detailed analysis (I-P1-c, Codex
+  /// round-2). Must be called inside the caller's `setState`.
+  void _clearDetailedAnalysisStateForTwoStagePartial() {
+    _enthusiasmScore = null;
+    _dimensionScores = null;
+    _strategy = null;
+    _replies = null;
+    _replyOptions = null;
+    _topicDepth = null;
+    _healthCheck = null;
+    _gameStage = null;
+    _psychology = null;
+    _finalRecommendation = null;
+    _coachActionHint = null;
+    _reminder = null;
+    _shouldGiveUp = false;
+    _lastAiResponse = null;
+    _showDetailedAnalysis = false;
+    _resetFeedbackState();
   }
 
   @override
