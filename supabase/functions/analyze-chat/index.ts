@@ -5,9 +5,9 @@ import {
   type AnalysisResult as GuardrailAnalysisResult,
   checkAiOutput,
   checkInput,
-  getSafeReplies,
   SAFETY_RULES,
 } from "./guardrails.ts";
+import { postProcessAnalysisResult } from "./post_process.ts";
 import {
   AiServiceError,
   callClaudeWithFallback,
@@ -640,436 +640,6 @@ function deriveRequestType({
   return "analyze";
 }
 
-function getSafeReplyLevelFromScore(score: number): string {
-  if (score <= 30) return "cold";
-  if (score <= 60) return "warm";
-  if (score <= 80) return "hot";
-  return "very_hot";
-}
-
-function looksLikeRawModelPayload(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-
-  const lower = trimmed.toLowerCase();
-  if (trimmed.startsWith("```") || lower.includes("```json")) {
-    return true;
-  }
-
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    return false;
-  }
-
-  return [
-    '"replies"',
-    '"replyoptions"',
-    '"finalrecommendation"',
-    '"profileanalysis"',
-    '"coachactionhint"',
-    '"openers"',
-    '"card"',
-    '"responsetype"',
-  ].some((marker) => lower.includes(marker));
-}
-
-function normalizeAiText(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const normalized = value
-    .replace(/\r\n/g, "\n")
-    .replace(/\u200b/g, "")
-    .trim();
-
-  return looksLikeRawModelPayload(normalized) ? "" : normalized;
-}
-
-function normalizeReplyTextValue(value: unknown): string {
-  if (typeof value === "string") {
-    return normalizeAiText(value);
-  }
-
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  const record = value as Record<string, unknown>;
-  const direct = normalizeAiText(
-    record.reply ?? record.content ?? record.text ?? record.suggestion,
-  );
-  if (direct.length > 0) {
-    return direct;
-  }
-
-  return sanitizeReplySegments(
-    record.messages ?? record.messageGroup ?? record.replySegments,
-  )
-    .map((segment) => segment.reply)
-    .filter((reply) => reply.trim().length > 0)
-    .join("\n")
-    .trim();
-}
-
-function sanitizeReplies(
-  rawReplies: unknown,
-  allowedFeatures: string[],
-): Record<string, string> {
-  if (!rawReplies || typeof rawReplies !== "object") {
-    return {};
-  }
-
-  const filteredReplies: Record<string, string> = {};
-  for (const feature of allowedFeatures) {
-    const value = normalizeReplyTextValue(
-      (rawReplies as Record<string, unknown>)[feature],
-    );
-    if (value.length > 0) {
-      filteredReplies[feature] = value;
-    }
-  }
-
-  return filteredReplies;
-}
-
-const COACH_ACTION_HINT_ACTION_TYPES = new Set([
-  "softInvite",
-  "lowerPressureReply",
-  "extendTopicStoryFrame",
-  "emotionalResonance",
-  "rightSizeReply",
-  "playfulReply",
-  "pausePursuit",
-  "preferenceSignal",
-  "fitCheck",
-]);
-
-const COACH_ACTION_HINT_CONFIDENCE = new Set(["high", "medium", "low"]);
-
-function clampNormalizedText(value: unknown, maxLength: number): string {
-  const normalized = normalizeAiText(value).replace(/\s+/g, " ");
-  return normalized.length > maxLength
-    ? normalized.slice(0, maxLength).trim()
-    : normalized;
-}
-
-function sanitizeCoachActionHint(
-  rawHint: unknown,
-): Record<string, string> | undefined {
-  if (!rawHint || typeof rawHint !== "object") {
-    return undefined;
-  }
-
-  const hint = rawHint as Record<string, unknown>;
-  const catchablePoint = clampNormalizedText(hint.catchablePoint, 80);
-  const read = clampNormalizedText(hint.read, 120);
-  const microMove = clampNormalizedText(hint.microMove, 120);
-  const avoid = clampNormalizedText(hint.avoid, 100);
-  const actionType = clampNormalizedText(hint.actionType, 40);
-  const confidence = clampNormalizedText(hint.confidence, 20).toLowerCase();
-
-  if (
-    catchablePoint.length === 0 ||
-    read.length === 0 ||
-    microMove.length === 0 ||
-    avoid.length === 0
-  ) {
-    return undefined;
-  }
-
-  return {
-    catchablePoint,
-    read,
-    microMove,
-    avoid,
-    actionType: COACH_ACTION_HINT_ACTION_TYPES.has(actionType)
-      ? actionType
-      : "extendTopicStoryFrame",
-    confidence: COACH_ACTION_HINT_CONFIDENCE.has(confidence)
-      ? confidence
-      : "medium",
-  };
-}
-
-function buildFallbackRecommendationText(
-  pick: string,
-): { reason: string; psychology: string } {
-  switch (pick) {
-    case "resonate":
-      return {
-        reason: "它先接住對方當下的感受，再留一個不吃力的下一球。",
-        psychology: "對方會比較容易感覺你有在聽，而不是急著把話題帶走。",
-      };
-    case "tease":
-      return {
-        reason: "它有一點玩笑和張力，但沒有把尺度推太快。",
-        psychology: "對方可以輕鬆接招，也保留轉回日常聊天的退路。",
-      };
-    case "humor":
-      return {
-        reason: "它用輕鬆畫面接住話題，讓對方比較容易順著笑一下再回。",
-        psychology: "壓力低、畫面清楚的回覆，比硬問問題更容易延續聊天。",
-      };
-    case "coldRead":
-      return {
-        reason: "它根據對方剛給的線索做溫和猜測，讓她有空間補充或修正。",
-        psychology: "好的猜測會讓對方覺得被看見，但不會像被貼標籤。",
-      };
-    case "extend":
-    default:
-      return {
-        reason: "它順著目前最值得接的球往下聊，不會突然換題或查戶口。",
-        psychology: "低壓、具體、好回的句子，更容易讓對方自然接下一輪。",
-      };
-  }
-}
-
-function sanitizeReplySegments(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const segments = [];
-  for (const item of value.slice(0, 3)) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-
-    const record = item as Record<string, unknown>;
-    const reply = normalizeAiText(record.reply);
-    if (reply.length === 0) {
-      continue;
-    }
-
-    const rawSourceIndex = Number(record.sourceIndex);
-    const sourceIndex = Number.isFinite(rawSourceIndex) && rawSourceIndex > 0
-      ? Math.floor(rawSourceIndex)
-      : undefined;
-
-    segments.push({
-      ...(sourceIndex != null ? { sourceIndex } : {}),
-      label: normalizeAiText(record.label).slice(0, 24),
-      sourceMessage: normalizeAiText(record.sourceMessage).slice(0, 120),
-      reply,
-      reason: normalizeAiText(record.reason).slice(0, 120),
-    });
-  }
-
-  return segments;
-}
-
-function buildReplyOptionFallbackApproach(feature: string): string {
-  switch (feature) {
-    case "resonate":
-      return "接法：先接住她的情緒或狀態，再補一點你的感受，讓她覺得被理解。";
-    case "tease":
-      return "接法：用安全的誤讀或輕推拉增加互動感，但保留退路，不要突然升級。";
-    case "humor":
-      return "接法：用自嘲或荒謬畫面接住她的內容，讓對話變輕鬆、好回。";
-    case "coldRead":
-      return "接法：根據她剛說的線索做溫和猜測，留空間讓她修正或補充。";
-    case "extend":
-    default:
-      return "接法：接住最有畫面或情緒的球，補一點你的反應，再丟回低壓下一球。";
-  }
-}
-
-function sanitizeReplyOption(
-  rawOption: unknown,
-  feature: string,
-  fallbackText = "",
-) {
-  const option = rawOption && typeof rawOption === "object"
-    ? rawOption as Record<string, unknown>
-    : {};
-  const approach = clampNormalizedText(
-    option.approach ?? option.strategy ?? option.why ?? option.reason,
-    140,
-  );
-  let messages = sanitizeReplySegments(
-    option.messages ?? option.messageGroup ?? option.replySegments,
-  );
-
-  if (messages.length === 0) {
-    const reply = normalizeReplyTextValue(
-      option.reply ?? option.content ?? option.text ?? fallbackText,
-    );
-    if (reply.length > 0) {
-      messages = [
-        {
-          label: "建議訊息",
-          sourceMessage: "",
-          reply,
-          reason: "",
-        },
-      ];
-    }
-  }
-
-  const safeApproach = approach.length > 0
-    ? approach
-    : buildReplyOptionFallbackApproach(feature);
-
-  if (messages.length === 0 && safeApproach.length === 0) {
-    return undefined;
-  }
-
-  return {
-    approach: safeApproach,
-    messages,
-  };
-}
-
-function sanitizeReplyOptions(
-  rawOptions: unknown,
-  allowedFeatures: string[],
-  replies: Record<string, string>,
-) {
-  const filteredOptions: Record<
-    string,
-    { approach: string; messages: ReturnType<typeof sanitizeReplySegments> }
-  > = {};
-
-  const optionMap = rawOptions && typeof rawOptions === "object"
-    ? rawOptions as Record<string, unknown>
-    : {};
-
-  for (const feature of allowedFeatures) {
-    const option = sanitizeReplyOption(
-      optionMap[feature],
-      feature,
-      replies[feature],
-    );
-    if (option != null) {
-      filteredOptions[feature] = option;
-    }
-  }
-
-  return filteredOptions;
-}
-
-function repliesFromReplyOptions(
-  replyOptions: Record<
-    string,
-    { approach: string; messages: ReturnType<typeof sanitizeReplySegments> }
-  >,
-) {
-  const replies: Record<string, string> = {};
-  for (const [feature, option] of Object.entries(replyOptions)) {
-    const text = option.messages
-      .map((segment) => segment.reply)
-      .filter((reply) => reply.trim().length > 0)
-      .join("\n")
-      .trim();
-    if (text.length > 0) {
-      replies[feature] = text;
-    }
-  }
-  return replies;
-}
-
-function ensureNonEmptyAnalysisOutput({
-  result,
-  recognizeOnly,
-  isMyMessageMode,
-  allowedFeatures,
-}: {
-  result: Record<string, unknown>;
-  recognizeOnly: boolean;
-  isMyMessageMode: boolean;
-  allowedFeatures: string[];
-}) {
-  if (recognizeOnly || isMyMessageMode) {
-    return result;
-  }
-
-  const enthusiasmScore = Number(
-    (result.enthusiasm as { score?: unknown } | undefined)?.score ?? 50,
-  );
-  let replyOptions = sanitizeReplyOptions(
-    result.replyOptions,
-    allowedFeatures,
-    {},
-  );
-  let replies = sanitizeReplies(result.replies, allowedFeatures);
-  if (
-    Object.keys(replies).length === 0 &&
-    Object.keys(replyOptions).length > 0
-  ) {
-    replies = repliesFromReplyOptions(replyOptions);
-  }
-
-  if (Object.keys(replies).length === 0) {
-    const safeReplies = getSafeReplies(
-      getSafeReplyLevelFromScore(enthusiasmScore),
-    );
-    replies = sanitizeReplies(safeReplies, allowedFeatures);
-  }
-  replyOptions = sanitizeReplyOptions(
-    result.replyOptions,
-    allowedFeatures,
-    replies,
-  );
-
-  const preferredPick = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)?.pick,
-  );
-  const preferredContent = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)
-      ?.content,
-  );
-  const preferredReason = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)?.reason,
-  );
-  const preferredPsychology = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)
-      ?.psychology,
-  );
-  const preferredSegments = sanitizeReplySegments(
-    (result.finalRecommendation as Record<string, unknown> | undefined)
-      ?.replySegments,
-  );
-
-  const fallbackPick = preferredPick.length > 0 &&
-      replies[preferredPick] != null
-    ? preferredPick
-    : (allowedFeatures.find(
-      (feature) => (replies[feature]?.trim().length ?? 0) > 0,
-    ) ?? "extend");
-  const replyMappedContent = normalizeAiText(replies[fallbackPick]);
-  const fallbackOptionSegments = replyOptions[fallbackPick]?.messages ?? [];
-  const effectiveSegments = preferredSegments.length > 0
-    ? preferredSegments
-    : fallbackOptionSegments;
-  const segmentMappedContent = effectiveSegments
-    .map((segment) => segment.reply)
-    .join("\n");
-  const fallbackContent = replyMappedContent.length > 0
-    ? replyMappedContent
-    : (preferredPick === fallbackPick
-      ? (preferredContent.length > 0 ? preferredContent : segmentMappedContent)
-      : "");
-  const fallbackExplanation = buildFallbackRecommendationText(fallbackPick);
-  const guaranteedContent = fallbackContent.length > 0
-    ? fallbackContent
-    : "先順著她這句往下接，保持自然、好回覆的節奏就好。";
-
-  result.replies = replies;
-  result.replyOptions = replyOptions;
-  result.finalRecommendation = {
-    pick: fallbackPick,
-    content: guaranteedContent,
-    reason: preferredReason.length > 0
-      ? preferredReason
-      : fallbackExplanation.reason,
-    psychology: preferredPsychology.length > 0
-      ? preferredPsychology
-      : fallbackExplanation.psychology,
-    replySegments: effectiveSegments,
-  };
-
-  return result;
-}
 
 function buildQuotaUsageMetadata({
   requestType,
@@ -6374,10 +5944,23 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         parsed.result.payload as GuardrailAnalysisResult,
       ) as Record<string, unknown>;
 
-      // Step 8 — drift detector (warn only in v1, per plan I7).
+      // Codex Phase 2 P1 — apply legacy post-processing parity here so full
+      // mode honors the same entitlement gates + finalRecommendation fallbacks
+      // + coachActionHint sanitization that the legacy branch always ran.
+      // Full mode is always a re-analysis path, so recognizeOnly is false.
+      const postProcessed = postProcessAnalysisResult({
+        result: guarded,
+        recognizeOnly: false,
+        isMyMessageMode,
+        allowedFeatures,
+      });
+
+      // Step 8 — drift detector (warn only in v1, per plan I7). Runs against
+      // the post-processed payload so drift reflects user-visible deviation
+      // from the quick anchor, not raw model output we never showed.
       const drift = detectAnchorDrift(
         run.quick_result as Record<string, unknown>,
-        guarded,
+        postProcessed,
       );
       if (drift.driftedFields.length > 0) {
         logWarn("full_anchor_drift_detected", {
@@ -6432,7 +6015,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         responseMode: "full",
         analysisRunId: run.id,
         quickResult: run.quick_result,
-        result: guarded,
+        result: postProcessed,
         retriesRemaining,
         telemetry: {
           requestType,
@@ -6802,12 +6385,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     }
 
     // Check AI output for safety (AI 護欄)
-    const originalResult = { ...result };
     result = checkAiOutput(result as GuardrailAnalysisResult) as Record<
       string,
       unknown
     >;
-    result = ensureNonEmptyAnalysisOutput({
+    // Shared post-processing parity (ensureNonEmpty + replies allowedFeatures
+    // filter + finalRecommendation normalize + coachActionHint sanitize +
+    // healthCheck entitlement gate). Full mode MUST call the same helper —
+    // see post_process.ts for the contract.
+    result = postProcessAnalysisResult({
       result,
       recognizeOnly,
       isMyMessageMode,
@@ -6874,96 +6460,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         ...successGuardrails,
       },
     });
-
-    // Filter replies based on tier
-    if (result?.replies) {
-      const filteredReplies: Record<string, string> = {};
-      for (const [key, value] of Object.entries(result.replies)) {
-        if (allowedFeatures.includes(key)) {
-          filteredReplies[key] = value as string;
-        }
-      }
-      result.replies = filteredReplies;
-    }
-
-    if (result?.finalRecommendation) {
-      const recommendation = result.finalRecommendation as Record<
-        string,
-        unknown
-      >;
-      const normalizedRecommendationPick = normalizeAiText(recommendation.pick);
-      const normalizedRecommendationReason = normalizeAiText(
-        recommendation.reason,
-      );
-      const normalizedRecommendationPsychology = normalizeAiText(
-        recommendation.psychology,
-      );
-      const normalizedReplies = (result.replies ?? {}) as Record<
-        string,
-        string
-      >;
-      const safeRecommendationPick = normalizedRecommendationPick.length > 0 &&
-          normalizedReplies[normalizedRecommendationPick]?.trim().length
-        ? normalizedRecommendationPick
-        : (allowedFeatures.find((feature) =>
-          (normalizedReplies[feature]?.trim().length ?? 0) > 0
-        ) ?? "extend");
-      const normalizedRecommendationSegments =
-        normalizedRecommendationPick === safeRecommendationPick
-          ? sanitizeReplySegments(recommendation.replySegments)
-          : [];
-      const normalizedReplyOptions = (result.replyOptions ?? {}) as Record<
-        string,
-        { messages?: unknown }
-      >;
-      const fallbackOptionSegments = sanitizeReplySegments(
-        normalizedReplyOptions[safeRecommendationPick]?.messages,
-      );
-      const safeRecommendationSegments =
-        normalizedRecommendationSegments.length > 0
-          ? normalizedRecommendationSegments
-          : fallbackOptionSegments;
-      const segmentRecommendationContent = safeRecommendationSegments
-        .map((segment) => segment.reply)
-        .filter((reply) => reply.trim().length > 0)
-        .join("\n")
-        .trim();
-      const safeRecommendationContent = normalizeAiText(
-        normalizedReplies[safeRecommendationPick],
-      ) || segmentRecommendationContent ||
-        (normalizedRecommendationPick === safeRecommendationPick
-          ? normalizeAiText(recommendation.content)
-          : "");
-      const fallbackExplanation = buildFallbackRecommendationText(
-        safeRecommendationPick,
-      );
-
-      result.finalRecommendation = {
-        pick: safeRecommendationPick,
-        content: safeRecommendationContent,
-        reason: normalizedRecommendationReason.length > 0
-          ? normalizedRecommendationReason
-          : fallbackExplanation.reason,
-        psychology: normalizedRecommendationPsychology.length > 0
-          ? normalizedRecommendationPsychology
-          : fallbackExplanation.psychology,
-        replySegments: safeRecommendationSegments,
-      };
-    }
-
-    const sanitizedCoachActionHint = sanitizeCoachActionHint(
-      result?.coachActionHint,
-    );
-    if (sanitizedCoachActionHint) {
-      result.coachActionHint = sanitizedCoachActionHint;
-    } else {
-      delete result.coachActionHint;
-    }
-
-    // Remove health check if not allowed
-    if (!allowedFeatures.includes("health_check")) {
-      delete result.healthCheck;
-    }
 
     // Update usage count (測試帳號、純識別模式不扣額度)
     if (quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0) {

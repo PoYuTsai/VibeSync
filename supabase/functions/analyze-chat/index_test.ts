@@ -750,8 +750,10 @@ Deno.test({
   name: "visible AI text sanitizer rejects raw model payload strings",
   permissions: { read: true },
   fn: async () => {
+    // Moved to post_process.ts as part of Codex Phase 2 P1 parity fix —
+    // helpers live in the shared module so both legacy + full mode use them.
     const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
+      new URL("./post_process.ts", import.meta.url),
     );
 
     assert(source.includes("function looksLikeRawModelPayload"));
@@ -766,8 +768,9 @@ Deno.test({
   name: "final recommendation sanitizer preserves split reply segments",
   permissions: { read: true },
   fn: async () => {
+    // Moved to post_process.ts (see comment above).
     const source = await Deno.readTextFile(
-      new URL("./index.ts", import.meta.url),
+      new URL("./post_process.ts", import.meta.url),
     );
 
     assert(
