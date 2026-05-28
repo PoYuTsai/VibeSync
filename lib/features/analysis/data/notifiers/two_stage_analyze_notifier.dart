@@ -1,0 +1,247 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../conversation/domain/entities/message.dart';
+import '../../../conversation/domain/entities/session_context.dart';
+import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/quick_analysis_result.dart';
+import '../providers/analysis_providers.dart';
+import '../services/analysis_service.dart';
+
+/// Phases of the two-stage analyze flow.
+///
+/// Transitions (happy path):
+///   idle → runningQuick → quickReady → runningFull → fullReady
+/// Failure branches:
+///   runningQuick → quickFailed                  (no full attempted, no charge)
+///   runningFull  → fullFailed                   (quick preserved, retry CTA)
+enum TwoStagePhase {
+  idle,
+  runningQuick,
+  quickReady,
+  quickFailed,
+  runningFull,
+  fullReady,
+  fullFailed,
+}
+
+/// Immutable orchestrator state. Carries quick + full results plus the cached
+/// [analysisRunId] used by [TwoStageAnalyzeNotifier.retryFull] so the server
+/// can match the run without re-charging quota (invariant I1).
+class TwoStageAnalysisState {
+  final TwoStagePhase phase;
+  final QuickAnalysisResult? quick;
+  final AnalysisResult? full;
+  final String? analysisRunId;
+  final String? quickErrorMessage;
+  final String? quickErrorCode;
+  final String? fullErrorMessage;
+  final String? fullErrorCode;
+  final int retriesRemaining;
+
+  const TwoStageAnalysisState({
+    required this.phase,
+    this.quick,
+    this.full,
+    this.analysisRunId,
+    this.quickErrorMessage,
+    this.quickErrorCode,
+    this.fullErrorMessage,
+    this.fullErrorCode,
+    this.retriesRemaining = 0,
+  });
+
+  const TwoStageAnalysisState.idle() : this(phase: TwoStagePhase.idle);
+
+  TwoStageAnalysisState copyWith({
+    TwoStagePhase? phase,
+    QuickAnalysisResult? quick,
+    AnalysisResult? full,
+    String? analysisRunId,
+    String? quickErrorMessage,
+    String? quickErrorCode,
+    String? fullErrorMessage,
+    String? fullErrorCode,
+    int? retriesRemaining,
+  }) {
+    return TwoStageAnalysisState(
+      phase: phase ?? this.phase,
+      quick: quick ?? this.quick,
+      full: full ?? this.full,
+      analysisRunId: analysisRunId ?? this.analysisRunId,
+      quickErrorMessage: quickErrorMessage ?? this.quickErrorMessage,
+      quickErrorCode: quickErrorCode ?? this.quickErrorCode,
+      fullErrorMessage: fullErrorMessage ?? this.fullErrorMessage,
+      fullErrorCode: fullErrorCode ?? this.fullErrorCode,
+      retriesRemaining: retriesRemaining ?? this.retriesRemaining,
+    );
+  }
+}
+
+final twoStageAnalyzeProvider = NotifierProvider.autoDispose
+    .family<TwoStageAnalyzeNotifier, TwoStageAnalysisState, String>(
+  TwoStageAnalyzeNotifier.new,
+);
+
+/// Two-stage analyze orchestrator. Owns the quick → full state machine for a
+/// single conversation. State survives navigation while in flight via
+/// [Ref.keepAlive]; once the user starts an analysis the provider stays alive
+/// for the rest of the app session (in-memory only; Phase 4 will persist).
+class TwoStageAnalyzeNotifier
+    extends AutoDisposeFamilyNotifier<TwoStageAnalysisState, String> {
+  int _generation = 0;
+  KeepAliveLink? _keepAliveLink;
+
+  @override
+  TwoStageAnalysisState build(String conversationId) {
+    return const TwoStageAnalysisState.idle();
+  }
+
+  AnalysisService get _service => ref.read(analysisServiceProvider);
+
+  /// Run the full quick → full pipeline. Multiple concurrent calls supersede
+  /// older ones via a generation guard; results from stale generations are
+  /// dropped before reaching [state] so a navigate-away-and-restart cannot
+  /// leak an old payload over the current run.
+  Future<void> start({
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) async {
+    final myGen = ++_generation;
+    _keepAliveLink ??= ref.keepAlive();
+
+    state = const TwoStageAnalysisState(phase: TwoStagePhase.runningQuick);
+
+    final QuickAnalysisResult quick;
+    try {
+      quick = await _service.analyzeQuick(
+        messages: messages,
+        sessionContext: sessionContext,
+        conversationSummary: conversationSummary,
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
+        previousAnalyzedCount: previousAnalyzedCount,
+      );
+    } on Exception catch (e) {
+      if (myGen != _generation) return;
+      final message =
+          e is AnalysisException ? e.message : '快速分析失敗，請稍後再試。';
+      final code = e is AnalysisException ? e.code : null;
+      state = TwoStageAnalysisState(
+        phase: TwoStagePhase.quickFailed,
+        quickErrorMessage: message,
+        quickErrorCode: code,
+      );
+      return;
+    }
+
+    if (myGen != _generation) return;
+
+    state = TwoStageAnalysisState(
+      phase: TwoStagePhase.quickReady,
+      quick: quick,
+      analysisRunId: quick.analysisRunId,
+    );
+
+    await _runFull(
+      generation: myGen,
+      analysisRunId: quick.analysisRunId,
+      messages: messages,
+      sessionContext: sessionContext,
+      conversationSummary: conversationSummary,
+      partnerSummary: partnerSummary,
+      effectiveStyleContext: effectiveStyleContext,
+      knownContactName: knownContactName,
+      previousAnalyzedCount: previousAnalyzedCount,
+    );
+  }
+
+  /// Retry the full call with the cached [TwoStageAnalysisState.analysisRunId].
+  /// Does NOT call analyzeQuick. If state has no cached runId this is a no-op
+  /// — the caller should invoke [start] instead.
+  Future<void> retryFull({
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) async {
+    final runId = state.analysisRunId;
+    if (runId == null) return;
+    final myGen = ++_generation;
+    _keepAliveLink ??= ref.keepAlive();
+
+    state = state.copyWith(
+      phase: TwoStagePhase.runningFull,
+      fullErrorMessage: null,
+      fullErrorCode: null,
+    );
+
+    await _runFull(
+      generation: myGen,
+      analysisRunId: runId,
+      messages: messages,
+      sessionContext: sessionContext,
+      conversationSummary: conversationSummary,
+      partnerSummary: partnerSummary,
+      effectiveStyleContext: effectiveStyleContext,
+      knownContactName: knownContactName,
+      previousAnalyzedCount: previousAnalyzedCount,
+    );
+  }
+
+  Future<void> _runFull({
+    required int generation,
+    required String analysisRunId,
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) async {
+    if (generation != _generation) return;
+    state = state.copyWith(phase: TwoStagePhase.runningFull);
+
+    try {
+      final full = await _service.analyzeFull(
+        analysisRunId: analysisRunId,
+        messages: messages,
+        sessionContext: sessionContext,
+        conversationSummary: conversationSummary,
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
+        previousAnalyzedCount: previousAnalyzedCount,
+      );
+      if (generation != _generation) return;
+      state = state.copyWith(phase: TwoStagePhase.fullReady, full: full);
+    } on FullModeException catch (e) {
+      if (generation != _generation) return;
+      state = state.copyWith(
+        phase: TwoStagePhase.fullFailed,
+        fullErrorMessage: e.message,
+        fullErrorCode: e.code,
+        retriesRemaining: e.retriesRemaining,
+      );
+    } on Exception catch (e) {
+      if (generation != _generation) return;
+      state = state.copyWith(
+        phase: TwoStagePhase.fullFailed,
+        fullErrorMessage: e is AnalysisException
+            ? e.message
+            : '完整分析失敗，可以重試。',
+        fullErrorCode: e is AnalysisException ? e.code : null,
+        retriesRemaining: 0,
+      );
+    }
+  }
+}
