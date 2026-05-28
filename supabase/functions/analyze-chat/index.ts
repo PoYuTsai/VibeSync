@@ -21,6 +21,10 @@ import {
 } from "./opener_profile.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
+import {
+  normalizeRequestMode,
+  type ResponseMode,
+} from "./request_mode.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -4507,7 +4511,22 @@ serve(async (req) => {
       previousAnalyzedCount: rawPreviousAnalyzedCount,
       expectedTier: rawExpectedTier,
       revenueCatAppUserId: rawRevenueCatAppUserId,
+      responseMode: rawResponseMode,
+      analysisRunId: rawAnalysisRunId,
     } = requestBody;
+
+    // Two-stage analyze routing (Phase 1.2):
+    //   "quick"  → 新 fast path（Haiku + 短 prompt + analysis_runs row）
+    //   "full"   → 帶 analysisRunId 完成 deep analyze，不再扣 quota
+    //   "legacy" → build 211 行為（I10 backwards compat for old clients）
+    // 任何非預期 responseMode 值一律 fall back 到 legacy，避免新欄位讓舊客戶端炸掉。
+    const { responseMode, analysisRunId }: {
+      responseMode: ResponseMode;
+      analysisRunId: string | null;
+    } = normalizeRequestMode({
+      responseMode: rawResponseMode,
+      analysisRunId: rawAnalysisRunId,
+    });
 
     if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
       return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
