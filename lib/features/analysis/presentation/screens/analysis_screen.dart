@@ -2728,7 +2728,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         }
         break;
       case TwoStagePhase.runningFull:
+        // Mirror the notifier's cleared error fields (I-P2-d) so the build
+        // tree flips from FullAnalysisRetryCard back to FullAnalysisPlaceholder
+        // when the user taps retry. Without this the local _fullErrorMessage
+        // keeps the RetryCard rendered even though the notifier is mid-flight.
         setState(() {
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
         });
         break;
       case TwoStagePhase.fullReady:

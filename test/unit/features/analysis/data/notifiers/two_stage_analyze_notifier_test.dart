@@ -295,6 +295,95 @@ void main() {
     });
   });
 
+  group('TwoStageAnalysisState.copyWith — clearing semantics (P2)', () {
+    test('can explicitly clear nullable fields via null', () {
+      const state = TwoStageAnalysisState(
+        phase: TwoStagePhase.fullFailed,
+        fullErrorMessage: '舊錯誤',
+        fullErrorCode: 'OLD_CODE',
+        retriesRemaining: 3,
+      );
+
+      final cleared = state.copyWith(
+        phase: TwoStagePhase.runningFull,
+        fullErrorMessage: null,
+        fullErrorCode: null,
+        retriesRemaining: 0,
+      );
+
+      expect(cleared.phase, TwoStagePhase.runningFull);
+      expect(cleared.fullErrorMessage, isNull);
+      expect(cleared.fullErrorCode, isNull);
+      expect(cleared.retriesRemaining, 0);
+    });
+
+    test('preserves existing values when params are omitted', () {
+      const state = TwoStageAnalysisState(
+        phase: TwoStagePhase.fullFailed,
+        fullErrorMessage: 'keep me',
+        fullErrorCode: 'KEEP',
+        retriesRemaining: 2,
+      );
+
+      final preserved = state.copyWith(phase: TwoStagePhase.runningFull);
+
+      expect(preserved.phase, TwoStagePhase.runningFull);
+      expect(preserved.fullErrorMessage, 'keep me');
+      expect(preserved.fullErrorCode, 'KEEP');
+      expect(preserved.retriesRemaining, 2);
+    });
+  });
+
+  group('TwoStageAnalyzeNotifier — retry clears stale error (P2)', () {
+    test('retryFull clears fullErrorMessage/code during runningFull', () async {
+      final fake = _FakeAnalysisService()
+        ..quickResult = _quick(runId: 'run_clear')
+        ..fullError = FullModeException(
+          'stale failure',
+          code: 'FULL_FAILED',
+          retriesRemaining: 2,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+      final failed = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(failed.phase, TwoStagePhase.fullFailed);
+      expect(failed.fullErrorMessage, 'stale failure');
+
+      // Gate the retry full call so we can observe runningFull state in flight.
+      fake.fullError = null;
+      fake.fullResult = _full();
+      fake.fullGate = Completer<void>();
+
+      final retryFuture = notifier.retryFull(messages: [_msg('hi')]);
+
+      // Let retryFull push the runningFull transition.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final midFlight = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(midFlight.phase, TwoStagePhase.runningFull);
+      expect(midFlight.fullErrorMessage, isNull,
+          reason: 'I-P2-b: runningFull must not carry stale error');
+      expect(midFlight.fullErrorCode, isNull);
+      expect(midFlight.retriesRemaining, 0);
+
+      fake.fullGate!.complete();
+      await retryFuture;
+
+      final done = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(done.phase, TwoStagePhase.fullReady);
+      expect(done.fullErrorMessage, isNull,
+          reason: 'I-P2-c: fullReady must not carry stale error');
+      expect(done.fullErrorCode, isNull);
+    });
+  });
+
   group('TwoStageAnalyzeNotifier — stale guard', () {
     test('a new start() supersedes an in-flight full; old full is discarded',
         () async {

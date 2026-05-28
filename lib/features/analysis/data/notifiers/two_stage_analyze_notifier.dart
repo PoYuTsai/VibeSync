@@ -52,26 +52,44 @@ class TwoStageAnalysisState {
 
   const TwoStageAnalysisState.idle() : this(phase: TwoStagePhase.idle);
 
+  /// Sentinel used by [copyWith] to distinguish "not provided" from "set to
+  /// null". Without this, `param ?? this.param` silently ignores explicit nulls,
+  /// which prevents clearing nullable error/result fields after a retry. See
+  /// invariant I-P2-a in the Phase 3 Codex review.
+  static const Object _unset = Object();
+
   TwoStageAnalysisState copyWith({
     TwoStagePhase? phase,
-    QuickAnalysisResult? quick,
-    AnalysisResult? full,
-    String? analysisRunId,
-    String? quickErrorMessage,
-    String? quickErrorCode,
-    String? fullErrorMessage,
-    String? fullErrorCode,
+    Object? quick = _unset,
+    Object? full = _unset,
+    Object? analysisRunId = _unset,
+    Object? quickErrorMessage = _unset,
+    Object? quickErrorCode = _unset,
+    Object? fullErrorMessage = _unset,
+    Object? fullErrorCode = _unset,
     int? retriesRemaining,
   }) {
     return TwoStageAnalysisState(
       phase: phase ?? this.phase,
-      quick: quick ?? this.quick,
-      full: full ?? this.full,
-      analysisRunId: analysisRunId ?? this.analysisRunId,
-      quickErrorMessage: quickErrorMessage ?? this.quickErrorMessage,
-      quickErrorCode: quickErrorCode ?? this.quickErrorCode,
-      fullErrorMessage: fullErrorMessage ?? this.fullErrorMessage,
-      fullErrorCode: fullErrorCode ?? this.fullErrorCode,
+      quick: identical(quick, _unset)
+          ? this.quick
+          : quick as QuickAnalysisResult?,
+      full: identical(full, _unset) ? this.full : full as AnalysisResult?,
+      analysisRunId: identical(analysisRunId, _unset)
+          ? this.analysisRunId
+          : analysisRunId as String?,
+      quickErrorMessage: identical(quickErrorMessage, _unset)
+          ? this.quickErrorMessage
+          : quickErrorMessage as String?,
+      quickErrorCode: identical(quickErrorCode, _unset)
+          ? this.quickErrorCode
+          : quickErrorCode as String?,
+      fullErrorMessage: identical(fullErrorMessage, _unset)
+          ? this.fullErrorMessage
+          : fullErrorMessage as String?,
+      fullErrorCode: identical(fullErrorCode, _unset)
+          ? this.fullErrorCode
+          : fullErrorCode as String?,
       retriesRemaining: retriesRemaining ?? this.retriesRemaining,
     );
   }
@@ -209,7 +227,16 @@ class TwoStageAnalyzeNotifier
     int? previousAnalyzedCount,
   }) async {
     if (generation != _generation) return;
-    state = state.copyWith(phase: TwoStagePhase.runningFull);
+    // Clear any stale error fields on every full attempt so invariants
+    // I-P2-b/c hold even if a future call site forgets to clear (e.g. retryFull
+    // already clears, but defense-in-depth makes the runningFull invariant
+    // unconditional).
+    state = state.copyWith(
+      phase: TwoStagePhase.runningFull,
+      fullErrorMessage: null,
+      fullErrorCode: null,
+      retriesRemaining: 0,
+    );
 
     try {
       final full = await _service.analyzeFull(
@@ -223,7 +250,13 @@ class TwoStageAnalyzeNotifier
         previousAnalyzedCount: previousAnalyzedCount,
       );
       if (generation != _generation) return;
-      state = state.copyWith(phase: TwoStagePhase.fullReady, full: full);
+      state = state.copyWith(
+        phase: TwoStagePhase.fullReady,
+        full: full,
+        fullErrorMessage: null,
+        fullErrorCode: null,
+        retriesRemaining: 0,
+      );
     } on FullModeException catch (e) {
       if (generation != _generation) return;
       state = state.copyWith(
