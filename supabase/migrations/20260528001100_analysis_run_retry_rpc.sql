@@ -33,3 +33,5 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.reserve_analysis_run_retry(UUID, INTEGER) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.reserve_analysis_run_retry(UUID, INTEGER) TO service_role;
+
+NOTIFY pgrst, 'reload schema';

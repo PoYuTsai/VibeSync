@@ -57,3 +57,8 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.cleanup_expired_analysis_runs() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.cleanup_expired_analysis_runs() TO service_role;
+
+-- Tell PostgREST to reload its schema cache (repo convention; matches recent
+-- admin_articles / settlement migrations). analysis_runs is service_role only,
+-- so REST clients still can't query it — this just keeps pgrst in sync.
+NOTIFY pgrst, 'reload schema';
