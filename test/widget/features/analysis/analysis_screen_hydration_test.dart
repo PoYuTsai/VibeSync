@@ -118,6 +118,62 @@ AnalysisResult _full() {
   );
 }
 
+/// Full result variant that carries a `rawResponse` so the P2 dedup signal
+/// `conv.lastAnalysisSnapshotJson == jsonEncode(result.rawResponse)` is
+/// exercisable. The fields below mirror what the Edge `analyze-chat` shape
+/// returns for the persistence path.
+AnalysisResult _fullWithRawResponse(Map<String, dynamic> rawResponse) {
+  final base = _full();
+  return AnalysisResult(
+    enthusiasmScore: base.enthusiasmScore,
+    strategy: base.strategy,
+    gameStage: base.gameStage,
+    psychology: base.psychology,
+    topicDepth: base.topicDepth,
+    replies: base.replies,
+    replyOptions: base.replyOptions,
+    recommendation: base.recommendation,
+    reminder: base.reminder,
+    rawResponse: rawResponse,
+  );
+}
+
+Map<String, dynamic> _fullRawResponse({int? monthlyRemaining}) {
+  return <String, dynamic>{
+    'enthusiasm': {'score': 72},
+    'strategy': '保持沉穩',
+    'gameStage': {
+      'current': 'premise',
+      'status': 'normal',
+      'nextStep': '繼續',
+    },
+    'psychology': {
+      'subtext': '有興趣',
+      'qualificationSignal': true,
+    },
+    'topicDepth': {
+      'current': 'personal',
+      'suggestion': '可深入',
+    },
+    'replies': {
+      'extend': 'a',
+      'resonate': 'b',
+      'tease': 'c',
+      'humor': 'd',
+      'coldRead': 'e',
+    },
+    'recommendation': {
+      'pick': 'tease',
+      'content': 'c',
+      'reason': 'r',
+      'psychology': 'p',
+    },
+    'reminder': '記得用你的方式說',
+    // Intentionally omit 'usage' so _syncSubscriptionUsageFromResult early-
+    // returns and the test doesn't have to wire a subscriptionProvider stub.
+  };
+}
+
 Conversation _conversation({
   String? lastAnalysisSnapshotJson,
   int? lastAnalyzedMessageCount,
@@ -455,6 +511,121 @@ void main() {
           expect(find.text('舊建議內容'), findsNothing);
           expect(harness.recorder.quickCalls, 0);
           expect(harness.recorder.fullCalls, 0);
+        },
+      );
+    },
+  );
+
+  // Codex round-2 P2: if full completes while the user is off-screen, the
+  // `_onTwoStageStateChanged` listener never fires for fullReady. Until the
+  // P2 fix, `_hydrateTwoStageState(fullReady)` applied the result but
+  // intentionally skipped `_persistLatestAnalysisSnapshot` +
+  // `_syncSubscriptionUsageFromResult` on the theory that the live listener
+  // already ran them — false for off-screen completion. I-P2-e/f.
+  group(
+    'AnalysisScreen fullReady hydrate persists when listener missed it (Codex round-2 P2)',
+    () {
+      testWidgets(
+        'off-screen completion (no matching snapshot) → hydrate persists + updates conv snapshot',
+        (tester) async {
+          final raw = _fullRawResponse();
+          // No prior snapshot, listener never ran for this run.
+          final conv = _conversation();
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: TwoStageAnalysisState(
+              phase: TwoStagePhase.fullReady,
+              quick: _quick(runId: 'run_off_screen'),
+              full: _fullWithRawResponse(raw),
+              analysisRunId: 'run_off_screen',
+            ),
+            conversation: conv,
+          );
+
+          // Drain expected Hive build error from the detailed-analysis tree —
+          // same workaround as the existing fullReady hydration test.
+          // ignore: avoid_dynamic_calls
+          tester.takeException();
+          // Let the fire-and-forget save() future land.
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(harness.repo.updateCalls, 1,
+              reason:
+                  'I-P2-e: off-screen fullReady completion must persist the snapshot on hydrate; listener missed it.');
+          expect(harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+              jsonEncode(raw));
+          expect(harness.repo.lastSaved?.lastAnalyzedMessageCount,
+              conv.messages.length);
+          expect(harness.repo.lastSaved?.lastEnthusiasmScore, 72);
+        },
+      );
+
+      testWidgets(
+        'listener already persisted matching snapshot → hydrate must not double-write',
+        (tester) async {
+          final raw = _fullRawResponse();
+          // Listener already ran during the original quickReady→fullReady
+          // transition, persisted the snapshot, then user navigated away and
+          // came back. Snapshot equality must short-circuit hydrate persist.
+          final conv = _conversation(
+            lastAnalysisSnapshotJson: jsonEncode(raw),
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 72,
+          );
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: TwoStageAnalysisState(
+              phase: TwoStagePhase.fullReady,
+              quick: _quick(runId: 'run_already_persisted'),
+              full: _fullWithRawResponse(raw),
+              analysisRunId: 'run_already_persisted',
+            ),
+            conversation: conv,
+          );
+
+          // ignore: avoid_dynamic_calls
+          tester.takeException();
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(harness.repo.updateCalls, 0,
+              reason:
+                  'I-P2-f: when conv snapshot already matches result, hydrate must skip persist to avoid double-write.');
+        },
+      );
+
+      testWidgets(
+        'stale snapshot from a prior run does not count as matching → hydrate still persists',
+        (tester) async {
+          final raw = _fullRawResponse();
+          // Snapshot exists but it's from a different (older) run.
+          final conv = _conversation(
+            lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+            lastAnalyzedMessageCount: 1,
+            lastEnthusiasmScore: 33,
+          );
+
+          final harness = await _pumpHydratedAnalysisScreenWithRepo(
+            tester,
+            seed: TwoStageAnalysisState(
+              phase: TwoStagePhase.fullReady,
+              quick: _quick(runId: 'run_after_stale'),
+              full: _fullWithRawResponse(raw),
+              analysisRunId: 'run_after_stale',
+            ),
+            conversation: conv,
+          );
+
+          // ignore: avoid_dynamic_calls
+          tester.takeException();
+          await tester.pump(const Duration(milliseconds: 1));
+
+          expect(harness.repo.updateCalls, 1,
+              reason:
+                  'I-P2-e: stale snapshot from a prior run must not be treated as matching; persist must run.');
+          expect(harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+              jsonEncode(raw));
         },
       );
     },

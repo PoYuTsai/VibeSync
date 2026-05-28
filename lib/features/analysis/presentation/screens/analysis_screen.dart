@@ -689,8 +689,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _shouldGiveUp = result.shouldGiveUp;
           _lastAiResponse = result.rawResponse;
         });
-        // Skip _persistLatestAnalysisSnapshot + _syncSubscriptionUsageFromResult
-        // — the original quickReady→fullReady transition already ran them.
+        // Idempotent: only persist + sync usage when the live listener clearly
+        // did NOT run for this result (e.g., user navigated away during
+        // runningFull and the fullReady transition arrived off-screen). If the
+        // listener already wrote this exact snapshot, the dedup signal below
+        // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
+        _maybePersistAndSyncOnHydrate(result);
         break;
       case TwoStagePhase.fullFailed:
         setState(() {
@@ -720,6 +724,45 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case TwoStagePhase.idle:
         break;
     }
+  }
+
+  /// Persist + sync usage from a hydrate-time fullReady result IF the live
+  /// `_onTwoStageStateChanged` listener clearly did not already do so. Dedup
+  /// signal: `conv.lastAnalyzedMessageCount == conv.messages.length` AND
+  /// `conv.lastAnalysisSnapshotJson == jsonEncode(result.rawResponse)`. When
+  /// the signal matches, the listener path already wrote this exact snapshot
+  /// and re-running would be a wasted Hive write + a redundant subscription
+  /// sync (I-P2-e/f, Codex round-2).
+  ///
+  /// Required for the off-screen completion path: user starts analyze, leaves
+  /// the screen mid-`runningFull`, the notifier transitions to `fullReady`
+  /// while the listener is unmounted; on return the screen sees `fullReady`
+  /// but the snapshot + usage were never written.
+  void _maybePersistAndSyncOnHydrate(AnalysisResult result) {
+    final repository = ref.read(conversationRepositoryProvider);
+    final conv = repository.getConversation(widget.conversationId);
+    if (conv == null) return;
+
+    final encoded = result.rawResponse == null || result.rawResponse!.isEmpty
+        ? null
+        : jsonEncode(result.rawResponse);
+    final alreadyPersisted =
+        conv.lastAnalyzedMessageCount == conv.messages.length &&
+            conv.lastAnalysisSnapshotJson == encoded;
+    if (alreadyPersisted) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _lastAnalyzedMessageCount = conv.messages.length;
+      });
+    }
+    _persistLatestAnalysisSnapshot(result).catchError((_) {
+      // Same fire-and-forget contract as the listener path — Hive failures in
+      // tests must not surface as unhandled futures.
+    });
+    _syncSubscriptionUsageFromResult(result);
   }
 
   /// Wipe the local mirrors of a *previous* completed analysis so the render
