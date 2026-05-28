@@ -5736,6 +5736,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const requestObservability = {
       requestType,
       analyzeMode,
+      // Phase 2.3 — surface routing decision on every ai_logs row regardless
+      // of which branch ends up calling logAiCall. Quick / full branches
+      // still spread an explicit `responseMode` override for greppability,
+      // but the legacy fall-through path now inherits "legacy" automatically.
+      responseMode,
+      analysisRunId,
       hasImages,
       recognizeOnly,
       hasUserDraft:
@@ -6221,6 +6227,16 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       // retry_count has just been incremented by the RPC — remaining slots
       // is (MAX - current count). 0 means the NEXT request would be refused.
       const retriesRemaining = Math.max(0, MAX_FULL_RETRIES - run.retry_count);
+      // Phase 2.3 — perceived two-stage latency. Quick run.created_at is the
+      // moment we INSERTed the row (after Claude+guardrail+charge), so this
+      // measures "how long did the user wait between seeing the quick card
+      // and clicking through to full". Negative or absurdly large values
+      // would signal clock skew or a leaked run; surface as-is for dashboards
+      // to alarm on. null on the failure paths where run is unavailable.
+      const quickToFullLagMs = Math.max(
+        0,
+        Date.now() - new Date(run.created_at).getTime(),
+      );
 
       // Step 5 — anchor injection.
       const anchorBlock = buildFullPromptAnchor(run.quick_result);
@@ -6282,6 +6298,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             ...requestObservability,
             responseMode: "full",
             analysisRunId: run.id,
+            quickToFullLagMs,
           },
           responseBody: {
             failureStage: "full_upstream",
@@ -6334,6 +6351,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             ...requestObservability,
             responseMode: "full",
             analysisRunId: run.id,
+            quickToFullLagMs,
           },
           responseBody: {
             failureStage: "full_parse",
@@ -6397,6 +6415,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           ...requestObservability,
           responseMode: "full",
           analysisRunId: run.id,
+          quickToFullLagMs,
         },
         responseBody: {
           parseSource: parsed.result.source,
@@ -6418,6 +6437,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         telemetry: {
           requestType,
           serverAiLatencyMs: fullLatencyMs,
+          quickToFullLagMs,
           fallbackUsed: fullClaude.fallbackUsed,
           retries: fullClaude.retries,
           parseSource: parsed.result.source,
@@ -6846,6 +6866,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         filtered: wasFiltered,
         retries: claudeResult.retries,
         fallbackUsed: claudeResult.fallbackUsed,
+        // Phase 2.3 — cache hit telemetry parity with quick / full paths.
+        // Helps DC discussion's Path 5 (cache hit rate monitoring).
+        cacheReadTokens: tokenUsage.cacheReadTokens ?? 0,
+        cacheCreationTokens: tokenUsage.cacheCreationTokens ?? 0,
         ...recognitionObservability,
         ...successGuardrails,
       },
