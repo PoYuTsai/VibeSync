@@ -109,6 +109,33 @@ Deno.test("parseQuickResponse — empty recommendedReply fails (model produced n
   assertFalse(result.ok);
 });
 
+Deno.test("parseQuickResponse — missing nextStep fails (Codex P2: 本回合怎麼接 must not be blank)", () => {
+  // UX contract (plan I7): above-the-fold card binds to both nextStep and
+  // recommendedReply. Either empty = unusable quick result.
+  const raw = JSON.stringify({
+    recommendedReply: "y",
+    shortReason: "z",
+    insufficientContext: false,
+    confidence: "medium",
+  });
+  const result = parseQuickResponse(raw);
+  assertFalse(result.ok);
+  if (!result.ok) assertEquals(result.error, "MISSING_REQUIRED_FIELD");
+});
+
+Deno.test("parseQuickResponse — empty/whitespace nextStep fails", () => {
+  const raw = JSON.stringify({
+    nextStep: "   ",
+    recommendedReply: "y",
+    shortReason: "z",
+    insufficientContext: false,
+    confidence: "medium",
+  });
+  const result = parseQuickResponse(raw);
+  assertFalse(result.ok);
+  if (!result.ok) assertEquals(result.error, "MISSING_REQUIRED_FIELD");
+});
+
 Deno.test("parseQuickResponse — no JSON block in text returns NO_JSON", () => {
   const result = parseQuickResponse("hi! here is my advice without JSON.");
   assertFalse(result.ok);

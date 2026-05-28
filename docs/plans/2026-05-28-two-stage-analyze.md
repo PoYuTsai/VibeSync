@@ -1101,6 +1101,14 @@ When handing off to Codex for high-risk review, ask Codex to explicitly verify e
 - Haiku/Sonnet A/B for full mode (separate experiment)
 - 5-style replyOptions trimming (product decision)
 - Caching the full result against the same `analysisRunId` so user can re-open detail later (deferred to build 214)
+- **Vision quick (screenshot/OCR + responseMode=quick)** — per Codex Phase 1
+  P2 scope clarification (2026-05-28). Screenshot analyze stays on the legacy
+  single-call Sonnet OCR baseline (`28c0965`) because (a) Haiku 4.5 vision
+  quality on tightly-cropped chat screenshots is uncalibrated, (b) the 15s
+  quick hard budget is too tight for vision inference, and (c) OCR users
+  already accept the existing 18-25s. The Edge handler returns 400
+  `QUICK_MODE_IMAGES_UNSUPPORTED` when a client sends both. Revisit only after
+  build 213 ships and we have telemetry on quick text adoption.
 
 ---
 

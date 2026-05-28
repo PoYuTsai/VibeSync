@@ -53,9 +53,11 @@ export function parseQuickResponse(rawText: string): ParseQuickResult {
   const recommendedReply = coerceString(obj.recommendedReply);
   const shortReason = coerceString(obj.shortReason);
 
-  // recommendedReply 是 user 唯一會直接複製的欄位，少了它整個 quick 就沒意義。
-  // 其它欄位空字串會被視為「模型沒給」並走 fallback default。
-  if (recommendedReply.length === 0) {
+  // Plan I7 + Codex P2 review: 上方精華卡同時 bind 到 nextStep ("本回合怎麼接")
+  // 與 recommendedReply (可貼的訊息原文)。少了任一個，quick 都沒辦法 render
+  // 完整的 above-the-fold UX，當作 parse failure 比較誠實 — handler 會回 502
+  // 且 I8 保證不會留 row / 不會扣 quota。
+  if (recommendedReply.length === 0 || nextStep.length === 0) {
     return { ok: false, error: "MISSING_REQUIRED_FIELD" };
   }
 

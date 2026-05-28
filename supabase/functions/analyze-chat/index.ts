@@ -5713,6 +5713,54 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     };
 
     // ------------------------------------------------------------------
+    // Phase 1.3 / Codex P1-2 guard — Two-stage analyze: FULL branch (NOT
+    // YET IMPLEMENTED; Phase 2.1 will replace this stub).
+    // ------------------------------------------------------------------
+    //
+    // Until Phase 2.1 ships the anchor-injection + run validation handler,
+    // any client request with `responseMode === "full"` MUST be rejected
+    // here — falling through to the legacy path would call increment_usage
+    // a second time on top of the quick charge, double-charging the user
+    // (violates I1).
+    //
+    //   - missing analysisRunId → 400 MISSING_RUN_ID (matches Phase 2 contract I2)
+    //   - has analysisRunId but Phase 2 unbuilt → 503 FULL_MODE_NOT_READY
+    //
+    // Both branches return BEFORE the Claude call and BEFORE any quota
+    // accounting, so quota is never touched on the full path during this
+    // gap.
+    if (responseMode === "full") {
+      if (!analysisRunId) {
+        logInfo("full_mode_rejected_missing_run_id", {
+          user: summarizeUser(user.id),
+          requestType,
+        });
+        return jsonResponse(
+          {
+            error: "MISSING_RUN_ID",
+            code: "MISSING_RUN_ID",
+            message: "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
+          },
+          400,
+        );
+      }
+      logWarn("full_mode_requested_before_phase2", {
+        user: summarizeUser(user.id),
+        analysisRunId,
+        requestType,
+      });
+      return jsonResponse(
+        {
+          error: "FULL_MODE_NOT_READY",
+          code: "FULL_MODE_NOT_READY",
+          message: "完整分析模式即將推出，目前請使用 responseMode=quick 或 legacy。",
+          retryable: false,
+        },
+        503,
+      );
+    }
+
+    // ------------------------------------------------------------------
     // Phase 1.3 — Two-stage analyze: QUICK branch.
     // ------------------------------------------------------------------
     //
@@ -5734,9 +5782,18 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const quickTimeoutMs = 15000;
       const quickStart = Date.now();
 
-      // Recognize-only / OCR is not a quick-mode scenario. Vision quick would
-      // need a different timeout + model; keep it out for v1 to avoid
-      // surprising clients. Old clients without responseMode never hit this.
+      // Codex P2 scope clarification (build 213): vision quick is deliberately
+      // OUT OF SCOPE — see docs/plans/2026-05-28-two-stage-analyze.md §Out of
+      // Scope. Screenshot/OCR analyze keeps using the legacy single-call path
+      // (~18-25s) because:
+      //   - Haiku 4.5 vision quality on tightly-cropped chat screenshots has
+      //     not been calibrated against the Sonnet OCR baseline (28c0965).
+      //   - Quick path's 15s hard budget is too tight for vision inference.
+      //   - The 3-5s "perceived latency" promise applies to manual-text quick;
+      //     OCR users already accept the longer wait today.
+      // Client SDK must NOT send `responseMode=quick` when uploading images.
+      // Old build-211 clients (no responseMode field) never hit this branch —
+      // they fall through to legacy unchanged.
       if (hasImages) {
         logWarn("quick_mode_rejected_images", {
           user: summarizeUser(user.id),
@@ -5745,7 +5802,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         return jsonResponse(
           {
             error: "QUICK_MODE_IMAGES_UNSUPPORTED",
-            message: "圖片分析請使用完整模式（responseMode=legacy 或省略此欄位）。",
+            code: "QUICK_MODE_IMAGES_UNSUPPORTED",
+            message:
+              "圖片分析尚未支援快速模式，請使用完整模式（responseMode=legacy 或省略此欄位）。",
           },
           400,
         );
@@ -5769,7 +5828,17 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             messages: [{ role: "user", content: userPrompt }],
           },
           CLAUDE_API_KEY,
-          { timeout: quickTimeoutMs, allowModelFallback: false },
+          {
+            timeout: quickTimeoutMs,
+            allowModelFallback: false,
+            // Codex P1-1 review fix: callClaudeWithFallback defaults to
+            // maxRetries=2, which would let a flaky upstream burn 2 × 15s = 30s
+            // and torpedo the "perceived 3-5s" promise. Pin to 1 attempt so the
+            // wall-clock hard budget stays at `quickTimeoutMs`. If the upstream
+            // fails once, surface the error and let the client retry the whole
+            // quick request — D6 forbids auto-fallback to legacy anyway.
+            maxRetries: 1,
+          },
         );
       } catch (error) {
         // I8: Claude failure → no row, no charge. Surface the error so the
