@@ -25,6 +25,17 @@ import {
   normalizeRequestMode,
   type ResponseMode,
 } from "./request_mode.ts";
+import {
+  AnalysisRunStore,
+  createSupabaseAnalysisRunDriver,
+} from "./analysis_run_store.ts";
+import { hashConversation } from "./conversation_hash.ts";
+import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
+import {
+  applyQuickGuardrails,
+  estimateFullSeconds,
+  parseQuickResponse,
+} from "./quick_response.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -5700,6 +5711,299 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       conversationSummaryUsed: !!conversationSummary,
       contextMode: compiledContextMode,
     };
+
+    // ------------------------------------------------------------------
+    // Phase 1.3 — Two-stage analyze: QUICK branch.
+    // ------------------------------------------------------------------
+    //
+    // When `responseMode === "quick"`:
+    //   - force Haiku 4.5 regardless of tier/forceModel
+    //   - use the slim QUICK_SYSTEM_PROMPT (~3.6 KB) + 400 max_tokens
+    //   - 15s timeout, no model fallback (per plan D6: don't auto-fallback)
+    //   - on Claude success → parse + guardrail + hash + atomic charge + insert
+    //     row via AnalysisRunStore.createChargedRun
+    //   - on Claude failure / parse failure: return BEFORE the DB call so no
+    //     row is inserted and no quota is charged (I8)
+    //
+    // legacy + full both fall through to the existing handler below (Phase
+    // 2.1 will branch full into its own block; until then full requests use
+    // the legacy path defensively — no quota bypass risk since the legacy
+    // path always charges).
+    if (responseMode === "quick") {
+      const quickModel = "claude-haiku-4-5-20251001";
+      const quickTimeoutMs = 15000;
+      const quickStart = Date.now();
+
+      // Recognize-only / OCR is not a quick-mode scenario. Vision quick would
+      // need a different timeout + model; keep it out for v1 to avoid
+      // surprising clients. Old clients without responseMode never hit this.
+      if (hasImages) {
+        logWarn("quick_mode_rejected_images", {
+          user: summarizeUser(user.id),
+          imageCount: images.length,
+        });
+        return jsonResponse(
+          {
+            error: "QUICK_MODE_IMAGES_UNSUPPORTED",
+            message: "圖片分析請使用完整模式（responseMode=legacy 或省略此欄位）。",
+          },
+          400,
+        );
+      }
+
+      logInfo("quick_request_started", {
+        user: summarizeUser(user.id),
+        model: quickModel,
+        timeoutMs: quickTimeoutMs,
+        analysisRunIdProvided: !!analysisRunId,
+        requestType,
+      });
+
+      let quickClaude;
+      try {
+        quickClaude = await callClaudeWithFallback(
+          {
+            model: quickModel,
+            max_tokens: 400,
+            system: QUICK_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: userPrompt }],
+          },
+          CLAUDE_API_KEY,
+          { timeout: quickTimeoutMs, allowModelFallback: false },
+        );
+      } catch (error) {
+        // I8: Claude failure → no row, no charge. Surface the error so the
+        // client can show a generic retry CTA (per D6, no auto-fallback to legacy).
+        const latencyMs = Date.now() - quickStart;
+        const code = error instanceof AiServiceError ? error.code : "QUICK_AI_FAILED";
+        const message = error instanceof AiServiceError ? error.message : "快速分析暫時失敗，請再試一次。";
+        const retryable = error instanceof AiServiceError ? error.retryable : true;
+        logWarn("quick_request_failed", {
+          user: summarizeUser(user.id),
+          latencyMs,
+          code,
+          message,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: quickModel,
+          requestType,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs,
+          status: "failed",
+          errorCode: code,
+          errorMessage: message,
+          requestBody: { ...requestObservability, responseMode: "quick" },
+          responseBody: { failureStage: "quick_upstream", retryable },
+        });
+        return jsonResponse(
+          { error: message, code, retryable },
+          502,
+        );
+      }
+
+      const quickData = quickClaude.data as {
+        content?: Array<{ text?: string }>;
+        [key: string]: unknown;
+      };
+      const quickText = quickData.content?.[0]?.text ?? "";
+      const quickTokenUsage = extractTokenUsage(quickData);
+      const quickLatencyMs = Date.now() - quickStart;
+
+      const parsed = parseQuickResponse(quickText);
+      if (!parsed.ok) {
+        // I8: parse failure also short-circuits before any DB write.
+        logWarn("quick_response_parse_failed", {
+          user: summarizeUser(user.id),
+          model: quickClaude.model,
+          error: parsed.error,
+          textLength: quickText.length,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: quickClaude.model,
+          requestType,
+          inputTokens: quickTokenUsage.inputTokens,
+          outputTokens: quickTokenUsage.outputTokens,
+          latencyMs: quickLatencyMs,
+          status: "failed",
+          errorCode: "QUICK_RESPONSE_INVALID",
+          errorMessage: parsed.error,
+          requestBody: { ...requestObservability, responseMode: "quick" },
+          responseBody: {
+            failureStage: "quick_parse",
+            parseError: parsed.error,
+          },
+        });
+        return jsonResponse(
+          {
+            error: "QUICK_RESPONSE_INVALID",
+            message: "這次快速分析格式異常，請再試一次。本次不會扣額度。",
+          },
+          502,
+        );
+      }
+
+      // I9: same safety guardrails on quick path.
+      const guarded = applyQuickGuardrails(parsed.payload);
+
+      // Hash the canonical request context. Phase 2.1 will re-hash on full
+      // and compare to detect drift (I5).
+      const conversationHashValue = await hashConversation({
+        messages,
+        userDraft,
+        partnerSummary,
+        sessionContext,
+        conversationSummary,
+        effectiveStyleContext,
+        knownContactName,
+      });
+
+      // Atomic charge + insert. The PL/pgSQL RPC wraps increment_usage +
+      // INSERT in one TX, so we never have a "charged but no row" state (the
+      // Phase 0 P1 fix). Test accounts skip the increment_usage call but still
+      // get a row so subsequent full calls can validate.
+      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest;
+      // The supabase-js client surface is wider than the AnalysisRunStore's
+      // MinimalSupabaseClient duck-type, but the shapes match at runtime; the
+      // duck-type stays narrow so unit tests can swap in an in-memory client.
+      const store = new AnalysisRunStore(
+        createSupabaseAnalysisRunDriver(
+          supabase as unknown as Parameters<
+            typeof createSupabaseAnalysisRunDriver
+          >[0],
+        ),
+      );
+      let createdRun;
+      try {
+        createdRun = await store.createChargedRun({
+          userId: user.id,
+          conversationHash: conversationHashValue,
+          quickResult: guarded.payload as unknown as Record<string, unknown>,
+          requestContext: {
+            responseMode: "quick",
+            requestType,
+            analyzeMode,
+            tier: effectiveTier,
+            isTestAccount: accountIsTest,
+            estimatedMessageCount: quotaUsage.estimatedMessageCount,
+            chargedMessageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+          },
+          chargeQuota: shouldCharge,
+          messageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+        });
+      } catch (error) {
+        // Atomic RPC failed — either DB outage, or increment_usage RAISED
+        // (quota race). The atomic TX guarantees nothing partially committed.
+        logError("quick_run_create_failed", {
+          user: summarizeUser(user.id),
+          error: getErrorMessage(error),
+          shouldCharge,
+        });
+        return jsonResponse(
+          {
+            error: "QUICK_RUN_CREATE_FAILED",
+            message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
+          },
+          500,
+        );
+      }
+
+      const fullModelForEta = hasImages
+        ? "claude-sonnet-4-20250514"
+        : isMyMessageMode
+        ? "claude-haiku-4-5-20251001"
+        : model;
+      const fullEtaSeconds = estimateFullSeconds({
+        model: fullModelForEta,
+        hasImages,
+        cacheHit: (quickTokenUsage.cacheReadTokens ?? 0) > 0,
+      });
+
+      logInfo("quick_request_succeeded", {
+        user: summarizeUser(user.id),
+        analysisRunId: createdRun.id,
+        model: quickClaude.model,
+        latencyMs: quickLatencyMs,
+        inputTokens: quickTokenUsage.inputTokens,
+        outputTokens: quickTokenUsage.outputTokens,
+        safetyFiltered: guarded.safetyFiltered,
+        chargedQuota: shouldCharge,
+      });
+
+      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        userId: user.id,
+        model: quickClaude.model,
+        requestType,
+        inputTokens: quickTokenUsage.inputTokens,
+        outputTokens: quickTokenUsage.outputTokens,
+        latencyMs: quickLatencyMs,
+        status: guarded.safetyFiltered ? "filtered" : "success",
+        fallbackUsed: quickClaude.fallbackUsed,
+        retryCount: quickClaude.retries,
+        requestBody: {
+          ...requestObservability,
+          responseMode: "quick",
+          analysisRunId: createdRun.id,
+        },
+        responseBody: {
+          filtered: guarded.safetyFiltered,
+          retries: quickClaude.retries,
+          fallbackUsed: quickClaude.fallbackUsed,
+          fullEtaSeconds,
+          cacheReadTokens: quickTokenUsage.cacheReadTokens ?? 0,
+          cacheCreationTokens: quickTokenUsage.cacheCreationTokens ?? 0,
+        },
+      });
+
+      const monthlyRemaining = accountIsTest
+        ? 999999
+        : Math.max(
+          0,
+          monthlyLimit - sub.monthly_messages_used -
+            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+        );
+      const dailyRemaining = accountIsTest
+        ? 999999
+        : Math.max(
+          0,
+          dailyLimit - sub.daily_messages_used -
+            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+        );
+
+      return jsonResponse({
+        responseMode: "quick",
+        analysisRunId: createdRun.id,
+        quickResult: guarded.payload,
+        estimatedFullSeconds: fullEtaSeconds,
+        safetyFiltered: guarded.safetyFiltered,
+        usage: {
+          messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+          estimatedMessages: quotaUsage.estimatedMessageCount,
+          monthlyRemaining,
+          dailyRemaining,
+          model: quickClaude.model,
+          tierUsed: effectiveTier,
+          isTestAccount: accountIsTest,
+          requestType,
+          shouldChargeQuota: shouldCharge,
+          quotaReason: quotaUsage.quotaReason,
+          quotaUnit: quotaUsage.quotaUnit,
+        },
+        telemetry: {
+          requestType,
+          serverAiLatencyMs: quickLatencyMs,
+          timeoutMs: quickTimeoutMs,
+          fallbackUsed: quickClaude.fallbackUsed,
+          retries: quickClaude.retries,
+          totalTokens:
+            (quickTokenUsage.inputTokens ?? 0) +
+            (quickTokenUsage.outputTokens ?? 0),
+        },
+      });
+    }
+
     let claudeResult;
     try {
       // OCR-only image requests can fail faster than full image analysis,
