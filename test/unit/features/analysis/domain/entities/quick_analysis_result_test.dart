@@ -27,28 +27,24 @@ void main() {
       expect(result.confidence, 'high');
     });
 
-    test('returns safe defaults when quickResult fields are missing', () {
+    test('fills optional defaults when present (shortReason/confidence/eta)',
+        () {
+      // Required fields supplied; optional fields omitted should fall back to
+      // safe defaults — but required fields no longer have empty defaults.
       final json = {
         'analysisRunId': 'run_xyz',
-        'quickResult': <String, dynamic>{},
+        'quickResult': {
+          'nextStep': '先接情緒再延伸',
+          'recommendedReply': '聽起來累，要不要週末喝杯咖啡？',
+        },
       };
 
       final result = QuickAnalysisResult.fromJson(json);
 
       expect(result.analysisRunId, 'run_xyz');
-      expect(result.nextStep, '');
-      expect(result.recommendedReply, '');
       expect(result.shortReason, '');
       expect(result.insufficientContext, false);
       expect(result.confidence, 'medium');
-      expect(result.estimatedFullSeconds, isNull);
-    });
-
-    test('returns empty analysisRunId when missing (does not throw)', () {
-      final result = QuickAnalysisResult.fromJson(<String, dynamic>{});
-
-      expect(result.analysisRunId, '');
-      expect(result.nextStep, '');
       expect(result.estimatedFullSeconds, isNull);
     });
 
@@ -56,7 +52,10 @@ void main() {
       final json = {
         'analysisRunId': 'run_1',
         'estimatedFullSeconds': 17.6,
-        'quickResult': <String, dynamic>{},
+        'quickResult': {
+          'nextStep': '先接情緒再延伸',
+          'recommendedReply': '聽起來累，要不要週末喝杯咖啡？',
+        },
       };
 
       final result = QuickAnalysisResult.fromJson(json);
@@ -67,12 +66,88 @@ void main() {
     test('treats insufficientContext truthy only when literally true', () {
       final json = {
         'analysisRunId': 'run_1',
-        'quickResult': {'insufficientContext': 'true'},
+        'quickResult': {
+          'nextStep': '先接情緒再延伸',
+          'recommendedReply': '聽起來累，要不要週末喝杯咖啡？',
+          'insufficientContext': 'true',
+        },
       };
 
       final result = QuickAnalysisResult.fromJson(json);
 
       expect(result.insufficientContext, false);
+    });
+  });
+
+  group('QuickAnalysisResult.fromJson — fail-closed on required fields (P3)',
+      () {
+    test('throws FormatException when analysisRunId is missing', () {
+      expect(
+        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+          'quickResult': {
+            'nextStep': '先接情緒',
+            'recommendedReply': '聽起來累，週末放空？',
+          },
+        }),
+        throwsA(isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          contains('analysisRunId'),
+        )),
+      );
+    });
+
+    test('throws FormatException when analysisRunId is whitespace-only', () {
+      expect(
+        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+          'analysisRunId': '   ',
+          'quickResult': {
+            'nextStep': '先接情緒',
+            'recommendedReply': '聽起來累，週末放空？',
+          },
+        }),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('throws FormatException when nextStep is missing', () {
+      expect(
+        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+          'analysisRunId': 'run_1',
+          'quickResult': {
+            'recommendedReply': '聽起來累，週末放空？',
+          },
+        }),
+        throwsA(isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          contains('nextStep'),
+        )),
+      );
+    });
+
+    test('throws FormatException when recommendedReply is empty', () {
+      expect(
+        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+          'analysisRunId': 'run_1',
+          'quickResult': {
+            'nextStep': '先接情緒',
+            'recommendedReply': '',
+          },
+        }),
+        throwsA(isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          contains('recommendedReply'),
+        )),
+      );
+    });
+
+    test('throws FormatException on entirely empty payload', () {
+      expect(
+        () => QuickAnalysisResult.fromJson(<String, dynamic>{}),
+        throwsA(isA<FormatException>()),
+      );
     });
   });
 }

@@ -905,7 +905,18 @@ class AnalysisService {
       ),
       timeout: const Duration(seconds: 15),
     );
-    return QuickAnalysisResult.fromJson(responseData);
+    try {
+      return QuickAnalysisResult.fromJson(responseData);
+    } on FormatException catch (_) {
+      // Backend should not return a malformed 200, but if it does the user has
+      // already been charged quick quota. Surface a coded error so the
+      // notifier maps it to a quickFailed state and the UI offers retry rather
+      // than rendering blank fields (I-P3).
+      throw AnalysisException(
+        '快速分析回應格式錯誤，請稍後再試。',
+        code: 'INVALID_QUICK_RESPONSE',
+      );
+    }
   }
 
   /// Two-stage analyze — full phase.

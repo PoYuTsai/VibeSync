@@ -23,14 +23,45 @@ class QuickAnalysisResult {
     this.estimatedFullSeconds,
   });
 
+  /// Throws [FormatException] when any of `analysisRunId`, `nextStep`, or
+  /// `recommendedReply` is missing or empty after trim. Backend guardrails
+  /// should make this unreachable, but fail-closed prevents two downstream
+  /// hazards if a malformed 200 ever slips through:
+  /// 1. The full-mode call would echo an empty `analysisRunId`, returning
+  ///    `RUN_NOT_FOUND` after the user already paid quick quota.
+  /// 2. The UI would render a blank quick summary card.
+  /// The service layer wraps this into `AnalysisException(code:
+  /// 'INVALID_QUICK_RESPONSE')` so the notifier surfaces a coded error
+  /// (invariant I-P3).
   factory QuickAnalysisResult.fromJson(Map<String, dynamic> json) {
     final quick = (json['quickResult'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
     final etaRaw = json['estimatedFullSeconds'];
+
+    final analysisRunId = (json['analysisRunId'] ?? '').toString().trim();
+    final nextStep = (quick['nextStep'] ?? '').toString().trim();
+    final recommendedReply = (quick['recommendedReply'] ?? '').toString().trim();
+
+    if (analysisRunId.isEmpty) {
+      throw const FormatException(
+        'QuickAnalysisResult missing required field: analysisRunId',
+      );
+    }
+    if (nextStep.isEmpty) {
+      throw const FormatException(
+        'QuickAnalysisResult missing required field: nextStep',
+      );
+    }
+    if (recommendedReply.isEmpty) {
+      throw const FormatException(
+        'QuickAnalysisResult missing required field: recommendedReply',
+      );
+    }
+
     return QuickAnalysisResult(
-      analysisRunId: (json['analysisRunId'] ?? '').toString(),
-      nextStep: (quick['nextStep'] ?? '').toString(),
-      recommendedReply: (quick['recommendedReply'] ?? '').toString(),
+      analysisRunId: analysisRunId,
+      nextStep: nextStep,
+      recommendedReply: recommendedReply,
       shortReason: (quick['shortReason'] ?? '').toString(),
       insufficientContext: quick['insufficientContext'] == true,
       confidence: (quick['confidence'] ?? 'medium').toString(),
