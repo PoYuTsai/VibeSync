@@ -7231,4 +7231,3 @@ class _EditMessageCoachMark extends StatelessWidget {
     );
   }
 }
-
