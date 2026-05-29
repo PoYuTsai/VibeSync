@@ -123,20 +123,35 @@ void main() {
       expect(
         () => service.analyzeQuick(messages: [_msg('hi')]),
         throwsA(
-          isA<AnalysisException>().having((e) => e.code, 'code', 'UNAUTHORIZED'),
+          isA<AnalysisException>()
+              .having((e) => e.code, 'code', 'UNAUTHORIZED'),
         ),
       );
     });
   });
 
   group('AnalysisService.analyzeFull', () {
-    test('POSTs with responseMode:full + analysisRunId, parses AnalysisResult',
+    test(
+        'POSTs with responseMode:full + analysisRunId, unwraps server envelope result',
         () async {
       late http.Request capturedRequest;
       final mockClient = MockClient((request) async {
         capturedRequest = request;
         return http.Response(
-          jsonEncode(_fullSuccessBody),
+          jsonEncode({
+            'responseMode': 'full',
+            'analysisRunId': 'run_q1',
+            'quickResult': {
+              'nextStep': '???',
+              'recommendedReply': '?質絲靘敞???望?曄征銝銝?',
+              'shortReason': '?交?蝺?撱嗡撓',
+              'insufficientContext': false,
+              'confidence': 'high',
+            },
+            'result': _fullSuccessBody,
+            'retriesRemaining': 2,
+            'telemetry': {'serverAiLatencyMs': 1234},
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -153,6 +168,9 @@ void main() {
       );
 
       expect(result.strategy, '保持沉穩');
+
+      expect(result.replies['tease'], 'c');
+      expect(result.recommendation.content, 'c');
 
       final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
       expect(body['responseMode'], 'full');
@@ -213,8 +231,8 @@ void main() {
           messages: [_msg('hi')],
         ),
         throwsA(
-          isA<FullModeException>().having(
-              (e) => e.code, 'code', 'RUN_CONVERSATION_MISMATCH'),
+          isA<FullModeException>()
+              .having((e) => e.code, 'code', 'RUN_CONVERSATION_MISMATCH'),
         ),
       );
     });
@@ -279,6 +297,45 @@ void main() {
           isA<FullModeException>()
               .having((e) => e.code, 'code', 'RUN_RETRY_EXHAUSTED')
               .having((e) => e.retriesRemaining, 'retriesRemaining', 0),
+        ),
+      );
+    });
+
+    test('throws AnalysisException INVALID_FULL_RESPONSE on malformed envelope',
+        () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'responseMode': 'full',
+            'analysisRunId': 'run_q1',
+            'quickResult': {
+              'nextStep': '??????',
+              'recommendedReply': '?鞈芰結????????秣??????',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      await expectLater(
+        () => service.analyzeFull(
+          analysisRunId: 'run_q1',
+          messages: [_msg('hi')],
+        ),
+        throwsA(
+          isA<AnalysisException>()
+              .having((e) => e.code, 'code', 'INVALID_FULL_RESPONSE')
+              .having(
+                (e) => e.suggestedAction,
+                'suggestedAction',
+                AnalysisErrorAction.retry,
+              ),
         ),
       );
     });

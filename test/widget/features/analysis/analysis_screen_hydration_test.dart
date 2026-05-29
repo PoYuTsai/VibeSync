@@ -374,6 +374,14 @@ void main() {
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is SelectableText &&
+                widget.data == _quick(runId: 'run_fr').recommendedReply,
+          ),
+          findsOneWidget,
+        );
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(recorder.quickCalls, 0);
         expect(recorder.fullCalls, 0);

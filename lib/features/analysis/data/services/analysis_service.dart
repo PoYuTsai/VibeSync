@@ -950,7 +950,29 @@ class AnalysisService {
       timeout: const Duration(seconds: 60),
       onErrorResponse: _mapFullModeError,
     );
-    return AnalysisResult.fromJson(responseData);
+    return AnalysisResult.fromJson(_extractFullResultPayload(responseData));
+  }
+
+  Map<String, dynamic> _extractFullResultPayload(
+    Map<String, dynamic> responseData,
+  ) {
+    final result = responseData['result'];
+    if (result is Map<String, dynamic>) {
+      return result;
+    }
+    if (result is Map) {
+      return result.map((key, value) => MapEntry(key.toString(), value));
+    }
+
+    if (responseData['responseMode'] == 'full') {
+      throw AnalysisException(
+        '完整分析資料異常，請再試一次。',
+        code: 'INVALID_FULL_RESPONSE',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+    }
+
+    return responseData;
   }
 
   Map<String, dynamic> _buildTwoStageBody({
@@ -989,8 +1011,7 @@ class AnalysisService {
           'duration': sessionContext.duration.label,
           'goal': sessionContext.goal.label,
         },
-      if (conversationSummary != null &&
-          conversationSummary.trim().isNotEmpty)
+      if (conversationSummary != null && conversationSummary.trim().isNotEmpty)
         'conversationSummary': conversationSummary.trim(),
       if (partnerSummary != null && partnerSummary.trim().isNotEmpty)
         'partnerSummary': partnerSummary.trim(),
@@ -1090,9 +1111,8 @@ class AnalysisService {
   Exception _mapFullModeError(int status, Map<String, dynamic> data) {
     final code = (data['code'] as String?) ?? (data['error'] as String?);
     final retriesRemainingRaw = data['retriesRemaining'];
-    final retriesRemaining = retriesRemainingRaw is num
-        ? retriesRemainingRaw.toInt()
-        : 0;
+    final retriesRemaining =
+        retriesRemainingRaw is num ? retriesRemainingRaw.toInt() : 0;
 
     switch (code) {
       case 'RUN_EXPIRED':

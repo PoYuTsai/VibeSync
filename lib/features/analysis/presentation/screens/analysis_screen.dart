@@ -615,8 +615,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // setState lands on the next frame (I-P1-a).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final current =
-          ref.read(twoStageAnalyzeProvider(widget.conversationId));
+      final current = ref.read(twoStageAnalyzeProvider(widget.conversationId));
       if (current.phase != TwoStagePhase.idle) {
         _hydrateTwoStageState(current);
       }
@@ -2842,14 +2841,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // legacy render tree (which reads _enthusiasmScore, _quickResult, etc.)
       // keeps working (Eric 2026-05-28 UX spec).
       unawaited(
-        ref
-            .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
-            .start(
+        ref.read(twoStageAnalyzeProvider(widget.conversationId).notifier).start(
               messages: analysisContext.requestMessages,
               sessionContext: conversation.sessionContext,
               conversationSummary: analysisContext.conversationSummary,
               partnerSummary: _resolvePartnerSummary(conversation),
-              effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
+              effectiveStyleContext:
+                  _resolveEffectiveStyleContext(conversation),
               knownContactName:
                   ScreenshotRecognitionHelper.isPlaceholderConversationName(
                 conversation.name,
@@ -2902,8 +2900,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
         });
-        final conv =
-            ref.read(conversationProvider(widget.conversationId));
+        final conv = ref.read(conversationProvider(widget.conversationId));
         if (conv != null) {
           _lastAnalyzedMessageCount = conv.messages.length;
           _hasEditedAnalyzedMessage = false;
@@ -2960,10 +2957,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         break;
       case TwoStagePhase.quickFailed:
         final code = next.quickErrorCode;
-        final message =
-            next.quickErrorMessage ?? '分析暫時失敗，請稍後再試。';
-        final isQuotaError = code == 'DAILY_LIMIT_EXCEEDED' ||
-            code == 'MONTHLY_LIMIT_EXCEEDED';
+        final message = next.quickErrorMessage ?? '分析暫時失敗，請稍後再試。';
+        final isQuotaError =
+            code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
           _applyErrorState(
@@ -5183,25 +5179,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ),
                           ],
 
-                          // Quick-ready: render the summary card + the full
-                          // analysis placeholder (or retry CTA) until the
-                          // full result lands.
-                          if (_quickResult != null &&
-                              _enthusiasmScore == null) ...[
+                          // Keep the quick recommendation visible after the
+                          // full result lands so the first actionable answer
+                          // does not disappear when detailed analysis updates.
+                          if (_quickResult != null) ...[
                             _buildQuickSummaryCard(_quickResult!),
-                            if (_fullErrorMessage != null)
-                              FullAnalysisRetryCard(
-                                retriesRemaining: _fullErrorRetriesRemaining,
-                                errorMessage: _fullErrorMessage,
-                                onRetry: _fullErrorRetriesRemaining > 0
-                                    ? _retryFullAnalysis
-                                    : null,
-                              )
-                            else
-                              FullAnalysisPlaceholder(
-                                estimatedFullSeconds:
-                                    _quickResult!.estimatedFullSeconds,
-                              ),
+                            if (_enthusiasmScore == null) ...[
+                              if (_fullErrorMessage != null)
+                                FullAnalysisRetryCard(
+                                  retriesRemaining: _fullErrorRetriesRemaining,
+                                  errorMessage: _fullErrorMessage,
+                                  onRetry: _fullErrorRetriesRemaining > 0
+                                      ? _retryFullAnalysis
+                                      : null,
+                                )
+                              else
+                                FullAnalysisPlaceholder(
+                                  estimatedFullSeconds:
+                                      _quickResult!.estimatedFullSeconds,
+                                ),
+                            ],
                           ],
 
                           if (_enthusiasmScore != null) ...[
