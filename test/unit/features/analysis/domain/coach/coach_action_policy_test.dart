@@ -610,6 +610,61 @@ void main() {
       expect(card.actionLabel, '回得剛剛好');
     });
 
+    test(
+        'should not call a natural greeting too long after a brief name answer',
+        () {
+      final messages = [
+        Message(
+          id: 'm1',
+          content: 'hihi',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 1, 10),
+        ),
+        Message(
+          id: 'm2',
+          content: '你好',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 10, 1),
+        ),
+        Message(
+          id: 'm3',
+          content: 'hi! 怎麼稱呼你？',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 10, 2),
+        ),
+        Message(
+          id: 'm4',
+          content: 'Amy',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 1, 10, 3),
+        ),
+        Message(
+          id: 'm5',
+          content: 'Amy 好呀😊 最近在忙什麼？',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 10, 4),
+        ),
+      ];
+
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 60,
+        gameStage:
+            const GameStageInfo(current: GameStage.opening, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: 'Amy 好呀😊 最近在忙什麼？',
+          reason: '',
+          psychology: '',
+        ),
+        messages: messages,
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+
+      expect(card.actionLabel, isNot('回得剛剛好'));
+      expect(card.whyNow, isNot(contains('回得有點長')));
+    });
+
     test('should not pick rightSizeReply when ratio is at the threshold', () {
       final messages = [
         Message(

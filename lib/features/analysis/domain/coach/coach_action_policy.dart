@@ -1,3 +1,5 @@
+import 'package:characters/characters.dart';
+
 import '../../../../core/constants/app_constants.dart';
 import '../entities/analysis_models.dart';
 import '../entities/game_stage.dart';
@@ -91,11 +93,56 @@ class CoachActionPolicy {
         return false;
       }
 
-      final partnerLength = message.content.trim().length;
+      final partnerText = message.content.trim();
+      final partnerLength = partnerText.characters.length;
       if (partnerLength == 0) return false;
-      return latestUserReply.content.trim().length > partnerLength * 1.8;
+      if (_isBriefNameAnswerTurn(
+        messages: messages,
+        partnerIndex: i,
+        partnerLength: partnerLength,
+      )) {
+        return false;
+      }
+
+      final userLength = latestUserReply.content.trim().characters.length;
+      return userLength > partnerLength * AppConstants.goldenRuleMultiplier;
     }
     return false;
+  }
+
+  static bool _isBriefNameAnswerTurn({
+    required List<Message> messages,
+    required int partnerIndex,
+    required int partnerLength,
+  }) {
+    if (partnerLength > 12 || partnerIndex <= 0) return false;
+
+    for (var i = partnerIndex - 1; i >= 0; i--) {
+      final previous = messages[i];
+      final text = previous.content.trim();
+      if (text.isEmpty) continue;
+
+      if (!previous.isFromMe) return false;
+      return _asksForName(text);
+    }
+    return false;
+  }
+
+  static bool _asksForName(String text) {
+    final normalized = text
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll('’', "'")
+        .replaceAll('？', '?');
+    return normalized.contains('怎麼稱呼') ||
+        normalized.contains('怎麼叫') ||
+        normalized.contains('叫什麼') ||
+        normalized.contains('叫甚麼') ||
+        normalized.contains('名字') ||
+        normalized.contains('貴姓') ||
+        normalized.contains("what'syourname") ||
+        normalized.contains('whatsyourname') ||
+        normalized.contains('yourname');
   }
 
   static const Set<GameStage> _midGameStages = {
@@ -522,9 +569,9 @@ class CoachActionPolicy {
     final candidate = finalRecommendation.content.trim();
     return CoachActionCardData(
       actionLabel: '回得剛剛好',
-      whyNow: '熱度 $heatScore，這次回得有點長，下一句先精簡一點再展開',
-      task: '把回覆字數對齊對方上一句的 1.8 倍以內',
-      avoid: '別把所有想說的塞進一封',
+      whyNow: '熱度 $heatScore，下一句先精簡一點，讓對方更容易接球',
+      task: '先抓對方上一句的份量，控制在 1.8 倍內再延伸',
+      avoid: '別一次塞太多細節',
       avoidLabel: _avoidLabelForActionType(CoachActionType.rightSizeReply),
       suggestedLine: candidate.isEmpty ? null : candidate,
       learningLink:

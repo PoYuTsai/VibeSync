@@ -10,6 +10,30 @@
 
 ## 2026-05
 
+### [2026-05-29] 問名字後的 AI 建議被教練卡誤判太長
+
+**症狀**:
+
+- 使用者採用 AI 建議回「hi! 怎麼稱呼你？」後，對方回「Amy」。
+- 使用者再採用 AI 建議「Amy 好呀😊 最近在忙什麼？」後，完整分析的「本回合怎麼接」卻提示「這次回得有點長」，看起來像 VibeSync 自己否定自己的建議。
+
+**Root Cause**:
+
+- `CoachActionPolicy._userOverextendedReply` 只用最新我方回覆與對方上一句的字數比例判斷 1.8x。
+- 對方上一句是姓名這類極短資訊時，正常寒暄也會超過 1.8x，且 policy 不知道上一句是 AI 建議產生，因此出現自我矛盾。
+
+**修復**:
+
+- 若上一輪我方訊息是在問稱呼/名字，且對方回覆是短回答，略過「回得剛剛好」長度懲罰。
+- 「回得剛剛好」文案改成前瞻式提醒，不再直接說「這次回得有點長」。
+
+**驗證**:
+
+- `flutter test test/unit/features/analysis/domain/coach/coach_action_policy_test.dart`
+- `flutter test test/widget/screens/analysis_screen_test.dart`
+- `flutter analyze lib/features/analysis/domain/coach lib/features/analysis/presentation/screens/analysis_screen.dart`
+- `git diff --check`
+
 ### [2026-05-14] 開場救星付費用戶被 Free quota 擋住
 
 **症狀**:
