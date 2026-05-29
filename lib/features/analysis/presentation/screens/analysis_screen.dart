@@ -117,9 +117,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _optimizeController = TextEditingController();
   OptimizedMessage? _optimizedMessage;
 
-  // 「我說」話題延續功能
-  MyMessageAnalysis? _myMessageAnalysis;
-  bool _isAnalyzingMyMessage = false;
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
 
@@ -135,6 +132,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   QuickAnalysisResult? _quickResult;
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
+  int? _activeAnalysisMessageCount;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
 
   // 對話延續功能
@@ -606,7 +604,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // (I-P1-c, Codex round-2).
     final initialState =
         ref.read(twoStageAnalyzeProvider(widget.conversationId));
-    if (_isTwoStagePartialPhase(initialState.phase)) {
+    if (_isTwoStagePartialPhase(initialState.phase) ||
+        _isTwoStageResultStaleForCurrentConversation(initialState)) {
       _clearDetailedAnalysisStateForTwoStagePartial();
     }
     // Hydrate from existing two-stage notifier state on remount.
@@ -652,6 +651,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
@@ -662,17 +662,30 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
       case TwoStagePhase.fullReady:
         final result = s.full;
         if (result == null) return;
+        if (_isTwoStageResultStaleForCurrentConversation(s)) {
+          setState(() {
+            _isAnalyzing = false;
+            _quickResult = s.quick;
+            _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
+            _fullErrorRetriesRemaining = 0;
+            _activeAnalysisMessageCount = s.conversationMessageCount;
+            _clearDetailedAnalysisStateForTwoStagePartial();
+          });
+          return;
+        }
         setState(() {
           _isAnalyzing = false;
           _quickResult = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _activeAnalysisMessageCount = null;
           _applyAnalysisResult(result);
           _enthusiasmScore = result.enthusiasmScore;
           _dimensionScores = result.dimensionScores;
@@ -702,6 +715,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = s.quick;
           _fullErrorMessage = s.fullErrorMessage;
           _fullErrorRetriesRemaining = s.retriesRemaining;
+          _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
@@ -710,6 +724,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             s.quickErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
+          _activeAnalysisMessageCount = null;
           _applyErrorState(
             message: s.quickErrorMessage ?? '分析暫時失敗，請稍後再試。',
             action: isQuotaError
@@ -844,6 +859,33 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final hasVisibleAnalysis = _enthusiasmScore != null ||
         conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true;
     return hasVisibleAnalysis ? conversation.messages.length : 0;
+  }
+
+  int _pendingAnalysisBaselineMessageCount(Conversation conversation) {
+    final completed = _effectiveLastAnalyzedMessageCount(conversation);
+    final active = _activeAnalysisMessageCount;
+    if (active != null && active > completed) {
+      return active;
+    }
+    return completed;
+  }
+
+  int _pendingMessageCount(Conversation conversation) {
+    final diff = conversation.messages.length -
+        _pendingAnalysisBaselineMessageCount(
+          conversation,
+        );
+    return diff > 0 ? diff : 0;
+  }
+
+  bool _isTwoStageResultStaleForCurrentConversation(
+    TwoStageAnalysisState state,
+  ) {
+    final expectedCount = state.conversationMessageCount;
+    if (expectedCount == null) return false;
+    final conversation = ref.read(conversationProvider(widget.conversationId));
+    if (conversation == null) return false;
+    return conversation.messages.length != expectedCount;
   }
 
   void _showEditedAnalyzedMessageSnackBar() {
@@ -1692,20 +1734,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _lastManualAddedIsFromMe = isFromMe;
     });
 
-    // 根據訊息類型決定行為
-    if (!isFromMe) {
-      // 「她說」：不自動分析，讓輸入區內的成功回饋提供下一步。
-    } else {
-      // 「我說」：Essential 用戶自動分析話題延續 (Haiku, 快速)
-      final subscription = ref.read(subscriptionProvider);
-      if (subscription.tier == 'essential') {
-        await _runMyMessageAnalysis();
-      } else {
-        setState(() {
-          _myMessageAnalysis = null;
-        });
-      }
-    }
+    // 補訊息只記錄內容；是否分析由使用者明確點「分析新增內容」決定。
 
     // 滾動到頂部顯示新分析結果
     if (_scrollController.hasClients) {
@@ -1754,20 +1783,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     final conversation = ref.watch(conversationProvider(widget.conversationId));
-    final totalMessages = conversation?.messages.length ?? 0;
-    final lastAnalyzed = conversation?.lastAnalyzedMessageCount ?? 0;
-    final pendingCount = _enthusiasmScore == null
-        ? totalMessages
-        : (totalMessages - lastAnalyzed).clamp(0, totalMessages);
-    final countLabel =
-        pendingCount > 1 ? '已補上 $pendingCount 則新訊息' : '已補上 1 則新訊息';
+    final pendingCount =
+        conversation == null ? 1 : _pendingMessageCount(conversation);
+    final displayPendingCount = pendingCount > 0 ? pendingCount : 1;
+    final countLabel = displayPendingCount > 1
+        ? '已補上 $displayPendingCount 則新訊息'
+        : '已補上 1 則新訊息';
     final speakerLabel = isFromMe ? '我說' : '她說';
-    final isContinuingAnalyzedConversation = _enthusiasmScore != null;
-    final nextStep = isContinuingAnalyzedConversation
-        ? '舊內容不重複扣；分析前會確認本次額度。可以繼續補下一句，或分析新增內容。'
-        : isFromMe
-            ? '已放到上方對話框。等對方回覆後，再貼上她說的內容。'
-            : '已放到上方對話框。確認沒錯後，可以分析熱度與建議。';
+    final isFullWorkingOnOlderMessages = conversation != null &&
+        _activeAnalysisMessageCount != null &&
+        conversation.messages.length > _activeAnalysisMessageCount!;
+    final nextStep = isFromMe
+        ? '已記錄你剛剛回覆的內容。等她回覆後，再補上「她說」，我會用最新來回分析下一步。'
+        : '已放到上方對話框。按「分析新增內容」後，會先在 3-5 秒給快速建議，完整分析約 15-20 秒補上。';
+    final workingNote = isFullWorkingOnOlderMessages
+        ? '目前完整分析仍在整理上一版；你補的新訊息會等你按「分析新增內容」後才納入。'
+        : null;
     final preview =
         content.length > 36 ? '${content.substring(0, 36)}…' : content;
 
@@ -1807,7 +1838,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            nextStep,
+            workingNote == null ? nextStep : '$nextStep\n$workingNote',
             style: AppTypography.caption.copyWith(
               color: AppColors.glassTextSecondary,
               height: 1.35,
@@ -1840,8 +1871,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 TextButton.icon(
                   onPressed: _isAnalyzing ? null : _runAnalysis,
                   icon: const Icon(Icons.auto_graph, size: 16),
-                  label: Text(
-                      isContinuingAnalyzedConversation ? '分析新增內容' : '分析這段'),
+                  label: const Text('分析新增內容'),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -2791,16 +2821,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       conversation.messages,
     );
     if (messagesForAnalysis == null) {
-      final subscription = ref.read(subscriptionProvider);
-      final errorMessage = subscription.tier == 'essential'
-          ? '目前還沒有她的回覆，暫時無法做一般分析。你可以等她回訊後再分析，或使用下方的「我說」延續建議。'
-          : '目前還沒有她的回覆，暫時無法分析。你可以先把對話存著，等她回訊後再回來分析。';
       setState(() {
         _isAnalyzing = false;
         _applyErrorState(
-          message: errorMessage,
+          message: '目前還沒有她的新回覆可以分析。',
           action: AnalysisErrorAction.addIncomingMessage,
           origin: _AnalysisErrorOrigin.analysis,
+          guidance: '你可以先補上你說的內容作紀錄；等她回覆後，再按「分析新增內容」會比較準。',
+        );
+      });
+      return;
+    }
+
+    if (conversation.messages.last.isFromMe &&
+        _pendingMessageCount(conversation) > 0) {
+      setState(() {
+        _isAnalyzing = false;
+        _applyErrorState(
+          message: '已記錄你剛剛說的內容，先不預測她可能怎麼回。',
+          action: AnalysisErrorAction.addIncomingMessage,
+          origin: _AnalysisErrorOrigin.analysis,
+          guidance: '等她回覆後補上「她說」，我會用最新來回重新給下一步建議。',
         );
       });
       return;
@@ -2834,6 +2875,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _quickResult = null;
         _fullErrorMessage = null;
         _fullErrorRetriesRemaining = 0;
+        _activeAnalysisMessageCount = conversation.messages.length;
       });
 
       // Fire-and-forget. The notifier caches the payload for retryFull and
@@ -2856,6 +2898,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       ? null
                       : conversation.name.trim(),
               previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
+              conversationMessageCount: conversation.messages.length,
             ),
       );
     } catch (e) {
@@ -2891,6 +2934,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _clearDetailedAnalysisStateForTwoStagePartial();
           _resetErrorState();
         });
         break;
@@ -2900,12 +2945,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResult = next.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _clearDetailedAnalysisStateForTwoStagePartial();
         });
-        final conv = ref.read(conversationProvider(widget.conversationId));
-        if (conv != null) {
-          _lastAnalyzedMessageCount = conv.messages.length;
-          _hasEditedAnalyzedMessage = false;
-        }
         break;
       case TwoStagePhase.runningFull:
         // Mirror the notifier's cleared error fields (I-P2-d) so the build
@@ -2915,18 +2957,38 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
       case TwoStagePhase.fullReady:
         final result = next.full;
         if (result == null) return;
+        if (_isTwoStageResultStaleForCurrentConversation(next)) {
+          setState(() {
+            _isAnalyzing = false;
+            _quickResult = next.quick;
+            _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
+            _fullErrorRetriesRemaining = 0;
+            _activeAnalysisMessageCount = next.conversationMessageCount;
+            _clearDetailedAnalysisStateForTwoStagePartial();
+          });
+          return;
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
         }
+        final conv = ref.read(conversationProvider(widget.conversationId));
         setState(() {
           _isAnalyzing = false;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _activeAnalysisMessageCount = null;
+          _quickResult = null;
+          if (conv != null) {
+            _lastAnalyzedMessageCount = conv.messages.length;
+            _hasEditedAnalyzedMessage = false;
+          }
           _applyAnalysisResult(result);
           _enthusiasmScore = result.enthusiasmScore;
           _dimensionScores = result.dimensionScores;
@@ -2954,6 +3016,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _fullErrorMessage = next.fullErrorMessage;
           _fullErrorRetriesRemaining = next.retriesRemaining;
+          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _clearDetailedAnalysisStateForTwoStagePartial();
         });
         break;
       case TwoStagePhase.quickFailed:
@@ -2963,6 +3027,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
+          _activeAnalysisMessageCount = null;
           _applyErrorState(
             message: message,
             action: isQuotaError
@@ -2989,67 +3054,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
           .retryFull(),
     );
-  }
-
-  /// 「我說」話題延續分析（Essential 專屬）
-  Future<void> _runMyMessageAnalysis() async {
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: '我的訊息分析',
-    );
-    if (!consented || !mounted) return;
-
-    setState(() {
-      _isAnalyzingMyMessage = true;
-      _myMessageAnalysis = null;
-      _lastAnalysisTelemetry = null;
-    });
-
-    final conversation = ref.read(conversationProvider(widget.conversationId));
-    if (conversation == null) {
-      setState(() => _isAnalyzingMyMessage = false);
-      return;
-    }
-
-    try {
-      final analysisContext = await _buildSummaryAwareAnalysisContext(
-        conversation: conversation,
-        baseMessages: conversation.messages,
-      );
-
-      final analysisService = AnalysisService();
-      final result = await analysisService.analyzeConversation(
-        analysisContext.requestMessages,
-        sessionContext: conversation.sessionContext,
-        conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: _resolvePartnerSummary(conversation),
-        effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
-        knownContactName:
-            ScreenshotRecognitionHelper.isPlaceholderConversationName(
-          conversation.name,
-        )
-                ? null
-                : conversation.name.trim(),
-        analyzeMode: 'my_message',
-        onTelemetry: _handleAnalysisTelemetry,
-      );
-
-      setState(() {
-        _isAnalyzingMyMessage = false;
-        _myMessageAnalysis = result.myMessageAnalysis;
-      });
-      _syncSubscriptionUsageFromResult(result);
-    } on AnalysisException catch (e) {
-      setState(() {
-        _isAnalyzingMyMessage = false;
-      });
-      _showFloatingSnackBar(e.message);
-    } catch (e) {
-      setState(() {
-        _isAnalyzingMyMessage = false;
-      });
-      _showFloatingSnackBar('分析暫時失敗，請稍後再試。');
-    }
   }
 
   /// 優化用戶訊息
@@ -6226,18 +6230,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           // 新訊息提示 (根據最後一則是誰來顯示不同內容)
                           if (conversation.messages.isNotEmpty &&
-                              conversation.messages.length >
-                                  _lastAnalyzedMessageCount) ...[
+                              _pendingMessageCount(conversation) > 0) ...[
                             const SizedBox(height: 16),
                             Builder(
                               builder: (context) {
                                 final lastIsFromMe =
                                     conversation.messages.last.isFromMe;
-                                final newCount = conversation.messages.length -
-                                    _lastAnalyzedMessageCount;
+                                final pendingCount =
+                                    _pendingMessageCount(conversation);
 
                                 if (lastIsFromMe) {
-                                  // 最後是「我說」→ 仍可分析，但以前一則她的訊息為基準
+                                  // 最後是「我說」→ 只記錄，不預測她可能怎麼回。
                                   return Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
@@ -6255,17 +6258,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            '有 $newCount 則新訊息，會以前一則她的回覆作為分析基準。',
+                                            '有 $pendingCount 則新訊息，最後一則是你說。等她回覆後再按分析會比較準；現在不會自動預測她怎麼回。',
                                             style: AppTypography.bodyMedium,
                                           ),
-                                        ),
-                                        TextButton.icon(
-                                          onPressed: _isAnalyzing
-                                              ? null
-                                              : _runAnalysis,
-                                          icon: const Icon(Icons.refresh,
-                                              size: 18),
-                                          label: const Text('繼續分析'),
                                         ),
                                       ],
                                     ),
@@ -6289,7 +6284,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            '有 $newCount 則新訊息',
+                                            '有 $pendingCount 則新訊息，可以更新下一步建議。',
                                             style: AppTypography.bodyMedium,
                                           ),
                                         ),
@@ -6299,7 +6294,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               : _runAnalysis,
                                           icon: const Icon(Icons.refresh,
                                               size: 18),
-                                          label: const Text('重新分析'),
+                                          label: const Text('分析新增內容'),
                                         ),
                                       ],
                                     ),
@@ -6307,37 +6302,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 }
                               },
                             ),
-                          ],
-
-                          // 「我說」話題延續分析結果（Essential 專屬）
-                          if (_isAnalyzingMyMessage) ...[
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: AppColors.primary
-                                        .withValues(alpha: 0.2)),
-                              ),
-                              child: const Column(
-                                children: [
-                                  SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text('分析話題延續方向...'),
-                                ],
-                              ),
-                            ),
-                          ] else if (_myMessageAnalysis != null) ...[
-                            const SizedBox(height: 16),
-                            _buildMyMessageAnalysisCard(),
                           ],
 
                           const SizedBox(height: 24),
@@ -6628,161 +6592,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 建立「我說」話題延續分析卡片
-  Widget _buildMyMessageAnalysisCard() {
-    final analysis = _myMessageAnalysis!;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary.withValues(alpha: 0.1),
-            AppColors.primary.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('💡', style: TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
-              Text('話題延續建議', style: AppTypography.titleLarge),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // 如果她冷淡回覆
-          if (analysis.ifColdResponse.suggestion.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Text('😐', style: TextStyle(fontSize: 16)),
-                      const SizedBox(width: 8),
-                      Text('如果她冷淡回覆',
-                          style: AppTypography.bodyMedium
-                              .copyWith(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  if (analysis.ifColdResponse.prediction.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '她可能說：「${analysis.ifColdResponse.prediction}」',
-                      style: AppTypography.caption
-                          .copyWith(fontStyle: FontStyle.italic),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(
-                    '→ ${analysis.ifColdResponse.suggestion}',
-                    style: AppTypography.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // 如果她熱情回覆
-          if (analysis.ifWarmResponse.suggestion.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Text('😊', style: TextStyle(fontSize: 16)),
-                      const SizedBox(width: 8),
-                      Text('如果她熱情回覆',
-                          style: AppTypography.bodyMedium
-                              .copyWith(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  if (analysis.ifWarmResponse.prediction.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '她可能說：「${analysis.ifWarmResponse.prediction}」',
-                      style: AppTypography.caption
-                          .copyWith(fontStyle: FontStyle.italic),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(
-                    '→ ${analysis.ifWarmResponse.suggestion}',
-                    style: AppTypography.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // 備用話題
-          if (analysis.backupTopics.isNotEmpty) ...[
-            Text('📚 備用話題',
-                style: AppTypography.bodyMedium
-                    .copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ...analysis.backupTopics.map((topic) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('•', style: TextStyle(fontSize: 14)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: Text(topic, style: AppTypography.bodyMedium)),
-                    ],
-                  ),
-                )),
-          ],
-
-          // 注意事項
-          if (analysis.warnings.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            ...analysis.warnings.map((warning) => Container(
-                  margin: const EdgeInsets.only(bottom: 4),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.warning_amber,
-                          size: 14, color: AppColors.error),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(warning,
-                            style: AppTypography.caption
-                                .copyWith(color: AppColors.error)),
-                      ),
-                    ],
-                  ),
-                )),
-          ],
-        ],
       ),
     );
   }

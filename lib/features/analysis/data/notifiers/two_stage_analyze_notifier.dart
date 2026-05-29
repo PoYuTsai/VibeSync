@@ -37,6 +37,7 @@ class TwoStageAnalysisState {
   final String? fullErrorMessage;
   final String? fullErrorCode;
   final int retriesRemaining;
+  final int? conversationMessageCount;
 
   const TwoStageAnalysisState({
     required this.phase,
@@ -48,6 +49,7 @@ class TwoStageAnalysisState {
     this.fullErrorMessage,
     this.fullErrorCode,
     this.retriesRemaining = 0,
+    this.conversationMessageCount,
   });
 
   const TwoStageAnalysisState.idle() : this(phase: TwoStagePhase.idle);
@@ -68,12 +70,12 @@ class TwoStageAnalysisState {
     Object? fullErrorMessage = _unset,
     Object? fullErrorCode = _unset,
     int? retriesRemaining,
+    Object? conversationMessageCount = _unset,
   }) {
     return TwoStageAnalysisState(
       phase: phase ?? this.phase,
-      quick: identical(quick, _unset)
-          ? this.quick
-          : quick as QuickAnalysisResult?,
+      quick:
+          identical(quick, _unset) ? this.quick : quick as QuickAnalysisResult?,
       full: identical(full, _unset) ? this.full : full as AnalysisResult?,
       analysisRunId: identical(analysisRunId, _unset)
           ? this.analysisRunId
@@ -91,6 +93,9 @@ class TwoStageAnalysisState {
           ? this.fullErrorCode
           : fullErrorCode as String?,
       retriesRemaining: retriesRemaining ?? this.retriesRemaining,
+      conversationMessageCount: identical(conversationMessageCount, _unset)
+          ? this.conversationMessageCount
+          : conversationMessageCount as int?,
     );
   }
 }
@@ -120,6 +125,7 @@ class TwoStageAnalyzeNotifier
   String? _cachedEffectiveStyleContext;
   String? _cachedKnownContactName;
   int? _cachedPreviousAnalyzedCount;
+  int? _cachedConversationMessageCount;
 
   @override
   TwoStageAnalysisState build(String conversationId) {
@@ -140,6 +146,7 @@ class TwoStageAnalyzeNotifier
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? conversationMessageCount,
   }) async {
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
@@ -153,8 +160,12 @@ class TwoStageAnalyzeNotifier
     _cachedEffectiveStyleContext = effectiveStyleContext;
     _cachedKnownContactName = knownContactName;
     _cachedPreviousAnalyzedCount = previousAnalyzedCount;
+    _cachedConversationMessageCount = conversationMessageCount;
 
-    state = const TwoStageAnalysisState(phase: TwoStagePhase.runningQuick);
+    state = TwoStageAnalysisState(
+      phase: TwoStagePhase.runningQuick,
+      conversationMessageCount: conversationMessageCount,
+    );
 
     final QuickAnalysisResult quick;
     try {
@@ -169,13 +180,13 @@ class TwoStageAnalyzeNotifier
       );
     } on Exception catch (e) {
       if (myGen != _generation) return;
-      final message =
-          e is AnalysisException ? e.message : '快速分析失敗，請稍後再試。';
+      final message = e is AnalysisException ? e.message : '快速分析失敗，請稍後再試。';
       final code = e is AnalysisException ? e.code : null;
       state = TwoStageAnalysisState(
         phase: TwoStagePhase.quickFailed,
         quickErrorMessage: message,
         quickErrorCode: code,
+        conversationMessageCount: conversationMessageCount,
       );
       return;
     }
@@ -186,6 +197,7 @@ class TwoStageAnalyzeNotifier
       phase: TwoStagePhase.quickReady,
       quick: quick,
       analysisRunId: quick.analysisRunId,
+      conversationMessageCount: conversationMessageCount,
     );
 
     await _runFull(
@@ -198,6 +210,7 @@ class TwoStageAnalyzeNotifier
       effectiveStyleContext: effectiveStyleContext,
       knownContactName: knownContactName,
       previousAnalyzedCount: previousAnalyzedCount,
+      conversationMessageCount: conversationMessageCount,
     );
   }
 
@@ -222,6 +235,7 @@ class TwoStageAnalyzeNotifier
       fullErrorMessage: null,
       fullErrorCode: null,
       retriesRemaining: 0,
+      conversationMessageCount: _cachedConversationMessageCount,
     );
 
     await _runFull(
@@ -234,6 +248,7 @@ class TwoStageAnalyzeNotifier
       effectiveStyleContext: _cachedEffectiveStyleContext,
       knownContactName: _cachedKnownContactName,
       previousAnalyzedCount: _cachedPreviousAnalyzedCount,
+      conversationMessageCount: _cachedConversationMessageCount,
     );
   }
 
@@ -247,6 +262,7 @@ class TwoStageAnalyzeNotifier
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? conversationMessageCount,
   }) async {
     if (generation != _generation) return;
     // Clear any stale error fields on every full attempt so invariants
@@ -258,6 +274,7 @@ class TwoStageAnalyzeNotifier
       fullErrorMessage: null,
       fullErrorCode: null,
       retriesRemaining: 0,
+      conversationMessageCount: conversationMessageCount,
     );
 
     try {
@@ -278,6 +295,7 @@ class TwoStageAnalyzeNotifier
         fullErrorMessage: null,
         fullErrorCode: null,
         retriesRemaining: 0,
+        conversationMessageCount: conversationMessageCount,
       );
     } on FullModeException catch (e) {
       if (generation != _generation) return;
@@ -286,16 +304,16 @@ class TwoStageAnalyzeNotifier
         fullErrorMessage: e.message,
         fullErrorCode: e.code,
         retriesRemaining: e.retriesRemaining,
+        conversationMessageCount: conversationMessageCount,
       );
     } on Exception catch (e) {
       if (generation != _generation) return;
       state = state.copyWith(
         phase: TwoStagePhase.fullFailed,
-        fullErrorMessage: e is AnalysisException
-            ? e.message
-            : '完整分析失敗，可以重試。',
+        fullErrorMessage: e is AnalysisException ? e.message : '完整分析失敗，可以重試。',
         fullErrorCode: e is AnalysisException ? e.code : null,
         retriesRemaining: 0,
+        conversationMessageCount: conversationMessageCount,
       );
     }
   }

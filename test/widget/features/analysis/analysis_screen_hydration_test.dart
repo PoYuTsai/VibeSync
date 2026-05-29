@@ -179,6 +179,7 @@ Conversation _conversation({
   String? lastAnalysisSnapshotJson,
   int? lastAnalyzedMessageCount,
   int? lastEnthusiasmScore,
+  List<Message>? extraMessages,
 }) {
   return Conversation(
     id: _conversationId,
@@ -190,6 +191,7 @@ Conversation _conversation({
         isFromMe: false,
         timestamp: DateTime(2026, 5, 28, 12),
       ),
+      ...?extraMessages,
     ],
     createdAt: DateTime(2026, 5, 28, 12),
     updatedAt: DateTime(2026, 5, 28, 12),
@@ -640,4 +642,50 @@ void main() {
       );
     },
   );
+
+  group('AnalysisScreen two-stage stale result guard for newly added messages',
+      () {
+    testWidgets(
+      'fullReady for an older message count keeps quick preview and skips stale persist',
+      (tester) async {
+        final raw = _fullRawResponse();
+        final conversationWithNewMessage = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+          extraMessages: [
+            Message(
+              id: 'm2',
+              content: '我剛剛回她了',
+              isFromMe: true,
+              timestamp: DateTime(2026, 5, 28, 12, 1),
+            ),
+          ],
+        );
+
+        final harness = await _pumpHydratedAnalysisScreenWithRepo(
+          tester,
+          seed: TwoStageAnalysisState(
+            phase: TwoStagePhase.fullReady,
+            quick: _quick(runId: 'run_stale_message_count'),
+            full: _fullWithRawResponse(raw),
+            analysisRunId: 'run_stale_message_count',
+            conversationMessageCount: 1,
+          ),
+          conversation: conversationWithNewMessage,
+        );
+
+        expect(find.byType(CoachActionCard), findsOneWidget);
+        expect(find.byType(FullAnalysisRetryCard), findsOneWidget,
+            reason:
+                'Older full result must not render as the current detailed report after the user adds messages.');
+        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
+        expect(harness.repo.updateCalls, 0,
+            reason:
+                'Stale full result must not persist or advance analyzed count.');
+        expect(harness.recorder.quickCalls, 0);
+        expect(harness.recorder.fullCalls, 0);
+      },
+    );
+  });
 }

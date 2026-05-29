@@ -153,7 +153,10 @@ void main() {
       final notifier =
           container.read(twoStageAnalyzeProvider('conv-1').notifier);
 
-      final startFuture = notifier.start(messages: [_msg('hi')]);
+      final startFuture = notifier.start(
+        messages: [_msg('hi')],
+        conversationMessageCount: 3,
+      );
 
       // Allow quick to resolve and the runningFull transition to land.
       await Future<void>.delayed(Duration.zero);
@@ -163,12 +166,14 @@ void main() {
       expect(afterQuick.phase, TwoStagePhase.runningFull);
       expect(afterQuick.quick?.analysisRunId, 'run_happy');
       expect(afterQuick.analysisRunId, 'run_happy');
+      expect(afterQuick.conversationMessageCount, 3);
 
       fake.fullGate!.complete();
       await startFuture;
 
       final afterFull = container.read(twoStageAnalyzeProvider('conv-1'));
       expect(afterFull.phase, TwoStagePhase.fullReady);
+      expect(afterFull.conversationMessageCount, 3);
       expect(afterFull.full?.strategy, '保持沉穩');
 
       expect(
