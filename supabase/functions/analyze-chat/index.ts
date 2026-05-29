@@ -5,9 +5,9 @@ import {
   type AnalysisResult as GuardrailAnalysisResult,
   checkAiOutput,
   checkInput,
-  getSafeReplies,
   SAFETY_RULES,
 } from "./guardrails.ts";
+import { postProcessAnalysisResult } from "./post_process.ts";
 import {
   AiServiceError,
   callClaudeWithFallback,
@@ -21,6 +21,28 @@ import {
 } from "./opener_profile.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
+import {
+  normalizeRequestMode,
+  type ResponseMode,
+  shouldRejectFullMode,
+} from "./request_mode.ts";
+import {
+  AnalysisRunStore,
+  createSupabaseAnalysisRunDriver,
+  MAX_FULL_RETRIES,
+} from "./analysis_run_store.ts";
+import { hashConversation } from "./conversation_hash.ts";
+import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
+import {
+  applyQuickGuardrails,
+  estimateFullSeconds,
+  parseQuickResponse,
+} from "./quick_response.ts";
+import {
+  buildFullPromptAnchor,
+  parseFullPayload,
+} from "./full_response.ts";
+import { detectAnchorDrift } from "./anchor_drift.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -618,436 +640,6 @@ function deriveRequestType({
   return "analyze";
 }
 
-function getSafeReplyLevelFromScore(score: number): string {
-  if (score <= 30) return "cold";
-  if (score <= 60) return "warm";
-  if (score <= 80) return "hot";
-  return "very_hot";
-}
-
-function looksLikeRawModelPayload(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-
-  const lower = trimmed.toLowerCase();
-  if (trimmed.startsWith("```") || lower.includes("```json")) {
-    return true;
-  }
-
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    return false;
-  }
-
-  return [
-    '"replies"',
-    '"replyoptions"',
-    '"finalrecommendation"',
-    '"profileanalysis"',
-    '"coachactionhint"',
-    '"openers"',
-    '"card"',
-    '"responsetype"',
-  ].some((marker) => lower.includes(marker));
-}
-
-function normalizeAiText(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const normalized = value
-    .replace(/\r\n/g, "\n")
-    .replace(/\u200b/g, "")
-    .trim();
-
-  return looksLikeRawModelPayload(normalized) ? "" : normalized;
-}
-
-function normalizeReplyTextValue(value: unknown): string {
-  if (typeof value === "string") {
-    return normalizeAiText(value);
-  }
-
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  const record = value as Record<string, unknown>;
-  const direct = normalizeAiText(
-    record.reply ?? record.content ?? record.text ?? record.suggestion,
-  );
-  if (direct.length > 0) {
-    return direct;
-  }
-
-  return sanitizeReplySegments(
-    record.messages ?? record.messageGroup ?? record.replySegments,
-  )
-    .map((segment) => segment.reply)
-    .filter((reply) => reply.trim().length > 0)
-    .join("\n")
-    .trim();
-}
-
-function sanitizeReplies(
-  rawReplies: unknown,
-  allowedFeatures: string[],
-): Record<string, string> {
-  if (!rawReplies || typeof rawReplies !== "object") {
-    return {};
-  }
-
-  const filteredReplies: Record<string, string> = {};
-  for (const feature of allowedFeatures) {
-    const value = normalizeReplyTextValue(
-      (rawReplies as Record<string, unknown>)[feature],
-    );
-    if (value.length > 0) {
-      filteredReplies[feature] = value;
-    }
-  }
-
-  return filteredReplies;
-}
-
-const COACH_ACTION_HINT_ACTION_TYPES = new Set([
-  "softInvite",
-  "lowerPressureReply",
-  "extendTopicStoryFrame",
-  "emotionalResonance",
-  "rightSizeReply",
-  "playfulReply",
-  "pausePursuit",
-  "preferenceSignal",
-  "fitCheck",
-]);
-
-const COACH_ACTION_HINT_CONFIDENCE = new Set(["high", "medium", "low"]);
-
-function clampNormalizedText(value: unknown, maxLength: number): string {
-  const normalized = normalizeAiText(value).replace(/\s+/g, " ");
-  return normalized.length > maxLength
-    ? normalized.slice(0, maxLength).trim()
-    : normalized;
-}
-
-function sanitizeCoachActionHint(
-  rawHint: unknown,
-): Record<string, string> | undefined {
-  if (!rawHint || typeof rawHint !== "object") {
-    return undefined;
-  }
-
-  const hint = rawHint as Record<string, unknown>;
-  const catchablePoint = clampNormalizedText(hint.catchablePoint, 80);
-  const read = clampNormalizedText(hint.read, 120);
-  const microMove = clampNormalizedText(hint.microMove, 120);
-  const avoid = clampNormalizedText(hint.avoid, 100);
-  const actionType = clampNormalizedText(hint.actionType, 40);
-  const confidence = clampNormalizedText(hint.confidence, 20).toLowerCase();
-
-  if (
-    catchablePoint.length === 0 ||
-    read.length === 0 ||
-    microMove.length === 0 ||
-    avoid.length === 0
-  ) {
-    return undefined;
-  }
-
-  return {
-    catchablePoint,
-    read,
-    microMove,
-    avoid,
-    actionType: COACH_ACTION_HINT_ACTION_TYPES.has(actionType)
-      ? actionType
-      : "extendTopicStoryFrame",
-    confidence: COACH_ACTION_HINT_CONFIDENCE.has(confidence)
-      ? confidence
-      : "medium",
-  };
-}
-
-function buildFallbackRecommendationText(
-  pick: string,
-): { reason: string; psychology: string } {
-  switch (pick) {
-    case "resonate":
-      return {
-        reason: "它先接住對方當下的感受，再留一個不吃力的下一球。",
-        psychology: "對方會比較容易感覺你有在聽，而不是急著把話題帶走。",
-      };
-    case "tease":
-      return {
-        reason: "它有一點玩笑和張力，但沒有把尺度推太快。",
-        psychology: "對方可以輕鬆接招，也保留轉回日常聊天的退路。",
-      };
-    case "humor":
-      return {
-        reason: "它用輕鬆畫面接住話題，讓對方比較容易順著笑一下再回。",
-        psychology: "壓力低、畫面清楚的回覆，比硬問問題更容易延續聊天。",
-      };
-    case "coldRead":
-      return {
-        reason: "它根據對方剛給的線索做溫和猜測，讓她有空間補充或修正。",
-        psychology: "好的猜測會讓對方覺得被看見，但不會像被貼標籤。",
-      };
-    case "extend":
-    default:
-      return {
-        reason: "它順著目前最值得接的球往下聊，不會突然換題或查戶口。",
-        psychology: "低壓、具體、好回的句子，更容易讓對方自然接下一輪。",
-      };
-  }
-}
-
-function sanitizeReplySegments(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const segments = [];
-  for (const item of value.slice(0, 3)) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-
-    const record = item as Record<string, unknown>;
-    const reply = normalizeAiText(record.reply);
-    if (reply.length === 0) {
-      continue;
-    }
-
-    const rawSourceIndex = Number(record.sourceIndex);
-    const sourceIndex = Number.isFinite(rawSourceIndex) && rawSourceIndex > 0
-      ? Math.floor(rawSourceIndex)
-      : undefined;
-
-    segments.push({
-      ...(sourceIndex != null ? { sourceIndex } : {}),
-      label: normalizeAiText(record.label).slice(0, 24),
-      sourceMessage: normalizeAiText(record.sourceMessage).slice(0, 120),
-      reply,
-      reason: normalizeAiText(record.reason).slice(0, 120),
-    });
-  }
-
-  return segments;
-}
-
-function buildReplyOptionFallbackApproach(feature: string): string {
-  switch (feature) {
-    case "resonate":
-      return "接法：先接住她的情緒或狀態，再補一點你的感受，讓她覺得被理解。";
-    case "tease":
-      return "接法：用安全的誤讀或輕推拉增加互動感，但保留退路，不要突然升級。";
-    case "humor":
-      return "接法：用自嘲或荒謬畫面接住她的內容，讓對話變輕鬆、好回。";
-    case "coldRead":
-      return "接法：根據她剛說的線索做溫和猜測，留空間讓她修正或補充。";
-    case "extend":
-    default:
-      return "接法：接住最有畫面或情緒的球，補一點你的反應，再丟回低壓下一球。";
-  }
-}
-
-function sanitizeReplyOption(
-  rawOption: unknown,
-  feature: string,
-  fallbackText = "",
-) {
-  const option = rawOption && typeof rawOption === "object"
-    ? rawOption as Record<string, unknown>
-    : {};
-  const approach = clampNormalizedText(
-    option.approach ?? option.strategy ?? option.why ?? option.reason,
-    140,
-  );
-  let messages = sanitizeReplySegments(
-    option.messages ?? option.messageGroup ?? option.replySegments,
-  );
-
-  if (messages.length === 0) {
-    const reply = normalizeReplyTextValue(
-      option.reply ?? option.content ?? option.text ?? fallbackText,
-    );
-    if (reply.length > 0) {
-      messages = [
-        {
-          label: "建議訊息",
-          sourceMessage: "",
-          reply,
-          reason: "",
-        },
-      ];
-    }
-  }
-
-  const safeApproach = approach.length > 0
-    ? approach
-    : buildReplyOptionFallbackApproach(feature);
-
-  if (messages.length === 0 && safeApproach.length === 0) {
-    return undefined;
-  }
-
-  return {
-    approach: safeApproach,
-    messages,
-  };
-}
-
-function sanitizeReplyOptions(
-  rawOptions: unknown,
-  allowedFeatures: string[],
-  replies: Record<string, string>,
-) {
-  const filteredOptions: Record<
-    string,
-    { approach: string; messages: ReturnType<typeof sanitizeReplySegments> }
-  > = {};
-
-  const optionMap = rawOptions && typeof rawOptions === "object"
-    ? rawOptions as Record<string, unknown>
-    : {};
-
-  for (const feature of allowedFeatures) {
-    const option = sanitizeReplyOption(
-      optionMap[feature],
-      feature,
-      replies[feature],
-    );
-    if (option != null) {
-      filteredOptions[feature] = option;
-    }
-  }
-
-  return filteredOptions;
-}
-
-function repliesFromReplyOptions(
-  replyOptions: Record<
-    string,
-    { approach: string; messages: ReturnType<typeof sanitizeReplySegments> }
-  >,
-) {
-  const replies: Record<string, string> = {};
-  for (const [feature, option] of Object.entries(replyOptions)) {
-    const text = option.messages
-      .map((segment) => segment.reply)
-      .filter((reply) => reply.trim().length > 0)
-      .join("\n")
-      .trim();
-    if (text.length > 0) {
-      replies[feature] = text;
-    }
-  }
-  return replies;
-}
-
-function ensureNonEmptyAnalysisOutput({
-  result,
-  recognizeOnly,
-  isMyMessageMode,
-  allowedFeatures,
-}: {
-  result: Record<string, unknown>;
-  recognizeOnly: boolean;
-  isMyMessageMode: boolean;
-  allowedFeatures: string[];
-}) {
-  if (recognizeOnly || isMyMessageMode) {
-    return result;
-  }
-
-  const enthusiasmScore = Number(
-    (result.enthusiasm as { score?: unknown } | undefined)?.score ?? 50,
-  );
-  let replyOptions = sanitizeReplyOptions(
-    result.replyOptions,
-    allowedFeatures,
-    {},
-  );
-  let replies = sanitizeReplies(result.replies, allowedFeatures);
-  if (
-    Object.keys(replies).length === 0 &&
-    Object.keys(replyOptions).length > 0
-  ) {
-    replies = repliesFromReplyOptions(replyOptions);
-  }
-
-  if (Object.keys(replies).length === 0) {
-    const safeReplies = getSafeReplies(
-      getSafeReplyLevelFromScore(enthusiasmScore),
-    );
-    replies = sanitizeReplies(safeReplies, allowedFeatures);
-  }
-  replyOptions = sanitizeReplyOptions(
-    result.replyOptions,
-    allowedFeatures,
-    replies,
-  );
-
-  const preferredPick = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)?.pick,
-  );
-  const preferredContent = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)
-      ?.content,
-  );
-  const preferredReason = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)?.reason,
-  );
-  const preferredPsychology = normalizeAiText(
-    (result.finalRecommendation as Record<string, unknown> | undefined)
-      ?.psychology,
-  );
-  const preferredSegments = sanitizeReplySegments(
-    (result.finalRecommendation as Record<string, unknown> | undefined)
-      ?.replySegments,
-  );
-
-  const fallbackPick = preferredPick.length > 0 &&
-      replies[preferredPick] != null
-    ? preferredPick
-    : (allowedFeatures.find(
-      (feature) => (replies[feature]?.trim().length ?? 0) > 0,
-    ) ?? "extend");
-  const replyMappedContent = normalizeAiText(replies[fallbackPick]);
-  const fallbackOptionSegments = replyOptions[fallbackPick]?.messages ?? [];
-  const effectiveSegments = preferredSegments.length > 0
-    ? preferredSegments
-    : fallbackOptionSegments;
-  const segmentMappedContent = effectiveSegments
-    .map((segment) => segment.reply)
-    .join("\n");
-  const fallbackContent = replyMappedContent.length > 0
-    ? replyMappedContent
-    : (preferredPick === fallbackPick
-      ? (preferredContent.length > 0 ? preferredContent : segmentMappedContent)
-      : "");
-  const fallbackExplanation = buildFallbackRecommendationText(fallbackPick);
-  const guaranteedContent = fallbackContent.length > 0
-    ? fallbackContent
-    : "先順著她這句往下接，保持自然、好回覆的節奏就好。";
-
-  result.replies = replies;
-  result.replyOptions = replyOptions;
-  result.finalRecommendation = {
-    pick: fallbackPick,
-    content: guaranteedContent,
-    reason: preferredReason.length > 0
-      ? preferredReason
-      : fallbackExplanation.reason,
-    psychology: preferredPsychology.length > 0
-      ? preferredPsychology
-      : fallbackExplanation.psychology,
-    replySegments: effectiveSegments,
-  };
-
-  return result;
-}
 
 function buildQuotaUsageMetadata({
   requestType,
@@ -4507,7 +4099,53 @@ serve(async (req) => {
       previousAnalyzedCount: rawPreviousAnalyzedCount,
       expectedTier: rawExpectedTier,
       revenueCatAppUserId: rawRevenueCatAppUserId,
+      responseMode: rawResponseMode,
+      analysisRunId: rawAnalysisRunId,
     } = requestBody;
+
+    // Two-stage analyze routing (Phase 1.2):
+    //   "quick"  → 新 fast path（Haiku + 短 prompt + analysis_runs row）
+    //   "full"   → 帶 analysisRunId 完成 deep analyze，不再扣 quota
+    //   "legacy" → build 211 行為（I10 backwards compat for old clients）
+    // 任何非預期 responseMode 值一律 fall back 到 legacy，避免新欄位讓舊客戶端炸掉。
+    const { responseMode, analysisRunId }: {
+      responseMode: ResponseMode;
+      analysisRunId: string | null;
+    } = normalizeRequestMode({
+      responseMode: rawResponseMode,
+      analysisRunId: rawAnalysisRunId,
+    });
+
+    // ------------------------------------------------------------------
+    // Phase 1.3 (Codex round-2) — early MISSING_RUN_ID bounce.
+    // Phase 2.1 — full+runId now flows through to the real handler below.
+    // ------------------------------------------------------------------
+    // Why early: a full request with NO runId is unrecoverable. We don't
+    // want to pay for subscription lookup / hash / DB / Claude work to
+    // reject something the request shape alone can refuse. A user whose
+    // quick mode just exhausted their quota also needs to get 400 here,
+    // not 429 from the quota preflight (full is not quota-gated — see
+    // the `responseMode !== "full"` skips on the preflights below).
+    //
+    // The full handler with valid runId lives next to the quick branch
+    // (~line 6080) and uses `AnalysisRunStore.validateRunForFull` for
+    // the runId / owner / hash / expiry / charged checks.
+    const fullRejection = shouldRejectFullMode({ responseMode, analysisRunId });
+    if (fullRejection.reject) {
+      logInfo("full_mode_rejected_missing_run_id", {
+        user: summarizeUser(user.id),
+      });
+      return jsonResponse(
+        {
+          error: fullRejection.code,
+          code: fullRejection.code,
+          message:
+            "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
+          retryable: false,
+        },
+        fullRejection.status,
+      );
+    }
 
     if (rawRecognizeOnly != null && typeof rawRecognizeOnly !== "boolean") {
       return jsonResponse({ error: "Invalid recognizeOnly" }, 400);
@@ -4761,8 +4399,15 @@ serve(async (req) => {
         "client_expected_paid_tier",
       );
     }
+    // Phase 2.1 — `responseMode === "full"` skips the monthly/daily
+    // preflight: quick already charged via atomic RPC and the run row
+    // exists, so the post-quick full call MUST NOT be 429'd just because
+    // quick's charge pushed the user to the cap. I1 (single charge) is
+    // enforced by full not calling increment_usage. The full handler
+    // validates the run via AnalysisRunStore.validateRunForFull instead.
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      responseMode !== "full" &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -4790,9 +4435,10 @@ serve(async (req) => {
       }
     }
 
-    // Check daily limit (測試帳號跳過)
+    // Check daily limit (測試帳號跳過, full mode 跳過 — 同上)
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
+      responseMode !== "full" &&
       sub.daily_messages_used >= dailyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5465,6 +5111,7 @@ ${recentText}`;
       quotaUsage.chargedMessageCount;
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      responseMode !== "full" &&
       projectedMonthlyUsage > monthlyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5494,6 +5141,7 @@ ${recentText}`;
     }
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
+      responseMode !== "full" &&
       projectedDailyUsage > dailyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5658,6 +5306,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const requestObservability = {
       requestType,
       analyzeMode,
+      // Phase 2.3 — surface routing decision on every ai_logs row regardless
+      // of which branch ends up calling logAiCall. Quick / full branches
+      // still spread an explicit `responseMode` override for greppability,
+      // but the legacy fall-through path now inherits "legacy" automatically.
+      responseMode,
+      analysisRunId,
       hasImages,
       recognizeOnly,
       hasUserDraft:
@@ -5681,6 +5335,704 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       conversationSummaryUsed: !!conversationSummary,
       contextMode: compiledContextMode,
     };
+
+    // Note: `responseMode === "full"` was already rejected by
+    // shouldRejectFullMode() near line ~4530 (above subscription lookup +
+    // quota preflight). By the time control reaches here, responseMode is
+    // either "quick" or "legacy". Do not add a second full-mode branch
+    // — there is exactly one rejection site so Codex can grep for it.
+
+    // ------------------------------------------------------------------
+    // Phase 1.3 — Two-stage analyze: QUICK branch.
+    // ------------------------------------------------------------------
+    //
+    // When `responseMode === "quick"`:
+    //   - force Haiku 4.5 regardless of tier/forceModel
+    //   - use the slim QUICK_SYSTEM_PROMPT (~3.6 KB) + 400 max_tokens
+    //   - 15s timeout, no model fallback (per plan D6: don't auto-fallback)
+    //   - on Claude success → parse + guardrail + hash + atomic charge + insert
+    //     row via AnalysisRunStore.createChargedRun
+    //   - on Claude failure / parse failure: return BEFORE the DB call so no
+    //     row is inserted and no quota is charged (I8)
+    //
+    // legacy + full both fall through to the existing handler below (Phase
+    // 2.1 will branch full into its own block; until then full requests use
+    // the legacy path defensively — no quota bypass risk since the legacy
+    // path always charges).
+    if (responseMode === "quick") {
+      const quickModel = "claude-haiku-4-5-20251001";
+      const quickTimeoutMs = 15000;
+      const quickStart = Date.now();
+
+      // Codex P2 scope clarification (build 213): vision quick is deliberately
+      // OUT OF SCOPE — see docs/plans/2026-05-28-two-stage-analyze.md §Out of
+      // Scope. Screenshot/OCR analyze keeps using the legacy single-call path
+      // (~18-25s) because:
+      //   - Haiku 4.5 vision quality on tightly-cropped chat screenshots has
+      //     not been calibrated against the Sonnet OCR baseline (28c0965).
+      //   - Quick path's 15s hard budget is too tight for vision inference.
+      //   - The 3-5s "perceived latency" promise applies to manual-text quick;
+      //     OCR users already accept the longer wait today.
+      // Client SDK must NOT send `responseMode=quick` when uploading images.
+      // Old build-211 clients (no responseMode field) never hit this branch —
+      // they fall through to legacy unchanged.
+      if (hasImages) {
+        logWarn("quick_mode_rejected_images", {
+          user: summarizeUser(user.id),
+          imageCount: images.length,
+        });
+        return jsonResponse(
+          {
+            error: "QUICK_MODE_IMAGES_UNSUPPORTED",
+            code: "QUICK_MODE_IMAGES_UNSUPPORTED",
+            message:
+              "圖片分析尚未支援快速模式，請使用完整模式（responseMode=legacy 或省略此欄位）。",
+          },
+          400,
+        );
+      }
+
+      logInfo("quick_request_started", {
+        user: summarizeUser(user.id),
+        model: quickModel,
+        timeoutMs: quickTimeoutMs,
+        analysisRunIdProvided: !!analysisRunId,
+        requestType,
+      });
+
+      let quickClaude;
+      try {
+        quickClaude = await callClaudeWithFallback(
+          {
+            model: quickModel,
+            max_tokens: 400,
+            system: QUICK_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: userPrompt }],
+          },
+          CLAUDE_API_KEY,
+          {
+            timeout: quickTimeoutMs,
+            allowModelFallback: false,
+            // Codex P1-1 review fix: callClaudeWithFallback defaults to
+            // maxRetries=2, which would let a flaky upstream burn 2 × 15s = 30s
+            // and torpedo the "perceived 3-5s" promise. Pin to 1 attempt so the
+            // wall-clock hard budget stays at `quickTimeoutMs`. If the upstream
+            // fails once, surface the error and let the client retry the whole
+            // quick request — D6 forbids auto-fallback to legacy anyway.
+            maxRetries: 1,
+          },
+        );
+      } catch (error) {
+        // I8: Claude failure → no row, no charge. Surface the error so the
+        // client can show a generic retry CTA (per D6, no auto-fallback to legacy).
+        const latencyMs = Date.now() - quickStart;
+        const code = error instanceof AiServiceError ? error.code : "QUICK_AI_FAILED";
+        const message = error instanceof AiServiceError ? error.message : "快速分析暫時失敗，請再試一次。";
+        const retryable = error instanceof AiServiceError ? error.retryable : true;
+        logWarn("quick_request_failed", {
+          user: summarizeUser(user.id),
+          latencyMs,
+          code,
+          message,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: quickModel,
+          requestType,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs,
+          status: "failed",
+          errorCode: code,
+          errorMessage: message,
+          requestBody: { ...requestObservability, responseMode: "quick" },
+          responseBody: { failureStage: "quick_upstream", retryable },
+        });
+        return jsonResponse(
+          { error: message, code, retryable },
+          502,
+        );
+      }
+
+      const quickData = quickClaude.data as {
+        content?: Array<{ text?: string }>;
+        [key: string]: unknown;
+      };
+      const quickText = quickData.content?.[0]?.text ?? "";
+      const quickTokenUsage = extractTokenUsage(quickData);
+      const quickLatencyMs = Date.now() - quickStart;
+
+      const parsed = parseQuickResponse(quickText);
+      if (!parsed.ok) {
+        // I8: parse failure also short-circuits before any DB write.
+        logWarn("quick_response_parse_failed", {
+          user: summarizeUser(user.id),
+          model: quickClaude.model,
+          error: parsed.error,
+          textLength: quickText.length,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: quickClaude.model,
+          requestType,
+          inputTokens: quickTokenUsage.inputTokens,
+          outputTokens: quickTokenUsage.outputTokens,
+          latencyMs: quickLatencyMs,
+          status: "failed",
+          errorCode: "QUICK_RESPONSE_INVALID",
+          errorMessage: parsed.error,
+          requestBody: { ...requestObservability, responseMode: "quick" },
+          responseBody: {
+            failureStage: "quick_parse",
+            parseError: parsed.error,
+          },
+        });
+        return jsonResponse(
+          {
+            error: "QUICK_RESPONSE_INVALID",
+            message: "這次快速分析格式異常，請再試一次。本次不會扣額度。",
+          },
+          502,
+        );
+      }
+
+      // I9: same safety guardrails on quick path.
+      const guarded = applyQuickGuardrails(parsed.payload);
+
+      // Hash the canonical request context. Phase 2.1 will re-hash on full
+      // and compare to detect drift (I5).
+      const conversationHashValue = await hashConversation({
+        messages,
+        userDraft,
+        partnerSummary,
+        sessionContext,
+        conversationSummary,
+        effectiveStyleContext,
+        knownContactName,
+      });
+
+      // Atomic charge + insert. The PL/pgSQL RPC wraps increment_usage +
+      // INSERT in one TX, so we never have a "charged but no row" state (the
+      // Phase 0 P1 fix). Test accounts skip the increment_usage call but still
+      // get a row so subsequent full calls can validate.
+      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest;
+      // The supabase-js client surface is wider than the AnalysisRunStore's
+      // MinimalSupabaseClient duck-type, but the shapes match at runtime; the
+      // duck-type stays narrow so unit tests can swap in an in-memory client.
+      const store = new AnalysisRunStore(
+        createSupabaseAnalysisRunDriver(
+          supabase as unknown as Parameters<
+            typeof createSupabaseAnalysisRunDriver
+          >[0],
+        ),
+      );
+      let createdRun;
+      try {
+        createdRun = await store.createChargedRun({
+          userId: user.id,
+          conversationHash: conversationHashValue,
+          quickResult: guarded.payload as unknown as Record<string, unknown>,
+          requestContext: {
+            responseMode: "quick",
+            requestType,
+            analyzeMode,
+            tier: effectiveTier,
+            isTestAccount: accountIsTest,
+            estimatedMessageCount: quotaUsage.estimatedMessageCount,
+            chargedMessageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+          },
+          chargeQuota: shouldCharge,
+          messageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+        });
+      } catch (error) {
+        // Atomic RPC failed — either DB outage, or increment_usage RAISED
+        // (quota race). The atomic TX guarantees nothing partially committed.
+        logError("quick_run_create_failed", {
+          user: summarizeUser(user.id),
+          error: getErrorMessage(error),
+          shouldCharge,
+        });
+        return jsonResponse(
+          {
+            error: "QUICK_RUN_CREATE_FAILED",
+            message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
+          },
+          500,
+        );
+      }
+
+      const fullModelForEta = hasImages
+        ? "claude-sonnet-4-20250514"
+        : isMyMessageMode
+        ? "claude-haiku-4-5-20251001"
+        : model;
+      const fullEtaSeconds = estimateFullSeconds({
+        model: fullModelForEta,
+        hasImages,
+        cacheHit: (quickTokenUsage.cacheReadTokens ?? 0) > 0,
+      });
+
+      logInfo("quick_request_succeeded", {
+        user: summarizeUser(user.id),
+        analysisRunId: createdRun.id,
+        model: quickClaude.model,
+        latencyMs: quickLatencyMs,
+        inputTokens: quickTokenUsage.inputTokens,
+        outputTokens: quickTokenUsage.outputTokens,
+        safetyFiltered: guarded.safetyFiltered,
+        chargedQuota: shouldCharge,
+      });
+
+      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        userId: user.id,
+        model: quickClaude.model,
+        requestType,
+        inputTokens: quickTokenUsage.inputTokens,
+        outputTokens: quickTokenUsage.outputTokens,
+        latencyMs: quickLatencyMs,
+        status: guarded.safetyFiltered ? "filtered" : "success",
+        fallbackUsed: quickClaude.fallbackUsed,
+        retryCount: quickClaude.retries,
+        requestBody: {
+          ...requestObservability,
+          responseMode: "quick",
+          analysisRunId: createdRun.id,
+        },
+        responseBody: {
+          filtered: guarded.safetyFiltered,
+          retries: quickClaude.retries,
+          fallbackUsed: quickClaude.fallbackUsed,
+          fullEtaSeconds,
+          cacheReadTokens: quickTokenUsage.cacheReadTokens ?? 0,
+          cacheCreationTokens: quickTokenUsage.cacheCreationTokens ?? 0,
+        },
+      });
+
+      const monthlyRemaining = accountIsTest
+        ? 999999
+        : Math.max(
+          0,
+          monthlyLimit - sub.monthly_messages_used -
+            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+        );
+      const dailyRemaining = accountIsTest
+        ? 999999
+        : Math.max(
+          0,
+          dailyLimit - sub.daily_messages_used -
+            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+        );
+
+      return jsonResponse({
+        responseMode: "quick",
+        analysisRunId: createdRun.id,
+        quickResult: guarded.payload,
+        estimatedFullSeconds: fullEtaSeconds,
+        safetyFiltered: guarded.safetyFiltered,
+        usage: {
+          messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+          estimatedMessages: quotaUsage.estimatedMessageCount,
+          monthlyRemaining,
+          dailyRemaining,
+          model: quickClaude.model,
+          tierUsed: effectiveTier,
+          isTestAccount: accountIsTest,
+          requestType,
+          shouldChargeQuota: shouldCharge,
+          quotaReason: quotaUsage.quotaReason,
+          quotaUnit: quotaUsage.quotaUnit,
+        },
+        telemetry: {
+          requestType,
+          serverAiLatencyMs: quickLatencyMs,
+          timeoutMs: quickTimeoutMs,
+          fallbackUsed: quickClaude.fallbackUsed,
+          retries: quickClaude.retries,
+          totalTokens:
+            (quickTokenUsage.inputTokens ?? 0) +
+            (quickTokenUsage.outputTokens ?? 0),
+        },
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 2.1 — Two-stage analyze: FULL branch.
+    // ------------------------------------------------------------------
+    // Preconditions enforced upstream:
+    //   - responseMode === "full" AND analysisRunId is non-empty
+    //     (shouldRejectFullMode bounced the empty case at line ~4559).
+    //   - Monthly/daily/projected quota preflights skipped earlier for
+    //     `responseMode !== "full"` so quick's charge doesn't 429 us.
+    //
+    // What this branch does, in order:
+    //   1. Reject images (vision is not part of two-stage in build 213).
+    //   2. Re-hash the canonical request context (must match what quick
+    //      stored, per I5).
+    //   3. validateRunForFull — pure read (owner / hash / expiry / charged).
+    //      Status code per validation error:
+    //        RUN_NOT_FOUND        → 404
+    //        RUN_FORBIDDEN        → 403
+    //        RUN_NOT_CHARGED      → 409 (defensive — atomic RPC makes this
+    //                               unreachable in production but we keep
+    //                               the test pin so future regressions fail
+    //                               loudly)
+    //        RUN_EXPIRED          → 410
+    //        RUN_CONVERSATION_MISMATCH → 409
+    //   4. reserveRetrySlot — atomic UPDATE that bumps retry_count BEFORE
+    //      the Claude call. 0 rows → 429 RUN_RETRY_EXHAUSTED. Reserving
+    //      first means every Claude attempt (success OR failure) consumes
+    //      one of the 3 slots — I6.
+    //   5. Build the ANCHOR block (plan I7: confirm/supplement/light-polish
+    //      only) and prepend it to the existing userPrompt.
+    //   6. Call Claude with selectedModel / SYSTEM_PROMPT / 30s timeout.
+    //      I1 — NO RPC. NO increment_usage. NO quota changes.
+    //   7. Parse + checkAiOutput guardrail (same safety swap as legacy).
+    //   8. detectAnchorDrift — warn-only telemetry; never blocks success.
+    //
+    // On Claude failure or parse failure the reservation IS consumed
+    // (already counted by step 4). Returning 502 with `retriesRemaining`
+    // lets the client decide whether to send another full request.
+    if (responseMode === "full") {
+      // Vision: quick already rejects images, so a run-from-quick can never
+      // have come from a vision request. Reject early with the same code
+      // for symmetry — saves a DB hit + Claude call on a malformed flow.
+      if (hasImages) {
+        logWarn("full_mode_rejected_images", {
+          user: summarizeUser(user.id),
+          imageCount: images.length,
+        });
+        return jsonResponse(
+          {
+            error: "FULL_MODE_IMAGES_UNSUPPORTED",
+            code: "FULL_MODE_IMAGES_UNSUPPORTED",
+            message:
+              "圖片分析尚未支援兩階段流程，請改用 responseMode=legacy 或省略此欄位。",
+          },
+          400,
+        );
+      }
+
+      // I2 already enforced by shouldRejectFullMode, but TS narrowing needs
+      // an explicit check here.
+      if (!analysisRunId) {
+        return jsonResponse(
+          {
+            error: "MISSING_RUN_ID",
+            code: "MISSING_RUN_ID",
+            message: "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
+            retryable: false,
+          },
+          400,
+        );
+      }
+
+      const conversationHashValue = await hashConversation({
+        messages,
+        userDraft,
+        partnerSummary,
+        sessionContext,
+        conversationSummary,
+        effectiveStyleContext,
+        knownContactName,
+      });
+
+      const fullStore = new AnalysisRunStore(
+        createSupabaseAnalysisRunDriver(
+          supabase as unknown as Parameters<
+            typeof createSupabaseAnalysisRunDriver
+          >[0],
+        ),
+      );
+
+      // Step 3 — pure read validation.
+      const validation = await fullStore.validateRunForFull({
+        runId: analysisRunId,
+        userId: user.id,
+        conversationHash: conversationHashValue,
+      });
+      if (!validation.ok) {
+        const statusByError: Record<string, number> = {
+          MISSING_RUN_ID: 400,
+          RUN_NOT_FOUND: 404,
+          RUN_FORBIDDEN: 403,
+          RUN_NOT_CHARGED: 409,
+          RUN_EXPIRED: 410,
+          RUN_CONVERSATION_MISMATCH: 409,
+        };
+        logWarn("full_validation_failed", {
+          user: summarizeUser(user.id),
+          analysisRunId,
+          code: validation.error,
+        });
+        return jsonResponse(
+          {
+            error: validation.error,
+            code: validation.error,
+          },
+          statusByError[validation.error] ?? 400,
+        );
+      }
+
+      // Step 4 — atomic retry reservation. MUST happen before Claude.
+      const reservation = await fullStore.reserveRetrySlot({
+        runId: analysisRunId,
+        userId: user.id,
+        conversationHash: conversationHashValue,
+      });
+      if (!reservation.ok) {
+        logWarn("full_retry_exhausted", {
+          user: summarizeUser(user.id),
+          analysisRunId,
+        });
+        return jsonResponse(
+          {
+            error: "RUN_RETRY_EXHAUSTED",
+            code: "RUN_RETRY_EXHAUSTED",
+            message: "完整分析已達重試上限。請重新進行一次快速分析。",
+          },
+          429,
+        );
+      }
+      const run = reservation.run;
+      // retry_count has just been incremented by the RPC — remaining slots
+      // is (MAX - current count). 0 means the NEXT request would be refused.
+      const retriesRemaining = Math.max(0, MAX_FULL_RETRIES - run.retry_count);
+      // Phase 2.3 — perceived two-stage latency. Quick run.created_at is the
+      // moment we INSERTed the row (after Claude+guardrail+charge), so this
+      // measures "how long did the user wait between seeing the quick card
+      // and clicking through to full". Negative or absurdly large values
+      // would signal clock skew or a leaked run; surface as-is for dashboards
+      // to alarm on. null on the failure paths where run is unavailable.
+      const quickToFullLagMs = Math.max(
+        0,
+        Date.now() - new Date(run.created_at).getTime(),
+      );
+
+      // Step 5 — anchor injection.
+      const anchorBlock = buildFullPromptAnchor(run.quick_result);
+      const fullUserPrompt = joinPromptSections(userPrompt, anchorBlock);
+
+      const fullStart = Date.now();
+      logInfo("full_request_started", {
+        user: summarizeUser(user.id),
+        analysisRunId: run.id,
+        model: selectedModel,
+        retryCount: run.retry_count,
+        retriesRemaining,
+        requestType,
+      });
+
+      // Step 6 — Claude. I1: NO `supabase.rpc("increment_usage", ...)`
+      // anywhere in this branch. (Greppable comment so reviewers can verify.)
+      let fullClaude;
+      try {
+        fullClaude = await callClaudeWithFallback(
+          {
+            model: selectedModel,
+            max_tokens: 1536,
+            system: SYSTEM_PROMPT,
+            messages: [{ role: "user", content: fullUserPrompt }],
+          },
+          CLAUDE_API_KEY,
+          { timeout: 30000, allowModelFallback: true },
+        );
+      } catch (error) {
+        // Reservation already consumed — surface to client with remaining
+        // slot count so they can decide whether to retry.
+        const latencyMs = Date.now() - fullStart;
+        const code = error instanceof AiServiceError
+          ? error.code
+          : "FULL_AI_FAILED";
+        const message = error instanceof AiServiceError
+          ? error.message
+          : "完整分析暫時失敗，請再試一次。";
+        logWarn("full_request_failed", {
+          user: summarizeUser(user.id),
+          analysisRunId: run.id,
+          latencyMs,
+          code,
+          message,
+          retriesRemaining,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: selectedModel,
+          requestType,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs,
+          status: "failed",
+          errorCode: code,
+          errorMessage: message,
+          requestBody: {
+            ...requestObservability,
+            responseMode: "full",
+            analysisRunId: run.id,
+            quickToFullLagMs,
+          },
+          responseBody: {
+            failureStage: "full_upstream",
+            retriesRemaining,
+          },
+        });
+        return jsonResponse(
+          {
+            error: "FULL_AI_FAILED",
+            code: "FULL_AI_FAILED",
+            message,
+            retriesRemaining,
+          },
+          502,
+        );
+      }
+
+      // Step 7 — parse + guardrail.
+      const fullData = fullClaude.data as {
+        content?: Array<{ text?: string }>;
+        [key: string]: unknown;
+      };
+      const fullText = fullData.content?.[0]?.text ?? "";
+      const fullTokenUsage = extractTokenUsage(fullData);
+      const fullLatencyMs = Date.now() - fullStart;
+
+      const parsed = parseFullPayload(fullText);
+      if (!parsed.ok) {
+        // Parse failure: same accounting as upstream failure (reservation
+        // already burned). Client may retry while slots remain.
+        logWarn("full_response_parse_failed", {
+          user: summarizeUser(user.id),
+          analysisRunId: run.id,
+          model: fullClaude.model,
+          error: parsed.error,
+          textLength: fullText.length,
+          retriesRemaining,
+        });
+        await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          userId: user.id,
+          model: fullClaude.model,
+          requestType,
+          inputTokens: fullTokenUsage.inputTokens,
+          outputTokens: fullTokenUsage.outputTokens,
+          latencyMs: fullLatencyMs,
+          status: "failed",
+          errorCode: "FULL_RESPONSE_INVALID",
+          errorMessage: parsed.error,
+          requestBody: {
+            ...requestObservability,
+            responseMode: "full",
+            analysisRunId: run.id,
+            quickToFullLagMs,
+          },
+          responseBody: {
+            failureStage: "full_parse",
+            parseError: parsed.error,
+            retriesRemaining,
+          },
+        });
+        return jsonResponse(
+          {
+            error: "FULL_RESPONSE_INVALID",
+            code: "FULL_RESPONSE_INVALID",
+            message: "這次完整分析格式異常，請再試一次。",
+            retriesRemaining,
+          },
+          502,
+        );
+      }
+
+      const guarded = checkAiOutput(
+        parsed.result.payload as GuardrailAnalysisResult,
+      ) as Record<string, unknown>;
+
+      // Codex Phase 2 P1 — apply legacy post-processing parity here so full
+      // mode honors the same entitlement gates + finalRecommendation fallbacks
+      // + coachActionHint sanitization that the legacy branch always ran.
+      // Full mode is always a re-analysis path, so recognizeOnly is false.
+      const postProcessed = postProcessAnalysisResult({
+        result: guarded,
+        recognizeOnly: false,
+        isMyMessageMode,
+        allowedFeatures,
+      });
+
+      // Step 8 — drift detector (warn only in v1, per plan I7). Runs against
+      // the post-processed payload so drift reflects user-visible deviation
+      // from the quick anchor, not raw model output we never showed.
+      const drift = detectAnchorDrift(
+        run.quick_result as Record<string, unknown>,
+        postProcessed,
+      );
+      if (drift.driftedFields.length > 0) {
+        logWarn("full_anchor_drift_detected", {
+          user: summarizeUser(user.id),
+          analysisRunId: run.id,
+          driftedFields: drift.driftedFields,
+          replyOverlapRatio: drift.replyOverlapRatio,
+        });
+      }
+
+      logInfo("full_request_succeeded", {
+        user: summarizeUser(user.id),
+        analysisRunId: run.id,
+        model: fullClaude.model,
+        latencyMs: fullLatencyMs,
+        inputTokens: fullTokenUsage.inputTokens,
+        outputTokens: fullTokenUsage.outputTokens,
+        retryCount: run.retry_count,
+        retriesRemaining,
+        parseSource: parsed.result.source,
+        driftedFields: drift.driftedFields,
+      });
+
+      await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        userId: user.id,
+        model: fullClaude.model,
+        requestType,
+        inputTokens: fullTokenUsage.inputTokens,
+        outputTokens: fullTokenUsage.outputTokens,
+        latencyMs: fullLatencyMs,
+        status: "success",
+        fallbackUsed: fullClaude.fallbackUsed,
+        retryCount: fullClaude.retries,
+        requestBody: {
+          ...requestObservability,
+          responseMode: "full",
+          analysisRunId: run.id,
+          quickToFullLagMs,
+        },
+        responseBody: {
+          parseSource: parsed.result.source,
+          driftedFields: drift.driftedFields,
+          replyOverlapRatio: drift.replyOverlapRatio,
+          retryCount: run.retry_count,
+          retriesRemaining,
+          cacheReadTokens: fullTokenUsage.cacheReadTokens ?? 0,
+          cacheCreationTokens: fullTokenUsage.cacheCreationTokens ?? 0,
+        },
+      });
+
+      return jsonResponse({
+        responseMode: "full",
+        analysisRunId: run.id,
+        quickResult: run.quick_result,
+        result: postProcessed,
+        retriesRemaining,
+        telemetry: {
+          requestType,
+          serverAiLatencyMs: fullLatencyMs,
+          quickToFullLagMs,
+          fallbackUsed: fullClaude.fallbackUsed,
+          retries: fullClaude.retries,
+          parseSource: parsed.result.source,
+          driftedFields: drift.driftedFields,
+          replyOverlapRatio: drift.replyOverlapRatio,
+          totalTokens:
+            (fullTokenUsage.inputTokens ?? 0) +
+            (fullTokenUsage.outputTokens ?? 0),
+        },
+      });
+    }
+
     let claudeResult;
     try {
       // OCR-only image requests can fail faster than full image analysis,
@@ -6033,12 +6385,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     }
 
     // Check AI output for safety (AI 護欄)
-    const originalResult = { ...result };
     result = checkAiOutput(result as GuardrailAnalysisResult) as Record<
       string,
       unknown
     >;
-    result = ensureNonEmptyAnalysisOutput({
+    // Shared post-processing parity (ensureNonEmpty + replies allowedFeatures
+    // filter + finalRecommendation normalize + coachActionHint sanitize +
+    // healthCheck entitlement gate). Full mode MUST call the same helper —
+    // see post_process.ts for the contract.
+    result = postProcessAnalysisResult({
       result,
       recognizeOnly,
       isMyMessageMode,
@@ -6097,100 +6452,14 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         filtered: wasFiltered,
         retries: claudeResult.retries,
         fallbackUsed: claudeResult.fallbackUsed,
+        // Phase 2.3 — cache hit telemetry parity with quick / full paths.
+        // Helps DC discussion's Path 5 (cache hit rate monitoring).
+        cacheReadTokens: tokenUsage.cacheReadTokens ?? 0,
+        cacheCreationTokens: tokenUsage.cacheCreationTokens ?? 0,
         ...recognitionObservability,
         ...successGuardrails,
       },
     });
-
-    // Filter replies based on tier
-    if (result?.replies) {
-      const filteredReplies: Record<string, string> = {};
-      for (const [key, value] of Object.entries(result.replies)) {
-        if (allowedFeatures.includes(key)) {
-          filteredReplies[key] = value as string;
-        }
-      }
-      result.replies = filteredReplies;
-    }
-
-    if (result?.finalRecommendation) {
-      const recommendation = result.finalRecommendation as Record<
-        string,
-        unknown
-      >;
-      const normalizedRecommendationPick = normalizeAiText(recommendation.pick);
-      const normalizedRecommendationReason = normalizeAiText(
-        recommendation.reason,
-      );
-      const normalizedRecommendationPsychology = normalizeAiText(
-        recommendation.psychology,
-      );
-      const normalizedReplies = (result.replies ?? {}) as Record<
-        string,
-        string
-      >;
-      const safeRecommendationPick = normalizedRecommendationPick.length > 0 &&
-          normalizedReplies[normalizedRecommendationPick]?.trim().length
-        ? normalizedRecommendationPick
-        : (allowedFeatures.find((feature) =>
-          (normalizedReplies[feature]?.trim().length ?? 0) > 0
-        ) ?? "extend");
-      const normalizedRecommendationSegments =
-        normalizedRecommendationPick === safeRecommendationPick
-          ? sanitizeReplySegments(recommendation.replySegments)
-          : [];
-      const normalizedReplyOptions = (result.replyOptions ?? {}) as Record<
-        string,
-        { messages?: unknown }
-      >;
-      const fallbackOptionSegments = sanitizeReplySegments(
-        normalizedReplyOptions[safeRecommendationPick]?.messages,
-      );
-      const safeRecommendationSegments =
-        normalizedRecommendationSegments.length > 0
-          ? normalizedRecommendationSegments
-          : fallbackOptionSegments;
-      const segmentRecommendationContent = safeRecommendationSegments
-        .map((segment) => segment.reply)
-        .filter((reply) => reply.trim().length > 0)
-        .join("\n")
-        .trim();
-      const safeRecommendationContent = normalizeAiText(
-        normalizedReplies[safeRecommendationPick],
-      ) || segmentRecommendationContent ||
-        (normalizedRecommendationPick === safeRecommendationPick
-          ? normalizeAiText(recommendation.content)
-          : "");
-      const fallbackExplanation = buildFallbackRecommendationText(
-        safeRecommendationPick,
-      );
-
-      result.finalRecommendation = {
-        pick: safeRecommendationPick,
-        content: safeRecommendationContent,
-        reason: normalizedRecommendationReason.length > 0
-          ? normalizedRecommendationReason
-          : fallbackExplanation.reason,
-        psychology: normalizedRecommendationPsychology.length > 0
-          ? normalizedRecommendationPsychology
-          : fallbackExplanation.psychology,
-        replySegments: safeRecommendationSegments,
-      };
-    }
-
-    const sanitizedCoachActionHint = sanitizeCoachActionHint(
-      result?.coachActionHint,
-    );
-    if (sanitizedCoachActionHint) {
-      result.coachActionHint = sanitizedCoachActionHint;
-    } else {
-      delete result.coachActionHint;
-    }
-
-    // Remove health check if not allowed
-    if (!allowedFeatures.includes("health_check")) {
-      delete result.healthCheck;
-    }
 
     // Update usage count (測試帳號、純識別模式不扣額度)
     if (quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0) {

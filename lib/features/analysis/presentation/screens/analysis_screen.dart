@@ -33,6 +33,7 @@ import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
+import '../../data/notifiers/two_stage_analyze_notifier.dart';
 import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
@@ -40,8 +41,10 @@ import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
+import '../../domain/entities/quick_analysis_result.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
+import '../widgets/two_stage_loading_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -118,6 +121,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   bool _isAnalyzingMyMessage = false;
   String? _feedbackCategory;
   final _feedbackCommentController = TextEditingController();
+
+  // Two-stage analyze (Phase 3) — local mirrors of the notifier state machine
+  // so the existing setState-based render tree keeps working. The notifier
+  // (TwoStageAnalyzeNotifier) is the source of truth and owns the retry
+  // payload; these fields are populated by `_onTwoStageStateChanged` and the
+  // initial hydration in `initState`.
+  // Render gate: while `_quickResult != null && _enthusiasmScore == null` the
+  // build() tree shows quick summary + placeholder/retry. Once full lands,
+  // `_enthusiasmScore != null` flips and the existing detailed-analysis tree
+  // takes over.
+  QuickAnalysisResult? _quickResult;
+  String? _fullErrorMessage;
+  int _fullErrorRetriesRemaining = 0;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
 
   // 對話延續功能
@@ -582,7 +598,197 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     WidgetsBinding.instance.addObserver(this);
     _messageFocusNode.addListener(_handleMessageInputFocus);
     _restorePersistedAnalysis();
+    // If the provider is already mid-analyze on remount, the snapshot we just
+    // restored is from a *previous* completed run. Clear the detailed mirrors
+    // synchronously so the first frame does not flash the old detailed
+    // analysis on top of the new run's quick summary / placeholder / retry
+    // (I-P1-c, Codex round-2).
+    final initialState =
+        ref.read(twoStageAnalyzeProvider(widget.conversationId));
+    if (_isTwoStagePartialPhase(initialState.phase)) {
+      _clearDetailedAnalysisStateForTwoStagePartial();
+    }
+    // Hydrate from existing two-stage notifier state on remount.
+    // ref.listen (set up in build) only fires on future transitions, so a
+    // screen rebuilt while the provider is mid-analyze would otherwise lose
+    // the current quick/full state. Post-frame so ref reads are safe and
+    // setState lands on the next frame (I-P1-a).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final current =
+          ref.read(twoStageAnalyzeProvider(widget.conversationId));
+      if (current.phase != TwoStagePhase.idle) {
+        _hydrateTwoStageState(current);
+      }
+    });
     // 不再自動分析，讓用戶手動點擊
+  }
+
+  bool _isTwoStagePartialPhase(TwoStagePhase p) {
+    switch (p) {
+      case TwoStagePhase.runningQuick:
+      case TwoStagePhase.quickReady:
+      case TwoStagePhase.runningFull:
+      case TwoStagePhase.fullFailed:
+      case TwoStagePhase.quickFailed:
+        return true;
+      case TwoStagePhase.fullReady:
+      case TwoStagePhase.idle:
+        return false;
+    }
+  }
+
+  /// Apply the current two-stage notifier state to local mirrors without
+  /// triggering side-effects (paywall, persistence, subscription sync) that
+  /// the original transition already handled. Called on screen remount so a
+  /// user who navigates away mid-analyze sees the correct state when they
+  /// come back.
+  void _hydrateTwoStageState(TwoStageAnalysisState s) {
+    if (!mounted) return;
+    switch (s.phase) {
+      case TwoStagePhase.runningQuick:
+        setState(() {
+          _isAnalyzing = true;
+          _quickResult = null;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+          _clearDetailedAnalysisStateForTwoStagePartial();
+        });
+        break;
+      case TwoStagePhase.quickReady:
+      case TwoStagePhase.runningFull:
+        setState(() {
+          _isAnalyzing = false;
+          _quickResult = s.quick;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+          _clearDetailedAnalysisStateForTwoStagePartial();
+        });
+        break;
+      case TwoStagePhase.fullReady:
+        final result = s.full;
+        if (result == null) return;
+        setState(() {
+          _isAnalyzing = false;
+          _quickResult = s.quick;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+          _applyAnalysisResult(result);
+          _enthusiasmScore = result.enthusiasmScore;
+          _dimensionScores = result.dimensionScores;
+          _strategy = result.strategy;
+          _replies = result.replies;
+          _replyOptions = result.replyOptions;
+          _topicDepth = result.topicDepth;
+          _healthCheck = result.healthCheck;
+          _gameStage = result.gameStage;
+          _psychology = result.psychology;
+          _finalRecommendation = result.recommendation;
+          _coachActionHint = result.coachActionHint;
+          _reminder = result.reminder;
+          _shouldGiveUp = result.shouldGiveUp;
+          _lastAiResponse = result.rawResponse;
+        });
+        // Idempotent: only persist + sync usage when the live listener clearly
+        // did NOT run for this result (e.g., user navigated away during
+        // runningFull and the fullReady transition arrived off-screen). If the
+        // listener already wrote this exact snapshot, the dedup signal below
+        // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
+        _maybePersistAndSyncOnHydrate(result);
+        break;
+      case TwoStagePhase.fullFailed:
+        setState(() {
+          _isAnalyzing = false;
+          _quickResult = s.quick;
+          _fullErrorMessage = s.fullErrorMessage;
+          _fullErrorRetriesRemaining = s.retriesRemaining;
+          _clearDetailedAnalysisStateForTwoStagePartial();
+        });
+        break;
+      case TwoStagePhase.quickFailed:
+        final isQuotaError = s.quickErrorCode == 'DAILY_LIMIT_EXCEEDED' ||
+            s.quickErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: s.quickErrorMessage ?? '分析暫時失敗，請稍後再試。',
+            action: isQuotaError
+                ? AnalysisErrorAction.upgrade
+                : AnalysisErrorAction.retry,
+            origin: _AnalysisErrorOrigin.analysis,
+          );
+          _clearDetailedAnalysisStateForTwoStagePartial();
+        });
+        // Skip _showPaywall — already opened on the original transition.
+        break;
+      case TwoStagePhase.idle:
+        break;
+    }
+  }
+
+  /// Persist + sync usage from a hydrate-time fullReady result IF the live
+  /// `_onTwoStageStateChanged` listener clearly did not already do so. Dedup
+  /// signal: `conv.lastAnalyzedMessageCount == conv.messages.length` AND
+  /// `conv.lastAnalysisSnapshotJson == jsonEncode(result.rawResponse)`. When
+  /// the signal matches, the listener path already wrote this exact snapshot
+  /// and re-running would be a wasted Hive write + a redundant subscription
+  /// sync (I-P2-e/f, Codex round-2).
+  ///
+  /// Required for the off-screen completion path: user starts analyze, leaves
+  /// the screen mid-`runningFull`, the notifier transitions to `fullReady`
+  /// while the listener is unmounted; on return the screen sees `fullReady`
+  /// but the snapshot + usage were never written.
+  void _maybePersistAndSyncOnHydrate(AnalysisResult result) {
+    final repository = ref.read(conversationRepositoryProvider);
+    final conv = repository.getConversation(widget.conversationId);
+    if (conv == null) return;
+
+    final encoded = result.rawResponse == null || result.rawResponse!.isEmpty
+        ? null
+        : jsonEncode(result.rawResponse);
+    final alreadyPersisted =
+        conv.lastAnalyzedMessageCount == conv.messages.length &&
+            conv.lastAnalysisSnapshotJson == encoded;
+    if (alreadyPersisted) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _lastAnalyzedMessageCount = conv.messages.length;
+      });
+    }
+    _persistLatestAnalysisSnapshot(result).catchError((_) {
+      // Same fire-and-forget contract as the listener path — Hive failures in
+      // tests must not surface as unhandled futures.
+    });
+    _syncSubscriptionUsageFromResult(result);
+  }
+
+  /// Wipe the local mirrors of a *previous* completed analysis so the render
+  /// gate `_quickResult != null && _enthusiasmScore == null` flips back to
+  /// "quick summary + placeholder/retry" during a fresh two-stage run.
+  /// `_restorePersistedAnalysis()` seeds these from `lastAnalysisSnapshotJson`
+  /// in initState; without clearing on hydrate of a partial phase the build
+  /// tree would keep showing the stale detailed analysis (I-P1-c, Codex
+  /// round-2). Must be called inside the caller's `setState`.
+  void _clearDetailedAnalysisStateForTwoStagePartial() {
+    _enthusiasmScore = null;
+    _dimensionScores = null;
+    _strategy = null;
+    _replies = null;
+    _replyOptions = null;
+    _topicDepth = null;
+    _healthCheck = null;
+    _gameStage = null;
+    _psychology = null;
+    _finalRecommendation = null;
+    _coachActionHint = null;
+    _reminder = null;
+    _shouldGiveUp = false;
+    _lastAiResponse = null;
+    _showDetailedAnalysis = false;
+    _resetFeedbackState();
   }
 
   @override
@@ -2625,92 +2831,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
       setState(() {
         _isAnalyzing = true;
+        _quickResult = null;
+        _fullErrorMessage = null;
+        _fullErrorRetriesRemaining = 0;
       });
 
-      final analysisService = AnalysisService();
-      final result = await analysisService.analyzeConversation(
-        analysisContext.requestMessages,
-        sessionContext: conversation.sessionContext,
-        conversationSummary: analysisContext.conversationSummary,
-        partnerSummary: _resolvePartnerSummary(conversation),
-        effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
-        knownContactName:
-            ScreenshotRecognitionHelper.isPlaceholderConversationName(
-          conversation.name,
-        )
-                ? null
-                : conversation.name.trim(),
-        previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
-        onTelemetry: _handleAnalysisTelemetry,
+      // Fire-and-forget. The notifier caches the payload for retryFull and
+      // keeps itself alive across screen navigation; ref.listen + the initState
+      // hydration path mirror provider state back into local fields so the
+      // legacy render tree (which reads _enthusiasmScore, _quickResult, etc.)
+      // keeps working (Eric 2026-05-28 UX spec).
+      unawaited(
+        ref
+            .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
+            .start(
+              messages: analysisContext.requestMessages,
+              sessionContext: conversation.sessionContext,
+              conversationSummary: analysisContext.conversationSummary,
+              partnerSummary: _resolvePartnerSummary(conversation),
+              effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
+              knownContactName:
+                  ScreenshotRecognitionHelper.isPlaceholderConversationName(
+                conversation.name,
+              )
+                      ? null
+                      : conversation.name.trim(),
+              previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
+            ),
       );
-
-      // 記錄已分析的訊息數量
-      _lastAnalyzedMessageCount = conversation.messages.length;
-      _hasEditedAnalyzedMessage = false;
-
-      // 分析完成後清除殘留的 SnackBar（例如識別完成後的匯入提示）
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      }
-
-      setState(() {
-        _isAnalyzing = false;
-        _applyAnalysisResult(result);
-        _enthusiasmScore = result.enthusiasmScore;
-        _dimensionScores = result.dimensionScores;
-        _strategy = result.strategy;
-        _replies = result.replies;
-        _replyOptions = result.replyOptions;
-        _topicDepth = result.topicDepth;
-        _healthCheck = result.healthCheck;
-        _gameStage = result.gameStage;
-        _psychology = result.psychology;
-        _finalRecommendation = result.recommendation;
-        _coachActionHint = result.coachActionHint;
-        _reminder = result.reminder;
-        _shouldGiveUp = result.shouldGiveUp;
-        _lastAiResponse = result.rawResponse; // 儲存原始 AI 回應
-        _resetFeedbackState();
-      });
-
-      try {
-        await _persistLatestAnalysisSnapshot(result);
-      } catch (_) {
-        // Ignore errors in test environment
-      }
-
-      _syncSubscriptionUsageFromResult(result);
-    } on DailyLimitExceededException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isAnalyzing = false;
-        _applyErrorState(
-          message: _dailyQuotaExceededMessage(e),
-          action: AnalysisErrorAction.upgrade,
-          origin: _AnalysisErrorOrigin.analysis,
-        );
-      });
-      await _showPaywall(context);
-    } on MonthlyLimitExceededException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isAnalyzing = false;
-        _applyErrorState(
-          message: _monthlyQuotaExceededMessage(e),
-          action: AnalysisErrorAction.upgrade,
-          origin: _AnalysisErrorOrigin.analysis,
-        );
-      });
-      await _showPaywall(context);
-    } on AnalysisException catch (e) {
-      setState(() {
-        _isAnalyzing = false;
-        _applyErrorState(
-          message: e.message,
-          action: e.suggestedAction,
-          origin: _AnalysisErrorOrigin.analysis,
-        );
-      });
     } catch (e) {
       setState(() {
         _isAnalyzing = false;
@@ -2721,6 +2869,129 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
       });
     }
+  }
+
+  /// Apply a transition from [twoStageAnalyzeProvider] into local
+  /// setState-backed fields. The notifier is the source of truth; this method
+  /// just mirrors transitions onto the legacy render code so we don't have to
+  /// rewrite the 4000-line build() tree.
+  void _onTwoStageStateChanged(
+    TwoStageAnalysisState? prev,
+    TwoStageAnalysisState next,
+  ) {
+    if (!mounted) return;
+    if (prev?.phase == next.phase &&
+        prev?.analysisRunId == next.analysisRunId &&
+        prev?.full == next.full) {
+      return;
+    }
+    switch (next.phase) {
+      case TwoStagePhase.runningQuick:
+        setState(() {
+          _isAnalyzing = true;
+          _quickResult = null;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+          _resetErrorState();
+        });
+        break;
+      case TwoStagePhase.quickReady:
+        setState(() {
+          _isAnalyzing = false;
+          _quickResult = next.quick;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+        });
+        final conv =
+            ref.read(conversationProvider(widget.conversationId));
+        if (conv != null) {
+          _lastAnalyzedMessageCount = conv.messages.length;
+          _hasEditedAnalyzedMessage = false;
+        }
+        break;
+      case TwoStagePhase.runningFull:
+        // Mirror the notifier's cleared error fields (I-P2-d) so the build
+        // tree flips from FullAnalysisRetryCard back to FullAnalysisPlaceholder
+        // when the user taps retry. Without this the local _fullErrorMessage
+        // keeps the RetryCard rendered even though the notifier is mid-flight.
+        setState(() {
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+        });
+        break;
+      case TwoStagePhase.fullReady:
+        final result = next.full;
+        if (result == null) return;
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        }
+        setState(() {
+          _isAnalyzing = false;
+          _fullErrorMessage = null;
+          _fullErrorRetriesRemaining = 0;
+          _applyAnalysisResult(result);
+          _enthusiasmScore = result.enthusiasmScore;
+          _dimensionScores = result.dimensionScores;
+          _strategy = result.strategy;
+          _replies = result.replies;
+          _replyOptions = result.replyOptions;
+          _topicDepth = result.topicDepth;
+          _healthCheck = result.healthCheck;
+          _gameStage = result.gameStage;
+          _psychology = result.psychology;
+          _finalRecommendation = result.recommendation;
+          _coachActionHint = result.coachActionHint;
+          _reminder = result.reminder;
+          _shouldGiveUp = result.shouldGiveUp;
+          _lastAiResponse = result.rawResponse;
+          _resetFeedbackState();
+        });
+        _persistLatestAnalysisSnapshot(result).catchError((_) {
+          // Ignore errors in test environment.
+        });
+        _syncSubscriptionUsageFromResult(result);
+        break;
+      case TwoStagePhase.fullFailed:
+        setState(() {
+          _isAnalyzing = false;
+          _fullErrorMessage = next.fullErrorMessage;
+          _fullErrorRetriesRemaining = next.retriesRemaining;
+        });
+        break;
+      case TwoStagePhase.quickFailed:
+        final code = next.quickErrorCode;
+        final message =
+            next.quickErrorMessage ?? '分析暫時失敗，請稍後再試。';
+        final isQuotaError = code == 'DAILY_LIMIT_EXCEEDED' ||
+            code == 'MONTHLY_LIMIT_EXCEEDED';
+        setState(() {
+          _isAnalyzing = false;
+          _applyErrorState(
+            message: message,
+            action: isQuotaError
+                ? AnalysisErrorAction.upgrade
+                : AnalysisErrorAction.retry,
+            origin: _AnalysisErrorOrigin.analysis,
+          );
+        });
+        if (isQuotaError) {
+          unawaited(_showPaywall(context));
+        }
+        break;
+      case TwoStagePhase.idle:
+        break;
+    }
+  }
+
+  /// Retry the last failed full analysis. The notifier owns the cached
+  /// payload from the most recent `start()` (survives screen remount via
+  /// `ref.keepAlive`), so we just delegate. I-P1-b.
+  void _retryFullAnalysis() {
+    unawaited(
+      ref
+          .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
+          .retryFull(),
+    );
   }
 
   /// 「我說」話題延續分析（Essential 專屬）
@@ -3820,6 +4091,65 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// Render the quick-stage summary shown immediately after the 3-5s quick
+  /// call returns. Carries the two pieces users actually need first
+  /// (下一步 + 最推薦回覆); the deeper analysis (radar / styles / strategy)
+  /// is filled by the background full call.
+  Widget _buildQuickSummaryCard(QuickAnalysisResult quick) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: GlassmorphicContainer(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '本回合怎麼接（速覽）',
+              style: AppTypography.titleSmall.copyWith(
+                color: AppColors.glassTextPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              quick.nextStep,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '最推薦回覆',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            SelectableText(
+              quick.recommendedReply,
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.glassTextPrimary,
+                height: 1.5,
+              ),
+            ),
+            if (quick.shortReason.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                quick.shortReason,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDetailedAnalysisToggle() {
     return Semantics(
       button: true,
@@ -3948,6 +4278,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Mirror two-stage analyze transitions onto local setState fields so the
+    // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
+    // keeps working without a screen-wide rewrite. See Phase 3 plan §Task 3.4.
+    ref.listen<TwoStageAnalysisState>(
+      twoStageAnalyzeProvider(widget.conversationId),
+      _onTwoStageStateChanged,
+    );
     final conversation = ref.watch(conversationProvider(widget.conversationId));
     final subscription = ref.watch(subscriptionProvider);
 
@@ -4842,14 +5179,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           if (_isAnalyzing && _enthusiasmScore == null) ...[
                             const Center(
-                              child: Column(
-                                children: [
-                                  CircularProgressIndicator(),
-                                  SizedBox(height: 12),
-                                  Text('分析中...'),
-                                ],
-                              ),
+                              child: QuickRotatingLoader(),
                             ),
+                          ],
+
+                          // Quick-ready: render the summary card + the full
+                          // analysis placeholder (or retry CTA) until the
+                          // full result lands.
+                          if (_quickResult != null &&
+                              _enthusiasmScore == null) ...[
+                            _buildQuickSummaryCard(_quickResult!),
+                            if (_fullErrorMessage != null)
+                              FullAnalysisRetryCard(
+                                retriesRemaining: _fullErrorRetriesRemaining,
+                                errorMessage: _fullErrorMessage,
+                                onRetry: _fullErrorRetriesRemaining > 0
+                                    ? _retryFullAnalysis
+                                    : null,
+                              )
+                            else
+                              FullAnalysisPlaceholder(
+                                estimatedFullSeconds:
+                                    _quickResult!.estimatedFullSeconds,
+                              ),
                           ],
 
                           if (_enthusiasmScore != null) ...[

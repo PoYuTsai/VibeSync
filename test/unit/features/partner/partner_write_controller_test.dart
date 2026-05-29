@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
+import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -98,6 +99,7 @@ late Box<Conversation> _convoBox;
 late Box<PartnerStyleOverride> _styleBox;
 late Box<PartnerDataQualityState> _qualityBox;
 late Box<CoachFollowUpResult> _followUpBox;
+late Box<CoachingOutcomeEvent> _outcomeBox;
 late _CountingConversationRepository _convoRepo;
 
 Future<ProviderContainer> _makeContainer() async {
@@ -176,6 +178,18 @@ void main() {
     if (!Hive.isAdapterRegistered(16)) {
       Hive.registerAdapter(CoachFollowUpResultAdapter());
     }
+    if (!Hive.isAdapterRegistered(18)) {
+      Hive.registerAdapter(CoachingOutcomeEventAdapter());
+    }
+    if (!Hive.isAdapterRegistered(19)) {
+      Hive.registerAdapter(CoachingOutcomeSourceAdapter());
+    }
+    if (!Hive.isAdapterRegistered(20)) {
+      Hive.registerAdapter(CoachingUserActionAdapter());
+    }
+    if (!Hive.isAdapterRegistered(21)) {
+      Hive.registerAdapter(CoachingOutcomeSignalAdapter());
+    }
   });
 
   tearDownAll(() async {
@@ -205,10 +219,16 @@ void main() {
     _followUpBox = await Hive.openBox<CoachFollowUpResult>(
       'coach_follow_up_results',
     );
+    // PartnerRepository.merge/delete also cascades into coaching outcomes via
+    // StorageService.coachingOutcomeEventsBox, so keep the canonical box open.
+    _outcomeBox = await Hive.openBox<CoachingOutcomeEvent>(
+      AppConstants.coachingOutcomeEventsBox,
+    );
     _convoRepo = _CountingConversationRepository();
   });
 
   tearDown(() async {
+    await _outcomeBox.deleteFromDisk();
     await _followUpBox.deleteFromDisk();
     await _qualityBox.deleteFromDisk();
     await _styleBox.deleteFromDisk();

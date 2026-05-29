@@ -8,6 +8,7 @@ import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/quick_analysis_result.dart';
 
 class ImageData {
   final String data;
@@ -419,6 +420,16 @@ AnalysisException _mapUnexpectedAnalysisError(
 }
 
 class AnalysisService {
+  final http.Client Function() _clientFactory;
+  final String? Function() _accessTokenProvider;
+
+  AnalysisService({
+    http.Client Function()? clientFactory,
+    String? Function()? accessTokenProvider,
+  })  : _clientFactory = clientFactory ?? http.Client.new,
+        _accessTokenProvider =
+            accessTokenProvider ?? (() => SupabaseService.accessToken);
+
   Future<AnalysisResult> analyzeConversation(
     List<Message> messages, {
     List<Uint8List>? images,
@@ -866,6 +877,254 @@ class AnalysisService {
       );
     }
   }
+
+  /// Two-stage analyze — quick phase.
+  ///
+  /// Posts `responseMode: 'quick'` to `analyze-chat`. Returns a [QuickAnalysisResult]
+  /// carrying the `analysisRunId` that [analyzeFull] must echo.
+  Future<QuickAnalysisResult> analyzeQuick({
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) async {
+    final responseData = await _postTwoStageRequest(
+      body: _buildTwoStageBody(
+        responseMode: 'quick',
+        analysisRunId: null,
+        messages: messages,
+        sessionContext: sessionContext,
+        conversationSummary: conversationSummary,
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
+        previousAnalyzedCount: previousAnalyzedCount,
+      ),
+      timeout: const Duration(seconds: 15),
+    );
+    try {
+      return QuickAnalysisResult.fromJson(responseData);
+    } on FormatException catch (_) {
+      // Backend should not return a malformed 200, but if it does the user has
+      // already been charged quick quota. Surface a coded error so the
+      // notifier maps it to a quickFailed state and the UI offers retry rather
+      // than rendering blank fields (I-P3).
+      throw AnalysisException(
+        '快速分析回應格式錯誤，請稍後再試。',
+        code: 'INVALID_QUICK_RESPONSE',
+      );
+    }
+  }
+
+  /// Two-stage analyze — full phase.
+  ///
+  /// Echoes [analysisRunId] from a prior [analyzeQuick] so the server can match
+  /// the run, validate conversation hash, and avoid double-charging quota (I1).
+  /// Maps server `RUN_*` codes to [FullModeException] so the orchestrator can
+  /// decide between user-facing retry CTA and a hard "重新分析" path.
+  Future<AnalysisResult> analyzeFull({
+    required String analysisRunId,
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) async {
+    final responseData = await _postTwoStageRequest(
+      body: _buildTwoStageBody(
+        responseMode: 'full',
+        analysisRunId: analysisRunId,
+        messages: messages,
+        sessionContext: sessionContext,
+        conversationSummary: conversationSummary,
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
+        previousAnalyzedCount: previousAnalyzedCount,
+      ),
+      timeout: const Duration(seconds: 60),
+      onErrorResponse: _mapFullModeError,
+    );
+    return AnalysisResult.fromJson(responseData);
+  }
+
+  Map<String, dynamic> _buildTwoStageBody({
+    required String responseMode,
+    String? analysisRunId,
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) {
+    return {
+      'responseMode': responseMode,
+      if (analysisRunId != null) 'analysisRunId': analysisRunId,
+      'messages': messages
+          .map(
+            (message) => {
+              'isFromMe': message.isFromMe,
+              'content': message.content,
+              if (message.quotedReplyPreview != null &&
+                  message.quotedReplyPreview!.trim().isNotEmpty)
+                'quotedReplyPreview': message.quotedReplyPreview!.trim(),
+              if (message.quotedReplyPreview != null &&
+                  message.quotedReplyPreview!.trim().isNotEmpty &&
+                  message.quotedReplyPreviewIsFromMe != null)
+                'quotedReplyPreviewIsFromMe':
+                    message.quotedReplyPreviewIsFromMe,
+            },
+          )
+          .toList(),
+      if (sessionContext != null)
+        'sessionContext': {
+          'meetingContext': sessionContext.meetingContext.label,
+          'duration': sessionContext.duration.label,
+          'goal': sessionContext.goal.label,
+        },
+      if (conversationSummary != null &&
+          conversationSummary.trim().isNotEmpty)
+        'conversationSummary': conversationSummary.trim(),
+      if (partnerSummary != null && partnerSummary.trim().isNotEmpty)
+        'partnerSummary': partnerSummary.trim(),
+      if (effectiveStyleContext != null &&
+          effectiveStyleContext.trim().isNotEmpty)
+        'effectiveStyleContext': effectiveStyleContext.trim(),
+      if (knownContactName != null && knownContactName.trim().isNotEmpty)
+        'knownContactName': knownContactName.trim(),
+      if (previousAnalyzedCount != null && previousAnalyzedCount > 0)
+        'previousAnalyzedCount': previousAnalyzedCount,
+    };
+  }
+
+  Future<Map<String, dynamic>> _postTwoStageRequest({
+    required Map<String, dynamic> body,
+    required Duration timeout,
+    Exception Function(int status, Map<String, dynamic> data)? onErrorResponse,
+  }) async {
+    final accessToken = _accessTokenProvider();
+    if (accessToken == null) {
+      throw AnalysisException(
+        '請先重新登入後再試。',
+        code: 'UNAUTHORIZED',
+        suggestedAction: AnalysisErrorAction.relogin,
+      );
+    }
+
+    final client = _clientFactory();
+    try {
+      final response = await client
+          .post(
+            Uri.parse('${AppConfig.supabaseUrl}/functions/v1/analyze-chat'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+              'apikey': AppConfig.supabaseAnonKey,
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(timeout);
+
+      final responseData = _decodeResponseBody(response);
+      final status = response.statusCode;
+
+      if (responseData['_nonJson'] == true && status == 200) {
+        throw AnalysisException(
+          '伺服器回傳格式異常，請稍後再試。',
+          code: 'INVALID_RESPONSE_FORMAT',
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
+
+      if (status == 200) {
+        return responseData;
+      }
+
+      if (status == 429) {
+        final dailyLimit = responseData['dailyLimit'];
+        final monthlyLimit = responseData['monthlyLimit'];
+        final used = (responseData['used'] as num?)?.toInt() ?? 0;
+        if (dailyLimit != null) {
+          throw DailyLimitExceededException(
+            dailyLimit: (dailyLimit as num).toInt(),
+            used: used,
+          );
+        }
+        if (monthlyLimit != null) {
+          throw MonthlyLimitExceededException(
+            monthlyLimit: (monthlyLimit as num).toInt(),
+            used: used,
+          );
+        }
+      }
+
+      if (onErrorResponse != null) {
+        throw onErrorResponse(status, responseData);
+      }
+
+      throw AnalysisException(
+        (responseData['message'] as String?) ??
+            (responseData['error'] as String?) ??
+            '分析暫時失敗，請稍後再試。',
+        code: responseData['code'] as String?,
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+    } on TimeoutException {
+      throw AnalysisException(
+        '分析花太久了，請稍後再試。',
+        code: 'TIMEOUT',
+        suggestedAction: AnalysisErrorAction.wait,
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  Exception _mapFullModeError(int status, Map<String, dynamic> data) {
+    final code = (data['code'] as String?) ?? (data['error'] as String?);
+    final retriesRemainingRaw = data['retriesRemaining'];
+    final retriesRemaining = retriesRemainingRaw is num
+        ? retriesRemainingRaw.toInt()
+        : 0;
+
+    switch (code) {
+      case 'RUN_EXPIRED':
+        return FullModeException(
+          '分析記錄已過期，請重新分析。',
+          code: 'RUN_EXPIRED',
+          retriesRemaining: 0,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      case 'RUN_CONVERSATION_MISMATCH':
+        return FullModeException(
+          '對話內容已變動，請重新分析。',
+          code: 'RUN_CONVERSATION_MISMATCH',
+          retriesRemaining: 0,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      case 'RUN_RETRY_EXHAUSTED':
+        return FullModeException(
+          '完整分析已達重試上限，請重新分析。',
+          code: 'RUN_RETRY_EXHAUSTED',
+          retriesRemaining: 0,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      default:
+        return FullModeException(
+          (data['message'] as String?) ?? '完整分析失敗，可以重試。',
+          code: code ?? 'FULL_FAILED',
+          retriesRemaining: retriesRemaining,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+    }
+  }
 }
 
 class AnalysisException implements Exception {
@@ -909,4 +1168,21 @@ class MonthlyLimitExceededException extends AnalysisException {
           code: 'MONTHLY_LIMIT_EXCEEDED',
           suggestedAction: AnalysisErrorAction.upgrade,
         );
+}
+
+/// Raised when the two-stage `full` phase fails on the server.
+///
+/// [retriesRemaining] is 0 for terminal failures (`RUN_EXPIRED`,
+/// `RUN_CONVERSATION_MISMATCH`, `RUN_RETRY_EXHAUSTED`) and matches the server
+/// budget for generic 502 `FULL_FAILED`. The orchestrator uses it to decide
+/// whether to surface a retry CTA or force "重新分析".
+class FullModeException extends AnalysisException {
+  final int retriesRemaining;
+
+  FullModeException(
+    super.message, {
+    super.code,
+    super.suggestedAction,
+    required this.retriesRemaining,
+  });
 }

@@ -89,85 +89,89 @@ class PartnerListCard extends StatelessWidget {
 
     return GlassmorphicContainer(
       padding: EdgeInsets.zero,
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.avatarHerStart, AppColors.avatarHerEnd],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          onTap: onTap,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          leading: Container(
+            width: 48,
+            height: 48,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.avatarHerStart, AppColors.avatarHerEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
             ),
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Text(
-              _avatarLabel(partner.name),
-              style: AppTypography.titleLarge.copyWith(color: Colors.black87),
-            ),
-          ),
-        ),
-        title: Row(children: [
-          Expanded(
-            child: Text(
-              partner.name,
-              style: AppTypography.titleLarge
-                  .copyWith(color: AppColors.glassTextPrimary),
-              overflow: TextOverflow.ellipsis,
+            child: Center(
+              child: Text(
+                _avatarLabel(partner.name),
+                style: AppTypography.titleLarge.copyWith(color: Colors.black87),
+              ),
             ),
           ),
-          Text(
-            _formatDate(aggregate.lastInteraction),
-            style:
-                AppTypography.caption.copyWith(color: AppColors.glassTextHint),
-          ),
-        ]),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            if (level != null)
-              Row(children: [
-                Text(level.emoji),
-                const SizedBox(width: 4),
-                Text(
-                  '$heat',
-                  style: AppTypography.caption.copyWith(color: level.color),
-                ),
-              ])
-            else
-              Row(children: [
-                const Text('🌡️'),
-                const SizedBox(width: 4),
-                Text(
-                  '待分析',
-                  style: AppTypography.caption
-                      .copyWith(color: AppColors.glassTextHint),
-                ),
-              ]),
-            if (tags.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                tags.join(' · '),
-                style: AppTypography.caption
-                    .copyWith(color: AppColors.glassTextHint),
-                maxLines: 1,
+          title: Row(children: [
+            Expanded(
+              child: Text(
+                partner.name,
+                style: AppTypography.titleLarge
+                    .copyWith(color: AppColors.glassTextPrimary),
                 overflow: TextOverflow.ellipsis,
               ),
+            ),
+            Text(
+              _formatDate(aggregate.lastInteraction),
+              style: AppTypography.caption
+                  .copyWith(color: AppColors.glassTextHint),
+            ),
+          ]),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 4),
+              if (level != null)
+                Row(children: [
+                  Text(level.emoji),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$heat',
+                    style: AppTypography.caption.copyWith(color: level.color),
+                  ),
+                ])
+              else
+                Row(children: [
+                  const Text('🌡️'),
+                  const SizedBox(width: 4),
+                  Text(
+                    '待分析',
+                    style: AppTypography.caption
+                        .copyWith(color: AppColors.glassTextHint),
+                  ),
+                ]),
+              if (tags.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  tags.join(' · '),
+                  style: AppTypography.caption
+                      .copyWith(color: AppColors.glassTextHint),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ],
-          ],
+          ),
+          trailing: onDelete != null
+              ? IconButton(
+                  icon: const Icon(Icons.delete_outline,
+                      color: AppColors.glassTextHint),
+                  onPressed: onDelete,
+                  tooltip: '刪除對象',
+                )
+              : null,
         ),
-        trailing: onDelete != null
-            ? IconButton(
-                icon: const Icon(Icons.delete_outline,
-                    color: AppColors.glassTextHint),
-                onPressed: onDelete,
-                tooltip: '刪除對象',
-              )
-            : null,
       ),
     );
   }

@@ -39,8 +39,7 @@ class PartnerPickerSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<PartnerPickerSheet> createState() =>
-      _PartnerPickerSheetState();
+  ConsumerState<PartnerPickerSheet> createState() => _PartnerPickerSheetState();
 }
 
 class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
@@ -91,10 +90,10 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
               shrinkWrap: true,
               children: [
                 for (final p in candidates)
-                  Container(
+                  Material(
                     color: p.id == widget.selectedId
                         ? AppColors.glassBorder
-                        : null,
+                        : Colors.transparent,
                     child: ListTile(
                       title: Text(p.name),
                       trailing: p.id == widget.selectedId
