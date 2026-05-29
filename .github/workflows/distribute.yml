@@ -168,6 +168,7 @@ jobs:
           echo "Environment: staging" >> release-notes.txt
 
       - name: Upload to Firebase App Distribution
+        continue-on-error: true
         env:
           FIREBASE_IOS_APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -179,3 +180,10 @@ jobs:
             firebase appdistribution:distribute build/ios/ipa/*.ipa \
               --app "$FIREBASE_IOS_APP_ID" \
               --release-notes-file release-notes.txt
+
+      - name: Upload IPA as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: build/ios/ipa/*.ipa
+          retention-days: 7
