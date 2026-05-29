@@ -138,7 +138,7 @@ AnalysisResult _fullWithRawResponse(Map<String, dynamic> rawResponse) {
   );
 }
 
-Map<String, dynamic> _fullRawResponse({int? monthlyRemaining}) {
+Map<String, dynamic> _fullRawResponse() {
   return <String, dynamic>{
     'enthusiasm': {'score': 72},
     'strategy': '保持沉穩',
