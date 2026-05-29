@@ -38,6 +38,7 @@ import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
 import '../../data/services/analysis_telemetry_guardrail_helper.dart';
+import '../../domain/coach/coach_action_card_data.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
@@ -128,9 +129,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // payload; these fields are populated by `_onTwoStageStateChanged` and the
   // initial hydration in `initState`.
   // Render gate: while `_quickResult != null && _enthusiasmScore == null` the
-  // build() tree shows quick summary + placeholder/retry. Once full lands,
-  // `_enthusiasmScore != null` flips and the existing detailed-analysis tree
-  // takes over.
+  // build() tree fills the original top-level recommendation cards with quick
+  // data plus placeholder/retry. Once full lands, `_enthusiasmScore != null`
+  // flips and the existing detailed-analysis tree takes over.
   QuickAnalysisResult? _quickResult;
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
@@ -4087,62 +4088,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  /// Render the quick-stage summary shown immediately after the 3-5s quick
-  /// call returns. Carries the two pieces users actually need first
-  /// (下一步 + 最推薦回覆); the deeper analysis (radar / styles / strategy)
-  /// is filled by the background full call.
-  Widget _buildQuickSummaryCard(QuickAnalysisResult quick) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: GlassmorphicContainer(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '本回合怎麼接（速覽）',
-              style: AppTypography.titleSmall.copyWith(
-                color: AppColors.glassTextPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              quick.nextStep,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextSecondary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '最推薦回覆',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            SelectableText(
-              quick.recommendedReply,
-              style: AppTypography.bodyLarge.copyWith(
-                color: AppColors.glassTextPrimary,
-                height: 1.5,
-              ),
-            ),
-            if (quick.shortReason.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                quick.shortReason,
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.glassTextSecondary,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+  bool get _isShowingQuickPreview =>
+      _quickResult != null && _enthusiasmScore == null;
+
+  CoachActionCardData _quickCoachActionData(QuickAnalysisResult quick) {
+    final reason = quick.shortReason.trim();
+    return CoachActionCardData(
+      actionLabel: '快速判斷',
+      whyNow: quick.nextStep,
+      task: '先用下方推薦回覆接住這一輪，讓對方容易回。',
+      avoid: reason.isNotEmpty ? reason : '先不要急著一次補太長，完整分析還在整理。',
+      avoidLabel: '先避免',
+      suggestedLine: null,
+      learningLink: null,
+    );
+  }
+
+  FinalRecommendation? _visibleRecommendation() {
+    final full = _finalRecommendation;
+    if (full != null && full.content.trim().isNotEmpty) return full;
+
+    final quick = _quickResult;
+    if (quick == null || !_isShowingQuickPreview) return null;
+
+    return FinalRecommendation(
+      pick: 'quick',
+      content: quick.recommendedReply,
+      reason: quick.shortReason.trim().isNotEmpty
+          ? quick.shortReason.trim()
+          : '先給你一個可以直接接上的低壓回覆，完整分析整理中。',
+      psychology: '',
     );
   }
 
@@ -5105,6 +5080,70 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ],
                           ],
 
+                          if (_isShowingQuickPreview) ...[
+                            CoachActionCard(
+                              data: _quickCoachActionData(_quickResult!),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_isShowingQuickPreview) ...[
+                            Builder(
+                              builder: (context) {
+                                final recommendation =
+                                    _visibleRecommendation()!;
+                                return Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        AppColors.primary
+                                            .withValues(alpha: 0.1),
+                                        AppColors.primary
+                                            .withValues(alpha: 0.05),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text('🎯',
+                                              style: TextStyle(fontSize: 20)),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'AI 推薦回覆速覽',
+                                            style: AppTypography.titleLarge,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      ..._buildRecommendationContent(
+                                          recommendation),
+                                      if (recommendation.reason
+                                          .trim()
+                                          .isNotEmpty) ...[
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          '理由：${recommendation.reason.trim()}',
+                                          style: AppTypography.bodyMedium,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
                           if (_finalRecommendation != null &&
                               _finalRecommendation!.content
                                   .trim()
@@ -5179,26 +5218,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ),
                           ],
 
-                          // Keep the quick recommendation visible after the
-                          // full result lands so the first actionable answer
-                          // does not disappear when detailed analysis updates.
-                          if (_quickResult != null) ...[
-                            _buildQuickSummaryCard(_quickResult!),
-                            if (_enthusiasmScore == null) ...[
-                              if (_fullErrorMessage != null)
-                                FullAnalysisRetryCard(
-                                  retriesRemaining: _fullErrorRetriesRemaining,
-                                  errorMessage: _fullErrorMessage,
-                                  onRetry: _fullErrorRetriesRemaining > 0
-                                      ? _retryFullAnalysis
-                                      : null,
-                                )
-                              else
-                                FullAnalysisPlaceholder(
-                                  estimatedFullSeconds:
-                                      _quickResult!.estimatedFullSeconds,
-                                ),
-                            ],
+                          // While full analysis is still running, keep the
+                          // original top recommendation cards populated by
+                          // quick data and show only the full-report progress
+                          // affordance below them.
+                          if (_quickResult != null &&
+                              _enthusiasmScore == null) ...[
+                            if (_fullErrorMessage != null)
+                              FullAnalysisRetryCard(
+                                retriesRemaining: _fullErrorRetriesRemaining,
+                                errorMessage: _fullErrorMessage,
+                                onRetry: _fullErrorRetriesRemaining > 0
+                                    ? _retryFullAnalysis
+                                    : null,
+                              )
+                            else
+                              FullAnalysisPlaceholder(
+                                estimatedFullSeconds:
+                                    _quickResult!.estimatedFullSeconds,
+                              ),
                           ],
 
                           if (_enthusiasmScore != null) ...[

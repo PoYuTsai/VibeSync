@@ -17,6 +17,7 @@ import 'package:vibesync/features/conversation/data/repositories/conversation_re
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
+import 'package:vibesync/shared/widgets/coach_action_card.dart';
 
 const _conversationId = 'hydration-test';
 
@@ -317,7 +318,7 @@ void main() {
 
   group('AnalysisScreen hydration on remount (P1)', () {
     testWidgets(
-      'quickReady state hydrates → quick summary + full placeholder, no analyze re-fire',
+      'quickReady state hydrates → original top cards + full placeholder, no analyze re-fire',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
@@ -329,6 +330,7 @@ void main() {
         );
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+        expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
         expect(recorder.quickCalls, 0,
@@ -338,7 +340,7 @@ void main() {
     );
 
     testWidgets(
-      'runningFull state hydrates → quick summary + placeholder visible',
+      'runningFull state hydrates → original top cards + placeholder visible',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
@@ -350,6 +352,7 @@ void main() {
         );
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+        expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
         expect(recorder.quickCalls, 0);
@@ -358,7 +361,7 @@ void main() {
     );
 
     testWidgets(
-      'fullFailed state hydrates → quick summary + retry card with retry count',
+      'fullFailed state hydrates → original top cards + retry card with retry count',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
@@ -373,15 +376,10 @@ void main() {
         );
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+        expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
-        expect(
-          find.byWidgetPredicate(
-            (widget) =>
-                widget is SelectableText &&
-                widget.data == _quick(runId: 'run_fr').recommendedReply,
-          ),
-          findsOneWidget,
-        );
+        expect(find.text(_quick(runId: 'run_ff').recommendedReply),
+            findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(recorder.quickCalls, 0);
         expect(recorder.fullCalls, 0);
@@ -426,13 +424,14 @@ void main() {
   // runningFull / fullFailed / quickFailed) doesn't clear those mirrors, the
   // render gate `_quickResult != null && _enthusiasmScore == null` stays
   // false and the build tree keeps showing the stale detailed analysis on top
-  // of (or instead of) the new quick summary and FullAnalysisPlaceholder /
+  // of (or instead of) the quick-filled original cards and
+  // FullAnalysisPlaceholder /
   // FullAnalysisRetryCard. I-P1-c.
   group(
     'AnalysisScreen hydration with stale persisted snapshot (Codex round-2 P1)',
     () {
       testWidgets(
-        'quickReady hydrate over stale snapshot → quick summary + placeholder, no stale detailed analysis',
+        'quickReady hydrate over stale snapshot → original top cards + placeholder, no stale detailed analysis',
         (tester) async {
           final convWithStaleSnapshot = _conversation(
             lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -451,6 +450,7 @@ void main() {
           );
 
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.byType(CoachActionCard), findsOneWidget);
           expect(find.byType(FullAnalysisPlaceholder), findsOneWidget,
               reason:
                   'I-P1-c: stale _enthusiasmScore from persisted snapshot must be cleared so the render gate flips to placeholder.');
@@ -464,7 +464,7 @@ void main() {
       );
 
       testWidgets(
-        'runningFull hydrate over stale snapshot → quick summary + placeholder, no stale detailed analysis',
+        'runningFull hydrate over stale snapshot → original top cards + placeholder, no stale detailed analysis',
         (tester) async {
           final convWithStaleSnapshot = _conversation(
             lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -483,6 +483,7 @@ void main() {
           );
 
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.byType(CoachActionCard), findsOneWidget);
           expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
           expect(find.byType(FullAnalysisRetryCard), findsNothing);
           expect(find.text('舊建議內容'), findsNothing);
@@ -514,6 +515,7 @@ void main() {
           );
 
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.byType(CoachActionCard), findsOneWidget);
           expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
           expect(find.byType(FullAnalysisPlaceholder), findsNothing);
           expect(find.text('舊建議內容'), findsNothing);
