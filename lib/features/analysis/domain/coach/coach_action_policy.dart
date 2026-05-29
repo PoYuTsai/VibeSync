@@ -13,6 +13,9 @@ import 'learning_link_resolver.dart';
 class CoachActionPolicy {
   const CoachActionPolicy._();
 
+  static const int _briefNameAnswerMaxLength = 12;
+  static const int _briefNameFollowUpGraceLength = 36;
+
   static const List<String> _meetingKeywords = [
     '見面',
     '邀約',
@@ -96,15 +99,16 @@ class CoachActionPolicy {
       final partnerText = message.content.trim();
       final partnerLength = partnerText.characters.length;
       if (partnerLength == 0) return false;
+      final userLength = latestUserReply.content.trim().characters.length;
       if (_isBriefNameAnswerTurn(
         messages: messages,
         partnerIndex: i,
         partnerLength: partnerLength,
+        userLength: userLength,
       )) {
         return false;
       }
 
-      final userLength = latestUserReply.content.trim().characters.length;
       return userLength > partnerLength * AppConstants.goldenRuleMultiplier;
     }
     return false;
@@ -114,8 +118,13 @@ class CoachActionPolicy {
     required List<Message> messages,
     required int partnerIndex,
     required int partnerLength,
+    required int userLength,
   }) {
-    if (partnerLength > 12 || partnerIndex <= 0) return false;
+    if (partnerLength > _briefNameAnswerMaxLength ||
+        userLength > _briefNameFollowUpGraceLength ||
+        partnerIndex <= 0) {
+      return false;
+    }
 
     for (var i = partnerIndex - 1; i >= 0; i--) {
       final previous = messages[i];

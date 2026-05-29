@@ -665,6 +665,53 @@ void main() {
       expect(card.whyNow, isNot(contains('回得有點長')));
     });
 
+    test('should still flag an essay after a brief name answer', () {
+      final messages = [
+        Message(
+          id: 'm1',
+          content: 'hi',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 1, 10),
+        ),
+        Message(
+          id: 'm2',
+          content: '你好～怎麼稱呼你？',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 10, 1),
+        ),
+        Message(
+          id: 'm3',
+          content: 'Amy',
+          isFromMe: false,
+          timestamp: DateTime(2026, 5, 1, 10, 2),
+        ),
+        Message(
+          id: 'm4',
+          content: 'Amy 好呀，我是 Eric，平常喜歡咖啡跟看展，也蠻常去河邊散步，剛剛看到妳的照片覺得氣質很好，所以想多認識妳一點',
+          isFromMe: true,
+          timestamp: DateTime(2026, 5, 1, 10, 3),
+        ),
+      ];
+
+      final card = CoachActionPolicy.evaluate(
+        heatScore: 60,
+        gameStage:
+            const GameStageInfo(current: GameStage.opening, nextStep: ''),
+        finalRecommendation: const FinalRecommendation(
+          pick: 'extend',
+          content: 'Amy 好呀～最近在忙什麼？',
+          reason: '',
+          psychology: '',
+        ),
+        messages: messages,
+        practiceGoals: const [],
+        isDataQualityFlagged: false,
+      );
+
+      expect(card.actionLabel, '回得剛剛好');
+      expect(card.whyNow, contains('下一句先精簡一點'));
+    });
+
     test('should not pick rightSizeReply when ratio is at the threshold', () {
       final messages = [
         Message(
