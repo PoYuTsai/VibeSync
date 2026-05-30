@@ -18,6 +18,7 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/shared/widgets/coach_action_card.dart';
+import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 
 const _conversationId = 'hydration-test';
 
@@ -335,6 +336,9 @@ void main() {
         expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
+        expect(find.byType(ImagePickerWidget), findsNothing,
+            reason:
+                'Quick preview should stay directly under the conversation; the pre-analysis upload card must not reappear while full is pending.');
         expect(recorder.quickCalls, 0,
             reason: 'I-P1-a: must not re-fire analyzeQuick on hydration');
         expect(recorder.fullCalls, 0);
@@ -357,6 +361,9 @@ void main() {
         expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
+        expect(find.byType(ImagePickerWidget), findsNothing,
+            reason:
+                'Running full analysis should show quick cards + full progress, not the upload/start-analysis card.');
         expect(recorder.quickCalls, 0);
         expect(recorder.fullCalls, 0);
       },
@@ -383,6 +390,9 @@ void main() {
         expect(find.text(_quick(runId: 'run_ff').recommendedReply),
             findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
+        expect(find.byType(ImagePickerWidget), findsNothing,
+            reason:
+                'Full retry state should keep quick cards visible without inserting the upload/start-analysis card above them.');
         expect(recorder.quickCalls, 0);
         expect(recorder.fullCalls, 0);
       },

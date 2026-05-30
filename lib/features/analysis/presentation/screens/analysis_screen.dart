@@ -4566,6 +4566,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           // 手動分析按鈕 (尚未分析時顯示)
                           if (_enthusiasmScore == null &&
+                              !_isShowingQuickPreview &&
                               !_isAnalyzing &&
                               _errorMessage == null) ...[
                             Container(
