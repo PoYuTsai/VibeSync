@@ -27,6 +27,40 @@ Deno.test("quick prompt carries the 接住情緒 → 互動感 → 順勢延伸 
   assertStringIncludes(QUICK_SYSTEM_PROMPT, "接住情緒");
 });
 
+Deno.test("quick prompt is a core decision prompt, not only a short rewrite prompt", () => {
+  for (const term of ["核心判斷", "先判斷局勢", "最小可執行下一步"]) {
+    assertStringIncludes(QUICK_SYSTEM_PROMPT, term);
+  }
+});
+
+Deno.test("quick prompt classifies the message function before writing a reply", () => {
+  for (
+    const term of [
+      "真問題",
+      "情緒球",
+      "測試框架",
+      "玩笑/曖昧",
+      "低投入",
+      "邊界/風險",
+    ]
+  ) {
+    assertStringIncludes(QUICK_SYSTEM_PROMPT, term);
+  }
+});
+
+Deno.test("quick prompt chooses among the five reply styles internally", () => {
+  for (const term of ["五種", "延展", "共感", "調侃", "幽默", "觀察"]) {
+    assertStringIncludes(QUICK_SYSTEM_PROMPT, term);
+  }
+  assertStringIncludes(QUICK_SYSTEM_PROMPT, "不要永遠延展");
+});
+
+Deno.test("quick prompt preserves user draft intent instead of rewriting personality", () => {
+  for (const term of ["用戶草稿", "保留用戶原本想表達的意思", "只修節奏"]) {
+    assertStringIncludes(QUICK_SYSTEM_PROMPT, term);
+  }
+});
+
 Deno.test("quick prompt forbids manipulation / pressure / dropped consent", () => {
   // VibeSync product positioning: practical, on the user's side, mature about
   // boundaries and consent. The short prompt must still encode this — it is
@@ -72,7 +106,7 @@ Deno.test("quick prompt has no leading/trailing whitespace", () => {
   assertEquals(QUICK_SYSTEM_PROMPT, QUICK_SYSTEM_PROMPT.trim());
 });
 
-Deno.test("quick prompt does NOT pull in full-only sections", () => {
+Deno.test("quick prompt does NOT pull in full-only report sections", () => {
   // Negative assertions catch the worst regression: someone "fixing Haiku
   // quality" by pasting full prompt sections back in. If quick has these,
   // it stops being a quick prompt.
@@ -81,8 +115,8 @@ Deno.test("quick prompt does NOT pull in full-only sections", () => {
     "replyOptions",     // 5-style fan-out lives in full
     "healthCheck",      // diagnostic lives in full
     "dimensions",       // radar lives in full
-    "extend",           // one of the 5 styles
-    "coldRead",         // one of the 5 styles
+    "targetProfile",    // partner profile extraction lives in full
+    "gameStage",        // full report stage label
   ];
   for (const marker of fullOnlyMarkers) {
     assertFalse(
