@@ -421,6 +421,12 @@ void main() {
         // Hive build exception so the test framework does not flag it.
         // ignore: avoid_dynamic_calls
         tester.takeException();
+        expect(find.text('1 快速建議（先回來的版本）'), findsOneWidget);
+        expect(find.text('2 完整分析後建議'), findsOneWidget);
+        expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget,
+            reason:
+                'Dogfood compare mode should keep the quick answer visible after the full result arrives.');
+        expect(find.text('完整分析推薦回覆'), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
         expect(recorder.quickCalls, 0);

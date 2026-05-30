@@ -4108,20 +4108,190 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  FinalRecommendation? _visibleRecommendation() {
-    final full = _finalRecommendation;
-    if (full != null && full.content.trim().isNotEmpty) return full;
+  String _quickConfidenceLabel(String confidence) {
+    switch (confidence.trim().toLowerCase()) {
+      case 'high':
+        return '信心高';
+      case 'low':
+        return '信心低';
+      default:
+        return '信心中';
+    }
+  }
 
-    final quick = _quickResult;
-    if (quick == null || !_isShowingQuickPreview) return null;
+  Widget _buildTwoStageCompareHeader({
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.glassWhite.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.glassBorder.withValues(alpha: 0.8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return FinalRecommendation(
-      pick: 'quick',
-      content: quick.recommendedReply,
-      reason: quick.shortReason.trim().isNotEmpty
-          ? quick.shortReason.trim()
-          : '先給你一個可以直接接上的低壓回覆，完整分析整理中。',
-      psychology: '',
+  Widget _buildQuickRecommendationCard(
+    QuickAnalysisResult quick, {
+    required bool fullReady,
+  }) {
+    final reply = quick.recommendedReply.trim();
+    final reason = quick.shortReason.trim();
+    final nextStep = quick.nextStep.trim();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.info.withValues(alpha: 0.1),
+            AppColors.primary.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: AppColors.info.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Text(
+                  'Quick',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'AI 推薦回覆速覽',
+                  style: AppTypography.titleLarge.copyWith(
+                    color: AppColors.glassTextPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                _quickConfidenceLabel(quick.confidence),
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.glassTextSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            fullReady
+                ? '這是第一階段先回來的版本；下方會保留完整 prompt 跑完後的正式建議，方便你比對品質。'
+                : '先讓你 3-5 秒內有方向；完整分析還在整理，稍後會補上正式建議。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.45,
+            ),
+          ),
+          if (nextStep.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              '快速判斷：$nextStep',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (reply.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.glassWhite.withValues(alpha: 0.66),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.glassBorder.withValues(alpha: 0.7),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '快速回覆',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.glassTextHint,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    reply,
+                    style: AppTypography.bodyLarge.copyWith(
+                      color: AppColors.glassTextPrimary,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  _copyRecommendationText(reply, '已複製快速回覆');
+                },
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('複製快速回覆'),
+              ),
+            ),
+          ],
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              '快速理由：$reason',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -5013,6 +5183,37 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             const SizedBox(height: 16),
                           ],
 
+                          if (_quickResult != null) ...[
+                            _buildTwoStageCompareHeader(
+                              title: _enthusiasmScore == null
+                                  ? '1 快速建議'
+                                  : '1 快速建議（先回來的版本）',
+                              subtitle: _enthusiasmScore == null
+                                  ? '這一段先用短 prompt 讓你不用空等；完整分析會在下方繼續整理。'
+                                  : '這是 3-5 秒內先回來的版本，保留給 dogfood 比對。真正完整判斷在下一段。',
+                            ),
+                            const SizedBox(height: 12),
+                            CoachActionCard(
+                              data: _quickCoachActionData(_quickResult!),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildQuickRecommendationCard(
+                              _quickResult!,
+                              fullReady: _enthusiasmScore != null,
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_quickResult != null &&
+                              _enthusiasmScore != null) ...[
+                            _buildTwoStageCompareHeader(
+                              title: '2 完整分析後建議',
+                              subtitle:
+                                  '這段是完整 prompt 跑完後的正式判斷；五大回覆風格、雷達與深層策略也會一起更新。',
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
                           if (_enthusiasmScore != null) ...[
                             if (_shouldGiveUp) ...[
                               Container(
@@ -5085,70 +5286,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ],
                           ],
 
-                          if (_isShowingQuickPreview) ...[
-                            CoachActionCard(
-                              data: _quickCoachActionData(_quickResult!),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-
-                          if (_isShowingQuickPreview) ...[
-                            Builder(
-                              builder: (context) {
-                                final recommendation =
-                                    _visibleRecommendation()!;
-                                return Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        AppColors.primary
-                                            .withValues(alpha: 0.1),
-                                        AppColors.primary
-                                            .withValues(alpha: 0.05),
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: AppColors.primary
-                                          .withValues(alpha: 0.3),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Text('🎯',
-                                              style: TextStyle(fontSize: 20)),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            'AI 推薦回覆速覽',
-                                            style: AppTypography.titleLarge,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      ..._buildRecommendationContent(
-                                          recommendation),
-                                      if (recommendation.reason
-                                          .trim()
-                                          .isNotEmpty) ...[
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          '理由：${recommendation.reason.trim()}',
-                                          style: AppTypography.bodyMedium,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-
                           if (_finalRecommendation != null &&
                               _finalRecommendation!.content
                                   .trim()
@@ -5175,7 +5312,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       const Text('🎯',
                                           style: TextStyle(fontSize: 20)),
                                       const SizedBox(width: 8),
-                                      Text('AI 推薦回覆',
+                                      Text(
+                                          _quickResult != null
+                                              ? '完整分析推薦回覆'
+                                              : 'AI 推薦回覆',
                                           style: AppTypography.titleLarge),
                                     ],
                                   ),
