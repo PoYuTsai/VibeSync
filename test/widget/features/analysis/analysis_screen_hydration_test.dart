@@ -34,6 +34,18 @@ class _SeededTwoStageNotifier extends TwoStageAnalyzeNotifier {
   TwoStageAnalysisState build(String conversationId) => seed;
 }
 
+class _MutableTwoStageNotifier extends TwoStageAnalyzeNotifier {
+  _MutableTwoStageNotifier(this.seed);
+  final TwoStageAnalysisState seed;
+
+  @override
+  TwoStageAnalysisState build(String conversationId) => seed;
+
+  void emit(TwoStageAnalysisState next) {
+    state = next;
+  }
+}
+
 /// Records any call to analyzeQuick/analyzeFull so tests can assert the
 /// screen did not re-trigger an analyze after hydrating.
 class _RecordingAnalysisService extends AnalysisService {
@@ -283,6 +295,16 @@ class _HydrationHarness {
   final _StubConversationRepository repo;
 }
 
+class _MutableHydrationHarness extends _HydrationHarness {
+  _MutableHydrationHarness({
+    required super.recorder,
+    required super.repo,
+    required this.notifier,
+  });
+
+  final _MutableTwoStageNotifier notifier;
+}
+
 Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   WidgetTester tester, {
   required TwoStageAnalysisState seed,
@@ -312,6 +334,43 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   await tester.pump();
   await tester.pump();
   return _HydrationHarness(recorder: recorder, repo: repo);
+}
+
+Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
+  WidgetTester tester, {
+  required TwoStageAnalysisState seed,
+  required Conversation conversation,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1400));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  final recorder = _RecordingAnalysisService();
+  final repo = _StubConversationRepository(conversation);
+  late final _MutableTwoStageNotifier notifier;
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        conversationRepositoryProvider.overrideWithValue(repo),
+        conversationProvider(_conversationId).overrideWithValue(conversation),
+        analysisServiceProvider.overrideWithValue(recorder),
+        twoStageAnalyzeProvider.overrideWith(() {
+          notifier = _MutableTwoStageNotifier(seed);
+          return notifier;
+        }),
+      ],
+      child: const MaterialApp(
+        home: AnalysisScreen(conversationId: _conversationId),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+  return _MutableHydrationHarness(
+    recorder: recorder,
+    repo: repo,
+    notifier: notifier,
+  );
 }
 
 void main() {
@@ -434,6 +493,54 @@ void main() {
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
         expect(recorder.quickCalls, 0);
         expect(recorder.fullCalls, 0);
+      },
+    );
+
+    testWidgets(
+      'live runningFull to fullReady keeps quick answer for Core / Full comparison',
+      (tester) async {
+        final quick = _quick(runId: 'run_live_compare');
+        final raw = _fullRawResponse();
+        final conv = _conversation();
+
+        final harness = await _pumpMutableAnalysisScreenWithRepo(
+          tester,
+          seed: TwoStageAnalysisState(
+            phase: TwoStagePhase.runningFull,
+            quick: quick,
+            analysisRunId: quick.analysisRunId,
+            conversationMessageCount: conv.messages.length,
+          ),
+          conversation: conv,
+        );
+
+        expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
+
+        harness.notifier.emit(
+          TwoStageAnalysisState(
+            phase: TwoStagePhase.fullReady,
+            quick: quick,
+            full: _fullWithRawResponse(raw),
+            analysisRunId: quick.analysisRunId,
+            conversationMessageCount: conv.messages.length,
+          ),
+        );
+        await tester.pump();
+
+        // Drain the expected Hive build exception from the detailed tree.
+        // ignore: avoid_dynamic_calls
+        tester.takeException();
+
+        expect(find.text('2 完整分析後建議'), findsOneWidget);
+        expect(find.text('Core / Full 回覆對照'), findsOneWidget);
+        expect(find.text('Core 先行'), findsOneWidget);
+        expect(find.text('Full 完整'), findsOneWidget);
+        expect(find.text(quick.recommendedReply), findsWidgets,
+            reason:
+                'The live listener clears the quick preview after fullReady, but must retain a comparison copy for dogfood quality review.');
+        expect(find.byType(FullAnalysisPlaceholder), findsNothing);
+        expect(harness.recorder.quickCalls, 0);
+        expect(harness.recorder.fullCalls, 0);
       },
     );
   });

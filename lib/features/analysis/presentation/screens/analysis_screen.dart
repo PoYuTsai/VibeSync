@@ -130,6 +130,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // data plus placeholder/retry. Once full lands, `_enthusiasmScore != null`
   // flips and the existing detailed-analysis tree takes over.
   QuickAnalysisResult? _quickResult;
+  QuickAnalysisResult? _quickResultForComparison;
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
   int? _activeAnalysisMessageCount;
@@ -649,6 +650,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = true;
           _quickResult = null;
+          _quickResultForComparison = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -660,6 +662,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = s.quick;
+          _quickResultForComparison = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -673,6 +676,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           setState(() {
             _isAnalyzing = false;
             _quickResult = s.quick;
+            _quickResultForComparison = s.quick;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
             _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -683,6 +687,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = s.quick;
+          _quickResultForComparison = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = null;
@@ -713,6 +718,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = s.quick;
+          _quickResultForComparison = s.quick;
           _fullErrorMessage = s.fullErrorMessage;
           _fullErrorRetriesRemaining = s.retriesRemaining;
           _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -2873,6 +2879,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isAnalyzing = true;
         _quickResult = null;
+        _quickResultForComparison = null;
         _fullErrorMessage = null;
         _fullErrorRetriesRemaining = 0;
         _activeAnalysisMessageCount = conversation.messages.length;
@@ -2932,6 +2939,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = true;
           _quickResult = null;
+          _quickResultForComparison = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -2943,6 +2951,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = next.quick;
+          _quickResultForComparison = next.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -2968,6 +2977,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           setState(() {
             _isAnalyzing = false;
             _quickResult = next.quick;
+            _quickResultForComparison = next.quick;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
             _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -2984,6 +2994,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = null;
+          _quickResultForComparison = next.quick ?? _quickResultForComparison;
           _quickResult = null;
           if (conv != null) {
             _lastAnalyzedMessageCount = conv.messages.length;
@@ -3014,6 +3025,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case TwoStagePhase.fullFailed:
         setState(() {
           _isAnalyzing = false;
+          _quickResult = next.quick;
+          _quickResultForComparison = next.quick;
           _fullErrorMessage = next.fullErrorMessage;
           _fullErrorRetriesRemaining = next.retriesRemaining;
           _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -4462,8 +4475,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               ),
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
@@ -5447,7 +5459,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             const SizedBox(height: 16),
                           ],
 
-                          if (_quickResult != null &&
+                          if ((_quickResult ?? _quickResultForComparison) !=
+                                  null &&
                               _enthusiasmScore != null) ...[
                             _buildTwoStageCompareHeader(
                               title: '2 完整分析後建議',
@@ -5460,7 +5473,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     .trim()
                                     .isNotEmpty) ...[
                               _buildCoreFullReplyComparisonCard(
-                                core: _quickResult!,
+                                core: (_quickResult ??
+                                    _quickResultForComparison)!,
                                 full: _finalRecommendation!,
                               ),
                               const SizedBox(height: 16),
@@ -5566,7 +5580,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           style: TextStyle(fontSize: 20)),
                                       const SizedBox(width: 8),
                                       Text(
-                                          _quickResult != null
+                                          (_quickResult ??
+                                                      _quickResultForComparison) !=
+                                                  null
                                               ? '完整分析推薦回覆'
                                               : 'AI 推薦回覆',
                                           style: AppTypography.titleLarge),
