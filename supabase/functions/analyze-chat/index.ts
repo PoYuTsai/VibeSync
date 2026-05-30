@@ -38,7 +38,7 @@ import {
   estimateFullSeconds,
   parseQuickResponse,
 } from "./quick_response.ts";
-import { buildFullPromptAnchor, parseFullPayload } from "./full_response.ts";
+import { parseFullPayload } from "./full_response.ts";
 import { detectAnchorDrift } from "./anchor_drift.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
@@ -5727,8 +5727,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     //      the Claude call. 0 rows → 429 RUN_RETRY_EXHAUSTED. Reserving
     //      first means every Claude attempt (success OR failure) consumes
     //      one of the 3 slots — I6.
-    //   5. Build the ANCHOR block (plan I7: confirm/supplement/light-polish
-    //      only) and prepend it to the existing userPrompt.
+    //   5. Build the full prompt from the original conversation only. The
+    //      quick/Core result is kept for telemetry + dogfood comparison after
+    //      the full result returns, but is intentionally NOT shown to Claude.
+    //      This keeps the full answer independent instead of anchoring it to
+    //      the fast candidate.
     //   6. Call Claude with selectedModel / SYSTEM_PROMPT / 30s timeout.
     //      I1 — NO RPC. NO increment_usage. NO quota changes.
     //   7. Parse + checkAiOutput guardrail (same safety swap as legacy).
@@ -5854,9 +5857,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         Date.now() - new Date(run.created_at).getTime(),
       );
 
-      // Step 5 — anchor injection.
-      const anchorBlock = buildFullPromptAnchor(run.quick_result);
-      const fullUserPrompt = joinPromptSections(userPrompt, anchorBlock);
+      // Step 5 — independent full analysis. Do not inject the quick/Core
+      // candidate here; Eric/Bruce dogfood needs a real blind comparison
+      // between the fast Core answer and the full prompt's judgment.
+      const fullUserPrompt = userPrompt;
 
       const fullStart = Date.now();
       logInfo("full_request_started", {
@@ -6019,9 +6023,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         };
       }
 
-      // Step 8 — drift detector (warn only in v1, per plan I7). Runs against
-      // the post-processed payload so drift reflects user-visible deviation
-      // from the quick anchor, not raw model output we never showed.
+      // Step 8 — Core/Full drift detector (warn only). Runs against the
+      // post-processed payload so drift reflects user-visible deviation from
+      // the quick answer, not raw model output we never showed.
       const drift = detectAnchorDrift(
         run.quick_result as Record<string, unknown>,
         postProcessed,
