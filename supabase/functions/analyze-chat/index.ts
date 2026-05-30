@@ -38,10 +38,7 @@ import {
   estimateFullSeconds,
   parseQuickResponse,
 } from "./quick_response.ts";
-import {
-  buildFullPromptAnchor,
-  parseFullPayload,
-} from "./full_response.ts";
+import { buildFullPromptAnchor, parseFullPayload } from "./full_response.ts";
 import { detectAnchorDrift } from "./anchor_drift.ts";
 
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
@@ -120,6 +117,52 @@ const OPENER_TYPES = [
   "humor",
   "coldRead",
 ] as const;
+
+function normalizeDogfoodRecommendation(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!isPlainObject(value)) return null;
+
+  const data = value as Record<string, unknown>;
+  const pick = typeof data.pick === "string" && data.pick.trim().length > 0
+    ? data.pick.trim()
+    : "extend";
+  const replySegments = Array.isArray(data.replySegments)
+    ? data.replySegments
+    : [];
+  const segmentContent = replySegments
+    .map((segment) =>
+      isPlainObject(segment) && typeof segment.reply === "string"
+        ? segment.reply.trim()
+        : ""
+    )
+    .filter((reply) => reply.length > 0)
+    .join("\n");
+  const content =
+    typeof data.content === "string" && data.content.trim().length > 0
+      ? data.content.trim()
+      : segmentContent;
+  if (content.length === 0) return null;
+
+  return {
+    pick,
+    content,
+    reason: typeof data.reason === "string" ? data.reason.trim() : "",
+    psychology: typeof data.psychology === "string"
+      ? data.psychology.trim()
+      : "",
+    replySegments,
+  };
+}
+
+function dogfoodRecommendationsDiffer(
+  left: Record<string, unknown> | null,
+  right: Record<string, unknown> | null,
+): boolean {
+  if (!left || !right) return false;
+  return String(left.pick ?? "") !== String(right.pick ?? "") ||
+    String(left.content ?? "") !== String(right.content ?? "");
+}
 
 function stripJsonCodeFence(text: string): string {
   const trimmed = text.trim();
@@ -639,7 +682,6 @@ function deriveRequestType({
   }
   return "analyze";
 }
-
 
 function buildQuotaUsageMetadata({
   requestType,
@@ -5426,9 +5468,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         // I8: Claude failure → no row, no charge. Surface the error so the
         // client can show a generic retry CTA (per D6, no auto-fallback to legacy).
         const latencyMs = Date.now() - quickStart;
-        const code = error instanceof AiServiceError ? error.code : "QUICK_AI_FAILED";
-        const message = error instanceof AiServiceError ? error.message : "快速分析暫時失敗，請再試一次。";
-        const retryable = error instanceof AiServiceError ? error.retryable : true;
+        const code = error instanceof AiServiceError
+          ? error.code
+          : "QUICK_AI_FAILED";
+        const message = error instanceof AiServiceError
+          ? error.message
+          : "快速分析暫時失敗，請再試一次。";
+        const retryable = error instanceof AiServiceError
+          ? error.retryable
+          : true;
         logWarn("quick_request_failed", {
           user: summarizeUser(user.id),
           latencyMs,
@@ -5539,7 +5587,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             tier: effectiveTier,
             isTestAccount: accountIsTest,
             estimatedMessageCount: quotaUsage.estimatedMessageCount,
-            chargedMessageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+            chargedMessageCount: shouldCharge
+              ? quotaUsage.chargedMessageCount
+              : 0,
           },
           chargeQuota: shouldCharge,
           messageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
@@ -5608,20 +5658,16 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         },
       });
 
-      const monthlyRemaining = accountIsTest
-        ? 999999
-        : Math.max(
-          0,
-          monthlyLimit - sub.monthly_messages_used -
-            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
-        );
-      const dailyRemaining = accountIsTest
-        ? 999999
-        : Math.max(
-          0,
-          dailyLimit - sub.daily_messages_used -
-            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
-        );
+      const monthlyRemaining = accountIsTest ? 999999 : Math.max(
+        0,
+        monthlyLimit - sub.monthly_messages_used -
+          (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+      );
+      const dailyRemaining = accountIsTest ? 999999 : Math.max(
+        0,
+        dailyLimit - sub.daily_messages_used -
+          (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+      );
 
       return jsonResponse({
         responseMode: "quick",
@@ -5648,8 +5694,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           timeoutMs: quickTimeoutMs,
           fallbackUsed: quickClaude.fallbackUsed,
           retries: quickClaude.retries,
-          totalTokens:
-            (quickTokenUsage.inputTokens ?? 0) +
+          totalTokens: (quickTokenUsage.inputTokens ?? 0) +
             (quickTokenUsage.outputTokens ?? 0),
         },
       });
@@ -5719,7 +5764,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           {
             error: "MISSING_RUN_ID",
             code: "MISSING_RUN_ID",
-            message: "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
+            message:
+              "缺少 analysisRunId。請先呼叫 responseMode=quick 取得 run id。",
             retryable: false,
           },
           400,
@@ -5943,6 +5989,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       const guarded = checkAiOutput(
         parsed.result.payload as GuardrailAnalysisResult,
       ) as Record<string, unknown>;
+      const dogfoodRawFullRecommendation = normalizeDogfoodRecommendation(
+        guarded.finalRecommendation,
+      );
 
       // Codex Phase 2 P1 — apply legacy post-processing parity here so full
       // mode honors the same entitlement gates + finalRecommendation fallbacks
@@ -5954,6 +6003,21 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         isMyMessageMode,
         allowedFeatures,
       });
+      const dogfoodOfficialFullRecommendation = normalizeDogfoodRecommendation(
+        postProcessed.finalRecommendation,
+      );
+      if (dogfoodRawFullRecommendation) {
+        postProcessed.dogfoodComparison = {
+          rawFullRecommendation: dogfoodRawFullRecommendation,
+          officialFullRecommendation: dogfoodOfficialFullRecommendation,
+          entitlementAdjusted: dogfoodRecommendationsDiffer(
+            dogfoodRawFullRecommendation,
+            dogfoodOfficialFullRecommendation,
+          ),
+          tierUsed: effectiveTier,
+          allowedFeatures,
+        };
+      }
 
       // Step 8 — drift detector (warn only in v1, per plan I7). Runs against
       // the post-processed payload so drift reflects user-visible deviation
@@ -6026,8 +6090,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           parseSource: parsed.result.source,
           driftedFields: drift.driftedFields,
           replyOverlapRatio: drift.replyOverlapRatio,
-          totalTokens:
-            (fullTokenUsage.inputTokens ?? 0) +
+          totalTokens: (fullTokenUsage.inputTokens ?? 0) +
             (fullTokenUsage.outputTokens ?? 0),
         },
       });

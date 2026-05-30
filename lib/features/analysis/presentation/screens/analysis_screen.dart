@@ -131,6 +131,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // flips and the existing detailed-analysis tree takes over.
   QuickAnalysisResult? _quickResult;
   QuickAnalysisResult? _quickResultForComparison;
+  FinalRecommendation? _dogfoodRawFullRecommendation;
+  FinalRecommendation? _dogfoodOfficialFullRecommendation;
+  bool _dogfoodEntitlementAdjusted = false;
+  String? _dogfoodTierUsed;
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
   int? _activeAnalysisMessageCount;
@@ -805,6 +809,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _psychology = null;
     _finalRecommendation = null;
     _coachActionHint = null;
+    _dogfoodRawFullRecommendation = null;
+    _dogfoodOfficialFullRecommendation = null;
+    _dogfoodEntitlementAdjusted = false;
+    _dogfoodTierUsed = null;
     _reminder = null;
     _shouldGiveUp = false;
     _lastAiResponse = null;
@@ -976,6 +984,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _psychology = result.psychology;
     _finalRecommendation = result.recommendation;
     _coachActionHint = result.coachActionHint;
+    _dogfoodRawFullRecommendation = result.dogfoodRawFullRecommendation;
+    _dogfoodOfficialFullRecommendation =
+        result.dogfoodOfficialFullRecommendation;
+    _dogfoodEntitlementAdjusted = result.dogfoodEntitlementAdjusted;
+    _dogfoodTierUsed = result.dogfoodTierUsed;
     _reminder = result.reminder;
     _shouldGiveUp = result.shouldGiveUp;
     _lastAiResponse = result.rawResponse;
@@ -3599,6 +3612,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  String _recommendationDisplayText(FinalRecommendation recommendation) {
+    final content = recommendation.content.trim();
+    if (content.isNotEmpty) {
+      return content;
+    }
+    return recommendation.replySegments
+        .map((segment) => segment.reply.trim())
+        .where((reply) => reply.isNotEmpty)
+        .join('\n');
+  }
+
   /// 截圖識別結果卡片
   /// 優先呈現結構化分段回覆；舊版 ①② 格式只保留相容。
   List<Widget> _buildRecommendationContent(FinalRecommendation recommendation) {
@@ -4311,9 +4335,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Widget _buildCoreFullReplyComparisonCard({
     required QuickAnalysisResult core,
     required FinalRecommendation full,
+    FinalRecommendation? officialFull,
+    bool entitlementAdjusted = false,
+    String? tierUsed,
   }) {
     final coreReply = core.recommendedReply.trim();
-    final fullReply = full.content.trim();
+    final fullReply = _recommendationDisplayText(full);
     if (coreReply.isEmpty && fullReply.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -4322,6 +4349,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _normalizeReplyForComparison(coreReply) ==
             _normalizeReplyForComparison(fullReply);
     final fullStyle = _comparisonReplyTypeLabel(full.pick);
+    final officialReply =
+        officialFull == null ? '' : _recommendationDisplayText(officialFull);
+    final officialStyle = officialFull == null
+        ? ''
+        : _comparisonReplyTypeLabel(officialFull.pick);
+    final showOfficialAdjustment = entitlementAdjusted &&
+        officialFull != null &&
+        (_normalizeReplyForComparison(officialReply) !=
+                _normalizeReplyForComparison(fullReply) ||
+            officialFull.pick != full.pick);
     final coreMeta = [
       if (core.nextStep.trim().isNotEmpty) '本回合：${core.nextStep.trim()}',
       if (core.shortReason.trim().isNotEmpty) '理由：${core.shortReason.trim()}',
@@ -4425,13 +4462,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
           const SizedBox(height: 12),
           _buildReplyComparisonBlock(
-            label: 'Full 完整',
+            label: 'Full 原始判斷',
             badge: fullStyle,
             reply: fullReply,
             meta: fullMeta,
             accent: AppColors.primary,
             icon: Icons.psychology_alt_rounded,
           ),
+          if (showOfficialAdjustment) ...[
+            const SizedBox(height: 12),
+            _buildReplyComparisonBlock(
+              label: '正式顯示',
+              badge: officialStyle.isEmpty ? '權限調整' : officialStyle,
+              reply: officialReply,
+              meta: [
+                if (tierUsed != null && tierUsed.trim().isNotEmpty)
+                  '目前方案：${tierUsed.trim()}',
+                '狗食提示：正式畫面仍會依目前方案權限顯示；上方 Full 原始判斷用來看品質差異。',
+              ].join('\n'),
+              accent: AppColors.warning,
+              icon: Icons.visibility_rounded,
+            ),
+          ],
         ],
       ),
     );
@@ -5475,7 +5527,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               _buildCoreFullReplyComparisonCard(
                                 core: (_quickResult ??
                                     _quickResultForComparison)!,
-                                full: _finalRecommendation!,
+                                full: _dogfoodRawFullRecommendation ??
+                                    _finalRecommendation!,
+                                officialFull:
+                                    _dogfoodOfficialFullRecommendation ??
+                                        _finalRecommendation,
+                                entitlementAdjusted:
+                                    _dogfoodEntitlementAdjusted,
+                                tierUsed: _dogfoodTierUsed,
                               ),
                               const SizedBox(height: 16),
                             ],

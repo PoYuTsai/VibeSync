@@ -18,14 +18,16 @@ import {
   applyQuickGuardrails,
   estimateFullSeconds,
   parseQuickResponse,
+  type QuickPayload,
 } from "./quick_response.ts";
 
 // ------------------------------------------------------------------
 // parseQuickResponse
 // ------------------------------------------------------------------
 
-Deno.test("parseQuickResponse — happy path extracts all 5 canonical fields", () => {
+Deno.test("parseQuickResponse — happy path extracts all 6 canonical fields", () => {
   const raw = JSON.stringify({
+    pick: "resonate",
     nextStep: "先回應她的累，再順勢問週末",
     recommendedReply: "今天聽起來真的很滿，要不要週末一起去吃宵夜放空？",
     shortReason: "先接情緒比直接邀約更有耐性",
@@ -40,12 +42,14 @@ Deno.test("parseQuickResponse — happy path extracts all 5 canonical fields", (
     "今天聽起來真的很滿，要不要週末一起去吃宵夜放空？",
   );
   assertEquals(result.payload.shortReason, "先接情緒比直接邀約更有耐性");
+  assertEquals(result.payload.pick, "resonate");
   assertEquals(result.payload.insufficientContext, false);
   assertEquals(result.payload.confidence, "high");
 });
 
 Deno.test("parseQuickResponse — accepts surrounding prose / markdown fence", () => {
   const raw = "```json\n" + JSON.stringify({
+    pick: "extend",
     nextStep: "稍微緩一下",
     recommendedReply: "好的我懂",
     shortReason: "對方訊號弱",
@@ -59,6 +63,7 @@ Deno.test("parseQuickResponse — accepts surrounding prose / markdown fence", (
 
 Deno.test("parseQuickResponse — confidence falls back to 'medium' when invalid", () => {
   const raw = JSON.stringify({
+    pick: "extend",
     nextStep: "x",
     recommendedReply: "y",
     shortReason: "z",
@@ -72,6 +77,7 @@ Deno.test("parseQuickResponse — confidence falls back to 'medium' when invalid
 
 Deno.test("parseQuickResponse — insufficientContext coerced to boolean", () => {
   const raw = JSON.stringify({
+    pick: "resonate",
     nextStep: "x",
     recommendedReply: "y",
     shortReason: "z",
@@ -81,6 +87,37 @@ Deno.test("parseQuickResponse — insufficientContext coerced to boolean", () =>
   const result = parseQuickResponse(raw);
   assert(result.ok);
   assertStrictEquals(result.payload.insufficientContext, true);
+});
+
+Deno.test("parseQuickResponse — missing pick fails", () => {
+  const raw = JSON.stringify({
+    nextStep: "x",
+    recommendedReply: "y",
+    shortReason: "z",
+    insufficientContext: false,
+    confidence: "medium",
+  });
+  const result = parseQuickResponse(raw);
+  assertFalse(result.ok);
+  if (!result.ok) {
+    assertEquals(result.error, "MISSING_REQUIRED_FIELD");
+  }
+});
+
+Deno.test("parseQuickResponse — invalid pick fails", () => {
+  const raw = JSON.stringify({
+    nextStep: "x",
+    pick: "safe",
+    recommendedReply: "y",
+    shortReason: "z",
+    insufficientContext: false,
+    confidence: "medium",
+  });
+  const result = parseQuickResponse(raw);
+  assertFalse(result.ok);
+  if (!result.ok) {
+    assertEquals(result.error, "MISSING_REQUIRED_FIELD");
+  }
 });
 
 Deno.test("parseQuickResponse — missing recommendedReply fails", () => {
@@ -152,6 +189,7 @@ Deno.test("parseQuickResponse — malformed JSON returns INVALID_JSON", () => {
 
 Deno.test("parseQuickResponse — trims string fields", () => {
   const raw = JSON.stringify({
+    pick: "coldRead",
     nextStep: "  先接情緒  ",
     recommendedReply: "\t你今天辛苦了\n",
     shortReason: "  接住  ",
@@ -170,7 +208,8 @@ Deno.test("parseQuickResponse — trims string fields", () => {
 // ------------------------------------------------------------------
 
 Deno.test("applyQuickGuardrails — clean payload passes through unchanged", () => {
-  const payload = {
+  const payload: QuickPayload = {
+    pick: "tease",
     nextStep: "順勢延伸",
     recommendedReply: "聽起來不錯，要不要週末聊聊？",
     shortReason: "輕邀約給對方退路",
@@ -183,7 +222,8 @@ Deno.test("applyQuickGuardrails — clean payload passes through unchanged", () 
 });
 
 Deno.test("applyQuickGuardrails — recommendedReply hitting BLOCKED_PATTERNS is replaced", () => {
-  const payload = {
+  const payload: QuickPayload = {
+    pick: "extend",
     nextStep: "x",
     recommendedReply: "你不要放棄一直跟她講就會喜歡你了",
     shortReason: "z",
@@ -200,7 +240,8 @@ Deno.test("applyQuickGuardrails — recommendedReply hitting BLOCKED_PATTERNS is
 
 Deno.test("applyQuickGuardrails — nextStep with blocked pattern is also filtered", () => {
   // 不只 recommendedReply，nextStep 也是 user-visible
-  const payload = {
+  const payload: QuickPayload = {
+    pick: "humor",
     nextStep: "強迫她答應週末出來",
     recommendedReply: "週末有空嗎？",
     shortReason: "z",
@@ -214,7 +255,8 @@ Deno.test("applyQuickGuardrails — nextStep with blocked pattern is also filter
 
 Deno.test("applyQuickGuardrails — non-string fields are coerced before pattern test", () => {
   // Defensive: if something upstream lets through a non-string we shouldn't crash.
-  const payload = {
+  const payload: QuickPayload = {
+    pick: "extend",
     nextStep: "x",
     recommendedReply: "y",
     shortReason: "z",

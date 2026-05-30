@@ -127,10 +127,11 @@ Deno.test("quick prompt does NOT pull in full-only report sections", () => {
 });
 
 Deno.test("schema field list is the expected shape", () => {
-  // Pin the exact 5 fields the plan calls out (D1 / Task 1.1). Adding a
+  // Pin the exact 6 fields the plan calls out (D1 / Task 1.1). Adding a
   // field here is a deliberate change that needs a matching parser update.
   assertEquals(QUICK_RESPONSE_SCHEMA_FIELDS, [
     "nextStep",
+    "pick",
     "recommendedReply",
     "shortReason",
     "insufficientContext",

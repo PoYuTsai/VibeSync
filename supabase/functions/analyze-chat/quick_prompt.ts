@@ -3,7 +3,7 @@
 // Design contract — DO NOT loosen without an explicit decision:
 //   - Output budget: ~350-450 tokens. Anything longer slows perceived latency
 //     past the 6-8s target Eric set for above-the-fold guidance.
-//   - JSON-only response with the exact five fields in
+//   - JSON-only response with the exact six fields in
 //     QUICK_RESPONSE_SCHEMA_FIELDS. No prose wrapper, no markdown.
 //   - Encodes the non-negotiable product positioning: 1.8x rule, 接住情緒,
 //     no manipulation / pressure / dropped consent.
@@ -17,6 +17,7 @@
 // in quick_prompt_test.ts so the prompt and parser cannot drift apart.
 export const QUICK_RESPONSE_SCHEMA_FIELDS = [
   "nextStep",
+  "pick",
   "recommendedReply",
   "shortReason",
   "insufficientContext",
@@ -101,11 +102,22 @@ export const QUICK_SYSTEM_PROMPT =
 - medium：方向清楚，但對方風格或關係階段還不完全確定。
 - low：脈絡太少、情緒太強、風險高，建議要保守。
 
+## pick 輸出規則
+
+pick 必須是 extend / resonate / tease / humor / coldRead 之一。
+不要預設 extend。先判斷這回合真正該用哪一種接法：
+- extend：對方丟出明確話題，可以自然往下聊。
+- resonate：對方有情緒、壓力、界線、抱怨、道歉或需要被理解。
+- tease：雙方已有輕鬆互動，可以小幅調皮，但不能冒犯。
+- humor：對方明顯在玩笑或氣氛很輕，且幽默不會逃避重點。
+- coldRead：用一個溫柔、具體的小觀察打開畫面。
+
 ## 輸出格式（必須是純 JSON，不要有任何前後文字，不要 markdown code fence）
 
 \`\`\`json
 {
   "nextStep": "本回合怎麼接：一句話說明策略，例如『先接住她覺得太快的壓力，退一步讓她有安全感』",
+  "pick": "extend|resonate|tease|humor|coldRead",
   "recommendedReply": "可以直接複製傳給對方的訊息原文",
   "shortReason": "35 字以內，說明為什麼這樣回有效",
   "insufficientContext": false,
@@ -116,6 +128,7 @@ export const QUICK_SYSTEM_PROMPT =
 注意：
 - recommendedReply 是給對方看的訊息本身，不是給用戶的指示
 - nextStep 是給用戶看的白話策略，不要用內部術語
+- pick 是內部與 dogfood 對照用的風格，不要寫成中文說明
 - shortReason 要點出機制，不要寫「這樣比較好」這種空話
 - recommendedReply 不要超過必要長度；如果對方很短，寧可一句乾淨有溫度
 - 不要每次都選延展。只有對方真的丟出可延伸的球，才延展

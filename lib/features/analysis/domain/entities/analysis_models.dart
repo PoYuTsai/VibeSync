@@ -539,6 +539,32 @@ FinalRecommendation _ensureRecommendationFallback(
   );
 }
 
+Map<String, dynamic>? _asJsonMap(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return value.map((key, value) => MapEntry(key.toString(), value));
+  }
+  return null;
+}
+
+FinalRecommendation? _parseOptionalRecommendation(dynamic value) {
+  final data = _asJsonMap(value);
+  if (data == null) return null;
+
+  final recommendation = FinalRecommendation.fromJson(data);
+  final content = recommendation.content.trim();
+  final segmentContent = recommendation.replySegments
+      .map((segment) => segment.reply.trim())
+      .where((reply) => reply.isNotEmpty)
+      .join('\n');
+  if (content.isEmpty && segmentContent.isEmpty) {
+    return null;
+  }
+  return recommendation;
+}
+
 /// 「我說」話題延續分析結果
 class MyMessageAnalysis {
   final String sentMessage;
@@ -802,6 +828,10 @@ class AnalysisResult {
   final Map<String, int>? dimensionScores; // 五維度分數
   final Map<String, dynamic>? targetProfile; // 對方個人檔案
   final CoachActionHint? coachActionHint; // 可接球點教練卡
+  final FinalRecommendation? dogfoodRawFullRecommendation;
+  final FinalRecommendation? dogfoodOfficialFullRecommendation;
+  final bool dogfoodEntitlementAdjusted;
+  final String? dogfoodTierUsed;
 
   const AnalysisResult({
     required this.enthusiasmScore,
@@ -823,6 +853,10 @@ class AnalysisResult {
     this.dimensionScores,
     this.targetProfile,
     this.coachActionHint,
+    this.dogfoodRawFullRecommendation,
+    this.dogfoodOfficialFullRecommendation,
+    this.dogfoodEntitlementAdjusted = false,
+    this.dogfoodTierUsed,
   });
 
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -888,6 +922,13 @@ class AnalysisResult {
                 (key, value) => MapEntry(key.toString(), value),
               )
             : null;
+    final dogfoodComparison = _asJsonMap(json['dogfoodComparison']);
+    final dogfoodRawFullRecommendation = _parseOptionalRecommendation(
+      dogfoodComparison?['rawFullRecommendation'],
+    );
+    final dogfoodOfficialFullRecommendation = _parseOptionalRecommendation(
+      dogfoodComparison?['officialFullRecommendation'],
+    );
 
     return AnalysisResult(
       enthusiasmScore: enthusiasm?['score'] as int? ?? 50,
@@ -912,6 +953,13 @@ class AnalysisResult {
       dimensionScores: _parseDimensions(json['dimensions']),
       targetProfile: json['targetProfile'] as Map<String, dynamic>?,
       coachActionHint: CoachActionHint.fromJson(coachActionHintJson),
+      dogfoodRawFullRecommendation: dogfoodRawFullRecommendation,
+      dogfoodOfficialFullRecommendation: dogfoodOfficialFullRecommendation,
+      dogfoodEntitlementAdjusted:
+          dogfoodComparison?['entitlementAdjusted'] == true,
+      dogfoodTierUsed: dogfoodComparison?['tierUsed'] is String
+          ? dogfoodComparison!['tierUsed'] as String
+          : null,
     );
   }
 

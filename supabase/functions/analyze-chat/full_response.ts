@@ -1,24 +1,11 @@
 // supabase/functions/analyze-chat/full_response.ts
 //
-// Phase 2.1 — pure helpers for the two-stage analyze FULL mode.
+// Pure helpers for the two-stage analyze FULL mode.
 //
-// Two responsibilities, kept in one module so the Codex review surface is
-// one file:
-//
-//   1. `buildFullPromptAnchor(quickResult)` — produces the ANCHOR block we
-//      prepend to the regular full-mode user prompt. Strict language enforces
-//      plan I7: full is confirm/supplement/light-polish of quick, not a
-//      redo. The user must never see "建議 A 變建議 B" in 10s.
-//
-//   2. `parseFullPayload(rawText)` — extracts the JSON object from Claude's
-//      raw text. Mirrors the legacy parse + repair shape but is its own
-//      module so Phase 2.1 stays additive and does NOT touch OCR-stable
-//      legacy parsing code in index.ts (per CLAUDE.md OCR isolation rule).
-//
-// On parse failure the full handler treats the run reservation as ALREADY
-// CONSUMED (matching plan I6 / test 7): one Claude attempt = one retry slot,
-// regardless of whether Claude returned a wire error or unparseable text.
-// Surfacing `retriesRemaining` lets the client decide whether to try again.
+// `buildFullPromptAnchor(quickResult)` prepends the quick/Core result to the
+// full prompt as a candidate, not as a binding answer. This is intentional for
+// internal dogfood: Eric/Bruce need to see when the fast Core result and the
+// full prompt disagree so we can judge whether the Core prompt is good enough.
 
 import type { QuickPayload } from "./quick_response.ts";
 
@@ -32,20 +19,24 @@ export function buildFullPromptAnchor(
   const reply = stringOr((quickResult as QuickPayload).recommendedReply);
   const next = stringOr((quickResult as QuickPayload).nextStep);
   const reason = stringOr((quickResult as QuickPayload).shortReason);
+  const pick = stringOr((quickResult as QuickPayload).pick);
 
   return [
-    "## ANCHOR（來自快速分析）",
-    "使用者已經在 3-5 秒前看到下列「本回合怎麼接」建議。完整分析必須將它視為錨點來確認、補充、與輕度潤飾，而不是當作可推翻的草稿。",
+    "## QUICK_CANDIDATE（Core 先行建議，供 Full 對照）",
+    "以下是 3-8 秒 quick 模式先給使用者看的 Core 候選答案。Full 模式要把它當參考，不是硬性答案。",
     "",
     `- nextStep: ${next}`,
+    `- pick: ${pick}`,
     `- recommendedReply: ${reply}`,
     `- shortReason: ${reason}`,
     "",
-    "規則：",
-    "- finalRecommendation.content 必須使用 recommendedReply 的回覆文字（允許少量字詞替換、標點微調），不可換主題、不可改主要動詞、不可調轉語氣方向。",
-    "- finalRecommendation.reason 必須與 shortReason 一致，可以延伸說明，但不可推翻判斷。",
-    "- coachActionHint.microMove 必須順著 nextStep 方向，不可反向。",
-    "- replyOptions 五個風格（extend/resonate/tease/humor/coldRead）可以提供替代版本，但 finalRecommendation.pick 必須指向實質沿用 recommendedReply 的風格。",
+    "Full 判斷規則：",
+    "- 先獨立重跑完整分析，再決定 finalRecommendation.pick 與 content。",
+    "- 可以沿用 quick 的 recommendedReply；如果完整 prompt 判斷 quick 不夠準，必須覆蓋它。",
+    "- 不要預設 extend。finalRecommendation.pick 必須在 extend/resonate/tease/humor/coldRead 之中重新選最適合的風格。",
+    "- 如果覆蓋 quick，finalRecommendation.reason 簡短說明為什麼完整分析改判。",
+    "- coachActionHint.microMove 跟隨 Full 的最終判斷，不要盲目沿用 quick 的 nextStep。",
+    "- replyOptions 五個風格仍要完整產出，方便 dogfood 比對 quick 與 full 差異。",
   ].join("\n");
 }
 
@@ -123,16 +114,31 @@ function repairFullJson(jsonString: string): string {
   let inString = false;
   let escape = false;
   for (const char of repaired) {
-    if (escape) { escape = false; continue; }
-    if (char === "\\") { escape = true; continue; }
-    if (char === '"') { inString = !inString; continue; }
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (char === "{") braceCount++;
     if (char === "}") braceCount--;
     if (char === "[") bracketCount++;
     if (char === "]") bracketCount--;
   }
-  while (bracketCount > 0) { repaired += "]"; bracketCount--; }
-  while (braceCount > 0) { repaired += "}"; braceCount--; }
+  while (bracketCount > 0) {
+    repaired += "]";
+    bracketCount--;
+  }
+  while (braceCount > 0) {
+    repaired += "}";
+    braceCount--;
+  }
   return repaired;
 }

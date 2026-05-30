@@ -154,6 +154,45 @@ void main() {
 
       expect(result.psychology.shitTest, '用幽默曲解回應');
     });
+
+    test('parses dogfood raw and official full recommendation comparison', () {
+      final json = {
+        'enthusiasm': {'score': 45, 'level': 'warm'},
+        'replies': {'extend': '正式延展回覆'},
+        'finalRecommendation': {
+          'pick': 'extend',
+          'content': '正式延展回覆',
+          'reason': '正式顯示理由',
+          'psychology': '正式顯示心理',
+        },
+        'dogfoodComparison': {
+          'rawFullRecommendation': {
+            'pick': 'resonate',
+            'content': '我懂你的感覺，我們慢慢來。',
+            'reason': '完整 prompt 原始理由',
+            'psychology': '完整 prompt 原始判斷',
+          },
+          'officialFullRecommendation': {
+            'pick': 'extend',
+            'content': '正式延展回覆',
+            'reason': '正式顯示理由',
+            'psychology': '正式顯示心理',
+          },
+          'entitlementAdjusted': true,
+          'tierUsed': 'free',
+        },
+      };
+
+      final result = AnalysisResult.fromJson(json);
+
+      expect(result.recommendation.pick, 'extend');
+      expect(result.dogfoodRawFullRecommendation?.pick, 'resonate');
+      expect(result.dogfoodRawFullRecommendation?.content, contains('慢慢來'));
+      expect(result.dogfoodOfficialFullRecommendation?.pick, 'extend');
+      expect(result.dogfoodOfficialFullRecommendation?.content, '正式延展回覆');
+      expect(result.dogfoodEntitlementAdjusted, true);
+      expect(result.dogfoodTierUsed, 'free');
+    });
   });
 
   group('TopicDepthLevelX.fromString', () {

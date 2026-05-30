@@ -8,6 +8,7 @@ void main() {
         'analysisRunId': 'run_abc123',
         'estimatedFullSeconds': 17,
         'quickResult': {
+          'pick': 'resonate',
           'nextStep': '先接住她的情緒，再順勢延伸到她剛聊到的工作話題',
           'recommendedReply': '聽起來真的累爆，週末有沒有放空一下？',
           'shortReason': '對方剛抱怨完工作，先給情緒空間再開新話題',
@@ -20,6 +21,7 @@ void main() {
 
       expect(result.analysisRunId, 'run_abc123');
       expect(result.estimatedFullSeconds, 17);
+      expect(result.pick, 'resonate');
       expect(result.nextStep, '先接住她的情緒，再順勢延伸到她剛聊到的工作話題');
       expect(result.recommendedReply, '聽起來真的累爆，週末有沒有放空一下？');
       expect(result.shortReason, '對方剛抱怨完工作，先給情緒空間再開新話題');
@@ -42,6 +44,7 @@ void main() {
       final result = QuickAnalysisResult.fromJson(json);
 
       expect(result.analysisRunId, 'run_xyz');
+      expect(result.pick, '');
       expect(result.shortReason, '');
       expect(result.insufficientContext, false);
       expect(result.confidence, 'medium');

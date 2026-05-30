@@ -16,9 +16,23 @@
 
 const VALID_CONFIDENCE = new Set(["low", "medium", "high"] as const);
 type Confidence = "low" | "medium" | "high";
+const VALID_REPLY_PICK = new Set([
+  "extend",
+  "resonate",
+  "tease",
+  "humor",
+  "coldRead",
+] as const);
+export type ReplyPick =
+  | "extend"
+  | "resonate"
+  | "tease"
+  | "humor"
+  | "coldRead";
 
 export interface QuickPayload {
   nextStep: string;
+  pick: ReplyPick;
   recommendedReply: string;
   shortReason: string;
   insufficientContext: boolean;
@@ -50,6 +64,7 @@ export function parseQuickResponse(rawText: string): ParseQuickResult {
   const obj = parsed as Record<string, unknown>;
 
   const nextStep = coerceString(obj.nextStep);
+  const pickRaw = coerceString(obj.pick);
   const recommendedReply = coerceString(obj.recommendedReply);
   const shortReason = coerceString(obj.shortReason);
 
@@ -58,6 +73,9 @@ export function parseQuickResponse(rawText: string): ParseQuickResult {
   // 完整的 above-the-fold UX，當作 parse failure 比較誠實 — handler 會回 502
   // 且 I8 保證不會留 row / 不會扣 quota。
   if (recommendedReply.length === 0 || nextStep.length === 0) {
+    return { ok: false, error: "MISSING_REQUIRED_FIELD" };
+  }
+  if (!VALID_REPLY_PICK.has(pickRaw as ReplyPick)) {
     return { ok: false, error: "MISSING_REQUIRED_FIELD" };
   }
 
@@ -73,6 +91,7 @@ export function parseQuickResponse(rawText: string): ParseQuickResult {
     ok: true,
     payload: {
       nextStep,
+      pick: pickRaw as ReplyPick,
       recommendedReply,
       shortReason,
       insufficientContext: coerceBoolean(obj.insufficientContext),
@@ -127,9 +146,10 @@ const QUICK_BLOCKED_PATTERNS: RegExp[] = [
 
 const SAFE_QUICK_FALLBACK: Pick<
   QuickPayload,
-  "nextStep" | "recommendedReply" | "shortReason"
+  "nextStep" | "pick" | "recommendedReply" | "shortReason"
 > = {
   nextStep: "先放慢腳步，給彼此一些空間",
+  pick: "resonate",
   recommendedReply: "好的，我先讓你忙，你方便的時候再聊。",
   shortReason: "不施壓、給對方退路是穩定關係的基底",
 };
@@ -150,6 +170,7 @@ export function applyQuickGuardrails(payload: QuickPayload): QuickGuardrailResul
     payload: {
       ...payload,
       nextStep: SAFE_QUICK_FALLBACK.nextStep,
+      pick: SAFE_QUICK_FALLBACK.pick,
       recommendedReply: SAFE_QUICK_FALLBACK.recommendedReply,
       shortReason: SAFE_QUICK_FALLBACK.shortReason,
       confidence: "low",

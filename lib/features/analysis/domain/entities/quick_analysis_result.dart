@@ -7,6 +7,7 @@
 class QuickAnalysisResult {
   final String analysisRunId;
   final String nextStep;
+  final String pick;
   final String recommendedReply;
   final String shortReason;
   final bool insufficientContext;
@@ -16,6 +17,7 @@ class QuickAnalysisResult {
   const QuickAnalysisResult({
     required this.analysisRunId,
     required this.nextStep,
+    required this.pick,
     required this.recommendedReply,
     required this.shortReason,
     required this.insufficientContext,
@@ -40,6 +42,7 @@ class QuickAnalysisResult {
 
     final analysisRunId = (json['analysisRunId'] ?? '').toString().trim();
     final nextStep = (quick['nextStep'] ?? '').toString().trim();
+    final pick = _normalizeQuickPick((quick['pick'] ?? '').toString().trim());
     final recommendedReply = (quick['recommendedReply'] ?? '').toString().trim();
 
     if (analysisRunId.isEmpty) {
@@ -61,11 +64,25 @@ class QuickAnalysisResult {
     return QuickAnalysisResult(
       analysisRunId: analysisRunId,
       nextStep: nextStep,
+      pick: pick,
       recommendedReply: recommendedReply,
       shortReason: (quick['shortReason'] ?? '').toString(),
       insufficientContext: quick['insufficientContext'] == true,
       confidence: (quick['confidence'] ?? 'medium').toString(),
       estimatedFullSeconds: etaRaw is num ? etaRaw.round() : null,
     );
+  }
+
+  static String _normalizeQuickPick(String pick) {
+    switch (pick) {
+      case 'extend':
+      case 'resonate':
+      case 'tease':
+      case 'humor':
+      case 'coldRead':
+        return pick;
+      default:
+        return '';
+    }
   }
 }

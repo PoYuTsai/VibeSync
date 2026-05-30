@@ -88,6 +88,7 @@ QuickAnalysisResult _quick({
 }) {
   return QuickAnalysisResult(
     analysisRunId: runId,
+    pick: 'resonate',
     nextStep: '先接住情緒再延伸',
     recommendedReply: '聽起來累，要不要週末喝杯咖啡？',
     shortReason: '情緒先接住',
@@ -128,6 +129,20 @@ AnalysisResult _full() {
       reason: 'r',
       psychology: 'p',
     ),
+    dogfoodRawFullRecommendation: FinalRecommendation(
+      pick: 'resonate',
+      content: 'Full 原始推薦回覆',
+      reason: '完整 prompt 原始理由',
+      psychology: '完整 prompt 原始判斷',
+    ),
+    dogfoodOfficialFullRecommendation: FinalRecommendation(
+      pick: 'tease',
+      content: '正式顯示推薦回覆',
+      reason: '正式顯示理由',
+      psychology: '正式顯示判斷',
+    ),
+    dogfoodEntitlementAdjusted: true,
+    dogfoodTierUsed: 'free',
     reminder: '記得用你的方式說',
   );
 }
@@ -147,6 +162,10 @@ AnalysisResult _fullWithRawResponse(Map<String, dynamic> rawResponse) {
     replies: base.replies,
     replyOptions: base.replyOptions,
     recommendation: base.recommendation,
+    dogfoodRawFullRecommendation: base.dogfoodRawFullRecommendation,
+    dogfoodOfficialFullRecommendation: base.dogfoodOfficialFullRecommendation,
+    dogfoodEntitlementAdjusted: base.dogfoodEntitlementAdjusted,
+    dogfoodTierUsed: base.dogfoodTierUsed,
     reminder: base.reminder,
     rawResponse: rawResponse,
   );
@@ -487,7 +506,10 @@ void main() {
                 'Dogfood compare mode should keep the quick answer visible after the full result arrives.');
         expect(find.text('Core / Full 回覆對照'), findsOneWidget);
         expect(find.text('Core 先行'), findsOneWidget);
-        expect(find.text('Full 完整'), findsOneWidget);
+        expect(find.text('Full 原始判斷'), findsOneWidget);
+        expect(find.text('正式顯示'), findsOneWidget);
+        expect(find.text('Full 原始推薦回覆'), findsOneWidget);
+        expect(find.text('正式顯示推薦回覆'), findsOneWidget);
         expect(find.text('完整分析推薦回覆'), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
@@ -534,7 +556,9 @@ void main() {
         expect(find.text('2 完整分析後建議'), findsOneWidget);
         expect(find.text('Core / Full 回覆對照'), findsOneWidget);
         expect(find.text('Core 先行'), findsOneWidget);
-        expect(find.text('Full 完整'), findsOneWidget);
+        expect(find.text('Full 原始判斷'), findsOneWidget);
+        expect(find.text('正式顯示'), findsOneWidget);
+        expect(find.text('Full 原始推薦回覆'), findsOneWidget);
         expect(find.text(quick.recommendedReply), findsWidgets,
             reason:
                 'The live listener clears the quick preview after fullReady, but must retain a comparison copy for dogfood quality review.');

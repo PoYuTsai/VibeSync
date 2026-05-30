@@ -1,7 +1,7 @@
 // supabase/functions/analyze-chat/full_response_test.ts
 //
-// Phase 2.1 — unit tests for the pure helpers used by the FULL handler:
-//   - buildFullPromptAnchor: anchor block shape + edge cases
+// Unit tests for the pure helpers used by the FULL handler:
+//   - buildFullPromptAnchor: quick/Core candidate block + edge cases
 //   - parseFullPayload: NO_JSON / INVALID_JSON / strict success /
 //     repaired success / array rejection / code-fence handling
 
@@ -21,27 +21,36 @@ import {
 // buildFullPromptAnchor
 // ---------------------------------------------------------------------------
 
-Deno.test("buildFullPromptAnchor: surfaces all three quick fields and anchor rules", () => {
+Deno.test("buildFullPromptAnchor: surfaces quick candidate fields without binding full", () => {
   const anchor = buildFullPromptAnchor({
-    nextStep: "輕輕接住她的疲憊，再順勢約下次見面",
-    recommendedReply: "週末有空嗎？想找你聊聊",
-    shortReason: "她剛吐露情緒，需要被接住而不是被分析",
+    nextStep: "先退一步接住她的壓力，不要急著約",
+    pick: "resonate",
+    recommendedReply: "我懂，不想被催的感覺真的會有壓力。我們就慢慢聊。",
+    shortReason: "她在設邊界，先降壓比延展更重要",
     insufficientContext: false,
     confidence: "high",
   });
-  assertStringIncludes(anchor, "## ANCHOR");
-  assertStringIncludes(anchor, "輕輕接住她的疲憊，再順勢約下次見面");
-  assertStringIncludes(anchor, "週末有空嗎？想找你聊聊");
-  assertStringIncludes(anchor, "她剛吐露情緒，需要被接住而不是被分析");
-  assertStringIncludes(anchor, "finalRecommendation.content");
-  assertStringIncludes(anchor, "finalRecommendation.reason");
-  assertStringIncludes(anchor, "coachActionHint.microMove");
+
+  assertStringIncludes(anchor, "## QUICK_CANDIDATE");
+  assertStringIncludes(anchor, "- nextStep: 先退一步接住她的壓力，不要急著約");
+  assertStringIncludes(anchor, "- pick: resonate");
+  assertStringIncludes(anchor, "- recommendedReply: 我懂，不想被催的感覺真的會有壓力。我們就慢慢聊。");
+  assertStringIncludes(anchor, "- shortReason: 她在設邊界，先降壓比延展更重要");
+  assertStringIncludes(anchor, "不是硬性答案");
+  assertStringIncludes(anchor, "必須覆蓋");
+  assertStringIncludes(anchor, "不要預設 extend");
   assertStringIncludes(anchor, "finalRecommendation.pick");
+  assertStringIncludes(anchor, "coachActionHint.microMove");
+  assertStringIncludes(anchor, "replyOptions 五個風格仍要完整產出");
+
+  assertFalse(anchor.includes("必須使用 recommendedReply"));
+  assertFalse(anchor.includes("必須順著 nextStep"));
 });
 
 Deno.test("buildFullPromptAnchor: missing fields render as empty rather than undefined", () => {
   const anchor = buildFullPromptAnchor({} as Record<string, unknown>);
   assertStringIncludes(anchor, "- nextStep: ");
+  assertStringIncludes(anchor, "- pick: ");
   assertStringIncludes(anchor, "- recommendedReply: ");
   assertStringIncludes(anchor, "- shortReason: ");
   assertFalse(anchor.includes("undefined"));
@@ -51,16 +60,18 @@ Deno.test("buildFullPromptAnchor: missing fields render as empty rather than und
 Deno.test("buildFullPromptAnchor: ignores non-string field types defensively", () => {
   const anchor = buildFullPromptAnchor({
     nextStep: 42 as unknown as string,
+    pick: ["extend"] as unknown as string,
     recommendedReply: { foo: "bar" } as unknown as string,
     shortReason: null as unknown as string,
   });
   assertStringIncludes(anchor, "- nextStep: ");
+  assertStringIncludes(anchor, "- pick: ");
   assertFalse(anchor.includes("42"));
   assertFalse(anchor.includes("[object Object]"));
 });
 
 // ---------------------------------------------------------------------------
-// parseFullPayload — happy paths
+// parseFullPayload happy paths
 // ---------------------------------------------------------------------------
 
 Deno.test("parseFullPayload: strict JSON returns source=strict", () => {
@@ -83,15 +94,15 @@ Hope that helps!`;
   assertEquals(r.result.source, "strict");
 });
 
-Deno.test("parseFullPayload: handles ```json fenced block", () => {
-  const raw = "```json\n{\"finalRecommendation\":{\"content\":\"hi\"}}\n```";
+Deno.test("parseFullPayload: handles fenced json block", () => {
+  const raw = '```json\n{"finalRecommendation":{"content":"hi"}}\n```';
   const r = parseFullPayload(raw);
   assert(r.ok);
   assertEquals(r.result.source, "strict");
 });
 
 // ---------------------------------------------------------------------------
-// parseFullPayload — repair paths
+// parseFullPayload repair paths
 // ---------------------------------------------------------------------------
 
 Deno.test("parseFullPayload: trailing comma triggers repair, returns source=repaired", () => {
@@ -102,7 +113,6 @@ Deno.test("parseFullPayload: trailing comma triggers repair, returns source=repa
 });
 
 Deno.test("parseFullPayload: nested trailing comma triggers repair", () => {
-  // Trailing commas in both inner and outer objects — common Claude artifact.
   const raw = `{"finalRecommendation":{"content":"hi","reason":"ok",},}`;
   const r = parseFullPayload(raw);
   assert(r.ok, `expected ok after repair, got ${JSON.stringify(r)}`);
@@ -114,7 +124,7 @@ Deno.test("parseFullPayload: nested trailing comma triggers repair", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseFullPayload — error paths
+// parseFullPayload error paths
 // ---------------------------------------------------------------------------
 
 Deno.test("parseFullPayload: NO_JSON when text has no braces", () => {
@@ -124,11 +134,9 @@ Deno.test("parseFullPayload: NO_JSON when text has no braces", () => {
 });
 
 Deno.test("parseFullPayload: INVALID_JSON when content is an array", () => {
-  // Outer must be a JSON object; arrays are rejected to keep downstream
-  // guardrails / drift detector from receiving an unexpected shape.
   const r = parseFullPayload("[1,2,3]");
   assertFalse(r.ok);
-  if (!r.ok) assertEquals(r.error, "NO_JSON"); // no `{` → NO_JSON, not INVALID
+  if (!r.ok) assertEquals(r.error, "NO_JSON");
 });
 
 Deno.test("parseFullPayload: INVALID_JSON when JSON is unrepairable", () => {
@@ -137,10 +145,7 @@ Deno.test("parseFullPayload: INVALID_JSON when JSON is unrepairable", () => {
   if (!r.ok) assertEquals(r.error, "INVALID_JSON");
 });
 
-Deno.test("parseFullPayload: INVALID_JSON when payload is a wrapped array", () => {
-  // `{...}` regex grabs the outer braces, but inside is an array — reject.
+Deno.test("parseFullPayload: accepts object portion before trailing junk", () => {
   const r = parseFullPayload(`{"x":[1,2,3]}[]`);
-  // Strict parse should accept the object portion; ensure trailing junk
-  // doesn't break it.
   assert(r.ok);
 });

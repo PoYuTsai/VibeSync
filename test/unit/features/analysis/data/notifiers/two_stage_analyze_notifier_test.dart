@@ -23,6 +23,7 @@ Message _msg(String content, {bool fromMe = false}) {
 QuickAnalysisResult _quick({String runId = 'run_q1', int? eta = 17}) {
   return QuickAnalysisResult(
     analysisRunId: runId,
+    pick: 'resonate',
     nextStep: '先接情緒',
     recommendedReply: '聽起來累，週末放空？',
     shortReason: '接情緒延伸',
