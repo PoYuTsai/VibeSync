@@ -4295,6 +4295,249 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  Widget _buildCoreFullReplyComparisonCard({
+    required QuickAnalysisResult core,
+    required FinalRecommendation full,
+  }) {
+    final coreReply = core.recommendedReply.trim();
+    final fullReply = full.content.trim();
+    if (coreReply.isEmpty && fullReply.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final sameReply = _normalizeReplyForComparison(coreReply).isNotEmpty &&
+        _normalizeReplyForComparison(coreReply) ==
+            _normalizeReplyForComparison(fullReply);
+    final fullStyle = _comparisonReplyTypeLabel(full.pick);
+    final coreMeta = [
+      if (core.nextStep.trim().isNotEmpty) '本回合：${core.nextStep.trim()}',
+      if (core.shortReason.trim().isNotEmpty) '理由：${core.shortReason.trim()}',
+    ].join('\n');
+    final fullMeta = [
+      if (fullStyle.trim().isNotEmpty) '風格：$fullStyle',
+      if (full.reason.trim().isNotEmpty) '理由：${full.reason.trim()}',
+    ].join('\n');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.glassWhite.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.compare_arrows_rounded,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Core / Full 回覆對照',
+                      style: AppTypography.titleMedium.copyWith(
+                        color: AppColors.glassTextPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '測試用：Core 是 3-8 秒先回來的答案；Full 是完整分析跑完後的正式版本。',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.glassTextSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: sameReply
+                      ? AppColors.success.withValues(alpha: 0.12)
+                      : AppColors.info.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: sameReply
+                        ? AppColors.success.withValues(alpha: 0.28)
+                        : AppColors.info.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Text(
+                  sameReply ? '同句' : '可比對',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _buildReplyComparisonBlock(
+            label: 'Core 先行',
+            badge: '3-8 秒',
+            reply: coreReply,
+            meta: coreMeta,
+            accent: AppColors.info,
+            icon: Icons.flash_on_rounded,
+          ),
+          const SizedBox(height: 12),
+          _buildReplyComparisonBlock(
+            label: 'Full 完整',
+            badge: fullStyle,
+            reply: fullReply,
+            meta: fullMeta,
+            accent: AppColors.primary,
+            icon: Icons.psychology_alt_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReplyComparisonBlock({
+    required String label,
+    required String badge,
+    required String reply,
+    required String meta,
+    required Color accent,
+    required IconData icon,
+  }) {
+    final cleanReply = reply.trim();
+    final cleanMeta = meta.trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 18, color: accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  badge,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            cleanReply.isEmpty ? '（沒有回傳建議）' : cleanReply,
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w700,
+              height: 1.45,
+            ),
+          ),
+          if (cleanMeta.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              cleanMeta,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.4,
+              ),
+            ),
+          ],
+          if (cleanReply.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () =>
+                    _copyRecommendationText(cleanReply, '已複製 $label'),
+                icon: const Icon(Icons.copy, size: 15),
+                label: const Text('複製這句'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _normalizeReplyForComparison(String value) {
+    return value
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(RegExp(r'[，。！？、,.!?]'), '');
+  }
+
+  String _comparisonReplyTypeLabel(String pick) {
+    switch (pick.trim()) {
+      case 'extend':
+        return '🔄 延展';
+      case 'resonate':
+        return '💬 共鳴';
+      case 'tease':
+        return '😏 調情';
+      case 'humor':
+        return '🎭 幽默';
+      case 'coldRead':
+        return '🔮 冷讀';
+      default:
+        return '完整判斷';
+    }
+  }
+
   Widget _buildDetailedAnalysisToggle() {
     return Semantics(
       button: true,
@@ -5212,6 +5455,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   '這段是完整 prompt 跑完後的正式判斷；五大回覆風格、雷達與深層策略也會一起更新。',
                             ),
                             const SizedBox(height: 12),
+                            if (_finalRecommendation != null &&
+                                _finalRecommendation!.content
+                                    .trim()
+                                    .isNotEmpty) ...[
+                              _buildCoreFullReplyComparisonCard(
+                                core: _quickResult!,
+                                full: _finalRecommendation!,
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                           ],
 
                           if (_enthusiasmScore != null) ...[
