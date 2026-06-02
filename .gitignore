@@ -57,6 +57,9 @@ supabase/.env.local
 # Local Claude Code / MCP config (per-machine, not project state)
 .claude/*
 !.claude/settings.local.json
+!.claude/commands/
+!.claude/commands/round.md
+.claude/skills.disabled/
 .mcp.json
 
 # Externally-cloned GitHub Pages repo (has its own .git, should live outside this repo)
