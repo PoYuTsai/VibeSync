@@ -130,11 +130,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // data plus placeholder/retry. Once full lands, `_enthusiasmScore != null`
   // flips and the existing detailed-analysis tree takes over.
   QuickAnalysisResult? _quickResult;
-  QuickAnalysisResult? _quickResultForComparison;
-  FinalRecommendation? _dogfoodRawFullRecommendation;
-  FinalRecommendation? _dogfoodOfficialFullRecommendation;
-  bool _dogfoodEntitlementAdjusted = false;
-  String? _dogfoodTierUsed;
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
   int? _activeAnalysisMessageCount;
@@ -654,7 +649,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = true;
           _quickResult = null;
-          _quickResultForComparison = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -666,7 +660,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = s.quick;
-          _quickResultForComparison = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -680,7 +673,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           setState(() {
             _isAnalyzing = false;
             _quickResult = s.quick;
-            _quickResultForComparison = s.quick;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
             _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -690,8 +682,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         }
         setState(() {
           _isAnalyzing = false;
-          _quickResult = s.quick;
-          _quickResultForComparison = s.quick;
+          _quickResult = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = null;
@@ -722,7 +713,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = s.quick;
-          _quickResultForComparison = s.quick;
           _fullErrorMessage = s.fullErrorMessage;
           _fullErrorRetriesRemaining = s.retriesRemaining;
           _activeAnalysisMessageCount = s.conversationMessageCount;
@@ -809,10 +799,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _psychology = null;
     _finalRecommendation = null;
     _coachActionHint = null;
-    _dogfoodRawFullRecommendation = null;
-    _dogfoodOfficialFullRecommendation = null;
-    _dogfoodEntitlementAdjusted = false;
-    _dogfoodTierUsed = null;
     _reminder = null;
     _shouldGiveUp = false;
     _lastAiResponse = null;
@@ -984,11 +970,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _psychology = result.psychology;
     _finalRecommendation = result.recommendation;
     _coachActionHint = result.coachActionHint;
-    _dogfoodRawFullRecommendation = result.dogfoodRawFullRecommendation;
-    _dogfoodOfficialFullRecommendation =
-        result.dogfoodOfficialFullRecommendation;
-    _dogfoodEntitlementAdjusted = result.dogfoodEntitlementAdjusted;
-    _dogfoodTierUsed = result.dogfoodTierUsed;
     _reminder = result.reminder;
     _shouldGiveUp = result.shouldGiveUp;
     _lastAiResponse = result.rawResponse;
@@ -1814,7 +1795,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         conversation.messages.length > _activeAnalysisMessageCount!;
     final nextStep = isFromMe
         ? '已記錄你剛剛回覆的內容。等她回覆後，再補上「她說」，我會用最新來回分析下一步。'
-        : '已放到上方對話框。按「分析新增內容」後，會先在 3-5 秒給快速建議，完整分析約 15-20 秒補上。';
+        : '已放到上方對話框。按「分析新增內容」後，會先在 3-5 秒給回覆思路，完整分析約 15-20 秒補上正式建議。';
     final workingNote = isFullWorkingOnOlderMessages
         ? '目前完整分析仍在整理上一版；你補的新訊息會等你按「分析新增內容」後才納入。'
         : null;
@@ -2892,7 +2873,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isAnalyzing = true;
         _quickResult = null;
-        _quickResultForComparison = null;
         _fullErrorMessage = null;
         _fullErrorRetriesRemaining = 0;
         _activeAnalysisMessageCount = conversation.messages.length;
@@ -2952,7 +2932,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = true;
           _quickResult = null;
-          _quickResultForComparison = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -2964,7 +2943,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = next.quick;
-          _quickResultForComparison = next.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -2990,7 +2968,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           setState(() {
             _isAnalyzing = false;
             _quickResult = next.quick;
-            _quickResultForComparison = next.quick;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
             _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -3007,7 +2984,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _activeAnalysisMessageCount = null;
-          _quickResultForComparison = next.quick ?? _quickResultForComparison;
           _quickResult = null;
           if (conv != null) {
             _lastAnalyzedMessageCount = conv.messages.length;
@@ -3039,7 +3015,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _isAnalyzing = false;
           _quickResult = next.quick;
-          _quickResultForComparison = next.quick;
           _fullErrorMessage = next.fullErrorMessage;
           _fullErrorRetriesRemaining = next.retriesRemaining;
           _activeAnalysisMessageCount = next.conversationMessageCount;
@@ -3612,17 +3587,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  String _recommendationDisplayText(FinalRecommendation recommendation) {
-    final content = recommendation.content.trim();
-    if (content.isNotEmpty) {
-      return content;
-    }
-    return recommendation.replySegments
-        .map((segment) => segment.reply.trim())
-        .where((reply) => reply.isNotEmpty)
-        .join('\n');
-  }
-
   /// 截圖識別結果卡片
   /// 優先呈現結構化分段回覆；舊版 ①② 格式只保留相容。
   List<Widget> _buildRecommendationContent(FinalRecommendation recommendation) {
@@ -4135,11 +4099,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   CoachActionCardData _quickCoachActionData(QuickAnalysisResult quick) {
     final reason = quick.shortReason.trim();
     return CoachActionCardData(
-      actionLabel: '快速判斷',
+      actionLabel: '回覆思路',
       whyNow: quick.nextStep,
-      task: '先用下方推薦回覆接住這一輪，讓對方容易回。',
-      avoid: reason.isNotEmpty ? reason : '先不要急著一次補太長，完整分析還在整理。',
-      avoidLabel: '先避免',
+      task: '先抓本回合方向，正式推薦回覆會在完整分析完成後更新。',
+      avoid: reason.isNotEmpty ? reason : '先不要急著送出，等正式建議整理好再決定。',
+      avoidLabel: '先提醒',
       suggestedLine: null,
       learningLink: null,
     );
@@ -4191,11 +4155,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Widget _buildQuickRecommendationCard(
-    QuickAnalysisResult quick, {
-    required bool fullReady,
-  }) {
-    final reply = quick.recommendedReply.trim();
+  Widget _buildReplyThoughtCard(QuickAnalysisResult quick) {
     final reason = quick.shortReason.trim();
     final nextStep = quick.nextStep.trim();
 
@@ -4227,7 +4187,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ),
                 ),
                 child: Text(
-                  'Quick',
+                  '先行',
                   style: AppTypography.caption.copyWith(
                     color: AppColors.glassTextPrimary,
                     fontWeight: FontWeight.w700,
@@ -4237,7 +4197,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'AI 推薦回覆速覽',
+                  '回覆思路',
                   style: AppTypography.titleLarge.copyWith(
                     color: AppColors.glassTextPrimary,
                   ),
@@ -4254,9 +4214,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
           const SizedBox(height: 10),
           Text(
-            fullReady
-                ? '這是第一階段先回來的版本；下方會保留完整 prompt 跑完後的正式建議，方便你比對品質。'
-                : '先讓你 3-5 秒內有方向；完整分析還在整理，稍後會補上正式建議。',
+            '先讓你不用空等：這裡只給方向，不是最後可直接送出的回覆。完整分析整理好後，會更新成正式建議。',
             style: AppTypography.caption.copyWith(
               color: AppColors.glassTextSecondary,
               height: 1.45,
@@ -4265,62 +4223,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           if (nextStep.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              '快速判斷：$nextStep',
+              '目前方向：$nextStep',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextPrimary,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ],
-          if (reply.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.glassWhite.withValues(alpha: 0.66),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: AppColors.glassBorder.withValues(alpha: 0.7),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '快速回覆',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextHint,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    reply,
-                    style: AppTypography.bodyLarge.copyWith(
-                      color: AppColors.glassTextPrimary,
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  _copyRecommendationText(reply, '已複製快速回覆');
-                },
-                icon: const Icon(Icons.copy, size: 16),
-                label: const Text('複製快速回覆'),
-              ),
-            ),
-          ],
           if (reason.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
-              '快速理由：$reason',
+              '為什麼這樣想：$reason',
               style: AppTypography.caption.copyWith(
                 color: AppColors.glassTextSecondary,
                 height: 1.4,
@@ -4330,276 +4243,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ],
       ),
     );
-  }
-
-  Widget _buildCoreFullReplyComparisonCard({
-    required QuickAnalysisResult core,
-    required FinalRecommendation full,
-    FinalRecommendation? officialFull,
-    bool entitlementAdjusted = false,
-    String? tierUsed,
-  }) {
-    final coreReply = core.recommendedReply.trim();
-    final fullReply = _recommendationDisplayText(full);
-    if (coreReply.isEmpty && fullReply.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final sameReply = _normalizeReplyForComparison(coreReply).isNotEmpty &&
-        _normalizeReplyForComparison(coreReply) ==
-            _normalizeReplyForComparison(fullReply);
-    final fullStyle = _comparisonReplyTypeLabel(full.pick);
-    final officialReply =
-        officialFull == null ? '' : _recommendationDisplayText(officialFull);
-    final officialStyle = officialFull == null
-        ? ''
-        : _comparisonReplyTypeLabel(officialFull.pick);
-    final showOfficialAdjustment = entitlementAdjusted &&
-        officialFull != null &&
-        (_normalizeReplyForComparison(officialReply) !=
-                _normalizeReplyForComparison(fullReply) ||
-            officialFull.pick != full.pick);
-    final coreMeta = [
-      if (core.nextStep.trim().isNotEmpty) '本回合：${core.nextStep.trim()}',
-      if (core.shortReason.trim().isNotEmpty) '理由：${core.shortReason.trim()}',
-    ].join('\n');
-    final fullMeta = [
-      if (fullStyle.trim().isNotEmpty) '風格：$fullStyle',
-      if (full.reason.trim().isNotEmpty) '理由：${full.reason.trim()}',
-    ].join('\n');
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.glassWhite.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.22),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.compare_arrows_rounded,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Core / Full 回覆對照',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '測試用：Core 是 3-8 秒先回來的答案；Full 是完整分析跑完後的正式版本。',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.glassTextSecondary,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: sameReply
-                      ? AppColors.success.withValues(alpha: 0.12)
-                      : AppColors.info.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: sameReply
-                        ? AppColors.success.withValues(alpha: 0.28)
-                        : AppColors.info.withValues(alpha: 0.28),
-                  ),
-                ),
-                child: Text(
-                  sameReply ? '同句' : '可比對',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.glassTextPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildReplyComparisonBlock(
-            label: 'Core 先行',
-            badge: '3-8 秒',
-            reply: coreReply,
-            meta: coreMeta,
-            accent: AppColors.info,
-            icon: Icons.flash_on_rounded,
-          ),
-          const SizedBox(height: 12),
-          _buildReplyComparisonBlock(
-            label: 'Full 原始判斷',
-            badge: fullStyle,
-            reply: fullReply,
-            meta: fullMeta,
-            accent: AppColors.primary,
-            icon: Icons.psychology_alt_rounded,
-          ),
-          if (showOfficialAdjustment) ...[
-            const SizedBox(height: 12),
-            _buildReplyComparisonBlock(
-              label: '正式顯示',
-              badge: officialStyle.isEmpty ? '權限調整' : officialStyle,
-              reply: officialReply,
-              meta: [
-                if (tierUsed != null && tierUsed.trim().isNotEmpty)
-                  '目前方案：${tierUsed.trim()}',
-                '狗食提示：正式畫面仍會依目前方案權限顯示；上方 Full 原始判斷用來看品質差異。',
-              ].join('\n'),
-              accent: AppColors.warning,
-              icon: Icons.visibility_rounded,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReplyComparisonBlock({
-    required String label,
-    required String badge,
-    required String reply,
-    required String meta,
-    required Color accent,
-    required IconData icon,
-  }) {
-    final cleanReply = reply.trim();
-    final cleanMeta = meta.trim();
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.18)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 18, color: accent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  label,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  badge,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.glassTextPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            cleanReply.isEmpty ? '（沒有回傳建議）' : cleanReply,
-            style: AppTypography.bodyLarge.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w700,
-              height: 1.45,
-            ),
-          ),
-          if (cleanMeta.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              cleanMeta,
-              style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextSecondary,
-                height: 1.4,
-              ),
-            ),
-          ],
-          if (cleanReply.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () =>
-                    _copyRecommendationText(cleanReply, '已複製 $label'),
-                icon: const Icon(Icons.copy, size: 15),
-                label: const Text('複製這句'),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _normalizeReplyForComparison(String value) {
-    return value
-        .trim()
-        .replaceAll(RegExp(r'\s+'), '')
-        .replaceAll(RegExp(r'[，。！？、,.!?]'), '');
-  }
-
-  String _comparisonReplyTypeLabel(String pick) {
-    switch (pick.trim()) {
-      case 'extend':
-        return '🔄 延展';
-      case 'resonate':
-        return '💬 共鳴';
-      case 'tease':
-        return '😏 調情';
-      case 'humor':
-        return '🎭 幽默';
-      case 'coldRead':
-        return '🔮 冷讀';
-      default:
-        return '完整判斷';
-    }
   }
 
   Widget _buildDetailedAnalysisToggle() {
@@ -5490,54 +5133,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             const SizedBox(height: 16),
                           ],
 
-                          if (_quickResult != null) ...[
+                          if (_quickResult != null &&
+                              _enthusiasmScore == null) ...[
                             _buildTwoStageCompareHeader(
-                              title: _enthusiasmScore == null
-                                  ? '1 快速建議'
-                                  : '1 快速建議（先回來的版本）',
-                              subtitle: _enthusiasmScore == null
-                                  ? '這一段先用短 prompt 讓你不用空等；完整分析會在下方繼續整理。'
-                                  : '這是 3-5 秒內先回來的版本，保留給 dogfood 比對。真正完整判斷在下一段。',
+                              title: '回覆思路',
+                              subtitle: '先讓你不用空等：我們會先抓本回合方向，正式推薦回覆會在完整分析完成後出現。',
                             ),
                             const SizedBox(height: 12),
                             CoachActionCard(
                               data: _quickCoachActionData(_quickResult!),
                             ),
                             const SizedBox(height: 16),
-                            _buildQuickRecommendationCard(
-                              _quickResult!,
-                              fullReady: _enthusiasmScore != null,
-                            ),
+                            _buildReplyThoughtCard(_quickResult!),
                             const SizedBox(height: 16),
-                          ],
-
-                          if ((_quickResult ?? _quickResultForComparison) !=
-                                  null &&
-                              _enthusiasmScore != null) ...[
-                            _buildTwoStageCompareHeader(
-                              title: '2 完整分析後建議',
-                              subtitle:
-                                  '這段是完整 prompt 跑完後的正式判斷；五大回覆風格、雷達與深層策略也會一起更新。',
-                            ),
-                            const SizedBox(height: 12),
-                            if (_finalRecommendation != null &&
-                                _finalRecommendation!.content
-                                    .trim()
-                                    .isNotEmpty) ...[
-                              _buildCoreFullReplyComparisonCard(
-                                core: (_quickResult ??
-                                    _quickResultForComparison)!,
-                                full: _dogfoodRawFullRecommendation ??
-                                    _finalRecommendation!,
-                                officialFull:
-                                    _dogfoodOfficialFullRecommendation ??
-                                        _finalRecommendation,
-                                entitlementAdjusted:
-                                    _dogfoodEntitlementAdjusted,
-                                tierUsed: _dogfoodTierUsed,
-                              ),
-                              const SizedBox(height: 16),
-                            ],
                           ],
 
                           if (_enthusiasmScore != null) ...[
@@ -5639,12 +5247,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           style: TextStyle(fontSize: 20)),
                                       const SizedBox(width: 8),
                                       Text(
-                                          (_quickResult ??
-                                                      _quickResultForComparison) !=
-                                                  null
-                                              ? '完整分析推薦回覆'
-                                              : 'AI 推薦回覆',
-                                          style: AppTypography.titleLarge),
+                                        _quickResult != null
+                                            ? '完整分析推薦回覆'
+                                            : 'AI 推薦回覆',
+                                        style: AppTypography.titleLarge,
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 12),

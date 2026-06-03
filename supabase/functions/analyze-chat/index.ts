@@ -32,6 +32,7 @@ import {
   MAX_FULL_RETRIES,
 } from "./analysis_run_store.ts";
 import { hashConversation } from "./conversation_hash.ts";
+import { OPTIMIZE_MESSAGE_SYSTEM_PROMPT } from "./optimize_prompt.ts";
 import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
 import {
   applyQuickGuardrails,
@@ -5234,6 +5235,8 @@ ${recentText}`;
 
     const systemPrompt = recognizeOnly
       ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT
+      : isOptimizeMessageMode
+      ? OPTIMIZE_MESSAGE_SYSTEM_PROMPT
       : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT);
 
     // 組合用戶訊息
@@ -5274,6 +5277,18 @@ ${recentText}`;
         compiledConversationText,
         "Continue from the user's latest draft and suggest how to keep the conversation flowing naturally.",
       )
+      : isOptimizeMessageMode
+      ? joinPromptSections(
+        contextInfo,
+        partnerContextInfo,
+        styleContextInfo,
+        historicalContextInfo,
+        "## Recent Conversation",
+        compiledConversationText,
+        "## User Draft To Polish",
+        `"${userDraft?.trim() ?? ""}"`,
+        "Polish only this draft. Use the conversation only to tune tone, timing, safety, and naturalness.",
+      )
       : joinPromptSections(
         contextInfo,
         partnerContextInfo,
@@ -5305,7 +5320,8 @@ ${recentText}`;
 
     // 如果有用戶草稿，加入優化請求（只在 normal 模式）
     if (
-      !isMyMessageMode && userDraft && typeof userDraft === "string" &&
+      !isOptimizeMessageMode && !isMyMessageMode && userDraft &&
+      typeof userDraft === "string" &&
       userDraft.trim()
     ) {
       userPrompt = joinPromptSections(
@@ -5343,7 +5359,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     const startTime = Date.now();
     const timeoutMs = hasImages
       ? (recognizeOnly ? 90000 : 120000)
-      : (isMyMessageMode ? 20000 : 30000);
+      : ((isMyMessageMode || isOptimizeMessageMode) ? 20000 : 30000);
     const allowModelFallback = !hasImages;
     const requestObservability = {
       requestType,
@@ -6119,7 +6135,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           model: selectedModel,
           max_tokens: recognizeOnly
             ? 1600
-            : (hasImages ? 2560 : (isMyMessageMode ? 512 : 1536)), // 多句推薦回覆保留較穩定的 JSON 空間
+            : (hasImages
+              ? 2560
+              : ((isMyMessageMode || isOptimizeMessageMode) ? 512 : 1536)), // 多句推薦回覆保留較穩定的 JSON 空間
           system: systemPrompt,
           messages: [
             {
@@ -6257,7 +6275,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             model: selectedModel,
             max_tokens: recognizeOnly
               ? 1600
-              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)),
+              : (hasImages
+                ? 2048
+                : ((isMyMessageMode || isOptimizeMessageMode) ? 512 : 1536)),
             system: systemPrompt +
               "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
             messages: [
@@ -6464,6 +6484,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       result,
       recognizeOnly,
       isMyMessageMode,
+      isOptimizeMessageMode,
       allowedFeatures,
     });
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)

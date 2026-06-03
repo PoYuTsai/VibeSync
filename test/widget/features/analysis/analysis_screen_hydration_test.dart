@@ -410,7 +410,9 @@ void main() {
           ),
         );
 
-        expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+        expect(find.text('回覆思路'), findsWidgets);
+        expect(find.text(_quick(runId: 'run_qr').recommendedReply),
+            findsNothing);
         expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
@@ -435,7 +437,9 @@ void main() {
           ),
         );
 
-        expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+        expect(find.text('回覆思路'), findsWidgets);
+        expect(find.text(_quick(runId: 'run_rf').recommendedReply),
+            findsNothing);
         expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
@@ -462,11 +466,11 @@ void main() {
           ),
         );
 
-        expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+        expect(find.text('回覆思路'), findsWidgets);
         expect(find.byType(CoachActionCard), findsOneWidget);
         expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
-        expect(find.text(_quick(runId: 'run_ff').recommendedReply),
-            findsOneWidget);
+        expect(
+            find.text(_quick(runId: 'run_ff').recommendedReply), findsNothing);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
@@ -477,13 +481,14 @@ void main() {
     );
 
     testWidgets(
-      'fullReady state hydrates → detailed analysis gate flips, no analyze re-fire',
+      'fullReady state hydrates detailed analysis and drops quick reply thought',
       (tester) async {
+        final quick = _quick(runId: 'run_fr');
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
           seed: TwoStageAnalysisState(
             phase: TwoStagePhase.fullReady,
-            quick: _quick(runId: 'run_fr'),
+            quick: quick,
             full: _full(),
             analysisRunId: 'run_fr',
           ),
@@ -491,35 +496,19 @@ void main() {
 
         // The detailed-analysis tree contains widgets (CoachChatCard) that
         // depend on a live Hive box, which is not initialised in this widget
-        // test. The hydration we care about is the gate flip:
-        //   _quickResult != null && _enthusiasmScore == null → placeholder/retry
-        //   _enthusiasmScore != null → detailed-analysis tree (Hive-dependent)
-        // Asserting placeholder/retry are absent proves _enthusiasmScore is set
-        // and therefore hydration applied the full result. Drain the expected
-        // Hive build exception so the test framework does not flag it.
+        // test. The hydration we care about is the gate flip: fullReady should
+        // show the full-result tree, not the interim quick reply thought.
         // ignore: avoid_dynamic_calls
         tester.takeException();
-        expect(find.text('1 快速建議（先回來的版本）'), findsOneWidget);
-        expect(find.text('2 完整分析後建議'), findsOneWidget);
-        expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsWidgets,
-            reason:
-                'Dogfood compare mode should keep the quick answer visible after the full result arrives.');
-        expect(find.text('Core / Full 回覆對照'), findsOneWidget);
-        expect(find.text('Core 先行'), findsOneWidget);
-        expect(find.text('Full 原始判斷'), findsOneWidget);
-        expect(find.text('正式顯示'), findsOneWidget);
-        expect(find.text('Full 原始推薦回覆'), findsOneWidget);
-        expect(find.text('正式顯示推薦回覆'), findsOneWidget);
-        expect(find.text('完整分析推薦回覆'), findsOneWidget);
+        expect(find.text(quick.recommendedReply), findsNothing);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
         expect(recorder.quickCalls, 0);
         expect(recorder.fullCalls, 0);
       },
     );
-
     testWidgets(
-      'live runningFull to fullReady keeps quick answer for Core / Full comparison',
+      'live runningFull to fullReady drops quick reply thought',
       (tester) async {
         final quick = _quick(runId: 'run_live_compare');
         final raw = _fullRawResponse();
@@ -553,16 +542,9 @@ void main() {
         // ignore: avoid_dynamic_calls
         tester.takeException();
 
-        expect(find.text('2 完整分析後建議'), findsOneWidget);
-        expect(find.text('Core / Full 回覆對照'), findsOneWidget);
-        expect(find.text('Core 先行'), findsOneWidget);
-        expect(find.text('Full 原始判斷'), findsOneWidget);
-        expect(find.text('正式顯示'), findsOneWidget);
-        expect(find.text('Full 原始推薦回覆'), findsOneWidget);
-        expect(find.text(quick.recommendedReply), findsWidgets,
-            reason:
-                'The live listener clears the quick preview after fullReady, but must retain a comparison copy for dogfood quality review.');
+        expect(find.text(quick.recommendedReply), findsNothing);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
+        expect(find.byType(FullAnalysisRetryCard), findsNothing);
         expect(harness.recorder.quickCalls, 0);
         expect(harness.recorder.fullCalls, 0);
       },
@@ -601,7 +583,9 @@ void main() {
             conversation: convWithStaleSnapshot,
           );
 
-          expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.text('回覆思路'), findsWidgets);
+          expect(find.text(_quick(runId: 'run_qr_stale').recommendedReply),
+              findsNothing);
           expect(find.byType(CoachActionCard), findsOneWidget);
           expect(find.byType(FullAnalysisPlaceholder), findsOneWidget,
               reason:
@@ -634,7 +618,9 @@ void main() {
             conversation: convWithStaleSnapshot,
           );
 
-          expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.text('回覆思路'), findsWidgets);
+          expect(find.text(_quick(runId: 'run_rf_stale').recommendedReply),
+              findsNothing);
           expect(find.byType(CoachActionCard), findsOneWidget);
           expect(find.byType(FullAnalysisPlaceholder), findsOneWidget);
           expect(find.byType(FullAnalysisRetryCard), findsNothing);
@@ -666,7 +652,9 @@ void main() {
             conversation: convWithStaleSnapshot,
           );
 
-          expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsOneWidget);
+          expect(find.text('回覆思路'), findsWidgets);
+          expect(find.text(_quick(runId: 'run_ff_stale').recommendedReply),
+              findsNothing);
           expect(find.byType(CoachActionCard), findsOneWidget);
           expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
           expect(find.byType(FullAnalysisPlaceholder), findsNothing);

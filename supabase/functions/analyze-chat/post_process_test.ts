@@ -286,3 +286,25 @@ Deno.test("postProcess: recognizeOnly skips ensureNonEmpty but still gates healt
     "healthCheck must be stripped even in recognizeOnly mode for Free tier",
   );
 });
+
+Deno.test("postProcess: optimize_message leaves payload focused on optimizedMessage", () => {
+  const payload = {
+    optimizedMessage: {
+      original: "不錯欸",
+      optimized: "真的不錯欸，感覺你很投入。",
+      reason: "保留原意並稍微提高溫度。",
+    },
+  };
+
+  const result = postProcessAnalysisResult({
+    result: { ...payload },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    isOptimizeMessageMode: true,
+    allowedFeatures: ESSENTIAL_FEATURES,
+  });
+
+  assertEquals(result, payload);
+  assertFalse("finalRecommendation" in result);
+  assertFalse("replies" in result);
+});

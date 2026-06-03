@@ -387,14 +387,16 @@ export function ensureNonEmptyAnalysisOutput({
   result,
   recognizeOnly,
   isMyMessageMode,
+  isOptimizeMessageMode = false,
   allowedFeatures,
 }: {
   result: Record<string, unknown>;
   recognizeOnly: boolean;
   isMyMessageMode: boolean;
+  isOptimizeMessageMode?: boolean;
   allowedFeatures: string[];
 }) {
-  if (recognizeOnly || isMyMessageMode) {
+  if (recognizeOnly || isMyMessageMode || isOptimizeMessageMode) {
     return result;
   }
 
@@ -498,11 +500,13 @@ export function postProcessAnalysisResult({
   result,
   recognizeOnly,
   isMyMessageMode,
+  isOptimizeMessageMode = false,
   allowedFeatures,
 }: {
   result: Record<string, unknown>;
   recognizeOnly: boolean;
   isMyMessageMode: boolean;
+  isOptimizeMessageMode?: boolean;
   allowedFeatures: string[];
 }): Record<string, unknown> {
   // Step 1 — backfill empty fields (no-op for recognizeOnly / my-message).
@@ -510,8 +514,13 @@ export function postProcessAnalysisResult({
     result,
     recognizeOnly,
     isMyMessageMode,
+    isOptimizeMessageMode,
     allowedFeatures,
   });
+
+  if (isOptimizeMessageMode) {
+    return result;
+  }
 
   // Step 2 — entitlement: replies must be a subset of allowedFeatures.
   if (result?.replies) {
