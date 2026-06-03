@@ -161,7 +161,7 @@ Deno.test("stream handler reports pre-recommendation Claude failure without char
     callClaude: () =>
       Promise.resolve({
         textStream: failingChunks([
-          line({ type: "analysis.progress", label: "整理資料中" }),
+          line({ type: "analysis.progress", label: "model progress leaked" }),
         ], new Error("network down")),
       }),
     chargeRun: () => {
@@ -177,6 +177,10 @@ Deno.test("stream handler reports pre-recommendation Claude failure without char
 
   assertEquals(chargeCalls, 0);
   assertEquals(failedCodes, ["STREAM_UPSTREAM_FAILED"]);
+  assertEquals(
+    events.some((event) => event.label === "model progress leaked"),
+    false,
+  );
   assertEquals(events.at(-1)?.type, "analysis.error");
   assertEquals(events.at(-1)?.code, "STREAM_UPSTREAM_FAILED");
   assertEquals(events.at(-1)?.message, "分析暫時無法完成，請稍後重新分析。");

@@ -59,6 +59,10 @@ Deno.test("reframer stops stream when charge fails", async () => {
   });
 
   reframer.pushText(line({
+    type: "analysis.progress",
+    label: "Claude progress should stay buffered.",
+  }));
+  reframer.pushText(line({
     type: "analysis.recommendation",
     selectedStyle: "extend",
     message: "Tell me more.",
@@ -74,6 +78,10 @@ Deno.test("reframer stops stream when charge fails", async () => {
 
   assertEquals(events.map((event) => event.type), ["analysis.error"]);
   assertEquals(events[0].code, "STREAM_CHARGE_FAILED");
+  assertEquals(
+    events.some((event) => event.type === "analysis.progress"),
+    false,
+  );
 });
 
 Deno.test("reframer does not leak buffered decision when charge fails", async () => {
@@ -147,8 +155,8 @@ Deno.test("reframer never emits substantive events before charge", async () => {
   await reframer.flush();
 
   assertEquals(timeline, [
-    "emit:analysis.progress",
     "charge",
+    "emit:analysis.progress",
     "emit:analysis.decision",
     "emit:analysis.reply_option",
     "emit:analysis.recommendation",
@@ -244,7 +252,6 @@ Deno.test("reframer parses a line split across chunks", async () => {
   await reframer.flush();
 
   assertEquals(events.map((event) => event.type), [
-    "analysis.progress",
     "analysis.error",
   ]);
   assertEquals(events.at(-1)?.code, "STREAM_MISSING_RECOMMENDATION");
@@ -369,7 +376,6 @@ Deno.test("reframer ignores malformed trailing text on flush", async () => {
   await reframer.flush();
 
   assertEquals(events.map((event) => event.type), [
-    "analysis.progress",
     "analysis.error",
   ]);
   assertEquals(events.at(-1)?.code, "STREAM_MISSING_RECOMMENDATION");

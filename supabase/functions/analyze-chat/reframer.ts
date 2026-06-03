@@ -149,11 +149,6 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     }
 
     if (!recommendationCharged) {
-      if (event.type === "analysis.progress") {
-        options.emit(event);
-        return;
-      }
-
       if (event.type === "analysis.done") {
         emitError(
           "STREAM_MISSING_RECOMMENDATION",
