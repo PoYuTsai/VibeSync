@@ -18,6 +18,7 @@ export interface StreamAnalysisHandlerOptions {
   etaSeconds?: number;
   headers?: HeadersInit;
   progressEvents?: StreamOutputEvent[];
+  heartbeatIntervalMs?: number;
   callClaude: () => Promise<ClaudeTextStreamResult>;
   chargeRun: (
     recommendation: StreamRecommendationForCharge,
@@ -46,6 +47,8 @@ const DEFAULT_PROGRESS_EVENTS: StreamOutputEvent[] = [
     detail: "正在選擇最適合的回覆策略，完整分析會在下方繼續整理。",
   },
 ];
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
 
 export function handleStreamAnalysisRequest(
   options: StreamAnalysisHandlerOptions,
@@ -89,6 +92,7 @@ export function handleStreamAnalysisRequest(
       emit(toRecommendationEvent(options.prechargedRecommendation));
     }
 
+    const stopHeartbeat = startHeartbeat(options, emit);
     const reframer = createStreamReframer({
       emit: emitReframed,
       onRecommendation: options.chargeRun,
@@ -115,6 +119,8 @@ export function handleStreamAnalysisRequest(
       if (!pendingError) {
         pendingError = buildUpstreamError(error, recommendationEmitted);
       }
+    } finally {
+      stopHeartbeat();
     }
 
     if (pendingError) {
@@ -179,6 +185,35 @@ export function handleStreamAnalysisRequest(
     emit(doneEvent);
     close();
   }, options.headers);
+}
+
+function startHeartbeat(
+  options: StreamAnalysisHandlerOptions,
+  emit: NdjsonEmit,
+): () => void {
+  const intervalMs = options.heartbeatIntervalMs ??
+    DEFAULT_HEARTBEAT_INTERVAL_MS;
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    return () => {};
+  }
+
+  let count = 0;
+  const timer = setInterval(() => {
+    count += 1;
+    emit({
+      type: "analysis.progress",
+      phase: "heartbeat",
+      runId: options.runId,
+      conversationHash: options.conversationHash,
+      etaSeconds: options.etaSeconds ?? 18,
+      label: "完整分析仍在進行",
+      detail: count === 1
+        ? "正在等待模型完成深度推理，請保持連線。"
+        : "正在整理完整分析結果，請保持連線。",
+    });
+  }, intervalMs);
+
+  return () => clearInterval(timer);
 }
 
 async function markFailedAndEmit(

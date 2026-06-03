@@ -4085,6 +4085,7 @@ const STREAM_ANALYZE_ENABLED =
   Deno.env.get("STREAM_ANALYZE_ENABLED") === "true";
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
 const MAX_STREAM_RETRIES = 2;
+const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 // 測試帳號白名單 (不扣額度)
 const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
@@ -6315,7 +6316,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               messages: [{ role: "user", content: userMessageContent }],
             },
             CLAUDE_API_KEY,
-            { timeout: 30000 },
+            { timeout: STREAM_CLAUDE_TIMEOUT_MS },
           );
           streamModel = claude.model;
           streamUsage.model = claude.model;

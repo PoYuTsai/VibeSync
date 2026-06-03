@@ -28,6 +28,16 @@ async function* failingChunks(
   throw error;
 }
 
+async function* delayedChunks(
+  values: string[],
+  delayMs: number,
+): AsyncIterable<string> {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  for (const value of values) {
+    yield value;
+  }
+}
+
 async function collectEvents(
   response: Response,
 ): Promise<Record<string, unknown>[]> {
@@ -52,12 +62,14 @@ function createOptions(overrides: {
   ) => void | Promise<void>;
   callClaude?: () => Promise<{ textStream: AsyncIterable<string> }>;
   progressEvents?: Record<string, unknown>[];
+  heartbeatIntervalMs?: number;
   prechargedRecommendation?: StreamRecommendationForCharge;
 } = {}) {
   return {
     runId: "run-1",
     conversationHash: "hash-1",
     progressEvents: overrides.progressEvents as never,
+    heartbeatIntervalMs: overrides.heartbeatIntervalMs,
     callClaude: overrides.callClaude ??
       (() =>
         Promise.resolve({
@@ -101,6 +113,40 @@ Deno.test("stream handler emits default Traditional Chinese progress before Clau
     events[2].detail,
     "正在選擇最適合的回覆策略，完整分析會在下方繼續整理。",
   );
+});
+
+Deno.test("stream handler emits heartbeat progress while waiting for Claude", async () => {
+  const response = handleStreamAnalysisRequest(createOptions({
+    heartbeatIntervalMs: 1,
+    callClaude: () =>
+      Promise.resolve({
+        textStream: delayedChunks([
+          line({
+            type: "analysis.recommendation",
+            selectedStyle: "resonate",
+            message: "I get why that felt off.",
+            reason: "Respect the boundary.",
+            quotedContext: "too fast",
+          }),
+          line({
+            type: "analysis.done",
+            finalResult: {
+              finalRecommendation: {
+                pick: "resonate",
+                content: "I get why that felt off.",
+              },
+            },
+          }),
+        ], 8),
+      }),
+  }));
+
+  const events = await collectEvents(response);
+  const heartbeat = events.find((event) => event.phase === "heartbeat");
+
+  assertEquals(heartbeat?.type, "analysis.progress");
+  assertEquals(heartbeat?.runId, "run-1");
+  assertEquals(events.at(-1)?.type, "analysis.done");
 });
 
 Deno.test("stream handler charges before emitting recommendation", async () => {

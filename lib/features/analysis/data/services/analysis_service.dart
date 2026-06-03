@@ -513,6 +513,9 @@ AnalysisException _mapUnexpectedAnalysisError(
 }
 
 class AnalysisService {
+  static const Duration _streamConnectTimeout = Duration(seconds: 45);
+  static const Duration _streamIdleTimeout = Duration(seconds: 120);
+
   final http.Client Function() _clientFactory;
   final String? Function() _accessTokenProvider;
 
@@ -1096,7 +1099,7 @@ class AnalysisService {
         );
 
       final response =
-          await client.send(request).timeout(const Duration(seconds: 20));
+          await client.send(request).timeout(_streamConnectTimeout);
 
       if (response.statusCode != 200) {
         final body = await response.stream.bytesToString();
@@ -1137,7 +1140,7 @@ class AnalysisService {
       await for (final rawLine in response.stream
           .transform(utf8.decoder)
           .transform(const LineSplitter())
-          .timeout(const Duration(seconds: 75))) {
+          .timeout(_streamIdleTimeout)) {
         final line = rawLine.trim();
         if (line.isEmpty) continue;
 
