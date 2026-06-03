@@ -14,7 +14,7 @@ platform :ios do
     ipa_dir = File.join(project_root, "build", "ios", "ipa")
 
     # Try to find any .ipa file in the directory
-    ipa_files = Dir.glob(File.join(ipa_dir, "*.ipa"))
+    ipa_files = Dir.glob(File.join(ipa_dir, "*.ipa")).sort_by { |path| File.mtime(path) }.reverse
 
     if ipa_files.empty?
       UI.user_error!("No IPA found in #{ipa_dir}. Make sure 'flutter build ipa' completed successfully.")

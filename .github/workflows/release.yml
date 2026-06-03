@@ -177,14 +177,32 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_PROD_ANON_KEY }}
           REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
-          echo "Building with build number: ${{ github.run_number }}"
+          rm -rf build/ios/ipa build/ios/archive
+          echo "Building with version: 1.0.0, build number: ${{ github.run_number }}"
           flutter build ipa --release \
+            --build-name=1.0.0 \
             --build-number=${{ github.run_number }} \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
             --dart-define=REVENUECAT_API_KEY="$REVENUECAT_KEY" \
             --export-options-plist=ios/ExportOptions.plist
+
+      - name: Verify iOS app version
+        run: |
+          set -euo pipefail
+          app_plist=$(find build/ios/archive -path "*.xcarchive/Products/Applications/*.app/Info.plist" -type f | head -n 1)
+          if [ -z "$app_plist" ]; then
+            echo "No archived app Info.plist found"
+            exit 1
+          fi
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_plist")
+          build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app_plist")
+          echo "Archived iOS version: ${version} (${build})"
+          if [ "$version" != "1.0.0" ]; then
+            echo "Expected CFBundleShortVersionString=1.0.0, got ${version}"
+            exit 1
+          fi
 
       - name: Verify IPA exists
         run: |
@@ -317,6 +335,8 @@ jobs:
           REVENUECAT_KEY: appl_ZYVwxdvbEIAHxYUEHhdVkVLrkdY
         run: |
           flutter build appbundle --release \
+            --build-name=1.0.0 \
+            --build-number=${{ github.run_number }} \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
