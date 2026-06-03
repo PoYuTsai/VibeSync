@@ -36,8 +36,8 @@ Deno.test("reframer emits recommendation only after charge succeeds", async () =
   await reframer.flush();
 
   assertEquals(timeline, [
-    "emit:analysis.decision",
     "charge:resonate",
+    "emit:analysis.decision",
     "emit:analysis.recommendation",
     "emit:analysis.done",
   ]);
@@ -74,6 +74,86 @@ Deno.test("reframer stops stream when charge fails", async () => {
 
   assertEquals(events.map((event) => event.type), ["analysis.error"]);
   assertEquals(events[0].code, "STREAM_CHARGE_FAILED");
+});
+
+Deno.test("reframer does not leak buffered decision when charge fails", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return {
+        charged: false,
+        code: "STREAM_CHARGE_FAILED",
+        message: "Quota update failed.",
+      };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    nextStepBody: "This would be core coaching value.",
+    doThis: "Send this calibrated move.",
+    avoidThis: "Do not over-explain.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Tell me more.",
+    reason: "Keep it easy.",
+    quotedContext: "hello",
+  }));
+
+  await reframer.flush();
+
+  assertEquals(events.map((event) => event.type), ["analysis.error"]);
+  assertEquals(events[0].code, "STREAM_CHARGE_FAILED");
+});
+
+Deno.test("reframer never emits substantive events before charge", async () => {
+  const timeline: string[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      timeline.push(`emit:${event.type}`);
+    },
+    onRecommendation() {
+      timeline.push("charge");
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.progress",
+    label: "Reading only.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.decision",
+    nextStepBody: "Buffered until charge.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "tease",
+    message: "Also buffered.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Tell me more.",
+    reason: "Keep it easy.",
+    quotedContext: "hello",
+  }));
+
+  await reframer.flush();
+
+  assertEquals(timeline, [
+    "emit:analysis.progress",
+    "charge",
+    "emit:analysis.decision",
+    "emit:analysis.reply_option",
+    "emit:analysis.recommendation",
+    "emit:analysis.done",
+  ]);
 });
 
 Deno.test("reframer charges only one official recommendation", async () => {
@@ -165,8 +245,9 @@ Deno.test("reframer parses a line split across chunks", async () => {
 
   assertEquals(events.map((event) => event.type), [
     "analysis.progress",
-    "analysis.done",
+    "analysis.error",
   ]);
+  assertEquals(events.at(-1)?.code, "STREAM_MISSING_RECOMMENDATION");
 });
 
 Deno.test("reframer assembles a legacy-compatible final result", async () => {
@@ -289,6 +370,7 @@ Deno.test("reframer ignores malformed trailing text on flush", async () => {
 
   assertEquals(events.map((event) => event.type), [
     "analysis.progress",
-    "analysis.done",
+    "analysis.error",
   ]);
+  assertEquals(events.at(-1)?.code, "STREAM_MISSING_RECOMMENDATION");
 });

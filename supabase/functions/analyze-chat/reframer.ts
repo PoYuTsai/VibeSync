@@ -53,6 +53,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let sawValidEvent = false;
   let doneEmitted = false;
   let recommendationCharged = false;
+  const preChargeEvents: StreamEvent[] = [];
 
   const emitError = (
     code: string,
@@ -75,6 +76,18 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     });
     doneEmitted = true;
     closed = true;
+  };
+
+  const absorbAndEmit = (event: StreamOutputEvent) => {
+    assembler.absorb(event);
+    options.emit(event);
+  };
+
+  const flushPreChargeEvents = () => {
+    for (const bufferedEvent of preChargeEvents) {
+      absorbAndEmit(bufferedEvent);
+    }
+    preChargeEvents.length = 0;
   };
 
   const handleRecommendation = async (event: StreamEvent) => {
@@ -108,6 +121,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     }
 
     recommendationCharged = true;
+    flushPreChargeEvents();
     const enriched = {
       ...event,
       selectedStyle: validation.selectedStyle,
@@ -116,8 +130,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       quotedContext: validation.quotedContext,
       warnings: validation.warnings,
     };
-    assembler.absorb(enriched);
-    options.emit(enriched);
+    absorbAndEmit(enriched);
   };
 
   const handleEvent = async (event: StreamEvent) => {
@@ -135,14 +148,32 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       return;
     }
 
+    if (!recommendationCharged) {
+      if (event.type === "analysis.progress") {
+        options.emit(event);
+        return;
+      }
+
+      if (event.type === "analysis.done") {
+        emitError(
+          "STREAM_MISSING_RECOMMENDATION",
+          "Streaming analysis ended before an official recommendation.",
+        );
+        closed = true;
+        return;
+      }
+
+      preChargeEvents.push(event);
+      return;
+    }
+
     if (event.type === "analysis.done") {
       assembler.absorb(event);
       emitDone();
       return;
     }
 
-    assembler.absorb(event);
-    options.emit(event);
+    absorbAndEmit(event);
   };
 
   const queueLine = (line: string) => {
@@ -182,7 +213,17 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       if (buffer.trim()) queueLine(buffer);
       buffer = "";
       await drain();
-      if (!closed && sawValidEvent) emitDone();
+      if (!closed && sawValidEvent) {
+        if (recommendationCharged) {
+          emitDone();
+        } else {
+          emitError(
+            "STREAM_MISSING_RECOMMENDATION",
+            "Streaming analysis ended before an official recommendation.",
+          );
+          closed = true;
+        }
+      }
     },
   };
 }

@@ -16,6 +16,7 @@ export function buildStreamSystemPrompt(basePrompt: string): string {
     "",
     "Emit events in this exact order:",
     "1. `analysis.progress` two to four times.",
+    "`analysis.progress` must contain status/waiting copy only. Do not include advice, reply text, selected style, doThis, avoidThis, or conversation-specific coaching in progress events.",
     "2. `analysis.decision` once with `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`.",
     "3. `analysis.recommendation` once with the official reply recommendation and fields `selectedStyle`, `message`, `reason`, and `quotedContext`.",
     "4. `analysis.reply_option` for the selected style first, then the other styles.",

@@ -182,6 +182,41 @@ Deno.test("stream handler reports pre-recommendation Claude failure without char
   assertEquals(events.at(-1)?.message, "分析暫時無法完成，請稍後重新分析。");
 });
 
+Deno.test("stream handler does not leak decision content before recommendation charge", async () => {
+  let chargeCalls = 0;
+  const failedCodes: string[] = [];
+  const response = handleStreamAnalysisRequest(createOptions({
+    callClaude: () =>
+      Promise.resolve({
+        textStream: failingChunks([
+          line({
+            type: "analysis.decision",
+            nextStepBody: "This should stay buffered before charge.",
+            doThis: "Send the calibrated reply.",
+            avoidThis: "Do not over-explain.",
+          }),
+        ], new Error("network down before recommendation")),
+      }),
+    chargeRun: () => {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+    markFailed: (code) => {
+      failedCodes.push(code);
+    },
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(chargeCalls, 0);
+  assertEquals(failedCodes, ["STREAM_UPSTREAM_FAILED"]);
+  assertEquals(
+    events.some((event) => event.type === "analysis.decision"),
+    false,
+  );
+  assertEquals(events.at(-1)?.code, "STREAM_UPSTREAM_FAILED");
+});
+
 Deno.test("stream handler preserves recommendation before post-recommendation failure", async () => {
   const failedCodes: string[] = [];
   const response = handleStreamAnalysisRequest(createOptions({
