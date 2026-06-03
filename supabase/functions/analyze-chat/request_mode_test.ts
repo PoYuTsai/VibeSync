@@ -1,9 +1,3 @@
-// supabase/functions/analyze-chat/request_mode_test.ts
-//
-// Phase 1.2: 兩階段 analyze 的 responseMode + analysisRunId normalization。
-// 這層的責任只是 parse + normalize，不負責驗證 runId 是否存在於 DB 或屬於哪個 user。
-// 後續驗證在 Phase 2.1 (full mode) 的 store.validateRunForFull 完成。
-
 import {
   assert,
   assertEquals,
@@ -36,10 +30,16 @@ Deno.test("responseMode='full' is preserved", () => {
   assertEquals(result.responseMode, "full");
 });
 
+Deno.test("responseMode='stream' is preserved", () => {
+  const result = normalizeRequestMode({ responseMode: "stream" });
+  assertEquals(result.responseMode, "stream");
+  assertStrictEquals(result.analysisRunId, null);
+});
+
 Deno.test("unknown responseMode strings degrade to legacy (defensive default)", () => {
-  // 防止未來 client 送錯字串時 server 走未知分支：fall back to legacy 是最安全的。
-  const result = normalizeRequestMode({ responseMode: "Quick" }); // case-sensitive
+  const result = normalizeRequestMode({ responseMode: "Quick" });
   assertEquals(result.responseMode, "legacy");
+
   const result2 = normalizeRequestMode({ responseMode: "fast" });
   assertEquals(result2.responseMode, "legacy");
 });
@@ -50,7 +50,10 @@ Deno.test("non-string responseMode (number / object / null) degrades to legacy",
     normalizeRequestMode({ responseMode: { kind: "quick" } }).responseMode,
     "legacy",
   );
-  assertEquals(normalizeRequestMode({ responseMode: null }).responseMode, "legacy");
+  assertEquals(
+    normalizeRequestMode({ responseMode: null }).responseMode,
+    "legacy",
+  );
 });
 
 Deno.test("analysisRunId string is trimmed", () => {
@@ -62,7 +65,6 @@ Deno.test("analysisRunId string is trimmed", () => {
 });
 
 Deno.test("analysisRunId empty string normalizes to null", () => {
-  // 空字串對 caller 沒語意，統一變 null 讓 full mode handler 用單一 falsy 判斷拒絕。
   const result = normalizeRequestMode({
     responseMode: "full",
     analysisRunId: "   ",
@@ -71,9 +73,9 @@ Deno.test("analysisRunId empty string normalizes to null", () => {
 });
 
 Deno.test("non-string analysisRunId is dropped to null", () => {
-  // UUID 一定是 string；任何非 string 都當作沒帶。
   assertStrictEquals(
-    normalizeRequestMode({ responseMode: "full", analysisRunId: 123 }).analysisRunId,
+    normalizeRequestMode({ responseMode: "full", analysisRunId: 123 })
+      .analysisRunId,
     null,
   );
   assertStrictEquals(
@@ -82,13 +84,13 @@ Deno.test("non-string analysisRunId is dropped to null", () => {
     null,
   );
   assertStrictEquals(
-    normalizeRequestMode({ responseMode: "full", analysisRunId: null }).analysisRunId,
+    normalizeRequestMode({ responseMode: "full", analysisRunId: null })
+      .analysisRunId,
     null,
   );
 });
 
-Deno.test("quick mode with analysisRunId still surfaces the value (handler decides what to do)", () => {
-  // 這層不拒絕；只 normalize。handler 才知道「quick 帶 runId 是不是該拒絕」。
+Deno.test("quick mode with analysisRunId still surfaces the value", () => {
   const result = normalizeRequestMode({
     responseMode: "quick",
     analysisRunId: "run-1",
@@ -97,36 +99,31 @@ Deno.test("quick mode with analysisRunId still surfaces the value (handler decid
   assertEquals(result.analysisRunId, "run-1");
 });
 
-Deno.test("output type is the canonical 3-value union (negative assertion)", () => {
-  // 守住「除了 quick/full/legacy 沒有其他值」這條 invariant。
-  const allModes: Array<"quick" | "full" | "legacy"> = [
-    normalizeRequestMode({ responseMode: "quick" }).responseMode,
-    normalizeRequestMode({ responseMode: "full" }).responseMode,
-    normalizeRequestMode({}).responseMode,
-  ];
-  assertEquals(allModes.sort(), ["full", "legacy", "quick"]);
+Deno.test("stream mode with analysisRunId still surfaces the value", () => {
+  const result = normalizeRequestMode({
+    responseMode: "stream",
+    analysisRunId: "run-stream",
+  });
+  assertEquals(result.responseMode, "stream");
+  assertEquals(result.analysisRunId, "run-stream");
 });
 
-// ----------------------------------------------------------------------
-// shouldRejectFullMode — early MISSING_RUN_ID bouncer.
-//
-// Phase 1.3 contract (Codex round-2 fix): must fire BEFORE quota preflight
-// / Claude call so a quota-exhausted user still gets 400 MISSING_RUN_ID
-// instead of 429 quota_exceeded — full is not quota-gated.
-//
-// Phase 2.1 update: full+runId now passes through to the real handler in
-// index.ts (which calls AnalysisRunStore.validateRunForFull). Only the
-// no-runId case still short-circuits here.
-// ----------------------------------------------------------------------
+Deno.test("output type is the canonical 4-value union", () => {
+  const allModes: Array<"quick" | "full" | "legacy" | "stream"> = [
+    normalizeRequestMode({ responseMode: "quick" }).responseMode,
+    normalizeRequestMode({ responseMode: "full" }).responseMode,
+    normalizeRequestMode({ responseMode: "stream" }).responseMode,
+    normalizeRequestMode({}).responseMode,
+  ];
+  assertEquals(allModes.sort(), ["full", "legacy", "quick", "stream"]);
+});
 
-Deno.test("shouldRejectFullMode — legacy never rejected", () => {
+Deno.test("shouldRejectFullMode: legacy never rejected", () => {
   const r = shouldRejectFullMode({ responseMode: "legacy", analysisRunId: null });
   assertFalse(r.reject);
 });
 
-Deno.test("shouldRejectFullMode — legacy with stray runId still not rejected", () => {
-  // Defensive: even if a client mistakenly sends runId on legacy, this helper
-  // only routes full. Quota/auth gates elsewhere handle legacy.
+Deno.test("shouldRejectFullMode: legacy with stray runId still not rejected", () => {
   const r = shouldRejectFullMode({
     responseMode: "legacy",
     analysisRunId: "abc-123",
@@ -134,12 +131,17 @@ Deno.test("shouldRejectFullMode — legacy with stray runId still not rejected",
   assertFalse(r.reject);
 });
 
-Deno.test("shouldRejectFullMode — quick never rejected", () => {
+Deno.test("shouldRejectFullMode: quick never rejected", () => {
   const r = shouldRejectFullMode({ responseMode: "quick", analysisRunId: null });
   assertFalse(r.reject);
 });
 
-Deno.test("shouldRejectFullMode — full + missing runId → 400 MISSING_RUN_ID", () => {
+Deno.test("shouldRejectFullMode: stream never rejected", () => {
+  const r = shouldRejectFullMode({ responseMode: "stream", analysisRunId: null });
+  assertFalse(r.reject);
+});
+
+Deno.test("shouldRejectFullMode: full + missing runId returns 400 MISSING_RUN_ID", () => {
   const r = shouldRejectFullMode({ responseMode: "full", analysisRunId: null });
   assert(r.reject);
   if (r.reject) {
@@ -148,11 +150,7 @@ Deno.test("shouldRejectFullMode — full + missing runId → 400 MISSING_RUN_ID"
   }
 });
 
-Deno.test("shouldRejectFullMode — full + runId present passes through to handler (Phase 2.1)", () => {
-  // Phase 2.1: the real full handler now lives in index.ts and validates
-  // the run via AnalysisRunStore. The pure router only short-circuits the
-  // no-runId case to avoid paying for hash/DB/Claude work that would be
-  // rejected downstream anyway.
+Deno.test("shouldRejectFullMode: full + runId passes through to handler", () => {
   const r = shouldRejectFullMode({
     responseMode: "full",
     analysisRunId: "11111111-1111-1111-1111-111111111111",
@@ -160,11 +158,7 @@ Deno.test("shouldRejectFullMode — full + runId present passes through to handl
   assertFalse(r.reject);
 });
 
-Deno.test("shouldRejectFullMode — precedence: routing decision uses only mode + runId", () => {
-  // The helper is pure — it does not know about quota / user / DB. The handler
-  // MUST call it before quota preflight so a quota-exhausted user still gets
-  // 400 MISSING_RUN_ID (not 429). With runId present the helper defers to the
-  // downstream handler, which is responsible for validating the run.
+Deno.test("shouldRejectFullMode: routing decision uses only mode and runId", () => {
   const noRunId = shouldRejectFullMode({
     responseMode: "full",
     analysisRunId: null,
