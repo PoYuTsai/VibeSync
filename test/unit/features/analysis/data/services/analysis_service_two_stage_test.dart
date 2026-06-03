@@ -340,4 +340,122 @@ void main() {
       );
     });
   });
+
+  group('AnalysisService.analyzeStream', () {
+    test('POSTs responseMode:stream and parses NDJSON updates', () async {
+      late http.Request capturedRequest;
+      final mockClient = MockClient((request) async {
+        capturedRequest = request;
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.started',
+                'runId': 'stream_1',
+                'etaSeconds': 18,
+                'label': 'start',
+              }),
+              jsonEncode({
+                'type': 'analysis.progress',
+                'label': 'reading',
+                'detail': 'checking context',
+              }),
+              jsonEncode({
+                'type': 'analysis.recommendation',
+                'selectedStyle': 'resonate',
+                'message': 'I get why that felt off.',
+                'reason': 'Respect the boundary.',
+                'quotedContext': 'too fast',
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.map((u) => u.kind).toList(), [
+        AnalysisStreamUpdateKind.started,
+        AnalysisStreamUpdateKind.progress,
+        AnalysisStreamUpdateKind.recommendation,
+        AnalysisStreamUpdateKind.done,
+      ]);
+      expect(updates[0].runId, 'stream_1');
+      expect(updates[0].etaSeconds, 18);
+      expect(updates[1].label, 'reading');
+      expect(updates[2].quick?.analysisRunId, 'stream_1');
+      expect(updates[2].quick?.pick, 'resonate');
+      expect(updates[2].quick?.recommendedReply, 'I get why that felt off.');
+      expect(updates[3].result?.strategy, _fullSuccessBody['strategy']);
+
+      final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
+      expect(body['responseMode'], 'stream');
+      expect(body.containsKey('analysisRunId'), isFalse);
+    });
+
+    test('treats legacy JSON 200 as a completed stream fallback', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode(_fullSuccessBody),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.map((u) => u.kind).toList(), [
+        AnalysisStreamUpdateKind.done,
+      ]);
+      expect(updates.single.result?.recommendation.content, 'c');
+    });
+
+    test('throws AnalysisException when stream emits analysis.error', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'type': 'analysis.error',
+            'code': 'STREAM_CHARGE_FAILED',
+            'message': 'Quota failed',
+          }),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      await expectLater(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(
+          isA<AnalysisException>()
+              .having((e) => e.code, 'code', 'STREAM_CHARGE_FAILED')
+              .having((e) => e.message, 'message', 'Quota failed'),
+        ),
+      );
+    });
+  });
 }

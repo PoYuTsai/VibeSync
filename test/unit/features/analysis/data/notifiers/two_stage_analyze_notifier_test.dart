@@ -75,11 +75,14 @@ class _FakeAnalysisService extends AnalysisService {
   Exception? quickError;
   AnalysisResult? fullResult;
   Exception? fullError;
+  Exception? streamError;
   Completer<void>? fullGate;
 
+  int streamCallCount = 0;
   int quickCallCount = 0;
   int fullCallCount = 0;
   String? lastFullRunId;
+  List<Message>? capturedStreamMessages;
   List<Message>? capturedFullMessages;
 
   @override
@@ -115,6 +118,40 @@ class _FakeAnalysisService extends AnalysisService {
     if (fullError != null) throw fullError!;
     return fullResult!;
   }
+
+  @override
+  Stream<AnalysisStreamUpdate> analyzeStream({
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) async* {
+    streamCallCount++;
+    capturedStreamMessages = List<Message>.from(messages);
+    yield const AnalysisStreamUpdate.started(
+      runId: 'stream-run',
+      label: 'starting stream',
+    );
+    if (quickError != null) throw quickError!;
+    if (quickResult != null) {
+      yield AnalysisStreamUpdate.recommendation(
+        quick: quickResult!,
+        runId: quickResult!.analysisRunId,
+      );
+    }
+    if (fullGate != null) await fullGate!.future;
+    if (streamError != null) throw streamError!;
+    if (fullError != null) throw fullError!;
+    if (fullResult != null) {
+      yield AnalysisStreamUpdate.done(
+        result: fullResult!,
+        runId: quickResult?.analysisRunId ?? 'stream-run',
+      );
+    }
+  }
 }
 
 ProviderContainer _container(AnalysisService fake) {
@@ -136,8 +173,7 @@ void main() {
       expect(state.full, isNull);
     });
 
-    test('start emits runningQuick → quickReady → runningFull → fullReady',
-        () async {
+    test('start streams full analysis without calling quick API', () async {
       final fake = _FakeAnalysisService()
         ..quickResult = _quick(runId: 'run_happy')
         ..fullResult = _full()
@@ -181,15 +217,17 @@ void main() {
         phases,
         containsAllInOrder([
           TwoStagePhase.runningQuick,
-          TwoStagePhase.quickReady,
           TwoStagePhase.runningFull,
           TwoStagePhase.fullReady,
         ]),
       );
 
-      expect(fake.quickCallCount, 1);
-      expect(fake.fullCallCount, 1);
-      expect(fake.lastFullRunId, 'run_happy');
+      expect(fake.streamCallCount, 1);
+      expect(fake.quickCallCount, 0);
+      expect(fake.fullCallCount, 0);
+      expect(fake.capturedStreamMessages?.map((m) => m.content).toList(), [
+        'hi',
+      ]);
     });
   });
 
@@ -241,6 +279,9 @@ void main() {
       expect(state.analysisRunId, 'run_keep');
       expect(state.retriesRemaining, 2);
       expect(state.fullErrorCode, 'FULL_FAILED');
+      expect(fake.streamCallCount, 1);
+      expect(fake.quickCallCount, 0);
+      expect(fake.fullCallCount, 0);
     });
 
     test('retryFull reuses analysisRunId; does not call analyzeQuick',
@@ -260,8 +301,9 @@ void main() {
           container.read(twoStageAnalyzeProvider('conv-1').notifier);
 
       await notifier.start(messages: [_msg('hi')]);
-      expect(fake.quickCallCount, 1);
-      expect(fake.fullCallCount, 1);
+      expect(fake.streamCallCount, 1);
+      expect(fake.quickCallCount, 0);
+      expect(fake.fullCallCount, 0);
 
       // Now retry succeeds.
       fake.fullError = null;
@@ -269,8 +311,8 @@ void main() {
 
       await notifier.retryFull();
 
-      expect(fake.quickCallCount, 1); // unchanged
-      expect(fake.fullCallCount, 2);
+      expect(fake.quickCallCount, 0); // unchanged
+      expect(fake.fullCallCount, 1);
       expect(fake.lastFullRunId, 'run_retry');
 
       final state = container.read(twoStageAnalyzeProvider('conv-1'));
@@ -411,7 +453,9 @@ void main() {
 
       final original = [_msg('original-1'), _msg('original-2')];
       await notifier.start(messages: original);
-      expect(fake.fullCallCount, 1);
+      expect(fake.streamCallCount, 1);
+      expect(fake.quickCallCount, 0);
+      expect(fake.fullCallCount, 0);
 
       // Reconfigure for retry success and capture the messages the service sees.
       fake.fullError = null;
@@ -421,7 +465,7 @@ void main() {
       // Caller passes nothing — notifier must reuse cached args from start().
       await notifier.retryFull();
 
-      expect(fake.fullCallCount, 2);
+      expect(fake.fullCallCount, 1);
       expect(fake.lastFullRunId, 'run_cached');
       expect(
         fake.capturedFullMessages?.map((m) => m.content).toList(),

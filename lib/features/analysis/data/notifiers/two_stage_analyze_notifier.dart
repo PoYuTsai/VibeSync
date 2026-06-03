@@ -7,13 +7,14 @@ import '../../domain/entities/quick_analysis_result.dart';
 import '../providers/analysis_providers.dart';
 import '../services/analysis_service.dart';
 
-/// Phases of the two-stage analyze flow.
+/// Phases of the analyze flow.
 ///
-/// Transitions (happy path):
-///   idle → runningQuick → quickReady → runningFull → fullReady
+/// Streaming full dogfood path:
+///   idle -> runningQuick(connecting) -> runningFull(preview) -> fullReady
+/// Legacy quick-ready remains for rollback and retry UI compatibility.
 /// Failure branches:
-///   runningQuick → quickFailed                  (no full attempted, no charge)
-///   runningFull  → fullFailed                   (quick preserved, retry CTA)
+///   runningQuick -> quickFailed                 (no recommendation emitted)
+///   runningFull  -> fullFailed                  (preview preserved, retry CTA)
 enum TwoStagePhase {
   idle,
   runningQuick,
@@ -24,9 +25,9 @@ enum TwoStagePhase {
   fullFailed,
 }
 
-/// Immutable orchestrator state. Carries quick + full results plus the cached
-/// [analysisRunId] used by [TwoStageAnalyzeNotifier.retryFull] so the server
-/// can match the run without re-charging quota (invariant I1).
+/// Immutable orchestrator state. Carries the streaming preview + full result,
+/// plus the cached [analysisRunId] used by [TwoStageAnalyzeNotifier.retryFull]
+/// so the server can match the run without re-charging quota (invariant I1).
 class TwoStageAnalysisState {
   final TwoStagePhase phase;
   final QuickAnalysisResult? quick;
@@ -36,6 +37,8 @@ class TwoStageAnalysisState {
   final String? quickErrorCode;
   final String? fullErrorMessage;
   final String? fullErrorCode;
+  final String? streamProgressLabel;
+  final String? streamProgressDetail;
   final int retriesRemaining;
   final int? conversationMessageCount;
 
@@ -48,6 +51,8 @@ class TwoStageAnalysisState {
     this.quickErrorCode,
     this.fullErrorMessage,
     this.fullErrorCode,
+    this.streamProgressLabel,
+    this.streamProgressDetail,
     this.retriesRemaining = 0,
     this.conversationMessageCount,
   });
@@ -69,6 +74,8 @@ class TwoStageAnalysisState {
     Object? quickErrorCode = _unset,
     Object? fullErrorMessage = _unset,
     Object? fullErrorCode = _unset,
+    Object? streamProgressLabel = _unset,
+    Object? streamProgressDetail = _unset,
     int? retriesRemaining,
     Object? conversationMessageCount = _unset,
   }) {
@@ -92,6 +99,12 @@ class TwoStageAnalysisState {
       fullErrorCode: identical(fullErrorCode, _unset)
           ? this.fullErrorCode
           : fullErrorCode as String?,
+      streamProgressLabel: identical(streamProgressLabel, _unset)
+          ? this.streamProgressLabel
+          : streamProgressLabel as String?,
+      streamProgressDetail: identical(streamProgressDetail, _unset)
+          ? this.streamProgressDetail
+          : streamProgressDetail as String?,
       retriesRemaining: retriesRemaining ?? this.retriesRemaining,
       conversationMessageCount: identical(conversationMessageCount, _unset)
           ? this.conversationMessageCount
@@ -105,10 +118,11 @@ final twoStageAnalyzeProvider = NotifierProvider.autoDispose
   TwoStageAnalyzeNotifier.new,
 );
 
-/// Two-stage analyze orchestrator. Owns the quick → full state machine for a
-/// single conversation. State survives navigation while in flight via
-/// [Ref.keepAlive]; once the user starts an analysis the provider stays alive
-/// for the rest of the app session (in-memory only; Phase 4 will persist).
+/// Streaming full analyze orchestrator for a single conversation. State
+/// survives navigation while in flight via [Ref.keepAlive]; once the user
+/// starts an analysis the provider stays alive for the rest of the app session
+/// (in-memory only; Phase 4 will persist). The legacy quick -> full branch
+/// below stays wired for rollback.
 class TwoStageAnalyzeNotifier
     extends AutoDisposeFamilyNotifier<TwoStageAnalysisState, String> {
   int _generation = 0;
@@ -116,7 +130,7 @@ class TwoStageAnalyzeNotifier
 
   // Retry payload cached from the most recent [start] call. The notifier
   // outlives the screen via [Ref.keepAlive], so these fields survive screen
-  // remount — [retryFull] then does not depend on screen-instance local state
+  // remount -> [retryFull] then does not depend on screen-instance local state
   // (invariant I-P1-b). A second [start] overwrites them (I-P1-c).
   List<Message>? _cachedMessages;
   SessionContext? _cachedSessionContext;
@@ -133,8 +147,11 @@ class TwoStageAnalyzeNotifier
   }
 
   AnalysisService get _service => ref.read(analysisServiceProvider);
+  // Dogfood default: run full analysis through the streaming endpoint. Keep this
+  // as a getter so the legacy two-stage branch below can stay wired for rollback.
+  bool get _shouldUseStreamingFull => true;
 
-  /// Run the full quick → full pipeline. Multiple concurrent calls supersede
+  /// Run the analysis pipeline. Multiple concurrent calls supersede
   /// older ones via a generation guard; results from stale generations are
   /// dropped before reaching [state] so a navigate-away-and-restart cannot
   /// leak an old payload over the current run.
@@ -164,8 +181,25 @@ class TwoStageAnalyzeNotifier
 
     state = TwoStageAnalysisState(
       phase: TwoStagePhase.runningQuick,
+      streamProgressLabel: '開始完整分析',
+      streamProgressDetail: '正在建立串流連線。',
       conversationMessageCount: conversationMessageCount,
     );
+
+    if (_shouldUseStreamingFull) {
+      await _runStreamingFull(
+        generation: myGen,
+        messages: messages,
+        sessionContext: sessionContext,
+        conversationSummary: conversationSummary,
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
+        previousAnalyzedCount: previousAnalyzedCount,
+        conversationMessageCount: conversationMessageCount,
+      );
+      return;
+    }
 
     final QuickAnalysisResult quick;
     try {
@@ -214,12 +248,121 @@ class TwoStageAnalyzeNotifier
     );
   }
 
+  Future<void> _runStreamingFull({
+    required int generation,
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+    int? conversationMessageCount,
+  }) async {
+    try {
+      await for (final update in _service.analyzeStream(
+        messages: messages,
+        sessionContext: sessionContext,
+        conversationSummary: conversationSummary,
+        partnerSummary: partnerSummary,
+        effectiveStyleContext: effectiveStyleContext,
+        knownContactName: knownContactName,
+        previousAnalyzedCount: previousAnalyzedCount,
+      )) {
+        if (generation != _generation) return;
+
+        switch (update.kind) {
+          case AnalysisStreamUpdateKind.started:
+          case AnalysisStreamUpdateKind.progress:
+            state = state.copyWith(
+              phase: state.quick == null
+                  ? TwoStagePhase.runningQuick
+                  : TwoStagePhase.runningFull,
+              analysisRunId: update.runId ?? state.analysisRunId,
+              streamProgressLabel: update.label,
+              streamProgressDetail: update.detail,
+              conversationMessageCount: conversationMessageCount,
+            );
+            break;
+          case AnalysisStreamUpdateKind.recommendation:
+            final quick = update.quick;
+            if (quick == null) break;
+            state = state.copyWith(
+              phase: TwoStagePhase.runningFull,
+              quick: quick,
+              analysisRunId: quick.analysisRunId,
+              fullErrorMessage: null,
+              fullErrorCode: null,
+              streamProgressLabel: update.label,
+              streamProgressDetail: update.detail,
+              retriesRemaining: 0,
+              conversationMessageCount: conversationMessageCount,
+            );
+            break;
+          case AnalysisStreamUpdateKind.done:
+            final full = update.result;
+            if (full == null) {
+              throw AnalysisException(
+                '完整分析串流缺少結果，請重新分析。',
+                code: 'INVALID_STREAM_RESULT',
+                suggestedAction: AnalysisErrorAction.retry,
+              );
+            }
+            state = state.copyWith(
+              phase: TwoStagePhase.fullReady,
+              full: full,
+              fullErrorMessage: null,
+              fullErrorCode: null,
+              streamProgressLabel: null,
+              streamProgressDetail: null,
+              retriesRemaining: 0,
+              conversationMessageCount: conversationMessageCount,
+            );
+            return;
+        }
+      }
+
+      if (generation != _generation) return;
+      throw AnalysisException(
+        '完整分析串流尚未完成，請重新分析。',
+        code: 'STREAM_INCOMPLETE',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+    } on Exception catch (e) {
+      if (generation != _generation) return;
+      final message = e is AnalysisException ? e.message : '完整分析暫時失敗，請重新分析。';
+      final code = e is AnalysisException ? e.code : null;
+      final retriesRemaining = e is FullModeException ? e.retriesRemaining : 0;
+      final quick = state.quick;
+
+      if (quick != null) {
+        state = state.copyWith(
+          phase: TwoStagePhase.fullFailed,
+          fullErrorMessage: message,
+          fullErrorCode: code,
+          streamProgressLabel: null,
+          streamProgressDetail: null,
+          retriesRemaining: retriesRemaining,
+          conversationMessageCount: conversationMessageCount,
+        );
+        return;
+      }
+
+      state = TwoStageAnalysisState(
+        phase: TwoStagePhase.quickFailed,
+        quickErrorMessage: message,
+        quickErrorCode: code,
+        conversationMessageCount: conversationMessageCount,
+      );
+    }
+  }
+
   /// Retry the full call with the cached [TwoStageAnalysisState.analysisRunId]
   /// and the payload captured by the most recent [start]. Does NOT call
   /// analyzeQuick and does NOT re-charge quick quota. No-op if there is no
   /// cached run (caller should invoke [start] instead).
   ///
-  /// Caller passes no args so the retry survives screen remount — see
+  /// Caller passes no args so the retry survives screen remount; see
   /// invariant I-P1-b. The screen that triggered [start] may have been
   /// disposed by the time the user taps "重試"; the notifier itself owns the
   /// payload because it outlives the screen via [Ref.keepAlive].

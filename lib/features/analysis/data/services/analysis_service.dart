@@ -142,6 +142,99 @@ typedef AnalysisTelemetryCallback = void Function(
   AnalysisTelemetry telemetry,
 );
 
+enum AnalysisStreamUpdateKind {
+  started,
+  progress,
+  recommendation,
+  done,
+}
+
+class AnalysisStreamUpdate {
+  final AnalysisStreamUpdateKind kind;
+  final String? runId;
+  final String? label;
+  final String? detail;
+  final int? etaSeconds;
+  final QuickAnalysisResult? quick;
+  final AnalysisResult? result;
+  final Map<String, dynamic>? rawEvent;
+
+  const AnalysisStreamUpdate._({
+    required this.kind,
+    this.runId,
+    this.label,
+    this.detail,
+    this.etaSeconds,
+    this.quick,
+    this.result,
+    this.rawEvent,
+  });
+
+  const AnalysisStreamUpdate.started({
+    String? runId,
+    String? label,
+    String? detail,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.started,
+          runId: runId,
+          label: label,
+          detail: detail,
+          etaSeconds: etaSeconds,
+          rawEvent: rawEvent,
+        );
+
+  const AnalysisStreamUpdate.progress({
+    String? runId,
+    String? label,
+    String? detail,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.progress,
+          runId: runId,
+          label: label,
+          detail: detail,
+          etaSeconds: etaSeconds,
+          rawEvent: rawEvent,
+        );
+
+  const AnalysisStreamUpdate.recommendation({
+    required QuickAnalysisResult quick,
+    String? runId,
+    String? label,
+    String? detail,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.recommendation,
+          runId: runId,
+          label: label,
+          detail: detail,
+          etaSeconds: etaSeconds,
+          quick: quick,
+          rawEvent: rawEvent,
+        );
+
+  const AnalysisStreamUpdate.done({
+    required AnalysisResult result,
+    String? runId,
+    String? label,
+    String? detail,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.done,
+          runId: runId,
+          label: label,
+          detail: detail,
+          etaSeconds: etaSeconds,
+          result: result,
+          rawEvent: rawEvent,
+        );
+}
+
 enum AnalysisErrorAction {
   retry,
   relogin,
@@ -953,6 +1046,207 @@ class AnalysisService {
     return AnalysisResult.fromJson(_extractFullResultPayload(responseData));
   }
 
+  Stream<AnalysisStreamUpdate> analyzeStream({
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+  }) async* {
+    final accessToken = _accessTokenProvider();
+    if (accessToken == null) {
+      throw AnalysisException(
+        '請重新登入後再分析。',
+        code: 'UNAUTHORIZED',
+        suggestedAction: AnalysisErrorAction.relogin,
+      );
+    }
+
+    final client = _clientFactory();
+    String? runId;
+    int? etaSeconds;
+    var sawTypedStreamEvent = false;
+    var sawDone = false;
+
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('${AppConfig.supabaseUrl}/functions/v1/analyze-chat'),
+      )
+        ..headers.addAll({
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'apikey': AppConfig.supabaseAnonKey,
+        })
+        ..body = jsonEncode(
+          _buildTwoStageBody(
+            responseMode: 'stream',
+            analysisRunId: null,
+            messages: messages,
+            sessionContext: sessionContext,
+            conversationSummary: conversationSummary,
+            partnerSummary: partnerSummary,
+            effectiveStyleContext: effectiveStyleContext,
+            knownContactName: knownContactName,
+            previousAnalyzedCount: previousAnalyzedCount,
+          ),
+        );
+
+      final response =
+          await client.send(request).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        final body = await response.stream.bytesToString();
+        final responseData = _decodeResponseBody(
+          http.Response(body, response.statusCode, headers: response.headers),
+        );
+
+        if (response.statusCode == 429) {
+          final dailyLimit = responseData['dailyLimit'];
+          final monthlyLimit = responseData['monthlyLimit'];
+          final used = (responseData['used'] as num?)?.toInt() ?? 0;
+          if (dailyLimit != null) {
+            throw DailyLimitExceededException(
+              dailyLimit: (dailyLimit as num).toInt(),
+              used: used,
+            );
+          }
+          if (monthlyLimit != null) {
+            throw MonthlyLimitExceededException(
+              monthlyLimit: (monthlyLimit as num).toInt(),
+              used: used,
+            );
+          }
+        }
+
+        throw _mapAnalysisHttpError(
+          statusCode: response.statusCode,
+          errorCode: responseData['code'] as String?,
+          rawMessage: (responseData['message'] as String?) ??
+              (responseData['error'] as String?) ??
+              'Streaming analysis failed.',
+          hasImages: false,
+          recognizeOnly: false,
+          hasUserDraft: false,
+        );
+      }
+
+      await for (final rawLine in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(const Duration(seconds: 75))) {
+        final line = rawLine.trim();
+        if (line.isEmpty) continue;
+
+        final event = _decodeStreamEventLine(line);
+        final type = event['type'] as String?;
+
+        if (type == null) {
+          if (!sawTypedStreamEvent) {
+            final resultPayload = _streamResultPayload(event);
+            if (resultPayload != null) {
+              sawDone = true;
+              yield AnalysisStreamUpdate.done(
+                result: _parseStreamAnalysisResult(resultPayload),
+                rawEvent: event,
+              );
+              return;
+            }
+          }
+          throw AnalysisException(
+            '串流分析回傳格式異常，請重新分析。',
+            code: 'INVALID_STREAM_RESPONSE',
+            suggestedAction: AnalysisErrorAction.retry,
+          );
+        }
+
+        sawTypedStreamEvent = true;
+        runId = _stringField(event['runId']) ?? runId;
+        etaSeconds = _intField(event['etaSeconds']) ?? etaSeconds;
+
+        switch (type) {
+          case 'analysis.started':
+            yield AnalysisStreamUpdate.started(
+              runId: runId,
+              label: _stringField(event['label']) ?? '開始完整分析',
+              detail: _stringField(event['detail']),
+              etaSeconds: etaSeconds,
+              rawEvent: event,
+            );
+            break;
+          case 'analysis.progress':
+            yield AnalysisStreamUpdate.progress(
+              runId: runId,
+              label: _stringField(event['label']) ?? '完整分析進行中',
+              detail: _stringField(event['detail']),
+              etaSeconds: etaSeconds,
+              rawEvent: event,
+            );
+            break;
+          case 'analysis.recommendation':
+            final quick = _streamRecommendationPreview(
+              event,
+              runId: runId,
+              etaSeconds: etaSeconds,
+            );
+            yield AnalysisStreamUpdate.recommendation(
+              quick: quick,
+              runId: runId,
+              label: '先產生建議回覆',
+              detail: '完整分析仍在補齊脈絡與細節。',
+              etaSeconds: etaSeconds,
+              rawEvent: event,
+            );
+            break;
+          case 'analysis.done':
+            final finalResult = _normalizeObject(event['finalResult']);
+            if (finalResult == null) {
+              throw AnalysisException(
+                '串流分析缺少完整結果，請重新分析。',
+                code: 'INVALID_STREAM_DONE',
+                suggestedAction: AnalysisErrorAction.retry,
+              );
+            }
+            sawDone = true;
+            yield AnalysisStreamUpdate.done(
+              result: _parseStreamAnalysisResult(finalResult),
+              runId: runId,
+              label: '完整分析完成',
+              etaSeconds: etaSeconds,
+              rawEvent: event,
+            );
+            return;
+          case 'analysis.error':
+            throw AnalysisException(
+              _stringField(event['message']) ?? '完整分析串流中斷，請重新分析。',
+              code: _stringField(event['code']) ?? 'STREAM_FAILED',
+              suggestedAction: AnalysisErrorAction.retry,
+            );
+          default:
+            break;
+        }
+      }
+
+      if (!sawDone) {
+        throw AnalysisException(
+          '完整分析串流尚未完成，請重新分析。',
+          code: 'STREAM_INCOMPLETE',
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
+    } on TimeoutException {
+      throw AnalysisException(
+        '完整分析串流等待過久，請稍後重新分析。',
+        code: 'TIMEOUT',
+        suggestedAction: AnalysisErrorAction.wait,
+      );
+    } finally {
+      client.close();
+    }
+  }
+
   Map<String, dynamic> _extractFullResultPayload(
     Map<String, dynamic> responseData,
   ) {
@@ -973,6 +1267,104 @@ class AnalysisService {
     }
 
     return responseData;
+  }
+
+  Map<String, dynamic> _decodeStreamEventLine(String line) {
+    try {
+      final decoded = jsonDecode(line);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return decoded.map((key, value) => MapEntry(key.toString(), value));
+      }
+    } on FormatException {
+      // Fall through to the typed AnalysisException below.
+    }
+
+    throw AnalysisException(
+      '串流分析回傳格式異常，請重新分析。',
+      code: 'INVALID_STREAM_RESPONSE',
+      suggestedAction: AnalysisErrorAction.retry,
+    );
+  }
+
+  Map<String, dynamic>? _streamResultPayload(Map<String, dynamic> event) {
+    final nestedResult = _normalizeObject(event['result']);
+    if (nestedResult != null) return nestedResult;
+
+    final looksLikeResult = event.containsKey('finalRecommendation') ||
+        event.containsKey('replies') ||
+        (event.containsKey('gameStage') && event.containsKey('enthusiasm'));
+    return looksLikeResult ? event : null;
+  }
+
+  AnalysisResult _parseStreamAnalysisResult(Map<String, dynamic> payload) {
+    try {
+      return AnalysisResult.fromJson(payload);
+    } catch (_) {
+      throw AnalysisException(
+        '串流分析缺少完整結果，請重新分析。',
+        code: 'INVALID_STREAM_RESULT',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+    }
+  }
+
+  QuickAnalysisResult _streamRecommendationPreview(
+    Map<String, dynamic> event, {
+    required String? runId,
+    required int? etaSeconds,
+  }) {
+    final message = _stringField(event['message']);
+    if (message == null || message.isEmpty) {
+      throw AnalysisException(
+        '串流分析缺少建議回覆，請重新分析。',
+        code: 'INVALID_STREAM_RECOMMENDATION',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+    }
+
+    final pick = _normalizeStreamPick(
+      _stringField(event['selectedStyle']) ?? _stringField(event['style']),
+    );
+    final reason = _stringField(event['reason']) ?? '';
+
+    return QuickAnalysisResult(
+      analysisRunId:
+          runId == null || runId.trim().isEmpty ? 'stream-preview' : runId,
+      nextStep: reason.isNotEmpty ? reason : '先用這個方向回覆，完整分析正在完成。',
+      pick: pick,
+      recommendedReply: message,
+      shortReason: reason,
+      insufficientContext: false,
+      confidence: 'high',
+      estimatedFullSeconds: etaSeconds,
+    );
+  }
+
+  String _normalizeStreamPick(String? value) {
+    switch (value) {
+      case 'extend':
+      case 'resonate':
+      case 'tease':
+      case 'humor':
+      case 'coldRead':
+        return value!;
+      default:
+        return 'extend';
+    }
+  }
+
+  String? _stringField(dynamic value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  int? _intField(dynamic value) {
+    if (value is num && value.isFinite) return value.round();
+    return null;
   }
 
   Map<String, dynamic> _buildTwoStageBody({

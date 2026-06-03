@@ -42,11 +42,15 @@ const String kRetryExhaustedMessage = '無法再重試，請重新分析。';
 class QuickRotatingLoader extends StatefulWidget {
   final List<String> phrases;
   final Duration interval;
+  final String? label;
+  final String? detail;
 
   const QuickRotatingLoader({
     super.key,
     this.phrases = kQuickLoadingPhrases,
     this.interval = kQuickRotationInterval,
+    this.label,
+    this.detail,
   });
 
   @override
@@ -76,8 +80,12 @@ class _QuickRotatingLoaderState extends State<QuickRotatingLoader> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.phrases.isEmpty) return const SizedBox.shrink();
-    final phrase = widget.phrases[_tick % widget.phrases.length];
+    if (widget.label == null && widget.phrases.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final phrase =
+        widget.label ?? widget.phrases[_tick % widget.phrases.length];
+    final detail = widget.detail?.trim();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
       child: Column(
@@ -94,6 +102,14 @@ class _QuickRotatingLoaderState extends State<QuickRotatingLoader> {
             style: Theme.of(context).textTheme.bodyLarge,
             textAlign: TextAlign.center,
           ),
+          if (detail != null && detail.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              detail,
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
       ),
     );
@@ -125,8 +141,7 @@ class FullAnalysisPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final headerCopy =
-        '完整分析整理中，預估 ${formatEtaRange(estimatedFullSeconds)} 秒';
+    final headerCopy = '完整分析整理中，預估 ${formatEtaRange(estimatedFullSeconds)} 秒';
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -150,8 +165,7 @@ class FullAnalysisPlaceholder extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          for (final label in sectionLabels)
-            _SkeletonBlock(label: label),
+          for (final label in sectionLabels) _SkeletonBlock(label: label),
           if (closingLabel.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -213,8 +227,7 @@ class FullAnalysisRetryCard extends StatelessWidget {
     final theme = Theme.of(context);
     final headline =
         _canRetry ? (errorMessage ?? '完整分析暫時失敗。') : kRetryExhaustedMessage;
-    final buttonLabel =
-        _canRetry ? '重試完整分析（剩 $retriesRemaining 次）' : '無法再重試';
+    final buttonLabel = _canRetry ? '重試完整分析（剩 $retriesRemaining 次）' : '無法再重試';
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Padding(

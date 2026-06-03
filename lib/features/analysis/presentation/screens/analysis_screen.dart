@@ -137,6 +137,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _dogfoodTierUsed;
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
+  String? _streamProgressLabel;
+  String? _streamProgressDetail;
   int? _activeAnalysisMessageCount;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
 
@@ -657,6 +659,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResultForComparison = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _streamProgressLabel = s.streamProgressLabel;
+          _streamProgressDetail = s.streamProgressDetail;
           _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -669,6 +673,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResultForComparison = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _streamProgressLabel = s.streamProgressLabel;
+          _streamProgressDetail = s.streamProgressDetail;
           _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -694,6 +700,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResultForComparison = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _streamProgressLabel = null;
+          _streamProgressDetail = null;
           _activeAnalysisMessageCount = null;
           _applyAnalysisResult(result);
           _enthusiasmScore = result.enthusiasmScore;
@@ -725,6 +733,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResultForComparison = s.quick;
           _fullErrorMessage = s.fullErrorMessage;
           _fullErrorRetriesRemaining = s.retriesRemaining;
+          _streamProgressLabel = null;
+          _streamProgressDetail = null;
           _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -734,6 +744,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             s.quickErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
+          _streamProgressLabel = null;
+          _streamProgressDetail = null;
           _activeAnalysisMessageCount = null;
           _applyErrorState(
             message: s.quickErrorMessage ?? '分析暫時失敗，請稍後再試。',
@@ -2895,6 +2907,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _quickResultForComparison = null;
         _fullErrorMessage = null;
         _fullErrorRetriesRemaining = 0;
+        _streamProgressLabel = '開始完整分析';
+        _streamProgressDetail = '正在建立串流連線。';
         _activeAnalysisMessageCount = conversation.messages.length;
       });
 
@@ -2944,7 +2958,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (!mounted) return;
     if (prev?.phase == next.phase &&
         prev?.analysisRunId == next.analysisRunId &&
-        prev?.full == next.full) {
+        prev?.full == next.full &&
+        prev?.streamProgressLabel == next.streamProgressLabel &&
+        prev?.streamProgressDetail == next.streamProgressDetail) {
       return;
     }
     switch (next.phase) {
@@ -2955,6 +2971,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResultForComparison = null;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _streamProgressLabel = next.streamProgressLabel;
+          _streamProgressDetail = next.streamProgressDetail;
           _activeAnalysisMessageCount = next.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
           _resetErrorState();
@@ -2967,6 +2985,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResultForComparison = next.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _streamProgressLabel = next.streamProgressLabel;
+          _streamProgressDetail = next.streamProgressDetail;
           _activeAnalysisMessageCount = next.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -2979,6 +2999,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         setState(() {
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _streamProgressLabel = next.streamProgressLabel;
+          _streamProgressDetail = next.streamProgressDetail;
+          if (next.quick != null) {
+            _quickResult = next.quick;
+            _quickResultForComparison = next.quick;
+          }
           _activeAnalysisMessageCount = next.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -3006,6 +3032,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _streamProgressLabel = null;
+          _streamProgressDetail = null;
           _activeAnalysisMessageCount = null;
           _quickResultForComparison = next.quick ?? _quickResultForComparison;
           _quickResult = null;
@@ -3042,6 +3070,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _quickResultForComparison = next.quick;
           _fullErrorMessage = next.fullErrorMessage;
           _fullErrorRetriesRemaining = next.retriesRemaining;
+          _streamProgressLabel = null;
+          _streamProgressDetail = null;
           _activeAnalysisMessageCount = next.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -3053,6 +3083,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
+          _streamProgressLabel = null;
+          _streamProgressDetail = null;
           _activeAnalysisMessageCount = null;
           _applyErrorState(
             message: message,
@@ -5686,8 +5718,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           if (_isAnalyzing && _enthusiasmScore == null) ...[
-                            const Center(
-                              child: QuickRotatingLoader(),
+                            Center(
+                              child: QuickRotatingLoader(
+                                label: _streamProgressLabel,
+                                detail: _streamProgressDetail,
+                              ),
                             ),
                           ],
 
@@ -5709,6 +5744,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               FullAnalysisPlaceholder(
                                 estimatedFullSeconds:
                                     _quickResult!.estimatedFullSeconds,
+                                closingLabel: _streamProgressDetail ??
+                                    _streamProgressLabel ??
+                                    kFullPlaceholderClosing,
                               ),
                           ],
 
