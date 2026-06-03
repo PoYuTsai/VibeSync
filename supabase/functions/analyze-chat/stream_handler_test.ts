@@ -59,9 +59,9 @@ function createOptions(overrides: {
             line({
               type: "analysis.recommendation",
               selectedStyle: "resonate",
-              message: "我懂，你可以慢慢說。",
-              reason: "先承接壓力。",
-              quotedContext: "太快了",
+              message: "我懂，你先慢慢說，我在。",
+              reason: "先接住對方情緒，不急著推進。",
+              quotedContext: "我最近壓力很大",
             }),
           ]),
         })),
@@ -72,25 +72,22 @@ function createOptions(overrides: {
   };
 }
 
-Deno.test("stream handler emits started and progress before Claude events", async () => {
-  const response = handleStreamAnalysisRequest(createOptions({
-    progressEvents: [
-      {
-        type: "analysis.progress",
-        label: "正在整理這段對話",
-      },
-    ],
-  }));
+Deno.test("stream handler emits default Traditional Chinese progress before Claude events", async () => {
+  const response = handleStreamAnalysisRequest(createOptions());
 
   const events = await collectEvents(response);
 
-  assertEquals(events.slice(0, 3).map((event) => event.type), [
+  assertEquals(events.slice(0, 4).map((event) => event.type), [
     "analysis.started",
+    "analysis.progress",
     "analysis.progress",
     "analysis.recommendation",
   ]);
   assertEquals(events[0].runId, "run-1");
-  assertEquals(events[1].label, "正在整理這段對話");
+  assertEquals(events[1].label, "讀取對話脈絡");
+  assertEquals(events[1].detail, "正在整理你們這一輪的訊息、情緒與回覆目標。");
+  assertEquals(events[2].label, "判斷本回合方向");
+  assertEquals(events[2].detail, "正在選擇最適合的回覆策略，完整分析會在下方繼續整理。");
 });
 
 Deno.test("stream handler charges before emitting recommendation", async () => {
@@ -126,7 +123,7 @@ Deno.test("stream handler marks failed and emits no done when charge fails", asy
     chargeResult: {
       charged: false,
       code: "STREAM_CHARGE_FAILED",
-      message: "額度更新失敗，請稍後重試。",
+      message: "額度扣除失敗，請稍後重新分析。",
       recoverable: true,
     },
     markFailed: (code) => {
@@ -144,6 +141,7 @@ Deno.test("stream handler marks failed and emits no done when charge fails", asy
     "analysis.error",
   ]);
   assertEquals(events.at(-1)?.code, "STREAM_CHARGE_FAILED");
+  assertEquals(events.at(-1)?.message, "額度扣除失敗，請稍後重新分析。");
 });
 
 Deno.test("stream handler reports pre-recommendation Claude failure without charging", async () => {
@@ -153,7 +151,7 @@ Deno.test("stream handler reports pre-recommendation Claude failure without char
     callClaude: () =>
       Promise.resolve({
         textStream: failingChunks([
-          line({ type: "analysis.progress", label: "先看語氣" }),
+          line({ type: "analysis.progress", label: "整理資料中" }),
         ], new Error("network down")),
       }),
     chargeRun: () => {
@@ -171,6 +169,7 @@ Deno.test("stream handler reports pre-recommendation Claude failure without char
   assertEquals(failedCodes, ["STREAM_UPSTREAM_FAILED"]);
   assertEquals(events.at(-1)?.type, "analysis.error");
   assertEquals(events.at(-1)?.code, "STREAM_UPSTREAM_FAILED");
+  assertEquals(events.at(-1)?.message, "分析暫時無法完成，請稍後重新分析。");
 });
 
 Deno.test("stream handler preserves recommendation before post-recommendation failure", async () => {
@@ -182,9 +181,9 @@ Deno.test("stream handler preserves recommendation before post-recommendation fa
           line({
             type: "analysis.recommendation",
             selectedStyle: "extend",
-            message: "我先聽你說。",
-            reason: "保留空間。",
-            quotedContext: "有壓力",
+            message: "我懂，你剛剛那樣其實很累。",
+            reason: "先共鳴",
+            quotedContext: "你是不是太快了？",
           }),
         ], new Error("stream reset")),
       }),
@@ -204,6 +203,10 @@ Deno.test("stream handler preserves recommendation before post-recommendation fa
     "analysis.error",
   ]);
   assertEquals(events.at(-1)?.code, "STREAM_INTERRUPTED_AFTER_RECOMMENDATION");
+  assertEquals(
+    events.at(-1)?.message,
+    "分析中途斷線，已保留先前產生的建議；請重新整理完整分析。",
+  );
 });
 
 Deno.test("stream handler persists final result before emitting done", async () => {
@@ -254,6 +257,7 @@ Deno.test("stream handler emits terminal error when final persist fails", async 
   assertEquals(failedCodes, ["STREAM_FINAL_PERSIST_FAILED"]);
   assertEquals(events.at(-1)?.type, "analysis.error");
   assertEquals(events.at(-1)?.code, "STREAM_FINAL_PERSIST_FAILED");
+  assertEquals(events.at(-1)?.message, "完整分析儲存失敗，請重新分析。");
 });
 
 Deno.test("stream handler keeps response readable when markFailed itself fails", async () => {
@@ -268,6 +272,7 @@ Deno.test("stream handler keeps response readable when markFailed itself fails",
 
   assertEquals(events.at(-2)?.type, "analysis.progress");
   assertEquals(events.at(-2)?.phase, "failure-log");
+  assertEquals(events.at(-2)?.label, "紀錄失敗狀態時發生問題");
   assertEquals(events.at(-1)?.type, "analysis.error");
   assertEquals(events.at(-1)?.code, "STREAM_UPSTREAM_FAILED");
 });

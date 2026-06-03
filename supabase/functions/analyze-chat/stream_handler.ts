@@ -36,14 +36,14 @@ const DEFAULT_PROGRESS_EVENTS: StreamOutputEvent[] = [
   {
     type: "analysis.progress",
     phase: "reading",
-    label: "正在整理這段對話",
-    detail: "先抓本回合重點，完整建議會逐步補上。",
+    label: "讀取對話脈絡",
+    detail: "正在整理你們這一輪的訊息、情緒與回覆目標。",
   },
   {
     type: "analysis.progress",
     phase: "decision",
-    label: "正在判斷這回合怎麼接",
-    detail: "會先整理方向，再接著產生正式推薦回覆。",
+    label: "判斷本回合方向",
+    detail: "正在選擇最適合的回覆策略，完整分析會在下方繼續整理。",
   },
 ];
 
@@ -122,7 +122,7 @@ export function handleStreamAnalysisRequest(
         emit,
         buildErrorEvent(
           "STREAM_EMPTY_RESPONSE",
-          "分析暫時中斷，這次不會扣額度。請重新分析。",
+          "分析沒有產生結果，請稍後重新分析。",
           true,
         ),
       );
@@ -137,7 +137,7 @@ export function handleStreamAnalysisRequest(
         emit,
         buildErrorEvent(
           "STREAM_MISSING_FINAL_RESULT",
-          "完整分析整理失敗，請稍後重新分析。",
+          "完整分析格式不完整，請重新分析。",
           true,
         ),
       );
@@ -160,7 +160,7 @@ export function handleStreamAnalysisRequest(
         emit,
         buildErrorEvent(
           "STREAM_FINAL_PERSIST_FAILED",
-          "完整分析儲存失敗，請稍後重試。",
+          "完整分析儲存失敗，請重新分析。",
           true,
           { cause: errorMessage(error) },
         ),
@@ -186,7 +186,7 @@ async function markFailedAndEmit(
     emit({
       type: "analysis.progress",
       phase: "failure-log",
-      label: "分析狀態紀錄失敗",
+      label: "紀錄失敗狀態時發生問題",
       detail: errorMessage(error),
     });
   }
@@ -200,7 +200,7 @@ function buildUpstreamError(
   if (recommendationEmitted) {
     return buildErrorEvent(
       "STREAM_INTERRUPTED_AFTER_RECOMMENDATION",
-      "完整分析中斷，但已保留目前建議。你可以稍後重試補完。",
+      "分析中途斷線，已保留先前產生的建議；請重新整理完整分析。",
       true,
       { cause: errorMessage(error) },
     );
@@ -208,7 +208,7 @@ function buildUpstreamError(
 
   return buildErrorEvent(
     "STREAM_UPSTREAM_FAILED",
-    "分析暫時中斷，這次不會扣額度。請重新分析。",
+    "分析暫時無法完成，請稍後重新分析。",
     true,
     { cause: errorMessage(error) },
   );
