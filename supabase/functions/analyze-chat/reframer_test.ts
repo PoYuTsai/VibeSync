@@ -2,10 +2,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import {
-  createStreamReframer,
-  type StreamOutputEvent,
-} from "./reframer.ts";
+import { createStreamReframer, type StreamOutputEvent } from "./reframer.ts";
 
 function line(value: Record<string, unknown>): string {
   return `${JSON.stringify(value)}\n`;
@@ -77,6 +74,44 @@ Deno.test("reframer stops stream when charge fails", async () => {
 
   assertEquals(events.map((event) => event.type), ["analysis.error"]);
   assertEquals(events[0].code, "STREAM_CHARGE_FAILED");
+});
+
+Deno.test("reframer charges only one official recommendation", async () => {
+  let chargeCalls = 0;
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Tell me more about that.",
+    reason: "Keeps the thread open.",
+    quotedContext: "I had a long day.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "tease",
+    message: "Second official recommendation should not happen.",
+    reason: "Duplicate anchor.",
+    quotedContext: "I had a long day.",
+  }));
+
+  await reframer.flush();
+
+  assertEquals(chargeCalls, 1);
+  assertEquals(events.map((event) => event.type), [
+    "analysis.recommendation",
+    "analysis.error",
+  ]);
+  assertEquals(events.at(-1)?.code, "STREAM_DUPLICATE_RECOMMENDATION");
 });
 
 Deno.test("reframer rejects malformed recommendation before charge", async () => {

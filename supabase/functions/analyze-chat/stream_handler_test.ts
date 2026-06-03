@@ -25,7 +25,9 @@ async function* failingChunks(
   throw error;
 }
 
-async function collectEvents(response: Response): Promise<Record<string, unknown>[]> {
+async function collectEvents(
+  response: Response,
+): Promise<Record<string, unknown>[]> {
   const text = await response.text();
   return text
     .trim()
@@ -55,15 +57,17 @@ function createOptions(overrides: {
     callClaude: overrides.callClaude ??
       (() =>
         Promise.resolve({
-          textStream: chunks(overrides.textChunks ?? [
-            line({
-              type: "analysis.recommendation",
-              selectedStyle: "resonate",
-              message: "我懂，你先慢慢說，我在。",
-              reason: "先接住對方情緒，不急著推進。",
-              quotedContext: "我最近壓力很大",
-            }),
-          ]),
+          textStream: chunks(
+            overrides.textChunks ?? [
+              line({
+                type: "analysis.recommendation",
+                selectedStyle: "resonate",
+                message: "我懂，你先慢慢說，我在。",
+                reason: "先接住對方情緒，不急著推進。",
+                quotedContext: "我最近壓力很大",
+              }),
+            ],
+          ),
         })),
     chargeRun: overrides.chargeRun ??
       (() => overrides.chargeResult ?? { charged: true }),
@@ -84,10 +88,14 @@ Deno.test("stream handler emits default Traditional Chinese progress before Clau
     "analysis.recommendation",
   ]);
   assertEquals(events[0].runId, "run-1");
+  assertEquals(events[0].etaSeconds, 18);
   assertEquals(events[1].label, "讀取對話脈絡");
   assertEquals(events[1].detail, "正在整理你們這一輪的訊息、情緒與回覆目標。");
   assertEquals(events[2].label, "判斷本回合方向");
-  assertEquals(events[2].detail, "正在選擇最適合的回覆策略，完整分析會在下方繼續整理。");
+  assertEquals(
+    events[2].detail,
+    "正在選擇最適合的回覆策略，完整分析會在下方繼續整理。",
+  );
 });
 
 Deno.test("stream handler charges before emitting recommendation", async () => {
@@ -105,7 +113,9 @@ Deno.test("stream handler charges before emitting recommendation", async () => {
   const text = await response.text();
   for (const item of text.trim().split("\n").filter(Boolean)) {
     const event = JSON.parse(item) as Record<string, unknown>;
-    if (event.type === "analysis.recommendation") timeline.push("emitRecommendation");
+    if (event.type === "analysis.recommendation") {
+      timeline.push("emitRecommendation");
+    }
     if (event.type === "analysis.done") timeline.push("emitDone");
   }
 

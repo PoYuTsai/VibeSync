@@ -33,6 +33,14 @@ import {
 } from "./analysis_run_store.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import { QUICK_SYSTEM_PROMPT } from "./quick_prompt.ts";
+import { isStreamingAllowed } from "./stream_gate.ts";
+import { handleStreamAnalysisRequest } from "./stream_handler.ts";
+import { buildStreamSystemPrompt } from "./stream_prompt.ts";
+import {
+  AnalysisStreamRunStore,
+  createSupabaseAnalysisStreamRunDriver,
+} from "./stream_run_store.ts";
+import { callClaudeStreaming } from "./streaming_fallback.ts";
 import {
   applyQuickGuardrails,
   estimateFullSeconds,
@@ -733,6 +741,29 @@ function buildQuotaUsageMetadata({
     quotaUnit: "messages",
     chargedMessageCount: estimatedMessageCount,
     estimatedMessageCount,
+  };
+}
+
+function mapStreamChargeFailure(error: unknown): {
+  code: string;
+  message: string;
+} {
+  const message = getErrorMessage(error);
+  const normalized = message.toUpperCase();
+  if (
+    normalized.includes("QUOTA") ||
+    normalized.includes("LIMIT") ||
+    normalized.includes("INSUFFICIENT")
+  ) {
+    return {
+      code: "QUOTA_EXHAUSTED",
+      message: "額度已用完，請升級或下個週期再試。",
+    };
+  }
+
+  return {
+    code: "STREAM_CHARGE_FAILED",
+    message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
   };
 }
 
@@ -4012,6 +4043,9 @@ function sanitizeEffectiveStyleContext(
 
 // 測試模式：強制使用 Haiku + 不扣額度
 const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
+const STREAM_ANALYZE_ENABLED =
+  Deno.env.get("STREAM_ANALYZE_ENABLED") === "true";
+const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
 // 測試帳號白名單 (不扣額度)
 const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
@@ -6097,6 +6131,253 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           totalTokens: (fullTokenUsage.inputTokens ?? 0) +
             (fullTokenUsage.outputTokens ?? 0),
         },
+      });
+    }
+
+    const streamSupported = !hasImages && !recognizeOnly && !isMyMessageMode &&
+      !isOptimizeMessageMode;
+    const streamAllowed = isStreamingAllowed({
+      email: user.email,
+      flagOn: STREAM_ANALYZE_ENABLED,
+      whitelist: STREAM_WHITELIST,
+    });
+    if (responseMode === "stream" && streamSupported && streamAllowed) {
+      const conversationHashValue = await hashConversation({
+        messages,
+        userDraft,
+        partnerSummary,
+        sessionContext,
+        conversationSummary,
+        effectiveStyleContext,
+        knownContactName,
+      });
+      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest;
+      const streamStore = new AnalysisStreamRunStore(
+        createSupabaseAnalysisStreamRunDriver(
+          supabase as unknown as Parameters<
+            typeof createSupabaseAnalysisStreamRunDriver
+          >[0],
+        ),
+      );
+
+      let streamRun;
+      try {
+        streamRun = await streamStore.createPendingRun({
+          userId: user.id,
+          conversationHash: conversationHashValue,
+          requestContext: {
+            responseMode: "stream",
+            requestType,
+            analyzeMode,
+            tier: effectiveTier,
+            isTestAccount: accountIsTest,
+            estimatedMessageCount: quotaUsage.estimatedMessageCount,
+            chargedMessageCount: shouldCharge
+              ? quotaUsage.chargedMessageCount
+              : 0,
+          },
+        });
+      } catch (error) {
+        logError("stream_run_create_failed", {
+          user: summarizeUser(user.id),
+          error: getErrorMessage(error),
+        });
+        return jsonResponse(
+          {
+            error: "STREAM_RUN_CREATE_FAILED",
+            message: "串流分析暫時無法開始，請稍後再試。",
+          },
+          500,
+        );
+      }
+
+      let streamModel = selectedModel;
+      const streamStartTime = Date.now();
+      const streamUsage = {
+        messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+        estimatedMessages: quotaUsage.estimatedMessageCount,
+        monthlyRemaining: accountIsTest ? 999999 : Math.max(
+          0,
+          monthlyLimit - sub.monthly_messages_used -
+            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+        ),
+        dailyRemaining: accountIsTest ? 999999 : Math.max(
+          0,
+          dailyLimit - sub.daily_messages_used -
+            (shouldCharge ? quotaUsage.chargedMessageCount : 0),
+        ),
+        model: streamModel,
+        tierUsed: effectiveTier,
+        isTestAccount: accountIsTest,
+        requestType,
+        shouldChargeQuota: shouldCharge,
+        quotaReason: quotaUsage.quotaReason,
+        quotaUnit: quotaUsage.quotaUnit,
+      };
+
+      logInfo("stream_request_started", {
+        user: summarizeUser(user.id),
+        analysisRunId: streamRun.id,
+        model: selectedModel,
+        requestType,
+        chargedQuota: shouldCharge,
+      });
+
+      return handleStreamAnalysisRequest({
+        runId: streamRun.id,
+        conversationHash: conversationHashValue,
+        etaSeconds: 18,
+        headers: corsHeaders,
+        callClaude: async () => {
+          const claude = await callClaudeStreaming(
+            {
+              model: selectedModel,
+              max_tokens: 1536,
+              system: buildStreamSystemPrompt(SYSTEM_PROMPT),
+              messages: [{ role: "user", content: userMessageContent }],
+            },
+            CLAUDE_API_KEY,
+            { timeout: 30000 },
+          );
+          streamModel = claude.model;
+          streamUsage.model = claude.model;
+          return claude;
+        },
+        chargeRun: async (recommendation) => {
+          try {
+            await streamStore.chargeRun({
+              runId: streamRun.id,
+              userId: user.id,
+              conversationHash: conversationHashValue,
+              recommendation,
+              chargeQuota: shouldCharge,
+              messageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
+            });
+            return { charged: true };
+          } catch (error) {
+            const mapped = mapStreamChargeFailure(error);
+            logError("stream_charge_failed", {
+              user: summarizeUser(user.id),
+              analysisRunId: streamRun.id,
+              code: mapped.code,
+              error: getErrorMessage(error),
+            });
+            return {
+              charged: false,
+              code: mapped.code,
+              message: mapped.message,
+              recoverable: true,
+            };
+          }
+        },
+        markDone: async (finalResult) => {
+          const guarded = checkAiOutput(
+            finalResult as GuardrailAnalysisResult,
+          ) as Record<string, unknown>;
+          const postProcessed = postProcessAnalysisResult({
+            result: guarded,
+            recognizeOnly: false,
+            isMyMessageMode: false,
+            allowedFeatures,
+          });
+          const latencyMs = Date.now() - streamStartTime;
+          const finalPayload = {
+            ...postProcessed,
+            usage: { ...streamUsage, model: streamModel },
+            telemetry: {
+              requestType,
+              responseMode: "stream",
+              serverAiLatencyMs: latencyMs,
+              timeoutMs: 30000,
+              model: streamModel,
+              shouldChargeQuota: shouldCharge,
+              chargedMessageCount: shouldCharge
+                ? quotaUsage.chargedMessageCount
+                : 0,
+              estimatedMessageCount: quotaUsage.estimatedMessageCount,
+            },
+          };
+
+          await streamStore.markDone({
+            runId: streamRun.id,
+            userId: user.id,
+            conversationHash: conversationHashValue,
+            finalResult: finalPayload,
+          });
+
+          await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+            userId: user.id,
+            model: streamModel,
+            requestType,
+            inputTokens: 0,
+            outputTokens: 0,
+            latencyMs,
+            status: "success",
+            requestBody: {
+              ...requestObservability,
+              responseMode: "stream",
+              analysisRunId: streamRun.id,
+            },
+            responseBody: {
+              streamRunStatus: "done",
+              chargedQuota: shouldCharge,
+            },
+          });
+
+          logInfo("stream_request_succeeded", {
+            user: summarizeUser(user.id),
+            analysisRunId: streamRun.id,
+            model: streamModel,
+            latencyMs,
+          });
+
+          return finalPayload;
+        },
+        markFailed: async (code, details) => {
+          await streamStore.markFailed({
+            runId: streamRun.id,
+            userId: user.id,
+            conversationHash: conversationHashValue,
+            code,
+          });
+
+          const event = isPlainObject(details?.event) ? details.event : {};
+          const message = typeof event.message === "string"
+            ? event.message
+            : code;
+          await logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+            userId: user.id,
+            model: streamModel,
+            requestType,
+            inputTokens: 0,
+            outputTokens: 0,
+            latencyMs: Date.now() - streamStartTime,
+            status: "failed",
+            errorCode: code,
+            errorMessage: message,
+            requestBody: {
+              ...requestObservability,
+              responseMode: "stream",
+              analysisRunId: streamRun.id,
+            },
+            responseBody: {
+              streamRunStatus: "failed",
+              event,
+              retryable: event.recoverable ?? true,
+            },
+          });
+        },
+      });
+    }
+
+    if (responseMode === "stream") {
+      logInfo("stream_request_fell_back_to_legacy", {
+        user: summarizeUser(user.id),
+        supported: streamSupported,
+        allowed: streamAllowed,
+        hasImages,
+        recognizeOnly,
+        requestType,
       });
     }
 

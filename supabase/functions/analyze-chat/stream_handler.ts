@@ -1,7 +1,4 @@
-import {
-  ndjsonStreamResponse,
-  type NdjsonEmit,
-} from "./ndjson_response.ts";
+import { type NdjsonEmit, ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamReframer,
   type StreamChargeResult,
@@ -17,6 +14,7 @@ export interface ClaudeTextStreamResult {
 export interface StreamAnalysisHandlerOptions {
   runId: string;
   conversationHash: string;
+  etaSeconds?: number;
   headers?: HeadersInit;
   progressEvents?: StreamOutputEvent[];
   callClaude: () => Promise<ClaudeTextStreamResult>;
@@ -77,6 +75,7 @@ export function handleStreamAnalysisRequest(
       type: "analysis.started",
       runId: options.runId,
       conversationHash: options.conversationHash,
+      etaSeconds: options.etaSeconds ?? 18,
     });
 
     for (const event of options.progressEvents ?? DEFAULT_PROGRESS_EVENTS) {
@@ -229,7 +228,9 @@ function buildErrorEvent(
   };
 }
 
-function getFinalResult(event: StreamOutputEvent): Record<string, unknown> | null {
+function getFinalResult(
+  event: StreamOutputEvent,
+): Record<string, unknown> | null {
   const finalResult = event.finalResult;
   if (!isRecord(finalResult)) return null;
   return finalResult;

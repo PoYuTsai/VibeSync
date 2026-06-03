@@ -5,11 +5,13 @@ import {
   type StreamStyle,
 } from "./stream_events.ts";
 import {
-  validateRecommendationEvent,
   type RecommendationValidation,
+  validateRecommendationEvent,
 } from "./stream_recommendation_guardrail.ts";
 
-export type StreamOutputEvent = StreamEvent | (Record<string, unknown> & { type: string });
+export type StreamOutputEvent =
+  | StreamEvent
+  | (Record<string, unknown> & { type: string });
 
 export interface StreamRecommendationForCharge {
   selectedStyle: StreamStyle;
@@ -50,6 +52,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let closed = false;
   let sawValidEvent = false;
   let doneEmitted = false;
+  let recommendationCharged = false;
 
   const emitError = (
     code: string,
@@ -75,6 +78,15 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   };
 
   const handleRecommendation = async (event: StreamEvent) => {
+    if (recommendationCharged) {
+      emitError(
+        "STREAM_DUPLICATE_RECOMMENDATION",
+        "Streaming analysis emitted more than one official recommendation.",
+      );
+      closed = true;
+      return;
+    }
+
     const validation = validateRecommendationEvent(event);
     if (!validation.ok) {
       emitError(validation.code, validation.reason);
@@ -95,6 +107,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       return;
     }
 
+    recommendationCharged = true;
     const enriched = {
       ...event,
       selectedStyle: validation.selectedStyle,
