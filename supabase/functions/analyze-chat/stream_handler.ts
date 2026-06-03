@@ -23,7 +23,9 @@ export interface StreamAnalysisHandlerOptions {
   chargeRun: (
     recommendation: StreamRecommendationForCharge,
   ) => Promise<StreamChargeResult> | StreamChargeResult;
-  markDone: (finalResult: Record<string, unknown>) => Promise<void> | void;
+  markDone: (
+    finalResult: Record<string, unknown>,
+  ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
   markFailed: (
     code: string,
     details?: Record<string, unknown>,
@@ -143,8 +145,15 @@ export function handleStreamAnalysisRequest(
       return;
     }
 
+    const originalDoneEvent: StreamOutputEvent & { type: string } = pendingDone;
+    let doneEvent: StreamOutputEvent = originalDoneEvent;
     try {
-      await options.markDone(finalResult);
+      const processedFinalResult = await options.markDone(finalResult);
+      if (isRecord(processedFinalResult)) {
+        doneEvent = Object.assign({}, originalDoneEvent, {
+          finalResult: processedFinalResult,
+        }) as StreamOutputEvent;
+      }
     } catch (error) {
       await markFailedAndEmit(
         options,
@@ -160,7 +169,7 @@ export function handleStreamAnalysisRequest(
       return;
     }
 
-    emit(pendingDone);
+    emit(doneEvent);
     close();
   }, options.headers);
 }

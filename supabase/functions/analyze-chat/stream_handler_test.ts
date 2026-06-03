@@ -38,7 +38,9 @@ function createOptions(overrides: {
   textChunks?: string[];
   chargeResult?: StreamChargeResult;
   chargeRun?: () => StreamChargeResult | Promise<StreamChargeResult>;
-  markDone?: (result: Record<string, unknown>) => void | Promise<void>;
+  markDone?: (
+    result: Record<string, unknown>,
+  ) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>;
   markFailed?: (
     code: string,
     details?: Record<string, unknown>,
@@ -219,6 +221,21 @@ Deno.test("stream handler persists final result before emitting done", async () 
   }
 
   assertEquals(timeline, ["markDone", "emitDone"]);
+});
+
+Deno.test("stream handler emits processed final result returned by markDone", async () => {
+  const response = handleStreamAnalysisRequest(createOptions({
+    markDone: (result) => ({
+      ...result,
+      processedByPostProcess: true,
+    }),
+  }));
+
+  const events = await collectEvents(response);
+  const done = events.find((event) => event.type === "analysis.done");
+  const finalResult = done?.finalResult as Record<string, unknown> | undefined;
+
+  assertEquals(finalResult?.processedByPostProcess, true);
 });
 
 Deno.test("stream handler emits terminal error when final persist fails", async () => {
