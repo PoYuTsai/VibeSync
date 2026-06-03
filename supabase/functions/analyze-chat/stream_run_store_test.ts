@@ -14,6 +14,7 @@ import type {
   GetStreamRunInput,
   MarkStreamRunDoneInput,
   MarkStreamRunFailedInput,
+  ReserveStreamRetryInput,
 } from "./stream_run_store.ts";
 
 interface FakeHarness {
@@ -80,6 +81,7 @@ function makeDriver(): FakeHarness {
         final_result_json: null,
         charged_at: null,
         last_error_code: null,
+        retry_count: 0,
         request_context: input.requestContext ?? null,
         created_at: NOW,
         expires_at: EXPIRES_AT,
@@ -92,6 +94,30 @@ function makeDriver(): FakeHarness {
       return {
         ...findMatching(input.runId, input.userId, input.conversationHash),
       };
+    },
+
+    async reserveRetry(
+      input: ReserveStreamRetryInput,
+    ): Promise<AnalysisStreamRun> {
+      const row = findMatching(
+        input.runId,
+        input.userId,
+        input.conversationHash,
+      );
+      const expired = Date.parse(row.expires_at) <= Date.parse(CHARGED_AT);
+      if (
+        row.status !== "failed" ||
+        !row.charged_at ||
+        !row.recommendation_json ||
+        !row.selected_style ||
+        expired ||
+        row.retry_count >= input.maxRetries
+      ) {
+        throw new Error("STREAM_RETRY_NOT_AVAILABLE");
+      }
+      row.retry_count += 1;
+      row.last_error_code = null;
+      return { ...row };
     },
 
     async chargeRun(
@@ -223,6 +249,106 @@ Deno.test("getRun returns only the matching owner and conversation hash", async 
       }),
     Error,
     "RUN_CONVERSATION_MISMATCH",
+  );
+});
+
+Deno.test("reserveRetry increments retry_count for a failed charged run", async () => {
+  const h = makeDriver();
+  const store = new AnalysisStreamRunStore(h.driver);
+  const pending = await store.createPendingRun({
+    userId: USER,
+    conversationHash: HASH,
+  });
+  await store.chargeRun({
+    runId: pending.id,
+    userId: USER,
+    conversationHash: HASH,
+    recommendation: RECOMMENDATION,
+    chargeQuota: true,
+    messageCount: 1,
+  });
+  await store.markFailed({
+    runId: pending.id,
+    userId: USER,
+    conversationHash: HASH,
+    code: "STREAM_FINAL_PERSIST_FAILED",
+  });
+
+  const retry = await store.reserveRetry({
+    runId: pending.id,
+    userId: USER,
+    conversationHash: HASH,
+    maxRetries: 2,
+  });
+
+  assertEquals(retry.status, "failed");
+  assertEquals(retry.retry_count, 1);
+  assertEquals(retry.last_error_code, null);
+  assertEquals(
+    retry.recommendation_json,
+    h.table.get(pending.id)?.recommendation_json,
+  );
+});
+
+Deno.test("reserveRetry refuses pending, exhausted, or expired stream runs", async () => {
+  const h = makeDriver();
+  const store = new AnalysisStreamRunStore(h.driver);
+  const pending = await store.createPendingRun({
+    userId: USER,
+    conversationHash: HASH,
+  });
+
+  await assertRejects(
+    () =>
+      store.reserveRetry({
+        runId: pending.id,
+        userId: USER,
+        conversationHash: HASH,
+        maxRetries: 2,
+      }),
+    Error,
+    "STREAM_RETRY_NOT_AVAILABLE",
+  );
+
+  await store.chargeRun({
+    runId: pending.id,
+    userId: USER,
+    conversationHash: HASH,
+    recommendation: RECOMMENDATION,
+    chargeQuota: true,
+    messageCount: 1,
+  });
+  await store.markFailed({
+    runId: pending.id,
+    userId: USER,
+    conversationHash: HASH,
+    code: "STREAM_INTERRUPTED_AFTER_RECOMMENDATION",
+  });
+  h.table.get(pending.id)!.retry_count = 2;
+  await assertRejects(
+    () =>
+      store.reserveRetry({
+        runId: pending.id,
+        userId: USER,
+        conversationHash: HASH,
+        maxRetries: 2,
+      }),
+    Error,
+    "STREAM_RETRY_NOT_AVAILABLE",
+  );
+
+  h.table.get(pending.id)!.retry_count = 0;
+  h.table.get(pending.id)!.expires_at = "2026-06-02T00:00:00.000Z";
+  await assertRejects(
+    () =>
+      store.reserveRetry({
+        runId: pending.id,
+        userId: USER,
+        conversationHash: HASH,
+        maxRetries: 2,
+      }),
+    Error,
+    "STREAM_RETRY_NOT_AVAILABLE",
   );
 });
 

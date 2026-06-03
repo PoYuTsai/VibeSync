@@ -4084,6 +4084,7 @@ const TEST_MODE = Deno.env.get("TEST_MODE") === "true";
 const STREAM_ANALYZE_ENABLED =
   Deno.env.get("STREAM_ANALYZE_ENABLED") === "true";
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
+const MAX_STREAM_RETRIES = 2;
 // 測試帳號白名單 (不扣額度)
 const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
@@ -6212,10 +6213,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       let prechargedRecommendation: StreamRecommendationForCharge | undefined;
       try {
         if (analysisRunId) {
-          streamRun = await streamStore.getRun({
+          streamRun = await streamStore.reserveRetry({
             runId: analysisRunId,
             userId: user.id,
             conversationHash: conversationHashValue,
+            maxRetries: MAX_STREAM_RETRIES,
           });
           prechargedRecommendation = streamRecommendationFromRun(streamRun) ??
             undefined;

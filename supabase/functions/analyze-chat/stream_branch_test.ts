@@ -28,7 +28,7 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   );
   assert(source.includes("isStreamingAllowed({"));
   assert(source.includes("streamStore.createPendingRun({"));
-  assert(source.includes("streamStore.getRun({"));
+  assert(source.includes("streamStore.reserveRetry({"));
   assert(source.includes("handleStreamAnalysisRequest({"));
   assert(source.includes("callClaudeStreaming("));
   assert(source.includes("buildStreamSystemPrompt(SYSTEM_PROMPT)"));
@@ -55,6 +55,7 @@ Deno.test("stream retry reuses the stream ledger without charging again", async 
       "prechargedRecommendation = streamRecommendationFromRun(streamRun)",
     ),
   );
+  assert(source.includes("maxRetries: MAX_STREAM_RETRIES"));
   assert(source.includes("prechargedRecommendation,"));
 });
 

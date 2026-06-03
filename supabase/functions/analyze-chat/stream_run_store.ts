@@ -20,6 +20,7 @@ export interface AnalysisStreamRun {
   final_result_json: Record<string, unknown> | null;
   charged_at: string | null;
   last_error_code: string | null;
+  retry_count: number;
   request_context: Record<string, unknown> | null;
   created_at: string;
   expires_at: string;
@@ -60,6 +61,13 @@ export interface GetStreamRunInput {
   conversationHash: string;
 }
 
+export interface ReserveStreamRetryInput {
+  runId: string;
+  userId: string;
+  conversationHash: string;
+  maxRetries: number;
+}
+
 export interface ChargeStreamRunDriverInput {
   runId: string;
   userId: string;
@@ -75,6 +83,7 @@ export interface AnalysisStreamRunDriver {
     input: CreatePendingStreamRunInput,
   ): Promise<AnalysisStreamRun>;
   getRun(input: GetStreamRunInput): Promise<AnalysisStreamRun>;
+  reserveRetry(input: ReserveStreamRetryInput): Promise<AnalysisStreamRun>;
   chargeRun(input: ChargeStreamRunDriverInput): Promise<AnalysisStreamRun>;
   markDone(input: MarkStreamRunDoneInput): Promise<AnalysisStreamRun>;
   markFailed(input: MarkStreamRunFailedInput): Promise<AnalysisStreamRun>;
@@ -96,6 +105,16 @@ export class AnalysisStreamRunStore {
     requireNonEmpty(input.userId, "userId");
     requireNonEmpty(input.conversationHash, "conversationHash");
     return this.driver.getRun(input);
+  }
+
+  reserveRetry(input: ReserveStreamRetryInput): Promise<AnalysisStreamRun> {
+    requireNonEmpty(input.runId, "runId");
+    requireNonEmpty(input.userId, "userId");
+    requireNonEmpty(input.conversationHash, "conversationHash");
+    if (!Number.isInteger(input.maxRetries) || input.maxRetries <= 0) {
+      throw new Error("reserveRetry: maxRetries must be a positive integer");
+    }
+    return this.driver.reserveRetry(input);
   }
 
   chargeRun(input: ChargeStreamRunInput): Promise<AnalysisStreamRun> {
@@ -209,6 +228,7 @@ export function createSupabaseAnalysisStreamRunDriver(
           user_id: input.userId,
           conversation_hash: input.conversationHash,
           status: "pending",
+          retry_count: 0,
           request_context: input.requestContext ?? null,
         })
         .select("*")
@@ -234,6 +254,28 @@ export function createSupabaseAnalysisStreamRunDriver(
       if (error || !data) {
         throw new Error(
           `analysis_stream_runs get failed: ${
+            error ? JSON.stringify(error) : "no row returned"
+          }`,
+        );
+      }
+      return data;
+    },
+
+    async reserveRetry(
+      input: ReserveStreamRetryInput,
+    ): Promise<AnalysisStreamRun> {
+      const { data, error } = await supabase.rpc(
+        "reserve_stream_analysis_retry",
+        {
+          p_run_id: input.runId,
+          p_user_id: input.userId,
+          p_conversation_hash: input.conversationHash,
+          p_max_retries: input.maxRetries,
+        },
+      );
+      if (error || !data) {
+        throw new Error(
+          `reserve_stream_analysis_retry failed: ${
             error ? JSON.stringify(error) : "no row returned"
           }`,
         );
