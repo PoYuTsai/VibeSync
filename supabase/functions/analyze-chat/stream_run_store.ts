@@ -54,6 +54,12 @@ export interface MarkStreamRunFailedInput {
   code: string;
 }
 
+export interface GetStreamRunInput {
+  runId: string;
+  userId: string;
+  conversationHash: string;
+}
+
 export interface ChargeStreamRunDriverInput {
   runId: string;
   userId: string;
@@ -68,6 +74,7 @@ export interface AnalysisStreamRunDriver {
   createPendingRun(
     input: CreatePendingStreamRunInput,
   ): Promise<AnalysisStreamRun>;
+  getRun(input: GetStreamRunInput): Promise<AnalysisStreamRun>;
   chargeRun(input: ChargeStreamRunDriverInput): Promise<AnalysisStreamRun>;
   markDone(input: MarkStreamRunDoneInput): Promise<AnalysisStreamRun>;
   markFailed(input: MarkStreamRunFailedInput): Promise<AnalysisStreamRun>;
@@ -82,6 +89,13 @@ export class AnalysisStreamRunStore {
     requireNonEmpty(input.userId, "userId");
     requireNonEmpty(input.conversationHash, "conversationHash");
     return this.driver.createPendingRun(input);
+  }
+
+  getRun(input: GetStreamRunInput): Promise<AnalysisStreamRun> {
+    requireNonEmpty(input.runId, "runId");
+    requireNonEmpty(input.userId, "userId");
+    requireNonEmpty(input.conversationHash, "conversationHash");
+    return this.driver.getRun(input);
   }
 
   chargeRun(input: ChargeStreamRunInput): Promise<AnalysisStreamRun> {
@@ -161,11 +175,14 @@ interface SupabaseSelectBuilder<T> {
 
 interface SupabaseFilterBuilder<T> {
   eq(col: string, val: string): SupabaseFilterBuilder<T>;
+  single(): Promise<DbResult<T>>;
+  maybeSingle(): Promise<DbResult<T>>;
   select(cols?: string): SupabaseSingleBuilder<T>;
 }
 
 interface MinimalSupabaseClient {
   from(table: string): {
+    select(cols?: string): SupabaseFilterBuilder<AnalysisStreamRun>;
     insert(
       values: Record<string, unknown>,
     ): SupabaseSelectBuilder<AnalysisStreamRun>;
@@ -199,6 +216,24 @@ export function createSupabaseAnalysisStreamRunDriver(
       if (error || !data) {
         throw new Error(
           `analysis_stream_runs insert failed: ${
+            error ? JSON.stringify(error) : "no row returned"
+          }`,
+        );
+      }
+      return data;
+    },
+
+    async getRun(input: GetStreamRunInput): Promise<AnalysisStreamRun> {
+      const { data, error } = await supabase
+        .from("analysis_stream_runs")
+        .select("*")
+        .eq("id", input.runId)
+        .eq("user_id", input.userId)
+        .eq("conversation_hash", input.conversationHash)
+        .maybeSingle();
+      if (error || !data) {
+        throw new Error(
+          `analysis_stream_runs get failed: ${
             error ? JSON.stringify(error) : "no row returned"
           }`,
         );

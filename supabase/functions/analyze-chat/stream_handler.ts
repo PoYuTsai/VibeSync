@@ -4,6 +4,7 @@ import {
   type StreamChargeResult,
   type StreamOutputEvent,
   type StreamRecommendationForCharge,
+  toRecommendationEvent,
 } from "./reframer.ts";
 
 export interface ClaudeTextStreamResult {
@@ -21,6 +22,7 @@ export interface StreamAnalysisHandlerOptions {
   chargeRun: (
     recommendation: StreamRecommendationForCharge,
   ) => Promise<StreamChargeResult> | StreamChargeResult;
+  prechargedRecommendation?: StreamRecommendationForCharge;
   markDone: (
     finalResult: Record<string, unknown>,
   ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
@@ -82,9 +84,15 @@ export function handleStreamAnalysisRequest(
       emit(event);
     }
 
+    if (options.prechargedRecommendation) {
+      recommendationEmitted = true;
+      emit(toRecommendationEvent(options.prechargedRecommendation));
+    }
+
     const reframer = createStreamReframer({
       emit: emitReframed,
       onRecommendation: options.chargeRun,
+      prechargedRecommendation: options.prechargedRecommendation,
     });
 
     try {

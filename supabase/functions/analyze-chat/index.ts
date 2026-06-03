@@ -37,9 +37,12 @@ import { isStreamingAllowed } from "./stream_gate.ts";
 import { handleStreamAnalysisRequest } from "./stream_handler.ts";
 import { buildStreamSystemPrompt } from "./stream_prompt.ts";
 import {
+  type AnalysisStreamRun,
   AnalysisStreamRunStore,
   createSupabaseAnalysisStreamRunDriver,
 } from "./stream_run_store.ts";
+import type { StreamRecommendationForCharge } from "./reframer.ts";
+import { isStreamStyle } from "./stream_events.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import {
   applyQuickGuardrails,
@@ -764,6 +767,41 @@ function mapStreamChargeFailure(error: unknown): {
   return {
     code: "STREAM_CHARGE_FAILED",
     message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
+  };
+}
+
+function streamRecommendationFromRun(
+  run: AnalysisStreamRun,
+): StreamRecommendationForCharge | null {
+  const stored = run.recommendation_json;
+  if (!isPlainObject(stored)) return null;
+
+  const selectedStyle = stored.selectedStyle;
+  const message = typeof stored.message === "string"
+    ? stored.message.trim()
+    : "";
+  const reason = typeof stored.reason === "string" ? stored.reason.trim() : "";
+  const quotedContext = typeof stored.quotedContext === "string"
+    ? stored.quotedContext.trim()
+    : "";
+  const rawWarnings = Array.isArray(stored.warnings) ? stored.warnings : [];
+  const warnings = rawWarnings
+    .filter((warning): warning is string => typeof warning === "string")
+    .map((warning) => warning.trim())
+    .filter(Boolean);
+  const raw = isPlainObject(stored.raw) ? stored.raw : stored;
+
+  if (!isStreamStyle(selectedStyle) || message.length === 0) {
+    return null;
+  }
+
+  return {
+    selectedStyle,
+    message,
+    reason,
+    quotedContext,
+    warnings,
+    raw,
   };
 }
 
@@ -4191,6 +4229,8 @@ serve(async (req) => {
       responseMode: rawResponseMode,
       analysisRunId: rawAnalysisRunId,
     });
+    const isStreamRetryMode = responseMode === "stream" &&
+      analysisRunId !== null;
 
     // ------------------------------------------------------------------
     // Phase 1.3 (Codex round-2) — early MISSING_RUN_ID bounce.
@@ -4201,7 +4241,9 @@ serve(async (req) => {
     // reject something the request shape alone can refuse. A user whose
     // quick mode just exhausted their quota also needs to get 400 here,
     // not 429 from the quota preflight (full is not quota-gated — see
-    // the `responseMode !== "full"` skips on the preflights below).
+    // the `responseMode !== "full"` skips on the preflights below). Stream
+    // retry with an analysisRunId also skips quota preflights because its
+    // recommendation was already charged in analysis_stream_runs.
     //
     // The full handler with valid runId lives next to the quick branch
     // (~line 6080) and uses `AnalysisRunStore.validateRunForFull` for
@@ -4484,6 +4526,7 @@ serve(async (req) => {
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
       responseMode !== "full" &&
+      !isStreamRetryMode &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -4515,6 +4558,7 @@ serve(async (req) => {
     if (
       !recognizeOnly && !isOpenerMode && !accountIsTest &&
       responseMode !== "full" &&
+      !isStreamRetryMode &&
       sub.daily_messages_used >= dailyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5188,6 +5232,7 @@ ${recentText}`;
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       responseMode !== "full" &&
+      !isStreamRetryMode &&
       projectedMonthlyUsage > monthlyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5218,6 +5263,7 @@ ${recentText}`;
     if (
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       responseMode !== "full" &&
+      !isStreamRetryMode &&
       projectedDailyUsage > dailyLimit
     ) {
       const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
@@ -5597,7 +5643,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       // INSERT in one TX, so we never have a "charged but no row" state (the
       // Phase 0 P1 fix). Test accounts skip the increment_usage call but still
       // get a row so subsequent full calls can validate.
-      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest;
+      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest &&
+        !isStreamRetryMode;
       // The supabase-js client surface is wider than the AnalysisRunStore's
       // MinimalSupabaseClient duck-type, but the shapes match at runtime; the
       // duck-type stays narrow so unit tests can swap in an in-memory client.
@@ -6160,34 +6207,61 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         ),
       );
 
-      let streamRun;
+      let streamRun: AnalysisStreamRun;
+      let prechargedRecommendation: StreamRecommendationForCharge | undefined;
       try {
-        streamRun = await streamStore.createPendingRun({
-          userId: user.id,
-          conversationHash: conversationHashValue,
-          requestContext: {
-            responseMode: "stream",
-            requestType,
-            analyzeMode,
-            tier: effectiveTier,
-            isTestAccount: accountIsTest,
-            estimatedMessageCount: quotaUsage.estimatedMessageCount,
-            chargedMessageCount: shouldCharge
-              ? quotaUsage.chargedMessageCount
-              : 0,
-          },
-        });
+        if (analysisRunId) {
+          streamRun = await streamStore.getRun({
+            runId: analysisRunId,
+            userId: user.id,
+            conversationHash: conversationHashValue,
+          });
+          prechargedRecommendation = streamRecommendationFromRun(streamRun) ??
+            undefined;
+          if (!prechargedRecommendation) {
+            throw new Error("STREAM_RUN_NOT_RETRYABLE");
+          }
+        } else {
+          streamRun = await streamStore.createPendingRun({
+            userId: user.id,
+            conversationHash: conversationHashValue,
+            requestContext: {
+              responseMode: "stream",
+              requestType,
+              analyzeMode,
+              tier: effectiveTier,
+              isTestAccount: accountIsTest,
+              estimatedMessageCount: quotaUsage.estimatedMessageCount,
+              chargedMessageCount: shouldCharge
+                ? quotaUsage.chargedMessageCount
+                : 0,
+            },
+          });
+        }
       } catch (error) {
-        logError("stream_run_create_failed", {
-          user: summarizeUser(user.id),
-          error: getErrorMessage(error),
-        });
+        const code = analysisRunId
+          ? "STREAM_RUN_RETRY_UNAVAILABLE"
+          : "STREAM_RUN_CREATE_FAILED";
+        logError(
+          analysisRunId
+            ? "stream_run_retry_failed"
+            : "stream_run_create_failed",
+          {
+            user: summarizeUser(user.id),
+            analysisRunId,
+            error: getErrorMessage(error),
+          },
+        );
         return jsonResponse(
           {
-            error: "STREAM_RUN_CREATE_FAILED",
-            message: "串流分析暫時無法開始，請稍後再試。",
+            error: code,
+            code,
+            message: analysisRunId
+              ? "這次串流分析無法接續，請重新分析。"
+              : "串流分析暫時無法開始，請稍後再試。",
+            retryable: false,
           },
-          500,
+          analysisRunId ? 409 : 500,
         );
       }
 
@@ -6220,6 +6294,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         analysisRunId: streamRun.id,
         model: selectedModel,
         requestType,
+        retrying: !!analysisRunId,
         chargedQuota: shouldCharge,
       });
 
@@ -6270,6 +6345,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             };
           }
         },
+        prechargedRecommendation,
         markDone: async (finalResult) => {
           const guarded = checkAiOutput(
             finalResult as GuardrailAnalysisResult,

@@ -3,7 +3,10 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { handleStreamAnalysisRequest } from "./stream_handler.ts";
-import type { StreamChargeResult } from "./reframer.ts";
+import type {
+  StreamChargeResult,
+  StreamRecommendationForCharge,
+} from "./reframer.ts";
 
 function line(value: Record<string, unknown>): string {
   return `${JSON.stringify(value)}\n`;
@@ -49,6 +52,7 @@ function createOptions(overrides: {
   ) => void | Promise<void>;
   callClaude?: () => Promise<{ textStream: AsyncIterable<string> }>;
   progressEvents?: Record<string, unknown>[];
+  prechargedRecommendation?: StreamRecommendationForCharge;
 } = {}) {
   return {
     runId: "run-1",
@@ -71,6 +75,7 @@ function createOptions(overrides: {
         })),
     chargeRun: overrides.chargeRun ??
       (() => overrides.chargeResult ?? { charged: true }),
+    prechargedRecommendation: overrides.prechargedRecommendation,
     markDone: overrides.markDone ?? (() => {}),
     markFailed: overrides.markFailed ?? (() => {}),
   };
@@ -255,6 +260,66 @@ Deno.test("stream handler preserves recommendation before post-recommendation fa
   assertEquals(
     events.at(-1)?.message,
     "分析中途斷線，已保留先前產生的建議；請重新整理完整分析。",
+  );
+});
+
+Deno.test("stream handler can resume from a precharged recommendation without charging again", async () => {
+  let chargeCalls = 0;
+  const response = handleStreamAnalysisRequest(createOptions({
+    prechargedRecommendation: {
+      selectedStyle: "resonate",
+      message: "先接住你，這件事確實不容易。",
+      reason: "保留已扣費的官方推薦。",
+      quotedContext: "我最近真的很累",
+      warnings: [],
+      raw: {
+        type: "analysis.recommendation",
+        selectedStyle: "resonate",
+        message: "先接住你，這件事確實不容易。",
+      },
+    },
+    textChunks: [
+      line({
+        type: "analysis.recommendation",
+        selectedStyle: "extend",
+        message: "model retry should not replace stored recommendation",
+        reason: "duplicate from retry model",
+        quotedContext: "ignored",
+      }),
+      line({
+        type: "analysis.done",
+        finalResult: {
+          finalRecommendation: {
+            pick: "resonate",
+            content: "先接住你，這件事確實不容易。",
+          },
+        },
+      }),
+    ],
+    chargeRun: () => {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(chargeCalls, 0);
+  assertEquals(events.map((event) => event.type), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.progress",
+    "analysis.recommendation",
+    "analysis.done",
+  ]);
+  assertEquals(events[3].message, "先接住你，這件事確實不容易。");
+  assertEquals(
+    (events.at(-1)?.finalResult as Record<string, unknown>)
+      .finalRecommendation,
+    {
+      pick: "resonate",
+      content: "先接住你，這件事確實不容易。",
+    },
   );
 });
 

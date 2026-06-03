@@ -11,6 +11,7 @@ import type {
   AnalysisStreamRunDriver,
   ChargeStreamRunDriverInput,
   CreatePendingStreamRunInput,
+  GetStreamRunInput,
   MarkStreamRunDoneInput,
   MarkStreamRunFailedInput,
 } from "./stream_run_store.ts";
@@ -85,6 +86,12 @@ function makeDriver(): FakeHarness {
       };
       table.set(row.id, row);
       return { ...row };
+    },
+
+    async getRun(input: GetStreamRunInput): Promise<AnalysisStreamRun> {
+      return {
+        ...findMatching(input.runId, input.userId, input.conversationHash),
+      };
     },
 
     async chargeRun(
@@ -180,6 +187,43 @@ Deno.test("createPendingRun rejects blank user and hash before driver call", () 
     "conversationHash must be non-empty",
   );
   assertEquals(h.table.size, 0);
+});
+
+Deno.test("getRun returns only the matching owner and conversation hash", async () => {
+  const h = makeDriver();
+  const store = new AnalysisStreamRunStore(h.driver);
+  const pending = await store.createPendingRun({
+    userId: USER,
+    conversationHash: HASH,
+  });
+
+  const run = await store.getRun({
+    runId: pending.id,
+    userId: USER,
+    conversationHash: HASH,
+  });
+
+  assertEquals(run.id, pending.id);
+  await assertRejects(
+    () =>
+      store.getRun({
+        runId: pending.id,
+        userId: OTHER,
+        conversationHash: HASH,
+      }),
+    Error,
+    "STREAM_RUN_OWNER_MISMATCH",
+  );
+  await assertRejects(
+    () =>
+      store.getRun({
+        runId: pending.id,
+        userId: USER,
+        conversationHash: OTHER_HASH,
+      }),
+    Error,
+    "RUN_CONVERSATION_MISMATCH",
+  );
 });
 
 Deno.test("chargeRun serializes recommendation into the atomic charge RPC payload", async () => {

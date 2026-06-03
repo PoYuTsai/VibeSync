@@ -34,6 +34,7 @@ export interface ReframerOptions {
   onRecommendation: (
     recommendation: StreamRecommendationForCharge,
   ) => Promise<StreamChargeResult> | StreamChargeResult;
+  prechargedRecommendation?: StreamRecommendationForCharge;
 }
 
 export interface StreamReframer {
@@ -52,8 +53,13 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let closed = false;
   let sawValidEvent = false;
   let doneEmitted = false;
-  let recommendationCharged = false;
+  const isResume = options.prechargedRecommendation != null;
+  let recommendationCharged = isResume;
   const preChargeEvents: StreamEvent[] = [];
+
+  if (options.prechargedRecommendation) {
+    assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
+  }
 
   const emitError = (
     code: string,
@@ -92,6 +98,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
 
   const handleRecommendation = async (event: StreamEvent) => {
     if (recommendationCharged) {
+      if (isResume) return;
       emitError(
         "STREAM_DUPLICATE_RECOMMENDATION",
         "Streaming analysis emitted more than one official recommendation.",
@@ -239,6 +246,20 @@ function toChargePayload(
     quotedContext: validation.quotedContext,
     warnings: validation.warnings,
     raw: validation.raw,
+  };
+}
+
+export function toRecommendationEvent(
+  recommendation: StreamRecommendationForCharge,
+): StreamOutputEvent {
+  return {
+    ...recommendation.raw,
+    type: "analysis.recommendation",
+    selectedStyle: recommendation.selectedStyle,
+    message: recommendation.message,
+    reason: recommendation.reason,
+    quotedContext: recommendation.quotedContext,
+    warnings: recommendation.warnings,
   };
 }
 

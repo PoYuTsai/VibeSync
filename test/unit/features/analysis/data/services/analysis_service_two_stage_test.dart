@@ -430,13 +430,48 @@ void main() {
       expect(updates.single.result?.recommendation.content, 'c');
     });
 
-    test('throws AnalysisException when stream emits analysis.error', () async {
+    test('includes analysisRunId when retrying an existing stream run',
+        () async {
+      late http.Request capturedRequest;
+      final mockClient = MockClient((request) async {
+        capturedRequest = request;
+        return http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'type': 'analysis.done',
+              'finalResult': _fullSuccessBody,
+            }),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      await service.analyzeStream(
+        analysisRunId: 'stream_retry_1',
+        messages: [_msg('hi')],
+      ).toList();
+
+      final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
+      expect(body['responseMode'], 'stream');
+      expect(body['analysisRunId'], 'stream_retry_1');
+    });
+
+    test('throws StreamModeException when stream emits analysis.error',
+        () async {
       final mockClient = MockClient((request) async {
         return http.Response(
           jsonEncode({
             'type': 'analysis.error',
             'code': 'STREAM_CHARGE_FAILED',
             'message': 'Quota failed',
+            'recoverable': true,
+            'retriesRemaining': 2,
           }),
           200,
           headers: {'content-type': 'application/x-ndjson'},
@@ -451,9 +486,11 @@ void main() {
       await expectLater(
         () => service.analyzeStream(messages: [_msg('hi')]).toList(),
         throwsA(
-          isA<AnalysisException>()
+          isA<StreamModeException>()
               .having((e) => e.code, 'code', 'STREAM_CHARGE_FAILED')
-              .having((e) => e.message, 'message', 'Quota failed'),
+              .having((e) => e.message, 'message', 'Quota failed')
+              .having((e) => e.recoverable, 'recoverable', true)
+              .having((e) => e.retriesRemaining, 'retriesRemaining', 2),
         ),
       );
     });

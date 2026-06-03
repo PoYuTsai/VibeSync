@@ -1047,6 +1047,7 @@ class AnalysisService {
   }
 
   Stream<AnalysisStreamUpdate> analyzeStream({
+    String? analysisRunId,
     required List<Message> messages,
     SessionContext? sessionContext,
     String? conversationSummary,
@@ -1083,7 +1084,7 @@ class AnalysisService {
         ..body = jsonEncode(
           _buildTwoStageBody(
             responseMode: 'stream',
-            analysisRunId: null,
+            analysisRunId: analysisRunId,
             messages: messages,
             sessionContext: sessionContext,
             conversationSummary: conversationSummary,
@@ -1219,10 +1220,16 @@ class AnalysisService {
             );
             return;
           case 'analysis.error':
-            throw AnalysisException(
+            final recoverable = event['recoverable'] != false;
+            throw StreamModeException(
               _stringField(event['message']) ?? '完整分析串流中斷，請重新分析。',
               code: _stringField(event['code']) ?? 'STREAM_FAILED',
-              suggestedAction: AnalysisErrorAction.retry,
+              recoverable: recoverable,
+              retriesRemaining:
+                  _intField(event['retriesRemaining']) ?? (recoverable ? 1 : 0),
+              suggestedAction: recoverable
+                  ? AnalysisErrorAction.retry
+                  : AnalysisErrorAction.wait,
             );
           default:
             break;
@@ -1552,6 +1559,19 @@ class AnalysisException implements Exception {
 
   @override
   String toString() => 'AnalysisException: $message';
+}
+
+class StreamModeException extends AnalysisException {
+  final bool recoverable;
+  final int retriesRemaining;
+
+  StreamModeException(
+    super.message, {
+    super.code,
+    super.suggestedAction,
+    required this.recoverable,
+    required this.retriesRemaining,
+  });
 }
 
 class DailyLimitExceededException extends AnalysisException {

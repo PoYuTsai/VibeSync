@@ -81,6 +81,7 @@ class _FakeAnalysisService extends AnalysisService {
   int streamCallCount = 0;
   int quickCallCount = 0;
   int fullCallCount = 0;
+  String? lastStreamRunId;
   String? lastFullRunId;
   List<Message>? capturedStreamMessages;
   List<Message>? capturedFullMessages;
@@ -121,6 +122,7 @@ class _FakeAnalysisService extends AnalysisService {
 
   @override
   Stream<AnalysisStreamUpdate> analyzeStream({
+    String? analysisRunId,
     required List<Message> messages,
     SessionContext? sessionContext,
     String? conversationSummary,
@@ -130,6 +132,7 @@ class _FakeAnalysisService extends AnalysisService {
     int? previousAnalyzedCount,
   }) async* {
     streamCallCount++;
+    lastStreamRunId = analysisRunId;
     capturedStreamMessages = List<Message>.from(messages);
     yield const AnalysisStreamUpdate.started(
       runId: 'stream-run',
@@ -259,10 +262,12 @@ void main() {
         () async {
       final fake = _FakeAnalysisService()
         ..quickResult = _quick(runId: 'run_keep')
-        ..fullError = FullModeException(
+        ..streamError = StreamModeException(
           '完整分析失敗，可以重試。',
-          code: 'FULL_FAILED',
+          code: 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION',
+          recoverable: true,
           retriesRemaining: 2,
+          suggestedAction: AnalysisErrorAction.retry,
         );
 
       final container = _container(fake);
@@ -278,7 +283,7 @@ void main() {
       expect(state.quick?.analysisRunId, 'run_keep'); // quick preserved
       expect(state.analysisRunId, 'run_keep');
       expect(state.retriesRemaining, 2);
-      expect(state.fullErrorCode, 'FULL_FAILED');
+      expect(state.fullErrorCode, 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION');
       expect(fake.streamCallCount, 1);
       expect(fake.quickCallCount, 0);
       expect(fake.fullCallCount, 0);
@@ -288,10 +293,12 @@ void main() {
         () async {
       final fake = _FakeAnalysisService()
         ..quickResult = _quick(runId: 'run_retry')
-        ..fullError = FullModeException(
+        ..streamError = StreamModeException(
           'transient',
-          code: 'FULL_FAILED',
+          code: 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION',
+          recoverable: true,
           retriesRemaining: 2,
+          suggestedAction: AnalysisErrorAction.retry,
         );
 
       final container = _container(fake);
@@ -306,27 +313,30 @@ void main() {
       expect(fake.fullCallCount, 0);
 
       // Now retry succeeds.
-      fake.fullError = null;
+      fake.streamError = null;
       fake.fullResult = _full();
 
       await notifier.retryFull();
 
       expect(fake.quickCallCount, 0); // unchanged
-      expect(fake.fullCallCount, 1);
-      expect(fake.lastFullRunId, 'run_retry');
+      expect(fake.streamCallCount, 2);
+      expect(fake.fullCallCount, 0);
+      expect(fake.lastStreamRunId, 'run_retry');
 
       final state = container.read(twoStageAnalyzeProvider('conv-1'));
       expect(state.phase, TwoStagePhase.fullReady);
     });
 
-    test('retryFull after RUN_RETRY_EXHAUSTED keeps retriesRemaining=0',
+    test('retryFull after unrecoverable stream error keeps retriesRemaining=0',
         () async {
       final fake = _FakeAnalysisService()
         ..quickResult = _quick()
-        ..fullError = FullModeException(
+        ..streamError = StreamModeException(
           '完整分析已達重試上限，請重新分析。',
-          code: 'RUN_RETRY_EXHAUSTED',
+          code: 'STREAM_RUN_RETRY_UNAVAILABLE',
+          recoverable: false,
           retriesRemaining: 0,
+          suggestedAction: AnalysisErrorAction.wait,
         );
 
       final container = _container(fake);
@@ -341,7 +351,7 @@ void main() {
       final state = container.read(twoStageAnalyzeProvider('conv-1'));
       expect(state.phase, TwoStagePhase.fullFailed);
       expect(state.retriesRemaining, 0);
-      expect(state.fullErrorCode, 'RUN_RETRY_EXHAUSTED');
+      expect(state.fullErrorCode, 'STREAM_RUN_RETRY_UNAVAILABLE');
     });
   });
 
@@ -388,10 +398,12 @@ void main() {
     test('retryFull clears fullErrorMessage/code during runningFull', () async {
       final fake = _FakeAnalysisService()
         ..quickResult = _quick(runId: 'run_clear')
-        ..fullError = FullModeException(
+        ..streamError = StreamModeException(
           'stale failure',
-          code: 'FULL_FAILED',
+          code: 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION',
+          recoverable: true,
           retriesRemaining: 2,
+          suggestedAction: AnalysisErrorAction.retry,
         );
 
       final container = _container(fake);
@@ -406,7 +418,7 @@ void main() {
       expect(failed.fullErrorMessage, 'stale failure');
 
       // Gate the retry full call so we can observe runningFull state in flight.
-      fake.fullError = null;
+      fake.streamError = null;
       fake.fullResult = _full();
       fake.fullGate = Completer<void>();
 
@@ -439,10 +451,12 @@ void main() {
         () async {
       final fake = _FakeAnalysisService()
         ..quickResult = _quick(runId: 'run_cached')
-        ..fullError = FullModeException(
+        ..streamError = StreamModeException(
           'transient',
-          code: 'FULL_FAILED',
+          code: 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION',
+          recoverable: true,
           retriesRemaining: 2,
+          suggestedAction: AnalysisErrorAction.retry,
         );
 
       final container = _container(fake);
@@ -458,17 +472,18 @@ void main() {
       expect(fake.fullCallCount, 0);
 
       // Reconfigure for retry success and capture the messages the service sees.
-      fake.fullError = null;
+      fake.streamError = null;
       fake.fullResult = _full();
-      fake.capturedFullMessages = null;
+      fake.capturedStreamMessages = null;
 
       // Caller passes nothing — notifier must reuse cached args from start().
       await notifier.retryFull();
 
-      expect(fake.fullCallCount, 1);
-      expect(fake.lastFullRunId, 'run_cached');
+      expect(fake.streamCallCount, 2);
+      expect(fake.fullCallCount, 0);
+      expect(fake.lastStreamRunId, 'run_cached');
       expect(
-        fake.capturedFullMessages?.map((m) => m.content).toList(),
+        fake.capturedStreamMessages?.map((m) => m.content).toList(),
         ['original-1', 'original-2'],
         reason: 'I-P1-b: retryFull must reuse messages cached from start()',
       );
@@ -480,10 +495,12 @@ void main() {
     test('a second start() supersedes the cached retry args', () async {
       final fake = _FakeAnalysisService()
         ..quickResult = _quick(runId: 'run_A')
-        ..fullError = FullModeException(
+        ..streamError = StreamModeException(
           'fail-A',
-          code: 'FULL_FAILED',
+          code: 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION',
+          recoverable: true,
           retriesRemaining: 2,
+          suggestedAction: AnalysisErrorAction.retry,
         );
 
       final container = _container(fake);
@@ -496,18 +513,18 @@ void main() {
 
       // Reconfigure for second start with different runId + different messages.
       fake.quickResult = _quick(runId: 'run_B');
-      // keep fullError so this run also lands in fullFailed
+      // keep streamError so this run also lands in fullFailed
       await notifier.start(messages: [_msg('second-call')]);
 
-      fake.fullError = null;
+      fake.streamError = null;
       fake.fullResult = _full();
-      fake.capturedFullMessages = null;
+      fake.capturedStreamMessages = null;
 
       await notifier.retryFull();
 
-      expect(fake.lastFullRunId, 'run_B');
+      expect(fake.lastStreamRunId, 'run_B');
       expect(
-        fake.capturedFullMessages?.map((m) => m.content).toList(),
+        fake.capturedStreamMessages?.map((m) => m.content).toList(),
         ['second-call'],
         reason: 'I-P1-c: second start() must supersede cached args',
       );

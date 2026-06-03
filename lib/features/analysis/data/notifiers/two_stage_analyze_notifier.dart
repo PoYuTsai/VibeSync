@@ -250,6 +250,7 @@ class TwoStageAnalyzeNotifier
 
   Future<void> _runStreamingFull({
     required int generation,
+    String? analysisRunId,
     required List<Message> messages,
     SessionContext? sessionContext,
     String? conversationSummary,
@@ -261,6 +262,7 @@ class TwoStageAnalyzeNotifier
   }) async {
     try {
       await for (final update in _service.analyzeStream(
+        analysisRunId: analysisRunId,
         messages: messages,
         sessionContext: sessionContext,
         conversationSummary: conversationSummary,
@@ -332,8 +334,11 @@ class TwoStageAnalyzeNotifier
       if (generation != _generation) return;
       final message = e is AnalysisException ? e.message : '完整分析暫時失敗，請重新分析。';
       final code = e is AnalysisException ? e.code : null;
-      final retriesRemaining = e is FullModeException ? e.retriesRemaining : 0;
       final quick = state.quick;
+      final retriesRemaining = _streamRetriesRemaining(
+        e,
+        hasRecommendation: quick != null,
+      );
 
       if (quick != null) {
         state = state.copyWith(
@@ -355,6 +360,25 @@ class TwoStageAnalyzeNotifier
         conversationMessageCount: conversationMessageCount,
       );
     }
+  }
+
+  int _streamRetriesRemaining(
+    Exception error, {
+    required bool hasRecommendation,
+  }) {
+    if (!hasRecommendation) return 0;
+    if (error is StreamModeException) {
+      if (!error.recoverable) return 0;
+      return error.retriesRemaining > 0 ? error.retriesRemaining : 1;
+    }
+    if (error is AnalysisException) {
+      if (error.code == 'STREAM_RUN_RETRY_UNAVAILABLE') return 0;
+      if (error.suggestedAction == AnalysisErrorAction.retry ||
+          error.suggestedAction == AnalysisErrorAction.wait) {
+        return 1;
+      }
+    }
+    return 0;
   }
 
   /// Retry the full call with the cached [TwoStageAnalysisState.analysisRunId]
@@ -380,6 +404,22 @@ class TwoStageAnalyzeNotifier
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
     );
+
+    if (_shouldUseStreamingFull) {
+      await _runStreamingFull(
+        generation: myGen,
+        analysisRunId: runId,
+        messages: cachedMessages,
+        sessionContext: _cachedSessionContext,
+        conversationSummary: _cachedConversationSummary,
+        partnerSummary: _cachedPartnerSummary,
+        effectiveStyleContext: _cachedEffectiveStyleContext,
+        knownContactName: _cachedKnownContactName,
+        previousAnalyzedCount: _cachedPreviousAnalyzedCount,
+        conversationMessageCount: _cachedConversationMessageCount,
+      );
+      return;
+    }
 
     await _runFull(
       generation: myGen,

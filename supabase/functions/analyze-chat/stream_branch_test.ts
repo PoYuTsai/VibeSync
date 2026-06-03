@@ -17,12 +17,28 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   );
   assert(source.includes("isStreamingAllowed({"));
   assert(source.includes("streamStore.createPendingRun({"));
+  assert(source.includes("streamStore.getRun({"));
   assert(source.includes("handleStreamAnalysisRequest({"));
   assert(source.includes("callClaudeStreaming("));
   assert(source.includes("buildStreamSystemPrompt(SYSTEM_PROMPT)"));
   assert(source.includes("streamStore.chargeRun({"));
   assert(source.includes("streamStore.markDone({"));
   assert(source.includes("streamStore.markFailed({"));
+});
+
+Deno.test("stream retry reuses the stream ledger without charging again", async () => {
+  const source = await readIndexSource();
+
+  assert(
+    source.includes('const isStreamRetryMode = responseMode === "stream"'),
+  );
+  assert(source.includes("!isStreamRetryMode"));
+  assert(
+    source.includes(
+      "prechargedRecommendation = streamRecommendationFromRun(streamRun)",
+    ),
+  );
+  assert(source.includes("prechargedRecommendation,"));
 });
 
 Deno.test("stream branch does not use the two-stage run charge path", async () => {
