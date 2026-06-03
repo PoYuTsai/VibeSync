@@ -1,7 +1,188 @@
 # Full Streaming Analyze Contract
 
-> Status: Draft. No implementation yet.
+> Status: Draft v2. No implementation yet.
 > Scope: analyze-chat text path first. Screenshot, opener, Coach 1:1, and follow-up reuse the same UX principles later.
+> Note: The v2 Traditional Chinese addendum below is the current decision layer. If it conflicts with older English draft sections, v2 wins.
+
+## v2 繁中決策補充
+
+這份補充先解掉 CC review 指出的兩個阻塞點：
+
+1. Claude stream 到底怎麼變成 UI 事件。
+2. 正式推薦回覆出現時，到底怎麼扣額度。
+
+在這兩點沒有鎖死前，不應該開始寫 parser、quota migration、或 Flutter streaming UI。
+
+### 決策 1：採用單一 full prompt stream，不再用 quick prompt 當正式答案
+
+我們選擇：
+
+- 一次分析只呼叫一條 full analyze 路徑。
+- Claude 使用 streaming。
+- 模型輸出「一行一個完整 JSON event」。
+- 後端負責把 Claude 的文字 stream 重新框成 SSE 或 NDJSON event。
+- 前端只接收完整 typed event，不解析半截 JSON。
+
+不採用：
+
+- `quick prompt + full prompt` 兩次 Claude call。
+- 用 quick 的答案當正式 AI 推薦回覆。
+- 前端自行解析 Claude stream 中半完成的 JSON。
+
+原因：
+
+- 多 prompt 會讓 quick / full 品質漂移。
+- 使用者通常會採用第一個看到的回覆，所以第一個正式可複製回覆必須來自 full prompt。
+- 前端解析 partial JSON 太脆弱，錯誤會直接變成 UI regression。
+
+### Claude 事件輸出格式
+
+模型輸出必須是 JSONL：每一行都是一個完整 JSON object。
+
+範例：
+
+```text
+{"type":"analysis.progress","step":"read_context","message":"正在讀對話脈絡...","ordinal":1,"total":7}
+{"type":"analysis.decision","selectedStyle":"resonate","nextStepTitle":"先接住情緒，不急著推進","nextStepBody":"這回合先讓對方感到被理解。","doThis":"先回一句短而穩的接球。","avoidThis":"不要急著解釋或追問結果。","confidence":"high"}
+{"type":"analysis.recommendation","selectedStyle":"resonate","message":"我懂，你最近真的很忙。沒關係，我們就慢慢聊，你方便的時候再說。","reason":"先降低壓力，讓對方保留主導感。","quotedContext":"我最近事情也很多，不太想被催。"}
+{"type":"analysis.reply_option","style":"resonate","isSelected":true,"message":"我懂，你最近真的很忙。沒關係，我們就慢慢聊，你方便的時候再說。","approach":"共鳴","reason":"最符合對方目前的壓力訊號。"}
+```
+
+後端 reframer 規則：
+
+1. 從 Anthropic SSE `text_delta` 持續累積文字 buffer。
+2. 只在遇到 newline 且該行可被 `JSON.parse` 成完整 object 時，才轉成對外 event。
+3. 半行、半個 object、或 JSON parse 失敗的內容不得送給前端。
+4. stream 結束時若還有半個 object，視為 malformed tail，記錄 telemetry。
+5. 後端可以暫存事件並依 contract order 對外輸出，不能把模型亂序直接丟給前端。
+
+### 決策 2：扣額度在「正式推薦回覆事件通過驗證後、對外送出前」執行
+
+推薦採用 charge-before-emit：
+
+1. stream 開始時建立 `analysis_runs` pending row，尚不扣額度。
+2. 模型產生 `analysis.recommendation`。
+3. 後端驗證 recommendation event 合法。
+4. 後端執行 atomic `charge_analysis_run` RPC。
+5. RPC 成功後，才把 `analysis.recommendation` event 送給前端。
+6. 之後 full report sections 繼續 stream。
+
+為什麼選這個：
+
+- 避免「正式推薦回覆已經送出，但扣額度 RPC 失敗」造成核心價值被免費拿走。
+- 若前端斷線但後端已成功送出 event，這跟一般 API response 成功後 client 掛掉相同，視為已交付。
+- retry 時可以沿用同一個 charged run，不重扣。
+
+代價：
+
+- 如果 RPC 成功，但使用者剛好在 event 到達前斷線，可能會被扣但沒看到推薦回覆。
+- 這個風險要靠 retry/resume 補救：使用者回來後用同一個 `runId` 取回已產生的 recommendation，不再重扣。
+
+### 扣額度 failure matrix
+
+| 狀態 | Charge RPC | 對外是否 emit recommendation | 正確結果 |
+| --- | --- | --- | --- |
+| 模型尚未產生 recommendation | 未執行 | 否 | 不扣額度，可重跑整次分析 |
+| recommendation JSON malformed | 未執行 | 否 | 不扣額度，回 `STREAM_MALFORMED_RECOMMENDATION` |
+| recommendation guardrail 不通過 | 未執行 | 否 | 不扣額度，回可重試錯誤 |
+| recommendation 合法，準備交付 | 執行中 | 暫停 emit | UI 繼續顯示「正式回覆整理中」 |
+| Charge RPC 成功 | 成功 | 是 | 扣 1 次，使用者看到正式推薦回覆 |
+| Charge RPC 失敗 | 失敗 | 否 | 不 emit 推薦回覆，回 `CHARGE_FAILED_RETRYABLE` 或 `QUOTA_EXHAUSTED` |
+| Charge RPC 成功後 client 斷線 | 已成功 | 後端已嘗試 emit | 視為已扣；同 runId resume/retry 不重扣 |
+| full report 後半段失敗 | 已成功 | recommendation 已送出 | 保留推薦回覆，retry full remainder 不重扣 |
+| 使用者 retry 同一 runId | 不再執行 | 可重送已存 recommendation | 不重扣 |
+| conversation hash 不一致 | 不執行 | 否 | 阻擋 retry，回 `RUN_CONVERSATION_MISMATCH` |
+
+### Pending run lifecycle
+
+現有 two-stage 設計是 `create_charged_analysis_run`：quick 成功時一次扣費並建立 charged row。
+
+full streaming 需要新的 lifecycle：
+
+```text
+pending -> recommendation_ready -> charged -> report_streaming -> done
+                              \-> charge_failed
+                              \-> report_failed_after_charge
+```
+
+建議資料狀態：
+
+| 欄位 | 用途 |
+| --- | --- |
+| `status` | `pending`, `charged`, `done`, `failed` |
+| `recommendation_json` | 已驗證且可重送的正式推薦回覆 |
+| `selected_style` | 早期 recommendation 選出的 style |
+| `charged_at` | 已扣額度時間；非 null 代表不可再扣 |
+| `final_result_json` | 完整分析完成後的 legacy-compatible result |
+| `last_error_code` | 最近失敗原因 |
+
+SQL invariant：
+
+- `charge_analysis_run` 必須是 atomic RPC。
+- 同一 `analysis_run.id` 只能從 `charged_at is null` 更新成 non-null 一次。
+- 若 `charged_at is not null`，retry 只能讀/補 full report，不可再呼叫 `increment_usage`。
+
+### Retry 策略
+
+v1 不做真正的「從 Claude 中途續寫」。
+
+如果 recommendation 已扣額度，但 full report 後半失敗：
+
+1. 保留已存的 `recommendation_json`。
+2. retry 時重新呼叫 full prompt，但把已存 recommendation 作為硬性 anchor。
+3. 新 full output 必須維持同一 `selected_style` 與同一核心回覆。
+4. backend drift check 不通過時，不覆蓋已存 recommendation。
+5. retry 不重扣。
+
+這會多花一次 full tokens，但行為清楚、安全，先適合 dogfood。
+
+### Drift anchor 改定義
+
+舊 two-stage：
+
+```text
+quick recommendation -> full final result
+```
+
+新的 full streaming：
+
+```text
+analysis.recommendation -> analysis.done finalResult
+```
+
+也就是：
+
+- `analysis.recommendation.message` 成為本次 run 的 official anchor。
+- `analysis.done.finalResult.finalRecommendation` 必須與 anchor 同方向。
+- final 可做輕微潤飾，但不可換策略、換情緒方向、換 selected style。
+
+初版 dogfood 建議：
+
+- 嚴重 drift：不覆蓋 recommendation，記錄 `streaming_recommendation_drift`.
+- 輕微措辭差異：允許，但 UI 要能標示 final 是「完整分析後版本」。
+
+### Flutter streaming spike
+
+實作前要先做 1 小時 spike：
+
+- 確認 Flutter 不能用 `supabase.functions.invoke` 讀 stream。
+- 改用 raw `http.Client().send(...)` 或 Dio stream。
+- 手動帶 `Authorization: Bearer <accessToken>`。
+- 測試 iOS/TestFlight 對 SSE 或 NDJSON response 是否穩定。
+
+若 SSE 在 Supabase Edge + Flutter 上不穩，v1 改用 NDJSON response。
+
+### 下一步實作前的停止線
+
+在開始 code 前，必須先完成：
+
+1. 事件生產機制已寫進 contract：單一 full prompt JSONL + backend reframer。
+2. 扣額度 failure matrix 已寫進 contract。
+3. pending run lifecycle 已寫進 contract。
+4. Codex review contract，確認沒有 P1/P2。
+5. Flutter streaming spike 通過。
+
+沒有通過以上 5 點，不進 `analyze-chat` 實作。
 
 ## Why This Exists
 
@@ -332,4 +513,3 @@ This is high-risk because it touches:
 - frontend analysis state
 
 Codex review is required before dogfood/build can be called safe.
-
