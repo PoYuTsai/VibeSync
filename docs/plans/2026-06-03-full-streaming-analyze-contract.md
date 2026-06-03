@@ -39,6 +39,14 @@
 
 模型輸出必須是 JSONL：每一行都是一個完整 JSON object。
 
+Prompt 必須明確要求：
+
+- 每個 event 都只能佔一行。
+- 每行都是 minified JSON。
+- 不可 pretty-print。
+- 字串內容不可包含實際換行；若需要換行意義，使用 `\n` escaped sequence。
+- newline 是唯一 record separator。
+
 範例：
 
 ```text
@@ -66,6 +74,15 @@
 4. 後端執行 atomic `charge_analysis_run` RPC。
 5. RPC 成功後，才把 `analysis.recommendation` event 送給前端。
 6. 之後 full report sections 繼續 stream。
+
+`charge_analysis_run` 必須在同一個 Postgres transaction 內同時寫入：
+
+- `charged_at`
+- `recommendation_json`
+- `selected_style`
+
+也就是：只要資料庫狀態顯示已扣額度，就一定可以 resume 並重送正式推薦回覆。
+不得先寫 `charged_at`，再用另一個 statement 補 `recommendation_json`。
 
 為什麼選這個：
 
@@ -120,6 +137,8 @@ SQL invariant：
 
 - `charge_analysis_run` 必須是 atomic RPC。
 - 同一 `analysis_run.id` 只能從 `charged_at is null` 更新成 non-null 一次。
+- 同一個 RPC 必須一起寫入 `recommendation_json` 與 `selected_style`。
+- `charged_at is not null` 必須代表 `recommendation_json is not null`。
 - 若 `charged_at is not null`，retry 只能讀/補 full report，不可再呼叫 `increment_usage`。
 
 ### Retry 策略
@@ -135,6 +154,32 @@ v1 不做真正的「從 Claude 中途續寫」。
 5. retry 不重扣。
 
 這會多花一次 full tokens，但行為清楚、安全，先適合 dogfood。
+這也是明確的 AI cost behavior change：retry full report 會重新支付 Claude full prompt 成本，但不會重新扣使用者額度。送 Codex review 時必須主動標示。
+
+### Recommendation-only guardrail
+
+扣額度前的 guardrail 不能等完整 `AnalysisResult`。
+
+因此 guardrail layer 必須支援 recommendation-only payload：
+
+```json
+{
+  "selectedStyle": "resonate",
+  "message": "...",
+  "reason": "...",
+  "quotedContext": "..."
+}
+```
+
+如果現有 `server_guardrails.ts` 只接受完整分析結果，v1 需要新增薄 wrapper：
+
+- 驗證推薦回覆不是空字串。
+- 驗證沒有 prompt injection / unsafe instruction leakage。
+- 驗證沒有要求使用者做危險、騷擾、威脅、越界行為。
+- 驗證 `selectedStyle` 是合法五風格之一。
+- 驗證 message 與 quoted context 不明顯矛盾。
+
+只有 recommendation-only guardrail 通過後，才可以呼叫 `charge_analysis_run`。
 
 ### Drift anchor 改定義
 
@@ -496,10 +541,10 @@ Those can come after analyze-chat text path proves stable.
 
 | ID | Decision | Suggested default |
 | --- | --- | --- |
-| D1 | Charge at recommendation or final done? | Charge at valid recommendation event. |
+| D1 | Charge at recommendation or final done? | Resolved in v2: charge-before-emit after valid recommendation, and persist recommendation in the same RPC. |
 | D2 | Keep old quick code during dogfood? | Yes, hidden fallback only. |
 | D3 | Manual text first or screenshot too? | Manual text first, screenshot next. |
-| D4 | If final style differs from early style? | Log drift and preserve early official recommendation in dogfood. |
+| D4 | If final style differs from early style? | Resolved in v2: early `analysis.recommendation` is the anchor; severe final drift cannot overwrite it during dogfood. |
 | D5 | Use SSE or NDJSON? | SSE if Supabase Edge handles it reliably, otherwise NDJSON. |
 
 ## Review Gate
