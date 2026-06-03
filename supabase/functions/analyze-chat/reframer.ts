@@ -36,6 +36,7 @@ export interface ReframerOptions {
 
 export interface StreamReframer {
   pushText: (chunk: string) => void;
+  drain: () => Promise<void>;
   flush: () => Promise<void>;
 }
 
@@ -149,6 +150,10 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     });
   };
 
+  const drain = async () => {
+    await pending;
+  };
+
   return {
     pushText(chunk: string) {
       if (closed || chunk.length === 0) return;
@@ -158,10 +163,12 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       for (const line of lines) queueLine(line);
     },
 
+    drain,
+
     async flush() {
       if (buffer.trim()) queueLine(buffer);
       buffer = "";
-      await pending;
+      await drain();
       if (!closed && sawValidEvent) emitDone();
     },
   };
