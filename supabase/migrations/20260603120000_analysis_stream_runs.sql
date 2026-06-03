@@ -57,7 +57,7 @@ REVOKE ALL ON TABLE public.analysis_stream_runs FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.analysis_stream_runs TO service_role;
 
 COMMENT ON TABLE public.analysis_stream_runs IS
-  'Streaming analyze runs. charged_at non-null means quota was consumed; recommendation_json and selected_style must be durable for resume.';
+  'Streaming analyze runs. charged_at non-null means the recommendation was accepted into the charged lifecycle; recommendation_json and selected_style must be durable for resume.';
 
 CREATE OR REPLACE FUNCTION public.cleanup_expired_analysis_stream_runs()
 RETURNS INTEGER
@@ -69,7 +69,9 @@ DECLARE
   deleted_count INTEGER;
 BEGIN
   DELETE FROM public.analysis_stream_runs
-  WHERE expires_at < now() - interval '1 hour';
+  -- Only remove abandoned uncharged runs. Charged rows must stay durable so resume/retry never re-charges.
+  WHERE charged_at IS NULL
+    AND expires_at < now() - interval '1 hour';
 
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
   RETURN deleted_count;
