@@ -1,0 +1,173 @@
+# .github/workflows/spike-streaming-testflight.yml
+#
+# THROWAWAY SPIKE WORKFLOW — delete after the streaming transport question is
+# answered (companion: docs/plans/2026-06-03-streaming-spike-results.md).
+#
+# Purpose: build the standalone streaming spike harness
+#   lib/spike/streaming_spike_main.dart
+# into a signed IPA and upload it to TestFlight, so Eric can install it on a
+# real iPhone and read the INCREMENTAL ✓ / BUFFERED ✗ verdict. WSL cannot build
+# iOS, so this borrows the macOS GitHub Actions runner instead of a local Mac.
+#
+# Isolation guarantees:
+#   - Does NOT merge or touch main. Triggers only from the spike branch.
+#   - Does NOT build the real app: `-t` retargets the Dart entrypoint and
+#     Flutter tree-shakes from it, so only the spike (material + http) is
+#     compiled. No real app flow, RevenueCat, Supabase config, or Hive code.
+#   - Needs NO prod --dart-define secrets, because the spike reads none.
+#   - Uploads on version lane 9.9.9 so it cannot collide with the real
+#     1.0.0 build-number sequence in App Store Connect, and is obvious in
+#     TestFlight.
+#
+# NOTE: This uploads into the SAME app record (com.poyutsai.vibesync) as
+# production VibeSync — it is bundle-id-bound. Internal TestFlight testers may
+# see a "9.9.9" build whose icon launches straight into the spike screen.
+# That is expected; do not distribute it to external groups.
+
+name: Spike — Streaming TestFlight (throwaway)
+
+on:
+  # Build from the spike branch itself, so nothing has to land on main.
+  push:
+    branches: [spike/streaming-ndjson]
+    paths:
+      - 'lib/spike/**'
+      - '.github/workflows/spike-streaming-testflight.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  spike-ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Xcode SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -E "iphoneos|iphonesimulator" || true
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Clean iOS pods
+        run: |
+          cd ios
+          rm -rf Pods Podfile.lock
+          pod cache clean --all || true
+
+      - name: Analyze spike entrypoint
+        run: flutter analyze lib/spike/streaming_spike_main.dart
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Install Fastlane
+        run: |
+          cd ios
+          gem install fastlane
+
+      - name: Setup iOS certificates and provisioning profile
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -e
+
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PROFILE_PATH=$RUNNER_TEMP/build_profile.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo "=== Step 1: Decode certificate and profile from base64 ==="
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PROFILE_PATH
+
+          echo "=== Step 2: Create and configure keychain ==="
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          echo "=== Step 3: Import certificate to keychain ==="
+          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          echo "=== Step 4: Verify certificate ==="
+          security find-identity -v -p codesigning $KEYCHAIN_PATH
+
+          echo "=== Step 5: Install provisioning profile ==="
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PROFILE_CONTENT=$(security cms -D -i $PROFILE_PATH)
+          PROFILE_UUID=$(echo "$PROFILE_CONTENT" | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
+          echo "Profile UUID: $PROFILE_UUID"
+          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "=== Setup complete ==="
+
+      - name: Generate ExportOptions.plist
+        run: |
+          cat > ios/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>TTQHTVG8CC</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.poyutsai.vibesync</key>
+                  <string>${PROFILE_UUID}</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+          cat ios/ExportOptions.plist
+
+      - name: Build spike IPA
+        run: |
+          echo "Building spike on version lane 9.9.9, build number ${{ github.run_number }}"
+          flutter build ipa --release \
+            -t lib/spike/streaming_spike_main.dart \
+            --build-name=9.9.9 \
+            --build-number=${{ github.run_number }} \
+            --export-options-plist=ios/ExportOptions.plist
+
+      - name: Verify IPA exists
+        run: |
+          find build -name "*.ipa" 2>/dev/null || echo "No .ipa files found"
+
+      - name: Upload to TestFlight
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          cd ios
+          fastlane beta
