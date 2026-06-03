@@ -11,6 +11,7 @@ This folder only contains plans that a new agent session should read directly.
 | `2026-05-07-spec6-coach-1on1-design.md` | Active | Spec 6 Coach 1:1 and session-state design |
 | `2026-05-07-spec6-coach-1on1-6a-impl.md` | Active | Spec 6A implementation history |
 | `2026-05-07-spec6b-coach-dialogue-loop-impl.md` | Active | Spec 6B dialogue loop implementation history |
+| `2026-06-03-full-streaming-analyze-contract.md` | Draft | Full-prompt streaming contract to replace quick as official answer source |
 
 ## Archive
 
