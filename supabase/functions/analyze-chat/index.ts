@@ -6198,7 +6198,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         effectiveStyleContext,
         knownContactName,
       });
-      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest;
+      const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest &&
+        !isStreamRetryMode;
       const streamStore = new AnalysisStreamRunStore(
         createSupabaseAnalysisStreamRunDriver(
           supabase as unknown as Parameters<

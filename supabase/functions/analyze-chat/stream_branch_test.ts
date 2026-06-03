@@ -7,6 +7,17 @@ async function readIndexSource(): Promise<string> {
   return await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 }
 
+function streamBranch(source: string): string {
+  const branchStart = source.indexOf(
+    'if (responseMode === "stream" && streamSupported && streamAllowed)',
+  );
+  const branchEnd = source.indexOf(
+    'if (responseMode === "stream")',
+    branchStart + 1,
+  );
+  return source.slice(branchStart, branchEnd);
+}
+
 Deno.test("stream branch is gated and uses the stream ledger", async () => {
   const source = await readIndexSource();
 
@@ -28,11 +39,17 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
 
 Deno.test("stream retry reuses the stream ledger without charging again", async () => {
   const source = await readIndexSource();
+  const branch = streamBranch(source);
 
   assert(
     source.includes('const isStreamRetryMode = responseMode === "stream"'),
   );
-  assert(source.includes("!isStreamRetryMode"));
+  assert(
+    branch.includes(
+      "const shouldCharge = quotaUsage.shouldChargeQuota && !accountIsTest &&\n" +
+        "        !isStreamRetryMode;",
+    ),
+  );
   assert(
     source.includes(
       "prechargedRecommendation = streamRecommendationFromRun(streamRun)",
@@ -41,21 +58,44 @@ Deno.test("stream retry reuses the stream ledger without charging again", async 
   assert(source.includes("prechargedRecommendation,"));
 });
 
+Deno.test("stream retry reports non-charging usage and telemetry", async () => {
+  const branch = streamBranch(await readIndexSource());
+
+  assert(
+    branch.includes(
+      "messagesUsed: shouldCharge ? quotaUsage.chargedMessageCount : 0",
+    ),
+  );
+  assert(
+    branch.includes(
+      "monthlyLimit - sub.monthly_messages_used -\n" +
+        "            (shouldCharge ? quotaUsage.chargedMessageCount : 0)",
+    ),
+  );
+  assert(
+    branch.includes(
+      "dailyLimit - sub.daily_messages_used -\n" +
+        "            (shouldCharge ? quotaUsage.chargedMessageCount : 0)",
+    ),
+  );
+  assert(branch.includes("shouldChargeQuota: shouldCharge"));
+  assert(
+    branch.includes(
+      "chargedMessageCount: shouldCharge\n" +
+        "                ? quotaUsage.chargedMessageCount\n" +
+        "                : 0",
+    ),
+  );
+});
+
 Deno.test("stream branch does not use the two-stage run charge path", async () => {
   const source = await readIndexSource();
-  const branchStart = source.indexOf(
-    'if (responseMode === "stream" && streamSupported && streamAllowed)',
-  );
-  const branchEnd = source.indexOf(
-    'if (responseMode === "stream")',
-    branchStart + 1,
-  );
-  const streamBranch = source.slice(branchStart, branchEnd);
+  const branch = streamBranch(source);
 
-  assert(streamBranch.includes("createSupabaseAnalysisStreamRunDriver"));
-  assertFalse(streamBranch.includes("createSupabaseAnalysisRunDriver"));
-  assertFalse(streamBranch.includes("createChargedRun"));
-  assertFalse(streamBranch.includes("create_charged_analysis_run"));
+  assert(branch.includes("createSupabaseAnalysisStreamRunDriver"));
+  assertFalse(branch.includes("createSupabaseAnalysisRunDriver"));
+  assertFalse(branch.includes("createChargedRun"));
+  assertFalse(branch.includes("create_charged_analysis_run"));
 });
 
 Deno.test("non-whitelist stream requests keep the legacy fallback path", async () => {
