@@ -10,6 +10,28 @@
 
 ## 2026-06
 
+### [2026-06-05] Edge Function deploy 解析 Supabase CLI latest 被 rate limit
+
+**症狀**:
+
+- 手動觸發 `Deploy Edge Function` 在 `Setup Supabase CLI` 步驟失敗，後續 `Link Supabase Project` / `Deploy Edge Functions` 全部 skipped。
+- Job log 顯示 `Failed to resolve latest Supabase CLI release: rate limit exceeded`。
+
+**Root Cause**:
+
+- Workflow 使用 `supabase/setup-cli@v1` + `version: latest`，每次 deploy 都要查 GitHub release 最新版本；GitHub Actions runner 偶發撞到 unauthenticated release API rate limit。
+- `setup-cli@v1` 也出現 Node.js 20 deprecation warning。
+
+**修復**:
+
+- 改用 `supabase/setup-cli@v2`。
+- 將 Supabase CLI pin 到 `2.105.0`，避免每次 deploy 解析 `latest`。
+
+**驗證**:
+
+- GitHub Actions run `26969144383` job log confirmed failure stopped at Setup Supabase CLI before deploy.
+- `git diff --check`
+
 ### [2026-06-05] 完整分析串流失敗缺少 retry metadata
 
 **症狀**:
