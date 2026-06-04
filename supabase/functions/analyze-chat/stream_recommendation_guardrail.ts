@@ -31,6 +31,62 @@ export type RecommendationValidation =
     warnings?: string[];
   };
 
+export function validateDecisionChargeEvent(
+  event: StreamEvent | Record<string, unknown>,
+): RecommendationValidation {
+  if (event.type !== "analysis.decision") {
+    return {
+      ok: false,
+      code: "STREAM_MALFORMED_RECOMMENDATION",
+      reason: "expected analysis.decision event",
+    };
+  }
+
+  if (!isStreamStyle(event.selectedStyle)) {
+    return {
+      ok: false,
+      code: "STREAM_MALFORMED_RECOMMENDATION",
+      reason: "decision selectedStyle is required",
+    };
+  }
+
+  const nextStepBody = textField(event.nextStepBody ?? event.nextStep);
+  const doThis = textField(event.doThis);
+  const avoidThis = textField(event.avoidThis);
+  const message = nextStepBody || doThis;
+  const reason = doThis || nextStepBody;
+
+  if (!message || !reason) {
+    return {
+      ok: false,
+      code: "STREAM_MALFORMED_RECOMMENDATION",
+      reason: "decision nextStepBody or doThis is required",
+    };
+  }
+
+  const modelAuthoredText = `${nextStepBody}\n${doThis}\n${avoidThis}`;
+  if (
+    hasPromptInjection(modelAuthoredText) ||
+    hasUnsafeRecommendation(modelAuthoredText)
+  ) {
+    return {
+      ok: false,
+      code: "STREAM_UNSAFE_RECOMMENDATION",
+      reason: "decision failed hard safety rules",
+    };
+  }
+
+  return {
+    ok: true,
+    selectedStyle: event.selectedStyle,
+    message,
+    reason,
+    quotedContext: textField(event.quotedContext) || "analysis.decision",
+    warnings: [],
+    raw: event,
+  };
+}
+
 const PROMPT_INJECTION_PATTERNS = [
   /\bignore\s+(all\s+)?(previous|above|prior)\s+instructions?\b/i,
   /\bsystem\s+prompt\b/i,

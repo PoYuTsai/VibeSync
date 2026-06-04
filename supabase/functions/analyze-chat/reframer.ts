@@ -6,6 +6,7 @@ import {
 } from "./stream_events.ts";
 import {
   type RecommendationValidation,
+  validateDecisionChargeEvent,
   validateRecommendationEvent,
 } from "./stream_recommendation_guardrail.ts";
 
@@ -54,7 +55,12 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let sawValidEvent = false;
   let doneEmitted = false;
   const isResume = options.prechargedRecommendation != null;
-  let recommendationCharged = isResume;
+  let chargeCompleted = isResume;
+  let resumeDecisionReplayPending = options.prechargedRecommendation?.raw
+    ?.type === "analysis.decision";
+  let officialRecommendationEmitted = options.prechargedRecommendation?.raw
+    ?.type === "analysis.recommendation";
+  let modelDoneHadFinalResult = false;
   const preChargeEvents: StreamEvent[] = [];
 
   if (options.prechargedRecommendation) {
@@ -84,6 +90,17 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     closed = true;
   };
 
+  const hasCompletionAnchor = () =>
+    officialRecommendationEmitted || modelDoneHadFinalResult;
+
+  const emitMissingCompletionAnchor = () => {
+    emitError(
+      "STREAM_MISSING_COMPLETION_ANCHOR",
+      "Streaming analysis ended before an official recommendation or final result.",
+    );
+    closed = true;
+  };
+
   const absorbAndEmit = (event: StreamOutputEvent) => {
     assembler.absorb(event);
     options.emit(event);
@@ -96,24 +113,9 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     preChargeEvents.length = 0;
   };
 
-  const handleRecommendation = async (event: StreamEvent) => {
-    if (recommendationCharged) {
-      if (isResume) return;
-      emitError(
-        "STREAM_DUPLICATE_RECOMMENDATION",
-        "Streaming analysis emitted more than one official recommendation.",
-      );
-      closed = true;
-      return;
-    }
-
-    const validation = validateRecommendationEvent(event);
-    if (!validation.ok) {
-      emitError(validation.code, validation.reason);
-      closed = true;
-      return;
-    }
-
+  const chargeFromValidation = async (
+    validation: Extract<RecommendationValidation, { ok: true }>,
+  ): Promise<boolean> => {
     const chargeResult = await options.onRecommendation(
       toChargePayload(validation),
     );
@@ -124,11 +126,57 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         chargeResult.recoverable ?? true,
       );
       closed = true;
+      return false;
+    }
+
+    chargeCompleted = true;
+    flushPreChargeEvents();
+    return true;
+  };
+
+  const handleDecision = async (event: StreamEvent) => {
+    if (resumeDecisionReplayPending) {
+      resumeDecisionReplayPending = false;
       return;
     }
 
-    recommendationCharged = true;
-    flushPreChargeEvents();
+    if (chargeCompleted) {
+      absorbAndEmit(event);
+      return;
+    }
+
+    const validation = validateDecisionChargeEvent(event);
+    if (!validation.ok) {
+      emitError(validation.code, validation.reason);
+      closed = true;
+      return;
+    }
+
+    if (!(await chargeFromValidation(validation))) return;
+    absorbAndEmit(event);
+  };
+
+  const handleRecommendation = async (event: StreamEvent) => {
+    const validation = validateRecommendationEvent(event);
+    if (!validation.ok) {
+      emitError(validation.code, validation.reason);
+      closed = true;
+      return;
+    }
+
+    if (officialRecommendationEmitted) {
+      if (isResume) return;
+      emitError(
+        "STREAM_DUPLICATE_RECOMMENDATION",
+        "Streaming analysis emitted more than one official recommendation.",
+      );
+      closed = true;
+      return;
+    }
+
+    if (!chargeCompleted && !(await chargeFromValidation(validation))) return;
+
+    officialRecommendationEmitted = true;
     const enriched = {
       ...event,
       selectedStyle: validation.selectedStyle,
@@ -149,17 +197,22 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       return;
     }
 
+    if (event.type === "analysis.decision") {
+      await handleDecision(event);
+      return;
+    }
+
     if (event.type === "analysis.error") {
       options.emit(event);
       closed = true;
       return;
     }
 
-    if (!recommendationCharged) {
+    if (!chargeCompleted) {
       if (event.type === "analysis.done") {
         emitError(
-          "STREAM_MISSING_RECOMMENDATION",
-          "Streaming analysis ended before an official recommendation.",
+          "STREAM_MISSING_CHARGE_ANCHOR",
+          "Streaming analysis ended before a chargeable decision or recommendation.",
         );
         closed = true;
         return;
@@ -170,6 +223,13 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     }
 
     if (event.type === "analysis.done") {
+      if (recordField(event.finalResult)) {
+        modelDoneHadFinalResult = true;
+      }
+      if (!hasCompletionAnchor()) {
+        emitMissingCompletionAnchor();
+        return;
+      }
       assembler.absorb(event);
       emitDone();
       return;
@@ -216,12 +276,14 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       buffer = "";
       await drain();
       if (!closed && sawValidEvent) {
-        if (recommendationCharged) {
+        if (chargeCompleted && hasCompletionAnchor()) {
           emitDone();
+        } else if (chargeCompleted) {
+          emitMissingCompletionAnchor();
         } else {
           emitError(
-            "STREAM_MISSING_RECOMMENDATION",
-            "Streaming analysis ended before an official recommendation.",
+            "STREAM_MISSING_CHARGE_ANCHOR",
+            "Streaming analysis ended before a chargeable decision or recommendation.",
           );
           closed = true;
         }
@@ -252,6 +314,14 @@ function toChargePayload(
 export function toRecommendationEvent(
   recommendation: StreamRecommendationForCharge,
 ): StreamOutputEvent {
+  if (recommendation.raw.type === "analysis.decision") {
+    return {
+      ...recommendation.raw,
+      type: "analysis.decision",
+      selectedStyle: recommendation.selectedStyle,
+    };
+  }
+
   return {
     ...recommendation.raw,
     type: "analysis.recommendation",

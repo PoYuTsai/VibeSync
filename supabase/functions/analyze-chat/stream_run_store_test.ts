@@ -322,7 +322,7 @@ Deno.test("reserveRetry refuses pending, exhausted, or expired stream runs", asy
     runId: pending.id,
     userId: USER,
     conversationHash: HASH,
-    code: "STREAM_INTERRUPTED_AFTER_RECOMMENDATION",
+    code: "STREAM_INTERRUPTED_AFTER_CONTENT",
   });
   h.table.get(pending.id)!.retry_count = 2;
   await assertRejects(

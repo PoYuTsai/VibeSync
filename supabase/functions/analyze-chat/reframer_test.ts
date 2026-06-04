@@ -2,7 +2,11 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { createStreamReframer, type StreamOutputEvent } from "./reframer.ts";
+import {
+  createStreamReframer,
+  type StreamOutputEvent,
+  type StreamRecommendationForCharge,
+} from "./reframer.ts";
 
 function line(value: Record<string, unknown>): string {
   return `${JSON.stringify(value)}\n`;
@@ -22,8 +26,11 @@ Deno.test("reframer emits recommendation only after charge succeeds", async () =
 
   reframer.pushText(line({
     type: "analysis.decision",
+    selectedStyle: "resonate",
     label: "pressure check",
     nextStepBody: "Slow down first.",
+    doThis: "Respect the boundary.",
+    avoidThis: "Do not over-explain.",
   }));
   reframer.pushText(line({
     type: "analysis.recommendation",
@@ -84,7 +91,7 @@ Deno.test("reframer stops stream when charge fails", async () => {
   );
 });
 
-Deno.test("reframer does not leak buffered decision when charge fails", async () => {
+Deno.test("reframer does not leak decision when decision charge fails", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
     emit(event) {
@@ -101,22 +108,46 @@ Deno.test("reframer does not leak buffered decision when charge fails", async ()
 
   reframer.pushText(line({
     type: "analysis.decision",
+    selectedStyle: "extend",
     nextStepBody: "This would be core coaching value.",
     doThis: "Send this calibrated move.",
     avoidThis: "Do not over-explain.",
-  }));
-  reframer.pushText(line({
-    type: "analysis.recommendation",
-    selectedStyle: "extend",
-    message: "Tell me more.",
-    reason: "Keep it easy.",
-    quotedContext: "hello",
   }));
 
   await reframer.flush();
 
   assertEquals(events.map((event) => event.type), ["analysis.error"]);
   assertEquals(events[0].code, "STREAM_CHARGE_FAILED");
+});
+
+Deno.test("reframer does not complete a cleanly ended decision-only stream", async () => {
+  let chargeCalls = 0;
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "extend",
+    nextStepBody: "This is useful, but not a complete full analysis.",
+    doThis: "Wait for the recommendation before completing.",
+  }));
+
+  await reframer.flush();
+
+  assertEquals(chargeCalls, 1);
+  assertEquals(events.map((event) => event.type), [
+    "analysis.decision",
+    "analysis.error",
+  ]);
+  assertEquals(events.at(-1)?.code, "STREAM_MISSING_COMPLETION_ANCHOR");
 });
 
 Deno.test("reframer never emits substantive events before charge", async () => {
@@ -137,7 +168,9 @@ Deno.test("reframer never emits substantive events before charge", async () => {
   }));
   reframer.pushText(line({
     type: "analysis.decision",
+    selectedStyle: "tease",
     nextStepBody: "Buffered until charge.",
+    doThis: "Send a short reply.",
   }));
   reframer.pushText(line({
     type: "analysis.reply_option",
@@ -202,6 +235,58 @@ Deno.test("reframer charges only one official recommendation", async () => {
   assertEquals(events.at(-1)?.code, "STREAM_DUPLICATE_RECOMMENDATION");
 });
 
+Deno.test("reframer skips duplicated resume decision after precharged decision", async () => {
+  let chargeCalls = 0;
+  const events: StreamOutputEvent[] = [];
+  const prechargedDecision: StreamRecommendationForCharge = {
+    selectedStyle: "resonate",
+    message: "Acknowledge the pressure and slow the pace.",
+    reason: "Respect the boundary.",
+    quotedContext: "analysis.decision",
+    warnings: [],
+    raw: {
+      type: "analysis.decision",
+      selectedStyle: "resonate",
+      nextStepBody: "Acknowledge the pressure and slow the pace.",
+      doThis: "Respect the boundary.",
+      avoidThis: "Do not push.",
+    },
+  };
+  const reframer = createStreamReframer({
+    prechargedRecommendation: prechargedDecision,
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "resonate",
+    nextStepBody: "Acknowledge the pressure and slow the pace.",
+    doThis: "Respect the boundary.",
+    avoidThis: "Do not push.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "I understand. We can go at your pace.",
+    reason: "Respect the boundary.",
+    quotedContext: "too fast",
+  }));
+
+  await reframer.flush();
+
+  assertEquals(chargeCalls, 0);
+  assertEquals(events.map((event) => event.type), [
+    "analysis.recommendation",
+    "analysis.done",
+  ]);
+});
+
 Deno.test("reframer rejects malformed recommendation before charge", async () => {
   let chargeCalls = 0;
   const events: StreamOutputEvent[] = [];
@@ -254,7 +339,7 @@ Deno.test("reframer parses a line split across chunks", async () => {
   assertEquals(events.map((event) => event.type), [
     "analysis.error",
   ]);
-  assertEquals(events.at(-1)?.code, "STREAM_MISSING_RECOMMENDATION");
+  assertEquals(events.at(-1)?.code, "STREAM_MISSING_CHARGE_ANCHOR");
 });
 
 Deno.test("reframer assembles a legacy-compatible final result", async () => {
@@ -270,7 +355,9 @@ Deno.test("reframer assembles a legacy-compatible final result", async () => {
 
   reframer.pushText(line({
     type: "analysis.decision",
+    selectedStyle: "resonate",
     nextStepBody: "Acknowledge the pressure and slow the pace.",
+    doThis: "Respect the boundary.",
   }));
   reframer.pushText(line({
     type: "analysis.recommendation",
@@ -378,5 +465,5 @@ Deno.test("reframer ignores malformed trailing text on flush", async () => {
   assertEquals(events.map((event) => event.type), [
     "analysis.error",
   ]);
-  assertEquals(events.at(-1)?.code, "STREAM_MISSING_RECOMMENDATION");
+  assertEquals(events.at(-1)?.code, "STREAM_MISSING_CHARGE_ANCHOR");
 });

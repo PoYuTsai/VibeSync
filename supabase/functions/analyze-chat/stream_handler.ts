@@ -54,7 +54,7 @@ export function handleStreamAnalysisRequest(
   options: StreamAnalysisHandlerOptions,
 ): Response {
   return ndjsonStreamResponse(async (emit, close) => {
-    let recommendationEmitted = false;
+    let chargedContentEmitted = false;
     let pendingDone: StreamOutputEvent | null = null;
     let pendingError: StreamOutputEvent | null = null;
 
@@ -70,7 +70,11 @@ export function handleStreamAnalysisRequest(
       }
 
       if (event.type === "analysis.recommendation") {
-        recommendationEmitted = true;
+        chargedContentEmitted = true;
+      }
+
+      if (event.type === "analysis.decision") {
+        chargedContentEmitted = true;
       }
 
       emit(event);
@@ -88,7 +92,7 @@ export function handleStreamAnalysisRequest(
     }
 
     if (options.prechargedRecommendation) {
-      recommendationEmitted = true;
+      chargedContentEmitted = true;
       emit(toRecommendationEvent(options.prechargedRecommendation));
     }
 
@@ -108,7 +112,7 @@ export function handleStreamAnalysisRequest(
       } catch (error) {
         await reframer.drain();
         if (!pendingError) {
-          pendingError = buildUpstreamError(error, recommendationEmitted);
+          pendingError = buildUpstreamError(error, chargedContentEmitted);
         }
       }
 
@@ -117,7 +121,7 @@ export function handleStreamAnalysisRequest(
       }
     } catch (error) {
       if (!pendingError) {
-        pendingError = buildUpstreamError(error, recommendationEmitted);
+        pendingError = buildUpstreamError(error, chargedContentEmitted);
       }
     } finally {
       stopHeartbeat();
@@ -237,11 +241,11 @@ async function markFailedAndEmit(
 
 function buildUpstreamError(
   error: unknown,
-  recommendationEmitted: boolean,
+  chargedContentEmitted: boolean,
 ): StreamOutputEvent {
-  if (recommendationEmitted) {
+  if (chargedContentEmitted) {
     return buildErrorEvent(
-      "STREAM_INTERRUPTED_AFTER_RECOMMENDATION",
+      "STREAM_INTERRUPTED_AFTER_CONTENT",
       "分析中途斷線，已保留先前產生的建議；請重新整理完整分析。",
       true,
       { cause: errorMessage(error) },

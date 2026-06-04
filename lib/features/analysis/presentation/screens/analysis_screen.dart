@@ -5871,7 +5871,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ),
                           ],
 
-                          if (_isAnalyzing && _streamContents.isNotEmpty) ...[
+                          if ((_isAnalyzing || _fullErrorMessage != null) &&
+                              _streamContents.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             _buildStreamingContentCard(),
                           ],
@@ -5898,6 +5899,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     _streamProgressLabel ??
                                     kFullPlaceholderClosing,
                               ),
+                          ],
+
+                          if (_quickResult == null &&
+                              _streamContents.isNotEmpty &&
+                              _fullErrorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            FullAnalysisRetryCard(
+                              retriesRemaining: _fullErrorRetriesRemaining,
+                              errorMessage: _fullErrorMessage,
+                              onRetry: _fullErrorRetriesRemaining > 0
+                                  ? _retryFullAnalysis
+                                  : null,
+                            ),
                           ],
 
                           if (_enthusiasmScore != null) ...[

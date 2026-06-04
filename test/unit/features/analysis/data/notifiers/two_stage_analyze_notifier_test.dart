@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -455,6 +455,52 @@ void main() {
           reason: 'I-P2-c: fullReady must not carry stale error');
       expect(done.fullErrorCode, isNull);
     });
+
+    test('retryFull clears preserved stream content before replay', () async {
+      final fake = _FakeAnalysisService()
+        ..streamError = StreamModeException(
+          'stream reset',
+          code: 'STREAM_INTERRUPTED_AFTER_CONTENT',
+          recoverable: true,
+          retriesRemaining: 1,
+          suggestedAction: AnalysisErrorAction.retry,
+        )
+        ..streamContents = const [
+          AnalysisStreamContent(
+            kind: AnalysisStreamContentKind.decision,
+            title: 'Decision',
+            body: 'A useful partial decision.',
+            rawEvent: {'type': 'analysis.decision'},
+          ),
+        ];
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final failed = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(failed.phase, TwoStagePhase.fullFailed);
+      expect(failed.streamContents, hasLength(1));
+
+      fake.streamError = null;
+      fake.fullResult = _full();
+      fake.streamStartGate = Completer<void>();
+
+      final retryFuture = notifier.retryFull();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final running = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(running.phase, TwoStagePhase.runningFull);
+      expect(running.streamContents, isEmpty);
+
+      fake.streamStartGate!.complete();
+      await retryFuture;
+    });
   });
 
   group('TwoStageAnalyzeNotifier — retry args caching (P1)', () {
@@ -663,6 +709,40 @@ void main() {
 
       fake.fullGate!.complete();
       await startFuture;
+    });
+
+    test('content-before-recommendation failure keeps retryable full state',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..streamError = StreamModeException(
+          'stream reset',
+          code: 'STREAM_INTERRUPTED_AFTER_CONTENT',
+          recoverable: true,
+          retriesRemaining: 1,
+          suggestedAction: AnalysisErrorAction.retry,
+        )
+        ..streamContents = const [
+          AnalysisStreamContent(
+            kind: AnalysisStreamContentKind.decision,
+            title: '下一步策略',
+            body: '先承接情緒，再把回覆壓短。',
+            rawEvent: {'type': 'analysis.decision'},
+          ),
+        ];
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final failed = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(failed.phase, TwoStagePhase.fullFailed);
+      expect(failed.quick, isNull);
+      expect(failed.streamContents, hasLength(1));
+      expect(failed.retriesRemaining, 1);
     });
 
     test('server progress takes over and is not overwritten locally', () async {

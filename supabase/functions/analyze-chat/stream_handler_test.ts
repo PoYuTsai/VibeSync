@@ -183,8 +183,11 @@ Deno.test("stream handler emits buffered core events after charge succeeds", asy
     textChunks: [
       line({
         type: "analysis.decision",
+        selectedStyle: "resonate",
         nextStepTitle: "Next move",
         nextStepBody: "Acknowledge first, then slow the pace.",
+        doThis: "Send one grounded reply.",
+        avoidThis: "Do not over-explain.",
       }),
       line({
         type: "analysis.recommendation",
@@ -224,6 +227,40 @@ Deno.test("stream handler emits buffered core events after charge succeeds", asy
   ]);
   assertEquals(events[3].nextStepTitle, "Next move");
   assertEquals(events[5].section, "strategy");
+});
+
+Deno.test("stream handler keeps a cleanly ended decision-only stream retryable", async () => {
+  let markDoneCalls = 0;
+  const failedCodes: string[] = [];
+  const response = handleStreamAnalysisRequest(createOptions({
+    textChunks: [
+      line({
+        type: "analysis.decision",
+        selectedStyle: "resonate",
+        nextStepBody: "This is useful, but not complete yet.",
+        doThis: "Wait for a recommendation before completing.",
+      }),
+    ],
+    markDone: () => {
+      markDoneCalls += 1;
+    },
+    markFailed: (code) => {
+      failedCodes.push(code);
+    },
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(markDoneCalls, 0);
+  assertEquals(failedCodes, ["STREAM_MISSING_COMPLETION_ANCHOR"]);
+  assertEquals(events.map((event) => event.type), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.progress",
+    "analysis.decision",
+    "analysis.error",
+  ]);
+  assertEquals(events.at(-1)?.code, "STREAM_MISSING_COMPLETION_ANCHOR");
 });
 
 Deno.test("stream handler marks failed and emits no done when charge fails", async () => {
@@ -285,24 +322,36 @@ Deno.test("stream handler reports pre-recommendation Claude failure without char
   assertEquals(events.at(-1)?.message, "分析暫時無法完成，請稍後重新分析。");
 });
 
-Deno.test("stream handler does not leak decision content before recommendation charge", async () => {
+Deno.test("stream handler does not leak decision content when decision charge fails", async () => {
   let chargeCalls = 0;
   const failedCodes: string[] = [];
   const response = handleStreamAnalysisRequest(createOptions({
+    chargeResult: {
+      charged: false,
+      code: "STREAM_CHARGE_FAILED",
+      message: "Quota failed.",
+      recoverable: true,
+    },
     callClaude: () =>
       Promise.resolve({
-        textStream: failingChunks([
+        textStream: chunks([
           line({
             type: "analysis.decision",
+            selectedStyle: "resonate",
             nextStepBody: "This should stay buffered before charge.",
             doThis: "Send the calibrated reply.",
             avoidThis: "Do not over-explain.",
           }),
-        ], new Error("network down before recommendation")),
+        ]),
       }),
     chargeRun: () => {
       chargeCalls += 1;
-      return { charged: true };
+      return {
+        charged: false,
+        code: "STREAM_CHARGE_FAILED",
+        message: "Quota failed.",
+        recoverable: true,
+      };
     },
     markFailed: (code) => {
       failedCodes.push(code);
@@ -311,16 +360,16 @@ Deno.test("stream handler does not leak decision content before recommendation c
 
   const events = await collectEvents(response);
 
-  assertEquals(chargeCalls, 0);
-  assertEquals(failedCodes, ["STREAM_UPSTREAM_FAILED"]);
+  assertEquals(chargeCalls, 1);
+  assertEquals(failedCodes, ["STREAM_CHARGE_FAILED"]);
   assertEquals(
     events.some((event) => event.type === "analysis.decision"),
     false,
   );
-  assertEquals(events.at(-1)?.code, "STREAM_UPSTREAM_FAILED");
+  assertEquals(events.at(-1)?.code, "STREAM_CHARGE_FAILED");
 });
 
-Deno.test("stream handler preserves recommendation before post-recommendation failure", async () => {
+Deno.test("stream handler preserves charged content before post-charge failure", async () => {
   const failedCodes: string[] = [];
   const response = handleStreamAnalysisRequest(createOptions({
     callClaude: () =>
@@ -342,7 +391,7 @@ Deno.test("stream handler preserves recommendation before post-recommendation fa
 
   const events = await collectEvents(response);
 
-  assertEquals(failedCodes, ["STREAM_INTERRUPTED_AFTER_RECOMMENDATION"]);
+  assertEquals(failedCodes, ["STREAM_INTERRUPTED_AFTER_CONTENT"]);
   assertEquals(events.map((event) => event.type), [
     "analysis.started",
     "analysis.progress",
@@ -350,7 +399,7 @@ Deno.test("stream handler preserves recommendation before post-recommendation fa
     "analysis.recommendation",
     "analysis.error",
   ]);
-  assertEquals(events.at(-1)?.code, "STREAM_INTERRUPTED_AFTER_RECOMMENDATION");
+  assertEquals(events.at(-1)?.code, "STREAM_INTERRUPTED_AFTER_CONTENT");
   assertEquals(
     events.at(-1)?.message,
     "分析中途斷線，已保留先前產生的建議；請重新整理完整分析。",

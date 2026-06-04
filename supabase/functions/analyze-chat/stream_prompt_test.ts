@@ -18,6 +18,12 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("analysis.coach_hint"));
   assert(prompt.includes("analysis.report_section"));
   assert(prompt.includes("analysis.done"));
+  assert(
+    prompt.indexOf("analysis.decision") <
+      prompt.indexOf("analysis.recommendation"),
+  );
+  assert(prompt.includes("first, as soon as you know the next move"));
+  assert(prompt.includes("analysis.progress` is optional after"));
   assert(prompt.includes("status/waiting copy only"));
   assert(prompt.includes("Do not include advice"));
   assert(prompt.includes("doThis"));

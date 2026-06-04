@@ -387,12 +387,13 @@ class TwoStageAnalyzeNotifier
       final message = e is AnalysisException ? e.message : '完整分析暫時失敗，請重新分析。';
       final code = e is AnalysisException ? e.code : null;
       final quick = state.quick;
+      final hasStreamContent = state.streamContents.isNotEmpty;
       final retriesRemaining = _streamRetriesRemaining(
         e,
-        hasRecommendation: quick != null,
+        hasRecommendation: quick != null || hasStreamContent,
       );
 
-      if (quick != null) {
+      if (quick != null || hasStreamContent) {
         state = state.copyWith(
           phase: TwoStagePhase.fullFailed,
           fullErrorMessage: message,
@@ -491,6 +492,7 @@ class TwoStageAnalyzeNotifier
       phase: TwoStagePhase.runningFull,
       fullErrorMessage: null,
       fullErrorCode: null,
+      streamContents: const <AnalysisStreamContent>[],
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
     );
