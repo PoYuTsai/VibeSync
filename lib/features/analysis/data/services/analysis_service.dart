@@ -145,8 +145,208 @@ typedef AnalysisTelemetryCallback = void Function(
 enum AnalysisStreamUpdateKind {
   started,
   progress,
+  content,
   recommendation,
   done,
+}
+
+enum AnalysisStreamContentKind {
+  decision,
+  replyOption,
+  metrics,
+  coachHint,
+  reportSection,
+}
+
+class AnalysisStreamContent {
+  final AnalysisStreamContentKind kind;
+  final String title;
+  final String body;
+  final String? tag;
+  final Map<String, dynamic> rawEvent;
+
+  const AnalysisStreamContent({
+    required this.kind,
+    required this.title,
+    required this.body,
+    this.tag,
+    required this.rawEvent,
+  });
+
+  static AnalysisStreamContent? fromEvent(Map<String, dynamic> event) {
+    final type = _stringField(event['type']);
+    switch (type) {
+      case 'analysis.decision':
+        return AnalysisStreamContent(
+          kind: AnalysisStreamContentKind.decision,
+          title: _stringField(event['nextStepTitle']) ?? '下一步策略',
+          body: _joinNonEmpty([
+            _stringField(event['nextStepBody']) ??
+                _stringField(event['nextStep']),
+            _prefix('建議', _stringField(event['doThis'])),
+            _prefix('避免', _stringField(event['avoidThis'])),
+          ]),
+          rawEvent: event,
+        );
+      case 'analysis.reply_option':
+        final style = _stringField(event['style']) ??
+            _stringField(event['selectedStyle']);
+        return AnalysisStreamContent(
+          kind: AnalysisStreamContentKind.replyOption,
+          title: '回覆選項：${_styleLabel(style)}',
+          body: _joinNonEmpty([
+            _stringField(event['message']),
+            _prefix(
+              '思路',
+              _stringField(event['reason']) ?? _stringField(event['approach']),
+            ),
+            _prefix(
+              '對應',
+              _stringField(event['quotedContext']) ??
+                  _stringField(event['sourceMessage']),
+            ),
+          ]),
+          tag: style,
+          rawEvent: event,
+        );
+      case 'analysis.metrics':
+        final score = _numberField(
+          event['heat'] ?? event['enthusiasmScore'] ?? event['score'],
+        );
+        final topicDepth = _recordField(event['topicDepth']);
+        return AnalysisStreamContent(
+          kind: AnalysisStreamContentKind.metrics,
+          title: '互動指標',
+          body: _joinNonEmpty([
+            score == null ? null : '互動熱度：$score/100',
+            _prefix(
+              '話題深度',
+              _stringField(topicDepth?['suggestion']) ??
+                  _stringField(topicDepth?['current']),
+            ),
+          ]),
+          rawEvent: event,
+        );
+      case 'analysis.coach_hint':
+        final hint = event['coachActionHint'];
+        return AnalysisStreamContent(
+          kind: AnalysisStreamContentKind.coachHint,
+          title: '教練提示',
+          body: _stringify(hint) ??
+              _joinNonEmpty([
+                _stringField(event['title']),
+                _stringField(event['message']),
+                _stringField(event['body']),
+              ]),
+          rawEvent: event,
+        );
+      case 'analysis.report_section':
+        final section = _stringField(event['section']);
+        return AnalysisStreamContent(
+          kind: AnalysisStreamContentKind.reportSection,
+          title: _sectionLabel(section),
+          body: _stringify(event['payload']) ??
+              _stringify(event['content']) ??
+              _stringField(event['message']) ??
+              '',
+          tag: section,
+          rawEvent: event,
+        );
+      default:
+        return null;
+    }
+  }
+
+  static String _styleLabel(String? style) {
+    switch (style) {
+      case 'extend':
+        return '延伸話題';
+      case 'resonate':
+        return '共鳴回應';
+      case 'tease':
+        return '輕鬆挑逗';
+      case 'humor':
+        return '幽默回覆';
+      case 'coldRead':
+        return '冷讀觀察';
+      default:
+        return '可用回覆';
+    }
+  }
+
+  static String _sectionLabel(String? section) {
+    switch (section) {
+      case 'strategy':
+        return '深度策略';
+      case 'warnings':
+        return '注意事項';
+      case 'psychology':
+        return '心理訊號';
+      case 'topicDepth':
+        return '話題深度';
+      case 'gameStage':
+        return '關係階段';
+      default:
+        return '完整分析段落';
+    }
+  }
+
+  static String? _prefix(String label, String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    return '$label：${value.trim()}';
+  }
+
+  static String _joinNonEmpty(Iterable<String?> values) {
+    return values
+        .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .join('\n');
+  }
+
+  static String? _stringField(dynamic value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static int? _numberField(dynamic value) {
+    if (value is num && value.isFinite) return value.round();
+    return null;
+  }
+
+  static Map<String, dynamic>? _recordField(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return null;
+  }
+
+  static String? _stringify(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return _stringField(value);
+    if (value is List) {
+      final joined = value
+          .map(_stringify)
+          .whereType<String>()
+          .where((item) => item.trim().isNotEmpty)
+          .join('\n');
+      return joined.isEmpty ? null : joined;
+    }
+    if (value is Map) {
+      final direct = _joinNonEmpty([
+        _stringField(value['title']),
+        _stringField(value['message']),
+        _stringField(value['body']),
+        _stringField(value['summary']),
+        _stringField(value['suggestion']),
+      ]);
+      if (direct.isNotEmpty) return direct;
+      return jsonEncode(value);
+    }
+    return value.toString();
+  }
 }
 
 class AnalysisStreamUpdate {
@@ -155,6 +355,7 @@ class AnalysisStreamUpdate {
   final String? label;
   final String? detail;
   final int? etaSeconds;
+  final AnalysisStreamContent? content;
   final QuickAnalysisResult? quick;
   final AnalysisResult? result;
   final Map<String, dynamic>? rawEvent;
@@ -165,6 +366,7 @@ class AnalysisStreamUpdate {
     this.label,
     this.detail,
     this.etaSeconds,
+    this.content,
     this.quick,
     this.result,
     this.rawEvent,
@@ -197,6 +399,23 @@ class AnalysisStreamUpdate {
           label: label,
           detail: detail,
           etaSeconds: etaSeconds,
+          rawEvent: rawEvent,
+        );
+
+  const AnalysisStreamUpdate.content({
+    required AnalysisStreamContent content,
+    String? runId,
+    String? label,
+    String? detail,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.content,
+          runId: runId,
+          label: label,
+          detail: detail,
+          etaSeconds: etaSeconds,
+          content: content,
           rawEvent: rawEvent,
         );
 
@@ -1185,6 +1404,24 @@ class AnalysisService {
               runId: runId,
               label: _stringField(event['label']) ?? '完整分析進行中',
               detail: _stringField(event['detail']),
+              etaSeconds: etaSeconds,
+              rawEvent: event,
+            );
+            break;
+          case 'analysis.decision':
+          case 'analysis.reply_option':
+          case 'analysis.metrics':
+          case 'analysis.coach_hint':
+          case 'analysis.report_section':
+            final content = AnalysisStreamContent.fromEvent(event);
+            if (content == null || content.body.trim().isEmpty) {
+              break;
+            }
+            yield AnalysisStreamUpdate.content(
+              content: content,
+              runId: runId,
+              label: content.title,
+              detail: content.body,
               etaSeconds: etaSeconds,
               rawEvent: event,
             );

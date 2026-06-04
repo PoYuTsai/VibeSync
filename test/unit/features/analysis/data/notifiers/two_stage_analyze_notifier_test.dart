@@ -76,7 +76,9 @@ class _FakeAnalysisService extends AnalysisService {
   AnalysisResult? fullResult;
   Exception? fullError;
   Exception? streamError;
+  Completer<void>? streamStartGate;
   Completer<void>? fullGate;
+  List<AnalysisStreamContent> streamContents = const [];
 
   int streamCallCount = 0;
   int quickCallCount = 0;
@@ -134,10 +136,19 @@ class _FakeAnalysisService extends AnalysisService {
     streamCallCount++;
     lastStreamRunId = analysisRunId;
     capturedStreamMessages = List<Message>.from(messages);
+    if (streamStartGate != null) await streamStartGate!.future;
     yield const AnalysisStreamUpdate.started(
       runId: 'stream-run',
       label: 'starting stream',
     );
+    for (final content in streamContents) {
+      yield AnalysisStreamUpdate.content(
+        content: content,
+        runId: 'stream-run',
+        label: content.title,
+        detail: content.body,
+      );
+    }
     if (quickError != null) throw quickError!;
     if (quickResult != null) {
       yield AnalysisStreamUpdate.recommendation(
@@ -585,6 +596,106 @@ void main() {
       expect(state.phase, TwoStagePhase.fullReady);
       expect(state.analysisRunId, 'run_B');
       expect(state.quick?.analysisRunId, 'run_B');
+    });
+  });
+
+  group('TwoStageAnalyzeNotifier streaming local prelude progress', () {
+    test('updates local progress while waiting for first server event',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..quickResult = _quick(runId: 'run_prelude')
+        ..fullResult = _full()
+        ..streamStartGate = Completer<void>();
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      final startFuture = notifier.start(messages: [_msg('hi')]);
+
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final waiting = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(waiting.phase, TwoStagePhase.runningQuick);
+      expect(waiting.streamProgressLabel, '正在送出完整分析請求');
+      expect(waiting.streamProgressDetail, '正在把最新對話與脈絡送到分析端。');
+
+      fake.streamStartGate!.complete();
+      await startFuture;
+
+      final done = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(done.phase, TwoStagePhase.fullReady);
+    });
+
+    test('accumulates structured content while full stream is running',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..quickResult = _quick(runId: 'run_content')
+        ..fullResult = _full()
+        ..fullGate = Completer<void>()
+        ..streamContents = const [
+          AnalysisStreamContent(
+            kind: AnalysisStreamContentKind.decision,
+            title: '下一步策略',
+            body: '先承接情緒，再把回覆壓短。',
+            rawEvent: {'type': 'analysis.decision'},
+          ),
+        ];
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      final startFuture = notifier.start(messages: [_msg('hi')]);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final running = container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(running.phase, TwoStagePhase.runningFull);
+      expect(running.streamContents, hasLength(1));
+      expect(running.streamContents.single.title, '下一步策略');
+      expect(running.streamContents.single.body, '先承接情緒，再把回覆壓短。');
+
+      fake.fullGate!.complete();
+      await startFuture;
+    });
+
+    test('server progress takes over and is not overwritten locally', () async {
+      final fake = _FakeAnalysisService()
+        ..fullResult = _full()
+        ..streamStartGate = Completer<void>()
+        ..fullGate = Completer<void>();
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(twoStageAnalyzeProvider('conv-1').notifier);
+
+      final startFuture = notifier.start(messages: [_msg('hi')]);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      fake.streamStartGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      final afterServerEvent =
+          container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(afterServerEvent.streamProgressLabel, 'starting stream');
+
+      await Future<void>.delayed(const Duration(milliseconds: 3200));
+      final stillServerEvent =
+          container.read(twoStageAnalyzeProvider('conv-1'));
+      expect(stillServerEvent.streamProgressLabel, 'starting stream');
+
+      fake.fullGate!.complete();
+      await startFuture;
     });
   });
 }

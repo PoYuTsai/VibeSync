@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../conversation/domain/entities/message.dart';
@@ -25,6 +27,27 @@ enum TwoStagePhase {
   fullFailed,
 }
 
+const List<(String, String)> _streamPreludeProgress = <(String, String)>[
+  (
+    '正在送出完整分析請求',
+    '正在把最新對話與脈絡送到分析端。',
+  ),
+  (
+    '正在讀取對話脈絡',
+    '正在整理對方訊號、你的回覆與上下文。',
+  ),
+  (
+    '正在推演回覆策略',
+    '正在判斷關係階段、情緒溫度與最適合的下一步。',
+  ),
+  (
+    '完整分析仍在進行',
+    '正在等待模型完成深度推理，請保持連線。',
+  ),
+];
+
+const Duration _streamPreludeProgressInterval = Duration(seconds: 3);
+
 /// Immutable orchestrator state. Carries the streaming preview + full result,
 /// plus the cached [analysisRunId] used by [TwoStageAnalyzeNotifier.retryFull]
 /// so the server can match the run without re-charging quota (invariant I1).
@@ -39,6 +62,7 @@ class TwoStageAnalysisState {
   final String? fullErrorCode;
   final String? streamProgressLabel;
   final String? streamProgressDetail;
+  final List<AnalysisStreamContent> streamContents;
   final int retriesRemaining;
   final int? conversationMessageCount;
 
@@ -53,6 +77,7 @@ class TwoStageAnalysisState {
     this.fullErrorCode,
     this.streamProgressLabel,
     this.streamProgressDetail,
+    this.streamContents = const [],
     this.retriesRemaining = 0,
     this.conversationMessageCount,
   });
@@ -76,6 +101,7 @@ class TwoStageAnalysisState {
     Object? fullErrorCode = _unset,
     Object? streamProgressLabel = _unset,
     Object? streamProgressDetail = _unset,
+    List<AnalysisStreamContent>? streamContents,
     int? retriesRemaining,
     Object? conversationMessageCount = _unset,
   }) {
@@ -105,6 +131,7 @@ class TwoStageAnalysisState {
       streamProgressDetail: identical(streamProgressDetail, _unset)
           ? this.streamProgressDetail
           : streamProgressDetail as String?,
+      streamContents: streamContents ?? this.streamContents,
       retriesRemaining: retriesRemaining ?? this.retriesRemaining,
       conversationMessageCount: identical(conversationMessageCount, _unset)
           ? this.conversationMessageCount
@@ -260,6 +287,10 @@ class TwoStageAnalyzeNotifier
     int? previousAnalyzedCount,
     int? conversationMessageCount,
   }) async {
+    final stopLocalProgress = _startLocalStreamPreludeProgress(
+      generation: generation,
+      conversationMessageCount: conversationMessageCount,
+    );
     try {
       await for (final update in _service.analyzeStream(
         analysisRunId: analysisRunId,
@@ -271,6 +302,7 @@ class TwoStageAnalyzeNotifier
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
       )) {
+        stopLocalProgress();
         if (generation != _generation) return;
 
         switch (update.kind) {
@@ -283,6 +315,26 @@ class TwoStageAnalyzeNotifier
               analysisRunId: update.runId ?? state.analysisRunId,
               streamProgressLabel: update.label,
               streamProgressDetail: update.detail,
+              conversationMessageCount: conversationMessageCount,
+            );
+            break;
+          case AnalysisStreamUpdateKind.content:
+            final content = update.content;
+            if (content == null) break;
+            state = state.copyWith(
+              phase: TwoStagePhase.runningFull,
+              analysisRunId: update.runId ?? state.analysisRunId,
+              fullErrorMessage: null,
+              fullErrorCode: null,
+              streamProgressLabel: update.label ?? content.title,
+              streamProgressDetail: update.detail ?? content.body,
+              streamContents: List<AnalysisStreamContent>.unmodifiable(
+                <AnalysisStreamContent>[
+                  ...state.streamContents,
+                  content,
+                ],
+              ),
+              retriesRemaining: 0,
               conversationMessageCount: conversationMessageCount,
             );
             break;
@@ -359,7 +411,45 @@ class TwoStageAnalyzeNotifier
         quickErrorCode: code,
         conversationMessageCount: conversationMessageCount,
       );
+    } finally {
+      stopLocalProgress();
     }
+  }
+
+  void Function() _startLocalStreamPreludeProgress({
+    required int generation,
+    int? conversationMessageCount,
+  }) {
+    var stopped = false;
+    var tick = 0;
+
+    void publish() {
+      if (stopped || generation != _generation) return;
+      final current = state;
+      if (current.phase != TwoStagePhase.runningQuick ||
+          current.quick != null) {
+        return;
+      }
+
+      final step = _streamPreludeProgress[tick % _streamPreludeProgress.length];
+      tick += 1;
+      state = current.copyWith(
+        streamProgressLabel: step.$1,
+        streamProgressDetail: step.$2,
+        conversationMessageCount: conversationMessageCount,
+      );
+    }
+
+    scheduleMicrotask(publish);
+    final timer = Timer.periodic(
+      _streamPreludeProgressInterval,
+      (_) => publish(),
+    );
+
+    return () {
+      stopped = true;
+      timer.cancel();
+    };
   }
 
   int _streamRetriesRemaining(

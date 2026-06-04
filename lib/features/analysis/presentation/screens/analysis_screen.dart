@@ -139,6 +139,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   int _fullErrorRetriesRemaining = 0;
   String? _streamProgressLabel;
   String? _streamProgressDetail;
+  List<AnalysisStreamContent> _streamContents = const [];
   int? _activeAnalysisMessageCount;
   Map<String, dynamic>? _lastAiResponse; // 儲存最後的 AI 回應
 
@@ -661,6 +662,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = 0;
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
+          _streamContents = s.streamContents;
           _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -668,13 +670,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case TwoStagePhase.quickReady:
       case TwoStagePhase.runningFull:
         setState(() {
-          _isAnalyzing = false;
+          _isAnalyzing = s.phase == TwoStagePhase.runningFull;
           _quickResult = s.quick;
           _quickResultForComparison = s.quick;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
+          _streamContents = s.streamContents;
           _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -689,6 +692,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _quickResultForComparison = s.quick;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
+            _streamContents = const [];
             _activeAnalysisMessageCount = s.conversationMessageCount;
             _clearDetailedAnalysisStateForTwoStagePartial();
           });
@@ -702,6 +706,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = 0;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
+          _streamContents = const [];
           _activeAnalysisMessageCount = null;
           _applyAnalysisResult(result);
           _enthusiasmScore = result.enthusiasmScore;
@@ -735,6 +740,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = s.retriesRemaining;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
+          _streamContents = s.streamContents;
           _activeAnalysisMessageCount = s.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -746,6 +752,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
+          _streamContents = const [];
           _activeAnalysisMessageCount = null;
           _applyErrorState(
             message: s.quickErrorMessage ?? '分析暫時失敗，請稍後再試。',
@@ -830,6 +837,135 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _lastAiResponse = null;
     _showDetailedAnalysis = false;
     _resetFeedbackState();
+  }
+
+  Widget _buildStreamingContentCard() {
+    final contents = _streamContents;
+    if (contents.isEmpty) return const SizedBox.shrink();
+
+    return GlassmorphicContainer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '正在生成完整分析',
+                      style: AppTypography.titleMedium.copyWith(
+                        color: AppColors.glassTextPrimary,
+                      ),
+                    ),
+                    if (_streamProgressLabel != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _streamProgressLabel!,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.glassTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < contents.length; i++) ...[
+            _buildStreamingContentItem(
+              contents[i],
+              isLatest: i == contents.length - 1,
+            ),
+            if (i != contents.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStreamingContentItem(
+    AnalysisStreamContent content, {
+    required bool isLatest,
+  }) {
+    final accent = isLatest ? AppColors.primary : AppColors.divider;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: isLatest ? 0.46 : 0.28),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: accent.withValues(alpha: isLatest ? 0.32 : 0.45),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            _streamContentIcon(content.kind),
+            size: 18,
+            color: isLatest ? AppColors.primary : AppColors.textSecondary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  content.title,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  content.body,
+                  maxLines: 8,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _streamContentIcon(AnalysisStreamContentKind kind) {
+    switch (kind) {
+      case AnalysisStreamContentKind.decision:
+        return Icons.route_outlined;
+      case AnalysisStreamContentKind.replyOption:
+        return Icons.chat_bubble_outline;
+      case AnalysisStreamContentKind.metrics:
+        return Icons.query_stats;
+      case AnalysisStreamContentKind.coachHint:
+        return Icons.tips_and_updates_outlined;
+      case AnalysisStreamContentKind.reportSection:
+        return Icons.subject;
+    }
   }
 
   @override
@@ -2909,6 +3045,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _fullErrorRetriesRemaining = 0;
         _streamProgressLabel = '開始完整分析';
         _streamProgressDetail = '正在建立串流連線。';
+        _streamContents = const [];
         _activeAnalysisMessageCount = conversation.messages.length;
       });
 
@@ -2960,7 +3097,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         prev?.analysisRunId == next.analysisRunId &&
         prev?.full == next.full &&
         prev?.streamProgressLabel == next.streamProgressLabel &&
-        prev?.streamProgressDetail == next.streamProgressDetail) {
+        prev?.streamProgressDetail == next.streamProgressDetail &&
+        prev?.streamContents == next.streamContents) {
       return;
     }
     switch (next.phase) {
@@ -2973,6 +3111,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = 0;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
+          _streamContents = next.streamContents;
           _activeAnalysisMessageCount = next.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
           _resetErrorState();
@@ -2987,6 +3126,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = 0;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
+          _streamContents = next.streamContents;
           _activeAnalysisMessageCount = next.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -3001,6 +3141,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = 0;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
+          _streamContents = next.streamContents;
           if (next.quick != null) {
             _quickResult = next.quick;
             _quickResultForComparison = next.quick;
@@ -3019,6 +3160,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _quickResultForComparison = next.quick;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
+            _streamContents = const [];
             _activeAnalysisMessageCount = next.conversationMessageCount;
             _clearDetailedAnalysisStateForTwoStagePartial();
           });
@@ -3034,6 +3176,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = 0;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
+          _streamContents = const [];
           _activeAnalysisMessageCount = null;
           _quickResultForComparison = next.quick ?? _quickResultForComparison;
           _quickResult = null;
@@ -3072,6 +3215,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _fullErrorRetriesRemaining = next.retriesRemaining;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
+          _streamContents = next.streamContents;
           _activeAnalysisMessageCount = next.conversationMessageCount;
           _clearDetailedAnalysisStateForTwoStagePartial();
         });
@@ -3085,6 +3229,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
+          _streamContents = const [];
           _activeAnalysisMessageCount = null;
           _applyErrorState(
             message: message,
@@ -5724,6 +5869,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 detail: _streamProgressDetail,
                               ),
                             ),
+                          ],
+
+                          if (_isAnalyzing && _streamContents.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            _buildStreamingContentCard(),
                           ],
 
                           // While full analysis is still running, keep the

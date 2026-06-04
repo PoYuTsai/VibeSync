@@ -361,6 +361,18 @@ void main() {
                 'detail': 'checking context',
               }),
               jsonEncode({
+                'type': 'analysis.decision',
+                'nextStepTitle': 'Next move',
+                'nextStepBody': 'Acknowledge first, then slow the pace.',
+                'doThis': 'Send one grounded reply.',
+                'avoidThis': 'Do not over-explain.',
+              }),
+              jsonEncode({
+                'type': 'analysis.report_section',
+                'section': 'strategy',
+                'content': 'Back off and rebuild trust.',
+              }),
+              jsonEncode({
                 'type': 'analysis.recommendation',
                 'selectedStyle': 'resonate',
                 'message': 'I get why that felt off.',
@@ -390,16 +402,25 @@ void main() {
       expect(updates.map((u) => u.kind).toList(), [
         AnalysisStreamUpdateKind.started,
         AnalysisStreamUpdateKind.progress,
+        AnalysisStreamUpdateKind.content,
+        AnalysisStreamUpdateKind.content,
         AnalysisStreamUpdateKind.recommendation,
         AnalysisStreamUpdateKind.done,
       ]);
       expect(updates[0].runId, 'stream_1');
       expect(updates[0].etaSeconds, 18);
       expect(updates[1].label, 'reading');
-      expect(updates[2].quick?.analysisRunId, 'stream_1');
-      expect(updates[2].quick?.pick, 'resonate');
-      expect(updates[2].quick?.recommendedReply, 'I get why that felt off.');
-      expect(updates[3].result?.strategy, _fullSuccessBody['strategy']);
+      expect(updates[2].content?.title, 'Next move');
+      expect(
+        updates[2].content?.body,
+        contains('Acknowledge first, then slow the pace.'),
+      );
+      expect(updates[3].content?.title, '深度策略');
+      expect(updates[3].content?.body, 'Back off and rebuild trust.');
+      expect(updates[4].quick?.analysisRunId, 'stream_1');
+      expect(updates[4].quick?.pick, 'resonate');
+      expect(updates[4].quick?.recommendedReply, 'I get why that felt off.');
+      expect(updates[5].result?.strategy, _fullSuccessBody['strategy']);
 
       final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
       expect(body['responseMode'], 'stream');

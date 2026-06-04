@@ -178,6 +178,54 @@ Deno.test("stream handler charges before emitting recommendation", async () => {
   ]);
 });
 
+Deno.test("stream handler emits buffered core events after charge succeeds", async () => {
+  const response = handleStreamAnalysisRequest(createOptions({
+    textChunks: [
+      line({
+        type: "analysis.decision",
+        nextStepTitle: "Next move",
+        nextStepBody: "Acknowledge first, then slow the pace.",
+      }),
+      line({
+        type: "analysis.recommendation",
+        selectedStyle: "resonate",
+        message: "I get why that felt off.",
+        reason: "Respect the boundary.",
+        quotedContext: "too fast",
+      }),
+      line({
+        type: "analysis.report_section",
+        section: "strategy",
+        content: "Back off and rebuild trust.",
+      }),
+      line({
+        type: "analysis.done",
+        finalResult: {
+          strategy: "Back off and rebuild trust.",
+          finalRecommendation: {
+            pick: "resonate",
+            content: "I get why that felt off.",
+          },
+        },
+      }),
+    ],
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(events.map((event) => event.type), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.progress",
+    "analysis.decision",
+    "analysis.recommendation",
+    "analysis.report_section",
+    "analysis.done",
+  ]);
+  assertEquals(events[3].nextStepTitle, "Next move");
+  assertEquals(events[5].section, "strategy");
+});
+
 Deno.test("stream handler marks failed and emits no done when charge fails", async () => {
   const failedCodes: string[] = [];
   const response = handleStreamAnalysisRequest(createOptions({
