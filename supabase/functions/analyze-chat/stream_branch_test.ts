@@ -95,6 +95,16 @@ Deno.test("stream retry reports non-charging usage and telemetry", async () => {
   );
 });
 
+Deno.test("stream failures report remaining retry slots from the ledger", async () => {
+  const branch = streamBranch(await readIndexSource());
+
+  assert(
+    branch.includes("const failedRun = await streamStore.markFailed({"),
+  );
+  assert(branch.includes("event.retriesRemaining = Math.max("));
+  assert(branch.includes("MAX_STREAM_RETRIES - failedRun.retry_count"));
+});
+
 Deno.test("stream branch does not use the two-stage run charge path", async () => {
   const source = await readIndexSource();
   const branch = streamBranch(source);

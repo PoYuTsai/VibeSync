@@ -10,6 +10,30 @@
 
 ## 2026-06
 
+### [2026-06-05] 完整分析串流失敗缺少 retry metadata
+
+**症狀**:
+
+- Dogfood 夥伴偶發看到「串流分析缺少完整結果，請重新分析。」或「無法再重試」，但另一支手機同時間可成功完成分析。
+- 失敗畫面會保留部分串流段落，代表主流程已產生內容，但收尾或重試路徑未穩定完成。
+
+**Root Cause**:
+
+- 本地最新 stream reframer/handler 已會合成 `finalResult` 或將缺結果轉成 retryable error；截圖較像 live Edge 仍在舊版或部署未完成。
+- stream branch 的 `markFailed` 只寫入 ledger，沒有把 `MAX_STREAM_RETRIES - retry_count` 回填到即將送出的 `analysis.error.retriesRemaining`，前端只能用 fallback 猜剩餘次數，容易讓重試狀態和 server ledger 不一致。
+
+**修復**:
+
+- stream 失敗寫入 `analysis_stream_runs` 後，使用回傳 row 的 `retry_count` 計算 `retriesRemaining` 並附回 `analysis.error`。
+- 新增 stream branch 測試，鎖住失敗事件必須由 ledger 回報剩餘 retry slot。
+
+**驗證**:
+
+- `deno test --allow-read supabase/functions/analyze-chat/reframer_test.ts supabase/functions/analyze-chat/stream_handler_test.ts supabase/functions/analyze-chat/stream_branch_test.ts`
+- `flutter test --no-pub test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart test/unit/features/analysis/data/notifiers/two_stage_analyze_notifier_test.dart`
+- `deno fmt --check supabase/functions/analyze-chat/index.ts supabase/functions/analyze-chat/stream_branch_test.ts`
+- `git diff --check`
+
 ### [2026-06-04] 完整分析等待狀態遮擋與工程文案外露
 
 **症狀**:

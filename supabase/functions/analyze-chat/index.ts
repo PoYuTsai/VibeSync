@@ -6422,7 +6422,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           return finalPayload;
         },
         markFailed: async (code, details) => {
-          await streamStore.markFailed({
+          const failedRun = await streamStore.markFailed({
             runId: streamRun.id,
             userId: user.id,
             conversationHash: conversationHashValue,
@@ -6430,6 +6430,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           });
 
           const event = isPlainObject(details?.event) ? details.event : {};
+          event.retriesRemaining = Math.max(
+            0,
+            MAX_STREAM_RETRIES - failedRun.retry_count,
+          );
           const message = typeof event.message === "string"
             ? event.message
             : code;
