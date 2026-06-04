@@ -36,6 +36,7 @@ export interface ReframerOptions {
     recommendation: StreamRecommendationForCharge,
   ) => Promise<StreamChargeResult> | StreamChargeResult;
   prechargedRecommendation?: StreamRecommendationForCharge;
+  requiredReplyStyles?: readonly StreamStyle[];
 }
 
 export interface StreamReframer {
@@ -62,6 +63,10 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     ?.type === "analysis.recommendation";
   let modelDoneHadFinalResult = false;
   const preChargeEvents: StreamEvent[] = [];
+  const requiredReplyStyles = normalizeRequiredReplyStyles(
+    options.requiredReplyStyles,
+  );
+  const requiredReplyStyleSet = new Set(requiredReplyStyles);
 
   if (options.prechargedRecommendation) {
     assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
@@ -71,20 +76,37 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     code: string,
     message: string,
     recoverable = true,
+    extra: Record<string, unknown> = {},
   ) => {
     options.emit({
       type: "analysis.error",
       code,
       message,
       recoverable,
+      ...extra,
     });
   };
 
   const emitDone = () => {
     if (doneEmitted || closed) return;
+    const finalResult = assembler.build();
+    const missingStyles = findMissingRequiredReplyStyles(
+      finalResult,
+      requiredReplyStyles,
+    );
+    if (missingStyles.length > 0) {
+      emitError(
+        "STREAM_INCOMPLETE_REPLY_OPTIONS",
+        "Streaming analysis ended before every allowed reply style was generated.",
+        true,
+        { missingStyles },
+      );
+      closed = true;
+      return;
+    }
     options.emit({
       type: "analysis.done",
-      finalResult: assembler.build(),
+      finalResult,
     });
     doneEmitted = true;
     closed = true;
@@ -104,6 +126,19 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const absorbAndEmit = (event: StreamOutputEvent) => {
     assembler.absorb(event);
     options.emit(event);
+  };
+
+  const styleIsAllowed = (style: StreamStyle) =>
+    requiredReplyStyleSet.size === 0 || requiredReplyStyleSet.has(style);
+
+  const rejectUnavailableAnchorStyle = (style: StreamStyle) => {
+    emitError(
+      "STREAM_UNAVAILABLE_REPLY_STYLE",
+      "Streaming analysis selected a reply style outside this user's plan.",
+      true,
+      { selectedStyle: style },
+    );
+    closed = true;
   };
 
   const flushPreChargeEvents = () => {
@@ -152,6 +187,11 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       return;
     }
 
+    if (!styleIsAllowed(validation.selectedStyle)) {
+      rejectUnavailableAnchorStyle(validation.selectedStyle);
+      return;
+    }
+
     if (!(await chargeFromValidation(validation))) return;
     absorbAndEmit(event);
   };
@@ -161,6 +201,11 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (!validation.ok) {
       emitError(validation.code, validation.reason);
       closed = true;
+      return;
+    }
+
+    if (!styleIsAllowed(validation.selectedStyle)) {
+      rejectUnavailableAnchorStyle(validation.selectedStyle);
       return;
     }
 
@@ -206,6 +251,11 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       options.emit(event);
       closed = true;
       return;
+    }
+
+    if (event.type === "analysis.reply_option") {
+      const style = replyStyleFrom(event);
+      if (style && !styleIsAllowed(style)) return;
     }
 
     if (!chargeCompleted) {
@@ -523,6 +573,10 @@ function streamStyleFrom(value: unknown): StreamStyle | null {
   return isStreamStyle(value) ? value : null;
 }
 
+function replyStyleFrom(event: Record<string, unknown>): StreamStyle | null {
+  return streamStyleFrom(event.style ?? event.selectedStyle);
+}
+
 function stringField(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -533,6 +587,72 @@ function numberField(value: unknown): number | null {
 
 function recordField(value: unknown): Record<string, unknown> | null {
   return isRecord(value) ? value : null;
+}
+
+function normalizeRequiredReplyStyles(
+  values: readonly StreamStyle[] | undefined,
+): StreamStyle[] {
+  if (!values) return [];
+
+  const normalized: StreamStyle[] = [];
+  for (const value of values) {
+    if (isStreamStyle(value) && !normalized.includes(value)) {
+      normalized.push(value);
+    }
+  }
+  return normalized;
+}
+
+function findMissingRequiredReplyStyles(
+  result: Record<string, unknown>,
+  requiredStyles: readonly StreamStyle[],
+): StreamStyle[] {
+  if (requiredStyles.length === 0) return [];
+
+  const replies = recordField(result.replies) ?? {};
+  const replyOptions = recordField(result.replyOptions) ?? {};
+
+  return requiredStyles.filter((style) =>
+    !hasUsableReplyValue(replies[style]) &&
+    !hasUsableReplyOption(replyOptions[style])
+  );
+}
+
+function hasUsableReplyValue(value: unknown): boolean {
+  if (stringField(value).length > 0) return true;
+  if (!isRecord(value)) return false;
+
+  return [
+    value.reply,
+    value.content,
+    value.text,
+    value.message,
+  ].some((candidate) => stringField(candidate).length > 0) ||
+    hasUsableReplySegments(
+      value.messages ?? value.messageGroup ?? value.replySegments,
+    );
+}
+
+function hasUsableReplyOption(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+
+  return [
+    value.reply,
+    value.content,
+    value.text,
+    value.message,
+  ].some((candidate) => stringField(candidate).length > 0) ||
+    hasUsableReplySegments(
+      value.messages ?? value.messageGroup ?? value.replySegments,
+    );
+}
+
+function hasUsableReplySegments(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.some((item) =>
+    isRecord(item) &&
+    stringField(item.reply ?? item.content ?? item.text).length > 0
+  );
 }
 
 function doneResultField(event: Record<string, unknown>) {

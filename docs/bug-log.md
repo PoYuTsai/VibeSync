@@ -8,6 +8,31 @@
 
 ---
 
+## 2026-06
+
+### [2026-06-04] 完整分析串流少四種回覆
+
+**症狀**:
+
+- 最新 build dogfood 多次測試完整分析串流時，paid 應有五種回覆，但結果常只剩單一推薦回覆，少了其餘四種 style。
+
+**Root Cause**:
+
+- 串流 reframer 只要求有扣費錨點與 completion anchor，沒有在 `analysis.done` 前驗證目前 tier 允許的 reply styles 是否都到齊。
+- Shared post-process 只保證回覆非空並做 entitlement filter，不保證 paid tier 的五種回覆完整，因此 partial stream 會被存成成功結果。
+- Stream path 仍沿用 legacy full 的 `1536` output token 上限，但串流要額外輸出 decision / recommendation / reply_option / finalResult，讓模型更容易省略 fan-out。
+
+**修正**:
+
+- `stream_prompt` 依 active tier 限定 allowed reply styles，明確要求每個 allowed style 都要有 `analysis.reply_option`，且 `finalResult.replies/replyOptions` 必須齊全。
+- `reframer` 在 done 前檢查 required styles；paid 缺四種會回 `STREAM_INCOMPLETE_REPLY_OPTIONS` 並保留 retry path，不再把 partial result 當成功。
+- `reframer` 過濾 tier 外的 `analysis.reply_option`，並拒絕 tier 外 selected style，避免 Free 串流中途外洩付費 style。
+- Stream Claude output budget 改用 `STREAM_ANALYZE_MAX_TOKENS = 2200`，只影響 stream path，不動 quota/扣費順序。
+
+**驗證**:
+
+- `deno test --allow-read supabase/functions/analyze-chat`
+
 ## 2026-05
 
 ### [2026-05-29] 問名字後的 AI 建議被教練卡誤判太長

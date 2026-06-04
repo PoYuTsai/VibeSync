@@ -7,6 +7,7 @@ import type {
   StreamChargeResult,
   StreamRecommendationForCharge,
 } from "./reframer.ts";
+import type { StreamStyle } from "./stream_events.ts";
 
 function line(value: Record<string, unknown>): string {
   return `${JSON.stringify(value)}\n`;
@@ -64,12 +65,14 @@ function createOptions(overrides: {
   progressEvents?: Record<string, unknown>[];
   heartbeatIntervalMs?: number;
   prechargedRecommendation?: StreamRecommendationForCharge;
+  requiredReplyStyles?: readonly StreamStyle[];
 } = {}) {
   return {
     runId: "run-1",
     conversationHash: "hash-1",
     progressEvents: overrides.progressEvents as never,
     heartbeatIntervalMs: overrides.heartbeatIntervalMs,
+    requiredReplyStyles: overrides.requiredReplyStyles,
     callClaude: overrides.callClaude ??
       (() =>
         Promise.resolve({
@@ -496,6 +499,90 @@ Deno.test("stream handler emits processed final result returned by markDone", as
   const finalResult = done?.finalResult as Record<string, unknown> | undefined;
 
   assertEquals(finalResult?.processedByPostProcess, true);
+});
+
+Deno.test("stream handler fails paid streams missing four reply styles before markDone", async () => {
+  let markDoneCalls = 0;
+  const failedCodes: string[] = [];
+  const response = handleStreamAnalysisRequest(createOptions({
+    requiredReplyStyles: ["extend", "resonate", "tease", "humor", "coldRead"],
+    textChunks: [
+      line({
+        type: "analysis.recommendation",
+        selectedStyle: "resonate",
+        message: "I get why that felt off.",
+        reason: "Respect the boundary.",
+        quotedContext: "too fast",
+      }),
+      line({
+        type: "analysis.done",
+        finalResult: {
+          replies: {
+            resonate: "I get why that felt off.",
+          },
+          finalRecommendation: {
+            pick: "resonate",
+            content: "I get why that felt off.",
+          },
+        },
+      }),
+    ],
+    markDone: () => {
+      markDoneCalls += 1;
+    },
+    markFailed: (code) => {
+      failedCodes.push(code);
+    },
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(markDoneCalls, 0);
+  assertEquals(failedCodes, ["STREAM_INCOMPLETE_REPLY_OPTIONS"]);
+  assertEquals(events.at(-1)?.type, "analysis.error");
+  assertEquals(events.at(-1)?.code, "STREAM_INCOMPLETE_REPLY_OPTIONS");
+  assertEquals(events.some((event) => event.type === "analysis.done"), false);
+});
+
+Deno.test("stream handler does not emit reply options outside required styles", async () => {
+  const response = handleStreamAnalysisRequest(createOptions({
+    requiredReplyStyles: ["extend"],
+    textChunks: [
+      line({
+        type: "analysis.recommendation",
+        selectedStyle: "extend",
+        message: "Tell me more about that.",
+        reason: "Keeps the thread open.",
+        quotedContext: "long day",
+      }),
+      line({
+        type: "analysis.reply_option",
+        style: "tease",
+        message: "This paid style must not stream to a Free user.",
+        reason: "Unauthorized style.",
+      }),
+      line({
+        type: "analysis.done",
+        finalResult: {
+          replies: {
+            extend: "Tell me more about that.",
+          },
+          finalRecommendation: {
+            pick: "extend",
+            content: "Tell me more about that.",
+          },
+        },
+      }),
+    ],
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(
+    events.some((event) => event.type === "analysis.reply_option"),
+    false,
+  );
+  assertEquals(events.at(-1)?.type, "analysis.done");
 });
 
 Deno.test("stream handler accepts result alias and emits both done payload keys", async () => {

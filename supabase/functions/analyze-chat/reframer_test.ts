@@ -443,6 +443,109 @@ Deno.test("reframer emits synthetic done when model omits done event", async () 
   ]);
 });
 
+Deno.test("reframer rejects paid completion when four reply styles are missing", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend", "resonate", "tease", "humor", "coldRead"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "I get why that felt off.",
+    reason: "Respect the boundary.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      replies: {
+        resonate: "I get why that felt off.",
+      },
+      replyOptions: {
+        resonate: {
+          approach: "Respect the boundary.",
+          messages: [{ reply: "I get why that felt off." }],
+        },
+      },
+      finalRecommendation: {
+        pick: "resonate",
+        content: "I get why that felt off.",
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  assertEquals(events.map((event) => event.type), [
+    "analysis.recommendation",
+    "analysis.error",
+  ]);
+  assertEquals(events.at(-1)?.code, "STREAM_INCOMPLETE_REPLY_OPTIONS");
+  assertEquals(events.at(-1)?.missingStyles, [
+    "extend",
+    "tease",
+    "humor",
+    "coldRead",
+  ]);
+});
+
+Deno.test("reframer filters reply options outside the active tier", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Tell me more about that.",
+    reason: "Keeps the thread open.",
+    quotedContext: "long day",
+  }));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "tease",
+    message: "This paid style must not stream to a Free user.",
+    reason: "Unauthorized style.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      replies: {
+        extend: "Tell me more about that.",
+      },
+      finalRecommendation: {
+        pick: "extend",
+        content: "Tell me more about that.",
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  assertEquals(events.map((event) => event.type), [
+    "analysis.recommendation",
+    "analysis.done",
+  ]);
+  assertEquals(
+    events.some((event) => event.type === "analysis.reply_option"),
+    false,
+  );
+});
+
 Deno.test("reframer accepts analysis.done result alias", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({

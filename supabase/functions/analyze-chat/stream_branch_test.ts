@@ -31,7 +31,11 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   assert(source.includes("streamStore.reserveRetry({"));
   assert(source.includes("handleStreamAnalysisRequest({"));
   assert(source.includes("callClaudeStreaming("));
-  assert(source.includes("buildStreamSystemPrompt(SYSTEM_PROMPT)"));
+  assert(source.includes("buildStreamSystemPrompt("));
+  assert(source.includes("streamReplyStyles"));
+  assert(source.includes("requiredReplyStyles: streamReplyStyles"));
+  assert(source.includes("const STREAM_ANALYZE_MAX_TOKENS = 2200"));
+  assert(source.includes("max_tokens: STREAM_ANALYZE_MAX_TOKENS"));
   assert(source.includes("const STREAM_CLAUDE_TIMEOUT_MS = 120000"));
   assert(source.includes("{ timeout: STREAM_CLAUDE_TIMEOUT_MS }"));
   assert(source.includes("streamStore.chargeRun({"));

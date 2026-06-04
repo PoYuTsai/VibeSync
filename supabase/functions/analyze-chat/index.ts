@@ -42,7 +42,7 @@ import {
   createSupabaseAnalysisStreamRunDriver,
 } from "./stream_run_store.ts";
 import type { StreamRecommendationForCharge } from "./reframer.ts";
-import { isStreamStyle } from "./stream_events.ts";
+import { isStreamStyle, STREAM_STYLES } from "./stream_events.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import {
   applyQuickGuardrails,
@@ -4086,6 +4086,7 @@ const STREAM_ANALYZE_ENABLED =
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
+const STREAM_ANALYZE_MAX_TOKENS = 2200;
 // 測試帳號白名單 (不扣額度)
 const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
@@ -6191,6 +6192,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       whitelist: STREAM_WHITELIST,
     });
     if (responseMode === "stream" && streamSupported && streamAllowed) {
+      const streamReplyStyles = STREAM_STYLES.filter((style) =>
+        allowedFeatures.includes(style)
+      );
       const conversationHashValue = await hashConversation({
         messages,
         userDraft,
@@ -6311,8 +6315,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           const claude = await callClaudeStreaming(
             {
               model: selectedModel,
-              max_tokens: 1536,
-              system: buildStreamSystemPrompt(SYSTEM_PROMPT),
+              max_tokens: STREAM_ANALYZE_MAX_TOKENS,
+              system: buildStreamSystemPrompt(
+                SYSTEM_PROMPT,
+                streamReplyStyles,
+              ),
               messages: [{ role: "user", content: userMessageContent }],
             },
             CLAUDE_API_KEY,
@@ -6350,6 +6357,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           }
         },
         prechargedRecommendation,
+        requiredReplyStyles: streamReplyStyles,
         markDone: async (finalResult) => {
           const guarded = checkAiOutput(
             finalResult as GuardrailAnalysisResult,

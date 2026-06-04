@@ -6,6 +6,7 @@ import {
   type StreamRecommendationForCharge,
   toRecommendationEvent,
 } from "./reframer.ts";
+import type { StreamStyle } from "./stream_events.ts";
 
 export interface ClaudeTextStreamResult {
   model?: string;
@@ -24,6 +25,7 @@ export interface StreamAnalysisHandlerOptions {
     recommendation: StreamRecommendationForCharge,
   ) => Promise<StreamChargeResult> | StreamChargeResult;
   prechargedRecommendation?: StreamRecommendationForCharge;
+  requiredReplyStyles?: readonly StreamStyle[];
   markDone: (
     finalResult: Record<string, unknown>,
   ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
@@ -101,6 +103,7 @@ export function handleStreamAnalysisRequest(
       emit: emitReframed,
       onRecommendation: options.chargeRun,
       prechargedRecommendation: options.prechargedRecommendation,
+      requiredReplyStyles: options.requiredReplyStyles,
     });
 
     try {

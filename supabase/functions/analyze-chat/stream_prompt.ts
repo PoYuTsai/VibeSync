@@ -4,7 +4,19 @@
 // only the transport contract so Claude emits complete JSONL events in the
 // order the streaming reframer can validate and assemble.
 
-export function buildStreamSystemPrompt(basePrompt: string): string {
+import {
+  isStreamStyle,
+  STREAM_STYLES,
+  type StreamStyle,
+} from "./stream_events.ts";
+
+export function buildStreamSystemPrompt(
+  basePrompt: string,
+  requestedReplyStyles: readonly string[] = STREAM_STYLES,
+): string {
+  const replyStyles = normalizeReplyStyles(requestedReplyStyles);
+  const styleList = replyStyles.map((style) => `\`${style}\``).join(", ");
+
   return [
     basePrompt.trim(),
     "",
@@ -17,15 +29,28 @@ export function buildStreamSystemPrompt(basePrompt: string): string {
     "Emit events in this exact order:",
     "1. `analysis.decision` first, as soon as you know the next move. Do not wait for the full report. Include `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`.",
     "2. `analysis.recommendation` once with the official reply recommendation and fields `selectedStyle`, `message`, `reason`, and `quotedContext`.",
-    "3. `analysis.reply_option` for the selected style first, then the other styles.",
+    `3. Emit exactly ${replyStyles.length} \`analysis.reply_option\` events: one for each allowed reply style (${styleList}). Emit the selected style first, then the other allowed styles.`,
     "4. `analysis.metrics` once.",
     "5. `analysis.coach_hint` once when useful.",
     "6. `analysis.report_section` for deeper sections.",
     "7. `analysis.done` once at the end. Include `finalResult` with a legacy-compatible analysis result.",
     "`analysis.progress` is optional after `analysis.decision` only. It must contain status/waiting copy only. Do not include advice, reply text, selected style, doThis, avoidThis, or conversation-specific coaching in progress events.",
     "",
-    "Use only these style values: `extend`, `resonate`, `tease`, `humor`, `coldRead`.",
+    `Use only these style values for this request: ${styleList}.`,
+    "Do not emit reply styles outside this request list.",
     "The `analysis.recommendation.selectedStyle` must match the final recommendation direction in `analysis.done.finalResult`.",
+    "The selected style must be one of the request style values.",
+    `analysis.done.finalResult.replies and \`replyOptions\` must include every allowed reply style for this request: ${styleList}.`,
     "Write user-facing content in Traditional Chinese.",
   ].join("\n");
+}
+
+function normalizeReplyStyles(values: readonly string[]): StreamStyle[] {
+  const normalized: StreamStyle[] = [];
+  for (const value of values) {
+    if (isStreamStyle(value) && !normalized.includes(value)) {
+      normalized.push(value);
+    }
+  }
+  return normalized.length > 0 ? normalized : [...STREAM_STYLES];
 }
