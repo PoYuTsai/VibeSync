@@ -173,7 +173,17 @@ class ReplySegment {
   String get displayLabel {
     final trimmedLabel = label.trim();
     if (trimmedLabel.isNotEmpty) {
-      return trimmedLabel;
+      switch (trimmedLabel.toLowerCase()) {
+        case 'recommended':
+        case 'quote':
+        case 'quoted':
+        case 'source':
+          return '引用對方';
+        case 'selected':
+          return '推薦接法';
+        default:
+          return trimmedLabel;
+      }
     }
     if (sourceIndex != null) {
       return '回第 $sourceIndex 句';

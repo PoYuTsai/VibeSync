@@ -10,6 +10,34 @@
 
 ## 2026-06
 
+### [2026-06-04] 完整分析等待狀態遮擋與工程文案外露
+
+**症狀**:
+
+- 完整分析串流等待中，底部「建立這段對話 / 補訊息」輸入區仍固定顯示，遮住分析進度與下方內容。
+- 等待中的「心理訊號」段落偶發顯示 raw JSON，例如 `{"subtext":...,"qualificationSignal":false}`。
+- 推薦回覆的引用標籤顯示英文 schema key `recommended`，看起來像工程文案。
+
+**Root Cause**:
+
+- `AnalysisScreen` 在 `_isAnalyzing` 時仍回傳完整手動訊息 composer。
+- `AnalysisStreamContent._stringify` 對不含 `title/message/body/summary/suggestion` 的 map 直接 `jsonEncode`，且沒有處理字串形式的 JSON。
+- `ReplySegment.displayLabel` 直接使用模型 label，未本地化穩定 schema key。
+
+**修復**:
+
+- 完整分析跑動期間收起底部 composer，分析完成後再恢復原本入口。
+- stream report section 將常見 structured payload 轉成短中文行，並解析 stringified JSON，避免 raw JSON 外露。
+- `recommended/quote/quoted/source` 顯示為「引用對方」，`selected` 顯示為「推薦接法」。
+
+**驗證**:
+
+- `flutter test --no-pub test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart`
+- `flutter test --no-pub test/unit/entities/analysis_models_test.dart`
+- `flutter test --no-pub test/widget/features/analysis/analysis_screen_hydration_test.dart`
+- `flutter analyze --no-pub lib/features/analysis/data/services/analysis_service.dart lib/features/analysis/domain/entities/analysis_models.dart lib/features/analysis/presentation/screens/analysis_screen.dart test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart test/unit/entities/analysis_models_test.dart test/widget/features/analysis/analysis_screen_hydration_test.dart`
+- analysis 相關 135 個 unit/widget tests
+
 ### [2026-06-04] 完整分析串流少四種回覆
 
 **症狀**:

@@ -481,6 +481,47 @@ void main() {
       expect(updates.single.result?.recommendation.content, 'c');
     });
 
+    test('formats report section object payload without raw JSON', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.report_section',
+                'section': 'psychology',
+                'content': {
+                  'subtext': '她用活潑的方式回應，展現友善開放的態度',
+                  'qualificationSignal': false,
+                },
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.first.content?.title, '心理訊號');
+      expect(updates.first.content?.body, contains('她用活潑的方式回應'));
+      expect(updates.first.content?.body, contains('主動投入訊號：沒有'));
+      expect(updates.first.content?.body, isNot(contains('{"subtext"')));
+      expect(
+          updates.first.content?.body, isNot(contains('qualificationSignal')));
+    });
+
     test('includes analysisRunId when retrying an existing stream run',
         () async {
       late http.Request capturedRequest;

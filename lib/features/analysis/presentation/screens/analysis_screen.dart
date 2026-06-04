@@ -6685,6 +6685,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   Widget _buildCollapsibleMessageInput() {
+    if (_isAnalyzing) {
+      return const SizedBox.shrink();
+    }
+
     // 沒有分析結果時，直接顯示輸入區
     if (_enthusiasmScore == null) {
       return _buildMessageInput(showScreenshotUpload: false);

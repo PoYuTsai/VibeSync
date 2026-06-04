@@ -444,6 +444,10 @@ void main() {
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
                 'Running full analysis should show streaming progress, not the upload/start-analysis card.');
+        expect(find.text('建立這段對話'), findsNothing);
+        expect(find.text('貼上或輸入新的一則訊息...'), findsNothing,
+            reason:
+                'Manual composer should collapse while full analysis is streaming so it does not cover the result area.');
         expect(recorder.quickCalls, 0);
         expect(recorder.fullCalls, 0);
       },

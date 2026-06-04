@@ -149,6 +149,26 @@ void main() {
         '樂華夜市我只問一件事：妳等等會不會被罪惡美食收買？',
       );
     });
+
+    test('localizes stable reply segment labels from model schema', () {
+      final recommendation = FinalRecommendation.fromJson({
+        'pick': 'extend',
+        'content': '妳這三聲 hi 很有層次，是專業打招呼嗎？',
+        'reason': '把推薦回覆接到她的原句',
+        'psychology': '用輕鬆幽默接球',
+        'replySegments': [
+          {
+            'sourceIndex': 1,
+            'label': 'recommended',
+            'sourceMessage': 'hihihi',
+            'reply': '妳這三聲 hi 很有層次，是專業打招呼嗎？',
+            'reason': '引用對方原句',
+          },
+        ],
+      });
+
+      expect(recommendation.replySegments.single.displayLabel, '引用對方');
+    });
   });
 
   group('ReplyOption', () {

@@ -325,7 +325,22 @@ class AnalysisStreamContent {
 
   static String? _stringify(dynamic value) {
     if (value == null) return null;
-    if (value is String) return _stringField(value);
+    if (value is String) {
+      final trimmed = _stringField(value);
+      if (trimmed == null) return null;
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          final decoded = jsonDecode(trimmed);
+          final formatted = _stringify(decoded);
+          if (formatted != null && formatted.trim().isNotEmpty) {
+            return formatted;
+          }
+        } on FormatException {
+          // Fall through to the original text.
+        }
+      }
+      return trimmed;
+    }
     if (value is List) {
       final joined = value
           .map(_stringify)
@@ -343,8 +358,54 @@ class AnalysisStreamContent {
         _stringField(value['suggestion']),
       ]);
       if (direct.isNotEmpty) return direct;
-      return jsonEncode(value);
+      final structured = _formatStructuredMap(value);
+      if (structured != null) return structured;
+      return null;
     }
+    return value.toString();
+  }
+
+  static String? _formatStructuredMap(Map value) {
+    final lines = <String>[];
+    final usedKeys = <String>{};
+
+    void add(String key, String label) {
+      if (!value.containsKey(key)) return;
+      final formatted = _formatStructuredValue(value[key]);
+      if (formatted == null || formatted.isEmpty) return;
+      usedKeys.add(key);
+      lines.add('$label：$formatted');
+    }
+
+    add('subtext', '她話裡的意思');
+    add('qualificationSignal', '主動投入訊號');
+    add('current', '目前狀態');
+    add('suggestion', '建議');
+    add('nextStep', '下一步');
+    add('catchablePoint', '可接的球');
+    add('read', '判讀');
+    add('microMove', '微行動');
+    add('avoid', '先避免');
+    add('confidence', '信心');
+
+    value.forEach((key, rawValue) {
+      final keyText = key.toString();
+      if (usedKeys.contains(keyText)) return;
+      final formatted = _formatStructuredValue(rawValue);
+      if (formatted == null || formatted.isEmpty) return;
+      lines.add(formatted);
+    });
+
+    final joined = lines.join('\n');
+    return joined.trim().isEmpty ? null : joined;
+  }
+
+  static String? _formatStructuredValue(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value ? '有' : '沒有';
+    if (value is num && value.isFinite) return value.toString();
+    if (value is String) return _stringify(value);
+    if (value is List || value is Map) return _stringify(value);
     return value.toString();
   }
 }
