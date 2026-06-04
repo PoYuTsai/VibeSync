@@ -122,6 +122,67 @@ void main() {
       expect(result.shouldGiveUp, false);
     });
 
+    test('derives missing replies from replyOptions when stream replies are partial', () {
+      final json = {
+        'enthusiasm': {'score': 55, 'level': 'warm'},
+        'replies': {
+          'resonate': 'selected resonate reply',
+        },
+        'replyOptions': {
+          'extend': {
+            'approach': 'extend approach',
+            'messages': [
+              {'reply': 'extend option reply'},
+            ],
+          },
+          'resonate': {
+            'approach': 'resonate approach',
+            'messages': [
+              {'reply': 'resonate option reply'},
+            ],
+          },
+          'tease': {
+            'approach': 'tease approach',
+            'messages': [
+              {'reply': 'tease option reply'},
+            ],
+          },
+          'humor': {
+            'approach': 'humor approach',
+            'messages': [
+              {'reply': 'humor option reply'},
+            ],
+          },
+          'coldRead': {
+            'approach': 'cold read approach',
+            'messages': [
+              {'reply': 'cold read option reply'},
+            ],
+          },
+        },
+        'finalRecommendation': {
+          'pick': 'coldRead',
+          'content': '',
+          'reason': '',
+          'psychology': '',
+        },
+      };
+
+      final result = AnalysisResult.fromJson(json);
+
+      expect(
+        result.replies.keys,
+        containsAll(['extend', 'resonate', 'tease', 'humor', 'coldRead']),
+      );
+      expect(result.replies['extend'], 'extend option reply');
+      expect(result.replies['resonate'], 'selected resonate reply');
+      expect(result.replies['tease'], 'tease option reply');
+      expect(result.replies['humor'], 'humor option reply');
+      expect(result.replies['coldRead'], 'cold read option reply');
+      expect(result.recommendation.pick, 'coldRead');
+      expect(result.recommendation.content, 'cold read option reply');
+    });
+
     test('sets shouldGiveUp when cold and has give up warning', () {
       final json = {
         'enthusiasm': {'score': 20, 'level': 'cold'},

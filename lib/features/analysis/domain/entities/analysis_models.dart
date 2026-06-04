@@ -467,6 +467,23 @@ Map<String, ReplyOption> _normalizeReplyOptionsMap(
   return normalized;
 }
 
+Map<String, String> _mergeRepliesFromOptions(
+  Map<String, String> replies,
+  Map<String, ReplyOption> replyOptions,
+) {
+  final merged = Map<String, String>.from(replies);
+  replyOptions.forEach((key, option) {
+    if (merged[key]?.trim().isNotEmpty == true) {
+      return;
+    }
+    final optionText = option.copyText.trim();
+    if (optionText.isNotEmpty) {
+      merged[key] = optionText;
+    }
+  });
+  return merged;
+}
+
 FinalRecommendation _ensureRecommendationFallback(
   FinalRecommendation recommendation,
   Map<String, String> replies,
@@ -868,6 +885,10 @@ class AnalysisResult {
       replyOptionsData,
       normalizedReplies,
     );
+    final mergedReplies = _mergeRepliesFromOptions(
+      normalizedReplies,
+      normalizedReplyOptions,
+    );
 
     // Parse healthCheck only if present (Essential tier only)
     HealthCheck? healthCheck;
@@ -912,7 +933,7 @@ class AnalysisResult {
     final recommendation = _ensureRecommendationFallback(
       FinalRecommendation.fromJson(
           json['finalRecommendation'] as Map<String, dynamic>?),
-      normalizedReplies,
+      mergedReplies,
     );
     final rawCoachActionHint = json['coachActionHint'];
     final coachActionHintJson = rawCoachActionHint is Map<String, dynamic>
@@ -940,7 +961,7 @@ class AnalysisResult {
       topicDepth:
           TopicDepth.fromJson(json['topicDepth'] as Map<String, dynamic>?),
       healthCheck: healthCheck,
-      replies: normalizedReplies,
+      replies: mergedReplies,
       replyOptions: normalizedReplyOptions,
       recommendation: recommendation,
       reminder: json['reminder'] as String?,

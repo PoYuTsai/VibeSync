@@ -21,6 +21,7 @@
 - 串流 reframer 只要求有扣費錨點與 completion anchor，沒有在 `analysis.done` 前驗證目前 tier 允許的 reply styles 是否都到齊。
 - Shared post-process 只保證回覆非空並做 entitlement filter，不保證 paid tier 的五種回覆完整，因此 partial stream 會被存成成功結果。
 - Stream path 仍沿用 legacy full 的 `1536` output token 上限，但串流要額外輸出 decision / recommendation / reply_option / finalResult，讓模型更容易省略 fan-out。
+- Client parser 只用 `finalResult.replies` 產生回覆卡片；當 stream final result 的 `replyOptions` 已有五種、但 `replies` 只保留 selected style 時，Flutter UI 仍只顯示單一卡片。
 
 **修正**:
 
@@ -28,10 +29,14 @@
 - `reframer` 在 done 前檢查 required styles；paid 缺四種會回 `STREAM_INCOMPLETE_REPLY_OPTIONS` 並保留 retry path，不再把 partial result 當成功。
 - `reframer` 過濾 tier 外的 `analysis.reply_option`，並拒絕 tier 外 selected style，避免 Free 串流中途外洩付費 style。
 - Stream Claude output budget 改用 `STREAM_ANALYZE_MAX_TOKENS = 2200`，只影響 stream path，不動 quota/扣費順序。
+- `AnalysisResult.fromJson` 保留既有 `replies`，只在缺 style 時從 `replyOptions.copyText` 補回，並讓推薦 fallback 使用補齊後的回覆 map。
 
 **驗證**:
 
 - `deno test --allow-read supabase/functions/analyze-chat`
+- `flutter test --no-pub test/unit/services/analysis_service_test.dart`
+- `flutter test --no-pub test/unit/services/analysis_telemetry_guardrail_helper_test.dart test/unit/services/analysis_service_test.dart test/unit/entities/analysis_models_test.dart test/unit/features/analysis/domain/entities/quick_analysis_result_test.dart test/unit/features/analysis/domain/coach/learning_link_resolver_test.dart test/unit/features/analysis/domain/coach/coach_action_policy_test.dart test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart test/unit/features/analysis/data/services/analysis_hint_service_test.dart test/unit/features/analysis/data/notifiers/two_stage_analyze_notifier_test.dart`
+- `flutter analyze --no-pub lib/features/analysis/domain/entities/analysis_models.dart test/unit/services/analysis_service_test.dart`
 
 ## 2026-05
 
