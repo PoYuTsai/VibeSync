@@ -6,6 +6,7 @@ import {
 import {
   isStreamingAllowed,
   parseStreamWhitelist,
+  STREAM_ALLOW_ALL,
   STREAM_TEST_ACCOUNT,
 } from "./stream_gate.ts";
 
@@ -18,6 +19,13 @@ Deno.test("parseStreamWhitelist trims, lowercases, drops blanks, and always incl
   assertEquals(result.has("chiang688041@gmail.com"), true);
   assertEquals(result.has(STREAM_TEST_ACCOUNT), true);
   assertFalse(result.has(""));
+});
+
+Deno.test("parseStreamWhitelist keeps wildcard allow-all marker", () => {
+  const result = parseStreamWhitelist(" * , Eric19921204@GMAIL.COM ");
+
+  assertEquals(result.has(STREAM_ALLOW_ALL), true);
+  assertEquals(result.has("eric19921204@gmail.com"), true);
 });
 
 Deno.test("isStreamingAllowed denies everyone when flag is off", () => {
@@ -41,6 +49,22 @@ Deno.test("isStreamingAllowed allows whitelisted accounts case-insensitively", (
     email: "ERIC19921204@gmail.com",
     flagOn: true,
     whitelist: "chiang688041@gmail.com, eric19921204@gmail.com",
+  }));
+});
+
+Deno.test("isStreamingAllowed allows any authenticated email when wildcard is enabled", () => {
+  assert(isStreamingAllowed({
+    email: "partner@example.com",
+    flagOn: true,
+    whitelist: " * ",
+  }));
+});
+
+Deno.test("isStreamingAllowed keeps wildcard gated by the feature flag", () => {
+  assertFalse(isStreamingAllowed({
+    email: "partner@example.com",
+    flagOn: false,
+    whitelist: "*",
   }));
 });
 

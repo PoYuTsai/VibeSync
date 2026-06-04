@@ -1,4 +1,5 @@
 export const STREAM_TEST_ACCOUNT = "vibesync.test@gmail.com";
+export const STREAM_ALLOW_ALL = "*";
 
 export type StreamingAccessInput = {
   email?: string | null;
@@ -30,7 +31,8 @@ export function isStreamingAllowed(input: StreamingAccessInput): boolean {
     return false;
   }
 
-  return parseStreamWhitelist(input.whitelist).has(email);
+  const whitelist = parseStreamWhitelist(input.whitelist);
+  return whitelist.has(STREAM_ALLOW_ALL) || whitelist.has(email);
 }
 
 function normalizeEmail(value?: string | null): string | null {
