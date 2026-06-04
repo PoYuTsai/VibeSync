@@ -1,13 +1,11 @@
 // lib/features/analysis/presentation/widgets/two_stage_loading_widgets.dart
 //
-// UI primitives for the two-stage analyze flow.
+// UI primitives for the full-streaming analyze flow.
 //
-// - [QuickRotatingLoader]    Spinner + rotating Chinese narrative copy. Shown
-//   between user tap and quick result arrival. Rotation cadence is 1 second
-//   per phrase (inside Eric's 0.8-1.2s envelope).
-// - [FullAnalysisPlaceholder] Static skeleton shown after quick result while
-//   full analysis is in flight. Header carries the server-provided ETA range;
-//   section labels stay static so the screen feels stable, not chatty.
+// - [QuickRotatingLoader]    Spinner + rotating Chinese narrative copy. The
+//   historical class name remains for compatibility; it now represents the
+//   full-streaming prelude before content events arrive.
+// - [FullAnalysisPlaceholder] Legacy skeleton retained for rollback tests.
 // - [FullAnalysisRetryCard]   Card shown after full failure. Disables the
 //   retry CTA when [retriesRemaining] reaches 0 and switches copy to
 //   「無法再重試，請重新分析」.
@@ -20,8 +18,8 @@ const List<String> kQuickLoadingPhrases = <String>[
   '正在讀取對話脈絡...',
   '整理目前互動節奏...',
   '判斷對方訊號強弱...',
-  '生成下一步建議...',
-  '挑選最自然的回覆...',
+  '整理下一步建議...',
+  '準備完整分析內容...',
 ];
 
 const Duration kQuickRotationInterval = Duration(milliseconds: 1000);
@@ -34,7 +32,7 @@ const List<String> kFullPlaceholderSectionLabels = <String>[
 ];
 const String kRetryExhaustedMessage = '無法再重試，請重新分析。';
 
-/// Rotating loader for the quick phase.
+/// Rotating loader for the full-streaming prelude.
 ///
 /// Cycles through [phrases] every [interval] to reduce perceived dead time.
 /// Caller may inject custom phrases for tests; production uses
