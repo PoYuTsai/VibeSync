@@ -818,25 +818,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.primaryLight.withValues(alpha: 0.28),
-            AppColors.bokehPink.withValues(alpha: 0.16),
-            AppColors.glassWhite.withValues(alpha: 0.9),
+            AppColors.backgroundGradientMid,
+            Color(0xFF3A185B),
+            Color(0xFF612C65),
           ],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.primaryLight.withValues(alpha: 0.45),
-          width: 1.4,
+          color: Colors.white.withValues(alpha: 0.24),
+          width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.16),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
+            color: AppColors.primaryDark.withValues(alpha: 0.32),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -870,7 +870,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     Text(
                       '完整分析即時整理中',
                       style: AppTypography.titleMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
+                        color: Colors.white,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -879,7 +879,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       Text(
                         _streamProgressLabel!,
                         style: AppTypography.caption.copyWith(
-                          color: AppColors.glassTextSecondary,
+                          color: Colors.white.withValues(alpha: 0.78),
                           height: 1.3,
                         ),
                       ),
@@ -906,22 +906,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     AnalysisStreamContent content, {
     required bool isLatest,
   }) {
-    final accent = isLatest ? AppColors.primary : AppColors.primaryLight;
+    final accent = isLatest ? AppColors.bokehYellow : AppColors.primaryLight;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            accent.withValues(alpha: isLatest ? 0.14 : 0.08),
-            AppColors.bokehPink.withValues(alpha: isLatest ? 0.08 : 0.04),
-          ],
-        ),
+        color: Colors.white.withValues(alpha: isLatest ? 0.14 : 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: accent.withValues(alpha: isLatest ? 0.34 : 0.22),
+          color: Colors.white.withValues(alpha: isLatest ? 0.32 : 0.18),
         ),
       ),
       child: Row(
@@ -940,7 +933,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 Text(
                   content.title,
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: Colors.white,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -950,7 +943,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   maxLines: 8,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: Colors.white.withValues(alpha: 0.84),
                     height: 1.4,
                   ),
                 ),

@@ -443,6 +443,48 @@ Deno.test("reframer emits synthetic done when model omits done event", async () 
   ]);
 });
 
+Deno.test("reframer accepts analysis.done result alias", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "I get why that felt off.",
+    reason: "Respect the boundary.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    result: {
+      strategy: "Back off and rebuild trust.",
+      finalRecommendation: {
+        pick: "resonate",
+        content: "I get why that felt off.",
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done);
+  const finalResult = done.finalResult as Record<string, unknown>;
+
+  assertEquals(finalResult.strategy, "Back off and rebuild trust.");
+  assertEquals(finalResult.finalRecommendation, {
+    pick: "resonate",
+    content: "I get why that felt off.",
+  });
+});
+
 Deno.test("reframer ignores malformed trailing text on flush", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({

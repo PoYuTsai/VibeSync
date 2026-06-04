@@ -451,6 +451,36 @@ void main() {
       expect(updates.single.result?.recommendation.content, 'c');
     });
 
+    test('accepts analysis.done result alias from stream response', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'type': 'analysis.done',
+              'result': _fullSuccessBody,
+            }),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.map((u) => u.kind).toList(), [
+        AnalysisStreamUpdateKind.done,
+      ]);
+      expect(updates.single.result?.strategy, _fullSuccessBody['strategy']);
+      expect(updates.single.result?.recommendation.content, 'c');
+    });
+
     test('includes analysisRunId when retrying an existing stream run',
         () async {
       late http.Request capturedRequest;

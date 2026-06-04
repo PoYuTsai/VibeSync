@@ -498,6 +498,44 @@ Deno.test("stream handler emits processed final result returned by markDone", as
   assertEquals(finalResult?.processedByPostProcess, true);
 });
 
+Deno.test("stream handler accepts result alias and emits both done payload keys", async () => {
+  const response = handleStreamAnalysisRequest(createOptions({
+    textChunks: [
+      line({
+        type: "analysis.recommendation",
+        selectedStyle: "resonate",
+        message: "I get why that felt off.",
+        reason: "Respect the boundary.",
+        quotedContext: "too fast",
+      }),
+      line({
+        type: "analysis.done",
+        result: {
+          strategy: "Back off and rebuild trust.",
+          finalRecommendation: {
+            pick: "resonate",
+            content: "I get why that felt off.",
+          },
+        },
+      }),
+    ],
+    markDone: (result) => ({
+      ...result,
+      processedByPostProcess: true,
+    }),
+  }));
+
+  const events = await collectEvents(response);
+  const done = events.find((event) => event.type === "analysis.done");
+  const finalResult = done?.finalResult as Record<string, unknown> | undefined;
+  const result = done?.result as Record<string, unknown> | undefined;
+
+  assertEquals(finalResult?.processedByPostProcess, true);
+  assertEquals(result?.processedByPostProcess, true);
+  assertEquals(finalResult?.strategy, "Back off and rebuild trust.");
+  assertEquals(result?.strategy, "Back off and rebuild trust.");
+});
+
 Deno.test("stream handler emits terminal error when final persist fails", async () => {
   const failedCodes: string[] = [];
   const response = handleStreamAnalysisRequest(createOptions({

@@ -14,6 +14,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+
 const List<String> kQuickLoadingPhrases = <String>[
   '正在讀取對話脈絡...',
   '整理目前互動節奏...',
@@ -222,28 +225,90 @@ class FullAnalysisRetryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final headline =
         _canRetry ? (errorMessage ?? '完整分析暫時失敗。') : kRetryExhaustedMessage;
     final buttonLabel = _canRetry ? '重試完整分析（剩 $retriesRemaining 次）' : '無法再重試';
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              headline,
-              style: theme.textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: _canRetry ? onRetry : null,
-              child: Text(buttonLabel),
-            ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.backgroundGradientMid,
+            Color(0xFF351A52),
+            Color(0xFF4A245C),
           ],
         ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.primaryLight.withValues(alpha: 0.42),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryDark.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.bokehCoral.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.bokehCoral.withValues(alpha: 0.34),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.refresh_outlined,
+                  size: 18,
+                  color: AppColors.bokehCoral,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  headline,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: Colors.white,
+                    height: 1.45,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FilledButton(
+            onPressed: _canRetry ? onRetry : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryLight,
+              disabledBackgroundColor: Colors.white.withValues(alpha: 0.16),
+              disabledForegroundColor: Colors.white.withValues(alpha: 0.46),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            child: Text(
+              buttonLabel,
+              style: AppTypography.bodyMedium.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

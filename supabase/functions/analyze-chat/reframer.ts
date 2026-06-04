@@ -223,7 +223,7 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     }
 
     if (event.type === "analysis.done") {
-      if (recordField(event.finalResult)) {
+      if (doneResultField(event)) {
         modelDoneHadFinalResult = true;
       }
       if (!hasCompletionAnchor()) {
@@ -454,7 +454,7 @@ function createLegacyAnalysisAssembler() {
       }
 
       if (event.type === "analysis.done") {
-        const finalResult = recordField(event.finalResult);
+        const finalResult = doneResultField(event);
         if (finalResult) mergeFinalResult(finalResult);
       }
     },
@@ -533,6 +533,10 @@ function numberField(value: unknown): number | null {
 
 function recordField(value: unknown): Record<string, unknown> | null {
   return isRecord(value) ? value : null;
+}
+
+function doneResultField(event: Record<string, unknown>) {
+  return recordField(event.finalResult) ?? recordField(event.result);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

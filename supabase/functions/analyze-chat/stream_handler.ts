@@ -166,11 +166,13 @@ export function handleStreamAnalysisRequest(
     let doneEvent: StreamOutputEvent = originalDoneEvent;
     try {
       const processedFinalResult = await options.markDone(finalResult);
-      if (isRecord(processedFinalResult)) {
-        doneEvent = Object.assign({}, originalDoneEvent, {
-          finalResult: processedFinalResult,
-        }) as StreamOutputEvent;
-      }
+      const emittedFinalResult = isRecord(processedFinalResult)
+        ? processedFinalResult
+        : finalResult;
+      doneEvent = Object.assign({}, originalDoneEvent, {
+        finalResult: emittedFinalResult,
+        result: emittedFinalResult,
+      }) as StreamOutputEvent;
     } catch (error) {
       await markFailedAndEmit(
         options,
@@ -279,8 +281,12 @@ function getFinalResult(
   event: StreamOutputEvent,
 ): Record<string, unknown> | null {
   const finalResult = event.finalResult;
-  if (!isRecord(finalResult)) return null;
-  return finalResult;
+  if (isRecord(finalResult)) return finalResult;
+
+  const result = event.result;
+  if (isRecord(result)) return result;
+
+  return null;
 }
 
 function stringField(value: unknown): string {

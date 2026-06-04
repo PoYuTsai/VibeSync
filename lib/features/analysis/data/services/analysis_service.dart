@@ -1442,7 +1442,7 @@ class AnalysisService {
             );
             break;
           case 'analysis.done':
-            final finalResult = _normalizeObject(event['finalResult']);
+            final finalResult = _streamDoneResultPayload(event);
             if (finalResult == null) {
               throw AnalysisException(
                 '串流分析缺少完整結果，請重新分析。',
@@ -1544,6 +1544,16 @@ class AnalysisService {
         event.containsKey('replies') ||
         (event.containsKey('gameStage') && event.containsKey('enthusiasm'));
     return looksLikeResult ? event : null;
+  }
+
+  Map<String, dynamic>? _streamDoneResultPayload(Map<String, dynamic> event) {
+    final finalResult = _normalizeObject(event['finalResult']);
+    if (finalResult != null) return finalResult;
+
+    final result = _normalizeObject(event['result']);
+    if (result != null) return result;
+
+    return _streamResultPayload(event);
   }
 
   AnalysisResult _parseStreamAnalysisResult(Map<String, dynamic> payload) {
