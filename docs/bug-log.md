@@ -10,6 +10,31 @@
 
 ## 2026-06
 
+### [2026-06-05] 草稿潤飾跑不出結果
+
+**症狀**:
+
+- Dogfood 草稿潤飾送出後沒有產出可用的「優化後草稿」。
+- 前端會收到成功以外的錯誤，或結果內沒有 `optimizedMessage.optimized`，導致使用者只看到失敗提示。
+
+**Root Cause**:
+
+- `optimize_message` 雖然是輕量草稿修句功能，但 Edge legacy path 仍使用完整 `SYSTEM_PROMPT`，模型同時被要求完整分析報告與 `optimizedMessage`。
+- Text-only legacy token budget 對草稿潤飾仍落在一般分析分支，輸出負擔過高時容易解析失敗、截斷，或沒有穩定回 `optimizedMessage`。
+- post-process 也沒有把 `optimize_message` 視為輕量模式，可能在只有 optimized payload 時補不必要的分析欄位。
+
+**修復**:
+
+- 新增 `OPTIMIZE_MESSAGE_PROMPT`，只要求回傳 `optimizedMessage` 窄 JSON。
+- 新增 `OPTIMIZE_MESSAGE_MAX_TOKENS = 700`，初次與 parse-retry 都使用草稿潤飾專用 output budget。
+- legacy post-process 將 `optimize_message` 視同 `my_message` 輕量模式，不補完整分析欄位。
+
+**驗證**:
+
+- `deno test --allow-read supabase/functions/analyze-chat/index_test.ts supabase/functions/analyze-chat/post_process_test.ts supabase/functions/analyze-chat/server_guardrails_test.ts`
+- `flutter test --no-pub test/unit/entities/analysis_models_test.dart test/unit/services/analysis_service_test.dart test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart`
+- `deno fmt --check supabase/functions/analyze-chat/index.ts supabase/functions/analyze-chat/index_test.ts`
+
 ### [2026-06-05] Edge Function deploy 解析 Supabase CLI latest 被 rate limit
 
 **症狀**:

@@ -332,6 +332,30 @@ Deno.test({
 });
 
 Deno.test({
+  name: "draft polish uses a narrow prompt and token budget",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("const OPTIMIZE_MESSAGE_MAX_TOKENS = 700"));
+    assert(source.includes("const OPTIMIZE_MESSAGE_PROMPT ="));
+    assert(source.includes("Return JSON only with this exact schema"));
+    assert(source.includes("Do not include full analysis fields"));
+    assert(
+      source.includes("isOptimizeMessageMode") &&
+        source.includes("? OPTIMIZE_MESSAGE_PROMPT"),
+    );
+    assert(
+      source.includes("isOptimizeMessageMode") &&
+        source.includes("? OPTIMIZE_MESSAGE_MAX_TOKENS"),
+    );
+    assert(source.includes("isMyMessageMode || isOptimizeMessageMode"));
+  },
+});
+
+Deno.test({
   name:
     "MY_MESSAGE_PROMPT provides concrete branch planning without invented topics",
   permissions: { read: true },

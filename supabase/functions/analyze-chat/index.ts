@@ -2000,6 +2000,30 @@ Coach-aligned 底層原則：
 
 ${SAFETY_RULES}`;
 
+const OPTIMIZE_MESSAGE_MAX_TOKENS = 700;
+
+const OPTIMIZE_MESSAGE_PROMPT = `你是 VibeSync 的草稿潤飾器。
+
+任務：把使用者的 userDraft 修成更自然、更容易回覆、可直接送出的繁體中文訊息。
+
+規則：
+- 保留 userDraft 的核心主題、對象、動作、稱讚、邀約或界線意圖。
+- 對話脈絡只用來調整語氣、長度、禮貌程度和接續感；不要改成回答對方最後一題。
+- 不要新增 userDraft 沒有的事實、興趣、承諾或自我描述。
+- 若草稿已經自然，只做輕量節奏修整；不要過度文青、客服腔或 AI 腔。
+- 若草稿含有慾望、邀約、親密或短期意圖，保留方向但降低壓力，留下清楚拒絕空間。
+- optimized 必須是可直接送出的訊息，不要只是建議、分析或說明。
+- Do not include full analysis fields such as replies, replyOptions, finalRecommendation, psychology, topicDepth, or healthCheck.
+
+Return JSON only with this exact schema:
+{
+  "optimizedMessage": {
+    "original": "原始草稿",
+    "optimized": "優化後可直接送出的訊息",
+    "reason": "一句話說明調整重點"
+  }
+}`;
+
 // 「我說」模式的 System Prompt（話題延續建議）
 const MY_MESSAGE_PROMPT =
   `你是 VibeSync 的「我說模式」教練。用戶剛剛發送了一則訊息給對方，現在需要你幫他做下一輪分支準備。
@@ -5317,7 +5341,9 @@ ${recentText}`;
 
     const systemPrompt = recognizeOnly
       ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT
-      : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT);
+      : (isOptimizeMessageMode
+        ? OPTIMIZE_MESSAGE_PROMPT
+        : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT));
 
     // 組合用戶訊息
     if (sessionContext) {
@@ -6492,7 +6518,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           model: selectedModel,
           max_tokens: recognizeOnly
             ? 1600
-            : (hasImages ? 2560 : (isMyMessageMode ? 512 : 1536)), // 多句推薦回覆保留較穩定的 JSON 空間
+            : (hasImages
+              ? 2560
+              : (isOptimizeMessageMode
+                ? OPTIMIZE_MESSAGE_MAX_TOKENS
+                : (isMyMessageMode ? 512 : 1536))), // 多句推薦回覆保留較穩定的 JSON 空間
           system: systemPrompt,
           messages: [
             {
@@ -6630,7 +6660,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             model: selectedModel,
             max_tokens: recognizeOnly
               ? 1600
-              : (hasImages ? 2048 : (isMyMessageMode ? 512 : 1536)),
+              : (hasImages
+                ? 2048
+                : (isOptimizeMessageMode
+                  ? OPTIMIZE_MESSAGE_MAX_TOKENS
+                  : (isMyMessageMode ? 512 : 1536))),
             system: systemPrompt +
               "\n\nIMPORTANT: Return valid JSON only. Ensure all brackets are properly closed.",
             messages: [
@@ -6836,7 +6870,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     result = postProcessAnalysisResult({
       result,
       recognizeOnly,
-      isMyMessageMode,
+      isMyMessageMode: isMyMessageMode || isOptimizeMessageMode,
       allowedFeatures,
     });
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
