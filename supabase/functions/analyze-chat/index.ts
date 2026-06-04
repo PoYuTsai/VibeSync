@@ -4086,7 +4086,7 @@ const STREAM_ANALYZE_ENABLED =
 const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
-const STREAM_ANALYZE_MAX_TOKENS = 2200;
+const STREAM_ANALYZE_MAX_TOKENS = 3200;
 // 測試帳號白名單 (不扣額度)
 const TEST_EMAILS = ["vibesync.test@gmail.com"];
 

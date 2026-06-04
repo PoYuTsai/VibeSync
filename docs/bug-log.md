@@ -34,6 +34,28 @@
 - `deno fmt --check supabase/functions/analyze-chat/index.ts supabase/functions/analyze-chat/stream_branch_test.ts`
 - `git diff --check`
 
+### [2026-06-05] 完整分析串流仍漏 allowed reply styles
+
+**症狀**:
+
+- 部署 guardrail 後，dogfood 仍偶發看到 `Streaming analysis ended before every allowed reply style was generated.`。
+- 這代表 server 已成功擋下 incomplete result，但模型仍有機率在五種回覆未全部生成前結束。
+
+**Root Cause**:
+
+- Stream prompt 同時要求五種 `analysis.reply_option`、深入段落、以及 `analysis.done.finalResult.replies/replyOptions` 再次包含所有 style，造成五種回覆被重複輸出，token 與遵循負擔偏高。
+- `STREAM_ANALYZE_MAX_TOKENS = 2200` 對 paid 五種 style + legacy-compatible result 邊界太緊，模型偶發省略 style 或提前 done。
+
+**修復**:
+
+- Prompt 改成五種回覆必須先透過 `analysis.reply_option` 事件完成；`finalResult` 保持 compact，不再重複完整五種 `replyOptions`。
+- 明確要求 optional report sections 可以縮短，但不能省略 required `analysis.reply_option`。
+- Stream output budget 從 `2200` 提到 `3200`，只影響 stream path。
+
+**驗證**:
+
+- `deno test --allow-read supabase/functions/analyze-chat/stream_prompt_test.ts supabase/functions/analyze-chat/reframer_test.ts supabase/functions/analyze-chat/stream_handler_test.ts supabase/functions/analyze-chat/stream_branch_test.ts`
+
 ### [2026-06-04] 完整分析等待狀態遮擋與工程文案外露
 
 **症狀**:

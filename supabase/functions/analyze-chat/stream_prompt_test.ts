@@ -21,8 +21,19 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("Emit exactly 5 `analysis.reply_option` events"));
   assert(
     prompt.includes(
+      "Complete all required `analysis.reply_option` events before any metrics, report sections, or done event.",
+    ),
+  );
+  assert(
+    prompt.includes(
+      "Do not spend finalResult tokens duplicating the full five-style replyOptions",
+    ),
+  );
+  assertEquals(
+    prompt.includes(
       "analysis.done.finalResult.replies and `replyOptions` must include every allowed reply style",
     ),
+    false,
   );
   assert(
     prompt.indexOf("analysis.decision") <
