@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:vibesync/core/services/usage_service.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
 void main() {
   Package package({
@@ -288,5 +290,50 @@ void main() {
         'starter_monthly');
     expect(state.starterMonthlyStoreProduct?.identifier,
         'vibesync_starter_monthly_v2');
+  });
+
+  test('hydrates paid startup state from cached usage snapshot', () {
+    final state = buildInitialSubscriptionStateFromUsage(
+      UsageData(
+        monthlyUsed: 42,
+        monthlyLimit: 800,
+        dailyUsed: 7,
+        dailyLimit: 120,
+        dailyResetAt: DateTime.utc(2026, 6, 5),
+        tier: SubscriptionTierHelper.essential,
+      ),
+    );
+
+    expect(state.tier, SubscriptionTierHelper.essential);
+    expect(state.isLoading, isTrue);
+    expect(state.monthlyMessagesUsed, 42);
+    expect(state.dailyMessagesUsed, 7);
+    expect(state.monthlyLimit, 800);
+    expect(state.dailyLimit, 120);
+  });
+
+  test('startup tier preserves cached paid snapshot during transient free sync',
+      () {
+    final tier = resolveStartupSubscriptionTier(
+      databaseTier: SubscriptionTierHelper.free,
+      revenueCatTier: SubscriptionTierHelper.free,
+      cachedTier: SubscriptionTierHelper.essential,
+      serverExpiresAt: DateTime.utc(2026, 7, 5),
+      now: DateTime.utc(2026, 6, 5),
+    );
+
+    expect(tier, SubscriptionTierHelper.essential);
+  });
+
+  test('startup tier allows trusted expired server downgrade to free', () {
+    final tier = resolveStartupSubscriptionTier(
+      databaseTier: SubscriptionTierHelper.free,
+      revenueCatTier: SubscriptionTierHelper.free,
+      cachedTier: SubscriptionTierHelper.essential,
+      serverExpiresAt: DateTime.utc(2026, 6, 1),
+      now: DateTime.utc(2026, 6, 5),
+    );
+
+    expect(tier, SubscriptionTierHelper.free);
   });
 }

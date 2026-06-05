@@ -43,6 +43,63 @@ const _subscriptionProductIds = [
   ..._essentialQuarterlyProductIds,
 ];
 
+String _highestSubscriptionTier(Iterable<String> tiers) {
+  final normalized =
+      tiers.map(SubscriptionTierHelper.normalizeTier).toList(growable: false);
+
+  if (normalized.contains(SubscriptionTierHelper.essential)) {
+    return SubscriptionTierHelper.essential;
+  }
+  if (normalized.contains(SubscriptionTierHelper.starter)) {
+    return SubscriptionTierHelper.starter;
+  }
+  return SubscriptionTierHelper.free;
+}
+
+bool _isExpired(DateTime? value, {DateTime? now}) {
+  if (value == null) return false;
+  return !value.toUtc().isAfter((now ?? DateTime.now()).toUtc());
+}
+
+@visibleForTesting
+String resolveStartupSubscriptionTier({
+  required String databaseTier,
+  required String revenueCatTier,
+  required String cachedTier,
+  DateTime? serverExpiresAt,
+  DateTime? now,
+}) {
+  final confirmedTier = _highestSubscriptionTier([
+    databaseTier,
+    revenueCatTier,
+  ]);
+  if (confirmedTier != SubscriptionTierHelper.free) {
+    return confirmedTier;
+  }
+
+  final normalizedCachedTier = SubscriptionTierHelper.normalizeTier(cachedTier);
+  if (normalizedCachedTier != SubscriptionTierHelper.free &&
+      !_isExpired(serverExpiresAt, now: now)) {
+    return normalizedCachedTier;
+  }
+
+  return SubscriptionTierHelper.free;
+}
+
+@visibleForTesting
+SubscriptionState buildInitialSubscriptionStateFromUsage(UsageData usage) {
+  final tier = SubscriptionTierHelper.normalizeTier(usage.tier);
+  final limits = SubscriptionTierHelper.limitsFor(tier);
+  return SubscriptionState(
+    tier: tier,
+    monthlyMessagesUsed: usage.monthlyUsed.clamp(0, limits.monthly),
+    dailyMessagesUsed: usage.dailyUsed.clamp(0, limits.daily),
+    monthlyLimit: limits.monthly,
+    dailyLimit: limits.daily,
+    isLoading: true,
+  );
+}
+
 class SubscriptionState {
   final String tier;
   final int monthlyMessagesUsed;
@@ -412,8 +469,21 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   static const _pendingDowngradeEffectiveAtKey =
       'pending_downgrade_effective_at';
 
-  SubscriptionNotifier() : super(const SubscriptionState(isLoading: true)) {
+  SubscriptionNotifier() : super(_initialStateFromUsageSnapshot()) {
     _initialize();
+  }
+
+  static SubscriptionState _initialStateFromUsageSnapshot() {
+    try {
+      return buildInitialSubscriptionStateFromUsage(
+        UsageService().getLocalUsage(),
+      );
+    } catch (error) {
+      debugPrint(
+        '[subscription] Failed to hydrate cached subscription snapshot: $error',
+      );
+      return const SubscriptionState(isLoading: true);
+    }
   }
 
   _PendingDowngrade? _readPendingDowngrade() {
@@ -551,19 +621,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         );
   }
 
-  String _highestTier(Iterable<String> tiers) {
-    final normalized =
-        tiers.map(SubscriptionTierHelper.normalizeTier).toList(growable: false);
-
-    if (normalized.contains(SubscriptionTierHelper.essential)) {
-      return SubscriptionTierHelper.essential;
-    }
-    if (normalized.contains(SubscriptionTierHelper.starter)) {
-      return SubscriptionTierHelper.starter;
-    }
-    return SubscriptionTierHelper.free;
-  }
-
   String _resolvePurchasedTier({
     required String productId,
     required CustomerInfo customerInfo,
@@ -574,7 +631,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     final packageTier = SubscriptionTierHelper.tierFromProductId(
       productId,
     );
-    final resolvedTier = _highestTier([revenueCatTier, packageTier]);
+    final resolvedTier =
+        _highestSubscriptionTier([revenueCatTier, packageTier]);
 
     debugPrint(
       '[purchase] Resolved tier: revenueCat=$revenueCatTier, package=$packageTier, final=$resolvedTier',
@@ -820,7 +878,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final revenueCatProductId = _cleanProductId(
         RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
       );
-      final displayTier = _highestTier([initialTier, revenueCatTier]);
+      final cachedTier = state.tier;
+      final displayTier = resolveStartupSubscriptionTier(
+        databaseTier: initialTier,
+        revenueCatTier: revenueCatTier,
+        cachedTier: cachedTier,
+        serverExpiresAt: renewsAt,
+      );
       final displayLimits = SubscriptionTierHelper.limitsFor(displayTier);
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
@@ -852,9 +916,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
     } catch (e) {
       debugPrint('Load subscription error: $e');
-      state = SubscriptionState(
-        isLoading: false,
-        error: e.toString(),
+      state = _applyPendingDowngradeMetadata(
+        state.copyWith(isLoading: false, error: e.toString()),
       );
     }
   }

@@ -10,6 +10,33 @@
 
 ## 2026-06
 
+### [2026-06-05] TestFlight 更新後付費方案暫時掉回 Free
+
+**症狀**:
+
+- Eric / Bruce 在 TestFlight 更新新版後，打開 App 常看到 Starter / Essential 退回 Free。
+- 這會讓付費功能與額度判斷看起來失效；正式上架後若發生，屬於 P0 付費權益事故。
+
+**Root Cause**:
+
+- `SubscriptionNotifier` 啟動初始 state 固定是 `SubscriptionState(isLoading: true)`，但該 state 的預設 tier 是 `free`，所以 App 更新或 provider 重建時會先用 Free 顯示。
+- `_loadSubscription()` 從 DB / RevenueCat 載入期間，如果 DB row 是 Free、RevenueCat 暫時回 Free/空 entitlement，會覆蓋本地上次已同步的 paid snapshot。
+- `_loadSubscription()` catch path 也會建立新的預設 `SubscriptionState`，讓暫時性載入錯誤直接呈現 Free。
+
+**修正**:
+
+- provider 建立時從 `UsageService` 本地 subscription snapshot hydrate 初始 state；上次是 Essential / Starter 就先以 paid + loading 顯示，不再先閃 Free。
+- 啟動 tier resolution 改成：DB / RevenueCat 有任一 paid 就用 paid；兩邊暫時都 Free 時，保留本地 paid snapshot，除非 server `expires_at` 已明確過期。
+- `_loadSubscription()` 失敗時保留現有 state 的 tier / quota，只更新 loading/error，不再建立預設 Free state。
+
+**驗證**:
+
+- `flutter test test/unit/features/subscription/data/subscription_state_package_test.dart test/unit/services/subscription_tier_helper_test.dart`
+- `flutter analyze lib/features/subscription/data/providers/subscription_providers.dart test/unit/features/subscription/data/subscription_state_package_test.dart`
+- `flutter test --no-pub test/widget/screens/paywall_screen_test.dart test/widget/screens/settings_screen_test.dart`
+- `deno test supabase/functions/sync-subscription/usage_reset_test.ts supabase/functions/sync-subscription/revenuecat_identity_test.ts`
+- `git diff --check`
+
 ### [2026-06-05] 草稿潤飾跑不出結果
 
 **症狀**:
