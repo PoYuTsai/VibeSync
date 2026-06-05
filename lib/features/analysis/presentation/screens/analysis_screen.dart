@@ -145,14 +145,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 首次看到對話 bubble 時提示用戶長按可編輯。
   OverlayEntry? _editMessageCoachMarkEntry;
   // 上次觸發 coach mark check 時的 messages.length。每次 messages 變多
-  // （手動輸入新訊息 / 截圖再次匯入）都重新 schedule callback，讓 dogfood
+  // （手動輸入新訊息 / 截圖再次加入）都重新 schedule callback，讓 dogfood
   // 反覆測試每個 action 都看得到提醒。production 由 hint 旗標 gate 成
   // first-run only。
   int _coachMarkLastSeenMessageCount = 0;
 
   // 截圖 root ScaffoldMessenger reference，避免 dispose 時 context lookup 失敗。
   // 用於 dispose 時清除可能殘留的 SnackBar，避免綠色 banner 跨頁殘留
-  // （`Colors.green` 的 OCR 匯入 SnackBar duration=7s，用戶離開頁面後 root
+  // （`Colors.green` 的 OCR 加入 SnackBar duration=7s，用戶離開頁面後 root
   // messenger 會繼續顯示在其他頁面上，Bruce 2026-05-21 dogfood 回報）。
   ScaffoldMessengerState? _scaffoldMessenger;
 
@@ -360,10 +360,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisErrorAction.relogin:
         return '登入狀態可能已過期，重新登入後即可恢復分析與訂閱資料。';
       case AnalysisErrorAction.rescreenshot:
-        return '保留標題列、左右對話氣泡與外層主訊息；長截圖可拆成 2-3 張分段匯入。';
+        return '保留標題列、左右對話氣泡與外層主訊息；長截圖可拆成 2-3 張分段加入。';
       case AnalysisErrorAction.shortenInput:
         return _selectedImages.isNotEmpty
-            ? '每張截圖建議少於 15 則訊息；若內容太長，請拆成多張後再匯入。'
+            ? '每張截圖建議少於 15 則訊息；若內容太長，請拆成多張後再加入。'
             : '可先刪減較舊訊息、縮短草稿，或分成兩次分析。';
       case AnalysisErrorAction.upgrade:
         return '升級後可解鎖更完整的分析能力與較高額度。';
@@ -371,7 +371,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         return '今日額度用完後會在隔天重置，或升級方案取得更多額度。';
       case AnalysisErrorAction.addIncomingMessage:
         return _selectedImages.isNotEmpty
-            ? '先把截圖識別進目前對話，或在下方補上一則她的回覆後再分析。'
+            ? '先把截圖辨識成文字並加入目前對話，或在下方補上一則她的回覆後再分析。'
             : '一般分析至少需要一則對方訊息；你也可以先存著，等她回覆後再回來分析。';
       case null:
         return null;
@@ -1167,7 +1167,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // 清掉可能殘留的 root SnackBar（OCR 匯入綠色 banner 等），避免跨頁顯示。
+    // 清掉可能殘留的 root SnackBar（OCR 加入綠色 banner 等），避免跨頁顯示。
     _scaffoldMessenger?.clearSnackBars();
     final coachMark = _editMessageCoachMarkEntry;
     if (coachMark != null && coachMark.mounted) {
@@ -1183,7 +1183,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// Push 到別的 route 之前先清掉 analysis-screen 本頁觸發的 root SnackBar，
-  /// 避免 OCR 匯入綠色 banner（duration=7s）跟著用戶飄到下一頁。
+  /// 避免 OCR 加入綠色 banner（duration=7s）跟著用戶飄到下一頁。
   /// Pop 路徑由 dispose 清；push 路徑（profile / article / paywall）走這裡。
   void _clearAnalysisSnackBarsBeforePush() {
     _scaffoldMessenger?.clearSnackBars();
@@ -1524,7 +1524,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return _recognizeStageLabel(_recognizeStage);
     }
 
-    return '識別並加入目前對話 (${_selectedImages.length} 張)';
+    return '辨識截圖文字 (${_selectedImages.length} 張)';
   }
 
   void _handleSelectedImagesChanged(List<Uint8List> images) {
@@ -1589,7 +1589,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          '也可以直接上傳新的聊天截圖，先識別進這段對話，再接著分析。',
+          '也可以直接上傳新的聊天截圖，先辨識成文字，確認後加入這段對話，再接著分析。',
           style: AppTypography.bodySmall.copyWith(
             color: AppColors.glassTextHint,
           ),
@@ -1726,7 +1726,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('已建立新對話並匯入 $messageCount 則訊息'),
+          content: Text('已建立新對話並加入 $messageCount 則訊息'),
           backgroundColor: Colors.green,
           action: SnackBarAction(
             label: '前往新對話',
@@ -1806,7 +1806,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         backgroundColor: Colors.green,
         duration: const Duration(seconds: 7),
         action: SnackBarAction(
-          label: '捲到匯入位置',
+          label: '捲到加入位置',
           textColor: Colors.white,
           onPressed: () {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -1837,7 +1837,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('已保留這次識別結果，你可以稍後再繼續匯入。'),
+          content: Text('已保留這次辨識結果，你可以稍後再繼續加入。'),
         ),
       );
       return;
@@ -2888,7 +2888,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('已保留這次識別結果，你可以稍後再繼續匯入。'),
+              content: Text('已保留這次辨識結果，你可以稍後再繼續加入。'),
             ),
           );
           return;
@@ -2975,7 +2975,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           message: '請先輸入對話內容或上傳截圖',
           action: AnalysisErrorAction.addIncomingMessage,
           origin: _AnalysisErrorOrigin.analysis,
-          guidance: '你可以先在下方補上一則她的回覆，或先上傳截圖做識別再分析。',
+          guidance: '你可以先在下方補上一則她的回覆，或先上傳截圖辨識文字後再分析。',
         );
       });
       return;
@@ -4235,7 +4235,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   child: ElevatedButton.icon(
                     onPressed: _resumeRecognitionImport,
                     icon: const Icon(Icons.edit_note_rounded),
-                    label: const Text('繼續匯入設定'),
+                    label: const Text('繼續確認加入'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -4755,7 +4755,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ),
                                   const SizedBox(height: 12),
 
-                                  // 如果有截圖，顯示「識別並加入對話」按鈕
+                                  // 如果有截圖，先顯示「辨識截圖文字」按鈕
                                   if (_selectedImages.isNotEmpty) ...[
                                     SizedBox(
                                       width: double.infinity,
@@ -4777,7 +4777,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         label: Text(_recognizeButtonLabel),
                                         /*
                                             ? '識別中...'
-                                            : '識別並加入對話 (${_selectedImages.length}張)'),
+                                            : '辨識截圖文字 (${_selectedImages.length}張)'),
                                         */
                                         style: ElevatedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
@@ -4946,7 +4946,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       ),
                                     if (!_isRecognizing)
                                       Text(
-                                        '截圖會先辨識成對話文字並加入目前草稿，確認沒問題後再開始分析。',
+                                        '截圖會先辨識成對話文字。請先確認我說／她說與內容，再加入對話；加入後再開始分析。',
                                         style: AppTypography.bodySmall.copyWith(
                                           color: AppColors.warning,
                                         ),

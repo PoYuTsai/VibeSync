@@ -139,7 +139,7 @@ class _ScreenshotRecognitionDialogState
     final sanitizedMessages = _sanitizedMessages();
     if (sanitizedMessages.isEmpty) {
       setState(() {
-        _editValidationMessage = '至少要保留一則可匯入的訊息。';
+        _editValidationMessage = '至少要保留一則可加入對話的訊息。';
       });
       return;
     }
@@ -610,7 +610,7 @@ class _ScreenshotRecognitionDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '共抓到 ${widget.recognized.messageCount} 則訊息，確認後就能匯入。',
+              '共抓到 ${widget.recognized.messageCount} 則訊息。請先確認內容和「我說／她說」，再加入對話。',
               style: const TextStyle(color: AppColors.glassTextPrimary),
             ),
             if (widget.warningMessage != null &&
@@ -752,7 +752,7 @@ class _ScreenshotRecognitionDialogState
             ),
             const SizedBox(height: 16),
             const Text(
-              '匯入方式',
+              '加入方式',
               style: TextStyle(
                 color: AppColors.glassTextPrimary,
                 fontWeight: FontWeight.w500,
@@ -892,7 +892,7 @@ class _ScreenshotRecognitionDialogState
                   ] else ...[
                     const SizedBox(height: 8),
                     Text(
-                      '逐則確認內容 (${currentMessages.length} 則會被匯入)',
+                      '逐則確認內容 (${currentMessages.length} 則會被加入)',
                       style: const TextStyle(
                         color: AppColors.glassTextPrimary,
                         fontWeight: FontWeight.w700,
@@ -1099,7 +1099,7 @@ class _ScreenshotRecognitionDialogState
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text(
-            '稍後再匯入',
+            '稍後再加入',
             style: TextStyle(color: AppColors.unselectedText),
           ),
         ),
@@ -1108,7 +1108,7 @@ class _ScreenshotRecognitionDialogState
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
           ),
-          child: const Text('確認匯入'),
+          child: const Text('確認加入對話'),
         ),
       ],
     );

@@ -147,7 +147,7 @@ void main() {
         currentConversation: conversation,
       );
 
-      expect(result, '這張圖還不太確定，匯入前請先看一下內容有沒有抓對。');
+      expect(result, '這張圖還不太確定，加入前請先看一下內容有沒有抓對。');
     });
   });
 
@@ -234,7 +234,7 @@ void main() {
 
       expect(result, contains('LINE 的回覆引用框'));
       expect(result, contains('重截'));
-      expect(guidance.title, '先看一下再匯入');
+      expect(guidance.title, '先確認再加入');
       expect(guidance.tone, ScreenshotRecognitionGuidanceTone.review);
     });
 

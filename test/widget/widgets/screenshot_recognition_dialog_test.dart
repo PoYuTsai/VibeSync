@@ -80,7 +80,7 @@ void main() {
       await tester.pumpWidget(
         buildDialogHost(
           recognized: recognizedConversation,
-          warningMessage: '這張截圖辨識信心較低，匯入前請先確認預覽內容是否正確。',
+          warningMessage: '這張截圖辨識信心較低，加入前請先確認預覽內容是否正確。',
           initialImportMode:
               ScreenshotRecognitionHelper.importModeNewConversation,
           forceShowSessionContextFields: true,
@@ -92,7 +92,8 @@ void main() {
 
       expect(find.text('需要確認'), findsOneWidget);
       expect(find.text('內容需確認'), findsOneWidget);
-      expect(find.text('先看一下再匯入'), findsOneWidget);
+      expect(find.text('先確認再加入'), findsOneWidget);
+      expect(find.textContaining('請先確認內容和「我說／她說」'), findsOneWidget);
       expect(find.textContaining('LINE 的回覆引用框'), findsOneWidget);
       expect(find.text('另存成新對話'), findsOneWidget);
     });
@@ -116,7 +117,7 @@ void main() {
       await tester.tap(find.text('另存成新對話'));
       await tester.pumpAndSettle();
       await tester.enterText(_partnerNameField(), 'Amber');
-      await tester.tap(find.text('確認匯入'));
+      await tester.tap(find.text('確認加入對話'));
       await tester.pumpAndSettle();
 
       expect(dialogResult, isNotNull);
@@ -166,7 +167,7 @@ void main() {
 
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('稍後再匯入'));
+      await tester.tap(find.text('稍後再加入'));
       await tester.pumpAndSettle();
 
       expect(dialogResult, isNull);
@@ -204,7 +205,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('刪除'));
       await tester.pumpAndSettle();
-      await _tapVisible(tester, find.text('確認匯入'));
+      await _tapVisible(tester, find.text('確認加入對話'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages, hasLength(2));
@@ -235,7 +236,7 @@ void main() {
 
       await _tapVisible(tester, find.text('這幾則都改成我說'));
 
-      await _tapVisible(tester, find.text('確認匯入'));
+      await _tapVisible(tester, find.text('確認加入對話'));
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.messages[0].isFromMe, isFalse);
