@@ -42,6 +42,7 @@ import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
+import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/two_stage_loading_widgets.dart';
@@ -5655,7 +5656,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 ),
                                 const SizedBox(height: 12),
                                 SizedBox(
-                                  height: 292,
+                                  height: 360,
                                   child: ListView(
                                     scrollDirection: Axis.horizontal,
                                     children: [
@@ -6481,257 +6482,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     ReplyOption? option,
     bool isRecommended = false,
   }) {
-    final labels = {
-      'extend': '\u{1F504} 延展',
-      'resonate': '\u{1F4AC} 共鳴',
-      'tease': '\u{1F60F} 調情',
-      'humor': '\u{1F3AD} 幽默',
-      'coldRead': '\u{1F52E} 冷讀',
-    };
-
-    final colors = {
-      'extend': AppColors.cold,
-      'resonate': AppColors.warm,
-      'tease': AppColors.veryHot,
-      'humor': AppColors.hot,
-      'coldRead': AppColors.primaryLight,
-    };
-
-    final reasons = {
-      'extend': '順勢接話並深挖細節',
-      'resonate': '建立情感連結與共鳴',
-      'tease': '製造曖昧張力與反差',
-      'humor': '用幽默化解尷尬或升溫',
-      'coldRead': '猜中她沒說的，製造驚喜',
-    };
-
-    final approach = option?.approach.trim() ?? '';
-    final optionMessages =
-        option?.messages.where((segment) => segment.isUsable).toList() ??
-            const <ReplySegment>[];
-    final messages = optionMessages.isNotEmpty
-        ? optionMessages
-        : [
-            ReplySegment(
-              label: '建議訊息',
-              sourceMessage: '',
-              reply: content,
-              reason: '',
-            ),
-          ];
-    final copyAllText = messages
-        .map((segment) => segment.reply.trim())
-        .where((reply) => reply.isNotEmpty)
-        .join('\n');
-    final visibleMessages = messages.take(3).toList();
-
-    return Container(
-      width: 312,
-      margin: const EdgeInsets.only(right: 12),
-      child: GlassmorphicContainer(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(labels[type] ?? type,
-                    style: AppTypography.titleMedium.copyWith(
-                      color: colors[type] ?? AppColors.glassTextPrimary,
-                    )),
-                const Spacer(),
-                if (isRecommended)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text('AI 推薦',
-                        style: AppTypography.caption.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        )),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (approach.isNotEmpty) ...[
-                      Text(
-                        '接法',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.ctaStart,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        approach,
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.glassTextSecondary,
-                          height: 1.35,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                    Text(
-                      '訊息組',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.glassTextHint,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    for (var i = 0; i < visibleMessages.length; i++) ...[
-                      _buildReplyOptionMessageRow(
-                        visibleMessages[i],
-                        index: i,
-                        total: messages.length,
-                      ),
-                      if (i != visibleMessages.length - 1)
-                        const SizedBox(height: 6),
-                    ],
-                    if (messages.length > visibleMessages.length) ...[
-                      const SizedBox(height: 5),
-                      Text(
-                        '還有 ${messages.length - visibleMessages.length} 則可在推薦卡查看',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.glassTextHint,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text('為什麼推薦',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.ctaStart,
-                      fontWeight: FontWeight.w600,
-                    )),
-                Flexible(
-                  child: Text(
-                    '・${reasons[type] ?? ''}',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextHint,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            if (copyAllText.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                height: 34,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: copyAllText));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('已複製這組訊息'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.copy, size: 15),
-                  label: Text(
-                    messages.length == 1 ? '複製這句' : '複製整組',
-                    style: AppTypography.labelMedium,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReplyOptionMessageRow(
-    ReplySegment segment, {
-    required int index,
-    required int total,
-  }) {
-    final source = segment.sourceMessage.trim();
-    final reply = segment.reply.trim();
-    final sourceLabel = source.isNotEmpty
-        ? '接：$source'
-        : (total == 1 ? segment.displayLabel : '訊息 ${index + 1}');
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () {
-        Clipboard.setData(ClipboardData(text: reply));
+    return ReplyStyleCard(
+      type: type,
+      content: content,
+      option: option,
+      isRecommended: isRecommended,
+      onCopy: (_, message) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(total == 1 ? '已複製這句' : '已複製第 ${index + 1} 句'),
+            content: Text(message),
             duration: const Duration(seconds: 1),
           ),
         );
       },
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.surface.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: AppColors.divider.withValues(alpha: 0.45),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    sourceLabel,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.2,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    reply,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textPrimary,
-                      height: 1.28,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(
-              Icons.copy_rounded,
-              size: 15,
-              color: AppColors.textSecondary,
-            ),
-          ],
-        ),
-      ),
     );
   }
 
