@@ -42,6 +42,7 @@ import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
+import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/two_stage_loading_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -139,6 +140,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String? _lastManualAddedMessageId;
   String? _lastManualAddedContent;
   bool? _lastManualAddedIsFromMe;
+  String? _lastScreenshotAddedMessageId;
+  String? _lastScreenshotAddedPreview;
+  bool? _lastScreenshotAddedIsFromMe;
+  int? _lastScreenshotAddedCount;
   bool _hasEditedAnalyzedMessage = false;
   int _coachChatFocusRequest = 0;
 
@@ -1275,6 +1280,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (_lastManualAddedMessageId == message.id) {
         _lastManualAddedIsFromMe = !message.isFromMe;
       }
+      if (_lastScreenshotAddedMessageId == message.id) {
+        _lastScreenshotAddedIsFromMe = !message.isFromMe;
+      }
       if (editedAnalyzedMessage) {
         _lastAnalyzedMessageCount = analyzedCount;
         _hasEditedAnalyzedMessage = true;
@@ -1366,6 +1374,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _lastManualAddedContent = edited;
         _lastManualAddedIsFromMe = message.isFromMe;
       }
+      if (_lastScreenshotAddedMessageId == message.id) {
+        _lastScreenshotAddedPreview = edited;
+        _lastScreenshotAddedIsFromMe = message.isFromMe;
+      }
       if (editedAnalyzedMessage) {
         _lastAnalyzedMessageCount = analyzedCount;
         _hasEditedAnalyzedMessage = true;
@@ -1413,6 +1425,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _lastManualAddedMessageId = null;
         _lastManualAddedContent = null;
         _lastManualAddedIsFromMe = null;
+      }
+      if (_lastScreenshotAddedMessageId == message.id) {
+        _clearScreenshotAddedFeedback();
       }
     });
   }
@@ -1527,6 +1542,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return '辨識截圖文字 (${_selectedImages.length} 張)';
   }
 
+  void _clearScreenshotAddedFeedback() {
+    _lastScreenshotAddedMessageId = null;
+    _lastScreenshotAddedPreview = null;
+    _lastScreenshotAddedIsFromMe = null;
+    _lastScreenshotAddedCount = null;
+  }
+
   void _handleSelectedImagesChanged(List<Uint8List> images) {
     setState(() {
       _selectedImages = List<Uint8List>.from(images);
@@ -1537,6 +1559,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
       _lastRecognizeTelemetry = null;
+      _clearScreenshotAddedFeedback();
       if (_selectedImages.isNotEmpty) {
         _resetErrorState();
       }
@@ -1722,6 +1745,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _recognizedConversation = updatedRecognized;
         _recognizedWarningMessage = null;
         _hasPendingRecognitionImport = false;
+        _clearScreenshotAddedFeedback();
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1774,6 +1798,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     ref.invalidate(conversationProvider(widget.conversationId));
 
     final messageCount = importedMessages.length;
+    final lastImportedMessage = importedMessages.last;
     if (!mounted || _recognizeCancelled) {
       _debugLog('[Recognize] Ignore post-save UI update after cancel/dispose');
       return;
@@ -1784,6 +1809,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _recognizedConversation = updatedRecognized;
       _recognizedWarningMessage = null;
       _hasPendingRecognitionImport = false;
+      _lastManualAddedMessageId = null;
+      _lastManualAddedContent = null;
+      _lastManualAddedIsFromMe = null;
+      _lastScreenshotAddedMessageId = lastImportedMessage.id;
+      _lastScreenshotAddedPreview = lastImportedMessage.content;
+      _lastScreenshotAddedIsFromMe = lastImportedMessage.isFromMe;
+      _lastScreenshotAddedCount = messageCount;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1896,6 +1928,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _lastManualAddedMessageId = newMessage.id;
       _lastManualAddedContent = content;
       _lastManualAddedIsFromMe = isFromMe;
+      _clearScreenshotAddedFeedback();
     });
 
     // 補訊息只記錄內容；是否分析由使用者明確點「分析新增內容」決定。
@@ -2045,6 +2078,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildScreenshotAddedFeedback() {
+    final count = _lastScreenshotAddedCount;
+    final preview = _lastScreenshotAddedPreview;
+    final isFromMe = _lastScreenshotAddedIsFromMe;
+    if (count == null || preview == null || isFromMe == null) {
+      return const SizedBox.shrink();
+    }
+
+    return ScreenshotAddedFeedbackCard(
+      messageCount: count,
+      lastMessageIsFromMe: isFromMe,
+      lastMessagePreview: preview,
+      isAnalyzing: _isAnalyzing,
+      onShowConversation: _collapseComposerAndShowMessages,
+      onAnalyze: _runAnalysis,
     );
   }
 
@@ -6844,11 +6895,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               _buildConversationScreenshotSection(),
               const SizedBox(height: 12),
             ],
-            if (showComposerHelp && _lastManualAddedContent == null) ...[
-              _buildManualInputGuide(isContinue: _enthusiasmScore != null),
-              const SizedBox(height: 10),
-            ] else if (showComposerHelp) ...[
-              _buildManualAddedFeedback(),
+            if (showComposerHelp) ...[
+              if (_lastManualAddedContent != null)
+                _buildManualAddedFeedback()
+              else if (_lastScreenshotAddedCount != null)
+                _buildScreenshotAddedFeedback()
+              else
+                _buildManualInputGuide(isContinue: _enthusiasmScore != null),
               const SizedBox(height: 10),
             ],
             // 輸入框 + 貼上按鈕
