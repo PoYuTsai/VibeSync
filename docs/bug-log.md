@@ -10,6 +10,28 @@
 
 ## 2026-06
 
+### [2026-06-05] TestFlight 上傳階段缺 Ruby gem 依賴
+
+**症狀**:
+
+- `Release to App Stores #229` 的 `release-ios` job 失敗，`release-android` 未執行。
+- iOS tests、簽名、archive、IPA build 都成功；失敗發生在最後 `Upload to TestFlight`。
+
+**Root Cause**:
+
+- Workflow 直接用 `gem install fastlane` 安裝 fastlane。
+- GitHub macOS runner 上的 fastlane / google APIs 依賴鏈啟動時需要 `multi_json >= 1.14.1`，但該 gem 沒有被安裝，導致 fastlane 尚未開始上傳就因 `Gem::MissingSpecError` 中止。
+
+**修復**:
+
+- 在 iOS / Android release job 的 `Install Fastlane` 步驟先明確安裝 `multi_json >= 1.14.1`，再安裝 fastlane。
+- 同步補 Android release job，避免之後 Android 內測上傳遇到同一個 Ruby gem 缺依賴。
+
+**驗證**:
+
+- GitHub Actions run `27002131036` job log confirmed failure at `Upload to TestFlight`: `Could not find 'multi_json' (>= 1.14.1)`.
+- `git diff --check`
+
 ### [2026-06-05] TestFlight 更新後付費方案暫時掉回 Free
 
 **症狀**:

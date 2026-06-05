@@ -70,6 +70,7 @@ jobs:
       - name: Install Fastlane
         run: |
           cd ios
+          gem install multi_json -v '>= 1.14.1'
           gem install fastlane
 
       - name: Setup iOS certificates and provisioning profile
@@ -313,6 +314,7 @@ jobs:
       - name: Install Fastlane
         run: |
           cd android
+          gem install multi_json -v '>= 1.14.1'
           gem install fastlane
 
       - name: Setup Android signing
