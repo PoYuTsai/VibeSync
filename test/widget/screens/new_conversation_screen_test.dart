@@ -78,12 +78,35 @@ void main() {
       expect(find.text('自然聊天'), findsOneWidget);
     });
 
-    testWidgets('shows analyze button', (tester) async {
+    testWidgets('hides save button before any message is added',
+        (tester) async {
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: NewConversationScreen()),
         ),
       );
+
+      expect(find.text('先儲存對話'), findsNothing);
+    });
+
+    testWidgets('shows save button after one outgoing message is added',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      final myMessageField = find.byType(TextField).at(2);
+      await tester.ensureVisible(myMessageField);
+      await tester.enterText(myMessageField, '你好');
+      final addButton = find.byIcon(Icons.add).last;
+      await tester.ensureVisible(addButton);
+      await tester.tap(addButton);
+      await tester.pump();
 
       expect(find.text('先儲存對話'), findsOneWidget);
     });

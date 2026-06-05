@@ -688,12 +688,14 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 ..._buildConversationContentInput(),
                 ..._buildPartnerScopedAnalysisSettings(),
               ],
-              const SizedBox(height: 32),
-              GradientButton(
-                text: _primaryButtonText,
-                onPressed: _isLoading ? null : _createConversation,
-                isLoading: _isLoading,
-              ),
+              if (_messages.isNotEmpty) ...[
+                const SizedBox(height: 32),
+                GradientButton(
+                  text: _primaryButtonText,
+                  onPressed: _isLoading ? null : _createConversation,
+                  isLoading: _isLoading,
+                ),
+              ],
             ],
           ),
         ),
