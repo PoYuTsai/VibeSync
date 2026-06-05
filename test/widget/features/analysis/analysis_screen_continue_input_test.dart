@@ -10,6 +10,7 @@ import 'package:vibesync/features/conversation/data/providers/conversation_provi
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 
 import '../conversation/_fakes/recording_conversation_write_controller.dart';
 
@@ -245,14 +246,20 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
 
-    testWidgets('empty conversation explains the first manual-input step',
+    testWidgets('empty screenshot-start conversation keeps upload flow clean',
         (tester) async {
       await _pumpAnalysisScreen(tester, messages: const []);
 
       expect(find.text('還沒有訊息'), findsOneWidget);
+      expect(find.text('先上傳聊天截圖，確認文字後再加入這段對話。'), findsOneWidget);
+      expect(find.byType(ImagePickerWidget), findsOneWidget);
+      expect(find.text('建立這段對話'), findsNothing);
+      expect(find.text('貼上或輸入新的一則訊息...'), findsNothing);
+      expect(find.text('這句是她說'), findsNothing);
+      expect(find.text('這句是我說'), findsNothing);
       expect(
-        find.text('先在下方輸入一句，再選「這句是她說」或「這句是我說」。'),
-        findsOneWidget,
+        find.text('開始分析'),
+        findsNothing,
       );
     });
 

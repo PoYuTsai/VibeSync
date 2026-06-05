@@ -4500,6 +4500,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       });
     }
 
+    final showInitialScreenshotSetup = _enthusiasmScore == null &&
+        !_isAnalyzing &&
+        _errorMessage == null &&
+        _fullErrorMessage == null;
+    final isScreenshotOnlyEmptyState =
+        showInitialScreenshotSetup && conversation.messages.isEmpty;
+
     return GradientBackground(
       child: Scaffold(
         resizeToAvoidBottomInset: true,
@@ -4585,7 +4592,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
-                                          '先在下方輸入一句，再選「這句是她說」或「這句是我說」。',
+                                          isScreenshotOnlyEmptyState
+                                              ? '先上傳聊天截圖，確認文字後再加入這段對話。'
+                                              : '先在下方輸入一句，再選「這句是她說」或「這句是我說」。',
                                           textAlign: TextAlign.center,
                                           style:
                                               AppTypography.bodySmall.copyWith(
@@ -4769,10 +4778,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           // 手動分析按鈕 (尚未分析時顯示)
-                          if (_enthusiasmScore == null &&
-                              !_isAnalyzing &&
-                              _errorMessage == null &&
-                              _fullErrorMessage == null) ...[
+                          if (showInitialScreenshotSetup) ...[
                             Container(
                               padding: const EdgeInsets.all(24),
                               decoration: BoxDecoration(
@@ -5015,7 +5021,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                       ),
                                     */
                                     const SizedBox(height: 12),
-                                  ] else ...[
+                                  ] else if (conversation
+                                      .messages.isNotEmpty) ...[
                                     // 沒有截圖時才顯示「開始分析」按鈕
                                     SizedBox(
                                       width: double.infinity,
@@ -6450,7 +6457,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     ),
                   ),
                   // 對話延續輸入區（有分析結果時可收合）
-                  _buildCollapsibleMessageInput(),
+                  if (!isScreenshotOnlyEmptyState)
+                    _buildCollapsibleMessageInput(),
                 ],
               ),
             ),
