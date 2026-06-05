@@ -531,7 +531,7 @@ void main() {
                 'type': 'analysis.report_section',
                 'section': 'gameStage',
                 'message':
-                    '{"current":"opening","status":"正常進行","nextStep":"可以開始輕鬆互動"}',
+                    '{"current":"opening","status":"normal","nextStep":"可以開始輕鬆互動"}',
               }),
               jsonEncode({
                 'type': 'analysis.done',
@@ -554,11 +554,85 @@ void main() {
       ).toList();
 
       expect(updates.first.content?.title, '關係階段');
-      expect(updates.first.content?.body, contains('目前狀態：opening'));
-      expect(updates.first.content?.body, contains('狀態：正常進行'));
+      expect(updates.first.content?.body, contains('目前狀態：破冰階段'));
+      expect(updates.first.content?.body, contains('狀態：進展順利'));
       expect(updates.first.content?.body, contains('下一步：可以開始輕鬆互動'));
       expect(updates.first.content?.body, isNot(contains('{"current"')));
       expect(updates.first.content?.body, isNot(contains('"nextStep"')));
+      expect(updates.first.content?.body, isNot(contains('normal')));
+    });
+
+    test('formats report section status enum without English copy', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.report_section',
+                'section': 'status',
+                'content': 'normal',
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.first.content?.title, '關係狀態');
+      expect(updates.first.content?.body, '進展順利');
+      expect(updates.first.content?.body, isNot(contains('normal')));
+    });
+
+    test('drops unknown report section when body is only schema enum',
+        () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.report_section',
+                'content': 'normal',
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(
+        updates
+            .where((update) => update.kind == AnalysisStreamUpdateKind.content),
+        isEmpty,
+      );
+      expect(updates.single.kind, AnalysisStreamUpdateKind.done);
     });
 
     test('includes analysisRunId when retrying an existing stream run',

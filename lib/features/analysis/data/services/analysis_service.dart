@@ -242,13 +242,12 @@ class AnalysisStreamContent {
         );
       case 'analysis.report_section':
         final section = _stringField(event['section']);
+        final body = _reportSectionBody(section, event);
+        if (body == null) return null;
         return AnalysisStreamContent(
           kind: AnalysisStreamContentKind.reportSection,
           title: _sectionLabel(section),
-          body: _stringify(event['payload']) ??
-              _stringify(event['content']) ??
-              _stringify(event['message']) ??
-              '',
+          body: body,
           tag: section,
           rawEvent: event,
         );
@@ -286,6 +285,9 @@ class AnalysisStreamContent {
         return '話題深度';
       case 'gameStage':
         return '關係階段';
+      case 'status':
+      case 'gameStage.status':
+        return '關係狀態';
       default:
         return '完整分析段落';
     }
@@ -371,7 +373,7 @@ class AnalysisStreamContent {
 
     void add(String key, String label) {
       if (!value.containsKey(key)) return;
-      final formatted = _formatStructuredValue(value[key]);
+      final formatted = _formatStructuredValueForKey(key, value[key]);
       if (formatted == null || formatted.isEmpty) return;
       usedKeys.add(key);
       lines.add('$label：$formatted');
@@ -401,6 +403,68 @@ class AnalysisStreamContent {
     return joined.trim().isEmpty ? null : joined;
   }
 
+  static String? _reportSectionBody(
+    String? section,
+    Map<String, dynamic> event,
+  ) {
+    final rawValue = event.containsKey('payload')
+        ? event['payload']
+        : event.containsKey('content')
+            ? event['content']
+            : event['message'];
+    final formatted = _stringify(rawValue);
+    if (formatted == null || formatted.trim().isEmpty) return null;
+    return _formatReportSectionScalar(section, formatted);
+  }
+
+  static String? _formatReportSectionScalar(String? section, String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+
+    final sectionKey = section?.trim();
+    final statusLabel = _schemaStatusLabel(trimmed);
+    if (statusLabel != null) {
+      switch (sectionKey) {
+        case 'status':
+        case 'gameStage.status':
+          return statusLabel;
+        case 'gameStage':
+          return '狀態：$statusLabel';
+        default:
+          return null;
+      }
+    }
+
+    final currentLabel = _schemaCurrentLabel(trimmed);
+    if (currentLabel != null) {
+      switch (sectionKey) {
+        case 'gameStage':
+        case 'gameStage.current':
+          return '目前狀態：$currentLabel';
+        case 'topicDepth':
+        case 'topicDepth.current':
+          return '目前層次：$currentLabel';
+        default:
+          return null;
+      }
+    }
+
+    return trimmed;
+  }
+
+  static String? _formatStructuredValueForKey(String key, dynamic value) {
+    final formatted = _formatStructuredValue(value);
+    if (formatted == null || formatted.isEmpty) return null;
+    switch (key) {
+      case 'status':
+        return _schemaStatusLabel(formatted) ?? formatted;
+      case 'current':
+        return _schemaCurrentLabel(formatted) ?? formatted;
+      default:
+        return formatted;
+    }
+  }
+
   static String? _formatStructuredValue(dynamic value) {
     if (value == null) return null;
     if (value is bool) return value ? '有' : '沒有';
@@ -408,6 +472,45 @@ class AnalysisStreamContent {
     if (value is String) return _stringify(value);
     if (value is List || value is Map) return _stringify(value);
     return value.toString();
+  }
+
+  static String? _schemaStatusLabel(String value) {
+    switch (value.trim()) {
+      case 'normal':
+        return '進展順利';
+      case 'stuckFriend':
+        return '偏向朋友';
+      case 'canAdvance':
+        return '可以更進一步';
+      case 'shouldRetreat':
+        return '放慢節奏';
+      default:
+        return null;
+    }
+  }
+
+  static String? _schemaCurrentLabel(String value) {
+    switch (value.trim()) {
+      case 'opening':
+        return '破冰階段';
+      case 'premise':
+        return '建立男女感';
+      case 'qualification':
+        return '互相評估';
+      case 'narrative':
+        return '展現個人魅力';
+      case 'close':
+        return '準備邀約';
+      case 'facts':
+      case 'event':
+        return '事件層';
+      case 'personal':
+        return '個人層';
+      case 'intimate':
+        return '曖昧層';
+      default:
+        return null;
+    }
   }
 }
 
