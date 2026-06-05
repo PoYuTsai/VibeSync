@@ -247,7 +247,7 @@ class AnalysisStreamContent {
           title: _sectionLabel(section),
           body: _stringify(event['payload']) ??
               _stringify(event['content']) ??
-              _stringField(event['message']) ??
+              _stringify(event['message']) ??
               '',
           tag: section,
           rawEvent: event,
@@ -380,6 +380,7 @@ class AnalysisStreamContent {
     add('subtext', '她話裡的意思');
     add('qualificationSignal', '主動投入訊號');
     add('current', '目前狀態');
+    add('status', '狀態');
     add('suggestion', '建議');
     add('nextStep', '下一步');
     add('catchablePoint', '可接的球');

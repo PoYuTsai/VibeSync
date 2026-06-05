@@ -522,6 +522,45 @@ void main() {
           updates.first.content?.body, isNot(contains('qualificationSignal')));
     });
 
+    test('formats report section JSON message without raw JSON', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.report_section',
+                'section': 'gameStage',
+                'message':
+                    '{"current":"opening","status":"正常進行","nextStep":"可以開始輕鬆互動"}',
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.first.content?.title, '關係階段');
+      expect(updates.first.content?.body, contains('目前狀態：opening'));
+      expect(updates.first.content?.body, contains('狀態：正常進行'));
+      expect(updates.first.content?.body, contains('下一步：可以開始輕鬆互動'));
+      expect(updates.first.content?.body, isNot(contains('{"current"')));
+      expect(updates.first.content?.body, isNot(contains('"nextStep"')));
+    });
+
     test('includes analysisRunId when retrying an existing stream run',
         () async {
       late http.Request capturedRequest;
