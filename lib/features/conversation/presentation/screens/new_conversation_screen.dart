@@ -53,23 +53,17 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   bool get _endsWithMyMessage =>
       _messages.isNotEmpty && (_messages.last['isFromMe'] as bool);
 
-  String get _primaryButtonText {
-    if (_hasIncomingMessage) return '建立對話';
-    if (_hasOpenerSeed) return '先儲存開場草稿';
-    return '先儲存對話';
-  }
-
   String get _conversationHint {
     if (_messages.isEmpty) {
       return '依序輸入對話，至少先加入一則訊息。';
     }
 
     if (_hasOpenerSeed && !_hasIncomingMessage) {
-      return '已先帶入你準備送出的開場白。送出後，等她回覆再貼到「她說」；也可以先儲存成草稿。';
+      return '已先帶入你準備送出的開場白。送出後，等她回覆再貼到「她說」，就能建立對話並分析。';
     }
 
     if (!_hasIncomingMessage) {
-      return '目前還沒有她的回覆，可以先把你已傳出的訊息存成對話；等她回覆後再分析。';
+      return '目前還沒有她的回覆。等她回覆後貼到「她說」，再建立對話分析。';
     }
 
     if (_endsWithMyMessage) {
@@ -218,9 +212,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       return;
     }
 
+    if (!_hasIncomingMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('請先加入她的回覆，再建立對話。')),
+      );
+      return;
+    }
+
     final repository = ref.read(conversationRepositoryProvider);
     final messages = repository.createMessagesFromList(_messages);
-    final shouldShowDraftNotice = !_hasIncomingMessage;
 
     setState(() => _isLoading = true);
 
@@ -249,19 +249,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
       if (!mounted) return;
 
-      final messenger = ScaffoldMessenger.of(context);
       // pushReplacement (NOT go): swap THIS screen with /conversation/{id}
       // while keeping the underlying PartnerDetail (or wherever the user
       // came from) in the stack. go() would reset the entire stack and
       // strand back-navigation on home. (Bruce TF feedback 2026-04-28).
       context.pushReplacement('/conversation/${conversation.id}');
-      if (shouldShowDraftNotice) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('已先存成對話草稿；等她回覆後再開始分析。'),
-          ),
-        );
-      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -688,10 +680,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 ..._buildConversationContentInput(),
                 ..._buildPartnerScopedAnalysisSettings(),
               ],
-              if (_messages.isNotEmpty) ...[
+              if (_hasIncomingMessage) ...[
                 const SizedBox(height: 32),
                 GradientButton(
-                  text: _primaryButtonText,
+                  text: '建立對話',
                   onPressed: _isLoading ? null : _createConversation,
                   isLoading: _isLoading,
                 ),

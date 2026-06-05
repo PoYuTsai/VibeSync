@@ -89,7 +89,7 @@ void main() {
       expect(find.text('先儲存對話'), findsNothing);
     });
 
-    testWidgets('shows save button after one outgoing message is added',
+    testWidgets('keeps save button hidden after only outgoing message is added',
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -108,7 +108,31 @@ void main() {
       await tester.tap(addButton);
       await tester.pump();
 
-      expect(find.text('先儲存對話'), findsOneWidget);
+      expect(find.text('先儲存對話'), findsNothing);
+      expect(find.text('先儲存開場草稿'), findsNothing);
+      expect(find.text('建立對話'), findsNothing);
+    });
+
+    testWidgets('shows create button after incoming message is added',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      final herMessageField = find.byType(TextField).at(1);
+      await tester.ensureVisible(herMessageField);
+      await tester.enterText(herMessageField, '你好');
+      final addButton = find.byIcon(Icons.add).first;
+      await tester.ensureVisible(addButton);
+      await tester.tap(addButton);
+      await tester.pump();
+
+      expect(find.text('建立對話'), findsOneWidget);
     });
 
     testWidgets('shows current message-entry hint', (tester) async {
