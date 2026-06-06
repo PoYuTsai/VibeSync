@@ -2,11 +2,11 @@ import {
   createClient,
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
+import { getTierFromProductId } from "./tiers.ts";
 import {
-  getTierFromProductId,
-  resolveBillingIssueTier,
-  tierRank,
-} from "./tiers.ts";
+  buildSubscriptionProductMetadata,
+  resolveSubscriptionUpdateForWebhookEvent,
+} from "./subscription_update.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,33 +75,6 @@ function optionalString(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function inferBillingPeriod(productId: string): string | null {
-  const normalized = productId.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized.includes("quarter") || normalized.includes("p3m")) {
-    return "quarterly";
-  }
-  if (normalized.includes("monthly") || normalized.includes("p1m")) {
-    return "monthly";
-  }
-  return "unknown";
-}
-
-function buildSubscriptionProductMetadata(
-  productId: string,
-  event: Record<string, unknown>,
-): Record<string, unknown> {
-  const normalizedProductId = productId.trim();
-  return {
-    active_product_id: normalizedProductId || null,
-    billing_period: inferBillingPeriod(normalizedProductId),
-    store: typeof event.store === "string" ? event.store.trim() : null,
-    revenuecat_environment: typeof event.environment === "string"
-      ? event.environment.trim()
-      : null,
-  };
 }
 
 function extractStringList(value: unknown): string[] {
@@ -187,10 +160,9 @@ async function recordRevenueEvent(
     return;
   }
 
-  const eventTimestamp =
-    normalizeTimestampMs(event.event_timestamp_ms) ??
-      normalizeTimestampMs(event.purchased_at_ms) ??
-      new Date().toISOString();
+  const eventTimestamp = normalizeTimestampMs(event.event_timestamp_ms) ??
+    normalizeTimestampMs(event.purchased_at_ms) ??
+    new Date().toISOString();
 
   const { error } = await supabase.from("revenue_events").insert({
     user_id: userId,
@@ -210,7 +182,9 @@ async function recordRevenueEvent(
 
   if (error.code === "23505") {
     console.log(
-      `Skipped duplicate revenue event ${optionalString(event.id) ?? eventType}`,
+      `Skipped duplicate revenue event ${
+        optionalString(event.id) ?? eventType
+      }`,
     );
     return;
   }
@@ -424,57 +398,52 @@ Deno.serve(async (req) => {
       case "RENEWAL":
       case "UNCANCELLATION":
       case "SUBSCRIPTION_EXTENDED": {
-        const derivedTier = getTierFromProductId(effectiveProductId);
-        if (derivedTier == null) {
+        const decision = resolveSubscriptionUpdateForWebhookEvent({
+          type,
+          effectiveProductId,
+          currentTier,
+          expiresAt,
+          nowIso,
+          event,
+        });
+        if (decision.kind === "unsupported_product") {
           console.error(
             `Unsupported product_id for ${type}: "${effectiveProductId}"`,
           );
           return jsonResponse({ error: "Unsupported product_id" }, 400);
         }
 
-        newTier = derivedTier;
-        shouldUpdate = true;
-        subscriptionUpdate = {
-          tier: newTier,
-          status: "active",
-          expires_at: expiresAt,
-          ...buildSubscriptionProductMetadata(effectiveProductId, event),
-        };
+        newTier = decision.newTier;
+        shouldUpdate = decision.kind === "update";
+        subscriptionUpdate = decision.subscriptionUpdate ?? null;
         console.log(`Upgrading user ${app_user_id} to ${newTier}`);
         break;
       }
 
       case "PRODUCT_CHANGE": {
-        const derivedTier = getTierFromProductId(effectiveProductId);
-        if (derivedTier == null) {
+        const decision = resolveSubscriptionUpdateForWebhookEvent({
+          type,
+          effectiveProductId,
+          currentTier,
+          expiresAt,
+          nowIso,
+          event,
+        });
+        if (decision.kind === "unsupported_product") {
           console.error(
             `Unsupported product_id for PRODUCT_CHANGE: "${effectiveProductId}"`,
           );
           return jsonResponse({ error: "Unsupported product_id" }, 400);
         }
 
-        newTier = derivedTier;
-        const isUpgrade = tierRank(newTier) > tierRank(currentTier);
-
-        if (isUpgrade) {
-          shouldUpdate = true;
-          subscriptionUpdate = {
-            tier: newTier,
-            status: "active",
-            expires_at: expiresAt,
-            ...buildSubscriptionProductMetadata(effectiveProductId, event),
-          };
+        newTier = decision.newTier;
+        shouldUpdate = decision.kind === "update";
+        subscriptionUpdate = decision.subscriptionUpdate ?? null;
+        if (shouldUpdate) {
           console.log(
             `Applying PRODUCT_CHANGE upgrade for user ${app_user_id}: ${currentTier} -> ${newTier}`,
           );
         } else {
-          shouldUpdate = false;
-          subscriptionUpdate = {
-            tier: currentTier,
-            status: "active",
-            expires_at: expiresAt,
-            ...buildSubscriptionProductMetadata(product_id, event),
-          };
           console.log(
             `Ignoring PRODUCT_CHANGE downgrade until renewal for user ${app_user_id}: ${currentTier} -> ${newTier}`,
           );
@@ -483,63 +452,65 @@ Deno.serve(async (req) => {
       }
 
       case "EXPIRATION":
-        newTier = "free";
-        shouldUpdate = true;
-        subscriptionUpdate = {
-          tier: newTier,
-          status: "expired",
-          expires_at: expiresAt,
-          ...buildSubscriptionProductMetadata(effectiveProductId, event),
-          monthly_messages_used: 0,
-          daily_messages_used: 0,
-          monthly_reset_at: nowIso,
-          daily_reset_at: nowIso,
-        };
+        {
+          const decision = resolveSubscriptionUpdateForWebhookEvent({
+            type,
+            effectiveProductId,
+            currentTier,
+            expiresAt,
+            nowIso,
+            event,
+          });
+          newTier = decision.newTier;
+          shouldUpdate = decision.kind === "update";
+          subscriptionUpdate = decision.subscriptionUpdate ?? null;
+        }
         console.log(`Downgrading user ${app_user_id} to free`);
         break;
 
       case "BILLING_ISSUE": {
-        const preservedTier = resolveBillingIssueTier({
+        const decision = resolveSubscriptionUpdateForWebhookEvent({
+          type,
+          effectiveProductId,
           currentTier,
-          productId: effectiveProductId,
+          expiresAt,
+          nowIso,
+          event,
         });
 
-        if (preservedTier == null) {
-          shouldUpdate = false;
+        newTier = decision.newTier;
+        shouldUpdate = decision.kind === "update";
+        subscriptionUpdate = decision.subscriptionUpdate ?? null;
+        if (!shouldUpdate) {
           console.warn(
             `Ignoring BILLING_ISSUE for user ${app_user_id}: no paid tier in DB or product_id`,
           );
           break;
         }
 
-        newTier = preservedTier;
-        shouldUpdate = true;
-        subscriptionUpdate = {
-          tier: preservedTier,
-          status: "active",
-          expires_at: expiresAt,
-          ...buildSubscriptionProductMetadata(effectiveProductId, event),
-        };
         console.log(
-          `Billing issue for user ${app_user_id}; preserving ${preservedTier} quota usage until expiration`,
+          `Billing issue for user ${app_user_id}; preserving ${newTier} quota usage until expiration`,
         );
         break;
       }
 
-      case "CANCELLATION":
-        newTier = getTierFromProductId(effectiveProductId) ??
-          currentTier;
+      case "CANCELLATION": {
+        const decision = resolveSubscriptionUpdateForWebhookEvent({
+          type,
+          effectiveProductId,
+          currentTier,
+          expiresAt,
+          nowIso,
+          event,
+        });
+        newTier = decision.newTier;
+        shouldUpdate = decision.kind === "update";
+        subscriptionUpdate = decision.subscriptionUpdate ?? null;
         console.log(
           `User ${app_user_id} cancelled, will expire at ${expiration_at_ms}`,
         );
-        shouldUpdate = true;
-        subscriptionUpdate = {
-          tier: newTier,
-          status: "cancelled",
-          expires_at: expiresAt,
-          ...buildSubscriptionProductMetadata(effectiveProductId, event),
-        };
         break;
+      }
 
       case "NON_RENEWING_PURCHASE":
       case "SUBSCRIBER_ALIAS":
