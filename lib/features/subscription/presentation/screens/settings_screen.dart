@@ -21,14 +21,6 @@ import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 
-// Hidden by default after the P0 RevenueCat dogfood pass. Keep the diagnostic
-// tool one build flag away because TestFlight / sandbox subscription cases are
-// hard to reproduce once the live receipt has moved on.
-const _showSubscriptionDiagnosticsTile = bool.fromEnvironment(
-  'SHOW_SUBSCRIPTION_DIAGNOSTICS',
-  defaultValue: false,
-);
-
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -147,7 +139,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           _restorePurchases(context, ref);
                         },
                       ),
-                    if (!kIsWeb && _showSubscriptionDiagnosticsTile)
+                    if (!kIsWeb)
                       _buildTile(
                         icon: Icons.bug_report_outlined,
                         title: '複製訂閱診斷',
