@@ -68,6 +68,15 @@ Deno.test("isStreamingAllowed allows paid tiers outside the whitelist", () => {
   }));
 });
 
+Deno.test("isStreamingAllowed allows free tier outside the whitelist", () => {
+  assert(isStreamingAllowed({
+    email: "free@example.com",
+    flagOn: true,
+    whitelist: "eric19921204@gmail.com,chiang688041@gmail.com",
+    tier: "free",
+  }));
+});
+
 Deno.test("isStreamingAllowed allows any authenticated email when wildcard is enabled", () => {
   assert(isStreamingAllowed({
     email: "partner@example.com",
@@ -84,8 +93,8 @@ Deno.test("isStreamingAllowed keeps wildcard gated by the feature flag", () => {
   }));
 });
 
-Deno.test("isStreamingAllowed denies non-whitelisted accounts", () => {
-  assertFalse(isStreamingAllowed({
+Deno.test("isStreamingAllowed no longer depends on whitelist membership", () => {
+  assert(isStreamingAllowed({
     email: "friend@example.com",
     flagOn: true,
     whitelist: "eric19921204@gmail.com,chiang688041@gmail.com",
@@ -93,8 +102,8 @@ Deno.test("isStreamingAllowed denies non-whitelisted accounts", () => {
   }));
 });
 
-Deno.test("isStreamingAllowed denies missing email", () => {
-  assertFalse(isStreamingAllowed({
+Deno.test("isStreamingAllowed allows missing email when auth reached the function", () => {
+  assert(isStreamingAllowed({
     email: null,
     flagOn: true,
     whitelist: "eric19921204@gmail.com",

@@ -466,6 +466,22 @@ class AnalysisStreamContent {
   }
 
   static String? _formatStructuredValueForKey(String key, dynamic value) {
+    switch (key) {
+      case 'interests':
+      case 'traits':
+      case 'notes':
+        if (value is List) {
+          final joined = value
+              .map(_stringify)
+              .whereType<String>()
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty)
+              .join('、');
+          return joined.isEmpty ? null : joined;
+        }
+        break;
+    }
+
     final formatted = _formatStructuredValue(value);
     if (formatted == null || formatted.isEmpty) return null;
     switch (key) {
@@ -487,27 +503,42 @@ class AnalysisStreamContent {
       (_) => '個人層階段',
     );
     text = text.replaceAllMapped(
-      RegExp(r'(^|[：:\s,，])normal(?=([,，。]|$))', caseSensitive: false),
+      RegExp(r'(^|[^A-Za-z])normal(?=([^A-Za-z]|$))', caseSensitive: false),
       (match) => '${match.group(1) ?? ''}進展順利',
     );
 
+    return _replaceSchemaListFields(text);
+  }
+
+  static String _replaceSchemaListFields(String text) {
     final schemaLabels = <String, String>{
       'interests': '她的興趣/偏好',
       'traits': '她的特質',
       'notes': '補充觀察',
     };
-    final schemaLinePattern = RegExp(
-      r'^\s*(interests|traits|notes)\s*:\s*(.+?)\s*,?\s*$',
+    final schemaFieldPattern = RegExp(
+      r'''["']?(interests|traits|notes)["']?\s*[:：]\s*(\[[^\]]*\]|[^,\n]+)\s*,?''',
       caseSensitive: false,
     );
+    final matches = schemaFieldPattern.allMatches(text).toList();
+    if (matches.isEmpty) return text;
 
-    return text.split('\n').map((line) {
-      return line.replaceFirstMapped(schemaLinePattern, (match) {
+    final leftover = text
+        .replaceAll(schemaFieldPattern, '')
+        .replaceAll(RegExp(r'[\s,，{}]+'), '');
+    if (matches.length > 1 && leftover.isEmpty) {
+      return matches.map((match) {
         final key = match.group(1)!.toLowerCase();
         final rawValue = match.group(2) ?? '';
         return '${schemaLabels[key]}：${_humanizeSchemaList(rawValue)}';
-      });
-    }).join('\n');
+      }).join('\n');
+    }
+
+    return text.replaceAllMapped(schemaFieldPattern, (match) {
+      final key = match.group(1)!.toLowerCase();
+      final rawValue = match.group(2) ?? '';
+      return '${schemaLabels[key]}：${_humanizeSchemaList(rawValue)}';
+    });
   }
 
   static String _humanizeSchemaList(String value) {

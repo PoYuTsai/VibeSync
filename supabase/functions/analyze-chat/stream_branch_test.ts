@@ -115,7 +115,7 @@ Deno.test("stream branch does not use the two-stage run charge path", async () =
   assertFalse(branch.includes("create_charged_analysis_run"));
 });
 
-Deno.test("non-whitelist stream requests keep the legacy fallback path", async () => {
+Deno.test("stream fallback telemetry keeps enough gate context", async () => {
   const source = await readIndexSource();
 
   assert(source.includes("stream_request_fell_back_to_legacy"));

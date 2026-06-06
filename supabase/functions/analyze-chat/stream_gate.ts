@@ -27,25 +27,12 @@ export function isStreamingAllowed(input: StreamingAccessInput): boolean {
     return false;
   }
 
-  if (isPaidTier(input.tier)) {
-    return true;
-  }
-
-  const email = normalizeEmail(input.email);
-  if (!email) {
-    return false;
-  }
-
-  const whitelist = parseStreamWhitelist(input.whitelist);
-  return whitelist.has(STREAM_ALLOW_ALL) || whitelist.has(email);
+  // `analyze-chat` is already protected by Supabase auth. The feature flag is
+  // the rollout switch; tier still gates the number of reply styles elsewhere.
+  return true;
 }
 
 function normalizeEmail(value?: string | null): string | null {
   const email = value?.trim().toLowerCase();
   return email ? email : null;
-}
-
-function isPaidTier(value?: string | null): boolean {
-  const tier = value?.trim().toLowerCase();
-  return tier === "starter" || tier === "essential";
 }
