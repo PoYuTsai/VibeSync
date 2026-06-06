@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vibesync/features/analysis/domain/entities/quick_analysis_result.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 
 void main() {
-  group('QuickAnalysisResult.fromJson', () {
+  group('AnalysisRecommendationPreview.fromJson', () {
     test('parses happy path payload from analyze-chat quick mode', () {
       final json = {
         'analysisRunId': 'run_abc123',
@@ -17,7 +17,7 @@ void main() {
         },
       };
 
-      final result = QuickAnalysisResult.fromJson(json);
+      final result = AnalysisRecommendationPreview.fromJson(json);
 
       expect(result.analysisRunId, 'run_abc123');
       expect(result.estimatedFullSeconds, 17);
@@ -41,7 +41,7 @@ void main() {
         },
       };
 
-      final result = QuickAnalysisResult.fromJson(json);
+      final result = AnalysisRecommendationPreview.fromJson(json);
 
       expect(result.analysisRunId, 'run_xyz');
       expect(result.pick, '');
@@ -61,7 +61,7 @@ void main() {
         },
       };
 
-      final result = QuickAnalysisResult.fromJson(json);
+      final result = AnalysisRecommendationPreview.fromJson(json);
 
       expect(result.estimatedFullSeconds, 18);
     });
@@ -76,17 +76,18 @@ void main() {
         },
       };
 
-      final result = QuickAnalysisResult.fromJson(json);
+      final result = AnalysisRecommendationPreview.fromJson(json);
 
       expect(result.insufficientContext, false);
     });
   });
 
-  group('QuickAnalysisResult.fromJson — fail-closed on required fields (P3)',
+  group(
+      'AnalysisRecommendationPreview.fromJson — fail-closed on required fields (P3)',
       () {
     test('throws FormatException when analysisRunId is missing', () {
       expect(
-        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+        () => AnalysisRecommendationPreview.fromJson(<String, dynamic>{
           'quickResult': {
             'nextStep': '先接情緒',
             'recommendedReply': '聽起來累，週末放空？',
@@ -102,7 +103,7 @@ void main() {
 
     test('throws FormatException when analysisRunId is whitespace-only', () {
       expect(
-        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+        () => AnalysisRecommendationPreview.fromJson(<String, dynamic>{
           'analysisRunId': '   ',
           'quickResult': {
             'nextStep': '先接情緒',
@@ -115,7 +116,7 @@ void main() {
 
     test('throws FormatException when nextStep is missing', () {
       expect(
-        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+        () => AnalysisRecommendationPreview.fromJson(<String, dynamic>{
           'analysisRunId': 'run_1',
           'quickResult': {
             'recommendedReply': '聽起來累，週末放空？',
@@ -131,7 +132,7 @@ void main() {
 
     test('throws FormatException when recommendedReply is empty', () {
       expect(
-        () => QuickAnalysisResult.fromJson(<String, dynamic>{
+        () => AnalysisRecommendationPreview.fromJson(<String, dynamic>{
           'analysisRunId': 'run_1',
           'quickResult': {
             'nextStep': '先接情緒',
@@ -148,7 +149,7 @@ void main() {
 
     test('throws FormatException on entirely empty payload', () {
       expect(
-        () => QuickAnalysisResult.fromJson(<String, dynamic>{}),
+        () => AnalysisRecommendationPreview.fromJson(<String, dynamic>{}),
         throwsA(isA<FormatException>()),
       );
     });

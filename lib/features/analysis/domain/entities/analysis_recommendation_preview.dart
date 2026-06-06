@@ -1,10 +1,10 @@
-/// Result of the two-stage analyze `quick` phase.
+/// Recommendation preview parsed from legacy quick/full or streaming analyze events.
 ///
-/// Returned by `analyze-chat` when `responseMode: 'quick'`. Carries the
+/// Returned by `analyze-chat` as the legacy `quickResult` payload or synthesized from streaming recommendation events. Carries the
 /// `analysisRunId` that the subsequent `full` call must echo so the server
 /// can match the run, validate conversation hash, and avoid double-charging
-/// quota (invariant I1 of `docs/plans/2026-05-28-two-stage-analyze.md`).
-class QuickAnalysisResult {
+/// quota in the legacy rollback lifecycle.
+class AnalysisRecommendationPreview {
   final String analysisRunId;
   final String nextStep;
   final String pick;
@@ -14,7 +14,7 @@ class QuickAnalysisResult {
   final String confidence;
   final int? estimatedFullSeconds;
 
-  const QuickAnalysisResult({
+  const AnalysisRecommendationPreview({
     required this.analysisRunId,
     required this.nextStep,
     required this.pick,
@@ -30,50 +30,52 @@ class QuickAnalysisResult {
   /// should make this unreachable, but fail-closed prevents two downstream
   /// hazards if a malformed 200 ever slips through:
   /// 1. The full-mode call would echo an empty `analysisRunId`, returning
-  ///    `RUN_NOT_FOUND` after the user already paid quick quota.
-  /// 2. The UI would render a blank quick summary card.
+  ///    `RUN_NOT_FOUND` after the user already paid recommendation quota.
+  /// 2. The UI would render a blank recommendation preview.
   /// The service layer wraps this into `AnalysisException(code:
   /// 'INVALID_QUICK_RESPONSE')` so the notifier surfaces a coded error
   /// (invariant I-P3).
-  factory QuickAnalysisResult.fromJson(Map<String, dynamic> json) {
-    final quick = (json['quickResult'] as Map?)?.cast<String, dynamic>() ??
+  factory AnalysisRecommendationPreview.fromJson(Map<String, dynamic> json) {
+    final payload = (json['quickResult'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
     final etaRaw = json['estimatedFullSeconds'];
 
     final analysisRunId = (json['analysisRunId'] ?? '').toString().trim();
-    final nextStep = (quick['nextStep'] ?? '').toString().trim();
-    final pick = _normalizeQuickPick((quick['pick'] ?? '').toString().trim());
-    final recommendedReply = (quick['recommendedReply'] ?? '').toString().trim();
+    final nextStep = (payload['nextStep'] ?? '').toString().trim();
+    final pick =
+        _normalizeRecommendationPick((payload['pick'] ?? '').toString().trim());
+    final recommendedReply =
+        (payload['recommendedReply'] ?? '').toString().trim();
 
     if (analysisRunId.isEmpty) {
       throw const FormatException(
-        'QuickAnalysisResult missing required field: analysisRunId',
+        'AnalysisRecommendationPreview missing required field: analysisRunId',
       );
     }
     if (nextStep.isEmpty) {
       throw const FormatException(
-        'QuickAnalysisResult missing required field: nextStep',
+        'AnalysisRecommendationPreview missing required field: nextStep',
       );
     }
     if (recommendedReply.isEmpty) {
       throw const FormatException(
-        'QuickAnalysisResult missing required field: recommendedReply',
+        'AnalysisRecommendationPreview missing required field: recommendedReply',
       );
     }
 
-    return QuickAnalysisResult(
+    return AnalysisRecommendationPreview(
       analysisRunId: analysisRunId,
       nextStep: nextStep,
       pick: pick,
       recommendedReply: recommendedReply,
-      shortReason: (quick['shortReason'] ?? '').toString(),
-      insufficientContext: quick['insufficientContext'] == true,
-      confidence: (quick['confidence'] ?? 'medium').toString(),
+      shortReason: (payload['shortReason'] ?? '').toString(),
+      insufficientContext: payload['insufficientContext'] == true,
+      confidence: (payload['confidence'] ?? 'medium').toString(),
       estimatedFullSeconds: etaRaw is num ? etaRaw.round() : null,
     );
   }
 
-  static String _normalizeQuickPick(String pick) {
+  static String _normalizeRecommendationPick(String pick) {
     switch (pick) {
       case 'extend':
       case 'resonate':

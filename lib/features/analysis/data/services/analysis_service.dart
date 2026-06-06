@@ -11,7 +11,7 @@ import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../domain/entities/analysis_models.dart';
-import '../../domain/entities/quick_analysis_result.dart';
+import '../../domain/entities/analysis_recommendation_preview.dart';
 
 class ImageData {
   final String data;
@@ -615,7 +615,7 @@ class AnalysisStreamUpdate {
   final String? detail;
   final int? etaSeconds;
   final AnalysisStreamContent? content;
-  final QuickAnalysisResult? quick;
+  final AnalysisRecommendationPreview? recommendationPreview;
   final AnalysisResult? result;
   final Map<String, dynamic>? rawEvent;
 
@@ -626,7 +626,7 @@ class AnalysisStreamUpdate {
     this.detail,
     this.etaSeconds,
     this.content,
-    this.quick,
+    this.recommendationPreview,
     this.result,
     this.rawEvent,
   });
@@ -679,7 +679,7 @@ class AnalysisStreamUpdate {
         );
 
   const AnalysisStreamUpdate.recommendation({
-    required QuickAnalysisResult quick,
+    required AnalysisRecommendationPreview recommendationPreview,
     String? runId,
     String? label,
     String? detail,
@@ -691,7 +691,7 @@ class AnalysisStreamUpdate {
           label: label,
           detail: detail,
           etaSeconds: etaSeconds,
-          quick: quick,
+          recommendationPreview: recommendationPreview,
           rawEvent: rawEvent,
         );
 
@@ -1507,11 +1507,11 @@ class AnalysisService {
     }
   }
 
-  /// Two-stage analyze — quick phase.
+  /// Legacy quick/full rollback — recommendation phase.
   ///
-  /// Posts `responseMode: 'quick'` to `analyze-chat`. Returns a [QuickAnalysisResult]
+  /// Posts `responseMode: 'quick'` to `analyze-chat`. Returns a [AnalysisRecommendationPreview]
   /// carrying the `analysisRunId` that [analyzeFull] must echo.
-  Future<QuickAnalysisResult> analyzeQuick({
+  Future<AnalysisRecommendationPreview> analyzeQuick({
     required List<Message> messages,
     SessionContext? sessionContext,
     String? conversationSummary,
@@ -1521,8 +1521,8 @@ class AnalysisService {
     int? previousAnalyzedCount,
   }) async {
     final entitlementContext = await _buildEntitlementContext();
-    final responseData = await _postTwoStageRequest(
-      body: _buildTwoStageBody(
+    final responseData = await _postAnalyzeModeRequest(
+      body: _buildAnalyzeModeBody(
         responseMode: 'quick',
         analysisRunId: null,
         messages: messages,
@@ -1537,11 +1537,11 @@ class AnalysisService {
       timeout: const Duration(seconds: 15),
     );
     try {
-      return QuickAnalysisResult.fromJson(responseData);
+      return AnalysisRecommendationPreview.fromJson(responseData);
     } on FormatException catch (_) {
       // Backend should not return a malformed 200, but if it does the user has
       // already been charged quick quota. Surface a coded error so the
-      // notifier maps it to a quickFailed state and the UI offers retry rather
+      // notifier maps it to a failedBeforeRecommendation state and the UI offers retry rather
       // than rendering blank fields (I-P3).
       throw AnalysisException(
         '快速分析回應格式錯誤，請稍後再試。',
@@ -1550,7 +1550,7 @@ class AnalysisService {
     }
   }
 
-  /// Two-stage analyze — full phase.
+  /// Legacy quick/full rollback — full phase.
   ///
   /// Echoes [analysisRunId] from a prior [analyzeQuick] so the server can match
   /// the run, validate conversation hash, and avoid double-charging quota (I1).
@@ -1567,8 +1567,8 @@ class AnalysisService {
     int? previousAnalyzedCount,
   }) async {
     final entitlementContext = await _buildEntitlementContext();
-    final responseData = await _postTwoStageRequest(
-      body: _buildTwoStageBody(
+    final responseData = await _postAnalyzeModeRequest(
+      body: _buildAnalyzeModeBody(
         responseMode: 'full',
         analysisRunId: analysisRunId,
         messages: messages,
@@ -1623,7 +1623,7 @@ class AnalysisService {
           'apikey': AppConfig.supabaseAnonKey,
         })
         ..body = jsonEncode(
-          _buildTwoStageBody(
+          _buildAnalyzeModeBody(
             responseMode: 'stream',
             analysisRunId: analysisRunId,
             messages: messages,
@@ -1757,13 +1757,13 @@ class AnalysisService {
             );
             break;
           case 'analysis.recommendation':
-            final quick = _streamRecommendationPreview(
+            final recommendationPreview = _streamRecommendationPreview(
               event,
               runId: runId,
               etaSeconds: etaSeconds,
             );
             yield AnalysisStreamUpdate.recommendation(
-              quick: quick,
+              recommendationPreview: recommendationPreview,
               runId: runId,
               label: '先產生建議回覆',
               detail: '完整分析仍在補齊脈絡與細節。',
@@ -1898,7 +1898,7 @@ class AnalysisService {
     }
   }
 
-  QuickAnalysisResult _streamRecommendationPreview(
+  AnalysisRecommendationPreview _streamRecommendationPreview(
     Map<String, dynamic> event, {
     required String? runId,
     required int? etaSeconds,
@@ -1917,7 +1917,7 @@ class AnalysisService {
     );
     final reason = _stringField(event['reason']) ?? '';
 
-    return QuickAnalysisResult(
+    return AnalysisRecommendationPreview(
       analysisRunId:
           runId == null || runId.trim().isEmpty ? 'stream-preview' : runId,
       nextStep: reason.isNotEmpty ? reason : '先用這個方向回覆，完整分析正在完成。',
@@ -1954,7 +1954,7 @@ class AnalysisService {
     return null;
   }
 
-  Map<String, dynamic> _buildTwoStageBody({
+  Map<String, dynamic> _buildAnalyzeModeBody({
     required String responseMode,
     String? analysisRunId,
     required List<Message> messages,
@@ -2010,7 +2010,7 @@ class AnalysisService {
     };
   }
 
-  Future<Map<String, dynamic>> _postTwoStageRequest({
+  Future<Map<String, dynamic>> _postAnalyzeModeRequest({
     required Map<String, dynamic> body,
     required Duration timeout,
     Exception Function(int status, Map<String, dynamic> data)? onErrorResponse,
@@ -2198,7 +2198,7 @@ class MonthlyLimitExceededException extends AnalysisException {
         );
 }
 
-/// Raised when the two-stage `full` phase fails on the server.
+/// Raised when the legacy quick/full `full` phase fails on the server.
 ///
 /// [retriesRemaining] is 0 for terminal failures (`RUN_EXPIRED`,
 /// `RUN_CONVERSATION_MISMATCH`, `RUN_RETRY_EXHAUSTED`) and matches the server

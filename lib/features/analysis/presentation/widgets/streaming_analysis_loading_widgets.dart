@@ -1,8 +1,8 @@
-// lib/features/analysis/presentation/widgets/two_stage_loading_widgets.dart
+// lib/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart
 //
 // UI primitives for the full-streaming analyze flow.
 //
-// - [QuickRotatingLoader]    Spinner + rotating Chinese narrative copy. The
+// - [StreamingAnalysisLoader]    Spinner + rotating Chinese narrative copy. The
 //   historical class name remains for compatibility; it now represents the
 //   full-streaming prelude before content events arrive.
 // - [FullAnalysisPlaceholder] Legacy skeleton retained for rollback tests.
@@ -17,7 +17,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 
-const List<String> kQuickLoadingPhrases = <String>[
+const List<String> kStreamingAnalysisLoadingPhrases = <String>[
   '正在讀取對話脈絡...',
   '整理目前互動節奏...',
   '判斷對方訊號強弱...',
@@ -25,7 +25,8 @@ const List<String> kQuickLoadingPhrases = <String>[
   '準備完整分析內容...',
 ];
 
-const Duration kQuickRotationInterval = Duration(milliseconds: 1000);
+const Duration kStreamingAnalysisRotationInterval =
+    Duration(milliseconds: 1000);
 
 const String kFullPlaceholderClosing = '正在補上完整報告...';
 const List<String> kFullPlaceholderSectionLabels = <String>[
@@ -39,26 +40,27 @@ const String kRetryExhaustedMessage = '無法再重試，請重新分析。';
 ///
 /// Cycles through [phrases] every [interval] to reduce perceived dead time.
 /// Caller may inject custom phrases for tests; production uses
-/// [kQuickLoadingPhrases].
-class QuickRotatingLoader extends StatefulWidget {
+/// [kStreamingAnalysisLoadingPhrases].
+class StreamingAnalysisLoader extends StatefulWidget {
   final List<String> phrases;
   final Duration interval;
   final String? label;
   final String? detail;
 
-  const QuickRotatingLoader({
+  const StreamingAnalysisLoader({
     super.key,
-    this.phrases = kQuickLoadingPhrases,
-    this.interval = kQuickRotationInterval,
+    this.phrases = kStreamingAnalysisLoadingPhrases,
+    this.interval = kStreamingAnalysisRotationInterval,
     this.label,
     this.detail,
   });
 
   @override
-  State<QuickRotatingLoader> createState() => _QuickRotatingLoaderState();
+  State<StreamingAnalysisLoader> createState() =>
+      _StreamingAnalysisLoaderState();
 }
 
-class _QuickRotatingLoaderState extends State<QuickRotatingLoader> {
+class _StreamingAnalysisLoaderState extends State<StreamingAnalysisLoader> {
   int _tick = 0;
   Timer? _timer;
 
