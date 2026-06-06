@@ -891,7 +891,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       }
 
       var customerInfo = await RevenueCatService.login(user.id);
-      customerInfo ??= await RevenueCatService.getCustomerInfo();
+      customerInfo ??= await RevenueCatService.getCustomerInfoForAppUserId(
+        user.id,
+      );
 
       final response = await _loadOrCreateSubscriptionRecord(
         userId: user.id,
@@ -964,8 +966,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       return;
     }
 
+    final currentUserId = SupabaseService.currentUser?.id;
     final customerInfo =
-        await RevenueCatService.syncPurchasesAndRefreshCustomerInfo();
+        await RevenueCatService.syncPurchasesAndRefreshCustomerInfo(
+      expectedAppUserId: currentUserId,
+    );
     final rescuedTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
     if (rescuedTier == SubscriptionTierHelper.free) {
       return;
@@ -1242,7 +1247,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
 
     debugPrint('[forceSyncTier] Starting sync: tier=$tier, user=${user.id}');
-    final customerInfo = await RevenueCatService.getCustomerInfo();
+    final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
+      user.id,
+    );
     final syncedTier = await _syncSubscriptionViaEdgeFunction(
       expectedTier: tier,
       resetUsage: tier != SubscriptionTierHelper.free,
@@ -1323,7 +1330,12 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   Future<void> syncWithRevenueCat() async {
     try {
-      final customerInfo = await RevenueCatService.getCustomerInfo();
+      final user = SupabaseService.currentUser;
+      if (user == null) return;
+
+      final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
+        user.id,
+      );
       if (customerInfo == null) return;
 
       final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
@@ -1412,7 +1424,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
 
     final currentTier = state.tier;
-    final customerInfo = await RevenueCatService.getCustomerInfo();
+    final user = SupabaseService.currentUser;
+    if (user == null) {
+      return false;
+    }
+
+    final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
+      user.id,
+    );
     if (customerInfo == null) {
       return false;
     }

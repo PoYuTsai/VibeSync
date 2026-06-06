@@ -111,4 +111,68 @@ void main() {
         contains('vibesync_essential_monthly_v2'));
     expect(customerInfo['activeEntitlements'], contains('premium'));
   });
+
+  test('does not read customer info when RevenueCat app user id mismatches',
+      () async {
+    var getCustomerInfoCalls = 0;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'setupPurchases':
+        case 'setLogLevel':
+          return null;
+        case 'getAppUserID':
+          return 'previous-user-id';
+        case 'getCustomerInfo':
+          getCustomerInfoCalls += 1;
+          return paidCustomerInfo;
+      }
+      return null;
+    });
+
+    RevenueCatService.debugIsIOSPlatformOverride = true;
+    await RevenueCatService.initialize(appUserId: 'current-user-id');
+
+    final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
+      'current-user-id',
+    );
+
+    expect(customerInfo, isNull);
+    expect(getCustomerInfoCalls, 0);
+  });
+
+  test('startup rescue does not sync purchases when app user id mismatches',
+      () async {
+    final calls = <String>[];
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      switch (call.method) {
+        case 'setupPurchases':
+        case 'setLogLevel':
+          return null;
+        case 'getAppUserID':
+          return 'previous-user-id';
+        case 'getCustomerInfo':
+        case 'syncPurchases':
+        case 'invalidateCustomerInfoCache':
+          fail('must not use stale RevenueCat identity for startup rescue');
+      }
+      return null;
+    });
+
+    RevenueCatService.debugIsIOSPlatformOverride = true;
+    await RevenueCatService.initialize(appUserId: 'current-user-id');
+
+    final customerInfo =
+        await RevenueCatService.syncPurchasesAndRefreshCustomerInfo(
+      expectedAppUserId: 'current-user-id',
+    );
+
+    expect(customerInfo, isNull);
+    expect(calls, isNot(contains('syncPurchases')));
+    expect(calls, isNot(contains('getCustomerInfo')));
+  });
 }

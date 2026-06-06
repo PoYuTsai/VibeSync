@@ -212,15 +212,33 @@ class UsageService {
       return;
     }
 
+    final normalizedTier = SubscriptionTierHelper.normalizeTier(tier);
+    final now = DateTime.now().toUtc();
+    final normalizedExpiresAt = expiresAt?.toUtc();
+    if (normalizedExpiresAt == null || !normalizedExpiresAt.isAfter(now)) {
+      final existingUserId = box.get(_lastKnownPaidUserIdKey) as String?;
+      final existingTier = SubscriptionTierHelper.normalizeTier(
+        box.get(_lastKnownPaidTierKey) as String?,
+      );
+      final existingExpiresAt = _parseDateTime(
+        box.get(_lastKnownPaidExpiresAtKey),
+      );
+      final existingSnapshotStillValid = existingUserId == currentUserId &&
+          existingTier != SubscriptionTierHelper.free &&
+          existingExpiresAt != null &&
+          existingExpiresAt.toUtc().isAfter(now);
+
+      if (!existingSnapshotStillValid) {
+        _clearLastKnownPaidSnapshot(box);
+      }
+      return;
+    }
+
     box.put(_lastKnownPaidUserIdKey, currentUserId);
-    box.put(_lastKnownPaidTierKey, tier);
+    box.put(_lastKnownPaidTierKey, normalizedTier);
     box.put(_lastKnownPaidMonthlyLimitKey, monthlyLimit);
     box.put(_lastKnownPaidDailyLimitKey, dailyLimit);
-    if (expiresAt != null) {
-      box.put(_lastKnownPaidExpiresAtKey, expiresAt.toIso8601String());
-    } else {
-      box.delete(_lastKnownPaidExpiresAtKey);
-    }
+    box.put(_lastKnownPaidExpiresAtKey, normalizedExpiresAt.toIso8601String());
   }
 
   static void _clearLastKnownPaidSnapshot(Box box) {
@@ -253,7 +271,7 @@ class UsageService {
     }
 
     final expiresAt = _parseDateTime(box.get(_lastKnownPaidExpiresAtKey));
-    if (expiresAt != null && !expiresAt.toUtc().isAfter(now.toUtc())) {
+    if (expiresAt == null || !expiresAt.toUtc().isAfter(now.toUtc())) {
       return null;
     }
 

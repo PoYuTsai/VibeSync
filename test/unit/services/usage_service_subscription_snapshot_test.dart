@@ -94,4 +94,54 @@ void main() {
     expect(usage.monthlyLimit, AppConstants.freeMonthlyLimit);
     expect(usage.dailyLimit, AppConstants.freeDailyLimit);
   });
+
+  test('does not restore paid snapshot when expiration is unknown', () {
+    final essentialLimits =
+        SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
+
+    UsageService.syncSubscriptionSnapshot(
+      tier: SubscriptionTierHelper.essential,
+      monthlyLimit: essentialLimits.monthly,
+      dailyLimit: essentialLimits.daily,
+    );
+    UsageService.syncSubscriptionSnapshot(
+      tier: SubscriptionTierHelper.free,
+      monthlyLimit: AppConstants.freeMonthlyLimit,
+      dailyLimit: AppConstants.freeDailyLimit,
+    );
+
+    final usage = UsageService().getLocalUsage();
+
+    expect(usage.tier, SubscriptionTierHelper.free);
+    expect(usage.monthlyLimit, AppConstants.freeMonthlyLimit);
+    expect(usage.dailyLimit, AppConstants.freeDailyLimit);
+  });
+
+  test('keeps valid paid snapshot when a later paid sync omits expiration', () {
+    final essentialLimits =
+        SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
+
+    UsageService.syncSubscriptionSnapshot(
+      tier: SubscriptionTierHelper.essential,
+      monthlyLimit: essentialLimits.monthly,
+      dailyLimit: essentialLimits.daily,
+      paidExpiresAt: DateTime.utc(2099, 1, 1),
+    );
+    UsageService.syncSubscriptionSnapshot(
+      tier: SubscriptionTierHelper.essential,
+      monthlyLimit: essentialLimits.monthly,
+      dailyLimit: essentialLimits.daily,
+    );
+    UsageService.syncSubscriptionSnapshot(
+      tier: SubscriptionTierHelper.free,
+      monthlyLimit: AppConstants.freeMonthlyLimit,
+      dailyLimit: AppConstants.freeDailyLimit,
+    );
+
+    final usage = UsageService().getLocalUsage();
+
+    expect(usage.tier, SubscriptionTierHelper.essential);
+    expect(usage.monthlyLimit, essentialLimits.monthly);
+    expect(usage.dailyLimit, essentialLimits.daily);
+  });
 }

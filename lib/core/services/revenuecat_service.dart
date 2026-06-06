@@ -205,6 +205,35 @@ class RevenueCatService {
     }
   }
 
+  static Future<bool> _matchesExpectedAppUserId(
+    String? expectedAppUserId,
+  ) async {
+    final cleanedExpectedAppUserId = expectedAppUserId?.trim();
+    if (cleanedExpectedAppUserId == null || cleanedExpectedAppUserId.isEmpty) {
+      return true;
+    }
+
+    final currentAppUserId = (await getCurrentAppUserId())?.trim();
+    if (currentAppUserId == cleanedExpectedAppUserId) {
+      return true;
+    }
+
+    debugPrint(
+      'RevenueCat identity mismatch: expected=$cleanedExpectedAppUserId current=${currentAppUserId ?? 'null'}',
+    );
+    return false;
+  }
+
+  static Future<CustomerInfo?> getCustomerInfoForAppUserId(
+    String expectedAppUserId,
+  ) async {
+    if (!_isInitialized) return null;
+    if (!await _matchesExpectedAppUserId(expectedAppUserId)) {
+      return null;
+    }
+    return getCustomerInfo();
+  }
+
   static Future<bool?> getIsAnonymous() async {
     if (!_isInitialized) return null;
 
@@ -255,8 +284,13 @@ class RevenueCatService {
     };
   }
 
-  static Future<CustomerInfo?> syncPurchasesAndRefreshCustomerInfo() async {
+  static Future<CustomerInfo?> syncPurchasesAndRefreshCustomerInfo({
+    String? expectedAppUserId,
+  }) async {
     if (!_isInitialized) return null;
+    if (!await _matchesExpectedAppUserId(expectedAppUserId)) {
+      return null;
+    }
 
     try {
       await Purchases.invalidateCustomerInfoCache();
@@ -268,6 +302,9 @@ class RevenueCatService {
 
       await Purchases.syncPurchases();
       await Purchases.invalidateCustomerInfoCache();
+      if (!await _matchesExpectedAppUserId(expectedAppUserId)) {
+        return null;
+      }
       customerInfo = await Purchases.getCustomerInfo();
       debugPrint('RevenueCat: Purchases synced for startup entitlement rescue');
       return customerInfo;
