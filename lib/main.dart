@@ -27,7 +27,9 @@ void main() async {
   );
 
   // Initialize RevenueCat (iOS/Android only)
-  await RevenueCatService.initialize();
+  await RevenueCatService.initialize(
+    appUserId: SupabaseService.currentUser?.id,
+  );
 
   runApp(
     const ProviderScope(

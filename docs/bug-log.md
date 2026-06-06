@@ -10,6 +10,31 @@
 
 ## 2026-06
 
+### [2026-06-06] TestFlight update/logout-login still shows Free
+**Symptom**:
+
+- Eric tested `main@ad83963`; TestFlight still showed Free.
+- Logging out of Supabase and logging back into the same account still showed Free, so the previous local paid snapshot guard did not cover the RevenueCat identity boundary.
+
+**Root Cause**:
+
+- The app configured RevenueCat without a Supabase user id at startup, creating an anonymous App User ID before `logIn(user.id)`.
+- Supabase sign-out also called native `Purchases.logOut()`, which generates a new anonymous RevenueCat App User ID. If a purchase or alias is attached to an anonymous id, later login can see Free under the custom Supabase id.
+- This matches RevenueCat's documented identity behavior: avoiding anonymous ids requires configuring with a custom App User ID and not calling SDK logout for custom-ID-only flows.
+
+**Fix**:
+
+- RevenueCat initialization now accepts and uses the current Supabase user id when a session exists at cold start.
+- Supabase sign-out no longer triggers native RevenueCat `logOut()`; account switching is handled by the next `RevenueCat.logIn(newUserId)`.
+- Existing startup `syncPurchases()` paid rescue and paid snapshot guard remain in place.
+
+**Validation**:
+
+- `flutter test --no-pub test/unit/services/revenuecat_service_identity_test.dart`
+- `flutter test --no-pub test/unit/features/subscription/data/subscription_state_package_test.dart`
+- `flutter test --no-pub test/unit/services/usage_service_subscription_snapshot_test.dart`
+- `flutter analyze --no-pub`
+
 ### [2026-06-06] TestFlight 更新後付費用戶退回 Free 並少 5 種回覆
 
 **症狀**:

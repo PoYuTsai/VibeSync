@@ -10,13 +10,16 @@ import '../utils/platform_info.dart';
 /// RevenueCat 服務封裝
 class RevenueCatService {
   static bool _isInitialized = false;
+  @visibleForTesting
+  static bool? debugIsIOSPlatformOverride;
+
   static const MethodChannel _subscriptionManagementChannel = MethodChannel(
     'vibesync/subscription_management',
   );
 
   /// 初始化 RevenueCat SDK
   /// 應在 main.dart 中 Supabase 初始化後呼叫
-  static Future<void> initialize() async {
+  static Future<void> initialize({String? appUserId}) async {
     if (_isInitialized) return;
 
     // Web 不支援 RevenueCat
@@ -33,8 +36,10 @@ class RevenueCatService {
 
     await Purchases.setLogLevel(LogLevel.debug);
 
+    final cleanedAppUserId = appUserId?.trim();
     PurchasesConfiguration configuration;
-    if (isIOSPlatform) {
+    final isIOS = debugIsIOSPlatformOverride ?? isIOSPlatform;
+    if (isIOS) {
       configuration = PurchasesConfiguration(apiKey);
     } else if (isAndroidPlatform) {
       // Android 暫不支援，之後再加
@@ -45,13 +50,27 @@ class RevenueCatService {
       return;
     }
 
+    if (cleanedAppUserId != null && cleanedAppUserId.isNotEmpty) {
+      configuration.appUserID = cleanedAppUserId;
+    }
+
     await Purchases.configure(configuration);
     _isInitialized = true;
-    debugPrint('RevenueCat initialized');
+    debugPrint(
+      cleanedAppUserId == null || cleanedAppUserId.isEmpty
+          ? 'RevenueCat initialized'
+          : 'RevenueCat initialized with custom app user id',
+    );
   }
 
   /// 檢查是否已初始化
   static bool get isInitialized => _isInitialized;
+
+  @visibleForTesting
+  static void debugResetForTesting() {
+    _isInitialized = false;
+    debugIsIOSPlatformOverride = null;
+  }
 
   /// 關聯用戶 ID（登入後呼叫）
   /// 這讓 RevenueCat 知道訂閱屬於哪個 Supabase 用戶
@@ -71,13 +90,8 @@ class RevenueCatService {
   /// 登出（Supabase 登出時呼叫）
   static Future<void> logout() async {
     if (!_isInitialized) return;
-
-    try {
-      await Purchases.logOut();
-      debugPrint('RevenueCat: User logged out');
-    } catch (e) {
-      debugPrint('RevenueCat logout error: $e');
-    }
+    debugPrint(
+        'RevenueCat: SDK logout skipped to preserve custom user identity');
   }
 
   /// 取得可購買的產品
