@@ -40,15 +40,19 @@
 
 - Eric tested after `main@b164802`; the app still displayed Free.
 - At this point the issue is no longer diagnosable from UI tier alone; we need to know whether RevenueCat CustomerInfo, Supabase subscription state, or local UI/cache is the layer returning Free.
+- After build `238` / `6c07c49`, diagnostics showed the first Free state was a TestFlight sandbox expiration: RevenueCat identity matched the Supabase user and was not anonymous, but active subscriptions / entitlements were empty and the latest expiration was already in the past.
+- After repurchase, RevenueCat and the app both returned Essential, but the app subscription metadata still showed the old `renewsAt` timestamp while RevenueCat had a new active expiration.
 
 **Investigation Step**:
 
 - Added a TestFlight-visible subscription diagnostic copy action in Settings.
 - Diagnostic includes app version / Git SHA, Supabase user id, UI subscription state, local usage snapshot, RevenueCat appUserID, anonymous flag, active subscriptions, active entitlements, inferred RC tier, and expiration metadata.
 - CI build commands now pass `GIT_SHA` via `--dart-define`, so dogfood can verify the installed build commit.
+- Updated `sync-subscription` to persist and return the latest active RevenueCat expiration date when RevenueCat confirms a paid tier, instead of leaving `subscriptions.expires_at` stale.
 
 **Validation**:
 
+- `deno test --allow-env --allow-net supabase/functions/sync-subscription/revenuecat_expiration_test.ts supabase/functions/sync-subscription/usage_reset_test.ts supabase/functions/sync-subscription/revenuecat_identity_test.ts`
 - `flutter test --no-pub test/unit/services/revenuecat_service_identity_test.dart`
 - `flutter test --no-pub test/unit/features/subscription/data/subscription_state_package_test.dart`
 - `flutter test --no-pub test/unit/services/usage_service_subscription_snapshot_test.dart`

@@ -2,6 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 import { buildRevenueCatUserIdCandidates } from "./revenuecat_identity.ts";
+import {
+  latestActiveExpirationDateFromRevenueCatPayload,
+  latestIsoDate,
+} from "./revenuecat_expiration.ts";
 import { shouldResetUsageOnTierSync } from "./usage_reset.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -127,7 +131,9 @@ function highestActiveProductId(productIds: string[]): string | null {
   return ranked[0]?.productId ?? null;
 }
 
-function inferBillingPeriod(productId: string | null | undefined): string | null {
+function inferBillingPeriod(
+  productId: string | null | undefined,
+): string | null {
   const normalized = productId?.trim().toLowerCase() ?? "";
   if (!normalized) return null;
   if (normalized.includes("quarter") || normalized.includes("p3m")) {
@@ -190,6 +196,7 @@ serve(async (req) => {
       appUserId: string;
       subscriber: Record<string, unknown>;
       activeProductIds: string[];
+      activeExpiresAt: string | null;
     }> = [];
     let lastRevenueCatError: { status: number; detail: string } | null = null;
 
@@ -235,6 +242,9 @@ serve(async (req) => {
         activeProductIds: collectActiveProductIdsFromRevenueCatPayload(
           subscriber,
         ),
+        activeExpiresAt: latestActiveExpirationDateFromRevenueCatPayload(
+          subscriber,
+        ),
       });
     }
 
@@ -266,6 +276,9 @@ serve(async (req) => {
     );
     const revenueCatTier = highestTier(activeProductIds.map(tierFromProductId));
     const revenueCatProductId = highestActiveProductId(activeProductIds);
+    const revenueCatExpiresAt = latestIsoDate(
+      subscriberSnapshots.map((snapshot) => snapshot.activeExpiresAt),
+    );
     const matchedRevenueCatAppUserId = subscriberSnapshots.find(
       (snapshot) => snapshot.activeProductIds.length > 0,
     )?.appUserId ?? subscriberSnapshots[0].appUserId;
@@ -315,10 +328,9 @@ serve(async (req) => {
       tierPreservedReason = "paid_tier_free_snapshot_guard";
     }
 
-    const existingProductId =
-      typeof existingSub?.active_product_id === "string"
-        ? existingSub.active_product_id
-        : null;
+    const existingProductId = typeof existingSub?.active_product_id === "string"
+      ? existingSub.active_product_id
+      : null;
     const finalActiveProductId = finalTier === "free"
       ? null
       : revenueCatProductId ?? existingProductId;
@@ -341,6 +353,9 @@ serve(async (req) => {
       active_product_id: finalActiveProductId,
       billing_period: inferBillingPeriod(finalActiveProductId),
     };
+    if (finalTier !== "free" && revenueCatExpiresAt !== null) {
+      updatePayload.expires_at = revenueCatExpiresAt;
+    }
     if (shouldResetUsage) {
       updatePayload.monthly_messages_used = 0;
       updatePayload.daily_messages_used = 0;
@@ -397,7 +412,8 @@ serve(async (req) => {
       tierPreservedReason,
       monthlyMessagesUsed: syncedRow?.monthly_messages_used ?? 0,
       dailyMessagesUsed: syncedRow?.daily_messages_used ?? 0,
-      expiresAt: syncedRow?.expires_at ?? existingSub?.expires_at ?? null,
+      expiresAt: syncedRow?.expires_at ?? revenueCatExpiresAt ??
+        existingSub?.expires_at ?? null,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
       resetUsage: shouldResetUsage,
