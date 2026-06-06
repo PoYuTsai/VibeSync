@@ -27,6 +27,7 @@
 - Add the missing `REVENUECAT_IOS_API_KEY` Supabase secret before relying on paid entitlement rescue.
 - Hardened client startup / restore paths so a Free user is not locally promoted to paid unless server sync confirms the paid tier.
 - Added `analyze-chat` quota logs for expected tier, effective tier, and RevenueCat hint presence.
+- Added a Supabase secret preflight to Edge deploy and App Store/TestFlight release workflows so missing production secrets fail before dogfood.
 
 **Validation**:
 
@@ -34,6 +35,7 @@
 - `flutter test --no-pub test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart`
 - `deno check supabase/functions/analyze-chat/index.ts`
 - `flutter analyze --no-pub`
+- `powershell -ExecutionPolicy Bypass -File tools/preflight/check-supabase-secrets.ps1 -ProjectRef fcmwrmwdoqiqdnbisdpg`
 
 ### [2026-06-06] TestFlight update/logout-login still shows Free
 **Symptom**:

@@ -26,6 +26,12 @@ jobs:
         with:
           version: 2.105.0
 
+      - name: Check Production Supabase secrets
+        shell: pwsh
+        run: ./tools/preflight/check-supabase-secrets.ps1 -ProjectRef fcmwrmwdoqiqdnbisdpg
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: Link Supabase Project
         run: |
           supabase link --project-ref fcmwrmwdoqiqdnbisdpg
