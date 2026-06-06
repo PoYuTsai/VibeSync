@@ -718,6 +718,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               dailyLimit: limits.daily,
               monthlyUsed: monthlyUsed,
               dailyUsed: dailyUsed,
+              paidExpiresAt: renewsAt,
+              clearPaidSnapshot:
+                  tier == SubscriptionTierHelper.free && _isExpired(renewsAt),
             );
 
             debugPrint(
@@ -742,11 +745,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     return null;
   }
 
-  void _syncUsageCache(String tier, SubscriptionTierLimits limits) {
+  void _syncUsageCache(
+    String tier,
+    SubscriptionTierLimits limits, {
+    DateTime? paidExpiresAt,
+    bool clearPaidSnapshot = false,
+  }) {
     UsageService.syncSubscriptionSnapshot(
       tier: tier,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
+      paidExpiresAt: paidExpiresAt,
+      clearPaidSnapshot: clearPaidSnapshot,
     );
   }
 
@@ -759,7 +769,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
     if (isTestAccount) {
       final limits = SubscriptionTierHelper.limitsFor(state.tier);
-      _syncUsageCache(state.tier, limits);
+      _syncUsageCache(state.tier, limits, paidExpiresAt: state.renewsAt);
       return;
     }
 
@@ -782,6 +792,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       dailyLimit: limits.daily,
       monthlyUsed: monthlyUsed,
       dailyUsed: dailyUsed,
+      paidExpiresAt: state.renewsAt,
     );
   }
 
@@ -906,6 +917,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         dailyLimit: displayLimits.daily,
         monthlyUsed: _readInt(response['monthly_messages_used']),
         dailyUsed: _readInt(response['daily_messages_used']),
+        paidExpiresAt: renewsAt,
+        clearPaidSnapshot:
+            displayTier == SubscriptionTierHelper.free && _isExpired(renewsAt),
       );
 
       await _syncSubscriptionViaEdgeFunction(
@@ -1051,7 +1065,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           isLoading: false,
           error: null,
         ));
-        _syncUsageCache(previousTier, currentLimits);
+        _syncUsageCache(
+          previousTier,
+          currentLimits,
+          paidExpiresAt: effectiveAt ?? state.renewsAt,
+        );
 
         debugPrint(
           '[purchase] Scheduled downgrade preserved current tier: from=$previousTier to=$requestedTier effectiveAt=$effectiveAt',
@@ -1078,6 +1096,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           productId;
       final revenueCatAppUserId =
           RevenueCatService.getRevenueCatAppUserId(customerInfo);
+      final purchasedRenewsAt =
+          RevenueCatService.getPremiumExpirationDate(customerInfo);
       final syncedTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier: resolvedTier,
         resetUsage: previousTier != resolvedTier &&
@@ -1091,12 +1111,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         tier: tier,
         monthlyLimit: limits.monthly,
         dailyLimit: limits.daily,
+        renewsAt: purchasedRenewsAt ?? state.renewsAt,
         activeProductId:
             tier == SubscriptionTierHelper.free ? null : purchasedProductId,
         isLoading: false,
         error: null,
       ));
-      _syncUsageCache(tier, limits);
+      _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
 
       debugPrint(
         '[purchase] final tier=$tier, synced=${syncedTier ?? 'null'}, monthlyLimit=${state.monthlyLimit}',
@@ -1219,7 +1240,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         isLoading: false,
         error: null,
       ));
-      _syncUsageCache(tier, limits);
+      _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
 
       return tier != SubscriptionTierHelper.free;
     } catch (e) {
@@ -1261,6 +1282,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             renewsAt: renewsAt,
           ));
         }
+        final limits = SubscriptionTierHelper.limitsFor(state.tier);
+        _syncUsageCache(state.tier, limits, paidExpiresAt: state.renewsAt);
         return;
       }
 
@@ -1268,6 +1291,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         debugPrint(
           'Tier mismatch ignored: local=${state.tier}, RevenueCat=$rcTier (keep premium until sync stabilizes)',
         );
+        final limits = SubscriptionTierHelper.limitsFor(state.tier);
+        _syncUsageCache(state.tier, limits, paidExpiresAt: state.renewsAt);
         return;
       }
 
@@ -1292,7 +1317,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               ? null
               : activeProductId ?? state.activeProductId,
         ));
-        _syncUsageCache(tier, limits);
+        _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
       } else {
         final shouldRefreshMetadata = (activeProductId != null &&
                 activeProductId != state.activeProductId) ||
@@ -1302,6 +1327,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             activeProductId: activeProductId ?? state.activeProductId,
             renewsAt: renewsAt ?? state.renewsAt,
           ));
+          final limits = SubscriptionTierHelper.limitsFor(state.tier);
+          _syncUsageCache(state.tier, limits, paidExpiresAt: state.renewsAt);
         }
       }
     } catch (e) {

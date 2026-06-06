@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../../core/config/environment.dart';
+import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/services/usage_service.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
+import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/quick_analysis_result.dart';
 
@@ -902,13 +905,63 @@ class AnalysisService {
 
   final http.Client Function() _clientFactory;
   final String? Function() _accessTokenProvider;
+  final String? Function() _expectedTierProvider;
+  final Future<String?> Function() _revenueCatAppUserIdProvider;
 
   AnalysisService({
     http.Client Function()? clientFactory,
     String? Function()? accessTokenProvider,
+    String? Function()? expectedTierProvider,
+    Future<String?> Function()? revenueCatAppUserIdProvider,
   })  : _clientFactory = clientFactory ?? http.Client.new,
         _accessTokenProvider =
-            accessTokenProvider ?? (() => SupabaseService.accessToken);
+            accessTokenProvider ?? (() => SupabaseService.accessToken),
+        _expectedTierProvider =
+            expectedTierProvider ?? _defaultExpectedTierProvider,
+        _revenueCatAppUserIdProvider =
+            revenueCatAppUserIdProvider ?? _defaultRevenueCatAppUserIdProvider;
+
+  static String? _defaultExpectedTierProvider() {
+    try {
+      final tier = SubscriptionTierHelper.normalizeTier(
+        UsageService().getLocalUsage().tier,
+      );
+      return tier == SubscriptionTierHelper.free ? null : tier;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String?> _defaultRevenueCatAppUserIdProvider() async {
+    try {
+      final customerInfo = await RevenueCatService.getCustomerInfo().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => null,
+      );
+      return RevenueCatService.getRevenueCatAppUserId(customerInfo);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<_AnalysisEntitlementContext> _buildEntitlementContext() async {
+    final expectedTier = SubscriptionTierHelper.normalizeTier(
+      _expectedTierProvider(),
+    );
+    if (expectedTier == SubscriptionTierHelper.free) {
+      return const _AnalysisEntitlementContext();
+    }
+
+    final revenueCatAppUserId = await _revenueCatAppUserIdProvider();
+    final cleanedRevenueCatAppUserId = revenueCatAppUserId?.trim();
+    return _AnalysisEntitlementContext(
+      expectedTier: expectedTier,
+      revenueCatAppUserId: cleanedRevenueCatAppUserId == null ||
+              cleanedRevenueCatAppUserId.isEmpty
+          ? null
+          : cleanedRevenueCatAppUserId,
+    );
+  }
 
   Future<AnalysisResult> analyzeConversation(
     List<Message> messages, {
@@ -1092,6 +1145,7 @@ class AnalysisService {
         );
       }
 
+      final entitlementContext = await _buildEntitlementContext();
       final requestBody = {
         'messages': messages
             .map(
@@ -1131,6 +1185,10 @@ class AnalysisService {
         if (recognizeOnly) 'recognizeOnly': true,
         if (previousAnalyzedCount != null && previousAnalyzedCount > 0)
           'previousAnalyzedCount': previousAnalyzedCount,
+        if (entitlementContext.expectedTier != null)
+          'expectedTier': entitlementContext.expectedTier,
+        if (entitlementContext.revenueCatAppUserId != null)
+          'revenueCatAppUserId': entitlementContext.revenueCatAppUserId,
       };
 
       final encodedRequestBody = jsonEncode(requestBody);
@@ -1371,6 +1429,7 @@ class AnalysisService {
     String? knownContactName,
     int? previousAnalyzedCount,
   }) async {
+    final entitlementContext = await _buildEntitlementContext();
     final responseData = await _postTwoStageRequest(
       body: _buildTwoStageBody(
         responseMode: 'quick',
@@ -1382,6 +1441,7 @@ class AnalysisService {
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
+        entitlementContext: entitlementContext,
       ),
       timeout: const Duration(seconds: 15),
     );
@@ -1415,6 +1475,7 @@ class AnalysisService {
     String? knownContactName,
     int? previousAnalyzedCount,
   }) async {
+    final entitlementContext = await _buildEntitlementContext();
     final responseData = await _postTwoStageRequest(
       body: _buildTwoStageBody(
         responseMode: 'full',
@@ -1426,6 +1487,7 @@ class AnalysisService {
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
+        entitlementContext: entitlementContext,
       ),
       timeout: const Duration(seconds: 60),
       onErrorResponse: _mapFullModeError,
@@ -1452,6 +1514,7 @@ class AnalysisService {
       );
     }
 
+    final entitlementContext = await _buildEntitlementContext();
     final client = _clientFactory();
     String? runId;
     int? etaSeconds;
@@ -1479,6 +1542,7 @@ class AnalysisService {
             effectiveStyleContext: effectiveStyleContext,
             knownContactName: knownContactName,
             previousAnalyzedCount: previousAnalyzedCount,
+            entitlementContext: entitlementContext,
           ),
         );
 
@@ -1799,6 +1863,8 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    _AnalysisEntitlementContext entitlementContext =
+        const _AnalysisEntitlementContext(),
   }) {
     return {
       'responseMode': responseMode,
@@ -1836,6 +1902,10 @@ class AnalysisService {
         'knownContactName': knownContactName.trim(),
       if (previousAnalyzedCount != null && previousAnalyzedCount > 0)
         'previousAnalyzedCount': previousAnalyzedCount,
+      if (entitlementContext.expectedTier != null)
+        'expectedTier': entitlementContext.expectedTier,
+      if (entitlementContext.revenueCatAppUserId != null)
+        'revenueCatAppUserId': entitlementContext.revenueCatAppUserId,
     };
   }
 
@@ -1959,6 +2029,16 @@ class AnalysisService {
         );
     }
   }
+}
+
+class _AnalysisEntitlementContext {
+  const _AnalysisEntitlementContext({
+    this.expectedTier,
+    this.revenueCatAppUserId,
+  });
+
+  final String? expectedTier;
+  final String? revenueCatAppUserId;
 }
 
 class AnalysisException implements Exception {

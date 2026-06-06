@@ -1,5 +1,7 @@
 // lib/core/services/usage_service.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import '../constants/app_constants.dart';
 import '../../features/subscription/domain/services/subscription_tier_helper.dart';
 import 'storage_service.dart';
@@ -90,6 +92,14 @@ class UsageService {
   static const _monthlyLimitKey = 'subscription_monthly_limit';
   static const _dailyLimitKey = 'subscription_daily_limit';
   static const _userIdKey = 'usage_user_id';
+  static const _lastKnownPaidTierKey = 'last_known_paid_tier';
+  static const _lastKnownPaidMonthlyLimitKey = 'last_known_paid_monthly_limit';
+  static const _lastKnownPaidDailyLimitKey = 'last_known_paid_daily_limit';
+  static const _lastKnownPaidExpiresAtKey = 'last_known_paid_expires_at';
+  static const _lastKnownPaidUserIdKey = 'last_known_paid_user_id';
+
+  @visibleForTesting
+  static String? debugCurrentUserIdOverride;
 
   static void syncSubscriptionSnapshot({
     required String tier,
@@ -97,13 +107,16 @@ class UsageService {
     required int dailyLimit,
     int? monthlyUsed,
     int? dailyUsed,
+    DateTime? paidExpiresAt,
+    bool clearPaidSnapshot = false,
   }) {
     final box = StorageService.usageBox;
-    final currentUserId = SupabaseService.currentUser?.id;
+    final currentUserId = _currentUserId;
+    final normalizedTier = SubscriptionTierHelper.normalizeTier(tier);
     if (currentUserId != null) {
       box.put(_userIdKey, currentUserId);
     }
-    box.put(_tierKey, tier);
+    box.put(_tierKey, normalizedTier);
     box.put(_monthlyLimitKey, monthlyLimit);
     box.put(_dailyLimitKey, dailyLimit);
     if (monthlyUsed != null) {
@@ -111,6 +124,17 @@ class UsageService {
     }
     if (dailyUsed != null) {
       box.put(_dailyUsedKey, dailyUsed);
+    }
+    if (clearPaidSnapshot) {
+      _clearLastKnownPaidSnapshot(box);
+    } else if (normalizedTier != SubscriptionTierHelper.free) {
+      _writeLastKnownPaidSnapshot(
+        box,
+        tier: normalizedTier,
+        monthlyLimit: monthlyLimit,
+        dailyLimit: dailyLimit,
+        expiresAt: paidExpiresAt,
+      );
     }
   }
 
@@ -125,11 +149,19 @@ class UsageService {
       box.delete(_monthlyLimitKey),
       box.delete(_dailyLimitKey),
       box.delete(_userIdKey),
+      box.delete(_lastKnownPaidTierKey),
+      box.delete(_lastKnownPaidMonthlyLimitKey),
+      box.delete(_lastKnownPaidDailyLimitKey),
+      box.delete(_lastKnownPaidExpiresAtKey),
+      box.delete(_lastKnownPaidUserIdKey),
     ]);
   }
 
+  static String? get _currentUserId =>
+      debugCurrentUserIdOverride ?? SupabaseService.currentUser?.id;
+
   static void _resetSnapshotIfAccountChanged() {
-    final currentUserId = SupabaseService.currentUser?.id;
+    final currentUserId = _currentUserId;
     if (currentUserId == null) return;
 
     final box = StorageService.usageBox;
@@ -150,6 +182,7 @@ class UsageService {
     box.put(_tierKey, SubscriptionTierHelper.free);
     box.put(_monthlyLimitKey, AppConstants.freeMonthlyLimit);
     box.put(_dailyLimitKey, AppConstants.freeDailyLimit);
+    _clearLastKnownPaidSnapshot(box);
   }
 
   static int _defaultMonthlyLimitForTier(String tier) {
@@ -158,6 +191,79 @@ class UsageService {
 
   static int _defaultDailyLimitForTier(String tier) {
     return SubscriptionTierHelper.limitsFor(tier).daily;
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
+  }
+
+  static void _writeLastKnownPaidSnapshot(
+    Box box, {
+    required String tier,
+    required int monthlyLimit,
+    required int dailyLimit,
+    DateTime? expiresAt,
+  }) {
+    final currentUserId = _currentUserId;
+    if (currentUserId == null || currentUserId.isEmpty) {
+      return;
+    }
+
+    box.put(_lastKnownPaidUserIdKey, currentUserId);
+    box.put(_lastKnownPaidTierKey, tier);
+    box.put(_lastKnownPaidMonthlyLimitKey, monthlyLimit);
+    box.put(_lastKnownPaidDailyLimitKey, dailyLimit);
+    if (expiresAt != null) {
+      box.put(_lastKnownPaidExpiresAtKey, expiresAt.toIso8601String());
+    } else {
+      box.delete(_lastKnownPaidExpiresAtKey);
+    }
+  }
+
+  static void _clearLastKnownPaidSnapshot(Box box) {
+    box.delete(_lastKnownPaidTierKey);
+    box.delete(_lastKnownPaidMonthlyLimitKey);
+    box.delete(_lastKnownPaidDailyLimitKey);
+    box.delete(_lastKnownPaidExpiresAtKey);
+    box.delete(_lastKnownPaidUserIdKey);
+  }
+
+  static _LastKnownPaidSnapshot? _readLastKnownPaidSnapshot(
+    Box box, {
+    required DateTime now,
+  }) {
+    final currentUserId = _currentUserId;
+    if (currentUserId == null || currentUserId.isEmpty) {
+      return null;
+    }
+
+    final snapshotUserId = box.get(_lastKnownPaidUserIdKey) as String?;
+    if (snapshotUserId != currentUserId) {
+      return null;
+    }
+
+    final tier = SubscriptionTierHelper.normalizeTier(
+      box.get(_lastKnownPaidTierKey) as String?,
+    );
+    if (tier == SubscriptionTierHelper.free) {
+      return null;
+    }
+
+    final expiresAt = _parseDateTime(box.get(_lastKnownPaidExpiresAtKey));
+    if (expiresAt != null && !expiresAt.toUtc().isAfter(now.toUtc())) {
+      return null;
+    }
+
+    final limits = SubscriptionTierHelper.limitsFor(tier);
+    return _LastKnownPaidSnapshot(
+      tier: tier,
+      monthlyLimit:
+          box.get(_lastKnownPaidMonthlyLimitKey) as int? ?? limits.monthly,
+      dailyLimit: box.get(_lastKnownPaidDailyLimitKey) as int? ?? limits.daily,
+    );
   }
 
   /// Get current usage data (local cache)
@@ -208,11 +314,26 @@ class UsageService {
       box.put(_monthlyResetAtKey, now.toIso8601String());
     }
 
-    final tier = box.get(_tierKey) as String? ?? 'free';
-    final monthlyLimit =
-        box.get(_monthlyLimitKey) as int? ?? _defaultMonthlyLimitForTier(tier);
-    final dailyLimit =
-        box.get(_dailyLimitKey) as int? ?? _defaultDailyLimitForTier(tier);
+    final storedTier = SubscriptionTierHelper.normalizeTier(
+      box.get(_tierKey) as String?,
+    );
+    final paidSnapshot = _readLastKnownPaidSnapshot(box, now: now);
+    final shouldRestorePaidSnapshot =
+        storedTier == SubscriptionTierHelper.free && paidSnapshot != null;
+    final tier = shouldRestorePaidSnapshot ? paidSnapshot.tier : storedTier;
+    final monthlyLimit = shouldRestorePaidSnapshot
+        ? paidSnapshot.monthlyLimit
+        : box.get(_monthlyLimitKey) as int? ??
+            _defaultMonthlyLimitForTier(tier);
+    final dailyLimit = shouldRestorePaidSnapshot
+        ? paidSnapshot.dailyLimit
+        : box.get(_dailyLimitKey) as int? ?? _defaultDailyLimitForTier(tier);
+
+    if (shouldRestorePaidSnapshot) {
+      box.put(_tierKey, tier);
+      box.put(_monthlyLimitKey, monthlyLimit);
+      box.put(_dailyLimitKey, dailyLimit);
+    }
 
     return UsageData(
       monthlyUsed: monthlyUsed,
@@ -268,3 +389,15 @@ final usageDataProvider = Provider<UsageData>((ref) {
   final service = ref.watch(usageServiceProvider);
   return service.getLocalUsage();
 });
+
+class _LastKnownPaidSnapshot {
+  const _LastKnownPaidSnapshot({
+    required this.tier,
+    required this.monthlyLimit,
+    required this.dailyLimit,
+  });
+
+  final String tier;
+  final int monthlyLimit;
+  final int dailyLimit;
+}

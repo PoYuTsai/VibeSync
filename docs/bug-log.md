@@ -10,6 +10,30 @@
 
 ## 2026-06
 
+### [2026-06-06] TestFlight 更新後付費用戶退回 Free 並少 5 種回覆
+
+**症狀**:
+
+- Eric / 夥伴多次在 TestFlight 點「更新」後打開 App，已購買 Starter / Essential 仍顯示 Free。
+- App 被判定 Free 後，`analyze-chat` 串流只拿到 Free allowed reply style，造成 5 種回覆/詳細報告看起來缺失。
+
+**Root Cause**:
+
+- 本機 usage cache 只有單一 `subscription_tier` key；任何一次 DB/RevenueCat transient Free sync 都可能覆寫掉 paid cache，下一次啟動沒有可信 paid snapshot 可恢復。
+- Analyze Chat client 沒像 opener 一樣帶 `expectedTier` / RevenueCat app user id，後端在 DB 暫時 Free 時只能按 Free tier 產生回覆。
+
+**修正**:
+
+- 新增 per-user `last_known_paid_*` snapshot；同帳號且未過期時，transient Free cache write 不能洗掉 Starter / Essential。換帳號與 authoritative expired Free 會清掉 guard。
+- 分析請求 quick/full/stream 與 legacy analyze path 都會在本機知道 paid 時送 `expectedTier`，並盡量附 RevenueCat app user id，讓後端可校正 stale DB Free。
+
+**驗證**:
+
+- `flutter test --no-pub test/unit/services/usage_service_subscription_snapshot_test.dart`
+- `flutter test --no-pub test/unit/features/subscription/data/subscription_state_package_test.dart`
+- `flutter test --no-pub test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart`
+- `flutter analyze --no-pub`
+
 ### [2026-06-05] TestFlight 上傳階段缺 Ruby gem 依賴
 
 **症狀**:

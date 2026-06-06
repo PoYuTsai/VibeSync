@@ -68,6 +68,8 @@ void main() {
       final service = AnalysisService(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:abc',
       );
 
       final result = await service.analyzeQuick(
@@ -81,6 +83,8 @@ void main() {
       final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
       expect(body['responseMode'], 'quick');
       expect(body.containsKey('analysisRunId'), isFalse);
+      expect(body['expectedTier'], 'essential');
+      expect(body['revenueCatAppUserId'], r'$RCAnonymousID:abc');
       expect(body['messages'], isA<List<dynamic>>());
       expect((body['messages'] as List).length, 2);
     });
@@ -102,6 +106,8 @@ void main() {
       final service = AnalysisService(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'starter',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:def',
       );
 
       expect(
@@ -160,6 +166,8 @@ void main() {
       final service = AnalysisService(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'starter',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:def',
       );
 
       final result = await service.analyzeFull(
@@ -393,6 +401,8 @@ void main() {
       final service = AnalysisService(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'starter',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:def',
       );
 
       final updates = await service.analyzeStream(
@@ -425,6 +435,8 @@ void main() {
       final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
       expect(body['responseMode'], 'stream');
       expect(body.containsKey('analysisRunId'), isFalse);
+      expect(body['expectedTier'], 'starter');
+      expect(body['revenueCatAppUserId'], r'$RCAnonymousID:def');
     });
 
     test('treats legacy JSON 200 as a completed stream fallback', () async {
