@@ -131,6 +131,11 @@ High-risk invariant examples:
 
 - Repo grep is not enough for external facts such as live web URLs, App Store
   metadata, RevenueCat dashboard state, or deployed Edge behavior.
+- For high-risk bugs crossing SaaS services, secrets, webhooks, or deployed
+  Edge Functions, verify live environment state before treating the issue as a
+  code-only regression. Examples: Supabase Edge secrets, RevenueCat API keys,
+  webhook delivery, dashboard product state, and the currently deployed
+  function revision.
 - Close external-fact findings with direct evidence, for example `curl -I -L`,
   deployment logs, dashboard screenshots, or TestFlight repro notes.
 - If a finding is closed by external evidence, record it as
