@@ -1,5 +1,7 @@
 // lib/features/analysis/data/providers/analysis_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/revenuecat_service.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/message.dart';
@@ -7,6 +9,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/services/partner_summary_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repo_view.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
@@ -16,7 +19,23 @@ import '../services/partner_context_resolver.dart';
 
 /// Provider for AnalysisService
 final analysisServiceProvider = Provider<AnalysisService>((ref) {
-  return AnalysisService();
+  final subscription = ref.watch(subscriptionProvider);
+  return AnalysisService(
+    expectedTierProvider: () => subscription.tier,
+    revenueCatAppUserIdProvider: () async {
+      final userId = SupabaseService.currentUser?.id;
+      final customerInfo = userId == null
+          ? await RevenueCatService.getCustomerInfo().timeout(
+              const Duration(seconds: 3),
+              onTimeout: () => null,
+            )
+          : await RevenueCatService.getCustomerInfoForAppUserId(userId).timeout(
+              const Duration(seconds: 3),
+              onTimeout: () => null,
+            );
+      return RevenueCatService.getRevenueCatAppUserId(customerInfo);
+    },
+  );
 });
 
 /// Provider for the Spec 3 data-quality repository. Reads/writes to the
@@ -52,8 +71,7 @@ class _ProviderBackedDataQualityRepoView implements PartnerDataQualityRepoView {
 /// Provider for the per-call partner-context resolver. Adapters keep
 /// `partner` and `analysis` features decoupled at the type level — the
 /// real repos do not implement the resolver-local view interfaces.
-final partnerContextResolverProvider =
-    Provider<PartnerContextResolver>((ref) {
+final partnerContextResolverProvider = Provider<PartnerContextResolver>((ref) {
   final partnerRepo = ref.watch(partnerRepositoryProvider);
   final conversationRepo = ref.watch(conversationRepositoryProvider);
   return PartnerContextResolver(
