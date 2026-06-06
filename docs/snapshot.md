@@ -29,6 +29,7 @@ Default priority:
 
 Recent commit themes, newest first:
 
+- Analyze-chat full streaming is the current product path. The old user-visible two-stage quick/full plan is superseded; frontend legacy naming cleanup landed in `d12009e`. Backend `quick/full` compatibility remains hidden rollback / old-client support only.
 - `!codex` Phase 1 read-only Discord review gate: `dfde5f2`, `ec84bb0`.
 - `!cc-rotate` external/mobile session rotation and bootstrap hardening: `80ce48a` through `abd8200`.
 - CC dogfood handoff, queue, and current-state correction: `8b748c4`, `050f50e`, `e111550`, `128879f`, `2f72839`.
@@ -84,6 +85,8 @@ Coach 1:1 rule:
 
 Analyze-chat rule:
 
+- Current analyze-chat UX is full streaming analyze. Do not revive the old two-stage quick/full UX unless Eric explicitly reopens that decision.
+- Existing backend `responseMode: quick/full` and `analysis_runs` artifacts are compatibility / rollback surfaces, not the official user-visible analyze design.
 - Reply suggestions should read the actual conversation.
 - Prefer "接住情緒 -> 互動感 -> 順勢延伸" over summary-like suggestions.
 - For multiple incoming messages, identify catchable points and when useful suggest split replies; not every point needs a reply.

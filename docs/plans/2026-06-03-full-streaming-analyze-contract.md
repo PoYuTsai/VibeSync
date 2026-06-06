@@ -1,8 +1,9 @@
 # Full Streaming Analyze Contract
 
-> Status: Draft v2. No implementation yet.
+> Status (2026-06-07): Current analyze-chat architecture. Implemented on `main`; keep this contract as the source of truth for streaming analyze behavior.
 > Scope: analyze-chat text path first. Screenshot, opener, Coach 1:1, and follow-up reuse the same UX principles later.
 > Note: The v2 Traditional Chinese addendum below is the current decision layer. If it conflicts with older English draft sections, v2 wins.
+> Compatibility note: old `quick/full` backend paths remain hidden rollback / old-client support only. Do not remove them without explicit Eric approval.
 
 ## v2 繁中決策補充
 
@@ -496,7 +497,7 @@ Suggested sequence:
 5. Dogfood manual text analyze with hard cases.
 6. Dogfood screenshot analyze after text path is stable.
 7. Remove quick as official answer source.
-8. Archive the two-stage quick/full plan.
+8. Archive the two-stage quick/full plan. Done 2026-06-07 via superseded notice in `docs/plans/2026-05-28-two-stage-analyze.md`.
 
 ## Test Cases Before Dogfood
 
