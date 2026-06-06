@@ -1417,6 +1417,70 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
   }
 
+  /// Best-effort server entitlement sync before a paid analysis request.
+  ///
+  /// The local RevenueCat SDK can show an active paid entitlement while the
+  /// server-side `subscriptions` row is still stale. Since analyze-chat gates
+  /// reply styles from the server row, force the sync path before analysis so a
+  /// paid user does not receive a Free-tier one-style result.
+  Future<void> ensureServerEntitlementSyncedForAnalysis() async {
+    try {
+      final user = SupabaseService.currentUser;
+      if (user == null) return;
+
+      var customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
+        user.id,
+      );
+      var revenueCatTier = RevenueCatService.getTierFromCustomerInfo(
+        customerInfo,
+      );
+      var expectedTier = _highestSubscriptionTier([
+        state.tier,
+        revenueCatTier,
+      ]);
+      if (expectedTier == SubscriptionTierHelper.free) {
+        return;
+      }
+
+      var syncedTier = await _syncSubscriptionViaEdgeFunction(
+        expectedTier: expectedTier,
+        resetUsage: false,
+        revenueCatAppUserId: RevenueCatService.getRevenueCatAppUserId(
+          customerInfo,
+        ),
+      );
+
+      if (syncedTier != null &&
+          SubscriptionTierHelper.rankOf(syncedTier) >=
+              SubscriptionTierHelper.rankOf(expectedTier)) {
+        return;
+      }
+
+      customerInfo =
+          await RevenueCatService.syncPurchasesAndRefreshCustomerInfo(
+        expectedAppUserId: user.id,
+      );
+      revenueCatTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      expectedTier = _highestSubscriptionTier([
+        state.tier,
+        revenueCatTier,
+      ]);
+      if (expectedTier == SubscriptionTierHelper.free) {
+        return;
+      }
+
+      await _syncSubscriptionViaEdgeFunction(
+        expectedTier: expectedTier,
+        resetUsage: false,
+        revenueCatAppUserId: RevenueCatService.getRevenueCatAppUserId(
+          customerInfo,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Ensure analysis entitlement sync error: $e');
+    }
+  }
+
   Future<bool> clearPendingDowngradeMetadata() async {
     if (!state.hasPendingDowngrade) {
       await syncWithRevenueCat();

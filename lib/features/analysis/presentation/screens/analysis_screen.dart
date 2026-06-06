@@ -279,7 +279,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         }
       }
 
-      await _runAnalysis(skipPreview: true);
+      await _runAnalysis(skipPreview: true, waitForCompletion: true);
       if (!mounted) {
         return;
       }
@@ -2997,7 +2997,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
-  Future<void> _runAnalysis({bool skipPreview = false}) async {
+  Future<void> _runAnalysis({
+    bool skipPreview = false,
+    bool waitForCompletion = false,
+  }) async {
     // 先關閉 SnackBar (如果有的話)
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
@@ -3096,29 +3099,40 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _activeAnalysisMessageCount = conversation.messages.length;
       });
 
+      await ref
+          .read(subscriptionProvider.notifier)
+          .ensureServerEntitlementSyncedForAnalysis();
+      if (!mounted) {
+        return;
+      }
+
       // Fire-and-forget. The notifier caches the payload for retryFull and
       // keeps itself alive across screen navigation; ref.listen + the initState
       // hydration path mirror provider state back into local fields so the
       // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
       // keeps working (Eric 2026-05-28 UX spec).
-      unawaited(
-        ref.read(twoStageAnalyzeProvider(widget.conversationId).notifier).start(
-              messages: analysisContext.requestMessages,
-              sessionContext: conversation.sessionContext,
-              conversationSummary: analysisContext.conversationSummary,
-              partnerSummary: _resolvePartnerSummary(conversation),
-              effectiveStyleContext:
-                  _resolveEffectiveStyleContext(conversation),
-              knownContactName:
-                  ScreenshotRecognitionHelper.isPlaceholderConversationName(
-                conversation.name,
-              )
-                      ? null
-                      : conversation.name.trim(),
-              previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
-              conversationMessageCount: conversation.messages.length,
-            ),
-      );
+      final analysisFuture = ref
+          .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
+          .start(
+            messages: analysisContext.requestMessages,
+            sessionContext: conversation.sessionContext,
+            conversationSummary: analysisContext.conversationSummary,
+            partnerSummary: _resolvePartnerSummary(conversation),
+            effectiveStyleContext: _resolveEffectiveStyleContext(conversation),
+            knownContactName:
+                ScreenshotRecognitionHelper.isPlaceholderConversationName(
+              conversation.name,
+            )
+                    ? null
+                    : conversation.name.trim(),
+            previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
+            conversationMessageCount: conversation.messages.length,
+          );
+      if (waitForCompletion) {
+        await analysisFuture;
+      } else {
+        unawaited(analysisFuture);
+      }
     } catch (e) {
       setState(() {
         _isAnalyzing = false;

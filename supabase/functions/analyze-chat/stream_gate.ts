@@ -5,6 +5,7 @@ export type StreamingAccessInput = {
   email?: string | null;
   flagOn?: boolean;
   whitelist?: string | null;
+  tier?: string | null;
 };
 
 export function parseStreamWhitelist(value?: string | null): Set<string> {
@@ -26,6 +27,10 @@ export function isStreamingAllowed(input: StreamingAccessInput): boolean {
     return false;
   }
 
+  if (isPaidTier(input.tier)) {
+    return true;
+  }
+
   const email = normalizeEmail(input.email);
   if (!email) {
     return false;
@@ -38,4 +43,9 @@ export function isStreamingAllowed(input: StreamingAccessInput): boolean {
 function normalizeEmail(value?: string | null): string | null {
   const email = value?.trim().toLowerCase();
   return email ? email : null;
+}
+
+function isPaidTier(value?: string | null): boolean {
+  const tier = value?.trim().toLowerCase();
+  return tier === "starter" || tier === "essential";
 }

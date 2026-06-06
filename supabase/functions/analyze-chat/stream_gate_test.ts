@@ -52,6 +52,22 @@ Deno.test("isStreamingAllowed allows whitelisted accounts case-insensitively", (
   }));
 });
 
+Deno.test("isStreamingAllowed allows paid tiers outside the whitelist", () => {
+  assert(isStreamingAllowed({
+    email: "liam_chiang@hotmail.com",
+    flagOn: true,
+    whitelist: "eric19921204@gmail.com,chiang688041@gmail.com",
+    tier: "essential",
+  }));
+
+  assert(isStreamingAllowed({
+    email: "friend@example.com",
+    flagOn: true,
+    whitelist: "",
+    tier: "starter",
+  }));
+});
+
 Deno.test("isStreamingAllowed allows any authenticated email when wildcard is enabled", () => {
   assert(isStreamingAllowed({
     email: "partner@example.com",
@@ -73,6 +89,7 @@ Deno.test("isStreamingAllowed denies non-whitelisted accounts", () => {
     email: "friend@example.com",
     flagOn: true,
     whitelist: "eric19921204@gmail.com,chiang688041@gmail.com",
+    tier: "free",
   }));
 });
 
