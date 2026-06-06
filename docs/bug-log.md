@@ -35,6 +35,25 @@
 - `flutter test --no-pub test/unit/services/usage_service_subscription_snapshot_test.dart`
 - `flutter analyze --no-pub`
 
+### [2026-06-06] Subscription still Free after RevenueCat identity guard
+**Symptom**:
+
+- Eric tested after `main@b164802`; the app still displayed Free.
+- At this point the issue is no longer diagnosable from UI tier alone; we need to know whether RevenueCat CustomerInfo, Supabase subscription state, or local UI/cache is the layer returning Free.
+
+**Investigation Step**:
+
+- Added a TestFlight-visible subscription diagnostic copy action in Settings.
+- Diagnostic includes app version / Git SHA, Supabase user id, UI subscription state, local usage snapshot, RevenueCat appUserID, anonymous flag, active subscriptions, active entitlements, inferred RC tier, and expiration metadata.
+- CI build commands now pass `GIT_SHA` via `--dart-define`, so dogfood can verify the installed build commit.
+
+**Validation**:
+
+- `flutter test --no-pub test/unit/services/revenuecat_service_identity_test.dart`
+- `flutter test --no-pub test/unit/features/subscription/data/subscription_state_package_test.dart`
+- `flutter test --no-pub test/unit/services/usage_service_subscription_snapshot_test.dart`
+- `flutter analyze --no-pub`
+
 ### [2026-06-06] TestFlight 更新後付費用戶退回 Free 並少 5 種回覆
 
 **症狀**:

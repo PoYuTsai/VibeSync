@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../../core/config/environment.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -135,6 +138,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         onTap: () {
                           _restorePurchases(context, ref);
                         },
+                      ),
+                    if (!kIsWeb)
+                      _buildTile(
+                        icon: Icons.bug_report_outlined,
+                        title: '複製訂閱診斷',
+                        onTap: _copySubscriptionDiagnostics,
                       ),
                   ],
                 ),
@@ -727,6 +736,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SnackBar(content: Text('目前無法開啟連結。')),
       );
     }
+  }
+
+  Future<void> _copySubscriptionDiagnostics() async {
+    final subscription = ref.read(subscriptionProvider);
+    final usage = UsageService().getLocalUsage();
+    final user = SupabaseService.currentUser;
+    final revenueCat = await RevenueCatService.buildDebugSnapshot();
+
+    final payload = <String, Object?>{
+      'generatedAt': DateTime.now().toIso8601String(),
+      'app': {
+        'version': _versionString.isNotEmpty ? _versionString : 'unknown',
+        'gitSha': AppConfig.gitSha,
+        'environment': AppConfig.environmentName,
+      },
+      'supabase': {
+        'userId': user?.id,
+        'email': user?.email,
+        'provider': user?.appMetadata['provider'],
+      },
+      'subscriptionState': {
+        'tier': subscription.tier,
+        'monthlyUsed': subscription.monthlyMessagesUsed,
+        'monthlyLimit': subscription.monthlyLimit,
+        'dailyUsed': subscription.dailyMessagesUsed,
+        'dailyLimit': subscription.dailyLimit,
+        'renewsAt': subscription.renewsAt?.toIso8601String(),
+        'activeProductId': subscription.activeProductId,
+      },
+      'usageSnapshot': {
+        'tier': usage.tier,
+        'monthlyUsed': usage.monthlyUsed,
+        'monthlyLimit': usage.monthlyLimit,
+        'dailyUsed': usage.dailyUsed,
+        'dailyLimit': usage.dailyLimit,
+      },
+      'revenueCat': revenueCat,
+    };
+
+    final text = const JsonEncoder.withIndent('  ').convert(payload);
+    await Clipboard.setData(ClipboardData(text: text));
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('訂閱診斷已複製')),
+    );
   }
 
   Future<void> _openSupportEmail() async {

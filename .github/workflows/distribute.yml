@@ -67,6 +67,7 @@ jobs:
           flutter build apk --release \
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }} \
+            --dart-define=GIT_SHA=$GIT_SHA \
             --dart-define=ENV=staging \
             --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \
@@ -160,6 +161,7 @@ jobs:
           flutter build ipa --release \
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }} \
+            --dart-define=GIT_SHA=$GIT_SHA \
             --dart-define=ENV=staging \
             --dart-define=SUPABASE_STAGING_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_STAGING_ANON_KEY="$SUPABASE_KEY" \

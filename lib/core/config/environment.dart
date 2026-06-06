@@ -25,6 +25,15 @@ enum Environment { dev, staging, prod }
 /// ```
 class AppConfig {
   static const _envKey = 'ENV';
+  static const gitSha = String.fromEnvironment(
+    'GIT_SHA',
+    defaultValue: 'unknown',
+  );
+
+  static String get gitShaShort {
+    if (gitSha.length <= 7) return gitSha;
+    return gitSha.substring(0, 7);
+  }
 
   /// 當前環境
   static Environment get environment {

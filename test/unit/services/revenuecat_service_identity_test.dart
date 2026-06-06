@@ -6,6 +6,46 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const channel = MethodChannel('purchases_flutter');
+  final paidCustomerInfo = {
+    'originalAppUserId': r'$RCAnonymousID:original',
+    'entitlements': {
+      'all': {},
+      'active': {
+        'premium': {
+          'identifier': 'premium',
+          'isActive': true,
+          'willRenew': true,
+          'latestPurchaseDate': '2026-06-06T00:00:00.000Z',
+          'originalPurchaseDate': '2026-06-01T00:00:00.000Z',
+          'productIdentifier': 'vibesync_essential_monthly_v2',
+          'isSandbox': true,
+          'ownershipType': 'PURCHASED',
+          'store': 'APP_STORE',
+          'periodType': 'NORMAL',
+          'expirationDate': '2026-07-06T00:00:00.000Z',
+          'unsubscribeDetectedAt': null,
+          'billingIssueDetectedAt': null,
+          'productPlanIdentifier': null,
+          'verification': 'NOT_REQUESTED',
+        },
+      },
+      'verification': 'NOT_REQUESTED',
+    },
+    'activeSubscriptions': ['vibesync_essential_monthly_v2'],
+    'latestExpirationDate': '2026-07-06T00:00:00.000Z',
+    'allExpirationDates': {
+      'vibesync_essential_monthly_v2': '2026-07-06T00:00:00.000Z',
+    },
+    'allPurchasedProductIdentifiers': ['vibesync_essential_monthly_v2'],
+    'firstSeen': '2026-06-01T00:00:00.000Z',
+    'requestDate': '2026-06-06T00:00:00.000Z',
+    'allPurchaseDates': {
+      'vibesync_essential_monthly_v2': '2026-06-01T00:00:00.000Z',
+    },
+    'originalApplicationVersion': '1.0.0',
+    'nonSubscriptionTransactions': [],
+    'managementURL': 'https://apps.apple.com/account/subscriptions',
+  };
 
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -39,4 +79,36 @@ void main() {
       expect(calls.map((call) => call.method), isNot(contains('logOut')));
     },
   );
+
+  test('debug snapshot exposes RevenueCat identity and paid entitlement',
+      () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'setupPurchases':
+        case 'setLogLevel':
+          return null;
+        case 'getAppUserID':
+          return 'supabase-user-id';
+        case 'isAnonymous':
+          return false;
+        case 'getCustomerInfo':
+          return paidCustomerInfo;
+      }
+      return null;
+    });
+
+    RevenueCatService.debugIsIOSPlatformOverride = true;
+    await RevenueCatService.initialize(appUserId: 'supabase-user-id');
+
+    final snapshot = await RevenueCatService.buildDebugSnapshot();
+    final customerInfo = snapshot['customerInfo'] as Map<String, Object?>;
+
+    expect(snapshot['currentAppUserId'], 'supabase-user-id');
+    expect(snapshot['isAnonymous'], isFalse);
+    expect(customerInfo['tier'], 'essential');
+    expect(customerInfo['activeSubscriptions'],
+        contains('vibesync_essential_monthly_v2'));
+    expect(customerInfo['activeEntitlements'], contains('premium'));
+  });
 }

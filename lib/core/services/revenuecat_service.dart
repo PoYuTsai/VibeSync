@@ -194,6 +194,67 @@ class RevenueCatService {
   /// the user-facing restore flow. This rescues updates where VibeSync's local
   /// cache was already overwritten as Free but the device still has an active
   /// subscription receipt.
+  static Future<String?> getCurrentAppUserId() async {
+    if (!_isInitialized) return null;
+
+    try {
+      return Purchases.appUserID;
+    } catch (e) {
+      debugPrint('RevenueCat getAppUserID error: $e');
+      return null;
+    }
+  }
+
+  static Future<bool?> getIsAnonymous() async {
+    if (!_isInitialized) return null;
+
+    try {
+      return Purchases.isAnonymous;
+    } catch (e) {
+      debugPrint('RevenueCat isAnonymous error: $e');
+      return null;
+    }
+  }
+
+  static Map<String, Object?> customerInfoDebugSummary(
+    CustomerInfo? customerInfo,
+  ) {
+    if (customerInfo == null) {
+      return const {'available': false};
+    }
+
+    final activeEntitlements = customerInfo.entitlements.active;
+    return {
+      'available': true,
+      'tier': getTierFromCustomerInfo(customerInfo),
+      'originalAppUserId': customerInfo.originalAppUserId,
+      'activeSubscriptions': customerInfo.activeSubscriptions,
+      'allPurchasedProductIdentifiers':
+          customerInfo.allPurchasedProductIdentifiers,
+      'activeEntitlements': activeEntitlements.keys.toList(growable: false),
+      'activeEntitlementProducts': {
+        for (final entry in activeEntitlements.entries)
+          entry.key: entry.value.productIdentifier,
+      },
+      'latestExpirationDate': customerInfo.latestExpirationDate,
+      'allExpirationDates': customerInfo.allExpirationDates,
+      'managementUrlPresent': customerInfo.managementURL != null,
+    };
+  }
+
+  static Future<Map<String, Object?>> buildDebugSnapshot() async {
+    final currentAppUserId = await getCurrentAppUserId();
+    final isAnonymous = await getIsAnonymous();
+    final customerInfo = await getCustomerInfo();
+
+    return {
+      'initialized': _isInitialized,
+      'currentAppUserId': currentAppUserId,
+      'isAnonymous': isAnonymous,
+      'customerInfo': customerInfoDebugSummary(customerInfo),
+    };
+  }
+
   static Future<CustomerInfo?> syncPurchasesAndRefreshCustomerInfo() async {
     if (!_isInitialized) return null;
 

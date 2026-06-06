@@ -183,6 +183,7 @@ jobs:
           flutter build ipa --release \
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }} \
+            --dart-define=GIT_SHA=${{ github.sha }} \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
@@ -339,6 +340,7 @@ jobs:
           flutter build appbundle --release \
             --build-name=1.0.0 \
             --build-number=${{ github.run_number }} \
+            --dart-define=GIT_SHA=${{ github.sha }} \
             --dart-define=ENV=prod \
             --dart-define=SUPABASE_PROD_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PROD_ANON_KEY="$SUPABASE_KEY" \
