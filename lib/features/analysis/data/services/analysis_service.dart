@@ -315,6 +315,13 @@ class AnalysisStreamContent {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  static String? _displayTextField(dynamic value) {
+    final raw = _stringField(value);
+    if (raw == null) return null;
+    final sanitized = _sanitizeSchemaLeakText(raw).trim();
+    return sanitized.isEmpty ? null : sanitized;
+  }
+
   static int? _numberField(dynamic value) {
     if (value is num && value.isFinite) return value.round();
     return null;
@@ -393,6 +400,9 @@ class AnalysisStreamContent {
     add('microMove', '微行動');
     add('avoid', '先避免');
     add('confidence', '信心');
+    add('interests', '她的興趣/偏好');
+    add('traits', '她的特質');
+    add('notes', '補充觀察');
 
     value.forEach((key, rawValue) {
       final keyText = key.toString();
@@ -452,7 +462,7 @@ class AnalysisStreamContent {
       }
     }
 
-    return trimmed;
+    return _sanitizeSchemaLeakText(trimmed);
   }
 
   static String? _formatStructuredValueForKey(String key, dynamic value) {
@@ -466,6 +476,56 @@ class AnalysisStreamContent {
       default:
         return formatted;
     }
+  }
+
+  static String _sanitizeSchemaLeakText(String value) {
+    var text = value.trim();
+    if (text.isEmpty) return text;
+
+    text = text.replaceAllMapped(
+      RegExp(r'\bpersonal\s*階段', caseSensitive: false),
+      (_) => '個人層階段',
+    );
+    text = text.replaceAllMapped(
+      RegExp(r'(^|[：:\s,，])normal(?=([,，。]|$))', caseSensitive: false),
+      (match) => '${match.group(1) ?? ''}進展順利',
+    );
+
+    final schemaLabels = <String, String>{
+      'interests': '她的興趣/偏好',
+      'traits': '她的特質',
+      'notes': '補充觀察',
+    };
+    final schemaLinePattern = RegExp(
+      r'^\s*(interests|traits|notes)\s*:\s*(.+?)\s*,?\s*$',
+      caseSensitive: false,
+    );
+
+    return text.split('\n').map((line) {
+      return line.replaceFirstMapped(schemaLinePattern, (match) {
+        final key = match.group(1)!.toLowerCase();
+        final rawValue = match.group(2) ?? '';
+        return '${schemaLabels[key]}：${_humanizeSchemaList(rawValue)}';
+      });
+    }).join('\n');
+  }
+
+  static String _humanizeSchemaList(String value) {
+    var text = value.trim();
+    if (text.endsWith(',')) {
+      text = text.substring(0, text.length - 1).trim();
+    }
+    if (text.startsWith('[') && text.endsWith(']')) {
+      text = text.substring(1, text.length - 1);
+    }
+
+    final items = text
+        .split(RegExp(r'[,，]'))
+        .map((item) => item.replaceAll(RegExp(r'''["']'''), '').trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+
+    return items.isEmpty ? value.trim() : items.join('、');
   }
 
   static String? _formatStructuredValue(dynamic value) {
@@ -1622,8 +1682,13 @@ class AnalysisService {
           case 'analysis.started':
             yield AnalysisStreamUpdate.started(
               runId: runId,
-              label: _stringField(event['label']) ?? '開始完整分析',
-              detail: _stringField(event['detail']),
+              label: AnalysisStreamContent._displayTextField(
+                    event['label'],
+                  ) ??
+                  '開始完整分析',
+              detail: AnalysisStreamContent._displayTextField(
+                event['detail'],
+              ),
               etaSeconds: etaSeconds,
               rawEvent: event,
             );
@@ -1631,8 +1696,13 @@ class AnalysisService {
           case 'analysis.progress':
             yield AnalysisStreamUpdate.progress(
               runId: runId,
-              label: _stringField(event['label']) ?? '完整分析進行中',
-              detail: _stringField(event['detail']),
+              label: AnalysisStreamContent._displayTextField(
+                    event['label'],
+                  ) ??
+                  '完整分析進行中',
+              detail: AnalysisStreamContent._displayTextField(
+                event['detail'],
+              ),
               etaSeconds: etaSeconds,
               rawEvent: event,
             );

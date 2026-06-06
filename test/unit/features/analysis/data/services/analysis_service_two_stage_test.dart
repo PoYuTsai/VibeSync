@@ -439,6 +439,45 @@ void main() {
       expect(body['revenueCatAppUserId'], r'$RCAnonymousID:def');
     });
 
+    test('sanitizes progress labels and details while waiting', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.started',
+                'label': 'normal',
+                'detail':
+                    "interests: ['健康飲食', '義美品牌']\n已進入 Personal 階段",
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.first.label, '進展順利');
+      expect(updates.first.detail, contains('她的興趣/偏好：健康飲食、義美品牌'));
+      expect(updates.first.detail, contains('個人層階段'));
+      expect(updates.first.detail, isNot(contains('interests:')));
+      expect(updates.first.detail, isNot(contains('Personal')));
+      expect(updates.first.detail, isNot(contains('normal')));
+    });
+
     test('treats legacy JSON 200 as a completed stream fallback', () async {
       final mockClient = MockClient((request) async {
         return http.Response(
@@ -645,6 +684,82 @@ void main() {
         isEmpty,
       );
       expect(updates.single.kind, AnalysisStreamUpdateKind.done);
+    });
+
+    test('formats mixed schema enum text without raw English labels', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.report_section',
+                'content':
+                    'normal，她主動分享生活片段，是正常的投入互動\n已進入 Personal 階段，她願意分享具體的生活細節和偏好',
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      expect(updates.first.content?.body, contains('進展順利'));
+      expect(updates.first.content?.body, contains('個人層階段'));
+      expect(updates.first.content?.body, isNot(contains('normal')));
+      expect(updates.first.content?.body, isNot(contains('Personal')));
+    });
+
+    test('formats partner memory schema keys without raw field names',
+        () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            [
+              jsonEncode({
+                'type': 'analysis.report_section',
+                'content':
+                    "interests: ['健康飲食', '義美品牌'],\ntraits: ['注意細節', '願意嘗試新東西'],\nnotes: ['偏好無糖產品', '有固定的品牌忠誠度']",
+              }),
+              jsonEncode({
+                'type': 'analysis.done',
+                'finalResult': _fullSuccessBody,
+              }),
+            ].join('\n'),
+          ),
+          200,
+          headers: {'content-type': 'application/x-ndjson'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      final updates = await service.analyzeStream(
+        messages: [_msg('hi')],
+      ).toList();
+
+      final body = updates.first.content?.body;
+      expect(body, contains('她的興趣/偏好：健康飲食、義美品牌'));
+      expect(body, contains('她的特質：注意細節、願意嘗試新東西'));
+      expect(body, contains('補充觀察：偏好無糖產品、有固定的品牌忠誠度'));
+      expect(body, isNot(contains('interests:')));
+      expect(body, isNot(contains('traits:')));
+      expect(body, isNot(contains('notes:')));
     });
 
     test('includes analysisRunId when retrying an existing stream run',
