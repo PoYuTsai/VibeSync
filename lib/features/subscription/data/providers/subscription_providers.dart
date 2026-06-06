@@ -100,6 +100,26 @@ SubscriptionState buildInitialSubscriptionStateFromUsage(UsageData usage) {
   );
 }
 
+@visibleForTesting
+String resolveStartupPaidRescueTier({
+  required String currentTier,
+  required String revenueCatTier,
+  String? syncedTier,
+}) {
+  final normalizedCurrentTier =
+      SubscriptionTierHelper.normalizeTier(currentTier);
+  if (normalizedCurrentTier != SubscriptionTierHelper.free) {
+    return normalizedCurrentTier;
+  }
+
+  final candidateTier = SubscriptionTierHelper.normalizeTier(
+    syncedTier ?? revenueCatTier,
+  );
+  return candidateTier == SubscriptionTierHelper.free
+      ? normalizedCurrentTier
+      : candidateTier;
+}
+
 class SubscriptionState {
   final String tier;
   final int monthlyMessagesUsed;
@@ -928,12 +948,61 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             displayTier != SubscriptionTierHelper.free,
         revenueCatAppUserId: revenueCatAppUserId,
       );
+      await _attemptStartupPaidRescue(displayTier: displayTier);
     } catch (e) {
       debugPrint('Load subscription error: $e');
       state = _applyPendingDowngradeMetadata(
         state.copyWith(isLoading: false, error: e.toString()),
       );
     }
+  }
+
+  Future<void> _attemptStartupPaidRescue({
+    required String displayTier,
+  }) async {
+    if (displayTier != SubscriptionTierHelper.free) {
+      return;
+    }
+
+    final customerInfo =
+        await RevenueCatService.syncPurchasesAndRefreshCustomerInfo();
+    final rescuedTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+    if (rescuedTier == SubscriptionTierHelper.free) {
+      return;
+    }
+
+    final revenueCatAppUserId =
+        RevenueCatService.getRevenueCatAppUserId(customerInfo);
+    final activeProductId = _cleanProductId(
+      RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
+    );
+    final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
+    final syncedTier = await _syncSubscriptionViaEdgeFunction(
+      expectedTier: rescuedTier,
+      resetUsage: true,
+      revenueCatAppUserId: revenueCatAppUserId,
+    );
+    final tier = resolveStartupPaidRescueTier(
+      currentTier: state.tier,
+      revenueCatTier: rescuedTier,
+      syncedTier: syncedTier,
+    );
+    if (tier == SubscriptionTierHelper.free) {
+      return;
+    }
+
+    final limits = SubscriptionTierHelper.limitsFor(tier);
+    state = _applyPendingDowngradeMetadata(state.copyWith(
+      tier: tier,
+      monthlyLimit: limits.monthly,
+      dailyLimit: limits.daily,
+      renewsAt: renewsAt ?? state.renewsAt,
+      activeProductId: activeProductId ?? state.activeProductId,
+      isLoading: false,
+      error: null,
+    ));
+    _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
+    debugPrint('[subscription] startup paid rescue applied: tier=$tier');
   }
 
   Future<void> _loadOfferings() async {

@@ -336,4 +336,32 @@ void main() {
 
     expect(tier, SubscriptionTierHelper.free);
   });
+
+  test('startup paid rescue upgrades free only from RevenueCat paid signal',
+      () {
+    final tier = resolveStartupPaidRescueTier(
+      currentTier: SubscriptionTierHelper.free,
+      revenueCatTier: SubscriptionTierHelper.essential,
+    );
+
+    expect(tier, SubscriptionTierHelper.essential);
+  });
+
+  test('startup paid rescue preserves free when RevenueCat is still free', () {
+    final tier = resolveStartupPaidRescueTier(
+      currentTier: SubscriptionTierHelper.free,
+      revenueCatTier: SubscriptionTierHelper.free,
+    );
+
+    expect(tier, SubscriptionTierHelper.free);
+  });
+
+  test('startup paid rescue never downgrades an existing paid state', () {
+    final tier = resolveStartupPaidRescueTier(
+      currentTier: SubscriptionTierHelper.starter,
+      revenueCatTier: SubscriptionTierHelper.free,
+    );
+
+    expect(tier, SubscriptionTierHelper.starter);
+  });
 }

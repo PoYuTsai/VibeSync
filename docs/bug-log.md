@@ -26,6 +26,7 @@
 
 - 新增 per-user `last_known_paid_*` snapshot；同帳號且未過期時，transient Free cache write 不能洗掉 Starter / Essential。換帳號與 authoritative expired Free 會清掉 guard。
 - 分析請求 quick/full/stream 與 legacy analyze path 都會在本機知道 paid 時送 `expectedTier`，並盡量附 RevenueCat app user id，讓後端可校正 stale DB Free。
+- 補啟動 paid rescue：若舊版已把本機洗成 Free，新版啟動仍為 Free 時會背景同步 App Store receipt / RevenueCat cache；只有 RevenueCat 確認 paid 才升回 Starter / Essential。
 
 **驗證**:
 

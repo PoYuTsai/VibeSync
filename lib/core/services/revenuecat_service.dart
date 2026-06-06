@@ -176,6 +176,32 @@ class RevenueCatService {
   }
 
   /// 檢查用戶是否有 premium entitlement
+  /// Refreshes RevenueCat from the local App Store receipt without presenting
+  /// the user-facing restore flow. This rescues updates where VibeSync's local
+  /// cache was already overwritten as Free but the device still has an active
+  /// subscription receipt.
+  static Future<CustomerInfo?> syncPurchasesAndRefreshCustomerInfo() async {
+    if (!_isInitialized) return null;
+
+    try {
+      await Purchases.invalidateCustomerInfoCache();
+      var customerInfo = await Purchases.getCustomerInfo();
+      if (getTierFromCustomerInfo(customerInfo) !=
+          SubscriptionTierHelper.free) {
+        return customerInfo;
+      }
+
+      await Purchases.syncPurchases();
+      await Purchases.invalidateCustomerInfoCache();
+      customerInfo = await Purchases.getCustomerInfo();
+      debugPrint('RevenueCat: Purchases synced for startup entitlement rescue');
+      return customerInfo;
+    } catch (e) {
+      debugPrint('RevenueCat startup entitlement rescue error: $e');
+      return null;
+    }
+  }
+
   static Future<bool> hasPremiumEntitlement() async {
     final customerInfo = await getCustomerInfo();
     if (customerInfo == null) return false;
