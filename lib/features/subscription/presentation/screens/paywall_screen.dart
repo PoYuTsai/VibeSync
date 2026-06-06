@@ -1,14 +1,20 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
+import '../../../../core/config/environment.dart';
 import '../../../../core/services/revenuecat_service.dart';
+import '../../../../core/services/supabase_service.dart';
+import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
@@ -381,6 +387,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         },
                         child: Text('恢復購買', style: AppTypography.caption),
                       ),
+                      if (!kIsWeb) ...[
+                        Text('|', style: AppTypography.caption),
+                        TextButton(
+                          onPressed: _copySubscriptionDiagnostics,
+                          child: Text(
+                            '複製訂閱診斷',
+                            style: AppTypography.caption,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 32),
@@ -1141,6 +1157,57 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       if (mounted) {
         setState(() => _isPurchasing = false);
       }
+    }
+  }
+
+  Future<void> _copySubscriptionDiagnostics() async {
+    try {
+      final subscription = ref.read(subscriptionProvider);
+      final usage = UsageService().getLocalUsage();
+      final user = SupabaseService.currentUser;
+      final revenueCat = await RevenueCatService.buildDebugSnapshot();
+      final packageInfo = await PackageInfo.fromPlatform();
+
+      final payload = <String, Object?>{
+        'generatedAt': DateTime.now().toIso8601String(),
+        'app': {
+          'version': '${packageInfo.version} (${packageInfo.buildNumber})',
+          'gitSha': AppConfig.gitSha,
+          'environment': AppConfig.environmentName,
+        },
+        'supabase': {
+          'userId': user?.id,
+          'email': user?.email,
+          'provider': user?.appMetadata['provider'],
+        },
+        'subscriptionState': {
+          'tier': subscription.tier,
+          'monthlyUsed': subscription.monthlyMessagesUsed,
+          'monthlyLimit': subscription.monthlyLimit,
+          'dailyUsed': subscription.dailyMessagesUsed,
+          'dailyLimit': subscription.dailyLimit,
+          'renewsAt': subscription.renewsAt?.toIso8601String(),
+          'activeProductId': subscription.activeProductId,
+        },
+        'usageSnapshot': {
+          'tier': usage.tier,
+          'monthlyUsed': usage.monthlyUsed,
+          'monthlyLimit': usage.monthlyLimit,
+          'dailyUsed': usage.dailyUsed,
+          'dailyLimit': usage.dailyLimit,
+        },
+        'revenueCat': revenueCat,
+      };
+
+      final text = const JsonEncoder.withIndent('  ').convert(payload);
+      await Clipboard.setData(ClipboardData(text: text));
+
+      if (!mounted) return;
+      _showSnackBar('訂閱診斷已複製');
+    } catch (error) {
+      debugPrint('Paywall subscription diagnostics error: $error');
+      if (!mounted) return;
+      _showSnackBar('目前無法複製訂閱診斷，請稍後再試。');
     }
   }
 
