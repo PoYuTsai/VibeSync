@@ -337,14 +337,25 @@ void main() {
     expect(tier, SubscriptionTierHelper.free);
   });
 
-  test('startup paid rescue upgrades free only from RevenueCat paid signal',
+  test('startup paid rescue upgrades free only after server sync confirms paid',
+      () {
+    final tier = resolveStartupPaidRescueTier(
+      currentTier: SubscriptionTierHelper.free,
+      revenueCatTier: SubscriptionTierHelper.essential,
+      syncedTier: SubscriptionTierHelper.essential,
+    );
+
+    expect(tier, SubscriptionTierHelper.essential);
+  });
+
+  test('startup paid rescue keeps free when server sync cannot confirm paid',
       () {
     final tier = resolveStartupPaidRescueTier(
       currentTier: SubscriptionTierHelper.free,
       revenueCatTier: SubscriptionTierHelper.essential,
     );
 
-    expect(tier, SubscriptionTierHelper.essential);
+    expect(tier, SubscriptionTierHelper.free);
   });
 
   test('startup paid rescue preserves free when RevenueCat is still free', () {

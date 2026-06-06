@@ -10,6 +10,31 @@
 
 ## 2026-06
 
+### [2026-06-06] Essential user still gets Free quota / one reply style
+**Symptom**:
+
+- Partner's TestFlight app showed Essential in the paywall and RevenueCat diagnostics, but analysis still returned one reply style.
+- Video showed `Daily limit exceeded` while the paywall showed Essential with `105/120` daily remaining. The used count was 15, exactly the Free daily cap, so `analyze-chat` was still gating from the server-side Free subscription row.
+
+**Root Cause**:
+
+- Production Supabase secrets did not include `REVENUECAT_IOS_API_KEY`.
+- Without that server RevenueCat key, `sync-subscription` cannot confirm and persist a paid tier, and `analyze-chat` cannot refresh a stale Free row when the client sends paid hints.
+- The client could therefore display RevenueCat SDK paid state while Edge Functions still enforced Free quota.
+
+**Fix**:
+
+- Add the missing `REVENUECAT_IOS_API_KEY` Supabase secret before relying on paid entitlement rescue.
+- Hardened client startup / restore paths so a Free user is not locally promoted to paid unless server sync confirms the paid tier.
+- Added `analyze-chat` quota logs for expected tier, effective tier, and RevenueCat hint presence.
+
+**Validation**:
+
+- `flutter test --no-pub test/unit/features/subscription/data/subscription_state_package_test.dart`
+- `flutter test --no-pub test/unit/features/analysis/data/services/analysis_service_two_stage_test.dart`
+- `deno check supabase/functions/analyze-chat/index.ts`
+- `flutter analyze --no-pub`
+
 ### [2026-06-06] TestFlight update/logout-login still shows Free
 **Symptom**:
 

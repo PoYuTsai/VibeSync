@@ -4409,6 +4409,15 @@ serve(async (req) => {
       reason: string,
     ): Promise<boolean> => {
       if (!REVENUECAT_IOS_API_KEY) {
+        logError("subscription_revenuecat_refresh_unconfigured", {
+          user: summarizeUser(user.id),
+          reason,
+          expectedTier,
+          effectiveTier,
+          currentTier: normalizeTier(sub?.tier),
+          revenueCatHintPresent: revenueCatAppUserId.length > 0,
+          revenueCatUserIdCandidateCount: revenueCatUserIdCandidates.length,
+        });
         return false;
       }
 
@@ -4563,6 +4572,10 @@ serve(async (req) => {
         logWarn("monthly_limit_exceeded", {
           user: summarizeUser(user.id),
           tier: sub.tier,
+          expectedTier,
+          effectiveTier,
+          revenueCatHintPresent: revenueCatAppUserId.length > 0,
+          revenueCatUserIdCandidateCount: revenueCatUserIdCandidates.length,
           used: sub.monthly_messages_used,
           limit: monthlyLimit,
         });
@@ -4595,6 +4608,10 @@ serve(async (req) => {
         logWarn("daily_limit_exceeded", {
           user: summarizeUser(user.id),
           tier: sub.tier,
+          expectedTier,
+          effectiveTier,
+          revenueCatHintPresent: revenueCatAppUserId.length > 0,
+          revenueCatUserIdCandidateCount: revenueCatUserIdCandidates.length,
           used: sub.daily_messages_used,
           limit: dailyLimit,
         });

@@ -112,9 +112,7 @@ String resolveStartupPaidRescueTier({
     return normalizedCurrentTier;
   }
 
-  final candidateTier = SubscriptionTierHelper.normalizeTier(
-    syncedTier ?? revenueCatTier,
-  );
+  final candidateTier = SubscriptionTierHelper.normalizeTier(syncedTier);
   return candidateTier == SubscriptionTierHelper.free
       ? normalizedCurrentTier
       : candidateTier;
@@ -944,12 +942,40 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             displayTier == SubscriptionTierHelper.free && _isExpired(renewsAt),
       );
 
-      await _syncSubscriptionViaEdgeFunction(
+      final syncedDisplayTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier: displayTier,
         resetUsage: initialTier != displayTier &&
             displayTier != SubscriptionTierHelper.free,
         revenueCatAppUserId: revenueCatAppUserId,
       );
+      if (displayTier != SubscriptionTierHelper.free &&
+          initialTier == SubscriptionTierHelper.free &&
+          syncedDisplayTier == null) {
+        debugPrint(
+          'Startup paid display tier was not confirmed by server; reverting to free until subscription sync succeeds.',
+        );
+        const tier = SubscriptionTierHelper.free;
+        final limits = SubscriptionTierHelper.limitsFor(tier);
+        state = _applyPendingDowngradeMetadata(state.copyWith(
+          tier: tier,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+          activeProductId: null,
+          isLoading: false,
+          error: null,
+        ));
+        UsageService.syncSubscriptionSnapshot(
+          tier: tier,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+          monthlyUsed: _readInt(response['monthly_messages_used']),
+          dailyUsed: _readInt(response['daily_messages_used']),
+          paidExpiresAt: renewsAt,
+          clearPaidSnapshot: _isExpired(renewsAt),
+        );
+        await _attemptStartupPaidRescue(displayTier: tier);
+        return;
+      }
       await _attemptStartupPaidRescue(displayTier: displayTier);
     } catch (e) {
       debugPrint('Load subscription error: $e');
@@ -1269,15 +1295,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     try {
       state = state.copyWith(isLoading: true, error: null);
 
-      final customerInfo = await RevenueCatService.restorePurchases();
-      final restoredTier =
+      var customerInfo = await RevenueCatService.restorePurchases();
+      var restoredTier =
           RevenueCatService.getTierFromCustomerInfo(customerInfo);
-      final restoredProductId = _cleanProductId(
+      var restoredProductId = _cleanProductId(
         RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
       );
-      final revenueCatAppUserId =
+      var revenueCatAppUserId =
           RevenueCatService.getRevenueCatAppUserId(customerInfo);
-      final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
+      var renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
       final previousTier = state.tier;
       final isScheduledDowngradeSnapshot = _isScheduledPaidDowngradeSnapshot(
         currentTier: previousTier,
@@ -1286,7 +1312,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final shouldPreservePaidFreeSnapshot =
           previousTier != SubscriptionTierHelper.free &&
               restoredTier == SubscriptionTierHelper.free;
-      final syncedTier = await _syncSubscriptionViaEdgeFunction(
+      var syncedTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier:
             isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
                 ? previousTier
@@ -1297,6 +1323,55 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             restoredTier != SubscriptionTierHelper.free,
         revenueCatAppUserId: revenueCatAppUserId,
       );
+
+      if (syncedTier == null &&
+          restoredTier != SubscriptionTierHelper.free &&
+          previousTier == SubscriptionTierHelper.free) {
+        final user = SupabaseService.currentUser;
+        if (user != null) {
+          final refreshedCustomerInfo =
+              await RevenueCatService.syncPurchasesAndRefreshCustomerInfo(
+            expectedAppUserId: user.id,
+          );
+          if (refreshedCustomerInfo != null) {
+            customerInfo = refreshedCustomerInfo;
+            restoredTier =
+                RevenueCatService.getTierFromCustomerInfo(customerInfo);
+            restoredProductId = _cleanProductId(
+              RevenueCatService.getActiveProductIdFromCustomerInfo(
+                customerInfo,
+              ),
+            );
+            revenueCatAppUserId =
+                RevenueCatService.getRevenueCatAppUserId(customerInfo);
+            renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
+            syncedTier = await _syncSubscriptionViaEdgeFunction(
+              expectedTier: restoredTier,
+              resetUsage: restoredTier != SubscriptionTierHelper.free,
+              revenueCatAppUserId: revenueCatAppUserId,
+            );
+          }
+        }
+      }
+
+      if (syncedTier == null &&
+          restoredTier != SubscriptionTierHelper.free &&
+          previousTier == SubscriptionTierHelper.free) {
+        debugPrint(
+          'Restore purchases paid entitlement was not confirmed by server; keeping local free state until sync succeeds.',
+        );
+        final limits = SubscriptionTierHelper.limitsFor(previousTier);
+        state = _applyPendingDowngradeMetadata(state.copyWith(
+          tier: previousTier,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+          isLoading: false,
+          error: null,
+        ));
+        _syncUsageCache(previousTier, limits, paidExpiresAt: state.renewsAt);
+        return false;
+      }
+
       final tier =
           isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
               ? previousTier
@@ -1400,6 +1475,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         ));
         _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
       } else {
+        if (rcTier != SubscriptionTierHelper.free) {
+          await _syncSubscriptionViaEdgeFunction(
+            expectedTier: rcTier,
+            resetUsage: false,
+            revenueCatAppUserId: revenueCatAppUserId,
+          );
+        }
+
         final shouldRefreshMetadata = (activeProductId != null &&
                 activeProductId != state.activeProductId) ||
             (renewsAt != null && renewsAt != state.renewsAt);
