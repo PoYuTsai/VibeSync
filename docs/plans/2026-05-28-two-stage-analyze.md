@@ -1,5 +1,9 @@
 # Two-Stage Analyze Implementation Plan
 
+> **Status (2026-06-07): SUPERSEDED / ARCHIVED. Do not implement this plan.**
+> Current product decision is full streaming analyze; use `docs/plans/2026-06-03-full-streaming-analyze-contract.md` as the active architecture.
+> Frontend two-stage / quick naming was retired in `d12009e`. Backend `responseMode: quick/full` and `analysis_runs` remain compatibility / rollback surfaces only and must not be removed without explicit Eric approval.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 > **For Codex review:** This is a high-risk change (touches quota, auth, AI prompts). Required review focus: (1) quota double-charge, (2) full-mode auth bypass, (3) quick/full result contradiction, (4) RLS/policy on `analysis_runs`. See §Codex Review Checklist at the bottom.
 
