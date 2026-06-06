@@ -5,26 +5,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
-import '../../domain/entities/quick_analysis_result.dart';
+import '../../domain/entities/analysis_recommendation_preview.dart';
 import '../providers/analysis_providers.dart';
 import '../services/analysis_service.dart';
 
 /// Phases of the analyze flow.
 ///
 /// Streaming full dogfood path:
-///   idle -> runningQuick(connecting) -> runningFull(preview) -> fullReady
-/// Legacy quick-ready remains for rollback and retry UI compatibility.
+///   idle -> connecting(connecting) -> streamingReport(preview) -> done
+/// Legacy recommendation-ready state remains for rollback and retry UI compatibility.
 /// Failure branches:
-///   runningQuick -> quickFailed                 (no recommendation emitted)
-///   runningFull  -> fullFailed                  (preview preserved, retry CTA)
-enum TwoStagePhase {
+///   connecting -> failedBeforeRecommendation                 (no recommendation emitted)
+///   streamingReport  -> failedAfterRecommendation                  (preview preserved, retry CTA)
+enum StreamingAnalyzePhase {
   idle,
-  runningQuick,
-  quickReady,
-  quickFailed,
-  runningFull,
-  fullReady,
-  fullFailed,
+  connecting,
+  recommendationReady,
+  failedBeforeRecommendation,
+  streamingReport,
+  done,
+  failedAfterRecommendation,
 }
 
 const List<(String, String)> _streamPreludeProgress = <(String, String)>[
@@ -49,15 +49,15 @@ const List<(String, String)> _streamPreludeProgress = <(String, String)>[
 const Duration _streamPreludeProgressInterval = Duration(seconds: 3);
 
 /// Immutable orchestrator state. Carries the streaming preview + full result,
-/// plus the cached [analysisRunId] used by [TwoStageAnalyzeNotifier.retryFull]
+/// plus the cached [analysisRunId] used by [StreamingAnalyzeNotifier.retryFull]
 /// so the server can match the run without re-charging quota (invariant I1).
-class TwoStageAnalysisState {
-  final TwoStagePhase phase;
-  final QuickAnalysisResult? quick;
+class StreamingAnalysisState {
+  final StreamingAnalyzePhase phase;
+  final AnalysisRecommendationPreview? recommendationPreview;
   final AnalysisResult? full;
   final String? analysisRunId;
-  final String? quickErrorMessage;
-  final String? quickErrorCode;
+  final String? recommendationPreviewErrorMessage;
+  final String? recommendationPreviewErrorCode;
   final String? fullErrorMessage;
   final String? fullErrorCode;
   final String? streamProgressLabel;
@@ -66,13 +66,13 @@ class TwoStageAnalysisState {
   final int retriesRemaining;
   final int? conversationMessageCount;
 
-  const TwoStageAnalysisState({
+  const StreamingAnalysisState({
     required this.phase,
-    this.quick,
+    this.recommendationPreview,
     this.full,
     this.analysisRunId,
-    this.quickErrorMessage,
-    this.quickErrorCode,
+    this.recommendationPreviewErrorMessage,
+    this.recommendationPreviewErrorCode,
     this.fullErrorMessage,
     this.fullErrorCode,
     this.streamProgressLabel,
@@ -82,7 +82,7 @@ class TwoStageAnalysisState {
     this.conversationMessageCount,
   });
 
-  const TwoStageAnalysisState.idle() : this(phase: TwoStagePhase.idle);
+  const StreamingAnalysisState.idle() : this(phase: StreamingAnalyzePhase.idle);
 
   /// Sentinel used by [copyWith] to distinguish "not provided" from "set to
   /// null". Without this, `param ?? this.param` silently ignores explicit nulls,
@@ -90,13 +90,13 @@ class TwoStageAnalysisState {
   /// invariant I-P2-a in the Phase 3 Codex review.
   static const Object _unset = Object();
 
-  TwoStageAnalysisState copyWith({
-    TwoStagePhase? phase,
-    Object? quick = _unset,
+  StreamingAnalysisState copyWith({
+    StreamingAnalyzePhase? phase,
+    Object? recommendationPreview = _unset,
     Object? full = _unset,
     Object? analysisRunId = _unset,
-    Object? quickErrorMessage = _unset,
-    Object? quickErrorCode = _unset,
+    Object? recommendationPreviewErrorMessage = _unset,
+    Object? recommendationPreviewErrorCode = _unset,
     Object? fullErrorMessage = _unset,
     Object? fullErrorCode = _unset,
     Object? streamProgressLabel = _unset,
@@ -105,20 +105,23 @@ class TwoStageAnalysisState {
     int? retriesRemaining,
     Object? conversationMessageCount = _unset,
   }) {
-    return TwoStageAnalysisState(
+    return StreamingAnalysisState(
       phase: phase ?? this.phase,
-      quick:
-          identical(quick, _unset) ? this.quick : quick as QuickAnalysisResult?,
+      recommendationPreview: identical(recommendationPreview, _unset)
+          ? this.recommendationPreview
+          : recommendationPreview as AnalysisRecommendationPreview?,
       full: identical(full, _unset) ? this.full : full as AnalysisResult?,
       analysisRunId: identical(analysisRunId, _unset)
           ? this.analysisRunId
           : analysisRunId as String?,
-      quickErrorMessage: identical(quickErrorMessage, _unset)
-          ? this.quickErrorMessage
-          : quickErrorMessage as String?,
-      quickErrorCode: identical(quickErrorCode, _unset)
-          ? this.quickErrorCode
-          : quickErrorCode as String?,
+      recommendationPreviewErrorMessage:
+          identical(recommendationPreviewErrorMessage, _unset)
+              ? this.recommendationPreviewErrorMessage
+              : recommendationPreviewErrorMessage as String?,
+      recommendationPreviewErrorCode:
+          identical(recommendationPreviewErrorCode, _unset)
+              ? this.recommendationPreviewErrorCode
+              : recommendationPreviewErrorCode as String?,
       fullErrorMessage: identical(fullErrorMessage, _unset)
           ? this.fullErrorMessage
           : fullErrorMessage as String?,
@@ -140,18 +143,18 @@ class TwoStageAnalysisState {
   }
 }
 
-final twoStageAnalyzeProvider = NotifierProvider.autoDispose
-    .family<TwoStageAnalyzeNotifier, TwoStageAnalysisState, String>(
-  TwoStageAnalyzeNotifier.new,
+final streamingAnalyzeProvider = NotifierProvider.autoDispose
+    .family<StreamingAnalyzeNotifier, StreamingAnalysisState, String>(
+  StreamingAnalyzeNotifier.new,
 );
 
 /// Streaming full analyze orchestrator for a single conversation. State
 /// survives navigation while in flight via [Ref.keepAlive]; once the user
 /// starts an analysis the provider stays alive for the rest of the app session
-/// (in-memory only; Phase 4 will persist). The legacy quick -> full branch
+/// (in-memory only; Phase 4 will persist). The legacy quick/full branch
 /// below stays wired for rollback.
-class TwoStageAnalyzeNotifier
-    extends AutoDisposeFamilyNotifier<TwoStageAnalysisState, String> {
+class StreamingAnalyzeNotifier
+    extends AutoDisposeFamilyNotifier<StreamingAnalysisState, String> {
   int _generation = 0;
   KeepAliveLink? _keepAliveLink;
 
@@ -169,13 +172,13 @@ class TwoStageAnalyzeNotifier
   int? _cachedConversationMessageCount;
 
   @override
-  TwoStageAnalysisState build(String conversationId) {
-    return const TwoStageAnalysisState.idle();
+  StreamingAnalysisState build(String conversationId) {
+    return const StreamingAnalysisState.idle();
   }
 
   AnalysisService get _service => ref.read(analysisServiceProvider);
   // Dogfood default: run full analysis through the streaming endpoint. Keep this
-  // as a getter so the legacy two-stage branch below can stay wired for rollback.
+  // as a getter so the legacy quick/full branch below can stay wired for rollback.
   bool get _shouldUseStreamingFull => true;
 
   /// Run the analysis pipeline. Multiple concurrent calls supersede
@@ -206,8 +209,8 @@ class TwoStageAnalyzeNotifier
     _cachedPreviousAnalyzedCount = previousAnalyzedCount;
     _cachedConversationMessageCount = conversationMessageCount;
 
-    state = TwoStageAnalysisState(
-      phase: TwoStagePhase.runningQuick,
+    state = StreamingAnalysisState(
+      phase: StreamingAnalyzePhase.connecting,
       streamProgressLabel: '開始完整分析',
       streamProgressDetail: '正在建立串流連線。',
       conversationMessageCount: conversationMessageCount,
@@ -228,9 +231,9 @@ class TwoStageAnalyzeNotifier
       return;
     }
 
-    final QuickAnalysisResult quick;
+    final AnalysisRecommendationPreview recommendationPreview;
     try {
-      quick = await _service.analyzeQuick(
+      recommendationPreview = await _service.analyzeQuick(
         messages: messages,
         sessionContext: sessionContext,
         conversationSummary: conversationSummary,
@@ -243,10 +246,10 @@ class TwoStageAnalyzeNotifier
       if (myGen != _generation) return;
       final message = e is AnalysisException ? e.message : '快速分析失敗，請稍後再試。';
       final code = e is AnalysisException ? e.code : null;
-      state = TwoStageAnalysisState(
-        phase: TwoStagePhase.quickFailed,
-        quickErrorMessage: message,
-        quickErrorCode: code,
+      state = StreamingAnalysisState(
+        phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+        recommendationPreviewErrorMessage: message,
+        recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
       );
       return;
@@ -254,16 +257,16 @@ class TwoStageAnalyzeNotifier
 
     if (myGen != _generation) return;
 
-    state = TwoStageAnalysisState(
-      phase: TwoStagePhase.quickReady,
-      quick: quick,
-      analysisRunId: quick.analysisRunId,
+    state = StreamingAnalysisState(
+      phase: StreamingAnalyzePhase.recommendationReady,
+      recommendationPreview: recommendationPreview,
+      analysisRunId: recommendationPreview.analysisRunId,
       conversationMessageCount: conversationMessageCount,
     );
 
     await _runFull(
       generation: myGen,
-      analysisRunId: quick.analysisRunId,
+      analysisRunId: recommendationPreview.analysisRunId,
       messages: messages,
       sessionContext: sessionContext,
       conversationSummary: conversationSummary,
@@ -309,9 +312,9 @@ class TwoStageAnalyzeNotifier
           case AnalysisStreamUpdateKind.started:
           case AnalysisStreamUpdateKind.progress:
             state = state.copyWith(
-              phase: state.quick == null
-                  ? TwoStagePhase.runningQuick
-                  : TwoStagePhase.runningFull,
+              phase: state.recommendationPreview == null
+                  ? StreamingAnalyzePhase.connecting
+                  : StreamingAnalyzePhase.streamingReport,
               analysisRunId: update.runId ?? state.analysisRunId,
               streamProgressLabel: update.label,
               streamProgressDetail: update.detail,
@@ -322,7 +325,7 @@ class TwoStageAnalyzeNotifier
             final content = update.content;
             if (content == null) break;
             state = state.copyWith(
-              phase: TwoStagePhase.runningFull,
+              phase: StreamingAnalyzePhase.streamingReport,
               analysisRunId: update.runId ?? state.analysisRunId,
               fullErrorMessage: null,
               fullErrorCode: null,
@@ -339,12 +342,12 @@ class TwoStageAnalyzeNotifier
             );
             break;
           case AnalysisStreamUpdateKind.recommendation:
-            final quick = update.quick;
-            if (quick == null) break;
+            final recommendationPreview = update.recommendationPreview;
+            if (recommendationPreview == null) break;
             state = state.copyWith(
-              phase: TwoStagePhase.runningFull,
-              quick: quick,
-              analysisRunId: quick.analysisRunId,
+              phase: StreamingAnalyzePhase.streamingReport,
+              recommendationPreview: recommendationPreview,
+              analysisRunId: recommendationPreview.analysisRunId,
               fullErrorMessage: null,
               fullErrorCode: null,
               streamProgressLabel: update.label,
@@ -363,7 +366,7 @@ class TwoStageAnalyzeNotifier
               );
             }
             state = state.copyWith(
-              phase: TwoStagePhase.fullReady,
+              phase: StreamingAnalyzePhase.done,
               full: full,
               fullErrorMessage: null,
               fullErrorCode: null,
@@ -386,16 +389,16 @@ class TwoStageAnalyzeNotifier
       if (generation != _generation) return;
       final message = e is AnalysisException ? e.message : '完整分析暫時失敗，請重新分析。';
       final code = e is AnalysisException ? e.code : null;
-      final quick = state.quick;
+      final recommendationPreview = state.recommendationPreview;
       final hasStreamContent = state.streamContents.isNotEmpty;
       final retriesRemaining = _streamRetriesRemaining(
         e,
-        hasRecommendation: quick != null || hasStreamContent,
+        hasRecommendation: recommendationPreview != null || hasStreamContent,
       );
 
-      if (quick != null || hasStreamContent) {
+      if (recommendationPreview != null || hasStreamContent) {
         state = state.copyWith(
-          phase: TwoStagePhase.fullFailed,
+          phase: StreamingAnalyzePhase.failedAfterRecommendation,
           fullErrorMessage: message,
           fullErrorCode: code,
           streamProgressLabel: null,
@@ -406,10 +409,10 @@ class TwoStageAnalyzeNotifier
         return;
       }
 
-      state = TwoStageAnalysisState(
-        phase: TwoStagePhase.quickFailed,
-        quickErrorMessage: message,
-        quickErrorCode: code,
+      state = StreamingAnalysisState(
+        phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+        recommendationPreviewErrorMessage: message,
+        recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
       );
     } finally {
@@ -427,8 +430,8 @@ class TwoStageAnalyzeNotifier
     void publish() {
       if (stopped || generation != _generation) return;
       final current = state;
-      if (current.phase != TwoStagePhase.runningQuick ||
-          current.quick != null) {
+      if (current.phase != StreamingAnalyzePhase.connecting ||
+          current.recommendationPreview != null) {
         return;
       }
 
@@ -472,9 +475,9 @@ class TwoStageAnalyzeNotifier
     return 0;
   }
 
-  /// Retry the full call with the cached [TwoStageAnalysisState.analysisRunId]
+  /// Retry the full call with the cached [StreamingAnalysisState.analysisRunId]
   /// and the payload captured by the most recent [start]. Does NOT call
-  /// analyzeQuick and does NOT re-charge quick quota. No-op if there is no
+  /// analyzeQuick and does NOT re-charge recommendation quota. No-op if there is no
   /// cached run (caller should invoke [start] instead).
   ///
   /// Caller passes no args so the retry survives screen remount; see
@@ -489,7 +492,7 @@ class TwoStageAnalyzeNotifier
     _keepAliveLink ??= ref.keepAlive();
 
     state = state.copyWith(
-      phase: TwoStagePhase.runningFull,
+      phase: StreamingAnalyzePhase.streamingReport,
       fullErrorMessage: null,
       fullErrorCode: null,
       streamContents: const <AnalysisStreamContent>[],
@@ -542,10 +545,10 @@ class TwoStageAnalyzeNotifier
     if (generation != _generation) return;
     // Clear any stale error fields on every full attempt so invariants
     // I-P2-b/c hold even if a future call site forgets to clear (e.g. retryFull
-    // already clears, but defense-in-depth makes the runningFull invariant
+    // already clears, but defense-in-depth makes the streamingReport invariant
     // unconditional).
     state = state.copyWith(
-      phase: TwoStagePhase.runningFull,
+      phase: StreamingAnalyzePhase.streamingReport,
       fullErrorMessage: null,
       fullErrorCode: null,
       retriesRemaining: 0,
@@ -565,7 +568,7 @@ class TwoStageAnalyzeNotifier
       );
       if (generation != _generation) return;
       state = state.copyWith(
-        phase: TwoStagePhase.fullReady,
+        phase: StreamingAnalyzePhase.done,
         full: full,
         fullErrorMessage: null,
         fullErrorCode: null,
@@ -575,7 +578,7 @@ class TwoStageAnalyzeNotifier
     } on FullModeException catch (e) {
       if (generation != _generation) return;
       state = state.copyWith(
-        phase: TwoStagePhase.fullFailed,
+        phase: StreamingAnalyzePhase.failedAfterRecommendation,
         fullErrorMessage: e.message,
         fullErrorCode: e.code,
         retriesRemaining: e.retriesRemaining,
@@ -584,7 +587,7 @@ class TwoStageAnalyzeNotifier
     } on Exception catch (e) {
       if (generation != _generation) return;
       state = state.copyWith(
-        phase: TwoStagePhase.fullFailed,
+        phase: StreamingAnalyzePhase.failedAfterRecommendation,
         fullErrorMessage: e is AnalysisException ? e.message : '完整分析失敗，可以重試。',
         fullErrorCode: e is AnalysisException ? e.code : null,
         retriesRemaining: 0,

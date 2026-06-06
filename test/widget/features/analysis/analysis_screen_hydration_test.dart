@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vibesync/features/analysis/data/notifiers/two_stage_analyze_notifier.dart';
+import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
-import 'package:vibesync/features/analysis/domain/entities/quick_analysis_result.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
-import 'package:vibesync/features/analysis/presentation/widgets/two_stage_loading_widgets.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -26,22 +26,22 @@ const _conversationId = 'hydration-test';
 /// AnalysisScreen onto an already-running provider. Critically, [build] is the
 /// override hook for the initial state — no analyze calls are needed to land
 /// the screen in the target phase.
-class _SeededTwoStageNotifier extends TwoStageAnalyzeNotifier {
-  _SeededTwoStageNotifier(this.seed);
-  final TwoStageAnalysisState seed;
+class _SeededStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
+  _SeededStreamingAnalyzeNotifier(this.seed);
+  final StreamingAnalysisState seed;
 
   @override
-  TwoStageAnalysisState build(String conversationId) => seed;
+  StreamingAnalysisState build(String conversationId) => seed;
 }
 
-class _MutableTwoStageNotifier extends TwoStageAnalyzeNotifier {
-  _MutableTwoStageNotifier(this.seed);
-  final TwoStageAnalysisState seed;
+class _MutableStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
+  _MutableStreamingAnalyzeNotifier(this.seed);
+  final StreamingAnalysisState seed;
 
   @override
-  TwoStageAnalysisState build(String conversationId) => seed;
+  StreamingAnalysisState build(String conversationId) => seed;
 
-  void emit(TwoStageAnalysisState next) {
+  void emit(StreamingAnalysisState next) {
     state = next;
   }
 }
@@ -49,11 +49,11 @@ class _MutableTwoStageNotifier extends TwoStageAnalyzeNotifier {
 /// Records any call to analyzeQuick/analyzeFull so tests can assert the
 /// screen did not re-trigger an analyze after hydrating.
 class _RecordingAnalysisService extends AnalysisService {
-  int quickCalls = 0;
+  int recommendationPreviewCalls = 0;
   int fullCalls = 0;
 
   @override
-  Future<QuickAnalysisResult> analyzeQuick({
+  Future<AnalysisRecommendationPreview> analyzeQuick({
     required List<Message> messages,
     SessionContext? sessionContext,
     String? conversationSummary,
@@ -62,7 +62,7 @@ class _RecordingAnalysisService extends AnalysisService {
     String? knownContactName,
     int? previousAnalyzedCount,
   }) async {
-    quickCalls++;
+    recommendationPreviewCalls++;
     throw StateError('analyzeQuick must not be called on remount');
   }
 
@@ -82,11 +82,11 @@ class _RecordingAnalysisService extends AnalysisService {
   }
 }
 
-QuickAnalysisResult _quick({
+AnalysisRecommendationPreview _preview({
   String runId = 'run_hydrate',
   int? eta = 17,
 }) {
-  return QuickAnalysisResult(
+  return AnalysisRecommendationPreview(
     analysisRunId: runId,
     pick: 'resonate',
     nextStep: '先接住情緒再延伸',
@@ -298,7 +298,7 @@ Map<String, dynamic> _staleSnapshotJson() {
 
 Future<_RecordingAnalysisService> _pumpHydratedAnalysisScreen(
   WidgetTester tester, {
-  required TwoStageAnalysisState seed,
+  required StreamingAnalysisState seed,
 }) async {
   return (await _pumpHydratedAnalysisScreenWithRepo(
     tester,
@@ -321,12 +321,12 @@ class _MutableHydrationHarness extends _HydrationHarness {
     required this.notifier,
   });
 
-  final _MutableTwoStageNotifier notifier;
+  final _MutableStreamingAnalyzeNotifier notifier;
 }
 
 Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   WidgetTester tester, {
-  required TwoStageAnalysisState seed,
+  required StreamingAnalysisState seed,
   required Conversation conversation,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
@@ -341,8 +341,8 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
-        twoStageAnalyzeProvider
-            .overrideWith(() => _SeededTwoStageNotifier(seed)),
+        streamingAnalyzeProvider
+            .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
       ],
       child: const MaterialApp(
         home: AnalysisScreen(conversationId: _conversationId),
@@ -357,7 +357,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
 
 Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
   WidgetTester tester, {
-  required TwoStageAnalysisState seed,
+  required StreamingAnalysisState seed,
   required Conversation conversation,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
@@ -365,7 +365,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
 
   final recorder = _RecordingAnalysisService();
   final repo = _StubConversationRepository(conversation);
-  late final _MutableTwoStageNotifier notifier;
+  late final _MutableStreamingAnalyzeNotifier notifier;
 
   await tester.pumpWidget(
     ProviderScope(
@@ -373,8 +373,8 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
-        twoStageAnalyzeProvider.overrideWith(() {
-          notifier = _MutableTwoStageNotifier(seed);
+        streamingAnalyzeProvider.overrideWith(() {
+          notifier = _MutableStreamingAnalyzeNotifier(seed);
           return notifier;
         }),
       ],
@@ -399,45 +399,45 @@ void main() {
 
   group('AnalysisScreen hydration on remount (P1)', () {
     testWidgets(
-      'quickReady state hydrates → streaming loader, no analyze re-fire',
+      'recommendationReady state hydrates → streaming loader, no analyze re-fire',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
-          seed: TwoStageAnalysisState(
-            phase: TwoStagePhase.quickReady,
-            quick: _quick(runId: 'run_qr'),
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.recommendationReady,
+            recommendationPreview: _preview(runId: 'run_qr'),
             analysisRunId: 'run_qr',
           ),
         );
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
-        expect(find.byType(QuickRotatingLoader), findsOneWidget);
+        expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
         expect(find.byType(CoachActionCard), findsNothing);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
                 'A hydrated full-streaming run must not re-open the pre-analysis upload card.');
-        expect(recorder.quickCalls, 0,
+        expect(recorder.recommendationPreviewCalls, 0,
             reason: 'I-P1-a: must not re-fire analyzeQuick on hydration');
         expect(recorder.fullCalls, 0);
       },
     );
 
     testWidgets(
-      'runningFull state hydrates → streaming loader visible',
+      'streamingReport state hydrates → streaming loader visible',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
-          seed: TwoStageAnalysisState(
-            phase: TwoStagePhase.runningFull,
-            quick: _quick(runId: 'run_rf'),
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.streamingReport,
+            recommendationPreview: _preview(runId: 'run_rf'),
             analysisRunId: 'run_rf',
           ),
         );
 
         expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
-        expect(find.byType(QuickRotatingLoader), findsOneWidget);
+        expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
         expect(find.byType(CoachActionCard), findsNothing);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
@@ -448,19 +448,19 @@ void main() {
         expect(find.text('貼上或輸入新的一則訊息...'), findsNothing,
             reason:
                 'Manual composer should collapse while full analysis is streaming so it does not cover the result area.');
-        expect(recorder.quickCalls, 0);
+        expect(recorder.recommendationPreviewCalls, 0);
         expect(recorder.fullCalls, 0);
       },
     );
 
     testWidgets(
-      'fullFailed state hydrates → retry card with retry count',
+      'failedAfterRecommendation state hydrates → retry card with retry count',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
-          seed: TwoStageAnalysisState(
-            phase: TwoStagePhase.fullFailed,
-            quick: _quick(runId: 'run_ff'),
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedAfterRecommendation,
+            recommendationPreview: _preview(runId: 'run_ff'),
             analysisRunId: 'run_ff',
             fullErrorMessage: '完整分析失敗，可以重試。',
             fullErrorCode: 'FULL_FAILED',
@@ -475,19 +475,19 @@ void main() {
         expect(find.byType(ImagePickerWidget), findsNothing,
             reason:
                 'Full retry state should not insert the upload/start-analysis card above retry.');
-        expect(recorder.quickCalls, 0);
+        expect(recorder.recommendationPreviewCalls, 0);
         expect(recorder.fullCalls, 0);
       },
     );
 
     testWidgets(
-      'fullReady state hydrates → detailed analysis gate flips, no analyze re-fire',
+      'done state hydrates → detailed analysis gate flips, no analyze re-fire',
       (tester) async {
         final recorder = await _pumpHydratedAnalysisScreen(
           tester,
-          seed: TwoStageAnalysisState(
-            phase: TwoStagePhase.fullReady,
-            quick: _quick(runId: 'run_fr'),
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            recommendationPreview: _preview(runId: 'run_fr'),
             full: _full(),
             analysisRunId: 'run_fr',
           ),
@@ -509,38 +509,38 @@ void main() {
         expect(find.text('AI 推薦回覆'), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
         expect(find.byType(FullAnalysisRetryCard), findsNothing);
-        expect(recorder.quickCalls, 0);
+        expect(recorder.recommendationPreviewCalls, 0);
         expect(recorder.fullCalls, 0);
       },
     );
 
     testWidgets(
-      'live runningFull to fullReady does not render quick/Core comparison',
+      'live streamingReport to done does not render rollback preview/Core comparison',
       (tester) async {
-        final quick = _quick(runId: 'run_live_compare');
+        final recommendationPreview = _preview(runId: 'run_live_compare');
         final raw = _fullRawResponse();
         final conv = _conversation();
 
         final harness = await _pumpMutableAnalysisScreenWithRepo(
           tester,
-          seed: TwoStageAnalysisState(
-            phase: TwoStagePhase.runningFull,
-            quick: quick,
-            analysisRunId: quick.analysisRunId,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.streamingReport,
+            recommendationPreview: recommendationPreview,
+            analysisRunId: recommendationPreview.analysisRunId,
             conversationMessageCount: conv.messages.length,
           ),
           conversation: conv,
         );
 
-        expect(find.byType(QuickRotatingLoader), findsOneWidget);
+        expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
 
         harness.notifier.emit(
-          TwoStageAnalysisState(
-            phase: TwoStagePhase.fullReady,
-            quick: quick,
+          StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            recommendationPreview: recommendationPreview,
             full: _fullWithRawResponse(raw),
-            analysisRunId: quick.analysisRunId,
+            analysisRunId: recommendationPreview.analysisRunId,
             conversationMessageCount: conv.messages.length,
           ),
         );
@@ -554,10 +554,10 @@ void main() {
         expect(find.text('Core / Full 回覆對照'), findsNothing);
         expect(find.text('Core 先行'), findsNothing);
         expect(find.text('Full 原始判斷'), findsNothing);
-        expect(find.text(quick.recommendedReply), findsNothing);
+        expect(find.text(recommendationPreview.recommendedReply), findsNothing);
         expect(find.text('AI 推薦回覆'), findsOneWidget);
         expect(find.byType(FullAnalysisPlaceholder), findsNothing);
-        expect(harness.recorder.quickCalls, 0);
+        expect(harness.recorder.recommendationPreviewCalls, 0);
         expect(harness.recorder.fullCalls, 0);
       },
     );
@@ -566,15 +566,15 @@ void main() {
   // Codex round-2 P1: when a conversation already has a persisted detailed
   // analysis (`lastAnalysisSnapshotJson`), `_restorePersistedAnalysis()` seeds
   // `_enthusiasmScore` and the rest of the detailed-analysis local mirrors in
-  // initState. If hydration of a *partial* two-stage phase (quickReady /
-  // runningFull / fullFailed / quickFailed) doesn't clear those mirrors, the
+  // initState. If hydration of a *partial* streaming phase (recommendationReady /
+  // streamingReport / failedAfterRecommendation / failedBeforeRecommendation) doesn't clear those mirrors, the
   // build tree keeps showing the stale detailed analysis on top of (or instead
   // of) the live streaming loader / retry state. I-P1-c.
   group(
     'AnalysisScreen hydration with stale persisted snapshot (Codex round-2 P1)',
     () {
       testWidgets(
-        'quickReady hydrate over stale snapshot → streaming loader, no stale detailed analysis',
+        'recommendationReady hydrate over stale snapshot → streaming loader, no stale detailed analysis',
         (tester) async {
           final convWithStaleSnapshot = _conversation(
             lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -584,16 +584,16 @@ void main() {
 
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
             tester,
-            seed: TwoStageAnalysisState(
-              phase: TwoStagePhase.quickReady,
-              quick: _quick(runId: 'run_qr_stale'),
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.recommendationReady,
+              recommendationPreview: _preview(runId: 'run_qr_stale'),
               analysisRunId: 'run_qr_stale',
             ),
             conversation: convWithStaleSnapshot,
           );
 
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
-          expect(find.byType(QuickRotatingLoader), findsOneWidget);
+          expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
           expect(find.byType(CoachActionCard), findsNothing);
           expect(find.byType(FullAnalysisPlaceholder), findsNothing,
               reason:
@@ -602,13 +602,13 @@ void main() {
           // Stale detailed copy must not bleed through.
           expect(find.text('舊建議內容'), findsNothing);
           expect(find.text('舊策略：保守'), findsNothing);
-          expect(harness.recorder.quickCalls, 0);
+          expect(harness.recorder.recommendationPreviewCalls, 0);
           expect(harness.recorder.fullCalls, 0);
         },
       );
 
       testWidgets(
-        'runningFull hydrate over stale snapshot → streaming loader, no stale detailed analysis',
+        'streamingReport hydrate over stale snapshot → streaming loader, no stale detailed analysis',
         (tester) async {
           final convWithStaleSnapshot = _conversation(
             lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -618,27 +618,27 @@ void main() {
 
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
             tester,
-            seed: TwoStageAnalysisState(
-              phase: TwoStagePhase.runningFull,
-              quick: _quick(runId: 'run_rf_stale'),
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.streamingReport,
+              recommendationPreview: _preview(runId: 'run_rf_stale'),
               analysisRunId: 'run_rf_stale',
             ),
             conversation: convWithStaleSnapshot,
           );
 
           expect(find.text('聽起來累，要不要週末喝杯咖啡？'), findsNothing);
-          expect(find.byType(QuickRotatingLoader), findsOneWidget);
+          expect(find.byType(StreamingAnalysisLoader), findsOneWidget);
           expect(find.byType(CoachActionCard), findsNothing);
           expect(find.byType(FullAnalysisPlaceholder), findsNothing);
           expect(find.byType(FullAnalysisRetryCard), findsNothing);
           expect(find.text('舊建議內容'), findsNothing);
-          expect(harness.recorder.quickCalls, 0);
+          expect(harness.recorder.recommendationPreviewCalls, 0);
           expect(harness.recorder.fullCalls, 0);
         },
       );
 
       testWidgets(
-        'fullFailed hydrate over stale snapshot → retry card, no stale detailed analysis',
+        'failedAfterRecommendation hydrate over stale snapshot → retry card, no stale detailed analysis',
         (tester) async {
           final convWithStaleSnapshot = _conversation(
             lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
@@ -648,9 +648,9 @@ void main() {
 
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
             tester,
-            seed: TwoStageAnalysisState(
-              phase: TwoStagePhase.fullFailed,
-              quick: _quick(runId: 'run_ff_stale'),
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.failedAfterRecommendation,
+              recommendationPreview: _preview(runId: 'run_ff_stale'),
               analysisRunId: 'run_ff_stale',
               fullErrorMessage: '完整分析失敗，可以重試。',
               fullErrorCode: 'FULL_FAILED',
@@ -664,7 +664,7 @@ void main() {
           expect(find.byType(FullAnalysisRetryCard), findsOneWidget);
           expect(find.byType(FullAnalysisPlaceholder), findsNothing);
           expect(find.text('舊建議內容'), findsNothing);
-          expect(harness.recorder.quickCalls, 0);
+          expect(harness.recorder.recommendationPreviewCalls, 0);
           expect(harness.recorder.fullCalls, 0);
         },
       );
@@ -672,13 +672,13 @@ void main() {
   );
 
   // Codex round-2 P2: if full completes while the user is off-screen, the
-  // `_onTwoStageStateChanged` listener never fires for fullReady. Until the
-  // P2 fix, `_hydrateTwoStageState(fullReady)` applied the result but
+  // `_onStreamingAnalyzeStateChanged` listener never fires for done. Until the
+  // P2 fix, `_hydrateStreamingAnalyzeState(done)` applied the result but
   // intentionally skipped `_persistLatestAnalysisSnapshot` +
   // `_syncSubscriptionUsageFromResult` on the theory that the live listener
   // already ran them — false for off-screen completion. I-P2-e/f.
   group(
-    'AnalysisScreen fullReady hydrate persists when listener missed it (Codex round-2 P2)',
+    'AnalysisScreen done hydrate persists when listener missed it (Codex round-2 P2)',
     () {
       testWidgets(
         'off-screen completion (no matching snapshot) → hydrate persists + updates conv snapshot',
@@ -689,9 +689,9 @@ void main() {
 
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
             tester,
-            seed: TwoStageAnalysisState(
-              phase: TwoStagePhase.fullReady,
-              quick: _quick(runId: 'run_off_screen'),
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.done,
+              recommendationPreview: _preview(runId: 'run_off_screen'),
               full: _fullWithRawResponse(raw),
               analysisRunId: 'run_off_screen',
             ),
@@ -699,7 +699,7 @@ void main() {
           );
 
           // Drain expected Hive build error from the detailed-analysis tree —
-          // same workaround as the existing fullReady hydration test.
+          // same workaround as the existing done hydration test.
           // ignore: avoid_dynamic_calls
           tester.takeException();
           // Let the fire-and-forget save() future land.
@@ -707,7 +707,7 @@ void main() {
 
           expect(harness.repo.updateCalls, 1,
               reason:
-                  'I-P2-e: off-screen fullReady completion must persist the snapshot on hydrate; listener missed it.');
+                  'I-P2-e: off-screen done completion must persist the snapshot on hydrate; listener missed it.');
           expect(harness.repo.lastSaved?.lastAnalysisSnapshotJson,
               jsonEncode(raw));
           expect(harness.repo.lastSaved?.lastAnalyzedMessageCount,
@@ -720,7 +720,7 @@ void main() {
         'listener already persisted matching snapshot → hydrate must not double-write',
         (tester) async {
           final raw = _fullRawResponse();
-          // Listener already ran during the original quickReady→fullReady
+          // Listener already ran during the original recommendationReady→done
           // transition, persisted the snapshot, then user navigated away and
           // came back. Snapshot equality must short-circuit hydrate persist.
           final conv = _conversation(
@@ -731,9 +731,9 @@ void main() {
 
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
             tester,
-            seed: TwoStageAnalysisState(
-              phase: TwoStagePhase.fullReady,
-              quick: _quick(runId: 'run_already_persisted'),
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.done,
+              recommendationPreview: _preview(runId: 'run_already_persisted'),
               full: _fullWithRawResponse(raw),
               analysisRunId: 'run_already_persisted',
             ),
@@ -763,9 +763,9 @@ void main() {
 
           final harness = await _pumpHydratedAnalysisScreenWithRepo(
             tester,
-            seed: TwoStageAnalysisState(
-              phase: TwoStagePhase.fullReady,
-              quick: _quick(runId: 'run_after_stale'),
+            seed: StreamingAnalysisState(
+              phase: StreamingAnalyzePhase.done,
+              recommendationPreview: _preview(runId: 'run_after_stale'),
               full: _fullWithRawResponse(raw),
               analysisRunId: 'run_after_stale',
             ),
@@ -786,10 +786,10 @@ void main() {
     },
   );
 
-  group('AnalysisScreen two-stage stale result guard for newly added messages',
+  group('AnalysisScreen streaming stale result guard for newly added messages',
       () {
     testWidgets(
-      'fullReady for an older message count shows stale-result retry and skips stale persist',
+      'done for an older message count shows stale-result retry and skips stale persist',
       (tester) async {
         final raw = _fullRawResponse();
         final conversationWithNewMessage = _conversation(
@@ -808,9 +808,9 @@ void main() {
 
         final harness = await _pumpHydratedAnalysisScreenWithRepo(
           tester,
-          seed: TwoStageAnalysisState(
-            phase: TwoStagePhase.fullReady,
-            quick: _quick(runId: 'run_stale_message_count'),
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            recommendationPreview: _preview(runId: 'run_stale_message_count'),
             full: _fullWithRawResponse(raw),
             analysisRunId: 'run_stale_message_count',
             conversationMessageCount: 1,
@@ -826,7 +826,7 @@ void main() {
         expect(harness.repo.updateCalls, 0,
             reason:
                 'Stale full result must not persist or advance analyzed count.');
-        expect(harness.recorder.quickCalls, 0);
+        expect(harness.recorder.recommendationPreviewCalls, 0);
         expect(harness.recorder.fullCalls, 0);
       },
     );

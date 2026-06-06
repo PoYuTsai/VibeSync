@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vibesync/features/analysis/presentation/widgets/two_stage_loading_widgets.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 
 Widget _wrap(Widget child) {
   return MaterialApp(home: Scaffold(body: child));
 }
 
 void main() {
-  group('QuickRotatingLoader', () {
+  group('StreamingAnalysisLoader', () {
     testWidgets('renders the first phrase immediately', (tester) async {
-      await tester.pumpWidget(_wrap(const QuickRotatingLoader(
+      await tester.pumpWidget(_wrap(const StreamingAnalysisLoader(
         phrases: ['一', '二', '三'],
         interval: Duration(milliseconds: 100),
       )));
@@ -22,7 +22,7 @@ void main() {
     });
 
     testWidgets('cycles through phrases on a timer', (tester) async {
-      await tester.pumpWidget(_wrap(const QuickRotatingLoader(
+      await tester.pumpWidget(_wrap(const StreamingAnalysisLoader(
         phrases: ['一', '二', '三'],
         interval: Duration(milliseconds: 100),
       )));
@@ -44,7 +44,7 @@ void main() {
 
     testWidgets('does not start timer when only one phrase given',
         (tester) async {
-      await tester.pumpWidget(_wrap(const QuickRotatingLoader(
+      await tester.pumpWidget(_wrap(const StreamingAnalysisLoader(
         phrases: ['唯一'],
         interval: Duration(milliseconds: 100),
       )));

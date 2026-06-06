@@ -33,7 +33,7 @@ import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
-import '../../data/notifiers/two_stage_analyze_notifier.dart';
+import '../../data/notifiers/streaming_analyze_notifier.dart';
 import '../../data/services/ocr_recognition_cache_service.dart';
 import '../../data/services/analysis_hint_service.dart';
 import '../../data/services/analysis_service.dart';
@@ -45,7 +45,7 @@ import '../../domain/services/screenshot_recognition_helper.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
-import '../widgets/two_stage_loading_widgets.dart';
+import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -121,7 +121,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   final _feedbackCommentController = TextEditingController();
 
   // Streaming analyze mirrors from the notifier. The backend now runs full
-  // streaming directly; old quick/Core preview data stays inside the notifier
+  // streaming directly; old rollback preview data stays inside the notifier
   // only for retry compatibility and is not rendered on this screen.
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
@@ -603,49 +603,49 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // analysis on top of the new run's streaming loader / retry state.
     // (I-P1-c, Codex round-2).
     final initialState =
-        ref.read(twoStageAnalyzeProvider(widget.conversationId));
-    if (_isTwoStagePartialPhase(initialState.phase) ||
-        _isTwoStageResultStaleForCurrentConversation(initialState)) {
-      _clearDetailedAnalysisStateForTwoStagePartial();
+        ref.read(streamingAnalyzeProvider(widget.conversationId));
+    if (_isStreamingAnalyzePartialPhase(initialState.phase) ||
+        _isStreamingAnalyzeResultStaleForCurrentConversation(initialState)) {
+      _clearDetailedAnalysisStateForStreamingAnalyzePartial();
     }
-    // Hydrate from existing two-stage notifier state on remount.
+    // Hydrate from existing streaming analyze notifier state on remount.
     // ref.listen (set up in build) only fires on future transitions, so a
     // screen rebuilt while the provider is mid-analyze would otherwise lose
     // the current streaming/full state. Post-frame so ref reads are safe and
     // setState lands on the next frame (I-P1-a).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final current = ref.read(twoStageAnalyzeProvider(widget.conversationId));
-      if (current.phase != TwoStagePhase.idle) {
-        _hydrateTwoStageState(current);
+      final current = ref.read(streamingAnalyzeProvider(widget.conversationId));
+      if (current.phase != StreamingAnalyzePhase.idle) {
+        _hydrateStreamingAnalyzeState(current);
       }
     });
     // 不再自動分析，讓用戶手動點擊
   }
 
-  bool _isTwoStagePartialPhase(TwoStagePhase p) {
+  bool _isStreamingAnalyzePartialPhase(StreamingAnalyzePhase p) {
     switch (p) {
-      case TwoStagePhase.runningQuick:
-      case TwoStagePhase.quickReady:
-      case TwoStagePhase.runningFull:
-      case TwoStagePhase.fullFailed:
-      case TwoStagePhase.quickFailed:
+      case StreamingAnalyzePhase.connecting:
+      case StreamingAnalyzePhase.recommendationReady:
+      case StreamingAnalyzePhase.streamingReport:
+      case StreamingAnalyzePhase.failedAfterRecommendation:
+      case StreamingAnalyzePhase.failedBeforeRecommendation:
         return true;
-      case TwoStagePhase.fullReady:
-      case TwoStagePhase.idle:
+      case StreamingAnalyzePhase.done:
+      case StreamingAnalyzePhase.idle:
         return false;
     }
   }
 
-  /// Apply the current two-stage notifier state to local mirrors without
+  /// Apply the current streaming analyze notifier state to local mirrors without
   /// triggering side-effects (paywall, persistence, subscription sync) that
   /// the original transition already handled. Called on screen remount so a
   /// user who navigates away mid-analyze sees the correct state when they
   /// come back.
-  void _hydrateTwoStageState(TwoStageAnalysisState s) {
+  void _hydrateStreamingAnalyzeState(StreamingAnalysisState s) {
     if (!mounted) return;
     switch (s.phase) {
-      case TwoStagePhase.runningQuick:
+      case StreamingAnalyzePhase.connecting:
         setState(() {
           _isAnalyzing = true;
           _fullErrorMessage = null;
@@ -654,11 +654,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = s.streamProgressDetail;
           _streamContents = s.streamContents;
           _activeAnalysisMessageCount = s.conversationMessageCount;
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
-      case TwoStagePhase.quickReady:
-      case TwoStagePhase.runningFull:
+      case StreamingAnalyzePhase.recommendationReady:
+      case StreamingAnalyzePhase.streamingReport:
         setState(() {
           _isAnalyzing = true;
           _fullErrorMessage = null;
@@ -667,20 +667,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = s.streamProgressDetail;
           _streamContents = s.streamContents;
           _activeAnalysisMessageCount = s.conversationMessageCount;
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
-      case TwoStagePhase.fullReady:
+      case StreamingAnalyzePhase.done:
         final result = s.full;
         if (result == null) return;
-        if (_isTwoStageResultStaleForCurrentConversation(s)) {
+        if (_isStreamingAnalyzeResultStaleForCurrentConversation(s)) {
           setState(() {
             _isAnalyzing = false;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
             _streamContents = const [];
             _activeAnalysisMessageCount = s.conversationMessageCount;
-            _clearDetailedAnalysisStateForTwoStagePartial();
+            _clearDetailedAnalysisStateForStreamingAnalyzePartial();
           });
           return;
         }
@@ -710,12 +710,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         });
         // Idempotent: only persist + sync usage when the live listener clearly
         // did NOT run for this result (e.g., user navigated away during
-        // runningFull and the fullReady transition arrived off-screen). If the
+        // streamingReport and the done transition arrived off-screen). If the
         // listener already wrote this exact snapshot, the dedup signal below
         // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
         _maybePersistAndSyncOnHydrate(result);
         break;
-      case TwoStagePhase.fullFailed:
+      case StreamingAnalyzePhase.failedAfterRecommendation:
         setState(() {
           _isAnalyzing = false;
           _fullErrorMessage = s.fullErrorMessage;
@@ -724,12 +724,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = null;
           _streamContents = s.streamContents;
           _activeAnalysisMessageCount = s.conversationMessageCount;
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
-      case TwoStagePhase.quickFailed:
-        final isQuotaError = s.quickErrorCode == 'DAILY_LIMIT_EXCEEDED' ||
-            s.quickErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
+      case StreamingAnalyzePhase.failedBeforeRecommendation:
+        final isQuotaError =
+            s.recommendationPreviewErrorCode == 'DAILY_LIMIT_EXCEEDED' ||
+                s.recommendationPreviewErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
           _streamProgressLabel = null;
@@ -737,23 +738,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamContents = const [];
           _activeAnalysisMessageCount = null;
           _applyErrorState(
-            message: s.quickErrorMessage ?? '分析暫時失敗，請稍後再試。',
+            message: s.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。',
             action: isQuotaError
                 ? AnalysisErrorAction.upgrade
                 : AnalysisErrorAction.retry,
             origin: _AnalysisErrorOrigin.analysis,
           );
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         // Skip _showPaywall — already opened on the original transition.
         break;
-      case TwoStagePhase.idle:
+      case StreamingAnalyzePhase.idle:
         break;
     }
   }
 
-  /// Persist + sync usage from a hydrate-time fullReady result IF the live
-  /// `_onTwoStageStateChanged` listener clearly did not already do so. Dedup
+  /// Persist + sync usage from a hydrate-time done result IF the live
+  /// `_onStreamingAnalyzeStateChanged` listener clearly did not already do so. Dedup
   /// signal: `conv.lastAnalyzedMessageCount == conv.messages.length` AND
   /// `conv.lastAnalysisSnapshotJson == jsonEncode(result.rawResponse)`. When
   /// the signal matches, the listener path already wrote this exact snapshot
@@ -761,8 +762,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// sync (I-P2-e/f, Codex round-2).
   ///
   /// Required for the off-screen completion path: user starts analyze, leaves
-  /// the screen mid-`runningFull`, the notifier transitions to `fullReady`
-  /// while the listener is unmounted; on return the screen sees `fullReady`
+  /// the screen mid-`streamingReport`, the notifier transitions to `done`
+  /// while the listener is unmounted; on return the screen sees `done`
   /// but the snapshot + usage were never written.
   void _maybePersistAndSyncOnHydrate(AnalysisResult result) {
     final repository = ref.read(conversationRepositoryProvider);
@@ -797,7 +798,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// in initState; without clearing on hydrate of a partial phase the build
   /// tree would keep showing the stale detailed analysis (I-P1-c, Codex
   /// round-2). Must be called inside the caller's `setState`.
-  void _clearDetailedAnalysisStateForTwoStagePartial() {
+  void _clearDetailedAnalysisStateForStreamingAnalyzePartial() {
     _enthusiasmScore = null;
     _dimensionScores = null;
     _strategy = null;
@@ -1048,8 +1049,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return diff > 0 ? diff : 0;
   }
 
-  bool _isTwoStageResultStaleForCurrentConversation(
-    TwoStageAnalysisState state,
+  bool _isStreamingAnalyzeResultStaleForCurrentConversation(
+    StreamingAnalysisState state,
   ) {
     final expectedCount = state.conversationMessageCount;
     if (expectedCount == null) return false;
@@ -3112,7 +3113,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
       // keeps working (Eric 2026-05-28 UX spec).
       final analysisFuture = ref
-          .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
+          .read(streamingAnalyzeProvider(widget.conversationId).notifier)
           .start(
             messages: analysisContext.requestMessages,
             sessionContext: conversation.sessionContext,
@@ -3145,13 +3146,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
-  /// Apply a transition from [twoStageAnalyzeProvider] into local
+  /// Apply a transition from [streamingAnalyzeProvider] into local
   /// setState-backed fields. The notifier is the source of truth; this method
   /// just mirrors transitions onto the legacy render code so we don't have to
   /// rewrite the 4000-line build() tree.
-  void _onTwoStageStateChanged(
-    TwoStageAnalysisState? prev,
-    TwoStageAnalysisState next,
+  void _onStreamingAnalyzeStateChanged(
+    StreamingAnalysisState? prev,
+    StreamingAnalysisState next,
   ) {
     if (!mounted) return;
     if (prev?.phase == next.phase &&
@@ -3163,7 +3164,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
     switch (next.phase) {
-      case TwoStagePhase.runningQuick:
+      case StreamingAnalyzePhase.connecting:
         setState(() {
           _isAnalyzing = true;
           _fullErrorMessage = null;
@@ -3172,11 +3173,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
           _activeAnalysisMessageCount = next.conversationMessageCount;
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
           _resetErrorState();
         });
         break;
-      case TwoStagePhase.quickReady:
+      case StreamingAnalyzePhase.recommendationReady:
         setState(() {
           _isAnalyzing = true;
           _fullErrorMessage = null;
@@ -3185,10 +3186,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
           _activeAnalysisMessageCount = next.conversationMessageCount;
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
-      case TwoStagePhase.runningFull:
+      case StreamingAnalyzePhase.streamingReport:
         // Mirror the notifier's cleared error fields (I-P2-d) so the build
         // tree flips from retry back to live streaming when the user taps
         // retry. Without this the local _fullErrorMessage keeps the RetryCard
@@ -3201,20 +3202,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
           _activeAnalysisMessageCount = next.conversationMessageCount;
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
-      case TwoStagePhase.fullReady:
+      case StreamingAnalyzePhase.done:
         final result = next.full;
         if (result == null) return;
-        if (_isTwoStageResultStaleForCurrentConversation(next)) {
+        if (_isStreamingAnalyzeResultStaleForCurrentConversation(next)) {
           setState(() {
             _isAnalyzing = false;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
             _streamContents = const [];
             _activeAnalysisMessageCount = next.conversationMessageCount;
-            _clearDetailedAnalysisStateForTwoStagePartial();
+            _clearDetailedAnalysisStateForStreamingAnalyzePartial();
           });
           return;
         }
@@ -3256,7 +3257,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         });
         _syncSubscriptionUsageFromResult(result);
         break;
-      case TwoStagePhase.fullFailed:
+      case StreamingAnalyzePhase.failedAfterRecommendation:
         setState(() {
           _isAnalyzing = false;
           _fullErrorMessage = next.fullErrorMessage;
@@ -3265,12 +3266,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = null;
           _streamContents = next.streamContents;
           _activeAnalysisMessageCount = next.conversationMessageCount;
-          _clearDetailedAnalysisStateForTwoStagePartial();
+          _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
-      case TwoStagePhase.quickFailed:
-        final code = next.quickErrorCode;
-        final message = next.quickErrorMessage ?? '分析暫時失敗，請稍後再試。';
+      case StreamingAnalyzePhase.failedBeforeRecommendation:
+        final code = next.recommendationPreviewErrorCode;
+        final message =
+            next.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。';
         final isQuotaError =
             code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
@@ -3291,7 +3293,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           unawaited(_showPaywall(context));
         }
         break;
-      case TwoStagePhase.idle:
+      case StreamingAnalyzePhase.idle:
         break;
     }
   }
@@ -3302,7 +3304,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void _retryFullAnalysis() {
     unawaited(
       ref
-          .read(twoStageAnalyzeProvider(widget.conversationId).notifier)
+          .read(streamingAnalyzeProvider(widget.conversationId).notifier)
           .retryFull(),
     );
   }
@@ -4471,12 +4473,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Mirror two-stage analyze transitions onto local setState fields so the
+    // Mirror streaming analyze transitions onto local setState fields so the
     // legacy render tree (which reads _enthusiasmScore, _isAnalyzing, etc.)
     // keeps working without a screen-wide rewrite. See Phase 3 plan §Task 3.4.
-    ref.listen<TwoStageAnalysisState>(
-      twoStageAnalyzeProvider(widget.conversationId),
-      _onTwoStageStateChanged,
+    ref.listen<StreamingAnalysisState>(
+      streamingAnalyzeProvider(widget.conversationId),
+      _onStreamingAnalyzeStateChanged,
     );
     final conversation = ref.watch(conversationProvider(widget.conversationId));
     final subscription = ref.watch(subscriptionProvider);
@@ -5380,7 +5382,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           if (_isAnalyzing && _enthusiasmScore == null) ...[
                             Center(
-                              child: QuickRotatingLoader(
+                              child: StreamingAnalysisLoader(
                                 label: _streamProgressLabel,
                                 detail: _streamProgressDetail,
                               ),

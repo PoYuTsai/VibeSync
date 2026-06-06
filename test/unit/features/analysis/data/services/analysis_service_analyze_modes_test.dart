@@ -427,9 +427,10 @@ void main() {
       );
       expect(updates[3].content?.title, '深度策略');
       expect(updates[3].content?.body, 'Back off and rebuild trust.');
-      expect(updates[4].quick?.analysisRunId, 'stream_1');
-      expect(updates[4].quick?.pick, 'resonate');
-      expect(updates[4].quick?.recommendedReply, 'I get why that felt off.');
+      expect(updates[4].recommendationPreview?.analysisRunId, 'stream_1');
+      expect(updates[4].recommendationPreview?.pick, 'resonate');
+      expect(updates[4].recommendationPreview?.recommendedReply,
+          'I get why that felt off.');
       expect(updates[5].result?.strategy, _fullSuccessBody['strategy']);
 
       final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
