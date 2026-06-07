@@ -6,6 +6,15 @@ import {
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_TOTAL_IMAGE_BYTES,
+  validateOpenerImages,
+} from "./opener_image_validation.ts";
+
+function base64PayloadWithEstimatedBytes(bytes: number): string {
+  return "A".repeat(Math.ceil((bytes * 4) / 3));
+}
 
 // 訊息計算函數
 function countMessages(messages: Array<{ content: string }>): number {
@@ -777,18 +786,112 @@ Deno.test({
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
+    const validationSource = await Deno.readTextFile(
+      new URL("./opener_image_validation.ts", import.meta.url),
+    );
 
-    assert(source.includes("function validateOpenerImages"));
-    assert(source.includes("const openerImageValidation = validateOpenerImages"));
+    assert(validationSource.includes("export function validateOpenerImages"));
+    assert(
+      source.includes("const openerImageValidation = validateOpenerImages"),
+    );
     assert(source.includes("opener_image_validation_failed"));
-    assert(source.includes("最多上傳 3 張截圖"));
-    assert(source.includes("Total image payload too large"));
     assert(
       source.indexOf("const openerImageValidation = validateOpenerImages") <
         source.indexOf("const openerModel = imageCount > 0"),
       "opener image validation must run before model selection / Claude call",
     );
   },
+});
+
+Deno.test("validateOpenerImages accepts current opener image payload shape", () => {
+  assertEquals(
+    validateOpenerImages([
+      {
+        data: base64PayloadWithEstimatedBytes(1024),
+        mediaType: "image/jpeg",
+        order: 1,
+      },
+      {
+        data: base64PayloadWithEstimatedBytes(2048),
+        mediaType: "image/jpeg",
+        order: 2,
+      },
+    ]),
+    {},
+  );
+});
+
+Deno.test("validateOpenerImages rejects malformed opener image payloads", () => {
+  assertEquals(validateOpenerImages("not-an-array"), {
+    error: "Invalid images",
+    status: 400,
+  });
+
+  assertEquals(
+    validateOpenerImages([
+      { data: "AAAA", mediaType: "image/jpeg", order: 1 },
+      { data: "AAAA", mediaType: "image/jpeg", order: 2 },
+      { data: "AAAA", mediaType: "image/jpeg", order: 3 },
+      { data: "AAAA", mediaType: "image/jpeg", order: 4 },
+    ]).status,
+    400,
+  );
+
+  assertEquals(
+    validateOpenerImages([{ data: "AAAA", mediaType: "image/jpeg" }]).status,
+    400,
+  );
+
+  assertEquals(
+    validateOpenerImages([
+      { data: "AAAA", mediaType: "image/jpeg", order: 1 },
+      { data: "BBBB", mediaType: "image/jpeg", order: 1 },
+    ]).status,
+    400,
+  );
+
+  assertEquals(
+    validateOpenerImages([
+      { data: "AAAA", mediaType: "image/gif", order: 1 },
+    ]),
+    { error: "Unsupported image type", status: 400 },
+  );
+});
+
+Deno.test("validateOpenerImages rejects oversized opener image payloads", () => {
+  assertEquals(
+    validateOpenerImages([
+      {
+        data: base64PayloadWithEstimatedBytes(MAX_IMAGE_BYTES + 1),
+        mediaType: "image/jpeg",
+        order: 1,
+      },
+    ]).status,
+    400,
+  );
+
+  assertEquals(
+    validateOpenerImages([
+      {
+        data: base64PayloadWithEstimatedBytes(520 * 1024),
+        mediaType: "image/jpeg",
+        order: 1,
+      },
+      {
+        data: base64PayloadWithEstimatedBytes(520 * 1024),
+        mediaType: "image/jpeg",
+        order: 2,
+      },
+      {
+        data: base64PayloadWithEstimatedBytes(520 * 1024),
+        mediaType: "image/jpeg",
+        order: 3,
+      },
+    ]),
+    { error: "Total image payload too large", status: 400 },
+  );
+
+  assert(MAX_TOTAL_IMAGE_BYTES > MAX_IMAGE_BYTES);
 });
 
 Deno.test({
