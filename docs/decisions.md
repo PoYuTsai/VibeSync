@@ -6,6 +6,17 @@
 
 ---
 
+## ADR #18 - [2026-06-07] Analyze quick/full compatibility retention
+**Status**: Active
+
+**Decision**: Do not remove backend `responseMode: quick/full`, `analysis_runs`, `quickResult`, or related rollback-compatible code yet. The official user-visible analyze path is full streaming analyze; quick/full remains hidden compatibility and rollback surface only.
+
+**Removal criteria**: Revisit only after Eric approves a build cutoff, all active builds use streaming analyze, logs show no recent quick/full requests, streaming analyze is stable, and a high-risk cleanup PR includes focused Edge/quota/auth/schema review.
+
+**Owner**: Eric.
+
+---
+
 ## Index
 
 | # | 決策 | 狀態 |

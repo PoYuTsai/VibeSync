@@ -244,7 +244,7 @@ class StreamingAnalyzeNotifier
       );
     } on Exception catch (e) {
       if (myGen != _generation) return;
-      final message = e is AnalysisException ? e.message : '快速分析失敗，請稍後再試。';
+      final message = e is AnalysisException ? e.message : '分析失敗，請稍後再試。';
       final code = e is AnalysisException ? e.code : null;
       state = StreamingAnalysisState(
         phase: StreamingAnalyzePhase.failedBeforeRecommendation,

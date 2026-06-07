@@ -1544,7 +1544,7 @@ class AnalysisService {
       // notifier maps it to a failedBeforeRecommendation state and the UI offers retry rather
       // than rendering blank fields (I-P3).
       throw AnalysisException(
-        '快速分析回應格式錯誤，請稍後再試。',
+        '分析回應格式錯誤，請稍後再試。',
         code: 'INVALID_QUICK_RESPONSE',
       );
     }
