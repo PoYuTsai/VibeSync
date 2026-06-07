@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../opener/data/services/opener_result_cache_service.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
@@ -95,7 +96,13 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       final result = _openerResultCacheService.loadLatestForScope(
           partnerId: widget.partnerId);
       if (result == null) return;
-      final openerText = result.bestOpenerText;
+      final isFreeUser = ref.read(subscriptionProvider).isFreeUser;
+      final openerType = result.bestOpenerTypeForAccess(
+        isFreeUser: isFreeUser,
+      );
+      final openerText = result.bestOpenerTextForAccess(
+        isFreeUser: isFreeUser,
+      );
       if (openerText == null) return;
 
       _messages.add({
@@ -104,8 +111,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       });
       _hasOpenerSeed = true;
       _openerSeedText = openerText;
-      _openerSeedLabel = _openerLabel(result.bestOpenerType);
-      _openerSeedReason = result.recommendedReason?.trim();
+      _openerSeedLabel = _openerLabel(openerType);
+      _openerSeedReason = openerType == result.recommendedPick
+          ? result.recommendedReason?.trim()
+          : null;
     } catch (_) {
       _hasOpenerSeed = false;
       _openerSeedText = null;

@@ -261,13 +261,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Future<void> _generate() async {
-    // Validate input
-    final hasImages = _images.isNotEmpty;
-    final hasManualInput = _nameController.text.trim().isNotEmpty ||
-        _bioController.text.trim().isNotEmpty ||
-        _interestsController.text.trim().isNotEmpty;
+    final input = OpenerGenerationInput.fromActiveTab(
+      useScreenshotTab: _selectedTab == 0,
+      images: _images,
+      name: _nameController.text,
+      bio: _bioController.text,
+      interests: _interestsController.text,
+      meetingContext: _meetingContext,
+    );
 
-    if (!hasImages && !hasManualInput) {
+    if (!input.hasContent) {
       setState(() => _error = '請上傳截圖或輸入對方資料');
       return;
     }
@@ -315,18 +318,18 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
       final service = OpenerService();
       final result = await service.generateOpeners(
-        images: _images.isNotEmpty ? _images : null,
-        name: _nameController.text,
-        bio: _bioController.text,
-        interests: _interestsController.text,
-        meetingContext: _meetingContext,
+        images: input.images,
+        name: input.name,
+        bio: input.bio,
+        interests: input.interests,
+        meetingContext: input.meetingContext,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
       );
       try {
         final draft = await _resultCacheService.saveDraft(
           result: result,
-          displayName: _nameController.text,
+          displayName: input.name,
           sourceLabel: _selectedTab == 0 ? '截圖自介' : '手動輸入',
           inputPreview: _buildDraftInputPreview(),
           partnerId: widget.partnerId,
@@ -384,6 +387,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
     final boundPartnerName = _resolveBoundPartnerName();
+    final activeInput = OpenerGenerationInput.fromActiveTab(
+      useScreenshotTab: _selectedTab == 0,
+      images: _images,
+      name: _nameController.text,
+      bio: _bioController.text,
+      interests: _interestsController.text,
+      meetingContext: _meetingContext,
+    );
 
     return GradientBackground(
       child: Scaffold(
@@ -461,7 +472,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                         color: AppColors.onBackgroundSecondary,
                       ),
                     ),
-                    if (_images.isEmpty) ...[
+                    if (activeInput.images == null ||
+                        activeInput.images!.isEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
                         '附上對方截圖，AI 看到的線索更具體，開場通常更準',
@@ -869,8 +881,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               final entry = result.openers.entries.elementAt(index);
               final type = entry.key;
               final content = entry.value;
-              final isRecommended = type == result.recommendedPick;
               final isLocked = isFree && type != 'extend';
+              final isRecommended = type == result.recommendedPick && !isLocked;
 
               return _buildOpenerCard(
                 type: type,
@@ -883,7 +895,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         ),
 
         // Recommended reason
-        if (result.recommendedReason != null) ...[
+        if (result.recommendedReason != null &&
+            (!isFree || result.recommendedPick == 'extend')) ...[
           const SizedBox(height: 12),
           GlassmorphicContainer(
             padding: const EdgeInsets.all(12),

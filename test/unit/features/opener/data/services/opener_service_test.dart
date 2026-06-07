@@ -5,6 +5,65 @@ import 'package:vibesync/features/opener/data/services/opener_service.dart';
 
 void main() {
   group('OpenerService', () {
+    test('active screenshot tab payload ignores hidden manual fields', () {
+      final input = OpenerGenerationInput.fromActiveTab(
+        useScreenshotTab: true,
+        images: [
+          Uint8List.fromList([1, 2, 3])
+        ],
+        name: 'Hidden Name',
+        bio: 'Hidden bio should not be sent',
+        interests: 'Hidden interests',
+        meetingContext: 'IG',
+      );
+
+      expect(input.hasContent, isTrue);
+      expect(input.images, hasLength(1));
+      expect(input.name, isNull);
+      expect(input.bio, isNull);
+      expect(input.interests, isNull);
+      expect(input.meetingContext, isNull);
+    });
+
+    test('active manual tab payload ignores hidden screenshots', () {
+      final input = OpenerGenerationInput.fromActiveTab(
+        useScreenshotTab: false,
+        images: [
+          Uint8List.fromList([9, 9, 9])
+        ],
+        name: 'Candy',
+        bio: '喜歡咖啡',
+        interests: '手沖',
+        meetingContext: '交友軟體',
+      );
+
+      expect(input.hasContent, isTrue);
+      expect(input.images, isNull);
+      expect(input.name, 'Candy');
+      expect(input.bio, '喜歡咖啡');
+      expect(input.interests, '手沖');
+      expect(input.meetingContext, '交友軟體');
+    });
+
+    test('free handoff uses unlocked extend opener instead of locked pick', () {
+      const result = OpenerResult(
+        openers: {
+          'extend': 'Free visible line',
+          'coldRead': 'Locked recommended line',
+        },
+        recommendedPick: 'coldRead',
+      );
+
+      expect(
+        result.bestOpenerTextForAccess(isFreeUser: true),
+        'Free visible line',
+      );
+      expect(
+        result.bestOpenerTextForAccess(isFreeUser: false),
+        'Locked recommended line',
+      );
+    });
+
     test('sends opener mode with image data objects and profile info',
         () async {
       final calls = <Map<String, dynamic>>[];
@@ -167,6 +226,32 @@ void main() {
             (e) => e.message,
             'message',
             '本月額度不足，升級方案可取得更多開場與分析額度。',
+          ),
+        ),
+      );
+    });
+
+    test('prefers non-429 friendly message from edge payload', () async {
+      final service = OpenerService(
+        invoker: (_, {required body}) async {
+          return const OpenerInvokeResponse(
+            status: 502,
+            data: {
+              'error': '開場產生格式異常',
+              'message': '這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。',
+              'shouldChargeQuota': false,
+            },
+          );
+        },
+      );
+
+      await expectLater(
+        service.generateOpeners(name: 'Candy'),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('本次不會扣額度'),
           ),
         ),
       );

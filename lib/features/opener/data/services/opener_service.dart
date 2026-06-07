@@ -18,7 +18,69 @@ class OpenerInvokeResponse {
   });
 }
 
+class OpenerGenerationInput {
+  final List<Uint8List>? images;
+  final String? name;
+  final String? bio;
+  final String? interests;
+  final String? meetingContext;
+
+  const OpenerGenerationInput({
+    this.images,
+    this.name,
+    this.bio,
+    this.interests,
+    this.meetingContext,
+  });
+
+  factory OpenerGenerationInput.fromActiveTab({
+    required bool useScreenshotTab,
+    required List<Uint8List> images,
+    String? name,
+    String? bio,
+    String? interests,
+    String? meetingContext,
+  }) {
+    if (useScreenshotTab) {
+      return OpenerGenerationInput(
+        images: images.isEmpty ? null : List<Uint8List>.unmodifiable(images),
+      );
+    }
+
+    return OpenerGenerationInput(
+      name: _blankToNull(name),
+      bio: _blankToNull(bio),
+      interests: _blankToNull(interests),
+      meetingContext: _blankToNull(meetingContext),
+    );
+  }
+
+  bool get hasContent =>
+      (images?.isNotEmpty ?? false) ||
+      _hasText(name) ||
+      _hasText(bio) ||
+      _hasText(interests);
+
+  static bool _hasText(String? value) {
+    final trimmed = value?.trim();
+    return trimmed != null && trimmed.isNotEmpty;
+  }
+
+  static String? _blankToNull(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+}
+
 class OpenerResult {
+  static const _preferredTypes = [
+    'extend',
+    'resonate',
+    'tease',
+    'humor',
+    'coldRead',
+  ];
+
   final Map<String, dynamic>? profileAnalysis;
   final Map<String, String> openers;
   final Map<String, String>? pioneerPlan;
@@ -41,13 +103,7 @@ class OpenerResult {
       return pick;
     }
 
-    for (final type in const [
-      'extend',
-      'resonate',
-      'tease',
-      'humor',
-      'coldRead',
-    ]) {
+    for (final type in _preferredTypes) {
       if (openers[type]?.trim().isNotEmpty ?? false) {
         return type;
       }
@@ -61,8 +117,20 @@ class OpenerResult {
     return null;
   }
 
+  String? bestOpenerTypeForAccess({required bool isFreeUser}) {
+    if (!isFreeUser) return bestOpenerType;
+    return openers['extend']?.trim().isNotEmpty == true ? 'extend' : null;
+  }
+
   String? get bestOpenerText {
     final type = bestOpenerType;
+    if (type == null) return null;
+    final text = openers[type]?.trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  String? bestOpenerTextForAccess({required bool isFreeUser}) {
+    final type = bestOpenerTypeForAccess(isFreeUser: isFreeUser);
     if (type == null) return null;
     final text = openers[type]?.trim();
     return text == null || text.isEmpty ? null : text;
@@ -260,8 +328,8 @@ class OpenerService {
       }
 
       final errorMsg = errorData is Map
-          ? (errorData['error'] as String? ?? 'Unknown error')
-          : 'Unknown error';
+          ? _nonQuotaErrorMessage(response.status, errorData)
+          : '開場產生失敗，請稍後再試。';
       throw Exception(errorMsg);
     }
 
@@ -296,6 +364,20 @@ class OpenerService {
       recommendedReason: recommendation?['reason'] as String?,
       costUsed: cost,
     );
+  }
+
+  String _nonQuotaErrorMessage(int status, Map errorData) {
+    final message = errorData['message']?.toString().trim();
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+
+    if (status >= 500) {
+      return 'AI 暫時生成失敗，請稍後再試；本次不會扣額度。';
+    }
+
+    final error = errorData['error']?.toString().trim();
+    return error == null || error.isEmpty ? '開場產生失敗，請稍後再試。' : error;
   }
 }
 

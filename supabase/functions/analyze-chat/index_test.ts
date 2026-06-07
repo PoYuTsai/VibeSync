@@ -771,6 +771,27 @@ Deno.test({
 });
 
 Deno.test({
+  name: "opener mode validates image payload before Claude call",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("function validateOpenerImages"));
+    assert(source.includes("const openerImageValidation = validateOpenerImages"));
+    assert(source.includes("opener_image_validation_failed"));
+    assert(source.includes("最多上傳 3 張截圖"));
+    assert(source.includes("Total image payload too large"));
+    assert(
+      source.indexOf("const openerImageValidation = validateOpenerImages") <
+        source.indexOf("const openerModel = imageCount > 0"),
+      "opener image validation must run before model selection / Claude call",
+    );
+  },
+});
+
+Deno.test({
   name: "visible AI text sanitizer rejects raw model payload strings",
   permissions: { read: true },
   fn: async () => {
