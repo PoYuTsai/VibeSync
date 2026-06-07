@@ -23,6 +23,36 @@
 
 ## Live Queue
 
+## [2026-06-07] Preflight Secret Gap + 409 Coverage (C5/C6)
+Status: OPEN
+Request-Type: decision
+Raised-By: Codex
+Owner: Eric (decided) / Claude (carry follow-ups)
+Scope: subscription / 429 / ops / launch-hardening
+Branch/Commit: `main` @ `9cf72ad`
+
+Decision (Eric-final, 2026-06-07):
+
+- **C1 (P1)** — fixed in `9cf72ad`. No remaining code-level P0/P1 per CC second review.
+- **C5** — Eric accepts short-term option (a): GitHub secret smoke + Supabase secret-name check + manual GitHub ↔ Supabase sync discipline.
+- This is **accepted debt, not "safe / launch-safe"**: the shipped preflight still cannot verify the Supabase live secret *value*.
+- **C6** — handler-level 409 integration test deferred as **P2**. Helper / source / stream tests pass; the 409 gate still lacks handler-level coverage.
+
+Explicit non-claims:
+
+- Do NOT claim safe dogfood / safe build from this code review alone.
+
+Action Items (deferred to launch / App Review final hardening — do NOT open in red zone):
+
+- [ ] Add post-deploy **live runtime probe** that verifies the Supabase live secret value (closes the C5 gap).
+- [ ] Add **handler-level 409 integration test** (C6, P2).
+
+Close Condition:
+
+- Both follow-ups landed and Eric confirms launch-hardening for this scope is complete.
+
+---
+
 ## [2026-05-14] Dogfood Frontline Stabilization
 Status: OPEN
 Request-Type: handoff
