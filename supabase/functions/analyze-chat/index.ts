@@ -45,6 +45,13 @@ import type { StreamRecommendationForCharge } from "./reframer.ts";
 import { isStreamStyle, STREAM_STYLES } from "./stream_events.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import {
+  normalizeSubscriptionTier,
+  shouldFailPaidTierSync,
+  streamReplyStylesForTier,
+  subscriptionTierRank,
+  type TierSyncRefreshStatus,
+} from "./tier_sync_contract.ts";
+import {
   applyQuickGuardrails,
   estimateFullSeconds,
   parseQuickResponse,
@@ -419,24 +426,11 @@ async function repairMalformedOpenerPayload({
 }
 
 function normalizeTier(value: unknown): "free" | "starter" | "essential" {
-  if (typeof value !== "string") return "free";
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "starter" || normalized === "essential") {
-    return normalized;
-  }
-  return "free";
+  return normalizeSubscriptionTier(value);
 }
 
 function tierRank(value: "free" | "starter" | "essential"): number {
-  switch (value) {
-    case "essential":
-      return 2;
-    case "starter":
-      return 1;
-    case "free":
-    default:
-      return 0;
-  }
+  return subscriptionTierRank(value);
 }
 
 function tierFromProductId(
@@ -4467,7 +4461,7 @@ serve(async (req) => {
     );
     const maybeRefreshSubscriptionTierFromRevenueCat = async (
       reason: string,
-    ): Promise<boolean> => {
+    ): Promise<TierSyncRefreshStatus> => {
       if (!REVENUECAT_IOS_API_KEY) {
         logError("subscription_revenuecat_refresh_unconfigured", {
           user: summarizeUser(user.id),
@@ -4478,15 +4472,16 @@ serve(async (req) => {
           revenueCatHintPresent: revenueCatAppUserId.length > 0,
           revenueCatUserIdCandidateCount: revenueCatUserIdCandidates.length,
         });
-        return false;
+        return "not_configured";
       }
 
       const previousTier = normalizeTier(sub?.tier);
       if (previousTier === "essential") {
-        return false;
+        return "not_paid";
       }
 
       try {
+        let unavailable = false;
         for (const revenueCatUserId of revenueCatUserIdCandidates) {
           const revenueCatResponse = await fetch(
             `https://api.revenuecat.com/v1/subscribers/${
@@ -4510,6 +4505,7 @@ serve(async (req) => {
               status: revenueCatResponse.status,
               detail,
             });
+            unavailable = true;
             continue;
           }
 
@@ -4526,6 +4522,7 @@ serve(async (req) => {
               reason,
               previousTier,
             });
+            unavailable = true;
             continue;
           }
 
@@ -4587,10 +4584,10 @@ serve(async (req) => {
             refreshedTier,
             persisted: !refreshedError,
           });
-          return true;
+          return "applied";
         }
 
-        return false;
+        return unavailable ? "unavailable" : "not_paid";
       } catch (error) {
         logWarn("subscription_revenuecat_refresh_exception", {
           user: summarizeUser(user.id),
@@ -4598,7 +4595,7 @@ serve(async (req) => {
           previousTier,
           error: getErrorMessage(error),
         });
-        return false;
+        return "unavailable";
       }
     };
 
@@ -4609,9 +4606,35 @@ serve(async (req) => {
       !recognizeOnly && !accountIsTest &&
       tierRank(expectedTier) > tierRank(normalizeTier(sub.tier))
     ) {
-      await maybeRefreshSubscriptionTierFromRevenueCat(
+      const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
         "client_expected_paid_tier",
       );
+      if (
+        shouldFailPaidTierSync({
+          expectedTier,
+          currentTier: sub.tier,
+          refreshStatus,
+        })
+      ) {
+        logWarn("paid_tier_sync_pending", {
+          user: summarizeUser(user.id),
+          expectedTier,
+          effectiveTier,
+          currentTier: normalizeTier(sub.tier),
+          refreshStatus,
+          revenueCatHintPresent: revenueCatAppUserId.length > 0,
+          revenueCatUserIdCandidateCount: revenueCatUserIdCandidates.length,
+        });
+        return jsonResponse({
+          error: "PAID_TIER_SYNC_PENDING",
+          code: "PAID_TIER_SYNC_PENDING",
+          message: "訂閱狀態同步中，請稍後再試一次。",
+          retryable: true,
+          shouldChargeQuota: false,
+          expectedTier,
+          tierUsed: normalizeTier(sub.tier),
+        }, 409);
+      }
     }
     // Phase 2.1 — `responseMode === "full"` skips the monthly/daily
     // preflight: quick already charged via atomic RPC and the run row
@@ -4625,9 +4648,10 @@ serve(async (req) => {
       !isStreamRetryMode &&
       sub.monthly_messages_used >= monthlyLimit
     ) {
-      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+      const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
         "monthly_limit_exceeded",
       );
+      const refreshed = refreshStatus === "applied";
       if (!(refreshed && sub.monthly_messages_used < monthlyLimit)) {
         logWarn("monthly_limit_exceeded", {
           user: summarizeUser(user.id),
@@ -4661,9 +4685,10 @@ serve(async (req) => {
       !isStreamRetryMode &&
       sub.daily_messages_used >= dailyLimit
     ) {
-      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+      const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
         "daily_limit_exceeded",
       );
+      const refreshed = refreshStatus === "applied";
       if (!(refreshed && sub.daily_messages_used < dailyLimit)) {
         logWarn("daily_limit_exceeded", {
           user: summarizeUser(user.id),
@@ -4743,9 +4768,11 @@ serve(async (req) => {
           sub.daily_messages_used + upfrontGateCost > dailyLimit;
 
         if (openerExceedsQuota()) {
-          const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
-            "opener_quota_exceeded",
-          );
+          const refreshStatus =
+            await maybeRefreshSubscriptionTierFromRevenueCat(
+              "opener_quota_exceeded",
+            );
+          const refreshed = refreshStatus === "applied";
           if (refreshed) {
             monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
               TIER_MONTHLY_LIMITS.free;
@@ -5352,9 +5379,10 @@ ${recentText}`;
       !isStreamRetryMode &&
       projectedMonthlyUsage > monthlyLimit
     ) {
-      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+      const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
         "monthly_limit_projected_exceeded",
       );
+      const refreshed = refreshStatus === "applied";
       projectedMonthlyUsage = sub.monthly_messages_used +
         quotaUsage.chargedMessageCount;
       if (!(refreshed && projectedMonthlyUsage <= monthlyLimit)) {
@@ -5383,9 +5411,10 @@ ${recentText}`;
       !isStreamRetryMode &&
       projectedDailyUsage > dailyLimit
     ) {
-      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+      const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
         "daily_limit_projected_exceeded",
       );
+      const refreshed = refreshStatus === "applied";
       projectedDailyUsage = sub.daily_messages_used +
         quotaUsage.chargedMessageCount;
       if (!(refreshed && projectedDailyUsage <= dailyLimit)) {
@@ -5413,11 +5442,12 @@ ${recentText}`;
       (isMyMessageMode || isOptimizeMessageMode) &&
       effectiveTier !== "essential"
     ) {
-      const refreshed = await maybeRefreshSubscriptionTierFromRevenueCat(
+      const refreshStatus = await maybeRefreshSubscriptionTierFromRevenueCat(
         isMyMessageMode
           ? "feature_gate_my_message"
           : "feature_gate_optimize_message",
       );
+      const refreshed = refreshStatus === "applied";
       if (!(refreshed && effectiveTier === "essential")) {
         return jsonResponse({
           error: isMyMessageMode
@@ -6312,8 +6342,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       tier: effectiveTier,
     });
     if (responseMode === "stream" && streamSupported && streamAllowed) {
-      const streamReplyStyles = STREAM_STYLES.filter((style) =>
-        allowedFeatures.includes(style)
+      const streamReplyStyles = streamReplyStylesForTier(effectiveTier).filter(
+        (style) => allowedFeatures.includes(style),
       );
       const conversationHashValue = await hashConversation({
         messages,
