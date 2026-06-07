@@ -56,6 +56,28 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
   }
 
+  group('formatSettingsRenewalDate', () {
+    test('shows time instead of a bare date when renewal is today', () {
+      final now = DateTime(2026, 6, 7, 12, 43);
+      final renewsAt = DateTime(2026, 6, 7, 14, 5);
+
+      expect(
+        formatSettingsRenewalDate(renewsAt, now: now),
+        '今天 14:05',
+      );
+    });
+
+    test('shows date for future renewal days', () {
+      final now = DateTime(2026, 6, 7, 12, 43);
+      final renewsAt = DateTime(2026, 6, 8, 14, 5);
+
+      expect(
+        formatSettingsRenewalDate(renewsAt, now: now),
+        '2026/6/8',
+      );
+    });
+  });
+
   group('SettingsScreen', () {
     testWidgets('refreshes subscription usage snapshot on entry',
         (tester) async {

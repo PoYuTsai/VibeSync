@@ -21,6 +21,24 @@ import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 
+@visibleForTesting
+String formatSettingsRenewalDate(DateTime? dateTime, {DateTime? now}) {
+  if (dateTime == null) return '--';
+
+  final local = dateTime.toLocal();
+  final localNow = (now ?? DateTime.now()).toLocal();
+  final sameLocalDay = local.year == localNow.year &&
+      local.month == localNow.month &&
+      local.day == localNow.day;
+  if (sameLocalDay) {
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '今天 $hour:$minute';
+  }
+
+  return '${local.year}/${local.month}/${local.day}';
+}
+
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -34,6 +52,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _supportEmail = 'vibesyncaiapp@gmail.com';
 
   String _versionString = '';
+  bool _isRefreshingSubscription = true;
   bool _isRefreshingPendingDowngrade = false;
 
   @override
@@ -42,7 +61,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _loadVersion();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(ref.read(subscriptionScreenRefreshProvider)());
+      unawaited(_refreshSubscriptionOnEntry());
     });
   }
 
@@ -52,6 +71,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() {
       _versionString = '${packageInfo.version} (${packageInfo.buildNumber})';
     });
+  }
+
+  Future<void> _refreshSubscriptionOnEntry() async {
+    setState(() {
+      _isRefreshingSubscription = true;
+    });
+    try {
+      await ref.read(subscriptionScreenRefreshProvider)();
+    } catch (error) {
+      debugPrint('Settings subscription refresh error: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshingSubscription = false;
+        });
+      }
+    }
   }
 
   @override
@@ -98,7 +134,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       _buildTile(
                         icon: Icons.event,
                         title: '下次續約',
-                        trailing: _formatDate(subscription.renewsAt),
+                        trailing: _isRefreshingSubscription
+                            ? '確認中...'
+                            : _formatDate(subscription.renewsAt),
                       ),
                     _buildTile(
                       icon: Icons.today,
@@ -413,9 +451,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   String _formatDate(DateTime? dateTime) {
-    if (dateTime == null) return '--';
-    final local = dateTime.toLocal();
-    return '${local.year}/${local.month}/${local.day}';
+    return formatSettingsRenewalDate(dateTime);
   }
 
   String _billingPeriodLabel(SubscriptionState subscription) {
