@@ -3,6 +3,7 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  finalizeTierSyncRefreshStatus,
   shouldFailPaidTierSync,
   streamReplyStylesForTier,
   type TierSyncRefreshStatus,
@@ -33,6 +34,16 @@ Deno.test("shouldFailPaidTierSync does not trust client expected tier when Reven
       currentTier: "free",
       refreshStatus: "not_paid",
     }),
+  );
+});
+
+Deno.test("finalizeTierSyncRefreshStatus treats a valid free subscriber as authoritative not paid", () => {
+  assertEquals(
+    finalizeTierSyncRefreshStatus({
+      sawValidSubscriber: true,
+      sawUnavailableCandidate: true,
+    }),
+    "not_paid",
   );
 });
 

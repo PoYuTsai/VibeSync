@@ -44,6 +44,14 @@ export function shouldFailPaidTierSync(options: {
     options.refreshStatus === "unavailable";
 }
 
+export function finalizeTierSyncRefreshStatus(options: {
+  sawValidSubscriber: boolean;
+  sawUnavailableCandidate: boolean;
+}): TierSyncRefreshStatus {
+  if (options.sawValidSubscriber) return "not_paid";
+  return options.sawUnavailableCandidate ? "unavailable" : "not_paid";
+}
+
 export function streamReplyStylesForTier(
   tier: unknown,
 ): readonly StreamStyle[] {

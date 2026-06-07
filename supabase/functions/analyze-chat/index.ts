@@ -45,6 +45,7 @@ import type { StreamRecommendationForCharge } from "./reframer.ts";
 import { isStreamStyle, STREAM_STYLES } from "./stream_events.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import {
+  finalizeTierSyncRefreshStatus,
   normalizeSubscriptionTier,
   shouldFailPaidTierSync,
   streamReplyStylesForTier,
@@ -4482,6 +4483,7 @@ serve(async (req) => {
 
       try {
         let unavailable = false;
+        let sawValidSubscriber = false;
         for (const revenueCatUserId of revenueCatUserIdCandidates) {
           const revenueCatResponse = await fetch(
             `https://api.revenuecat.com/v1/subscribers/${
@@ -4527,6 +4529,7 @@ serve(async (req) => {
           }
 
           const subscriber = revenueCatPayload.subscriber;
+          sawValidSubscriber = true;
           const refreshedTier = collectTiersFromRevenueCatPayload(subscriber);
           if (tierRank(refreshedTier) <= tierRank(previousTier)) {
             continue;
@@ -4587,7 +4590,10 @@ serve(async (req) => {
           return "applied";
         }
 
-        return unavailable ? "unavailable" : "not_paid";
+        return finalizeTierSyncRefreshStatus({
+          sawValidSubscriber,
+          sawUnavailableCandidate: unavailable,
+        });
       } catch (error) {
         logWarn("subscription_revenuecat_refresh_exception", {
           user: summarizeUser(user.id),
