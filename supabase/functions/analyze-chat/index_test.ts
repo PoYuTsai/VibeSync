@@ -873,17 +873,17 @@ Deno.test("validateOpenerImages rejects oversized opener image payloads", () => 
   assertEquals(
     validateOpenerImages([
       {
-        data: base64PayloadWithEstimatedBytes(520 * 1024),
+        data: base64PayloadWithEstimatedBytes(700 * 1024),
         mediaType: "image/jpeg",
         order: 1,
       },
       {
-        data: base64PayloadWithEstimatedBytes(520 * 1024),
+        data: base64PayloadWithEstimatedBytes(700 * 1024),
         mediaType: "image/jpeg",
         order: 2,
       },
       {
-        data: base64PayloadWithEstimatedBytes(520 * 1024),
+        data: base64PayloadWithEstimatedBytes(700 * 1024),
         mediaType: "image/jpeg",
         order: 3,
       },

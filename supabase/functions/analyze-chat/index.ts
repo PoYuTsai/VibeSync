@@ -25,6 +25,7 @@ import {
   VALID_IMAGE_MEDIA_TYPES,
   validateOpenerImages,
 } from "./opener_image_validation.ts";
+import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 import {
@@ -661,85 +662,6 @@ function logWarn(event: string, metadata?: Record<string, unknown>) {
 
 function logError(event: string, metadata?: Record<string, unknown>) {
   console.error(`${LOG_PREFIX} ${event}`, metadata ?? {});
-}
-
-function deriveRequestType({
-  recognizeOnly,
-  hasImages,
-  isMyMessageMode,
-  hasUserDraft,
-}: {
-  recognizeOnly: boolean;
-  hasImages: boolean;
-  isMyMessageMode: boolean;
-  hasUserDraft: boolean;
-}): string {
-  if (recognizeOnly) {
-    return "recognize_only";
-  }
-  if (hasImages) {
-    return "analyze_with_images";
-  }
-  if (isMyMessageMode) {
-    return "my_message";
-  }
-  if (hasUserDraft) {
-    return "optimize_message";
-  }
-  return "analyze";
-}
-
-function buildQuotaUsageMetadata({
-  requestType,
-  recognizeOnly,
-  accountIsTest,
-  estimatedMessageCount,
-}: {
-  requestType: string;
-  recognizeOnly: boolean;
-  accountIsTest: boolean;
-  estimatedMessageCount: number;
-}) {
-  if (recognizeOnly) {
-    return {
-      shouldChargeQuota: false,
-      quotaReason: "recognize_only_free",
-      quotaUnit: "messages",
-      chargedMessageCount: 0,
-      estimatedMessageCount: 0,
-    };
-  }
-
-  if (accountIsTest) {
-    return {
-      shouldChargeQuota: false,
-      quotaReason: "test_account_waived",
-      quotaUnit: "messages",
-      chargedMessageCount: 0,
-      estimatedMessageCount,
-    };
-  }
-
-  let quotaReason = "analyze_message_based";
-  switch (requestType) {
-    case "analyze_with_images":
-      quotaReason = "analyze_with_images_message_based";
-      break;
-    case "my_message":
-      quotaReason = "my_message_message_based";
-      break;
-    case "optimize_message":
-      quotaReason = "optimize_message_message_based";
-      break;
-  }
-
-  return {
-    shouldChargeQuota: estimatedMessageCount > 0,
-    quotaReason,
-    quotaUnit: "messages",
-    chargedMessageCount: estimatedMessageCount,
-    estimatedMessageCount,
-  };
 }
 
 function mapStreamChargeFailure(error: unknown): {

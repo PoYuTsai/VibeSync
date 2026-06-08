@@ -3,8 +3,8 @@ export const VALID_IMAGE_MEDIA_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
-export const MAX_IMAGE_BYTES = 600 * 1024;
-export const MAX_TOTAL_IMAGE_BYTES = 1500 * 1024;
+export const MAX_IMAGE_BYTES = 900 * 1024;
+export const MAX_TOTAL_IMAGE_BYTES = 2 * 1024 * 1024;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

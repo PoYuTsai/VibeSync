@@ -6,7 +6,7 @@ import 'package:image/image.dart' as img;
 /// 圖片壓縮服務
 /// 用於壓縮用戶上傳的截圖到適合 API 傳輸的大小
 class ImageCompressService {
-  static const int maxSizeBytes = 600 * 1024; // Match Edge image validation.
+  static const int maxSizeBytes = 900 * 1024; // Match Edge image validation.
 
   // Progressive fallback：寬度從大到小、品質從高到低。
   // 用於對付拼貼版面、高解析度截圖等壓縮阻抗高的輸入。
