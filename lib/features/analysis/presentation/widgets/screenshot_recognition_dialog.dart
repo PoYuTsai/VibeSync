@@ -1157,6 +1157,7 @@ class _ScreenshotRecognitionDialogState
               const SizedBox(height: 8),
               TextField(
                 controller: _analysisContextNoteController,
+                maxLength: 300,
                 minLines: 1,
                 maxLines: 3,
                 decoration: InputDecoration(
@@ -1173,7 +1174,7 @@ class _ScreenshotRecognitionDialogState
               ),
               const SizedBox(height: 6),
               Text(
-                '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響本次分析，不會改對象資料。',
+                '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響這個對話的分析，不會改對象資料。',
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.glassTextSecondary,
                   height: 1.35,

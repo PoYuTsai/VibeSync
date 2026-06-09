@@ -388,10 +388,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         controller: _analysisContextNoteController,
         hintText: '例如：她是我女友／我其實沒看 F1／我想誠實但不要冷掉',
         isDense: true,
+        maxLength: 300,
       ),
       const SizedBox(height: 8),
       Text(
-        '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響本次分析，不會改對象資料。',
+        '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響這個對話的分析，不會改對象資料。',
         style: AppTypography.bodySmall.copyWith(
           color: AppColors.textSecondary,
         ),
@@ -426,7 +427,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       ),
       const SizedBox(height: 6),
       Text(
-        '只影響這次分析，不會改對象資料。',
+        '只影響這個對話的分析，不會改對象資料。',
         style: AppTypography.bodySmall.copyWith(
           color: AppColors.textSecondary,
         ),

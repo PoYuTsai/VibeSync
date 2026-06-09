@@ -266,7 +266,15 @@ void main() {
       expect(find.text('目前目標'), findsOneWidget);
       expect(find.text('補充背景（選填）'), findsOneWidget);
       expect(find.textContaining('她是我女友'), findsOneWidget);
-      expect(find.textContaining('只影響本次分析'), findsAtLeastNWidgets(1));
+      expect(find.textContaining('只影響這個對話的分析'), findsAtLeastNWidgets(1));
+      final noteField = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.hintText?.contains('她是我女友') == true,
+        ),
+      );
+      expect(noteField.maxLength, 300);
     });
 
     testWidgets('collapsed preview shows latest messages instead of oldest',

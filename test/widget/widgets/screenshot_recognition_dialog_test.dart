@@ -229,6 +229,14 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
+      final noteField = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.hintText?.contains('她是我女友') == true,
+        ),
+      );
+      expect(noteField.maxLength, 300);
       await tester.enterText(find.byType(TextField).last, '她是我女友');
       await tester.tap(find.text('確認加入對話'));
       await tester.pumpAndSettle();

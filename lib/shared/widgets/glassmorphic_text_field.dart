@@ -10,6 +10,7 @@ class GlassmorphicTextField extends StatelessWidget {
   final bool isDense;
   final ValueChanged<String>? onSubmitted;
   final TextInputAction? textInputAction;
+  final int? maxLength;
 
   const GlassmorphicTextField({
     super.key,
@@ -18,6 +19,7 @@ class GlassmorphicTextField extends StatelessWidget {
     this.isDense = false,
     this.onSubmitted,
     this.textInputAction,
+    this.maxLength,
   });
 
   @override
@@ -28,12 +30,14 @@ class GlassmorphicTextField extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(16),  // 更圓潤
-        border: Border.all(color: AppColors.glassBorder, width: 1.5),  // 更粗的白色邊框
+        borderRadius: BorderRadius.circular(16), // 更圓潤
+        border: Border.all(color: AppColors.glassBorder, width: 1.5), // 更粗的白色邊框
       ),
       child: TextField(
         controller: controller,
-        style: AppTypography.bodyMedium.copyWith(color: AppColors.glassTextPrimary),
+        maxLength: maxLength,
+        style: AppTypography.bodyMedium
+            .copyWith(color: AppColors.glassTextPrimary),
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
         decoration: InputDecoration(
