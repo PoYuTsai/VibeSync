@@ -36,6 +36,28 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     ).toString();
   }
 
+  static bool canStartGeneration({
+    required bool isGenerating,
+    required bool hasResult,
+  }) {
+    return !isGenerating && !hasResult;
+  }
+
+  static String generateButtonText({required bool hasResult}) {
+    return hasResult ? '已生成開場白' : '生成開場白';
+  }
+
+  static String generationQuotaHint({
+    required bool hasResult,
+    required int estimatedCost,
+  }) {
+    return hasResult ? '已生成，不會重複扣額度' : '將使用 $estimatedCost 則額度';
+  }
+
+  static String copiedOpenerMessage(String label) {
+    return '已複製「$label」。貼出去，等她回覆後再回來分析。';
+  }
+
   @override
   ConsumerState<OpeningRescueScreen> createState() =>
       _OpeningRescueScreenState();
@@ -272,6 +294,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Future<void> _generate() async {
+    if (!OpeningRescueScreen.canStartGeneration(
+      isGenerating: _isGenerating,
+      hasResult: _result != null,
+    )) {
+      if (_result != null) {
+        _showOpenerSnackBar('這組輸入已生成開場白；想重做請先調整上方資料。');
+      }
+      return;
+    }
+
     final input = OpenerGenerationInput.fromActiveTab(
       useScreenshotTab: _selectedTab == 0,
       images: _images,
@@ -394,6 +426,35 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
   }
 
+  void _showOpenerSnackBar(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.glassTextPrimary,
+              height: 1.35,
+            ),
+          ),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.glassWhite,
+          elevation: 8,
+          margin: const EdgeInsets.fromLTRB(20, 0, 20, 72),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: AppColors.glassBorder.withValues(alpha: 0.9),
+            ),
+          ),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
@@ -406,6 +467,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       interests: _interestsController.text,
       meetingContext: _meetingContext,
     );
+    final hasGeneratedResult = _result != null;
 
     return GradientBackground(
       child: Scaffold(
@@ -478,7 +540,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 child: Column(
                   children: [
                     Text(
-                      '將使用 $_estimatedCost 則額度',
+                      OpeningRescueScreen.generationQuotaHint(
+                        hasResult: hasGeneratedResult,
+                        estimatedCost: _estimatedCost,
+                      ),
                       style: AppTypography.caption.copyWith(
                         color: AppColors.onBackgroundSecondary,
                       ),
@@ -502,9 +567,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
               // Generate button
               GradientButton(
-                text: '生成開場白',
+                text: OpeningRescueScreen.generateButtonText(
+                  hasResult: hasGeneratedResult,
+                ),
                 isLoading: _isGenerating,
-                onPressed: _isGenerating ? null : _generate,
+                onPressed: OpeningRescueScreen.canStartGeneration(
+                  isGenerating: _isGenerating,
+                  hasResult: hasGeneratedResult,
+                )
+                    ? _generate
+                    : null,
               ),
               const SizedBox(height: 16),
 
@@ -940,22 +1012,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
         const SizedBox(height: 16),
 
-        // Regenerate button
         Center(
-          child: OutlinedButton.icon(
-            onPressed: _isGenerating ? null : _generate,
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('重新生成'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.onBackgroundSecondary,
-              side: BorderSide(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.5),
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Text(
+            '想重做？先調整上方線索；畫面會清空這次結果後再生成。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+              height: 1.35,
             ),
+            textAlign: TextAlign.center,
           ),
         ),
       ],
@@ -1339,13 +1403,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 child: TextButton.icon(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: content));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已複製「$label」開場白'),
-                        duration: const Duration(seconds: 2),
-                        backgroundColor: AppColors.backgroundGradientMid
-                            .withValues(alpha: 0.9),
-                      ),
+                    _showOpenerSnackBar(
+                      OpeningRescueScreen.copiedOpenerMessage(label),
                     );
                   },
                   icon: const Icon(Icons.copy, size: 16),

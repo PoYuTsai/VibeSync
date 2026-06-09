@@ -10,6 +10,31 @@
 
 ## 2026-06
 
+### [2026-06-09] Opener result allowed accidental second generation
+**Symptom**:
+
+- After opener generation completed, the screen still showed active generate / regenerate entry points.
+- A user could tap again on the same generated result and potentially spend quota on another request.
+- The copy confirmation snackbar used a dark bottom bar that obscured the lower opener guidance card.
+
+**Root Cause**:
+
+- The opener screen disabled generation only while `_isGenerating` was true.
+- `_result != null` was not treated as a generated-result lock state, and the result section kept a direct `_generate()` regenerate button.
+- Copy feedback used the default bottom snackbar style with a dark background.
+
+**Fix**:
+
+- Added opener UI guardrails so an existing result disables generation and `_generate()` returns before quota checks if a result already exists.
+- Replaced the no-confirm regenerate button with copy explaining that changing the input clears the result before a new generation.
+- Changed copy feedback to a light floating snackbar that tells the user to paste the opener and come back after she replies.
+
+**Validation**:
+
+- `flutter test --no-pub test/unit/features/opener/data/services/opener_service_test.dart test/unit/features/opener/data/services/opener_result_cache_service_test.dart test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart`
+- `flutter analyze --no-pub`
+- `git diff --check`
+
 ### [2026-06-09] Free opener handoff could carry locked opener copy
 **Symptom**:
 
