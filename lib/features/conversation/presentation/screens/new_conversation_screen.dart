@@ -96,13 +96,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       final result = _openerResultCacheService.loadLatestForScope(
           partnerId: widget.partnerId);
       if (result == null) return;
-      final isFreeUser = ref.read(subscriptionProvider).isFreeUser;
-      final openerType = result.bestOpenerTypeForAccess(
-        isFreeUser: isFreeUser,
+      final subscription = ref.read(subscriptionProvider);
+      final visibleResult = result.visibleForAccess(
+        isFreeUser: !subscription.isPremium,
       );
-      final openerText = result.bestOpenerTextForAccess(
-        isFreeUser: isFreeUser,
-      );
+      final openerType = visibleResult.bestOpenerType;
+      final openerText = visibleResult.bestOpenerText;
       if (openerText == null) return;
 
       _messages.add({
@@ -112,8 +111,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       _hasOpenerSeed = true;
       _openerSeedText = openerText;
       _openerSeedLabel = _openerLabel(openerType);
-      _openerSeedReason = openerType == result.recommendedPick
-          ? result.recommendedReason?.trim()
+      _openerSeedReason = openerType == visibleResult.recommendedPick
+          ? visibleResult.recommendedReason?.trim()
           : null;
     } catch (_) {
       _hasOpenerSeed = false;

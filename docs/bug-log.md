@@ -10,6 +10,28 @@
 
 ## 2026-06
 
+### [2026-06-09] Free opener handoff could carry locked opener copy
+**Symptom**:
+
+- Free user saw only one unlocked opener in the opener UI, but continuing into `開始分析對話` could seed a locked paid opener style from the cached five-style result.
+
+**Root Cause**:
+
+- Opener generation stores the full `OpenerResult` locally for paid upsell/display.
+- The handoff/cache boundary did not reduce that result to the user's entitlement before saving latest / marking a partner draft continued.
+- If downstream seed logic read a full cached result under an uncertain or stale subscription state, locked opener copy could be used as the first outgoing message.
+
+**Fix**:
+
+- Added `OpenerResult.visibleForAccess()` so Free-visible results contain only `extend` and drop locked recommendation reasons.
+- Handoff save and partner-draft continued paths now persist the entitlement-visible result.
+- New conversation seeding treats non-premium state as Free and reads from the visible result.
+
+**Validation**:
+
+- `flutter test --no-pub test/unit/features/opener/data/services/opener_service_test.dart test/unit/features/opener/data/services/opener_result_cache_service_test.dart test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart test/widget/screens/new_conversation_screen_test.dart test/widget/features/conversation/new_conversation_sheet_screenshot_test.dart`
+- `flutter analyze --no-pub`
+
 ### [2026-06-06] Essential user still gets Free quota / one reply style
 **Symptom**:
 

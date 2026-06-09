@@ -64,6 +64,27 @@ void main() {
       );
     });
 
+    test('free visible result removes locked openers and locked reason', () {
+      const result = OpenerResult(
+        openers: {
+          'extend': 'Free visible line',
+          'resonate': 'Locked resonate line',
+          'coldRead': 'Locked recommended line',
+        },
+        recommendedPick: 'coldRead',
+        recommendedReason: 'The locked line has the best hook.',
+        costUsed: 3,
+      );
+
+      final visible = result.visibleForAccess(isFreeUser: true);
+
+      expect(visible.openers, {'extend': 'Free visible line'});
+      expect(visible.bestOpenerText, 'Free visible line');
+      expect(visible.recommendedPick, 'extend');
+      expect(visible.recommendedReason, isNull);
+      expect(visible.costUsed, 3);
+    });
+
     test('sends opener mode with image data objects and profile info',
         () async {
       final calls = <Map<String, dynamic>>[];

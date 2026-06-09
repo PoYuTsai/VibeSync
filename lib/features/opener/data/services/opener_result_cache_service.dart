@@ -211,12 +211,15 @@ class OpenerResultCacheService {
     return null;
   }
 
-  Future<void> markDraftContinued(String id) async {
+  Future<void> markDraftContinued(String id, {OpenerResult? result}) async {
     final drafts = loadDrafts();
     final updated = drafts
         .map(
           (draft) => draft.id == id
-              ? draft.copyWith(continuedAt: DateTime.now())
+              ? draft.copyWith(
+                  result: result,
+                  continuedAt: DateTime.now(),
+                )
               : draft,
         )
         .toList(growable: false);

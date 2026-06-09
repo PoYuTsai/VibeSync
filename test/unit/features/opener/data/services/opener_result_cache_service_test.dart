@@ -346,4 +346,32 @@ void main() {
     await service.deleteDraft(draft.id);
     expect(service.loadDrafts(), isEmpty);
   });
+
+  test('continued free handoff replaces draft result with visible opener only',
+      () async {
+    final service = OpenerResultCacheService();
+    final draft = await service.saveDraft(
+      result: const OpenerResult(
+        openers: {
+          'extend': 'free line',
+          'coldRead': 'locked line',
+        },
+        recommendedPick: 'coldRead',
+        recommendedReason: 'locked reason',
+      ),
+      displayName: 'Grace',
+      partnerId: 'partner-a',
+    );
+
+    await service.markDraftContinued(
+      draft.id,
+      result: draft.result.visibleForAccess(isFreeUser: true),
+    );
+
+    final restored = service.loadLatestForScope(partnerId: 'partner-a')!;
+    expect(restored.openers, {'extend': 'free line'});
+    expect(restored.bestOpenerText, 'free line');
+    expect(restored.recommendedPick, 'extend');
+    expect(restored.recommendedReason, isNull);
+  });
 }

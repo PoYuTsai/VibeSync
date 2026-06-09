@@ -184,17 +184,26 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         _resultCacheService.loadDraftsForScope(partnerId: widget.partnerId);
   }
 
+  OpenerResult _resultForCurrentAccess(OpenerResult result) {
+    final subscription = ref.read(subscriptionProvider);
+    return result.visibleForAccess(isFreeUser: !subscription.isPremium);
+  }
+
   Future<void> _saveLatestForHandoff() async {
     final result = _result;
     if (result == null) return;
+    final handoffResult = _resultForCurrentAccess(result);
 
     try {
       if (!_hasBoundPartner) {
-        await _resultCacheService.saveLatest(result);
+        await _resultCacheService.saveLatest(handoffResult);
       }
       final draftId = _currentDraftId;
       if (draftId != null) {
-        await _resultCacheService.markDraftContinued(draftId);
+        await _resultCacheService.markDraftContinued(
+          draftId,
+          result: handoffResult,
+        );
       }
     } catch (_) {
       // Starting a conversation should not fail because local metadata failed.
@@ -204,7 +213,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   Future<void> _openDraft(OpenerDraft draft) async {
     try {
       if ((draft.partnerId ?? '').trim().isEmpty) {
-        await _resultCacheService.saveLatest(draft.result);
+        await _resultCacheService.saveLatest(
+          _resultForCurrentAccess(draft.result),
+        );
       }
     } catch (_) {
       // Best effort only; the visible result is still useful.

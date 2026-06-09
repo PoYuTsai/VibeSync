@@ -136,6 +136,26 @@ class OpenerResult {
     return text == null || text.isEmpty ? null : text;
   }
 
+  OpenerResult visibleForAccess({required bool isFreeUser}) {
+    if (!isFreeUser) return this;
+
+    final extend = openers['extend']?.trim();
+    final visibleOpeners = extend == null || extend.isEmpty
+        ? <String, String>{}
+        : <String, String>{'extend': extend};
+    final visibleReason =
+        recommendedPick == 'extend' ? _blankToNull(recommendedReason) : null;
+
+    return OpenerResult(
+      profileAnalysis: profileAnalysis,
+      openers: visibleOpeners,
+      pioneerPlan: pioneerPlan,
+      recommendedPick: visibleOpeners.isEmpty ? null : 'extend',
+      recommendedReason: visibleReason,
+      costUsed: costUsed,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       if (profileAnalysis != null) 'profileAnalysis': profileAnalysis,
@@ -230,6 +250,11 @@ class OpenerResult {
       return null;
     }
     return value.map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  static String? _blankToNull(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 }
 
