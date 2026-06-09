@@ -1778,7 +1778,7 @@ class AnalysisService {
             final finalResult = _streamDoneResultPayload(event);
             if (finalResult == null) {
               throw AnalysisException(
-                '串流分析缺少完整結果，請重新分析。',
+                '這次分析沒順利完成，請重新分析一次。',
                 code: 'INVALID_STREAM_DONE',
                 suggestedAction: AnalysisErrorAction.retry,
               );
@@ -1795,7 +1795,7 @@ class AnalysisService {
           case 'analysis.error':
             final recoverable = event['recoverable'] != false;
             throw StreamModeException(
-              _stringField(event['message']) ?? '完整分析串流中斷，請重新分析。',
+              _stringField(event['message']) ?? '這次分析中途中斷了，請重新分析一次。',
               code: _stringField(event['code']) ?? 'STREAM_FAILED',
               recoverable: recoverable,
               retriesRemaining:
@@ -1811,14 +1811,14 @@ class AnalysisService {
 
       if (!sawDone) {
         throw AnalysisException(
-          '完整分析串流尚未完成，請重新分析。',
+          '這次分析還沒完成，請重新分析一次。',
           code: 'STREAM_INCOMPLETE',
           suggestedAction: AnalysisErrorAction.retry,
         );
       }
     } on TimeoutException {
       throw AnalysisException(
-        '完整分析串流等待過久，請稍後重新分析。',
+        '這次分析等待過久，請稍後重新分析。',
         code: 'TIMEOUT',
         suggestedAction: AnalysisErrorAction.wait,
       );
@@ -1894,7 +1894,7 @@ class AnalysisService {
       return AnalysisResult.fromJson(payload);
     } catch (_) {
       throw AnalysisException(
-        '串流分析缺少完整結果，請重新分析。',
+        '這次分析沒順利完成，請重新分析一次。',
         code: 'INVALID_STREAM_RESULT',
         suggestedAction: AnalysisErrorAction.retry,
       );
@@ -1909,7 +1909,7 @@ class AnalysisService {
     final message = _stringField(event['message']);
     if (message == null || message.isEmpty) {
       throw AnalysisException(
-        '串流分析缺少建議回覆，請重新分析。',
+        '這次分析沒能給出建議回覆，請重新分析一次。',
         code: 'INVALID_STREAM_RECOMMENDATION',
         suggestedAction: AnalysisErrorAction.retry,
       );
