@@ -11,7 +11,7 @@
 //  - PartnerHeatHeroCard reads `aggregate.latestHeat` only —
 //    NO synthesized score, NO AI insight (per scope lock).
 //  - Spec 6D shifts the page from dashboard-first to command-center-first:
-//    summary → state → next step → coach/style → records → detailed data.
+//    summary → heat → records → next step → coach/style → detailed data.
 //
 // Behavior unchanged:
 //  - ⋮ menu (merge / edit / delete-即將推出) — see partner_detail_screen_test.
@@ -133,6 +133,8 @@ class PartnerDetailScreen extends ConsumerWidget {
                 const SizedBox(height: 14),
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
                 const SizedBox(height: 12),
+                ..._conversationRecordWidgets(context, ref, conversations),
+                const SizedBox(height: 12),
                 _PartnerNextStepCard(
                   latestInsight: _PartnerLatestInsight.fromConversations(
                     conversations,
@@ -152,59 +154,6 @@ class PartnerDetailScreen extends ConsumerWidget {
                   partnerId: partnerId,
                   partnerName: partner.name,
                 ),
-                const SizedBox(height: 16),
-                if (conversations.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      '還沒有互動紀錄\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始',
-                      textAlign: TextAlign.center,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.onBackgroundSecondary,
-                      ),
-                    ),
-                  )
-                else ...[
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '互動紀錄',
-                          style: AppTypography.titleSmall.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '要接續同一段聊天，請點進原本那段紀錄；同一個人換日期或換平台，才建議再新增一段，保持對話的分析品質乾淨',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  ...conversations.map(
-                    (c) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: PartnerConversationTile(
-                        conversation: c,
-                        onTap: () => context.push('/conversation/${c.id}'),
-                        onReassign: () => showConversationReassignPicker(
-                          context,
-                          conversation: c,
-                          ref: ref,
-                        ),
-                        onDelete: () =>
-                            _confirmDeleteConversation(context, ref, c),
-                      ),
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 16),
                 _PartnerExpandableDetailSection(
                   child: Column(
@@ -290,6 +239,68 @@ class PartnerDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _conversationRecordWidgets(
+    BuildContext context,
+    WidgetRef ref,
+    List<Conversation> conversations,
+  ) {
+    if (conversations.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            '還沒有互動紀錄\n第一次聊天、截圖或手動輸入，都從「+ 新增對話」開始',
+            textAlign: TextAlign.center,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary,
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '互動紀錄',
+              style: AppTypography.titleSmall.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '要接續同一段聊天，請點進原本那段紀錄；同一個人換日期或換平台，才建議再新增一段，保持對話的分析品質乾淨',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+      ...conversations.map(
+        (c) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: PartnerConversationTile(
+            conversation: c,
+            onTap: () => context.push('/conversation/${c.id}'),
+            onReassign: () => showConversationReassignPicker(
+              context,
+              conversation: c,
+              ref: ref,
+            ),
+            onDelete: () => _confirmDeleteConversation(context, ref, c),
+          ),
+        ),
+      ),
+    ];
   }
 
   Future<void> _handleMarkSamePerson(

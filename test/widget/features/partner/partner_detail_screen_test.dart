@@ -583,6 +583,35 @@ void main() {
             'mental-model fix); verify by widget count instead.');
   });
 
+  testWidgets('conversation records sit between heat score and next step',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1').overrideWith((_) => [_conv('a')]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    final heatTop = t.getTopLeft(find.byType(PartnerHeatHeroCard)).dy;
+    final recordTop = t.getTopLeft(find.byType(PartnerConversationTile)).dy;
+    final nextStepTop = t.getTopLeft(find.text('下一步')).dy;
+
+    expect(recordTop, greaterThan(heatTop));
+    expect(recordTop, lessThan(nextStepTop));
+  });
+
   testWidgets('tile ⋮ → 改派 opens reassign picker excluding current partner',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
