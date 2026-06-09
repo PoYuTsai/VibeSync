@@ -1644,35 +1644,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return existing == null || existing.isEmpty ? null : existing;
   }
 
-  Widget _buildChoiceChip<T>({
-    required String label,
-    required bool selected,
-    required ValueChanged<bool> onSelected,
-  }) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: onSelected,
-      selectedColor: AppColors.primary.withValues(alpha: 0.2),
-      backgroundColor: Colors.white.withValues(alpha: 0.86),
-      side: BorderSide(
-        color: selected
-            ? AppColors.primary.withValues(alpha: 0.45)
-            : AppColors.glassBorder.withValues(alpha: 0.65),
-      ),
-      labelStyle: AppTypography.bodySmall.copyWith(
-        color: selected ? AppColors.primary : AppColors.glassTextPrimary,
-        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-      ),
-    );
-  }
-
   Widget _buildScreenshotSettingSection() {
-    Widget chipWrap(List<Widget> children) {
-      return Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: children,
+    Text settingLabel(String text) {
+      return Text(
+        text,
+        style: AppTypography.bodyMedium.copyWith(
+          color: AppColors.onBackgroundPrimary,
+          fontWeight: FontWeight.w700,
+        ),
       );
     }
 
@@ -1683,7 +1662,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         Text(
           '這次分析設定（可不改）',
           style: AppTypography.bodyLarge.copyWith(
-            color: AppColors.glassTextPrimary,
+            color: AppColors.onBackgroundPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -1691,64 +1670,54 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         Text(
           '截圖只看得到對話，看不到你們的關係。這只影響這個對話的分析，不會改對象資料。',
           style: AppTypography.bodySmall.copyWith(
-            color: AppColors.glassTextSecondary,
+            color: AppColors.onBackgroundSecondary,
             height: 1.35,
           ),
         ),
         const SizedBox(height: 14),
-        Text('認識情境', style: AppTypography.bodyMedium),
+        settingLabel('認識情境'),
         const SizedBox(height: 8),
-        chipWrap(
-          MeetingContext.values
-              .map(
-                (value) => _buildChoiceChip<MeetingContext>(
-                  label: value.label,
-                  selected: _screenshotMeetingContext == value,
-                  onSelected: (_) =>
-                      setState(() => _screenshotMeetingContext = value),
-                ),
-              )
+        GlassmorphicSegmentedButton<MeetingContext>(
+          segments: MeetingContext.visibleAnalysisOptions
+              .map((value) => GlassSegment(value: value, label: value.label))
               .toList(),
+          selected: _screenshotMeetingContext,
+          onChanged: (value) =>
+              setState(() => _screenshotMeetingContext = value),
         ),
         const SizedBox(height: 14),
-        Text('認識多久', style: AppTypography.bodyMedium),
+        settingLabel('認識多久'),
         const SizedBox(height: 8),
-        chipWrap(
-          AcquaintanceDuration.values
-              .map(
-                (value) => _buildChoiceChip<AcquaintanceDuration>(
-                  label: value.label,
-                  selected: _screenshotDuration == value,
-                  onSelected: (_) =>
-                      setState(() => _screenshotDuration = value),
-                ),
-              )
+        GlassmorphicSegmentedButton<AcquaintanceDuration>(
+          segments: AcquaintanceDuration.values
+              .map((value) => GlassSegment(value: value, label: value.label))
               .toList(),
+          selected: _screenshotDuration,
+          onChanged: (value) => setState(() => _screenshotDuration = value),
         ),
         const SizedBox(height: 14),
-        Text('目前目標', style: AppTypography.bodyMedium),
+        settingLabel('目前目標'),
         const SizedBox(height: 8),
-        chipWrap(
-          UserGoal.values
-              .map(
-                (value) => _buildChoiceChip<UserGoal>(
-                  label: value.label,
-                  selected: _screenshotGoal == value,
-                  onSelected: (_) => setState(() => _screenshotGoal = value),
-                ),
-              )
+        GlassmorphicSegmentedButton<UserGoal>(
+          segments: UserGoal.values
+              .map((value) => GlassSegment(value: value, label: value.label))
               .toList(),
+          selected: _screenshotGoal,
+          onChanged: (value) => setState(() => _screenshotGoal = value),
         ),
         const SizedBox(height: 14),
-        Text('補充背景（選填）', style: AppTypography.bodyMedium),
+        settingLabel('補充背景（選填）'),
         const SizedBox(height: 8),
         TextField(
           controller: _screenshotAnalysisContextNoteController,
           maxLength: 300,
           minLines: 1,
           maxLines: 3,
+          textInputAction: TextInputAction.done,
+          onEditingComplete: _dismissKeyboard,
+          onTapOutside: (_) => _dismissKeyboard(),
           decoration: InputDecoration(
-            hintText: '例如：她是我女友／我其實沒看 F1／我想誠實但不要冷掉',
+            hintText: '沒有可以留空',
             hintStyle: AppTypography.bodyMedium.copyWith(
               color: AppColors.glassTextHint,
             ),
@@ -1769,9 +1738,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ),
         const SizedBox(height: 6),
         Text(
-          '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響這個對話的分析，不會改對象資料。',
+          '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
           style: AppTypography.bodySmall.copyWith(
-            color: AppColors.glassTextSecondary,
+            color: AppColors.onBackgroundSecondary,
             height: 1.35,
           ),
         ),

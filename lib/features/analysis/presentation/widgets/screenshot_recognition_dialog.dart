@@ -100,6 +100,10 @@ class _ScreenshotRecognitionDialogState
     super.dispose();
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   List<RecognizedMessage> _sanitizedMessages() {
     return _editableMessages
         .map(
@@ -623,6 +627,7 @@ class _ScreenshotRecognitionDialogState
         style: TextStyle(color: AppColors.glassTextPrimary),
       ),
       content: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1047,7 +1052,8 @@ class _ScreenshotRecognitionDialogState
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: MeetingContext.values.map((meetingContext) {
+                children:
+                    MeetingContext.visibleAnalysisOptions.map((meetingContext) {
                   final isSelected = _selectedMeeting == meetingContext;
                   return ChoiceChip(
                     label: Text(meetingContext.label),
@@ -1160,8 +1166,11 @@ class _ScreenshotRecognitionDialogState
                 maxLength: 300,
                 minLines: 1,
                 maxLines: 3,
+                textInputAction: TextInputAction.done,
+                onEditingComplete: _dismissKeyboard,
+                onTapOutside: (_) => _dismissKeyboard(),
                 decoration: InputDecoration(
-                  hintText: '例如：她是我女友／我其實沒看 F1／我想誠實但不要冷掉',
+                  hintText: '沒有可以留空',
                   hintStyle: const TextStyle(color: AppColors.unselectedText),
                   filled: true,
                   fillColor: Colors.white.withValues(alpha: 0.5),
@@ -1174,7 +1183,7 @@ class _ScreenshotRecognitionDialogState
               ),
               const SizedBox(height: 6),
               Text(
-                '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響這個對話的分析，不會改對象資料。',
+                '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.glassTextSecondary,
                   height: 1.35,

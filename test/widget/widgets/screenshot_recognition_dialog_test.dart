@@ -232,11 +232,12 @@ void main() {
       final noteField = tester.widget<TextField>(
         find.byWidgetPredicate(
           (widget) =>
-              widget is TextField &&
-              widget.decoration?.hintText?.contains('她是我女友') == true,
+              widget is TextField && widget.decoration?.hintText == '沒有可以留空',
         ),
       );
       expect(noteField.maxLength, 300);
+      expect(noteField.textInputAction, TextInputAction.done);
+      expect(find.text('其他'), findsNothing);
       await tester.enterText(find.byType(TextField).last, '她是我女友');
       await tester.tap(find.text('確認加入對話'));
       await tester.pumpAndSettle();

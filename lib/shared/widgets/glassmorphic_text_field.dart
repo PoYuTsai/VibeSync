@@ -10,6 +10,7 @@ class GlassmorphicTextField extends StatelessWidget {
   final bool isDense;
   final ValueChanged<String>? onSubmitted;
   final TextInputAction? textInputAction;
+  final TapRegionCallback? onTapOutside;
   final int? maxLength;
 
   const GlassmorphicTextField({
@@ -19,6 +20,7 @@ class GlassmorphicTextField extends StatelessWidget {
     this.isDense = false,
     this.onSubmitted,
     this.textInputAction,
+    this.onTapOutside,
     this.maxLength,
   });
 
@@ -40,6 +42,7 @@ class GlassmorphicTextField extends StatelessWidget {
             .copyWith(color: AppColors.glassTextPrimary),
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
+        onTapOutside: onTapOutside,
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: AppTypography.bodyMedium.copyWith(

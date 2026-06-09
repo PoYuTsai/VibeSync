@@ -193,6 +193,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     });
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   Future<void> _createConversation() async {
     // When entered from PartnerDetail (partnerId != null), the Partner
     // already owns the relationship identity — the「對話對象」name field
@@ -340,7 +344,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       Text('認識情境', style: AppTypography.bodyLarge),
       const SizedBox(height: 8),
       GlassmorphicSegmentedButton<MeetingContext>(
-        segments: MeetingContext.values
+        segments: MeetingContext.visibleAnalysisOptions
             .map(
               (value) => GlassSegment(
                 value: value,
@@ -386,13 +390,16 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       const SizedBox(height: 8),
       GlassmorphicTextField(
         controller: _analysisContextNoteController,
-        hintText: '例如：她是我女友／我其實沒看 F1／我想誠實但不要冷掉',
+        hintText: '沒有可以留空',
         isDense: true,
         maxLength: 300,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _dismissKeyboard(),
+        onTapOutside: (_) => _dismissKeyboard(),
       ),
       const SizedBox(height: 8),
       Text(
-        '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響這個對話的分析，不會改對象資料。',
+        '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
         style: AppTypography.bodySmall.copyWith(
           color: AppColors.textSecondary,
         ),
@@ -634,6 +641,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

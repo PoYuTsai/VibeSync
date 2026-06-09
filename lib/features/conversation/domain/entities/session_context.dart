@@ -47,6 +47,13 @@ enum MeetingContext {
   @HiveField(4)
   committedPartner; // 已是伴侶
 
+  static const visibleAnalysisOptions = [
+    datingApp,
+    inPerson,
+    friendIntro,
+    committedPartner,
+  ];
+
   String get label {
     switch (this) {
       case datingApp:

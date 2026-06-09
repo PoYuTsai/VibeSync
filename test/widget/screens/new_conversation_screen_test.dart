@@ -87,16 +87,17 @@ void main() {
       );
 
       expect(find.text('補充背景（選填）'), findsOneWidget);
-      expect(find.textContaining('她是我女友'), findsOneWidget);
+      expect(find.text('沒有可以留空'), findsOneWidget);
+      expect(find.text('其他'), findsNothing);
       expect(find.textContaining('只影響這個對話的分析'), findsOneWidget);
       final noteField = tester.widget<TextField>(
         find.byWidgetPredicate(
           (widget) =>
-              widget is TextField &&
-              widget.decoration?.hintText?.contains('她是我女友') == true,
+              widget is TextField && widget.decoration?.hintText == '沒有可以留空',
         ),
       );
       expect(noteField.maxLength, 300);
+      expect(noteField.textInputAction, TextInputAction.done);
     });
 
     testWidgets('hides save button before any message is added',
