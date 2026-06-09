@@ -1433,7 +1433,7 @@ class AnalysisService {
           final status = httpResponse.statusCode;
           if (responseData['_nonJson'] == true && status == 200) {
             throw AnalysisException(
-              '伺服器回傳格式異常，請稍後再試。',
+              '這次分析沒順利完成，請稍後再試。',
               code: 'INVALID_RESPONSE_FORMAT',
               suggestedAction: AnalysisErrorAction.retry,
             );
@@ -1547,7 +1547,7 @@ class AnalysisService {
       // notifier maps it to a failedBeforeRecommendation state and the UI offers retry rather
       // than rendering blank fields (I-P3).
       throw AnalysisException(
-        '分析回應格式錯誤，請稍後再試。',
+        '這次分析沒順利完成，請稍後再試。',
         code: 'INVALID_QUICK_RESPONSE',
       );
     }
@@ -1702,7 +1702,7 @@ class AnalysisService {
             }
           }
           throw AnalysisException(
-            '串流分析回傳格式異常，請重新分析。',
+            '這次分析沒順利完成，請重新分析一次。',
             code: 'INVALID_STREAM_RESPONSE',
             suggestedAction: AnalysisErrorAction.retry,
           );
@@ -2049,7 +2049,7 @@ class AnalysisService {
 
       if (responseData['_nonJson'] == true && status == 200) {
         throw AnalysisException(
-          '伺服器回傳格式異常，請稍後再試。',
+          '這次分析沒順利完成，請稍後再試。',
           code: 'INVALID_RESPONSE_FORMAT',
           suggestedAction: AnalysisErrorAction.retry,
         );
