@@ -33,6 +33,52 @@ class CoachChatCard extends ConsumerStatefulWidget {
     this.focusRequestToken = 0,
   });
 
+  static bool isQuotaError(Object? error) =>
+      error is CoachChatQuotaExceededException;
+
+  static String failureTitleFor(Object error) {
+    if (error is CoachChatQuotaExceededException) {
+      return error.code == 'MONTHLY_LIMIT_EXCEEDED' ? '本月額度已用完' : '今日額度已用完';
+    }
+    return '這題教練沒接住';
+  }
+
+  static String failureSubtitleFor(Object error) {
+    if (error is CoachChatQuotaExceededException) {
+      return '這是額度限制，不是教練失敗。升級或等額度重置後再試。';
+    }
+    return '未扣額度。上一輪回覆已保留，但不是這題的新結果。';
+  }
+
+  static String failureMessageFor(Object error) {
+    if (error is CoachChatQuotaExceededException) {
+      final usage = error.used != null && error.limit != null
+          ? '（${error.used}/${error.limit}）'
+          : '';
+      if (error.code == 'MONTHLY_LIMIT_EXCEEDED') {
+        return '本月額度已用完$usage，升級後可以繼續問教練。';
+      }
+      if (error.code == 'DAILY_LIMIT_EXCEEDED') {
+        return '今日額度已用完$usage，可以明天再試，或升級解鎖更多教練建議。';
+      }
+      return error.message;
+    }
+    if (error is CoachChatGenerationFailedException) {
+      return '教練暫時沒接住，這次未扣額度，請稍後再試。';
+    }
+    if (error is CoachChatApiException) {
+      return '連線暫時不穩，這次未扣額度，請稍後再試。';
+    }
+    return '教練暫時沒接住，這次未扣額度，請稍後再試。';
+  }
+
+  static String failureActionLabelFor(Object error) {
+    if (error is CoachChatQuotaExceededException) {
+      return '查看升級';
+    }
+    return '重試這題';
+  }
+
   @override
   ConsumerState<CoachChatCard> createState() => _CoachChatCardState();
 }
@@ -97,6 +143,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
       analysisSnapshot: widget.analysisSnapshot,
     );
     final activeError = state.hasError && _lastAskedQuestion != null;
+    final activeErrorObject = state.error;
     final isLoading = state.isLoading;
     final canSubmit = !isLoading;
     final latest = timeline.isEmpty ? null : timeline.first;
@@ -113,7 +160,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_failureMessage(error)),
+          content: Text(CoachChatCard.failureMessageFor(error)),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -150,7 +197,7 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
                       ),
                     ),
                     Text(
-                      '先釐清你的真實想法；正式建議才扣 1 則額度。',
+                      '免費釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。',
                       style: AppTypography.caption.copyWith(
                         color: AppColors.glassTextSecondary,
                       ),
@@ -264,9 +311,15 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
           ] else if (activeError) ...[
             const SizedBox(height: 14),
             _CoachFailureNotice(
+              title: CoachChatCard.failureTitleFor(activeErrorObject!),
+              subtitle: CoachChatCard.failureSubtitleFor(activeErrorObject),
               question: _lastAskedQuestion!,
-              message: _failureMessage(state.error!),
-              onRetry: _retryLastQuestion,
+              message: CoachChatCard.failureMessageFor(activeErrorObject),
+              actionLabel:
+                  CoachChatCard.failureActionLabelFor(activeErrorObject),
+              onRetry: CoachChatCard.isQuotaError(activeErrorObject)
+                  ? (widget.onQuotaExceeded ?? _retryLastQuestion)
+                  : _retryLastQuestion,
             ),
             if (timeline.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -419,16 +472,6 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   void _returnToAnalysis() {
     _unfocusInput();
     widget.onReturnToAnalysis?.call();
-  }
-
-  String _failureMessage(Object error) {
-    if (error is CoachChatGenerationFailedException) {
-      return '教練暫時沒接住，這次未扣額度，請稍後再試。';
-    }
-    if (error is CoachChatApiException) {
-      return '連線不穩，這次未扣額度，請稍後再試。';
-    }
-    return '教練暫時沒接住，這次未扣額度，請稍後再試。';
   }
 }
 
@@ -757,7 +800,7 @@ class _CoachChatResultView extends ConsumerWidget {
           if (isClarifying) ...[
             _CoachNotice(
               icon: Icons.psychology_alt_outlined,
-              title: '教練想先問清楚（這題不扣）',
+              title: '教練想先問清楚（免費釐清）',
               body: result.reflectionQuestion ?? result.answer,
             ),
             const SizedBox(height: 10),
@@ -924,7 +967,7 @@ class _CoachChatResultView extends ConsumerWidget {
       builder: (dialogContext) => AlertDialog(
         title: const Text('直接看正式建議？'),
         content: const Text(
-          '教練會跳過免費追問，直接給完整建議；成功後會扣 1 則額度。',
+          '教練會跳過免費釐清，直接給完整建議；成功後會扣 1 則額度。',
         ),
         actions: [
           TextButton(
@@ -1239,13 +1282,19 @@ class _CoachThinkingNotice extends StatelessWidget {
 }
 
 class _CoachFailureNotice extends StatelessWidget {
+  final String title;
+  final String subtitle;
   final String question;
   final String message;
+  final String actionLabel;
   final VoidCallback onRetry;
 
   const _CoachFailureNotice({
+    required this.title,
+    required this.subtitle,
     required this.question,
     required this.message,
+    required this.actionLabel,
     required this.onRetry,
   });
 
@@ -1278,7 +1327,7 @@ class _CoachFailureNotice extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '這題教練沒接住',
+                      title,
                       style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.glassTextPrimary,
                         fontWeight: FontWeight.w700,
@@ -1286,7 +1335,7 @@ class _CoachFailureNotice extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '未扣額度。上一輪回覆已保留，但不是這題的新結果。',
+                      subtitle,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.glassTextSecondary,
                         height: 1.35,
@@ -1320,7 +1369,7 @@ class _CoachFailureNotice extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text('重試這題'),
+              label: Text(actionLabel),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.primary,
                 visualDensity: VisualDensity.compact,
@@ -1350,7 +1399,7 @@ class _CostStatusChip extends StatelessWidget {
         ? AppColors.success
         : AppColors.warning;
     final label = isClarifying || costDeducted == 0
-        ? '這次不扣額度'
+        ? '免費釐清（最多 3 次）'
         : dailyRemaining >= 0
             ? '已扣 $costDeducted 則 · 今日剩 $dailyRemaining 則'
             : '已扣 $costDeducted 則';

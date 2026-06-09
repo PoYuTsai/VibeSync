@@ -10,6 +10,34 @@
 
 ## 2026-06
 
+### [2026-06-09] Coach 0 quota showed generic failure and clarification had no hard cap
+**Symptom**:
+
+- Free user with `今日剩餘 0/15` asked Coach 1:1 and saw `這題教練沒接住`, even though the real condition was quota exhaustion.
+- Coach card copy said clarification would not deduct quota, but there was no explicit cap, creating confusion about whether users could clarify indefinitely.
+
+**Root Cause**:
+
+- Flutter mapped `CoachChatQuotaExceededException` to the generic Coach failure notice instead of quota/paywall copy.
+- `coach-chat` prompt/client flow relied on model behavior for no-charge clarification, without a shared policy constant across client and Edge.
+- Edge quota preflight always assumed cost `1`, so it could block a bounded no-charge clarification before the model had a chance to return `clarifyingQuestion`.
+
+**Fix**:
+
+- Added Coach-specific quota error title/message/action so daily/monthly exhaustion opens the upgrade path instead of showing generic failure.
+- Added a shared 3-turn no-charge clarification cap in Flutter and Edge policy; the 4th clarification attempt is sent/forced as a formal answer.
+- `coach-chat` prompt and fallback copy now state `免費釐清最多 3 次`; formal `coachAnswer` still deducts one quota and remains gated by the user's actual tier.
+- Edge preflight allows only bounded no-charge clarification attempts; formal answer deduction still re-checks quota and returns 429 if exhausted.
+
+**Validation**:
+
+- `flutter test --no-pub test/unit/features/coach_chat/data/services/coach_chat_api_service_test.dart test/unit/features/coach_chat/data/providers/coach_chat_providers_test.dart test/unit/features/coach_chat/presentation/coach_chat_card_error_copy_test.dart`
+- `flutter analyze --no-pub lib/features/coach_chat/data/services/coach_chat_api_service.dart lib/features/coach_chat/data/providers/coach_chat_providers.dart lib/features/coach_chat/presentation/widgets/coach_chat_card.dart test/unit/features/coach_chat/data/services/coach_chat_api_service_test.dart test/unit/features/coach_chat/data/providers/coach_chat_providers_test.dart test/unit/features/coach_chat/presentation/coach_chat_card_error_copy_test.dart`
+- `deno test --allow-read --allow-env supabase/functions/coach-chat/clarification_policy_test.ts supabase/functions/coach-chat/generation_test.ts supabase/functions/coach-chat/index_test.ts supabase/functions/coach-chat/prompts_test.ts supabase/functions/coach-chat/quality_smoke_test.ts`
+- `deno check supabase/functions/coach-chat/index.ts supabase/functions/coach-chat/generation.ts supabase/functions/coach-chat/prompts.ts supabase/functions/coach-chat/clarification_policy.ts`
+
+**Review note**: 3-turn cap is enforced for normal authenticated app flow from client session turns plus Edge validation. It is not yet a durable server-side anti-abuse counter across forged requests/new sessions; CC should review whether that is required before launch.
+
 ### [2026-06-09] Free quota / opener / screenshot P1 hardening after CC review
 **Symptom**:
 

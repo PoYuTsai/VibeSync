@@ -1,10 +1,15 @@
 import type { CoachChatRequest } from "./schemas.ts";
+import {
+  countCoachClarifications,
+  MAX_NO_CHARGE_CLARIFICATION_TURNS,
+} from "./clarification_policy.ts";
 
 export function buildCoachChatPrompt(input: CoachChatRequest): string {
   const context = [
     section("使用者問題", input.userQuestion),
     section("使用者原本想怎麼回", input.rawReplyDraft),
     section("本輪教練狀態", formatSessionState(input)),
+    section("釐清次數規則", formatClarificationBudget(input)),
     section("本次教練室對話", formatSessionTurns(input.activeSessionTurns)),
     section("最近對話", formatMessages(input.recentMessages)),
     section("舊對話摘要", input.conversationSummary),
@@ -50,7 +55,7 @@ const SYSTEM_PROMPT_BASE =
 收斂狀態機：
 - 先判斷這次使用者卡在哪個狀態：看不懂對方、怕自己太急、想推進、想修一句話、界線風險、其實該停。
 - 每次都標記 frictionType：fearOfMistake=怕犯錯/怕丟臉、overPolishing=過度修飾想找完美句、hesitatesToMoveForward=有窗口但不敢推進、emotionalOverreach=情緒上頭想補位或討確認、boundaryRisk=界線/伴侶/壓迫風險、stopLoss=該止損或停手、unclearIntent=意圖尚未釐清、none=狀態穩定。
-- 若缺少使用者感受、原本想回、真正目的或可承擔成本，進入 clarifyIntent/stateCalibration，只問一個免費追問。
+- 若缺少使用者感受、原本想回、真正目的或可承擔成本，進入 clarifyIntent/stateCalibration，只問一個免費釐清；免費釐清最多 3 次。
 - 若資訊足夠，必須收斂到一個 mode、一個工作判斷、一個最小下一步；不要輸出選項清單讓使用者自己選。
 - 可以短暫承認最多 2 個合理可能，但要立刻選出「目前最值得採用的判讀」，並說明怎麼用一小步驗證。
 - 教練的工作是幫使用者深挖自己的真實感受，再把行動收窄；不是幫他發散更多劇本。
@@ -87,7 +92,7 @@ const SYSTEM_PROMPT_BASE =
 教練追問規則：
 - 如果你還不知道使用者聽到那句話後的真實感受、心裡想怎麼回、真正目的或可承擔的成本，優先回 responseType="clarifyingQuestion"。
 - clarifyingQuestion 只問一個問題，像真人教練，不要變成表單。問題優先問：「你聽到她這句話後，心裡第一個反應是什麼？」或「你心裡其實想怎麼回？先不用修飾。」
-- clarifyingQuestion 的 costDeducted 必須是 0，suggestedLine/rewriteDecision/rewriteReason 用 null。
+- clarifyingQuestion 的 costDeducted 必須是 0，suggestedLine/rewriteDecision/rewriteReason 用 null；免費釐清最多 3 次，到上限後必須給 coachAnswer。
 - 如果使用者已經補充感受、原本想回的句子、目的，或 forceAnswer=true，才給 responseType="coachAnswer"。
 - 如果本輪已經問過 clarifyingQuestion，下一回合不要重複問同一個問題；請整合使用者補充，低信心也要收斂成一個 coachAnswer。
 - 如果使用者指出「你剛剛不是說...」或對教練前後判斷困惑，先承認並整合前後脈絡，再給修正後的一個工作判斷；不要硬拗或另開很多可能性。
@@ -134,6 +139,15 @@ function formatSessionTurns(
       return `${role}(${turn.kind})：${turn.content}`;
     })
     .join("\n");
+}
+
+function formatClarificationBudget(input: CoachChatRequest): string {
+  const used = countCoachClarifications(input.activeSessionTurns);
+  const remaining = Math.max(0, MAX_NO_CHARGE_CLARIFICATION_TURNS - used);
+  if (input.forceAnswer || remaining === 0) {
+    return `免費釐清已用 ${used}/${MAX_NO_CHARGE_CLARIFICATION_TURNS} 次；本輪必須輸出 coachAnswer，不可再輸出 clarifyingQuestion。`;
+  }
+  return `免費釐清已用 ${used}/${MAX_NO_CHARGE_CLARIFICATION_TURNS} 次，剩 ${remaining} 次；只有真的缺關鍵資訊時才輸出 clarifyingQuestion，正式建議輸出 coachAnswer。`;
 }
 
 function formatSessionState(input: CoachChatRequest): string | null {

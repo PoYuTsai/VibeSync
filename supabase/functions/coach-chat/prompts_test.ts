@@ -68,6 +68,25 @@ Deno.test("buildCoachChatPrompt carries active coaching turns and clarification 
   );
 });
 
+Deno.test("buildCoachChatPrompt surfaces the clarification budget", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "我補充完了，直接給我建議",
+    activeSessionTurns: [
+      { role: "coach", kind: "clarification", content: "q1" },
+      { role: "coach", kind: "clarification", content: "q2" },
+      { role: "coach", kind: "clarification", content: "q3" },
+    ],
+    forceAnswer: false,
+    recentMessages: [],
+    dataQualityFlagged: false,
+  });
+
+  assertStringIncludes(prompt, "釐清次數規則");
+  assertStringIncludes(prompt, "免費釐清已用 3/3 次");
+  assertStringIncludes(prompt, "本輪必須輸出 coachAnswer");
+});
+
 Deno.test("buildCoachChatPrompt carries data-quality warning instead of traits", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "c1",

@@ -5,6 +5,7 @@ import {
   CoachChatQuotaExceededError,
   runCoachChat,
 } from "./generation.ts";
+import { shouldAllowNoChargeClarificationAttempt } from "./clarification_policy.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import { validateRequest } from "./validate.ts";
 import {
@@ -269,6 +270,8 @@ export async function handleRequest(req: Request): Promise<Response> {
   }
 
   const accountIsTest = TEST_EMAILS.includes(user.email || "");
+  const allowNoChargeClarificationAttempt =
+    shouldAllowNoChargeClarificationAttempt(payload);
   let limits = resolveLimits(sub.tier);
   let gate = checkQuota({
     sub,
@@ -278,7 +281,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     dailyLimit: limits.daily,
   });
 
-  if (!gate.ok) {
+  if (!allowNoChargeClarificationAttempt && !gate.ok) {
     const refreshed = await maybeRefreshTierFromRevenueCat(
       supabase,
       user.id,
@@ -298,7 +301,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
-  if (!gate.ok) {
+  if (!allowNoChargeClarificationAttempt && !gate.ok) {
     logWarn("coach_chat_quota_exceeded", {
       user: summarizeUser(user.id),
       tier: normalizeTier(sub.tier),

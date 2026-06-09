@@ -5,6 +5,7 @@ import {
   truncateCard,
   validateResponseCard,
 } from "./validate.ts";
+import { shouldForceCoachAnswerAfterClarifications } from "./clarification_policy.ts";
 import { quotaExceededMessage } from "../_shared/quota.ts";
 
 export interface GenerationLogger {
@@ -60,21 +61,24 @@ export async function runCoachChat(
 ): Promise<GenerationResult> {
   const now = deps.now ?? (() => Date.now());
   const startedAt = now();
+  const request = shouldForceCoachAnswerAfterClarifications(input.request)
+    ? { ...input.request, forceAnswer: true }
+    : input.request;
   const model = input.tier === "free"
     ? "claude-haiku-4-5-20251001"
     : "claude-sonnet-4-20250514";
 
   deps.logger.info("coach_chat_invoked", {
     tier: input.tier,
-    hasSummary: !!input.request.conversationSummary,
-    hasStyleContext: !!input.request.effectiveStyleContext,
-    hasSessionTurns: input.request.activeSessionTurns.length > 0,
-    forceAnswer: input.request.forceAnswer,
-    dataQualityFlagged: input.request.dataQualityFlagged,
+    hasSummary: !!request.conversationSummary,
+    hasStyleContext: !!request.effectiveStyleContext,
+    hasSessionTurns: request.activeSessionTurns.length > 0,
+    forceAnswer: request.forceAnswer,
+    dataQualityFlagged: request.dataQualityFlagged,
   });
 
   let card: CoachChatResponseCard | null = null;
-  const basePrompt = buildCoachChatPrompt(input.request);
+  const basePrompt = buildCoachChatPrompt(request);
   let lastValidationError = "schema_invalid";
 
   for (let attempt = 1; attempt <= MAX_CARD_GENERATION_ATTEMPTS; attempt++) {
@@ -97,7 +101,10 @@ export async function runCoachChat(
     }
 
     try {
-      card = parseAndValidateCard(claudeData, input.request);
+      card = enforceClarificationLimit(
+        parseAndValidateCard(claudeData, request),
+        request,
+      );
       if (attempt > 1) {
         deps.logger.info("coach_chat_retry_succeeded", {
           tier: input.tier,
@@ -122,7 +129,10 @@ export async function runCoachChat(
           errorClass: lastValidationError,
           attempts: attempt,
         });
-        card = buildFallbackCard(input.request);
+        card = enforceClarificationLimit(
+          buildFallbackCard(request),
+          request,
+        );
         break;
       }
     }
@@ -184,11 +194,55 @@ export async function runCoachChat(
         ...card,
         costDeducted: shouldDeduct && !input.accountIsTest ? 1 : 0,
       },
-      sessionId: input.request.sessionId ?? null,
+      sessionId: request.sessionId ?? null,
       provider: "claude",
       model,
       generatedAt: new Date(now()).toISOString(),
     },
+  };
+}
+
+function enforceClarificationLimit(
+  card: CoachChatResponseCard,
+  request: CoachChatRequest,
+): CoachChatResponseCard {
+  if (
+    card.responseType !== "clarifyingQuestion" ||
+    !shouldForceCoachAnswerAfterClarifications(request)
+  ) {
+    return card;
+  }
+
+  const forced = validateResponseCard(
+    buildClarificationLimitAnswerShape(request),
+  );
+  assertCardSafe(forced);
+  return forced;
+}
+
+function buildClarificationLimitAnswerShape(
+  request: CoachChatRequest,
+): Record<string, string | number | boolean | null | undefined> {
+  const baseLine = request.rawReplyDraft?.trim();
+  return {
+    responseType: "coachAnswer",
+    mode: inferFallbackAnswerMode(request),
+    headline: "先給你一個可執行建議",
+    answer:
+      "你已經釐清幾輪了，我先把目前資訊收斂成下一步：不要再卡在判斷對錯，先用低壓方式接住她的訊號，讓對話往下一球走。",
+    userTruth: null,
+    userState: "你現在需要的是可執行方向，不是再多一輪確認。",
+    frictionType: "unclearIntent",
+    nextStep: "先採取一個低風險回覆，再觀察她願不願意接球。",
+    suggestedLine: baseLine && baseLine.length <= 80
+      ? baseLine
+      : "我懂你的意思，這樣我比較知道怎麼接了。那我先回一個輕一點的版本。",
+    rewriteDecision: baseLine ? "light_edit" : "rewrite",
+    rewriteReason: "釐清次數已到上限，這輪改給正式建議。",
+    boundaryReminder: "如果她回得短，就先降低壓力，不要連續追問。",
+    needsReflection: false,
+    reflectionQuestion: null,
+    costDeducted: 1,
   };
 }
 
@@ -334,7 +388,7 @@ function buildFallbackClarificationShape(
     suggestedLine: null,
     rewriteDecision: null,
     rewriteReason: null,
-    boundaryReminder: "釐清不扣額度；正式建議才扣 1 則。",
+    boundaryReminder: "免費釐清最多 3 次；正式建議才扣 1 則。",
     needsReflection: true,
     reflectionQuestion: usedPrimaryReflection
       ? alternateReflection

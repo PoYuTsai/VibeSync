@@ -72,7 +72,8 @@ Deno.test("Spec 6 smoke: invite anxiety asks for intent before pushing", () => {
     prompt,
     "若缺少使用者感受、原本想回、真正目的或可承擔成本",
   );
-  assertStringIncludes(prompt, "只問一個免費追問");
+  assertStringIncludes(prompt, "只問一個免費釐清");
+  assertStringIncludes(prompt, "免費釐清最多 3 次");
   assertStringIncludes(prompt, "該回、該問、該推進、該收");
 });
 

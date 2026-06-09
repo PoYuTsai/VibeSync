@@ -78,9 +78,25 @@ final coachChatControllerProvider = AsyncNotifierProvider.autoDispose
 
 class CoachChatController
     extends AutoDisposeFamilyAsyncNotifier<CoachChatResult?, String> {
+  static const int maxNoChargeClarificationTurns = 3;
+
   bool _inFlight = false;
   String? _activeSessionId;
   List<CoachChatSessionTurn> _activeTurns = const [];
+
+  static int countClarificationTurns(List<CoachChatSessionTurn> turns) {
+    return turns
+        .where((turn) => turn.role == 'coach' && turn.kind == 'clarification')
+        .length;
+  }
+
+  static bool shouldForceAnswerAfterClarifications({
+    required List<CoachChatSessionTurn> turns,
+    required bool forceAnswer,
+  }) {
+    return forceAnswer ||
+        countClarificationTurns(turns) >= maxNoChargeClarificationTurns;
+  }
 
   @override
   Future<CoachChatResult?> build(String conversationId) async {
@@ -105,6 +121,11 @@ class CoachChatController
           previousResult?.sessionId ??
           'coach-$conversationId-${DateTime.now().microsecondsSinceEpoch}';
       final outboundTurns = _seedTurns(previousResult);
+      final effectiveForceAnswer =
+          CoachChatController.shouldForceAnswerAfterClarifications(
+        turns: outboundTurns,
+        forceAnswer: forceAnswer,
+      );
       state = const AsyncValue.loading();
       final conversation = ref.read(conversationProvider(conversationId));
       if (conversation == null) {
@@ -124,7 +145,7 @@ class CoachChatController
         sessionId: sessionId,
         question: trimmed,
         activeSessionTurns: outboundTurns,
-        forceAnswer: forceAnswer,
+        forceAnswer: effectiveForceAnswer,
         recentMessages: _recentMessages(conversation),
         conversationSummary: _conversationSummary(conversation),
         analysisSnapshot: analysisSnapshot,
@@ -145,7 +166,7 @@ class CoachChatController
         ...outboundTurns,
         CoachChatSessionTurn(
           role: 'user',
-          kind: forceAnswer ? 'supplement' : 'question',
+          kind: effectiveForceAnswer ? 'supplement' : 'question',
           content: trimmed,
           createdAt: DateTime.now(),
         ),

@@ -383,6 +383,36 @@ void main() {
       expect(calls.last.body['activeSessionTurns'], isNotEmpty);
     });
 
+    test('fourth clarification turn is sent as a forced answer', () async {
+      final repo = _FakeRepo();
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return calls.length <= 3
+              ? CoachChatInvokeResponse(status: 200, data: _edgeClarification())
+              : CoachChatInvokeResponse(status: 200, data: _edgeSuccess());
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await notifier.ask(question: 'q1', analysisSnapshot: _snapshot());
+      await notifier.ask(question: 'q2', analysisSnapshot: _snapshot());
+      await notifier.ask(question: 'q3', analysisSnapshot: _snapshot());
+      await notifier.ask(question: 'q4', analysisSnapshot: _snapshot());
+
+      expect(calls, hasLength(4));
+      expect(calls[0].body.containsKey('forceAnswer'), isFalse);
+      expect(calls[1].body.containsKey('forceAnswer'), isFalse);
+      expect(calls[2].body.containsKey('forceAnswer'), isFalse);
+      expect(calls[3].body['forceAnswer'], true);
+    });
+
     test('dataQuality flagged card strips partner traits from the API payload',
         () async {
       final repo = _FakeRepo();

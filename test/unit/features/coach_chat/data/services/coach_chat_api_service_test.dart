@@ -348,6 +348,7 @@ void main() {
         fail('Expected CoachChatQuotaExceededException');
       } on CoachChatQuotaExceededException catch (e) {
         expect(e.message, 'server quota message');
+        expect(e.code, 'DAILY_LIMIT_EXCEEDED');
         expect(e.used, 15);
         expect(e.limit, 15);
       }

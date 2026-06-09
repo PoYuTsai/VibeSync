@@ -84,12 +84,18 @@ class CoachChatQuotaExceededException implements Exception {
   final String message;
   final int? used;
   final int? limit;
+  final String? code;
 
-  CoachChatQuotaExceededException(this.message, {this.used, this.limit});
+  CoachChatQuotaExceededException(
+    this.message, {
+    this.used,
+    this.limit,
+    this.code,
+  });
 
   @override
   String toString() =>
-      'CoachChatQuotaExceededException: $message (used=$used, limit=$limit)';
+      'CoachChatQuotaExceededException: $message (code=$code, used=$used, limit=$limit)';
 }
 
 class CoachChatGenerationFailedException implements Exception {
@@ -183,12 +189,12 @@ class CoachChatApiService {
       case 429:
         final data = response.data;
         final asMap = data is Map ? data : const {};
+        final error = asMap['error']?.toString();
         throw CoachChatQuotaExceededException(
-          asMap['message']?.toString() ??
-              asMap['error']?.toString() ??
-              'quota_exceeded',
+          asMap['message']?.toString() ?? error ?? 'quota_exceeded',
           used: asMap['used'] is int ? asMap['used'] as int : null,
           limit: asMap['limit'] is int ? asMap['limit'] as int : null,
+          code: _quotaCodeFrom(error ?? asMap['code']?.toString()),
         );
       default:
         if (response.status >= 500) {
@@ -200,6 +206,14 @@ class CoachChatApiService {
           status: response.status,
         );
     }
+  }
+
+  String? _quotaCodeFrom(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) return null;
+    if (normalized.contains('daily')) return 'DAILY_LIMIT_EXCEEDED';
+    if (normalized.contains('monthly')) return 'MONTHLY_LIMIT_EXCEEDED';
+    return null;
   }
 
   Map<String, dynamic> _messageToWire(CoachChatMessage message) {
