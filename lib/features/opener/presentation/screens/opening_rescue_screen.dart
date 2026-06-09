@@ -461,11 +461,26 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = _friendlyGenerationError(e);
           _isGenerating = false;
         });
       }
     }
+  }
+
+  /// Maps an opener-generation failure to safe, user-facing Chinese copy.
+  ///
+  /// OpenerService wraps its known failures in Chinese-message Exceptions, but
+  /// raw network/platform errors (SocketException / TimeoutException /
+  /// ClientException) and a rare raw server `error` passthrough can reach this
+  /// catch-all in English. Only surface a message that is actually localized
+  /// (contains Chinese); otherwise fall back to a fixed Chinese string so
+  /// engineering/network vocabulary never reaches the user.
+  String _friendlyGenerationError(Object error) {
+    const fallback = '開場暫時生成失敗，請稍後再試。';
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+    final hasChinese = RegExp(r'[一-鿿]').hasMatch(message);
+    return hasChinese && message.isNotEmpty ? message : fallback;
   }
 
   void _showOpenerSnackBar(String message) {
