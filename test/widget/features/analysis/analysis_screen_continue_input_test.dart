@@ -261,6 +261,9 @@ void main() {
         find.text('開始分析'),
         findsNothing,
       );
+      expect(find.text('這次分析設定（可不改）'), findsOneWidget);
+      expect(find.text('已是伴侶'), findsOneWidget);
+      expect(find.text('目前目標'), findsOneWidget);
     });
 
     testWidgets('collapsed preview shows latest messages instead of oldest',

@@ -11,6 +11,7 @@ class ScreenshotRecognitionDialogResult {
   final String name;
   final MeetingContext? meetingContext;
   final AcquaintanceDuration? duration;
+  final UserGoal? goal;
   final String importMode;
   final List<RecognizedMessage> messages;
 
@@ -18,6 +19,7 @@ class ScreenshotRecognitionDialogResult {
     required this.name,
     required this.meetingContext,
     required this.duration,
+    required this.goal,
     required this.importMode,
     required this.messages,
   });
@@ -29,6 +31,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final String initialName;
   final MeetingContext? initialMeetingContext;
   final AcquaintanceDuration? initialDuration;
+  final UserGoal? initialGoal;
   final String initialImportMode;
   final bool forceShowSessionContextFields;
   final Conversation currentConversation;
@@ -40,6 +43,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
     required this.initialName,
     required this.initialMeetingContext,
     required this.initialDuration,
+    required this.initialGoal,
     required this.initialImportMode,
     required this.forceShowSessionContextFields,
     required this.currentConversation,
@@ -56,6 +60,7 @@ class _ScreenshotRecognitionDialogState
   late final ScrollController _messageScrollController;
   late MeetingContext? _selectedMeeting;
   late AcquaintanceDuration? _selectedDuration;
+  late UserGoal? _selectedGoal;
   late String _selectedImportMode;
   late final List<_EditableRecognizedMessage> _editableMessages;
   late bool _showDetailedEditor;
@@ -68,6 +73,7 @@ class _ScreenshotRecognitionDialogState
     _messageScrollController = ScrollController();
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
+    _selectedGoal = widget.initialGoal;
     _selectedImportMode = widget.initialImportMode;
     _editableMessages =
         (widget.recognized.messages ?? const <RecognizedMessage>[])
@@ -149,6 +155,7 @@ class _ScreenshotRecognitionDialogState
         name: _nameController.text.trim(),
         meetingContext: _selectedMeeting,
         duration: _selectedDuration,
+        goal: _selectedGoal,
         importMode: _selectedImportMode,
         messages: sanitizedMessages,
       ),
@@ -1074,6 +1081,43 @@ class _ScreenshotRecognitionDialogState
                     onSelected: (selected) {
                       setState(() {
                         _selectedDuration = selected ? duration : null;
+                      });
+                    },
+                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                    backgroundColor: Colors.white,
+                    side: BorderSide(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.4)
+                          : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                    ),
+                    labelStyle: TextStyle(
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.glassTextPrimary,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '目前目標',
+                style: TextStyle(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: UserGoal.values.map((goal) {
+                  final isSelected = _selectedGoal == goal;
+                  return ChoiceChip(
+                    label: Text(goal.label),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() {
+                        _selectedGoal = selected ? goal : null;
                       });
                     },
                     selectedColor: AppColors.primary.withValues(alpha: 0.2),

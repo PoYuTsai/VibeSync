@@ -306,6 +306,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         return '朋友介紹';
       case MeetingContext.other:
         return '其他';
+      case MeetingContext.committedPartner:
+        return '已是伴侶';
     }
   }
 

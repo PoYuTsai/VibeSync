@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 
-/// 毛玻璃風格的分段選擇按鈕 (改用實色背景)
 class GlassmorphicSegmentedButton<T> extends StatelessWidget {
   final List<GlassSegment<T>> segments;
   final T selected;
@@ -18,14 +17,11 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 改用實色背景，不依賴 BackdropFilter
-    // 加入微妙的外發光效果 (果凍感)
-    // 移除外層 boxShadow 提升滾動效能
     return Container(
       decoration: BoxDecoration(
         color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(16),  // 更圓潤
-        border: Border.all(color: AppColors.glassBorder, width: 1.5),  // 更粗的白色邊框
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.glassBorder, width: 1.5),
       ),
       child: Row(
         children: segments.map((segment) {
@@ -45,12 +41,12 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
                           ],
                         )
                       : null,
-                  borderRadius: BorderRadius.circular(14),  // 內部圓角
-                  // 簡化為單層陰影，提升效能但保持發光效果
+                  borderRadius: BorderRadius.circular(14),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: AppColors.selectedStart.withValues(alpha: 0.5),
+                            color:
+                                AppColors.selectedStart.withValues(alpha: 0.5),
                             blurRadius: 12,
                             spreadRadius: 1,
                           ),
@@ -68,15 +64,23 @@ class GlassmorphicSegmentedButton<T> extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                     ],
-                    Text(
-                      segment.label,
-                      style: AppTypography.bodyMedium.copyWith(
-                        // 選中用白色，未選中用深紫灰
-                        color: isSelected ? Colors.white : AppColors.unselectedText,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          segment.label,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: isSelected
+                                ? Colors.white
+                                : AppColors.unselectedText,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                        ),
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),

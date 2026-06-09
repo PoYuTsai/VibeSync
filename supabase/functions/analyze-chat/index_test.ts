@@ -708,6 +708,28 @@ Deno.test({
 
 Deno.test({
   name:
+    "SYSTEM_PROMPT treats partner labels according to committed-partner context",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    for (const term of [
+      "已是伴侶",
+      "男友",
+      "自己的男人",
+      "使用者本人",
+      "第三人",
+      "ambiguity",
+    ]) {
+      assert(source.includes(term), `SYSTEM_PROMPT missing ${term}`);
+    }
+  },
+});
+
+Deno.test({
+  name:
     "SYSTEM_PROMPT treats qualificationSignal as investment, not proving herself",
   permissions: { read: true },
   fn: async () => {

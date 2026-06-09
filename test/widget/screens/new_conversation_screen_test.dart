@@ -49,6 +49,7 @@ void main() {
       expect(find.text('交友軟體'), findsOneWidget);
       expect(find.text('現實認識'), findsOneWidget);
       expect(find.text('朋友介紹'), findsOneWidget);
+      expect(find.text('已是伴侶'), findsOneWidget);
     });
 
     testWidgets('shows duration selector', (tester) async {

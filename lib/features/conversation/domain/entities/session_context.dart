@@ -43,7 +43,9 @@ enum MeetingContext {
   @HiveField(2)
   friendIntro, // 朋友介紹
   @HiveField(3)
-  other; // 其他
+  other, // 其他
+  @HiveField(4)
+  committedPartner; // 已是伴侶
 
   String get label {
     switch (this) {
@@ -55,6 +57,8 @@ enum MeetingContext {
         return '朋友介紹';
       case other:
         return '其他';
+      case committedPartner:
+        return '已是伴侶';
     }
   }
 }

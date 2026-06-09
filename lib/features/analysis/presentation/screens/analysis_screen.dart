@@ -176,10 +176,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       AnalysisProgressStage.preparingPayload;
   AnalysisTelemetry? _lastRecognizeTelemetry;
   AnalysisTelemetry? _lastAnalysisTelemetry;
-  static const String _importModeAppendCurrent =
-      ScreenshotRecognitionHelper.importModeAppendCurrent;
   static const String _importModeNewConversation =
       ScreenshotRecognitionHelper.importModeNewConversation;
+  MeetingContext _screenshotMeetingContext = MeetingContext.datingApp;
+  AcquaintanceDuration _screenshotDuration = AcquaintanceDuration.justMet;
+  UserGoal _screenshotGoal = UserGoal.dateInvite;
 
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
@@ -1609,6 +1610,114 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  SessionContext _screenshotSessionContextFor(Conversation conversation) {
+    return conversation.sessionContext ??
+        SessionContext(
+          meetingContext: _screenshotMeetingContext,
+          duration: _screenshotDuration,
+          goal: _screenshotGoal,
+        );
+  }
+
+  Widget _buildChoiceChip<T>({
+    required String label,
+    required bool selected,
+    required ValueChanged<bool> onSelected,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: onSelected,
+      selectedColor: AppColors.primary.withValues(alpha: 0.2),
+      backgroundColor: Colors.white.withValues(alpha: 0.86),
+      side: BorderSide(
+        color: selected
+            ? AppColors.primary.withValues(alpha: 0.45)
+            : AppColors.glassBorder.withValues(alpha: 0.65),
+      ),
+      labelStyle: AppTypography.bodySmall.copyWith(
+        color: selected ? AppColors.primary : AppColors.glassTextPrimary,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      ),
+    );
+  }
+
+  Widget _buildScreenshotSettingSection() {
+    Widget chipWrap(List<Widget> children) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: children,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        Text(
+          '這次分析設定（可不改）',
+          style: AppTypography.bodyLarge.copyWith(
+            color: AppColors.glassTextPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '截圖只看得到對話，看不到你們的關係。這只影響本次分析，不會改對象資料。',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.glassTextSecondary,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text('認識情境', style: AppTypography.bodyMedium),
+        const SizedBox(height: 8),
+        chipWrap(
+          MeetingContext.values
+              .map(
+                (value) => _buildChoiceChip<MeetingContext>(
+                  label: value.label,
+                  selected: _screenshotMeetingContext == value,
+                  onSelected: (_) =>
+                      setState(() => _screenshotMeetingContext = value),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 14),
+        Text('認識多久', style: AppTypography.bodyMedium),
+        const SizedBox(height: 8),
+        chipWrap(
+          AcquaintanceDuration.values
+              .map(
+                (value) => _buildChoiceChip<AcquaintanceDuration>(
+                  label: value.label,
+                  selected: _screenshotDuration == value,
+                  onSelected: (_) =>
+                      setState(() => _screenshotDuration = value),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 14),
+        Text('目前目標', style: AppTypography.bodyMedium),
+        const SizedBox(height: 8),
+        chipWrap(
+          UserGoal.values
+              .map(
+                (value) => _buildChoiceChip<UserGoal>(
+                  label: value.label,
+                  selected: _screenshotGoal == value,
+                  onSelected: (_) => setState(() => _screenshotGoal = value),
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildConversationScreenshotSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1626,6 +1735,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           onImagesChanged: _handleSelectedImagesChanged,
           onMetricsChanged: _handleSelectedImageMetricsChanged,
         ),
+        _buildScreenshotSettingSection(),
         if (_selectedImages.isNotEmpty) ...[
           const SizedBox(height: 10),
           Row(
@@ -1700,6 +1810,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final newName = dialogResult.name;
     final meeting = dialogResult.meetingContext;
     final duration = dialogResult.duration;
+    final goal = dialogResult.goal;
     final importMode = dialogResult.importMode;
     final updatedRecognized = recognized.copyWith(
       contactName: newName.isNotEmpty ? newName : recognized.contactName,
@@ -1729,6 +1840,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         createdConversation.sessionContext = SessionContext(
           meetingContext: meeting,
           duration: duration,
+          goal: goal ?? UserGoal.dateInvite,
         );
       }
       await controller.save(createdConversation);
@@ -1792,6 +1904,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       conv.sessionContext = SessionContext(
         meetingContext: meeting,
         duration: duration,
+        goal: goal ?? UserGoal.dateInvite,
       );
     }
 
@@ -2707,12 +2820,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         recognized: recognized,
         warningMessage: warningMessage,
         initialName: recognized.contactName?.trim() ?? '',
-        initialMeetingContext: defaultImportMode == _importModeAppendCurrent
-            ? currentConversation.sessionContext?.meetingContext
-            : null,
-        initialDuration: defaultImportMode == _importModeAppendCurrent
-            ? currentConversation.sessionContext?.duration
-            : null,
+        initialMeetingContext:
+            _screenshotSessionContextFor(currentConversation).meetingContext,
+        initialDuration:
+            _screenshotSessionContextFor(currentConversation).duration,
+        initialGoal: _screenshotSessionContextFor(currentConversation).goal,
         initialImportMode: defaultImportMode,
         forceShowSessionContextFields:
             currentConversation.sessionContext == null,
@@ -2855,7 +2967,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ]
                 : conversation.messages,
             images: imagesToProcess,
-            sessionContext: conversation.sessionContext,
+            sessionContext: _screenshotSessionContextFor(conversation),
             knownContactName:
                 ScreenshotRecognitionHelper.isPlaceholderConversationName(
               conversation.name,
@@ -4816,6 +4928,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     onMetricsChanged:
                                         _handleSelectedImageMetricsChanged,
                                   ),
+                                  _buildScreenshotSettingSection(),
                                   const SizedBox(height: 8),
 
                                   // 對話長度提示
