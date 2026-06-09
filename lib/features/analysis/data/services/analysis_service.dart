@@ -1863,7 +1863,7 @@ class AnalysisService {
     }
 
     throw AnalysisException(
-      '串流分析回傳格式異常，請重新分析。',
+      '這次分析沒順利完成，請重新分析一次。',
       code: 'INVALID_STREAM_RESPONSE',
       suggestedAction: AnalysisErrorAction.retry,
     );
