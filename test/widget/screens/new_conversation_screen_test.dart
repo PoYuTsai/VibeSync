@@ -199,5 +199,26 @@ void main() {
 
       expect(find.text('依序輸入對話，至少先加入一則訊息。'), findsOneWidget);
     });
+
+    test('opener handoff hint says to send opener then paste reply', () {
+      expect(
+        newConversationHintText(
+          hasMessages: true,
+          hasOpenerSeed: true,
+          hasIncomingMessage: false,
+          endsWithMyMessage: true,
+        ),
+        '先把這句傳給對方；收到回覆後，貼到「她說」再建立對話分析。',
+      );
+      expect(
+        newConversationHintText(
+          hasMessages: true,
+          hasOpenerSeed: true,
+          hasIncomingMessage: false,
+          endsWithMyMessage: true,
+        ),
+        isNot(contains('已先帶入你準備送出的開場白')),
+      );
+    });
   });
 }

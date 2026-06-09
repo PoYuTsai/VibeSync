@@ -12,6 +12,31 @@ import '../../data/providers/conversation_providers.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/session_context.dart';
 
+String newConversationHintText({
+  required bool hasMessages,
+  required bool hasOpenerSeed,
+  required bool hasIncomingMessage,
+  required bool endsWithMyMessage,
+}) {
+  if (!hasMessages) {
+    return '依序輸入對話，至少先加入一則訊息。';
+  }
+
+  if (hasOpenerSeed && !hasIncomingMessage) {
+    return '先把這句傳給對方；收到回覆後，貼到「她說」再建立對話分析。';
+  }
+
+  if (!hasIncomingMessage) {
+    return '目前還沒有她的回覆。等她回覆後貼到「她說」，再建立對話分析。';
+  }
+
+  if (endsWithMyMessage) {
+    return '最後一則可以是我說，系統會以前一則她的回覆作為分析基準。';
+  }
+
+  return '最後一則是她說，建立後可直接開始分析。';
+}
+
 class NewConversationScreen extends ConsumerStatefulWidget {
   final String? partnerId;
   final bool seedFromLatestOpener;
@@ -54,23 +79,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       _messages.isNotEmpty && (_messages.last['isFromMe'] as bool);
 
   String get _conversationHint {
-    if (_messages.isEmpty) {
-      return '依序輸入對話，至少先加入一則訊息。';
-    }
-
-    if (_hasOpenerSeed && !_hasIncomingMessage) {
-      return '已先帶入你準備送出的開場白。送出後，等她回覆再貼到「她說」，就能建立對話並分析。';
-    }
-
-    if (!_hasIncomingMessage) {
-      return '目前還沒有她的回覆。等她回覆後貼到「她說」，再建立對話分析。';
-    }
-
-    if (_endsWithMyMessage) {
-      return '最後一則可以是我說，系統會以前一則她的回覆作為分析基準。';
-    }
-
-    return '最後一則是她說，建立後可直接開始分析。';
+    return newConversationHintText(
+      hasMessages: _messages.isNotEmpty,
+      hasOpenerSeed: _hasOpenerSeed,
+      hasIncomingMessage: _hasIncomingMessage,
+      endsWithMyMessage: _endsWithMyMessage,
+    );
   }
 
   @override
@@ -619,7 +633,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '這則已放進「我說」。送出後，把她的回覆貼到「她說」，就能接著分析或問教練。名字不確定也能先存成「開場草稿」。',
+                      '這則已放進「我說」。先傳給對方；等她回覆後回到這裡，把回覆貼進「她說」。',
                       style: AppTypography.bodySmall.copyWith(
                         color: AppColors.glassTextSecondary,
                         height: 1.4,
