@@ -293,7 +293,7 @@ void main() {
       expect(state.phase, StreamingAnalyzePhase.failedBeforeRecommendation);
       expect(
         state.recommendationPreviewErrorMessage,
-        contains('今日免費額度已用完'),
+        contains('今日額度已用完'),
       );
       expect(
         state.recommendationPreviewErrorMessage,

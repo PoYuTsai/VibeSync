@@ -2184,7 +2184,7 @@ class DailyLimitExceededException extends AnalysisException {
     required this.dailyLimit,
     required this.used,
   }) : super(
-          '今日免費額度已用完，可以明天再試，或升級解鎖更多分析。',
+          '今日額度已用完，可以明天再試，或升級解鎖更多分析。',
           code: 'DAILY_LIMIT_EXCEEDED',
           suggestedAction: AnalysisErrorAction.wait,
         );
@@ -2198,7 +2198,7 @@ class MonthlyLimitExceededException extends AnalysisException {
     required this.monthlyLimit,
     required this.used,
   }) : super(
-          '本月免費額度已用完，升級後可以繼續分析。',
+          '本月額度已用完，升級後可以繼續分析。',
           code: 'MONTHLY_LIMIT_EXCEEDED',
           suggestedAction: AnalysisErrorAction.upgrade,
         );
