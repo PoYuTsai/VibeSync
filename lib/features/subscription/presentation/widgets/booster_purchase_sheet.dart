@@ -48,7 +48,7 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Preview the planned one-time packages. Purchase is not live yet.',
+            '預覽即將推出的一次性加購包。',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -64,7 +64,7 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              'This sheet is read-only for now. RevenueCat booster IAP still needs to be integrated before any purchase can complete.',
+              '加購包即將推出，敬請期待。',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -164,7 +164,7 @@ class _BoosterPurchaseSheetState extends ConsumerState<BoosterPurchaseSheet> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Booster purchases are not live yet. Please use the subscription plans for now.',
+          '加購包即將推出，目前請先使用訂閱方案。',
         ),
       ),
     );
