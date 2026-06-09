@@ -7,6 +7,7 @@ import 'core/config/environment.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/revenuecat_service.dart';
 import 'core/services/supabase_service.dart';
+import 'features/onboarding/data/onboarding_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +31,10 @@ void main() async {
   await RevenueCatService.initialize(
     appUserId: SupabaseService.currentUser?.id,
   );
+
+  // Prime onboarding completion into memory before the router evaluates
+  // redirects, so a returning user is never misrouted back to onboarding.
+  await OnboardingService.load();
 
   runApp(
     const ProviderScope(

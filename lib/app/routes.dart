@@ -10,6 +10,7 @@ import '../features/conversation/presentation/screens/new_conversation_screen.da
 import 'main_shell.dart';
 import '../features/learning/presentation/screens/article_detail_screen.dart';
 import '../features/opener/presentation/screens/opening_rescue_screen.dart';
+import '../features/onboarding/data/onboarding_service.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/conversation/presentation/screens/profile_card_screen.dart';
@@ -23,23 +24,56 @@ import '../features/user_profile/presentation/screens/partner_style_edit_screen.
 final _routerRefreshListenable =
     _GoRouterRefreshStream(SupabaseService.authStateChanges);
 
+/// Pure auth + onboarding gate decision used by the live router redirect.
+///
+/// Kept side-effect free and synchronous so the full redirect matrix is unit
+/// testable without Supabase or SharedPreferences, and so the unauthenticated
+/// auth gate stays synchronous (unchanged) rather than awaiting storage on
+/// every navigation. The live redirect feeds [isOnboardingCompleted] from the
+/// in-memory [OnboardingService.isCompletedSync] cache primed at startup.
+String? resolveAppRedirect({
+  required bool isLoggedIn,
+  required bool isOnboardingCompleted,
+  required bool isPasswordRecovery,
+  required String matchedLocation,
+}) {
+  final isLoginRoute = matchedLocation == '/login';
+  final isOnboardingRoute = matchedLocation == '/onboarding';
+
+  // Unauthenticated: only /login is reachable. (Auth gate — unchanged.)
+  if (!isLoggedIn) {
+    return isLoginRoute ? null : '/login';
+  }
+
+  // Authenticated below.
+
+  // Password recovery keeps the user on /login to set a new password.
+  if (isLoginRoute && isPasswordRecovery) {
+    return null;
+  }
+
+  // Onboarding not finished -> force first-run onboarding (except when on it).
+  if (!isOnboardingCompleted) {
+    return isOnboardingRoute ? null : '/onboarding';
+  }
+
+  // Onboarding finished -> never show /login or /onboarding again.
+  if (isLoginRoute || isOnboardingRoute) {
+    return '/';
+  }
+
+  return null;
+}
+
 final router = GoRouter(
   initialLocation: '/login',
   refreshListenable: _routerRefreshListenable,
-  redirect: (context, state) {
-    final isLoggedIn = SupabaseService.isAuthenticated;
-    final isLoginRoute = state.matchedLocation == '/login';
-    final isPasswordRecoveryRoute =
-        isLoginRoute && SupabaseService.isPasswordRecoveryInProgress;
-
-    if (!isLoggedIn && !isLoginRoute) {
-      return '/login';
-    }
-    if (isLoggedIn && isLoginRoute && !isPasswordRecoveryRoute) {
-      return '/';
-    }
-    return null;
-  },
+  redirect: (context, state) => resolveAppRedirect(
+    isLoggedIn: SupabaseService.isAuthenticated,
+    isOnboardingCompleted: OnboardingService.isCompletedSync,
+    isPasswordRecovery: SupabaseService.isPasswordRecoveryInProgress,
+    matchedLocation: state.matchedLocation,
+  ),
   routes: [
     GoRoute(
       path: '/login',
