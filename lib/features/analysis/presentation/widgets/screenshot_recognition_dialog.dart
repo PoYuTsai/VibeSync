@@ -12,6 +12,7 @@ class ScreenshotRecognitionDialogResult {
   final MeetingContext? meetingContext;
   final AcquaintanceDuration? duration;
   final UserGoal? goal;
+  final String? analysisContextNote;
   final String importMode;
   final List<RecognizedMessage> messages;
 
@@ -20,6 +21,7 @@ class ScreenshotRecognitionDialogResult {
     required this.meetingContext,
     required this.duration,
     required this.goal,
+    required this.analysisContextNote,
     required this.importMode,
     required this.messages,
   });
@@ -32,6 +34,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final MeetingContext? initialMeetingContext;
   final AcquaintanceDuration? initialDuration;
   final UserGoal? initialGoal;
+  final String initialAnalysisContextNote;
   final String initialImportMode;
   final bool forceShowSessionContextFields;
   final Conversation currentConversation;
@@ -44,6 +47,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
     required this.initialMeetingContext,
     required this.initialDuration,
     required this.initialGoal,
+    required this.initialAnalysisContextNote,
     required this.initialImportMode,
     required this.forceShowSessionContextFields,
     required this.currentConversation,
@@ -57,6 +61,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
 class _ScreenshotRecognitionDialogState
     extends State<ScreenshotRecognitionDialog> {
   late final TextEditingController _nameController;
+  late final TextEditingController _analysisContextNoteController;
   late final ScrollController _messageScrollController;
   late MeetingContext? _selectedMeeting;
   late AcquaintanceDuration? _selectedDuration;
@@ -70,6 +75,8 @@ class _ScreenshotRecognitionDialogState
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
+    _analysisContextNoteController =
+        TextEditingController(text: widget.initialAnalysisContextNote);
     _messageScrollController = ScrollController();
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
@@ -85,6 +92,7 @@ class _ScreenshotRecognitionDialogState
   @override
   void dispose() {
     _nameController.dispose();
+    _analysisContextNoteController.dispose();
     _messageScrollController.dispose();
     for (final message in _editableMessages) {
       message.dispose();
@@ -156,6 +164,9 @@ class _ScreenshotRecognitionDialogState
         meetingContext: _selectedMeeting,
         duration: _selectedDuration,
         goal: _selectedGoal,
+        analysisContextNote: _analysisContextNoteController.text.trim().isEmpty
+            ? null
+            : _analysisContextNoteController.text.trim(),
         importMode: _selectedImportMode,
         messages: sanitizedMessages,
       ),
@@ -1134,6 +1145,39 @@ class _ScreenshotRecognitionDialogState
                     ),
                   );
                 }).toList(),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '補充背景（選填）',
+                style: TextStyle(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _analysisContextNoteController,
+                minLines: 1,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: '例如：她是我女友／我其實沒看 F1／我想誠實但不要冷掉',
+                  hintStyle: const TextStyle(color: AppColors.unselectedText),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.5),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                style: const TextStyle(color: AppColors.glassTextPrimary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響本次分析，不會改對象資料。',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextSecondary,
+                  height: 1.35,
+                ),
               ),
             ],
           ],

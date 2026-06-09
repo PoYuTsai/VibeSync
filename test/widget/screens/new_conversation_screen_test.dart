@@ -79,6 +79,18 @@ void main() {
       expect(find.text('自然聊天'), findsOneWidget);
     });
 
+    testWidgets('shows optional analysis context note field', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      expect(find.text('補充背景（選填）'), findsOneWidget);
+      expect(find.textContaining('她是我女友'), findsOneWidget);
+      expect(find.textContaining('只影響本次分析'), findsOneWidget);
+    });
+
     testWidgets('hides save button before any message is added',
         (tester) async {
       await tester.pumpWidget(
@@ -101,7 +113,7 @@ void main() {
         ),
       );
 
-      final myMessageField = find.byType(TextField).at(2);
+      final myMessageField = find.byType(TextField).at(3);
       await tester.ensureVisible(myMessageField);
       await tester.enterText(myMessageField, '你好');
       final addButton = find.byIcon(Icons.add).last;
@@ -125,7 +137,7 @@ void main() {
         ),
       );
 
-      final herMessageField = find.byType(TextField).at(1);
+      final herMessageField = find.byType(TextField).at(2);
       await tester.ensureVisible(herMessageField);
       await tester.enterText(herMessageField, '你好');
       final addButton = find.byIcon(Icons.add).first;

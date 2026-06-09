@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 
 Message _msg(String content, {bool fromMe = false}) {
   return Message(
@@ -87,6 +88,52 @@ void main() {
       expect(body['revenueCatAppUserId'], r'$RCAnonymousID:abc');
       expect(body['messages'], isA<List<dynamic>>());
       expect((body['messages'] as List).length, 2);
+    });
+
+    test('POSTs analysis context note inside sessionContext', () async {
+      late http.Request capturedRequest;
+      final mockClient = MockClient((request) async {
+        capturedRequest = request;
+        return http.Response(
+          jsonEncode({
+            'analysisRunId': 'run_note',
+            'estimatedFullSeconds': 12,
+            'quickResult': {
+              'nextStep': '誠實接話',
+              'recommendedReply': '我其實沒看 F1，但想聽妳推薦從哪場開始看。',
+              'shortReason': '照補充背景誠實延續',
+              'insufficientContext': false,
+              'confidence': 'high',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:note',
+      );
+
+      await service.analyzeQuick(
+        messages: [_msg('有看 F1 嗎？')],
+        sessionContext: SessionContext(
+          meetingContext: MeetingContext.datingApp,
+          duration: AcquaintanceDuration.justMet,
+          goal: UserGoal.justChat,
+          analysisContextNote: '我其實沒看 F1，想誠實但不要冷掉',
+        ),
+      );
+
+      final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
+      final sessionContext = body['sessionContext'] as Map<String, dynamic>;
+      expect(
+        sessionContext['analysisContextNote'],
+        '我其實沒看 F1，想誠實但不要冷掉',
+      );
     });
 
     test('throws DailyLimitExceededException on 429 with dailyLimit', () async {

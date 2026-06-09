@@ -264,6 +264,9 @@ void main() {
       expect(find.text('這次分析設定（可不改）'), findsOneWidget);
       expect(find.text('已是伴侶'), findsOneWidget);
       expect(find.text('目前目標'), findsOneWidget);
+      expect(find.text('補充背景（選填）'), findsOneWidget);
+      expect(find.textContaining('她是我女友'), findsOneWidget);
+      expect(find.textContaining('只影響本次分析'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('collapsed preview shows latest messages instead of oldest',

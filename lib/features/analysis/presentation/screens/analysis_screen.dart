@@ -181,6 +181,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   MeetingContext _screenshotMeetingContext = MeetingContext.datingApp;
   AcquaintanceDuration _screenshotDuration = AcquaintanceDuration.justMet;
   UserGoal _screenshotGoal = UserGoal.dateInvite;
+  final _screenshotAnalysisContextNoteController = TextEditingController();
 
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
@@ -1187,6 +1188,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _scrollController.dispose();
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
+    _screenshotAnalysisContextNoteController.dispose();
     super.dispose();
   }
 
@@ -1611,12 +1613,35 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   SessionContext _screenshotSessionContextFor(Conversation conversation) {
-    return conversation.sessionContext ??
-        SessionContext(
-          meetingContext: _screenshotMeetingContext,
-          duration: _screenshotDuration,
-          goal: _screenshotGoal,
-        );
+    final existing = conversation.sessionContext;
+    final note = _screenshotAnalysisContextNoteFor(conversation);
+    if (existing != null) {
+      return SessionContext(
+        meetingContext: existing.meetingContext,
+        duration: existing.duration,
+        goal: existing.goal,
+        userStyle: existing.userStyle,
+        userInterests: existing.userInterests,
+        targetDescription: existing.targetDescription,
+        analysisContextNote: note,
+      );
+    }
+
+    return SessionContext(
+      meetingContext: _screenshotMeetingContext,
+      duration: _screenshotDuration,
+      goal: _screenshotGoal,
+      analysisContextNote: note,
+    );
+  }
+
+  String? _screenshotAnalysisContextNoteFor(Conversation conversation) {
+    final typed = _screenshotAnalysisContextNoteController.text.trim();
+    if (typed.isNotEmpty) {
+      return typed;
+    }
+    final existing = conversation.sessionContext?.analysisContextNote?.trim();
+    return existing == null || existing.isEmpty ? null : existing;
   }
 
   Widget _buildChoiceChip<T>({
@@ -1713,6 +1738,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 ),
               )
               .toList(),
+        ),
+        const SizedBox(height: 14),
+        Text('補充背景（選填）', style: AppTypography.bodyMedium),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _screenshotAnalysisContextNoteController,
+          minLines: 1,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: '例如：她是我女友／我其實沒看 F1／我想誠實但不要冷掉',
+            hintStyle: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextHint,
+            ),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.86),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+          ),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.glassTextPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響本次分析，不會改對象資料。',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.glassTextSecondary,
+            height: 1.35,
+          ),
         ),
       ],
     );
@@ -1811,6 +1871,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final meeting = dialogResult.meetingContext;
     final duration = dialogResult.duration;
     final goal = dialogResult.goal;
+    final analysisContextNote = dialogResult.analysisContextNote;
     final importMode = dialogResult.importMode;
     final updatedRecognized = recognized.copyWith(
       contactName: newName.isNotEmpty ? newName : recognized.contactName,
@@ -1841,6 +1902,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           meetingContext: meeting,
           duration: duration,
           goal: goal ?? UserGoal.dateInvite,
+          analysisContextNote: analysisContextNote,
         );
       }
       await controller.save(createdConversation);
@@ -1905,6 +1967,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         meetingContext: meeting,
         duration: duration,
         goal: goal ?? UserGoal.dateInvite,
+        analysisContextNote: analysisContextNote,
+      );
+    } else if (conv.sessionContext != null &&
+        analysisContextNote != null &&
+        analysisContextNote.trim().isNotEmpty) {
+      final existing = conv.sessionContext!;
+      conv.sessionContext = SessionContext(
+        meetingContext: existing.meetingContext,
+        duration: existing.duration,
+        goal: existing.goal,
+        userStyle: existing.userStyle,
+        userInterests: existing.userInterests,
+        targetDescription: existing.targetDescription,
+        analysisContextNote: analysisContextNote.trim(),
       );
     }
 
@@ -2825,6 +2901,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         initialDuration:
             _screenshotSessionContextFor(currentConversation).duration,
         initialGoal: _screenshotSessionContextFor(currentConversation).goal,
+        initialAnalysisContextNote:
+            _screenshotAnalysisContextNoteFor(currentConversation) ?? '',
         initialImportMode: defaultImportMode,
         forceShowSessionContextFields:
             currentConversation.sessionContext == null,

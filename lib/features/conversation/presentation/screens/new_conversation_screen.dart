@@ -31,13 +31,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final _nameController = TextEditingController();
   final _herMessageController = TextEditingController();
   final _myMessageController = TextEditingController();
-  final _targetDescriptionController = TextEditingController();
+  final _analysisContextNoteController = TextEditingController();
   final _openerResultCacheService = OpenerResultCacheService();
 
   final List<Map<String, dynamic>> _messages = [];
 
   bool _isLoading = false;
-  bool _showPersonalization = false;
   bool _showAnalysisSettings = false;
   bool _hasOpenerSeed = false;
   String? _openerSeedText;
@@ -87,7 +86,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     _nameController.dispose();
     _herMessageController.dispose();
     _myMessageController.dispose();
-    _targetDescriptionController.dispose();
+    _analysisContextNoteController.dispose();
     super.dispose();
   }
 
@@ -249,9 +248,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         goal: _goal,
         userStyle: null,
         userInterests: null,
-        targetDescription: _targetDescriptionController.text.trim().isEmpty
+        targetDescription: null,
+        analysisContextNote: _analysisContextNoteController.text.trim().isEmpty
             ? null
-            : _targetDescriptionController.text.trim(),
+            : _analysisContextNoteController.text.trim(),
       );
       await controller.save(conversation);
 
@@ -381,6 +381,21 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         selected: _goal,
         onChanged: (value) => setState(() => _goal = value),
       ),
+      const SizedBox(height: 16),
+      Text('補充背景（選填）', style: AppTypography.bodyLarge),
+      const SizedBox(height: 8),
+      GlassmorphicTextField(
+        controller: _analysisContextNoteController,
+        hintText: '例如：她是我女友／我其實沒看 F1／我想誠實但不要冷掉',
+        isDense: true,
+      ),
+      const SizedBox(height: 8),
+      Text(
+        '截圖看不到的關係或你的真實狀態，可以寫在這裡。只影響本次分析，不會改對象資料。',
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.textSecondary,
+        ),
+      ),
     ];
   }
 
@@ -419,48 +434,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       if (_showAnalysisSettings) ...[
         const SizedBox(height: 16),
         ..._buildSessionContextSettings(),
-      ],
-    ];
-  }
-
-  List<Widget> _buildLegacyPersonalizationBlock() {
-    return [
-      const SizedBox(height: 24),
-      InkWell(
-        onTap: () =>
-            setState(() => _showPersonalization = !_showPersonalization),
-        child: Row(
-          children: [
-            Icon(
-              _showPersonalization ? Icons.expand_less : Icons.expand_more,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '個人化資訊（選填）',
-              style: AppTypography.bodyLarge.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-      if (_showPersonalization) ...[
-        const SizedBox(height: 16),
-        Text('對方特質', style: AppTypography.bodyMedium),
-        const SizedBox(height: 8),
-        GlassmorphicTextField(
-          controller: _targetDescriptionController,
-          hintText: '例如：活潑、慢熱、喜歡戶外活動',
-          isDense: true,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '這些對方資訊可到對象卡的「對方特質」齒輪設定一次。',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.textSecondary,
-          ),
-        ),
       ],
     ];
   }
@@ -683,7 +656,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               ],
               if (widget.partnerId == null) ...[
                 ..._buildSessionContextSettings(),
-                ..._buildLegacyPersonalizationBlock(),
                 const SizedBox(height: 24),
                 ..._buildConversationContentInput(),
               ] else ...[

@@ -132,6 +132,9 @@ class SessionContext extends HiveObject {
   @HiveField(5)
   final String? targetDescription;
 
+  @HiveField(6)
+  final String? analysisContextNote;
+
   SessionContext({
     required this.meetingContext,
     required this.duration,
@@ -139,6 +142,7 @@ class SessionContext extends HiveObject {
     this.userStyle,
     this.userInterests,
     this.targetDescription,
+    this.analysisContextNote,
   });
 
   Map<String, dynamic> toJson() => {
@@ -148,5 +152,6 @@ class SessionContext extends HiveObject {
         'userStyle': userStyle?.label,
         'userInterests': userInterests,
         'targetDescription': targetDescription,
+        'analysisContextNote': analysisContextNote,
       };
 }

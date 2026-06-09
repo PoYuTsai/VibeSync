@@ -1260,6 +1260,9 @@ class AnalysisService {
             'meetingContext': sessionContext.meetingContext.label,
             'duration': sessionContext.duration.label,
             'goal': sessionContext.goal.label,
+            if (sessionContext.analysisContextNote != null &&
+                sessionContext.analysisContextNote!.trim().isNotEmpty)
+              'analysisContextNote': sessionContext.analysisContextNote!.trim(),
           },
         if (conversationSummary != null &&
             conversationSummary.trim().isNotEmpty)
@@ -1991,6 +1994,9 @@ class AnalysisService {
           'meetingContext': sessionContext.meetingContext.label,
           'duration': sessionContext.duration.label,
           'goal': sessionContext.goal.label,
+          if (sessionContext.analysisContextNote != null &&
+              sessionContext.analysisContextNote!.trim().isNotEmpty)
+            'analysisContextNote': sessionContext.analysisContextNote!.trim(),
         },
       if (conversationSummary != null && conversationSummary.trim().isNotEmpty)
         'conversationSummary': conversationSummary.trim(),

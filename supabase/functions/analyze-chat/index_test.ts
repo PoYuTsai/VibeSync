@@ -162,6 +162,26 @@ Deno.test("selectModel - complex emotions uses Sonnet", () => {
 
 Deno.test({
   name:
+    "SYSTEM_PROMPT treats analysisContextNote as current premise without fabricating user experience",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("analysisContextNote?: string"));
+    assert(source.includes('"analysisContextNote"'));
+    assert(source.includes("本次補充背景"));
+    assert(source.includes("本次分析現實前提"));
+    assert(source.includes("不可替使用者捏造經驗"));
+    assert(source.includes("誠實但有態度、有延續性"));
+    assert(source.includes("我其實沒追，但妳推薦我一場入門？"));
+    assert(source.includes("Analysis context note"));
+  },
+});
+
+Deno.test({
+  name:
     "SYSTEM_PROMPT locks personality-observation replies into half-agree + image + question",
   permissions: { read: true },
   fn: async () => {

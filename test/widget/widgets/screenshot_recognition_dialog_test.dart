@@ -17,6 +17,7 @@ void main() {
     MeetingContext? initialMeetingContext,
     AcquaintanceDuration? initialDuration,
     UserGoal? initialGoal,
+    String initialAnalysisContextNote = '',
     Conversation? currentConversation,
     ValueChanged<ScreenshotRecognitionDialogResult?>? onResult,
   }) {
@@ -35,6 +36,7 @@ void main() {
                   initialMeetingContext: initialMeetingContext,
                   initialDuration: initialDuration,
                   initialGoal: initialGoal,
+                  initialAnalysisContextNote: initialAnalysisContextNote,
                   initialImportMode: initialImportMode,
                   forceShowSessionContextFields: forceShowSessionContextFields,
                   currentConversation: currentConversation ??
@@ -154,6 +156,7 @@ void main() {
         meetingContext: null,
         duration: null,
         goal: null,
+        analysisContextNote: null,
         importMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
         messages: [],
       );
@@ -203,6 +206,35 @@ void main() {
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.goal, UserGoal.maintainHeat);
+    });
+
+    testWidgets('returns optional analysis context note', (tester) async {
+      await _useTallSurface(tester);
+
+      ScreenshotRecognitionDialogResult? dialogResult;
+
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeNewConversation,
+          forceShowSessionContextFields: true,
+          initialMeetingContext: MeetingContext.committedPartner,
+          initialDuration: AcquaintanceDuration.monthPlus,
+          initialGoal: UserGoal.justChat,
+          onResult: (result) => dialogResult = result,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, '她是我女友');
+      await tester.tap(find.text('確認加入對話'));
+      await tester.pumpAndSettle();
+
+      expect(dialogResult, isNotNull);
+      expect(dialogResult!.analysisContextNote, '她是我女友');
     });
 
     testWidgets('allows editing speaker and content before import',

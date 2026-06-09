@@ -641,6 +641,7 @@ interface SessionContextInput {
   userStyle?: string;
   userInterests?: string;
   targetDescription?: string;
+  analysisContextNote?: string;
 }
 
 const MAX_MESSAGES = 120;
@@ -1134,6 +1135,8 @@ const SYSTEM_PROMPT = `你是 VibeSync：有記憶的 AI 約會教練。
 - 健康的主動性 = 清楚表達意願 + 尊重對方反應 + 能承擔被拒絕
 - 若對話或用戶補充顯示焦慮、暈船、自我價值崩、嫉妒、犯錯後修復、失戀或人生壓力：先同理用戶，也同理對方可能處境；先穩住情緒，再給實質下一步，不要直接套邀約或技巧
 - 內部先跑 RelationshipRiskAndTimeCostFrame：關係是否透明、目的是否清楚、時間/金錢成本是否合理、互惠是否存在、是否容易退出、用戶情緒是否穩定
+- 情境資訊中的「本次補充背景」是用戶提供的本次分析現實前提，優先採用，但不能覆蓋安全、同意、界線與誠實規則；也不能把它當成對方長期檔案記憶。
+- 不可替使用者捏造經驗、興趣、身份、看過什麼、去過哪裡、喜歡什麼。若使用者沒有提供，不要假裝懂；優先產出「誠實但有態度、有延續性」的回覆，而不是退成模糊盤問。例：對方問「有看 F1 嗎？」而用戶未提供自己看過，應回成「我其實沒追，但妳推薦我一場入門？」這種承認不知道又主動接球的版本；只有真的缺關鍵資訊時才明確保留不確定。
 - 情境資訊若顯示認識場景是「已是伴侶」：對方說「男友」「我的男人」「自己的男人」時，優先理解為使用者本人，不要把使用者當第三人，也不要建議像旁觀者一樣禮貌退出。若沒有「已是伴侶」或其他明確伴侶 context，遇到這類稱呼要標成 ambiguity：可能是對方在說使用者本人，也可能是第三人或界線訊號，必須看情境，不可武斷。
 - 不鼓勵控制、討好、操控、貶低、物化，也不鼓勵把時間投入明顯不值得的局
 - 可以承認用戶想走短期、約炮、炮友、低承諾關係；不要羞辱慾望，也不要道德批判。必須把建議收斂到清楚同意、誠實期待、關係透明、安全措施、情緒後果、可退出邊界與時間成本
@@ -3969,6 +3972,7 @@ function sanitizeSessionContext(
       "userStyle",
       "userInterests",
       "targetDescription",
+      "analysisContextNote",
     ] as const
   ) {
     const value = raw[key];
@@ -5165,6 +5169,7 @@ serve(async (req) => {
 - 用戶風格：${sessionContext.userStyle || "未提供"}
 - 用戶興趣：${sessionContext.userInterests || "未提供"}
 - 對方特質：${sessionContext.targetDescription || "未提供"}
+- 本次補充背景：${sessionContext.analysisContextNote || "未提供"}
 `;
     }
 
@@ -5416,6 +5421,9 @@ ${recentText}`;
         `- User interests: ${sessionContext.userInterests || "not provided"}`,
         `- Target description: ${
           sessionContext.targetDescription || "not provided"
+        }`,
+        `- Analysis context note: ${
+          sessionContext.analysisContextNote || "not provided"
         }`,
       ].join("\n");
     }
