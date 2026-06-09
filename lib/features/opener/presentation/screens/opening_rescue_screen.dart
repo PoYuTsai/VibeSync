@@ -538,149 +538,152 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
           title: Text('開場救星', style: AppTypography.headlineMedium),
         ),
-        body: SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Text(
-                '開場救星',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.bokehCoral,
-                  fontWeight: FontWeight.w600,
+        body: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Text(
+                  '開場救星',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.bokehCoral,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                boundPartnerName != null
-                    ? '為 $boundPartnerName 想開場'
-                    : 'AI 幫你打造完美開場',
-                style: AppTypography.headlineLarge.copyWith(
-                  color: Colors.white,
+                const SizedBox(height: 4),
+                Text(
+                  boundPartnerName != null
+                      ? '為 $boundPartnerName 想開場'
+                      : 'AI 幫你打造完美開場',
+                  style: AppTypography.headlineLarge.copyWith(
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-              // Tab switcher
-              GlassmorphicSegmentedButton<int>(
-                segments: const [
-                  GlassSegment(value: 0, label: '截圖自介'),
-                  GlassSegment(value: 1, label: '手動輸入'),
-                ],
-                selected: _selectedTab,
-                onChanged: (val) => setState(() {
-                  _selectedTab = val;
-                  _result = null;
-                  _error = null;
-                  _currentDraftId = null;
-                }),
-              ),
-              const SizedBox(height: 20),
-
-              // Tab content
-              if (_selectedTab == 0) _buildScreenshotTab(),
-              if (_selectedTab == 1) _buildManualTab(),
-
-              if (_drafts.isNotEmpty && _result == null) ...[
-                const SizedBox(height: 16),
-                _buildRecentDraftsCard(),
-              ],
-
-              const SizedBox(height: 16),
-
-              // Cost indicator + 柔性提示
-              // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
-              // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
-              Center(
-                child: Column(
-                  children: [
-                    Text(
-                      OpeningRescueScreen.generationQuotaHint(
-                        hasResult: hasGeneratedResult,
-                        estimatedCost: _estimatedCost,
-                      ),
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.onBackgroundSecondary,
-                      ),
-                    ),
-                    if (activeInput.images == null ||
-                        activeInput.images!.isEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '附上對方截圖，AI 看到的線索更具體，開場通常更準',
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.onBackgroundSecondary
-                              .withValues(alpha: 0.72),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                // Tab switcher
+                GlassmorphicSegmentedButton<int>(
+                  segments: const [
+                    GlassSegment(value: 0, label: '截圖自介'),
+                    GlassSegment(value: 1, label: '手動輸入'),
                   ],
+                  selected: _selectedTab,
+                  onChanged: (val) => setState(() {
+                    _selectedTab = val;
+                    _result = null;
+                    _error = null;
+                    _currentDraftId = null;
+                  }),
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 20),
 
-              // Generate button
-              GradientButton(
-                text: OpeningRescueScreen.generateButtonText(
-                  hasResult: hasGeneratedResult,
-                ),
-                isLoading: _isGenerating,
-                onPressed: OpeningRescueScreen.canStartGeneration(
-                  isGenerating: _isGenerating,
-                  hasResult: hasGeneratedResult,
-                )
-                    ? _generate
-                    : null,
-              ),
-              const SizedBox(height: 16),
+                // Tab content
+                if (_selectedTab == 0) _buildScreenshotTab(),
+                if (_selectedTab == 1) _buildManualTab(),
 
-              // Loading state
-              if (_isGenerating)
+                if (_drafts.isNotEmpty && _result == null) ...[
+                  const SizedBox(height: 16),
+                  _buildRecentDraftsCard(),
+                ],
+
+                const SizedBox(height: 16),
+
+                // Cost indicator + 柔性提示
+                // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
+                // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
                 Center(
                   child: Column(
                     children: [
-                      const SizedBox(height: 8),
-                      const CircularProgressIndicator(
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(AppColors.bokehCoral),
-                      ),
-                      const SizedBox(height: 12),
                       Text(
-                        '正在幫你想開場白…',
-                        style: AppTypography.bodyMedium.copyWith(
+                        OpeningRescueScreen.generationQuotaHint(
+                          hasResult: hasGeneratedResult,
+                          estimatedCost: _estimatedCost,
+                        ),
+                        style: AppTypography.caption.copyWith(
                           color: AppColors.onBackgroundSecondary,
                         ),
                       ),
+                      if (activeInput.images == null ||
+                          activeInput.images!.isEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '附上對方截圖，AI 看到的線索更具體，開場通常更準',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.onBackgroundSecondary
+                                .withValues(alpha: 0.72),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
 
-              // Error
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Center(
-                    child: Text(
-                      _error!,
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.error,
-                      ),
-                      textAlign: TextAlign.center,
+                // Generate button
+                GradientButton(
+                  text: OpeningRescueScreen.generateButtonText(
+                    hasResult: hasGeneratedResult,
+                  ),
+                  isLoading: _isGenerating,
+                  onPressed: OpeningRescueScreen.canStartGeneration(
+                    isGenerating: _isGenerating,
+                    hasResult: hasGeneratedResult,
+                  )
+                      ? _generate
+                      : null,
+                ),
+                const SizedBox(height: 16),
+
+                // Loading state
+                if (_isGenerating)
+                  Center(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 8),
+                        const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.bokehCoral),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '正在幫你想開場白…',
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
 
-              // Results
-              if (_result != null) ...[
-                const SizedBox(height: 24),
-                _buildResults(subscription),
+                // Error
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Center(
+                      child: Text(
+                        _error!,
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.error,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+
+                // Results
+                if (_result != null) ...[
+                  const SizedBox(height: 24),
+                  _buildResults(subscription),
+                ],
+
+                const SizedBox(height: 40),
               ],
-
-              const SizedBox(height: 40),
-            ],
+            ),
           ),
         ),
       ),
