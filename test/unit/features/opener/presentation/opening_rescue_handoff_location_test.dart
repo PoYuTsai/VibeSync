@@ -26,6 +26,30 @@ void main() {
     );
   });
 
+  test('paywall return clears quota error only after premium unlock', () {
+    expect(
+      OpeningRescueScreen.shouldClearPaywallQuotaError(
+        hasError: true,
+        isPremium: true,
+      ),
+      isTrue,
+    );
+    expect(
+      OpeningRescueScreen.shouldClearPaywallQuotaError(
+        hasError: true,
+        isPremium: false,
+      ),
+      isFalse,
+    );
+    expect(
+      OpeningRescueScreen.shouldClearPaywallQuotaError(
+        hasError: false,
+        isPremium: true,
+      ),
+      isFalse,
+    );
+  });
+
   test('generate button copy reflects generated-result lock state', () {
     expect(
       OpeningRescueScreen.generateButtonText(hasResult: false),

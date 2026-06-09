@@ -273,6 +273,35 @@ void main() {
       expect(fake.fullCallCount, 0);
     });
 
+    test('quota exhaustion failure uses localized streaming error copy',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..streamError = DailyLimitExceededException(
+          dailyLimit: 15,
+          used: 15,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.failedBeforeRecommendation);
+      expect(
+        state.recommendationPreviewErrorMessage,
+        contains('今日免費額度已用完'),
+      );
+      expect(
+        state.recommendationPreviewErrorMessage,
+        isNot(contains('Daily limit exceeded')),
+      );
+      expect(state.recommendationPreviewErrorCode, 'DAILY_LIMIT_EXCEEDED');
+    });
+
     test(
         'full failure preserves recommendation preview and emits failedAfterRecommendation with retries',
         () async {

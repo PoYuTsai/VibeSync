@@ -780,6 +780,43 @@ Deno.test({
 });
 
 Deno.test({
+  name: "opener mode filters paid styles before charging quota",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("function filterOpenerPayloadForAllowedFeatures"));
+    assert(
+      source.includes(
+        "const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures",
+      ),
+    );
+    assert(source.includes("opener_response_no_allowed_styles"));
+    assert(source.includes("shouldChargeQuota: false"));
+    assert(
+      source.indexOf(
+        "const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures",
+      ) < source.indexOf('await supabase.rpc("increment_usage"'),
+      "opener style filtering must happen before quota deduction",
+    );
+  },
+});
+
+Deno.test({
+  name: "request body guard allows three max opener screenshots",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assert(source.includes("const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024"));
+  },
+});
+
+Deno.test({
   name: "opener mode validates image payload before Claude call",
   permissions: { read: true },
   fn: async () => {
@@ -873,17 +910,38 @@ Deno.test("validateOpenerImages rejects oversized opener image payloads", () => 
   assertEquals(
     validateOpenerImages([
       {
-        data: base64PayloadWithEstimatedBytes(700 * 1024),
+        data: base64PayloadWithEstimatedBytes(MAX_IMAGE_BYTES),
         mediaType: "image/jpeg",
         order: 1,
       },
       {
-        data: base64PayloadWithEstimatedBytes(700 * 1024),
+        data: base64PayloadWithEstimatedBytes(MAX_IMAGE_BYTES),
         mediaType: "image/jpeg",
         order: 2,
       },
       {
-        data: base64PayloadWithEstimatedBytes(700 * 1024),
+        data: base64PayloadWithEstimatedBytes(MAX_IMAGE_BYTES),
+        mediaType: "image/jpeg",
+        order: 3,
+      },
+    ]),
+    {},
+  );
+
+  assertEquals(
+    validateOpenerImages([
+      {
+        data: base64PayloadWithEstimatedBytes(MAX_IMAGE_BYTES),
+        mediaType: "image/jpeg",
+        order: 1,
+      },
+      {
+        data: base64PayloadWithEstimatedBytes(MAX_IMAGE_BYTES),
+        mediaType: "image/jpeg",
+        order: 2,
+      },
+      {
+        data: base64PayloadWithEstimatedBytes(MAX_IMAGE_BYTES + 1),
         mediaType: "image/jpeg",
         order: 3,
       },
@@ -891,7 +949,7 @@ Deno.test("validateOpenerImages rejects oversized opener image payloads", () => 
     { error: "Total image payload too large", status: 400 },
   );
 
-  assert(MAX_TOTAL_IMAGE_BYTES > MAX_IMAGE_BYTES);
+  assertEquals(MAX_TOTAL_IMAGE_BYTES, MAX_IMAGE_BYTES * 3);
 });
 
 Deno.test({

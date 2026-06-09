@@ -112,7 +112,12 @@ void main() {
 
       expect(
         () => service.analyzeQuick(messages: [_msg('hi')]),
-        throwsA(isA<DailyLimitExceededException>()),
+        throwsA(
+          isA<DailyLimitExceededException>()
+              .having((e) => e.code, 'code', 'DAILY_LIMIT_EXCEEDED')
+              .having((e) => e.message, 'message', contains('今日免費額度已用完'))
+              .having((e) => e.message, 'message', isNot(contains('Daily'))),
+        ),
       );
     });
 

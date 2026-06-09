@@ -43,6 +43,13 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     return !isGenerating && !hasResult;
   }
 
+  static bool shouldClearPaywallQuotaError({
+    required bool hasError,
+    required bool isPremium,
+  }) {
+    return hasError && isPremium;
+  }
+
   static String generateButtonText({required bool hasResult}) {
     return hasResult ? '已生成開場白' : '生成開場白';
   }
@@ -177,9 +184,44 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
 
     if (mounted) {
-      context.push('/paywall');
+      await _showPaywallAndRefresh();
+      if (_currentUsageSnapshot().canAfford(cost)) {
+        return true;
+      }
     }
     return false;
+  }
+
+  Future<void> _showPaywallAndRefresh() async {
+    if (!mounted) return;
+
+    final unlockedTier = await context.push<String>('/paywall');
+    if (!mounted) return;
+
+    if (unlockedTier != null && unlockedTier.isNotEmpty) {
+      try {
+        await ref.read(subscriptionProvider.notifier).forceSyncTier(
+              unlockedTier,
+            );
+      } catch (e) {
+        debugPrint('OpeningRescueScreen paywall force sync failed: $e');
+      }
+    }
+
+    try {
+      await ref.read(subscriptionScreenRefreshProvider)();
+    } catch (e) {
+      debugPrint('OpeningRescueScreen paywall refresh failed: $e');
+    }
+    if (!mounted) return;
+
+    final subscription = ref.read(subscriptionProvider);
+    if (OpeningRescueScreen.shouldClearPaywallQuotaError(
+      hasError: _error != null,
+      isPremium: subscription.isPremium,
+    )) {
+      setState(() => _error = null);
+    }
   }
 
   String _buildDraftInputPreview() {
@@ -414,7 +456,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           _error = e.message;
           _isGenerating = false;
         });
-        context.push('/paywall');
+        await _showPaywallAndRefresh();
       }
     } catch (e) {
       if (mounted) {
@@ -1390,7 +1432,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
-                  onPressed: () => context.push('/paywall'),
+                  onPressed: () async {
+                    await _showPaywallAndRefresh();
+                  },
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.ctaStart,
                   ),

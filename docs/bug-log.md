@@ -10,6 +10,35 @@
 
 ## 2026-06
 
+### [2026-06-09] Free quota / opener / screenshot P1 hardening after CC review
+**Symptom**:
+
+- Streaming quota exhaustion could show raw English `Daily limit exceeded` / `Monthly limit exceeded`.
+- Free opener API responses still contained paid opener styles if called directly; client UI filtered them, but the server contract did not.
+- Opener quota exhaustion opened the paywall without awaiting return, tier refresh, or clearing the Free error state.
+- Client and Edge allowed 900KB per screenshot, but the Edge total image cap and raw request body guard could still reject three maximum-size screenshots.
+
+**Root Cause**:
+
+- Quota exception source messages were English, and streaming failure state displayed the exception message directly.
+- Opener entitlement was enforced at Flutter cache/UI boundaries, not at the Edge response boundary before quota deduction.
+- Opener paywall navigation used fire-and-forget `context.push('/paywall')`.
+- Image validation mixed decoded-byte limits with the raw base64 request-body guard.
+
+**Fix**:
+
+- Localized daily/monthly quota exception messages at the source and added a streaming failure regression test.
+- Filtered opener payloads by server-side `allowedFeatures` before quota deduction; no allowed style returns a no-charge retryable error.
+- Added opener paywall return sync/refresh behavior and clears quota errors only after premium unlock.
+- Raised opener total image cap to `MAX_IMAGE_BYTES * 3` and request body guard to 4MB so three 900KB screenshots reach validation.
+
+**Validation**:
+
+- `flutter test --no-pub test/unit/features/analysis/data/services/analysis_service_analyze_modes_test.dart test/unit/features/analysis/data/notifiers/streaming_analyze_notifier_test.dart test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart test/unit/features/opener/data/services/opener_service_test.dart`
+- `flutter analyze --no-pub lib/features/analysis/data/services/analysis_service.dart lib/features/opener/presentation/screens/opening_rescue_screen.dart test/unit/features/analysis/data/services/analysis_service_analyze_modes_test.dart test/unit/features/analysis/data/notifiers/streaming_analyze_notifier_test.dart test/unit/features/opener/presentation/opening_rescue_handoff_location_test.dart`
+- `deno test --allow-read supabase/functions/analyze-chat/index_test.ts`
+- `deno check supabase/functions/analyze-chat/index.ts supabase/functions/analyze-chat/opener_image_validation.ts`
+
 ### [2026-06-09] Opener result allowed accidental second generation
 **Symptom**:
 

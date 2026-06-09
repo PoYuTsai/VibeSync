@@ -144,6 +144,55 @@ const OPENER_TYPES = [
   "coldRead",
 ] as const;
 
+type OpenerType = typeof OPENER_TYPES[number];
+
+function isOpenerType(value: string): value is OpenerType {
+  return (OPENER_TYPES as readonly string[]).includes(value);
+}
+
+function filterOpenerPayloadForAllowedFeatures(
+  parsed: Record<string, unknown>,
+  allowedFeatures: readonly string[],
+): Record<string, unknown> | null {
+  const allowedOpenerTypes = new Set(
+    allowedFeatures.filter((feature): feature is OpenerType =>
+      isOpenerType(feature)
+    ),
+  );
+  const rawOpeners = isPlainObject(parsed.openers) ? parsed.openers : {};
+  const openers: Record<string, string> = {};
+
+  for (const type of OPENER_TYPES) {
+    if (!allowedOpenerTypes.has(type)) continue;
+    const opener = sanitizeOpenerText(rawOpeners[type]);
+    if (opener) {
+      openers[type] = opener;
+    }
+  }
+
+  const recommendedPick = typeof parsed.recommendedPick === "string" &&
+      isOpenerType(parsed.recommendedPick) &&
+      openers[parsed.recommendedPick]
+    ? parsed.recommendedPick
+    : OPENER_TYPES.find((type) => openers[type]);
+
+  if (!recommendedPick) {
+    return null;
+  }
+
+  const filtered: Record<string, unknown> = {
+    ...parsed,
+    openers,
+    recommendedPick,
+  };
+
+  if (filtered.recommendedPick !== parsed.recommendedPick) {
+    delete filtered.recommendedReason;
+  }
+
+  return filtered;
+}
+
 function normalizeDogfoodRecommendation(
   value: unknown,
 ): Record<string, unknown> | null {
@@ -611,7 +660,7 @@ const VALID_FORCE_MODELS = new Set([
   "claude-haiku-4-5-20251001",
   "claude-sonnet-4-20250514",
 ]);
-const MAX_REQUEST_BODY_BYTES = 3 * 1024 * 1024;
+const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 
 const VALID_SCREENSHOT_CLASSIFICATIONS = new Set([
   "valid_chat",
@@ -4846,6 +4895,28 @@ serve(async (req) => {
           shouldChargeQuota: false,
         }, 502);
       }
+
+      const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures(
+        parsed,
+        allowedFeatures,
+      );
+      if (!filteredOpenerPayload) {
+        logWarn("opener_response_no_allowed_styles", {
+          user: summarizeUser(user.id),
+          tier: effectiveTier,
+          allowedFeatures,
+          openerKeys: Object.keys(
+            isPlainObject(parsed.openers) ? parsed.openers : {},
+          ),
+        });
+        return jsonResponse({
+          error: "AI_RESPONSE_INVALID",
+          message:
+            "這次 AI 沒有產出目前方案可用的開場白，請再試一次。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 502);
+      }
+      parsed = filteredOpenerPayload;
 
       // Billing decision: driven by server-side eligibility computed
       // before the model call (no image + no profile substance). The
