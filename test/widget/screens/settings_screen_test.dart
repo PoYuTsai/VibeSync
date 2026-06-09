@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,10 +8,39 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/presentation/screens/settings_screen.dart';
 
+class _FakeAccountDeletionActions extends AccountDeletionActions {
+  _FakeAccountDeletionActions({
+    this.onClearLocalSessionAfterDeletion,
+  });
+
+  final Future<void> Function()? onClearLocalSessionAfterDeletion;
+  final confirmations = <String>[];
+  var clearLocalStorageCalls = 0;
+  var clearLocalSessionCalls = 0;
+
+  @override
+  Future<void> deleteAccount({required String confirmation}) async {
+    confirmations.add(confirmation);
+  }
+
+  @override
+  Future<void> clearLocalStorage() async {
+    clearLocalStorageCalls++;
+  }
+
+  @override
+  Future<void> clearLocalSessionAfterDeletion() async {
+    clearLocalSessionCalls++;
+    await onClearLocalSessionAfterDeletion?.call();
+  }
+}
+
 void main() {
   late GoRouter testRouter;
+  late AccountDeletionActions accountDeletionActions;
 
   setUp(() {
+    accountDeletionActions = const DefaultAccountDeletionActions();
     PackageInfo.setMockInitialValues(
       appName: 'VibeSync',
       packageName: 'com.poyutsai.vibesync',
@@ -23,7 +54,15 @@ void main() {
       routes: [
         GoRoute(
           path: '/settings',
-          builder: (context, state) => const SettingsScreen(),
+          builder: (context, state) => SettingsScreen(
+            accountDeletionActions: accountDeletionActions,
+          ),
+        ),
+        GoRoute(
+          path: '/login',
+          builder: (context, state) => const Scaffold(
+            body: Center(child: Text('Login')),
+          ),
         ),
         GoRoute(
           path: '/paywall',
@@ -38,7 +77,12 @@ void main() {
   Future<void> pumpSettings(
     WidgetTester tester, {
     Future<void> Function()? refreshUsage,
+    AccountDeletionActions? deletionActions,
   }) async {
+    if (deletionActions != null) {
+      accountDeletionActions = deletionActions;
+    }
+
     await tester.binding.setSurfaceSize(const Size(430, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -161,6 +205,41 @@ void main() {
       final enabledDeleteButton =
           tester.widget<TextButton>(find.widgetWithText(TextButton, '刪除'));
       expect(enabledDeleteButton.onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'delete account success closes progress overlay after auth redirect',
+        (tester) async {
+      final clearSessionCompleter = Completer<void>();
+      final actions = _FakeAccountDeletionActions(
+        onClearLocalSessionAfterDeletion: () {
+          testRouter.go('/login');
+          return clearSessionCompleter.future;
+        },
+      );
+
+      await pumpSettings(tester, deletionActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pump();
+      await tester.pump();
+
+      expect(actions.confirmations, ['DELETE']);
+      expect(actions.clearLocalStorageCalls, 1);
+      expect(actions.clearLocalSessionCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      clearSessionCompleter.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Login'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     });
   });
 }

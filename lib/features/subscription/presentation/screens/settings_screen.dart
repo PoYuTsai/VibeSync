@@ -40,10 +40,45 @@ String formatSettingsRenewalDate(DateTime? dateTime, {DateTime? now}) {
 }
 
 class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    super.key,
+    this.accountDeletionActions = const DefaultAccountDeletionActions(),
+  });
+
+  final AccountDeletionActions accountDeletionActions;
 
   @override
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+@visibleForTesting
+abstract class AccountDeletionActions {
+  const AccountDeletionActions();
+
+  Future<void> deleteAccount({required String confirmation});
+
+  Future<void> clearLocalStorage();
+
+  Future<void> clearLocalSessionAfterDeletion();
+}
+
+class DefaultAccountDeletionActions extends AccountDeletionActions {
+  const DefaultAccountDeletionActions();
+
+  @override
+  Future<void> deleteAccount({required String confirmation}) {
+    return SupabaseService.deleteAccount(confirmation: confirmation);
+  }
+
+  @override
+  Future<void> clearLocalStorage() {
+    return StorageService.clearAll();
+  }
+
+  @override
+  Future<void> clearLocalSessionAfterDeletion() {
+    return SupabaseService.clearLocalSessionAfterDeletion();
+  }
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
@@ -730,6 +765,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirmation == null || !context.mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    final router = GoRouter.of(context);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -737,16 +774,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     try {
-      await SupabaseService.deleteAccount(confirmation: confirmation);
-      await StorageService.clearAll();
-      await SupabaseService.clearLocalSessionAfterDeletion();
+      await widget.accountDeletionActions.deleteAccount(
+        confirmation: confirmation,
+      );
+      await widget.accountDeletionActions.clearLocalStorage();
+      await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
       ref.invalidate(subscriptionProvider);
       ref.invalidate(conversationsProvider);
       ref.invalidate(usageDataProvider);
-      if (!context.mounted) return;
 
-      Navigator.of(context, rootNavigator: true).pop();
-      context.go('/login');
+      _dismissBlockingDialog(rootNavigator);
+      router.go('/login');
       messenger.showSnackBar(
         const SnackBar(
           content: Text('帳號已刪除。'),
@@ -754,14 +792,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       );
     } catch (error) {
+      _dismissBlockingDialog(rootNavigator);
       if (!context.mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
       messenger.showSnackBar(
         SnackBar(
           content: Text(_mapDeleteError(error)),
           backgroundColor: AppColors.error,
         ),
       );
+    }
+  }
+
+  void _dismissBlockingDialog(NavigatorState rootNavigator) {
+    if (rootNavigator.mounted && rootNavigator.canPop()) {
+      rootNavigator.pop();
     }
   }
 
