@@ -649,7 +649,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'AI 正在分析...',
+                        '正在幫你想開場白…',
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.onBackgroundSecondary,
                         ),
