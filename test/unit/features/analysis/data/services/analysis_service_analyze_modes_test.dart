@@ -962,35 +962,107 @@ void main() {
       expect(body['analysisRunId'], 'stream_retry_1');
     });
 
-    test('throws StreamModeException when stream emits analysis.error',
-        () async {
+    // Fixed Chinese fallback surfaced when the server `analysis.error` message
+    // is not safe to show (engineering English, error codes, JSON/schema
+    // fragments, or empty). Must match the production fallback string.
+    const streamErrorFallback = '這次分析沒順利完成，請稍後再試一次。';
+
+    AnalysisService streamErrorService(Map<String, dynamic> errorEvent) {
       final mockClient = MockClient((request) async {
-        return http.Response(
-          jsonEncode({
-            'type': 'analysis.error',
-            'code': 'STREAM_CHARGE_FAILED',
-            'message': 'Quota failed',
-            'recoverable': true,
-            'retriesRemaining': 2,
-          }),
+        // Encode as UTF-8 bytes so Chinese message bodies survive (the String
+        // Response constructor defaults to Latin1 and rejects CJK).
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(errorEvent)),
           200,
           headers: {'content-type': 'application/x-ndjson'},
         );
       });
-
-      final service = AnalysisService(
+      return AnalysisService(
         clientFactory: () => mockClient,
         accessTokenProvider: () => 'fake-token',
       );
+    }
+
+    test(
+        'analysis.error sanitizes engineering message to fallback while '
+        'preserving code/recoverable/retries', () async {
+      // Quota/paywall routing keys off code + retriesRemaining, never the
+      // message string. The raw English "Quota failed" must not reach the user,
+      // but the error must NOT be eaten: code and retry budget survive.
+      final service = streamErrorService({
+        'type': 'analysis.error',
+        'code': 'STREAM_CHARGE_FAILED',
+        'message': 'Quota failed',
+        'recoverable': true,
+        'retriesRemaining': 2,
+      });
 
       await expectLater(
         () => service.analyzeStream(messages: [_msg('hi')]).toList(),
         throwsA(
           isA<StreamModeException>()
               .having((e) => e.code, 'code', 'STREAM_CHARGE_FAILED')
-              .having((e) => e.message, 'message', 'Quota failed')
+              .having((e) => e.message, 'message', streamErrorFallback)
               .having((e) => e.recoverable, 'recoverable', true)
               .having((e) => e.retriesRemaining, 'retriesRemaining', 2),
+        ),
+      );
+    });
+
+    test('analysis.error shows a readable Chinese server message verbatim',
+        () async {
+      const readable = '本月額度已用完，升級後可以繼續分析。';
+      final service = streamErrorService({
+        'type': 'analysis.error',
+        'code': 'STREAM_CHARGE_FAILED',
+        'message': readable,
+        'recoverable': false,
+        'retriesRemaining': 0,
+      });
+
+      await expectLater(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(
+          isA<StreamModeException>()
+              .having((e) => e.code, 'code', 'STREAM_CHARGE_FAILED')
+              .having((e) => e.message, 'message', readable),
+        ),
+      );
+    });
+
+    test('analysis.error falls back when message is a JSON/schema fragment',
+        () async {
+      final service = streamErrorService({
+        'type': 'analysis.error',
+        'code': 'STREAM_FAILED',
+        'message': 'SyntaxError: Unexpected token < in JSON at position 0',
+        'recoverable': true,
+        'retriesRemaining': 1,
+      });
+
+      await expectLater(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(
+          isA<StreamModeException>()
+              .having((e) => e.message, 'message', streamErrorFallback),
+        ),
+      );
+    });
+
+    test('analysis.error falls back when the server message is missing',
+        () async {
+      final service = streamErrorService({
+        'type': 'analysis.error',
+        'code': 'STREAM_FAILED',
+        'recoverable': true,
+        'retriesRemaining': 1,
+      });
+
+      await expectLater(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(
+          isA<StreamModeException>()
+              .having((e) => e.message, 'message', streamErrorFallback),
         ),
       );
     });

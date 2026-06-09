@@ -733,6 +733,25 @@ bool _isReadableUserMessage(String message) {
   return message.contains(RegExp(r'[\u4e00-\u9fff]'));
 }
 
+/// User-facing copy for a streaming `analysis.error` event.
+///
+/// The server may put engineering English in `message` (e.g. "Quota failed",
+/// raw exceptions, error codes, JSON/schema/streaming fragments). Only surface
+/// it when it is actually localized (passes [_isReadableUserMessage]);
+/// otherwise return a fixed Chinese fallback. The raw text is sent to
+/// [_debugLog] at the call site for debugging only and never reaches the UI.
+/// Mirrors the HTTP path's [_mapAnalysisHttpError] gate and the opener DATA-01
+/// sanitize precedent. Only the user-visible message is rewritten; the event's
+/// `code`, `recoverable`, and `retriesRemaining` are preserved by the caller so
+/// quota/paywall routing is never eaten.
+String _friendlyStreamErrorMessage(String? rawMessage) {
+  final message = (rawMessage ?? '').trim();
+  if (message.isNotEmpty && _isReadableUserMessage(message)) {
+    return message;
+  }
+  return '這次分析沒順利完成，請稍後再試一次。';
+}
+
 AnalysisException _mapAnalysisHttpError({
   required int statusCode,
   required String? errorCode,
@@ -1794,8 +1813,14 @@ class AnalysisService {
             return;
           case 'analysis.error':
             final recoverable = event['recoverable'] != false;
+            final rawErrorMessage = _stringField(event['message']);
+            if (rawErrorMessage != null) {
+              _debugLog(
+                '[analyze.stream] analysis.error raw message: $rawErrorMessage',
+              );
+            }
             throw StreamModeException(
-              _stringField(event['message']) ?? '這次分析中途中斷了，請重新分析一次。',
+              _friendlyStreamErrorMessage(rawErrorMessage),
               code: _stringField(event['code']) ?? 'STREAM_FAILED',
               recoverable: recoverable,
               retriesRemaining:
