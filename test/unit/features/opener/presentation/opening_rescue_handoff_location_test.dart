@@ -58,9 +58,9 @@ void main() {
     final message = OpeningRescueScreen.copiedOpenerMessage('延展');
 
     expect(message, contains('已複製「延展」'));
-    expect(message, contains('貼出去'));
+    expect(message, contains('貼到交友軟體送出'));
     expect(message, contains('她回覆後'));
-    expect(message, contains('分析'));
+    expect(message, contains('點下方「她回覆了，開始分析對話」'));
   });
 
   test('handoff URL drops partnerId when entry was partner-less', () {

@@ -55,7 +55,7 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   }
 
   static String copiedOpenerMessage(String label) {
-    return '已複製「$label」。貼出去，等她回覆後再回來分析。';
+    return '已複製「$label」。貼到交友軟體送出；她回覆後，點下方「她回覆了，開始分析對話」。';
   }
 
   @override
