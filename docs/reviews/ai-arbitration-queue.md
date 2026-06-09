@@ -24,12 +24,14 @@
 ## Live Queue
 
 ## [2026-06-09] Pre-Launch UI Audit Round 1 — follow-ups
-Status: OPEN
+Status: CLOSED
 Request-Type: handoff
 Raised-By: Claude
 Owner: Eric (decided) / Claude (next-session execution)
 Scope: copy / UX / paywall / onboarding / analyze-chat error contract
-Branch/Commit: `main` @ `58ebf71`
+Branch/Commit: `main` @ `352aebb`
+
+Closed by Eric (2026-06-09): A-01 onboarding wiring DONE + Codex APPROVED (`295bd2d`); P2 analyze.error sanitize DONE + Codex APPROVED (`1a085f4`). 需 TestFlight rebuild 後 dogfood；無 Edge deploy。
 
 Round 1 (low-risk cleanup) DONE + pushed (`b2b6f6c..58ebf71`), all `flutter analyze` clean, 81 targeted tests green:
 
