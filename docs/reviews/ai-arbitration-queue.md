@@ -23,6 +23,35 @@
 
 ## Live Queue
 
+## [2026-06-09] Pre-Launch UI Audit Round 1 — follow-ups
+Status: OPEN
+Request-Type: handoff
+Raised-By: Claude
+Owner: Eric (decided) / Claude (next-session execution)
+Scope: copy / UX / paywall / onboarding / analyze-chat error contract
+Branch/Commit: `main` @ `58ebf71`
+
+Round 1 (low-risk cleanup) DONE + pushed (`b2b6f6c..58ebf71`), all `flutter analyze` clean, 81 targeted tests green:
+
+- COPY-01 額度訊息去「免費」; COPY-02 分析/串流錯誤全去工程語彙; DATA-01 opener 錯誤不漏原始例外; DATA-02 opener loading 教練口吻; B-01 opener SafeArea; C-01 image picker 深底對比; H-03 booster 工程語彙。
+- Codex evidence: 3 rounds. `task-mq6hawar` + `task-mq6hf9ct` REVISE_REQUIRED (COPY-02 漏網串流字串) → 已全清。
+
+Eric decisions (2026-06-09):
+
+- **G-03 = CLOSED false positive.** 雷達圖實際存在且 gated Starter/Essential (`analysis_screen.dart:5702`, `// 五維度剖析 (Starter / Essential only)` + `subscription.isPremium`); `dimension_radar_chart.dart` / `partner_radar_summary_card.dart` 渲染; pricing-final/paywall 承諾正確。audit G-03 grep 只搜 `lib/features/report` 故誤判。不改 code/docs。
+- A-01 onboarding + analyze.error sanitize 不混入本輪低風險 cleanup。
+
+Action Items (next session, each its own scoped task + Codex review):
+
+- [ ] **A-01 onboarding wiring** — post-login first-run, **不改未登入 auth gate**. Redirect matrix + widget tests: 未登入→login；已登入且 onboarding 未完成→onboarding；onboarding 完成→main shell；已完成者不重看。碰 router/auth gate → Codex review 必跑。`OnboardingService.isCompleted()` 目前零 caller (`routes.dart`).
+- [ ] **P2 analyze.error 伺服器 message sanitize** — `analysis_service.dart:1797` `analysis.error` 逐字透傳伺服器 `message`（既有行為，commit `41241cc`，非本輪 regression）。套 opener DATA-01 式 sanitize（中文可用則顯示，非中文/工程字串回固定繁中 fallback）；raw message 僅 debug/log；更新既有測試 `analysis_service_analyze_modes_test.dart:965`（鎖定 `'Quota failed'`）非硬改通過；analyze-chat/Edge error contract = 高風險，單獨 Codex review。
+
+Close Condition:
+
+- 兩個 action item 各自 land + Codex 評估，Eric 確認後關閉。
+
+---
+
 ## [2026-06-07] Preflight Secret Gap + 409 Coverage (C5/C6)
 Status: OPEN
 Request-Type: decision
