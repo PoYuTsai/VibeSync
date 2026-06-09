@@ -182,6 +182,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   AcquaintanceDuration _screenshotDuration = AcquaintanceDuration.justMet;
   UserGoal _screenshotGoal = UserGoal.dateInvite;
   final _screenshotAnalysisContextNoteController = TextEditingController();
+  bool _showScreenshotAnalysisSettings = false;
 
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
@@ -598,6 +599,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _messageFocusNode.addListener(_handleMessageInputFocus);
+    _screenshotAnalysisContextNoteController
+        .addListener(_refreshScreenshotAnalysisSettingsSummary);
     _restorePersistedAnalysis();
     // If the provider is already mid-analyze on remount, the snapshot we just
     // restored is from a *previous* completed run. Clear the detailed mirrors
@@ -1188,6 +1191,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _scrollController.dispose();
     _feedbackCommentController.dispose();
     _optimizeController.dispose();
+    _screenshotAnalysisContextNoteController
+        .removeListener(_refreshScreenshotAnalysisSettingsSummary);
     _screenshotAnalysisContextNoteController.dispose();
     super.dispose();
   }
@@ -1644,6 +1649,63 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return existing == null || existing.isEmpty ? null : existing;
   }
 
+  void _refreshScreenshotAnalysisSettingsSummary() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  String _screenshotMeetingContextLabel(MeetingContext context) {
+    switch (context) {
+      case MeetingContext.datingApp:
+        return '交友軟體';
+      case MeetingContext.inPerson:
+        return '現實認識';
+      case MeetingContext.friendIntro:
+        return '朋友介紹';
+      case MeetingContext.other:
+        return '其他';
+      case MeetingContext.committedPartner:
+        return '已是伴侶';
+    }
+  }
+
+  String _screenshotDurationLabel(AcquaintanceDuration duration) {
+    switch (duration) {
+      case AcquaintanceDuration.justMet:
+        return '剛認識';
+      case AcquaintanceDuration.fewDays:
+        return '幾天';
+      case AcquaintanceDuration.fewWeeks:
+        return '幾週';
+      case AcquaintanceDuration.monthPlus:
+        return '一個月以上';
+    }
+  }
+
+  String _screenshotGoalLabel(UserGoal goal) {
+    switch (goal) {
+      case UserGoal.dateInvite:
+        return '邀約見面';
+      case UserGoal.maintainHeat:
+        return '維持熱度';
+      case UserGoal.justChat:
+        return '自然聊天';
+    }
+  }
+
+  String _screenshotAnalysisSettingsSummary() {
+    final parts = [
+      _screenshotMeetingContextLabel(_screenshotMeetingContext),
+      _screenshotDurationLabel(_screenshotDuration),
+      _screenshotGoalLabel(_screenshotGoal),
+    ];
+    if (_screenshotAnalysisContextNoteController.text.trim().isNotEmpty) {
+      parts.insert(0, '已補充背景');
+    }
+    return parts.join('・');
+  }
+
   Widget _buildScreenshotSettingSection() {
     Text settingLabel(String text) {
       return Text(
@@ -1659,91 +1721,148 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 18),
-        Text(
-          '這次分析設定（可不改）',
-          style: AppTypography.bodyLarge.copyWith(
-            color: AppColors.onBackgroundPrimary,
-            fontWeight: FontWeight.w700,
+        InkWell(
+          onTap: () => setState(
+            () => _showScreenshotAnalysisSettings =
+                !_showScreenshotAnalysisSettings,
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '截圖只看得到對話，看不到你們的關係。這只影響這個對話的分析，不會改對象資料。',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundSecondary,
-            height: 1.35,
-          ),
-        ),
-        const SizedBox(height: 14),
-        settingLabel('認識情境'),
-        const SizedBox(height: 8),
-        GlassmorphicSegmentedButton<MeetingContext>(
-          segments: MeetingContext.visibleAnalysisOptions
-              .map((value) => GlassSegment(value: value, label: value.label))
-              .toList(),
-          selected: _screenshotMeetingContext,
-          onChanged: (value) =>
-              setState(() => _screenshotMeetingContext = value),
-        ),
-        const SizedBox(height: 14),
-        settingLabel('認識多久'),
-        const SizedBox(height: 8),
-        GlassmorphicSegmentedButton<AcquaintanceDuration>(
-          segments: AcquaintanceDuration.values
-              .map((value) => GlassSegment(value: value, label: value.label))
-              .toList(),
-          selected: _screenshotDuration,
-          onChanged: (value) => setState(() => _screenshotDuration = value),
-        ),
-        const SizedBox(height: 14),
-        settingLabel('目前目標'),
-        const SizedBox(height: 8),
-        GlassmorphicSegmentedButton<UserGoal>(
-          segments: UserGoal.values
-              .map((value) => GlassSegment(value: value, label: value.label))
-              .toList(),
-          selected: _screenshotGoal,
-          onChanged: (value) => setState(() => _screenshotGoal = value),
-        ),
-        const SizedBox(height: 14),
-        settingLabel('補充背景（選填）'),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _screenshotAnalysisContextNoteController,
-          maxLength: 300,
-          minLines: 1,
-          maxLines: 3,
-          textInputAction: TextInputAction.done,
-          onEditingComplete: _dismissKeyboard,
-          onTapOutside: (_) => _dismissKeyboard(),
-          decoration: InputDecoration(
-            hintText: '沒有可以留空',
-            hintStyle: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextHint,
-            ),
-            filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.86),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 12,
-            ),
-          ),
-          style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.glassTextPrimary,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                _showScreenshotAnalysisSettings
+                    ? Icons.expand_less
+                    : Icons.expand_more,
+                color: AppColors.onBackgroundSecondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '這次分析設定（可不改）',
+                      style: AppTypography.bodyLarge.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _screenshotAnalysisSettingsSummary(),
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
+          '不確定可以先跳過；AI 會用預設情境分析。',
           style: AppTypography.bodySmall.copyWith(
             color: AppColors.onBackgroundSecondary,
             height: 1.35,
           ),
         ),
+        if (_showScreenshotAnalysisSettings) ...[
+          const SizedBox(height: 14),
+          Text(
+            '截圖只看得到對話，看不到你們的關係。這只影響這個對話的分析，不會改對象資料。',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          settingLabel('認識情境'),
+          const SizedBox(height: 8),
+          GlassmorphicSegmentedButton<MeetingContext>(
+            segments: MeetingContext.visibleAnalysisOptions
+                .map(
+                  (value) => GlassSegment(
+                    value: value,
+                    label: _screenshotMeetingContextLabel(value),
+                  ),
+                )
+                .toList(),
+            selected: _screenshotMeetingContext,
+            onChanged: (value) =>
+                setState(() => _screenshotMeetingContext = value),
+          ),
+          const SizedBox(height: 14),
+          settingLabel('認識多久'),
+          const SizedBox(height: 8),
+          GlassmorphicSegmentedButton<AcquaintanceDuration>(
+            segments: AcquaintanceDuration.values
+                .map(
+                  (value) => GlassSegment(
+                    value: value,
+                    label: _screenshotDurationLabel(value),
+                  ),
+                )
+                .toList(),
+            selected: _screenshotDuration,
+            onChanged: (value) => setState(() => _screenshotDuration = value),
+          ),
+          const SizedBox(height: 14),
+          settingLabel('目前目標'),
+          const SizedBox(height: 8),
+          GlassmorphicSegmentedButton<UserGoal>(
+            segments: UserGoal.values
+                .map(
+                  (value) => GlassSegment(
+                    value: value,
+                    label: _screenshotGoalLabel(value),
+                  ),
+                )
+                .toList(),
+            selected: _screenshotGoal,
+            onChanged: (value) => setState(() => _screenshotGoal = value),
+          ),
+          const SizedBox(height: 14),
+          settingLabel('補充背景（選填）'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _screenshotAnalysisContextNoteController,
+            maxLength: 300,
+            minLines: 1,
+            maxLines: 3,
+            textInputAction: TextInputAction.done,
+            onEditingComplete: _dismissKeyboard,
+            onTapOutside: (_) => _dismissKeyboard(),
+            decoration: InputDecoration(
+              hintText: '沒有可以留空',
+              hintStyle: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextHint,
+              ),
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.86),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+            ),
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.35,
+            ),
+          ),
+        ],
       ],
     );
   }

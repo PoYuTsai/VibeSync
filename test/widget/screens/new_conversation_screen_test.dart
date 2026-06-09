@@ -38,26 +38,47 @@ void main() {
       expect(find.text('我說了什麼...'), findsOneWidget);
     });
 
-    testWidgets('shows meeting context selector', (tester) async {
+    testWidgets('collapses analysis settings by default', (tester) async {
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: NewConversationScreen()),
         ),
       );
+
+      expect(find.text('這次分析設定（可不改）'), findsOneWidget);
+      expect(find.text('交友軟體・剛認識・邀約見面'), findsOneWidget);
+      expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsOneWidget);
+      expect(find.text('認識情境'), findsNothing);
+      expect(find.text('補充背景（選填）'), findsNothing);
+    });
+
+    testWidgets('expands meeting context selector', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: NewConversationScreen()),
+        ),
+      );
+
+      await tester.tap(find.text('這次分析設定（可不改）'));
+      await tester.pump();
 
       expect(find.text('認識情境'), findsOneWidget);
       expect(find.text('交友軟體'), findsOneWidget);
       expect(find.text('現實認識'), findsOneWidget);
       expect(find.text('朋友介紹'), findsOneWidget);
       expect(find.text('已是伴侶'), findsOneWidget);
+      expect(find.text('其他'), findsNothing);
     });
 
-    testWidgets('shows duration selector', (tester) async {
+    testWidgets('expands duration selector', (tester) async {
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: NewConversationScreen()),
         ),
       );
+
+      await tester.tap(find.text('這次分析設定（可不改）'));
+      await tester.pump();
 
       expect(find.text('認識多久'), findsOneWidget);
       expect(find.text('剛認識'), findsOneWidget);
@@ -66,12 +87,15 @@ void main() {
       expect(find.text('一個月以上'), findsOneWidget);
     });
 
-    testWidgets('shows goal selector', (tester) async {
+    testWidgets('expands goal selector', (tester) async {
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(home: NewConversationScreen()),
         ),
       );
+
+      await tester.tap(find.text('這次分析設定（可不改）'));
+      await tester.pump();
 
       expect(find.text('目前目標'), findsOneWidget);
       expect(find.text('邀約見面'), findsOneWidget);
@@ -85,6 +109,9 @@ void main() {
           child: MaterialApp(home: NewConversationScreen()),
         ),
       );
+
+      await tester.tap(find.text('這次分析設定（可不改）'));
+      await tester.pump();
 
       expect(find.text('補充背景（選填）'), findsOneWidget);
       expect(find.text('沒有可以留空'), findsOneWidget);
@@ -122,7 +149,10 @@ void main() {
         ),
       );
 
-      final myMessageField = find.byType(TextField).at(3);
+      final myMessageField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.hintText == '我說了什麼...',
+      );
       await tester.ensureVisible(myMessageField);
       await tester.enterText(myMessageField, '你好');
       final addButton = find.byIcon(Icons.add).last;
@@ -146,7 +176,10 @@ void main() {
         ),
       );
 
-      final herMessageField = find.byType(TextField).at(2);
+      final herMessageField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.hintText == '她說了什麼...',
+      );
       await tester.ensureVisible(herMessageField);
       await tester.enterText(herMessageField, '你好');
       final addButton = find.byIcon(Icons.add).first;

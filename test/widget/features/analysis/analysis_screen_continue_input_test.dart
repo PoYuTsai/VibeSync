@@ -262,6 +262,14 @@ void main() {
         findsNothing,
       );
       expect(find.text('這次分析設定（可不改）'), findsOneWidget);
+      expect(find.text('交友軟體・剛認識・邀約見面'), findsOneWidget);
+      expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsOneWidget);
+      expect(find.text('認識情境'), findsNothing);
+      expect(find.text('補充背景（選填）'), findsNothing);
+
+      await tester.tap(find.text('這次分析設定（可不改）'));
+      await tester.pump();
+
       expect(find.text('已是伴侶'), findsOneWidget);
       expect(find.text('目前目標'), findsOneWidget);
       expect(find.text('補充背景（選填）'), findsOneWidget);

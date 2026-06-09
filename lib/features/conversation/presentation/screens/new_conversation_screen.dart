@@ -76,6 +76,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   @override
   void initState() {
     super.initState();
+    _analysisContextNoteController.addListener(_refreshAnalysisSettingsSummary);
     if (widget.seedFromLatestOpener) {
       _seedFromLatestOpener();
     }
@@ -83,11 +84,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   @override
   void dispose() {
+    _analysisContextNoteController
+        .removeListener(_refreshAnalysisSettingsSummary);
     _nameController.dispose();
     _herMessageController.dispose();
     _myMessageController.dispose();
     _analysisContextNoteController.dispose();
     super.dispose();
+  }
+
+  void _refreshAnalysisSettingsSummary() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _seedFromLatestOpener() {
@@ -339,6 +348,71 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     }
   }
 
+  String _analysisSettingsSummary() {
+    final parts = [
+      _meetingContextLabel(_meetingContext),
+      _durationLabel(_duration),
+      _goalLabel(_goal),
+    ];
+    if (_analysisContextNoteController.text.trim().isNotEmpty) {
+      parts.insert(0, '已補充背景');
+    }
+    return parts.join('・');
+  }
+
+  List<Widget> _buildAnalysisSettingsSection({bool includeTopSpacing = false}) {
+    return [
+      if (includeTopSpacing) const SizedBox(height: 24),
+      InkWell(
+        onTap: () => setState(
+          () => _showAnalysisSettings = !_showAnalysisSettings,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              _showAnalysisSettings ? Icons.expand_less : Icons.expand_more,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '這次分析設定（可不改）',
+                    style: AppTypography.bodyLarge.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _analysisSettingsSummary(),
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        '不確定可以先跳過；AI 會用預設情境分析。',
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.textSecondary,
+        ),
+      ),
+      if (_showAnalysisSettings) ...[
+        const SizedBox(height: 16),
+        ..._buildSessionContextSettings(),
+      ],
+    ];
+  }
+
   List<Widget> _buildSessionContextSettings() {
     return [
       Text('認識情境', style: AppTypography.bodyLarge),
@@ -404,45 +478,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           color: AppColors.textSecondary,
         ),
       ),
-    ];
-  }
-
-  List<Widget> _buildPartnerScopedAnalysisSettings() {
-    return [
-      const SizedBox(height: 24),
-      InkWell(
-        onTap: () => setState(
-          () => _showAnalysisSettings = !_showAnalysisSettings,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              _showAnalysisSettings ? Icons.expand_less : Icons.expand_more,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '這次分析設定（可不改）',
-                style: AppTypography.bodyLarge.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 6),
-      Text(
-        '只影響這個對話的分析，不會改對象資料。',
-        style: AppTypography.bodySmall.copyWith(
-          color: AppColors.textSecondary,
-        ),
-      ),
-      if (_showAnalysisSettings) ...[
-        const SizedBox(height: 16),
-        ..._buildSessionContextSettings(),
-      ],
     ];
   }
 
@@ -664,12 +699,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 const SizedBox(height: 24),
               ],
               if (widget.partnerId == null) ...[
-                ..._buildSessionContextSettings(),
+                ..._buildAnalysisSettingsSection(),
                 const SizedBox(height: 24),
                 ..._buildConversationContentInput(),
               ] else ...[
                 ..._buildConversationContentInput(),
-                ..._buildPartnerScopedAnalysisSettings(),
+                ..._buildAnalysisSettingsSection(includeTopSpacing: true),
               ],
               if (_hasIncomingMessage) ...[
                 const SizedBox(height: 32),
