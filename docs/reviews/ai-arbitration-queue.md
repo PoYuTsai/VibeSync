@@ -43,7 +43,7 @@ Eric decisions (2026-06-09):
 
 Action Items (next session, each its own scoped task + Codex review):
 
-- [ ] **A-01 onboarding wiring** — post-login first-run, **不改未登入 auth gate**. Redirect matrix + widget tests: 未登入→login；已登入且 onboarding 未完成→onboarding；onboarding 完成→main shell；已完成者不重看。碰 router/auth gate → Codex review 必跑。`OnboardingService.isCompleted()` 目前零 caller (`routes.dart`).
+- [x] **A-01 onboarding wiring** — DONE @ `295bd2d` (pushed). post-login first-run，未登入 auth gate 維持同步不變。redirect 決策抽成純函式 `resolveAppRedirect`（`routes.dart:34`）+ `OnboardingService.isCompletedSync` 記憶體快取（`main()` 啟動時 `load()` 預載，避免回訪用戶冷啟動被誤導回 onboarding）。Tests: 17 redirect-matrix unit + 6 router widget 全綠；`flutter analyze` clean。Codex read-only review = **APPROVED (no P0/P1/P2)**，逐項驗證 5 條 invariant + 無 redirect loop + 快取 ordering 正確。（注：`onboarding_test.dart` demo enthusiasm label 失敗為既有 stale rot，clean main 亦失敗，非本次 regression。）
 - [ ] **P2 analyze.error 伺服器 message sanitize** — `analysis_service.dart:1797` `analysis.error` 逐字透傳伺服器 `message`（既有行為，commit `41241cc`，非本輪 regression）。套 opener DATA-01 式 sanitize（中文可用則顯示，非中文/工程字串回固定繁中 fallback）；raw message 僅 debug/log；更新既有測試 `analysis_service_analyze_modes_test.dart:965`（鎖定 `'Quota failed'`）非硬改通過；analyze-chat/Edge error contract = 高風險，單獨 Codex review。
 
 Close Condition:
