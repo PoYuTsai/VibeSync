@@ -14,7 +14,12 @@ import '../../domain/mindmap/mind_map_models.dart';
 class PartnerMindMapView extends StatefulWidget {
   final PartnerMindMap map;
 
-  const PartnerMindMapView({super.key, required this.map});
+  /// 「下一步」葉節點單擊 callback（決策 3：只有 nextStep 葉節點可點），
+  /// 帶出節點文字供 Coach 1:1 預填。null = 不可點（無可導航對話）。
+  /// 與背景雙擊重置並存：單擊有 ~300ms 競技場裁決延遲，已知可接受。
+  final void Function(String label)? onNextStepTap;
+
+  const PartnerMindMapView({super.key, required this.map, this.onNextStepTap});
 
   @override
   State<PartnerMindMapView> createState() => _PartnerMindMapViewState();
@@ -90,7 +95,8 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
       ..orientation = BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT;
 
     // InteractiveViewer 無內建 double-tap API，外層 GestureDetector 偵測。
-    // 節點 chip 目前不可單擊，無手勢競技場衝突。
+    // nextStep 葉節點 chip 可單擊（其餘節點不可），單擊與雙擊同場競技、
+    // 由 arena 以 double-tap timeout 裁決。
     return GestureDetector(
       onDoubleTap: _resetView,
       child: InteractiveViewer(
@@ -112,7 +118,14 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
             // 不變量：graph 與 byId 來自同一棵樹、builder 保證 id 唯一
             // （mind_map_builder_test 已覆蓋），lookup 必命中。
             final data = byId[node.key!.value as String]!;
-            return _MindMapNodeChip(node: data);
+            // 決策 3：只有 nextStep「葉」節點可點（父標籤「下一步」有
+            // children，不帶 callback）。
+            final isNextStepLeaf = data.branch == MindMapBranch.nextStep &&
+                data.children.isEmpty;
+            final onTap = isNextStepLeaf && widget.onNextStepTap != null
+                ? () => widget.onNextStepTap!(data.label)
+                : null;
+            return _MindMapNodeChip(node: data, onTap: onTap);
           },
         ),
       ),
@@ -123,7 +136,10 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
 class _MindMapNodeChip extends StatelessWidget {
   final MindMapNode node;
 
-  const _MindMapNodeChip({required this.node});
+  /// 非 null = 可點（目前僅 nextStep 葉節點）→ 加問教練 icon affordance。
+  final VoidCallback? onTap;
+
+  const _MindMapNodeChip({required this.node, this.onTap});
 
   bool get _isRoot => node.branch == MindMapBranch.root;
 
@@ -152,7 +168,19 @@ class _MindMapNodeChip extends StatelessWidget {
       textColor = Colors.white.withValues(alpha: 0.92);
     }
 
-    return Container(
+    final label = Text(
+      node.label,
+      // 非 root 枝可能是 AI 長句，夾在 maxWidth 200 內最多 3 行截斷。
+      maxLines: _isRoot ? null : 3,
+      overflow: _isRoot ? null : TextOverflow.ellipsis,
+      style: (_isRoot ? AppTypography.titleMedium : AppTypography.bodySmall)
+          .copyWith(
+        color: textColor,
+        fontWeight: _isRoot || _isNextStep ? FontWeight.w700 : FontWeight.w500,
+      ),
+    );
+
+    final chip = Container(
       constraints: const BoxConstraints(maxWidth: 200),
       padding: EdgeInsets.symmetric(
         horizontal: _isRoot ? 20 : 14,
@@ -164,18 +192,26 @@ class _MindMapNodeChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(_isRoot ? 18 : 12),
         border: Border.all(color: borderColor, width: _isRoot ? 1.5 : 1),
       ),
-      child: Text(
-        node.label,
-        // 非 root 枝可能是 AI 長句，夾在 maxWidth 200 內最多 3 行截斷。
-        maxLines: _isRoot ? null : 3,
-        overflow: _isRoot ? null : TextOverflow.ellipsis,
-        style: (_isRoot ? AppTypography.titleMedium : AppTypography.bodySmall)
-            .copyWith(
-          color: textColor,
-          fontWeight:
-              _isRoot || _isNextStep ? FontWeight.w700 : FontWeight.w500,
-        ),
-      ),
+      child: onTap == null
+          ? label
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: label),
+                const SizedBox(width: 6),
+                // 問教練 affordance，與 CoachChatCard 標頭同 icon 語彙。
+                Icon(Icons.forum_outlined, size: 14, color: textColor),
+              ],
+            ),
+    );
+
+    if (onTap == null) {
+      return chip;
+    }
+    return Semantics(
+      button: true,
+      label: '問教練：${node.label}',
+      child: GestureDetector(onTap: onTap, child: chip),
     );
   }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../analysis/presentation/screens/analysis_screen.dart';
 import '../../domain/mindmap/mind_map_builder.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_mind_map_view.dart';
@@ -59,7 +61,24 @@ class PartnerMindMapScreen extends ConsumerWidget {
         ),
         child: SafeArea(
           child: map.hasAnalysisData
-              ? PartnerMindMapView(map: map)
+              ? PartnerMindMapView(
+                  map: map,
+                  // nextStep 葉節點 → 快照來源對話的分析頁，Coach 1:1 預填
+                  // 「如何 + 節點文字」（決策 1/2/3）。來源對話 id 為 null
+                  // （理論上 nextStep 節點存在時不會發生）→ 不可點。
+                  onNextStepTap: map.nextStepSourceConversationId == null
+                      ? null
+                      : (label) => context.push(
+                            Uri(
+                              path:
+                                  '/conversation/${map.nextStepSourceConversationId}',
+                              queryParameters: {
+                                AnalysisScreen.coachPrefillQueryParam:
+                                    '如何$label',
+                              },
+                            ).toString(),
+                          ),
+                )
               : const _EmptyState(),
         ),
       ),

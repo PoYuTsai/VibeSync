@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -108,5 +109,53 @@ void main() {
     // premise → '💫 建立男女感'（mind_map_builder：'${stage.emoji} ${stage.label}'）
     expect(find.textContaining('建立男女感'), findsOneWidget);
     expect(find.text('完成一次對話分析，解鎖她的作戰板'), findsNothing);
+  });
+
+  testWidgets(
+      '單擊 nextStep 葉節點 → 導航到快照來源對話、coachPrefill=如何+節點文字（決策 1/2/3）',
+      (t) async {
+    final captured = <Uri>[];
+    final router = GoRouter(
+      initialLocation: '/partner/p1/mindmap',
+      routes: [
+        GoRoute(
+          path: '/partner/:partnerId/mindmap',
+          builder: (_, state) => PartnerMindMapScreen(
+            partnerId: state.pathParameters['partnerId']!,
+          ),
+        ),
+        GoRoute(
+          path: '/conversation/:id',
+          builder: (_, state) {
+            captured.add(state.uri);
+            return Scaffold(body: Text('分析頁 ${state.pathParameters['id']}'));
+          },
+        ),
+      ],
+    );
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [_analyzedConv()]),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await t.pumpAndSettle();
+
+    await t.tap(find.text('約她週末喝咖啡'));
+    // 單擊與背景雙擊重置並存 → 等競技場 timeout 裁決。
+    await t.pump(const Duration(milliseconds: 400));
+    await t.pumpAndSettle();
+
+    expect(captured, hasLength(1));
+    expect(captured.single.path, '/conversation/c1');
+    expect(
+      captured.single.queryParameters['coachPrefill'],
+      '如何約她週末喝咖啡',
+    );
   });
 }

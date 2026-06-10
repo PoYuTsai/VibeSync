@@ -114,6 +114,78 @@ void main() {
     expect(controller.value, equals(Matrix4.identity()));
   });
 
+  group('nextStep 葉節點單擊 → onNextStepTap（決策 3：只有葉節點可點）', () {
+    testWidgets('單擊葉節點 → callback 收到節點文字', (tester) async {
+      String? tapped;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PartnerMindMapView(
+              map: _map(),
+              onNextStepTap: (label) => tapped = label,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('約她週末喝咖啡'));
+      // 與背景雙擊偵測並存：單擊要等雙擊 timeout（~300ms）競技場裁決。
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tapped, '約她週末喝咖啡');
+    });
+
+    testWidgets('「下一步」父標籤節點與其他枝節點不可點', (tester) async {
+      String? tapped;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PartnerMindMapView(
+              map: _map(),
+              onNextStepTap: (label) => tapped = label,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('下一步'), warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('💫 建立男女感'), warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tapped, isNull);
+    });
+
+    testWidgets('callback 為 null（無可導航對話）→ 葉節點點了不 crash、無問教練 affordance',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: PartnerMindMapView(map: _map()))),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('約她週末喝咖啡'), warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
+      expect(find.byIcon(Icons.forum_outlined), findsNothing);
+    });
+
+    testWidgets('可點葉節點帶問教練 icon affordance + Semantics button',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PartnerMindMapView(map: _map(), onNextStepTap: (_) {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.forum_outlined), findsOneWidget);
+      final semantics = tester.getSemantics(find.text('約她週末喝咖啡'));
+      expect(semantics.flagsCollection.isButton, isTrue);
+    });
+  });
+
   testWidgets('parent rebuild 換新 map 時渲染新 graph（不殘留舊節點）',
       (tester) async {
     await tester.pumpWidget(
