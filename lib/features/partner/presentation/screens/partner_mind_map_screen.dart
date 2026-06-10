@@ -17,12 +17,19 @@ class PartnerMindMapScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final partner = ref.watch(partnerByIdProvider(partnerId));
+
+    if (partner == null) {
+      return const Scaffold(
+        body: Center(child: Text('找不到對象（可能已被合併或刪除）')),
+      );
+    }
+
     final aggregate = ref.watch(partnerAggregateProvider(partnerId));
     final conversations =
         ref.watch(conversationsByPartnerProvider(partnerId));
 
     final map = buildPartnerMindMap(
-      partnerName: partner?.name ?? '對象',
+      partnerName: partner.name,
       aggregate: aggregate,
       conversations: conversations,
     );
@@ -33,10 +40,11 @@ class PartnerMindMapScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          '${partner?.name ?? ''} 的作戰板',
-          style: AppTypography.titleMedium.copyWith(color: Colors.white),
+          '${partner.name} 的作戰板',
+          style: AppTypography.titleMedium
+              .copyWith(color: AppColors.onBackgroundPrimary),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
       ),
       body: Container(
         decoration: const BoxDecoration(
