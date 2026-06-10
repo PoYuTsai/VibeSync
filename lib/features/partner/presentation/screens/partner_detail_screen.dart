@@ -43,11 +43,13 @@ import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
+import '../../domain/mindmap/mind_map_builder.dart';
 import '../dialogs/partner_settings_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_data_quality_banner.dart';
 import '../widgets/partner_heat_hero_card.dart';
+import '../widgets/partner_mind_map_entry_card.dart';
 import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
 
@@ -132,6 +134,15 @@ class PartnerDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 14),
                 PartnerHeatHeroCard(heat: aggregate.latestHeat),
+                const SizedBox(height: 12),
+                PartnerMindMapEntryCard(
+                  map: buildPartnerMindMap(
+                    partnerName: partner.name,
+                    aggregate: aggregate,
+                    conversations: conversations,
+                  ),
+                  onTap: () => context.push('/partner/$partnerId/mindmap'),
+                ),
                 const SizedBox(height: 12),
                 ..._conversationRecordWidgets(context, ref, conversations),
                 const SizedBox(height: 12),

@@ -478,7 +478,6 @@ void main() {
 
     // Spec 6D — command-center content comes before detailed traits/radar.
     expect(find.text('目前：待分析'), findsOneWidget);
-    expect(find.text('下一步'), findsOneWidget);
     expect(find.byType(PartnerHeatHeroCard), findsOneWidget);
     // FAB copy stays "+ 新增對話" verbatim per ADR-15 vocabulary lock
     // (Path A 2026-04-28). Visual changed (pill + orange), copy did not.
@@ -487,6 +486,11 @@ void main() {
     // never a fake score).
     expect(find.text('待分析'), findsWidgets);
     expect(find.text('--'), findsOneWidget);
+    // 作戰板入口卡 sits between hero and records; the next-step card now
+    // starts below the lazy ListView's first viewport, so bring it on
+    // screen before asserting (off-screen children aren't built).
+    await _scrollUntilVisible(t, find.text('下一步'));
+    expect(find.text('下一步'), findsOneWidget);
 
     await _scrollUntilVisible(t, find.text('詳細特質與趨勢'));
     expect(find.text('詳細特質與趨勢'), findsOneWidget);
