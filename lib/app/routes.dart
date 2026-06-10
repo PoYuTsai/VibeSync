@@ -103,6 +103,9 @@ final router = GoRouter(
       path: '/conversation/:id',
       builder: (context, state) => AnalysisScreen(
         conversationId: state.pathParameters['id']!,
+        // 作戰板 nextStep 節點入口：捲到 Coach 1:1 並預填（絕不 auto-send）。
+        coachPrefillQuestion:
+            state.uri.queryParameters[AnalysisScreen.coachPrefillQueryParam],
       ),
     ),
     // literal '/partner/new' MUST come before '/partner/:partnerId' so

@@ -54,9 +54,22 @@ import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 
 class AnalysisScreen extends ConsumerStatefulWidget {
+  /// `/conversation/:id?coachPrefill=` 的 query param 名。路由（routes.dart）
+  /// 與入口（作戰板 nextStep 節點）共用此常數，避免兩端字串走鐘。
+  static const coachPrefillQueryParam = 'coachPrefill';
+
   final String conversationId;
 
-  const AnalysisScreen({super.key, required this.conversationId});
+  /// 進頁後捲到 Coach 1:1 並把這句預填進輸入框（作戰板 nextStep 節點入口，
+  /// `/conversation/:id?coachPrefill=`）。只預填、絕不 auto-send（quota 安全
+  /// 硬規則）；卡片渲染條件不滿足（無已還原分析）時安靜 no-op。
+  final String? coachPrefillQuestion;
+
+  const AnalysisScreen({
+    super.key,
+    required this.conversationId,
+    this.coachPrefillQuestion,
+  });
 
   @override
   ConsumerState<AnalysisScreen> createState() => _AnalysisScreenState();
@@ -147,6 +160,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   int? _lastScreenshotAddedCount;
   bool _hasEditedAnalyzedMessage = false;
   int _coachChatFocusRequest = 0;
+  // 隨下一次 focus request 一併預填進 Coach 輸入框的問題。每次
+  // _openCoachQuestion 都整個覆寫（含 null），避免舊預填黏到後續
+  // 純 focus 的請求上。
+  String? _coachChatPrefill;
 
   // 首次看到對話 bubble 時提示用戶長按可編輯。
   OverlayEntry? _editMessageCoachMarkEntry;
@@ -454,7 +471,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     await _scrollToBottom();
   }
 
-  Future<void> _openCoachQuestion() async {
+  Future<void> _openCoachQuestion({String? prefill}) async {
     if (!mounted) {
       return;
     }
@@ -479,6 +496,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
     setState(() {
+      _coachChatPrefill = prefill;
       _coachChatFocusRequest++;
     });
   }
@@ -625,6 +643,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _hydrateStreamingAnalyzeState(current);
       }
     });
+    // 作戰板 nextStep 入口：首幀後捲到 Coach 1:1 並預填問題。
+    // _restorePersistedAnalysis() 是同步的，首幀即含 CoachChatCard；
+    // 渲染條件不滿足時 _openCoachQuestion 內部安靜 no-op。
+    final prefill = widget.coachPrefillQuestion?.trim();
+    if (prefill != null && prefill.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_openCoachQuestion(prefill: prefill));
+      });
+    }
     // 不再自動分析，讓用戶手動點擊
   }
 
@@ -5651,6 +5678,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 analysisSnapshot:
                                     _buildCoachChatAnalysisSnapshot(),
                                 focusRequestToken: _coachChatFocusRequest,
+                                prefillText: _coachChatPrefill,
                                 onReturnToAnalysis: _returnToAnalysisOverview,
                                 onQuotaExceeded: () {
                                   unawaited(_handleCoachChatQuotaExceeded());

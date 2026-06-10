@@ -24,6 +24,10 @@ class CoachChatCard extends ConsumerStatefulWidget {
   final VoidCallback? onReturnToAnalysis;
   final int focusRequestToken;
 
+  /// focusRequestToken 變化時一併預填進輸入框的問題（作戰板 nextStep 入口）。
+  /// 只進 controller、絕不觸發送出——送出永遠是用戶按鈕行為（quota 安全）。
+  final String? prefillText;
+
   const CoachChatCard({
     super.key,
     required this.conversationId,
@@ -31,6 +35,7 @@ class CoachChatCard extends ConsumerStatefulWidget {
     this.onQuotaExceeded,
     this.onReturnToAnalysis,
     this.focusRequestToken = 0,
+    this.prefillText,
   });
 
   static bool isQuotaError(Object? error) =>
@@ -106,6 +111,10 @@ class _CoachChatCardState extends ConsumerState<CoachChatCard> {
   void didUpdateWidget(covariant CoachChatCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.focusRequestToken != oldWidget.focusRequestToken) {
+      final prefill = widget.prefillText?.trim();
+      if (prefill != null && prefill.isNotEmpty) {
+        _fillSuggestedQuestion(prefill);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _focusNode.requestFocus();
