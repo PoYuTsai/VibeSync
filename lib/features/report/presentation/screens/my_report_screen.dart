@@ -24,6 +24,12 @@ class MyReportScreen extends ConsumerWidget {
     final subscription = ref.watch(subscriptionProvider);
     final report = ref.watch(reportDataProvider);
     final isEmpty = report.totalConversations == 0;
+    final partners = ref.watch(partnerListProvider);
+    // Stage labels 必須在 build 階段 eager 解析：ListView 的 itemBuilder 在
+    // layout 階段執行，callback 裡用 ref.watch 會逸出 build contract。
+    final stageLabels = {
+      for (final p in partners) p.id: _latestStageLabel(ref, p.id),
+    };
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -77,8 +83,8 @@ class MyReportScreen extends ConsumerWidget {
         const SizedBox(height: 32),
         // dogfood 決策 A：作戰板入口全 tier 可見，與上方報告 gating 無關
         PartnerMindMapCardList(
-          partners: ref.watch(partnerListProvider),
-          stageLabelOf: (id) => _latestStageLabel(ref, id),
+          partners: partners,
+          stageLabelOf: (id) => stageLabels[id],
           onTapPartner: (id) => context.push('/partner/$id/mindmap'),
         ),
       ],
