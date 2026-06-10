@@ -502,7 +502,9 @@
 ## ADR #19 — [2026-06-11] analyze-chat 扣費改為全對話字數合併計費（取代逐則計費）
 
 **狀態**: 🟡 Proposed — Eric 拍板 2026-06-11，待 Codex 把關後實作；實作 commit 落地後轉 Active
-**修訂**: 2026-06-11 Codex 設計 review r1 = REVISE_REQUIRED（P1: compat fallback 使 server-first 不安全）→ 已修規格 #1/#4/#5，新增 #7/#8，強化 recognizeOnly 閘門；待 r2
+**修訂**:
+- 2026-06-11 Codex r1 = REVISE_REQUIRED（P1: compat fallback 使 server-first 不安全）→ 修規格 #1/#4/#5，新增 #7/#8，強化 recognizeOnly 閘門
+- 2026-06-11 Codex r2 = REVISE_REQUIRED（P1: summary/clipped payload 下 N>payload.length 是舊 client 合法路徑，不得當越界全額）→ 修規格 #1 fallback 加 clipped 分支（user-safe floor 1 + log）。Codex 確認其餘已修到位，補此條即實作綠燈
 
 **決定**: analyze-chat（手動輸入 + OCR 截圖兩入口）扣費由「逐則 `max(1, ceil(字數/200))` 加總」改為**全對話字數加總 → `ceil(總字數/200)`，整次最少 1 則**。
 
@@ -521,14 +523,16 @@
 
 1. **增量計費改字數差 + 三層 compat fallback**（Codex r1 P1 修訂）：
    - 新 client：送 `previousAnalyzedCharCount`，**過渡期同時保留送 `previousAnalyzedCount`**。
-   - 舊 client fallback：缺 char count 但有 valid `previousAnalyzedCount` = N → server 用**當次 payload 的前 N 則訊息**加總推回「已分析字數」，只扣後段字數差。
-   - 只有 `previousAnalyzedCount` 也缺失 / 越界（>payload 訊息數）/ 非數字時，才整段全額計費並 **log 告警**。
+   - 舊 client fallback（缺 char count 但有 `previousAnalyzedCount` = N），分兩種（Codex r2 P1 修訂）：
+     - `0 <= N <= payload.length`：用**當次 payload 的前 N 則訊息**加總推回「已分析字數」，只扣後段字數差。
+     - `N > payload.length` **且 payload 帶 `conversationSummary` 或 clipped context 訊號**：這是舊 client 長對話摘要壓縮的**合法路徑**（requestMessages 可能只剩最近 10 則但 N=30），不得當越界全額計費。採 user-safe fallback：baseline = 當次 payload 全部字數，本次只扣 floor 1 則，log `legacy_count_exceeds_payload_clipped`。
+   - 只有**無 summary/clipped 訊號**、且 N 越界 / 非數字 / 缺失時，才整段全額計費並 **log 告警**。
    - 欄位職責分離：`lastAnalyzedMessageCount` 留給 stale/UI 判斷；新增 `lastAnalyzedCharCount` 專供 billing。**兩者不得混用**。
 2. **餘字不結轉**：每次分析獨立 `ceil`、整次最少 1 則。不做跨次累積池。
 3. **0 字輸入 → 400 拒絕**，不扣額度（與現行空白輸入提示一致）。
 4. **字數 = UTF-16 length**（JS `String.length` ≡ Dart `String.length`），**禁止單端改 grapheme**。計算對象 = sanitized + trim 後的 payload content；**不做 NFC/NFD normalization、不移除 zero-width，零寬字元照算**。必補 JS/Dart mirror tests（同字串集兩端結果一致）。1 emoji ≈ 2 字（`pricing-final.md` 舊文案「1 emoji = 1 字」於實作 commit 一併修正）。
 5. **部署順序 server 先、App 後**：安全前提是規格 #1 的推導式 fallback——舊 client 送舊欄位，server 推回 baseline 只扣字數差，與舊 client 的「只算新增訊息」預覽方向一致（預覽逐則高估、實扣字數制便宜）。⚠️ 若 fallback 做成「缺新欄位即整段全額」則 server-first **不安全**（舊 client 補 5 字可能被扣 11 則），此設計已於 r1 否決。
-6. **測試矩陣**必含 `my_message` / `optimize_message` 路徑、retry 同 `analysisRunId` 不重複扣、三層 fallback 各一案（新欄位 / 舊欄位推導 / 全缺失全額+log）。
+6. **測試矩陣**必含 `my_message` / `optimize_message` 路徑、retry 同 `analysisRunId` 不重複扣、fallback 各一案（新欄位 / 舊欄位推導 / **clipped+summary N 越界 floor 1** / 無訊號全缺失全額+log）。
 7. **`quotedReplyPreview` 不計費**：billing 只看 `content`（維持現狀）；quoted preview 仍進 prompt 與 server total length limit，但**明確不入字數池**，兩端同此定義。
 8. **單一字數 helper 兩端共用**：client/server 各自只有一個 char-count 函式，billing 與預覽都走它。persist 的 char baseline 必須對應**當次送出的 requestMessages**，不是分析完成時 repository 裡的最新 messages（避免分析中新進訊息造成 baseline 漂移）。
 

@@ -40,9 +40,15 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 
 **Claude 修訂（同日）**：ADR #19 規格 #1 改三層 fallback（新欄位 → 舊欄位推導 baseline 只扣字數差 → 全缺失才全額+log）、#4 補 normalization/zero-width 定義 + mirror tests、#5 安全論證改依賴推導 fallback、新增 #7 quotedReplyPreview 不計費、#8 單一 helper + baseline 對應 requestMessages、recognizeOnly 閘門明寫 server-side atomic + vision 前擋。
 
-**待 Round 2**：請 Codex 確認修訂後規格無 P0/P1（review loop 上限 2 輪，r2 仍有分歧 → WAITING_ON_ERIC）。
+**Round 2（2026-06-11）= REVISE_REQUIRED（剩 1 P1）**：
+- [P1] summary/clipped payload：舊 client 長對話壓縮後 requestMessages 可能只剩 10 則但 N=30，原規格把 N>payload.length 當越界全額——對舊 client 是合法路徑，仍會隱形多扣。
+- Codex 確認其餘 r1 修訂全部到位（UTF-16/quotedReplyPreview/helper 單一化/requestMessages baseline/recognizeOnly atomic gate）。
 
-Close Condition: r2 無 P0/P1 → Claude 開實作（實作後另過雙審）；仍有 → WAITING_ON_ERIC。
+**Claude 修訂（同日）**：規格 #1 fallback 加 clipped 分支——N>payload.length 且有 `conversationSummary`/clipped 訊號 → user-safe：baseline=當次 payload 全字數、只扣 floor 1、log `legacy_count_exceeds_payload_clipped`；無訊號才全額+log。已驗證 client clipped 路徑存在（`analysis_service.dart:1080-1287`）。測試矩陣同步加 clipped 案。
+
+**狀態**：Codex 已預告「補此條即實作綠燈」。本 item 視為設計把關完成（per Codex r2 文字），Claude 可開實作；實作後另過第二輪雙審。如 Codex 對 clipped 分支寫法有異議 → WAITING_ON_ERIC（兩輪已用完，不開 r3）。
+
+Close Condition: 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 
 ---
 
