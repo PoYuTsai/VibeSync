@@ -24,6 +24,7 @@ PartnerMindMap buildPartnerMindMap({
   GameStageInfo? stageInfo;
   TopicDepth? topicDepth;
   String snapshotStrategy = '';
+  String? snapshotConversationId;
   for (final c in descByDate) {
     final raw = c.lastAnalysisSnapshotJson;
     if (raw == null || raw.trim().isEmpty) continue;
@@ -40,6 +41,7 @@ PartnerMindMap buildPartnerMindMap({
         stageInfo = parsedStage;
         topicDepth = parsedDepth;
         snapshotStrategy = parsedStrategy;
+        snapshotConversationId = c.id;
         break;
       }
     } catch (_) {
@@ -155,5 +157,6 @@ PartnerMindMap buildPartnerMindMap({
       children: branches,
     ),
     hasAnalysisData: hasAnalysisData,
+    nextStepSourceConversationId: snapshotConversationId,
   );
 }

@@ -23,5 +23,14 @@ class PartnerMindMap {
   /// currentGameStage）→ UI 顯示「再分析一次解鎖」空狀態。
   final bool hasAnalysisData;
 
-  const PartnerMindMap({required this.root, required this.hasAnalysisData});
+  /// 被消費快照（階段/深度/下一步）來源的對話 id ——即「最近一次有分析的
+  /// 對話」。nextStep 節點點擊導向 Coach 1:1 預填用；無可解析快照
+  /// （僅 currentGameStage fallback）時為 null → 節點不可點。
+  final String? nextStepSourceConversationId;
+
+  const PartnerMindMap({
+    required this.root,
+    required this.hasAnalysisData,
+    this.nextStepSourceConversationId,
+  });
 }

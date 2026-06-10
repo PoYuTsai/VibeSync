@@ -222,6 +222,56 @@ void main() {
       expect(map.hasAnalysisData, isFalse);
     });
 
+    test('nextStepSourceConversationId = 被消費快照的對話 id', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(
+              id: 'old',
+              updatedAt: DateTime(2026, 5, 1),
+              snapshotJson: _snapshot(nextStep: '舊建議')),
+          _convo(
+              id: 'new',
+              updatedAt: DateTime(2026, 6, 1),
+              snapshotJson: _snapshot(nextStep: '新建議')),
+        ],
+      );
+      expect(map.nextStepSourceConversationId, 'new');
+    });
+
+    test('最新快照 malformed → nextStepSourceConversationId 指向實際消費的較舊對話', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(
+              id: 'old',
+              updatedAt: DateTime(2026, 5, 1),
+              snapshotJson: _snapshot()),
+          _convo(
+              id: 'new',
+              updatedAt: DateTime(2026, 6, 1),
+              snapshotJson: '{not json'),
+        ],
+      );
+      expect(map.nextStepSourceConversationId, 'old');
+    });
+
+    test('無可解析快照（僅 currentGameStage fallback）→ nextStepSourceConversationId null', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(interests: [], traits: []),
+        conversations: [
+          _convo(
+              id: 'c1',
+              updatedAt: DateTime(2026, 6, 1),
+              currentGameStage: 'qualification'),
+        ],
+      );
+      expect(map.nextStepSourceConversationId, isNull);
+    });
+
     test('節點 id 全樹唯一（graphview Node.Id 要求）', () {
       final map = buildPartnerMindMap(
         partnerName: 'Vivi',
