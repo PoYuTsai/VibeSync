@@ -6,11 +6,14 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../analysis/domain/entities/game_stage.dart';
+import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/presentation/widgets/about_me_card.dart';
 import '../../data/providers/report_providers.dart';
 import '../widgets/heat_trend_chart.dart';
 import '../widgets/conversation_comparison_chart.dart';
+import '../widgets/partner_mindmap_card_list.dart';
 import '../widgets/stage_distribution_chart.dart';
 
 class MyReportScreen extends ConsumerWidget {
@@ -71,8 +74,29 @@ class MyReportScreen extends ConsumerWidget {
             totalConversations: report.totalConversations,
           ),
         ],
+        const SizedBox(height: 32),
+        // dogfood 決策 A：作戰板入口全 tier 可見，與上方報告 gating 無關
+        PartnerMindMapCardList(
+          partners: ref.watch(partnerListProvider),
+          stageLabelOf: (id) => _latestStageLabel(ref, id),
+          onTapPartner: (id) => context.push('/partner/$id/mindmap'),
+        ),
       ],
     );
+  }
+
+  /// 最新階段標籤：conversationsByPartnerProvider 由 repo `listByPartner`
+  /// 保證 updatedAt desc，掃到第一個非空 currentGameStage 即最新。
+  String? _latestStageLabel(WidgetRef ref, String partnerId) {
+    final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
+    for (final c in conversations) {
+      final raw = c.currentGameStage?.trim();
+      if (raw != null && raw.isNotEmpty) {
+        final stage = GameStage.fromString(raw);
+        return '${stage.emoji} ${stage.label}';
+      }
+    }
+    return null;
   }
 
   Widget _lockedReportCard(BuildContext context) {
