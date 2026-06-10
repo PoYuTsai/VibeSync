@@ -17,6 +17,7 @@ import '../features/conversation/presentation/screens/profile_card_screen.dart';
 import '../features/partner/presentation/screens/add_partner_screen.dart';
 import '../features/partner/presentation/screens/partner_detail_screen.dart';
 import '../features/partner/presentation/screens/partner_merge_picker_screen.dart';
+import '../features/partner/presentation/screens/partner_mind_map_screen.dart';
 import '../features/subscription/presentation/screens/settings_screen.dart';
 import '../features/user_profile/presentation/screens/about_me_screen.dart';
 import '../features/user_profile/presentation/screens/partner_style_edit_screen.dart';
@@ -125,6 +126,12 @@ final router = GoRouter(
         // the screen — unknown / self / out-of-scope ids fall back to PR-B
         // row-tap flow (Codex spec patch §6 / §7.5).
         initialTargetId: state.uri.queryParameters['target'],
+      ),
+    ),
+    GoRoute(
+      path: '/partner/:partnerId/mindmap',
+      builder: (context, state) => PartnerMindMapScreen(
+        partnerId: state.pathParameters['partnerId']!,
       ),
     ),
     GoRoute(
