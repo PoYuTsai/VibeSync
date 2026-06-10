@@ -187,6 +187,41 @@ void main() {
       expect(map.hasAnalysisData, isFalse);
     });
 
+    test('最新快照 malformed、較舊快照可解析 → 用較舊那筆', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(
+              id: 'old',
+              updatedAt: DateTime(2026, 5, 1),
+              snapshotJson: _snapshot(stage: 'narrative')),
+          _convo(
+              id: 'new',
+              updatedAt: DateTime(2026, 6, 1),
+              snapshotJson: '{not json'),
+        ],
+      );
+      expect(map.hasAnalysisData, isTrue);
+      final stage =
+          map.root.children.firstWhere((n) => n.branch == MindMapBranch.stage);
+      expect(stage.children.single.label, contains('展現個人魅力'));
+    });
+
+    test('合法 JSON 但 gameStage 是字串（錯 shape）→ 不 crash，跳過該快照', () {
+      final map = buildPartnerMindMap(
+        partnerName: 'Vivi',
+        aggregate: PartnerAggregateView.empty(),
+        conversations: [
+          _convo(
+              id: 'c1',
+              updatedAt: DateTime(2026, 6, 1),
+              snapshotJson: jsonEncode({'gameStage': 'premise'})),
+        ],
+      );
+      expect(map.hasAnalysisData, isFalse);
+    });
+
     test('節點 id 全樹唯一（graphview Node.Id 要求）', () {
       final map = buildPartnerMindMap(
         partnerName: 'Vivi',

@@ -9,7 +9,8 @@ import 'mind_map_models.dart';
 /// 把對象的既有分析資料組成作戰板節點樹。
 ///
 /// 資料來源（與 partner_aggregates 同一套快照，不打任何新 API）：
-/// - 階段 / 話題深度 / 下一步：最新一筆可解析的 lastAnalysisSnapshotJson；
+/// - 階段 / 話題深度 / 下一步：最新一筆可完整解析（JSON + shape）的
+///   lastAnalysisSnapshotJson；
 ///   階段另有 conversation.currentGameStage 作 fallback。
 /// - 興趣 / 特質：PartnerAggregateView 跨對話聚合（已去重、各上限 8）。
 PartnerMindMap buildPartnerMindMap({
@@ -20,18 +21,30 @@ PartnerMindMap buildPartnerMindMap({
   final descByDate = [...conversations]
     ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-  Map<String, dynamic>? snapshot;
+  GameStageInfo? stageInfo;
+  TopicDepth? topicDepth;
+  String snapshotStrategy = '';
   for (final c in descByDate) {
     final raw = c.lastAnalysisSnapshotJson;
     if (raw == null || raw.trim().isEmpty) continue;
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        snapshot = decoded;
+        // 在同一個 try 裡先把要用的欄位全部解掉：
+        // 只有 shape 完整可消費的快照才會被選中。
+        final parsedStage = GameStageInfo.fromJson(
+            decoded['gameStage'] as Map<String, dynamic>?);
+        final parsedDepth =
+            TopicDepth.fromJson(decoded['topicDepth'] as Map<String, dynamic>?);
+        final parsedStrategy = (decoded['strategy'] as String?)?.trim() ?? '';
+        stageInfo = parsedStage;
+        topicDepth = parsedDepth;
+        snapshotStrategy = parsedStrategy;
         break;
       }
     } catch (_) {
-      // 與 partner_aggregates._parseSnapshot 同策略：壞快照靜默跳過。
+      // 與 partner_aggregates._parseSnapshot 同策略：
+      // 壞快照（含 JSON 語法錯誤與錯 shape 的 type error）靜默跳過。
     }
   }
 
@@ -44,14 +57,13 @@ PartnerMindMap buildPartnerMindMap({
     }
   }
 
-  final hasAnalysisData = snapshot != null || fallbackStageRaw != null;
+  final hasAnalysisData = stageInfo != null || fallbackStageRaw != null;
   final branches = <MindMapNode>[];
 
   if (hasAnalysisData) {
     // 階段枝（hasAnalysisData 成立時必有，全圖至少一條邊）
-    final stage = snapshot != null
-        ? GameStageInfo.fromJson(snapshot['gameStage'] as Map<String, dynamic>?)
-            .current
+    final stage = stageInfo != null
+        ? stageInfo.current
         : GameStage.fromString(fallbackStageRaw!);
     branches.add(MindMapNode(
       id: 'stage',
@@ -66,10 +78,8 @@ PartnerMindMap buildPartnerMindMap({
       ],
     ));
 
-    if (snapshot != null) {
-      final depth =
-          TopicDepth.fromJson(snapshot['topicDepth'] as Map<String, dynamic>?)
-              .current;
+    if (topicDepth != null) {
+      final depth = topicDepth.current;
       branches.add(MindMapNode(
         id: 'depth',
         label: '話題深度',
@@ -116,13 +126,10 @@ PartnerMindMap buildPartnerMindMap({
       ));
     }
 
-    if (snapshot != null) {
-      final stageInfo = GameStageInfo.fromJson(
-          snapshot['gameStage'] as Map<String, dynamic>?);
-      final strategy = (snapshot['strategy'] as String?)?.trim() ?? '';
+    if (stageInfo != null) {
       final nextStep = stageInfo.nextStep.trim().isNotEmpty
           ? stageInfo.nextStep.trim()
-          : strategy;
+          : snapshotStrategy;
       if (nextStep.isNotEmpty) {
         branches.add(MindMapNode(
           id: 'next',
