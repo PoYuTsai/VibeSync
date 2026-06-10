@@ -155,7 +155,7 @@ void main() {
     expect(captured.single.path, '/conversation/c1');
     expect(
       captured.single.queryParameters['coachPrefill'],
-      '如何約她週末喝咖啡',
+      '如何約她週末喝咖啡？',
     );
   });
 }

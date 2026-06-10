@@ -74,7 +74,7 @@ class PartnerMindMapScreen extends ConsumerWidget {
                                   '/conversation/${map.nextStepSourceConversationId}',
                               queryParameters: {
                                 AnalysisScreen.coachPrefillQueryParam:
-                                    '如何$label',
+                                    '如何$label？',
                               },
                             ).toString(),
                           ),
