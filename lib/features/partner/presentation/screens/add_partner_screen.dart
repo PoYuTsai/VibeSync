@@ -26,12 +26,23 @@
 // - Single free-text hint signals "name OR description" intent.
 // - Bubbles are intentionally STATIC (no AnimationController) so this
 //   screen's widget tests don't hit GradientBackground's pumpAndSettle hang.
+//
+// Layout-density fold (Bruce/Eric 2026-06-10, proof:
+// test/visual_proof/density_proof_test.dart):
+// - Problem was 太空/沒重心. ONLY layout density changed — same gradient,
+//   same bubbles, same warm tokens, no new copy.
+// - Explanatory text moved into a GlassmorphicContainer card (heavy,
+//   deliberate center of gravity); text tokens switch to glassText* because
+//   they now sit on a glass surface, not the bare gradient.
+// - Content capped at 340 width, biased to optical centre (Spacer 3:4);
+//   field + CTA stay directly on the gradient under the card, 18px rhythm.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/glassmorphic_container.dart';
 import '../../../../shared/widgets/glassmorphic_text_field.dart';
 import '../../../../shared/widgets/gradient_button.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
@@ -133,48 +144,69 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                 24,
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    '先建立一張對象卡',
-                    style: TextStyle(
-                      color: AppColors.onBackgroundPrimary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
-                    style: TextStyle(
-                      color: AppColors.onBackgroundSecondary,
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  GlassmorphicTextField(
-                    controller: _name,
-                    hintText: '例：Alice / Tinder 上的空姐',
-                  ),
-                  const SizedBox(height: 24),
-                  GradientButton(
-                    text: '建立',
-                    onPressed: canSubmit ? () => _submit(ownerId) : null,
-                    isLoading: _busy,
-                  ),
-                  if (!authReady)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: Text(
-                        '請先登入再建立對象',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.onBackgroundSecondary,
-                        ),
+                  const Spacer(flex: 3),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 340),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const GlassmorphicContainer(
+                            borderRadius: 20,
+                            padding: EdgeInsets.fromLTRB(20, 20, 20, 22),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '先建立一張對象卡',
+                                  style: TextStyle(
+                                    color: AppColors.glassTextPrimary,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
+                                  style: TextStyle(
+                                    color: AppColors.glassTextSecondary,
+                                    fontSize: 13,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          GlassmorphicTextField(
+                            controller: _name,
+                            hintText: '例：Alice / Tinder 上的空姐',
+                          ),
+                          const SizedBox(height: 18),
+                          GradientButton(
+                            text: '建立',
+                            onPressed: canSubmit ? () => _submit(ownerId) : null,
+                            isLoading: _busy,
+                          ),
+                          if (!authReady)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 12),
+                              child: Text(
+                                '請先登入再建立對象',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.onBackgroundSecondary,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
+                  ),
+                  const Spacer(flex: 4),
                 ],
               ),
             ),

@@ -301,6 +301,28 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     }
   }
 
+  /// Layout-density fold (Bruce/Eric 2026-06-10, proof:
+  /// test/visual_proof/density_proof_test.dart): low-alpha frosted tray gives
+  /// a section visual MASS so the page stops feeling 空, while the fill stays
+  /// faint (7%) so the opaque glassWhite fields/segments inside still pop.
+  /// Same warm tokens (glassWhite/glassBorder), no new brand color.
+  Widget _frostTray(List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.glassWhite.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.glassBorder.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+
   Widget _buildAddButton(VoidCallback onPressed) {
     return GestureDetector(
       onTap: onPressed,
@@ -374,9 +396,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     return parts.join('・');
   }
 
-  List<Widget> _buildAnalysisSettingsSection({bool includeTopSpacing = false}) {
+  List<Widget> _buildAnalysisSettingsSection() {
     return [
-      if (includeTopSpacing) const SizedBox(height: 24),
       InkWell(
         onTap: () => setState(
           () => _showAnalysisSettings = !_showAnalysisSettings,
@@ -496,9 +517,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   }
 
   List<Widget> _buildConversationContentInput() {
+    // 10px uniform inner rhythm (density proof) — the old 8/12 mix was part
+    // of the 間距不一致 problem.
     return [
       Text('對話內容', style: AppTypography.bodyLarge),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
       if (_messages.isNotEmpty) ...[
         GlassmorphicContainer(
           borderRadius: 12,
@@ -539,7 +562,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
       ],
       Row(
         children: [
@@ -559,7 +582,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           _buildAddButton(_addHerMessage),
         ],
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
       Row(
         children: [
           const BubbleAvatar(
@@ -578,7 +601,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           _buildAddButton(_addMyMessage),
         ],
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
@@ -691,44 +714,56 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_hasOpenerSeed) ...[
-                _buildOpenerSeedNotice(),
-                const SizedBox(height: 24),
-              ],
-              // 「對話對象」 input — only shown for legacy / orphan-conversation
-              // entries (partnerId == null). When entered from PartnerDetail
-              // (partnerId set) the Partner already owns the relationship
-              // identity, so re-typing the name here is redundant double-input.
-              // (Bruce TF feedback 2026-04-28.)
-              if (widget.partnerId == null) ...[
-                Text('對話對象', style: AppTypography.bodyLarge),
-                const SizedBox(height: 8),
-                GlassmorphicTextField(
-                  controller: _nameController,
-                  hintText: '例如：小安',
-                ),
-                const SizedBox(height: 24),
-              ],
-              if (widget.partnerId == null) ...[
-                ..._buildAnalysisSettingsSection(),
-                const SizedBox(height: 24),
-                ..._buildConversationContentInput(),
-              ] else ...[
-                ..._buildConversationContentInput(),
-                ..._buildAnalysisSettingsSection(includeTopSpacing: true),
-              ],
-              if (_hasIncomingMessage) ...[
-                const SizedBox(height: 32),
-                GradientButton(
-                  text: '建立對話',
-                  onPressed: _isLoading ? null : _createConversation,
-                  isLoading: _isLoading,
-                ),
-              ],
-            ],
+          // Layout-density fold (Bruce/Eric 2026-06-10, proof:
+          // test/visual_proof/density_proof_test.dart): content capped at 340
+          // and centred; settings & composer each sit in a matching frosted
+          // tray (consistent width/rhythm → 一致, real mass → 不空). 16px
+          // section rhythm, 20px before the CTA. Collapsed-state whitespace
+          // below the content is expected — do not stuff it.
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 340),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_hasOpenerSeed) ...[
+                    _buildOpenerSeedNotice(),
+                    const SizedBox(height: 16),
+                  ],
+                  // 「對話對象」 input — only shown for legacy / orphan-conversation
+                  // entries (partnerId == null). When entered from PartnerDetail
+                  // (partnerId set) the Partner already owns the relationship
+                  // identity, so re-typing the name here is redundant double-input.
+                  // (Bruce TF feedback 2026-04-28.)
+                  if (widget.partnerId == null) ...[
+                    Text('對話對象', style: AppTypography.bodyLarge),
+                    const SizedBox(height: 8),
+                    GlassmorphicTextField(
+                      controller: _nameController,
+                      hintText: '例如：小安',
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (widget.partnerId == null) ...[
+                    _frostTray(_buildAnalysisSettingsSection()),
+                    const SizedBox(height: 16),
+                    _frostTray(_buildConversationContentInput()),
+                  ] else ...[
+                    _frostTray(_buildConversationContentInput()),
+                    const SizedBox(height: 16),
+                    _frostTray(_buildAnalysisSettingsSection()),
+                  ],
+                  if (_hasIncomingMessage) ...[
+                    const SizedBox(height: 20),
+                    GradientButton(
+                      text: '建立對話',
+                      onPressed: _isLoading ? null : _createConversation,
+                      isLoading: _isLoading,
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
