@@ -46,7 +46,10 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 
 **Claude 修訂（同日）**：規格 #1 fallback 加 clipped 分支——N>payload.length 且有 `conversationSummary`/clipped 訊號 → user-safe：baseline=當次 payload 全字數、只扣 floor 1、log `legacy_count_exceeds_payload_clipped`；無訊號才全額+log。已驗證 client clipped 路徑存在（`analysis_service.dart:1080-1287`）。測試矩陣同步加 clipped 案。
 
-**狀態**：Codex 已預告「補此條即實作綠燈」。本 item 視為設計把關完成（per Codex r2 文字），Claude 可開實作；實作後另過第二輪雙審。如 Codex 對 clipped 分支寫法有異議 → WAITING_ON_ERIC（兩輪已用完，不開 r3）。
+**Round 3 確認（2026-06-11）= 設計把關通過，無剩餘 P0/P1**：
+> Codex 確認 ADR #19 @ `ee20949`：r2 P1 已補到位，clipped/summary 舊 client 路徑改為 user-safe floor 1 + log；無剩餘 P0/P1。設計綠燈，Claude 可開實作；實作後另跑高風險雙審。
+
+**狀態**：設計階段 DONE。下一步 = 新 session 開實作（ADR #19 規格 8 條 + 3 既存 bug 同批 + 即時預覽數字；同 commit 更新 pricing-final/cost-optimization）。實作後仍是高風險 quota/Edge schema 變更，**必過實作雙審，APPROVED 前不得說 dogfood/build safe**。
 
 Close Condition: 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 

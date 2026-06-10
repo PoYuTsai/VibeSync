@@ -504,7 +504,8 @@
 **狀態**: 🟡 Proposed — Eric 拍板 2026-06-11，待 Codex 把關後實作；實作 commit 落地後轉 Active
 **修訂**:
 - 2026-06-11 Codex r1 = REVISE_REQUIRED（P1: compat fallback 使 server-first 不安全）→ 修規格 #1/#4/#5，新增 #7/#8，強化 recognizeOnly 閘門
-- 2026-06-11 Codex r2 = REVISE_REQUIRED（P1: summary/clipped payload 下 N>payload.length 是舊 client 合法路徑，不得當越界全額）→ 修規格 #1 fallback 加 clipped 分支（user-safe floor 1 + log）。Codex 確認其餘已修到位，補此條即實作綠燈
+- 2026-06-11 Codex r2 = REVISE_REQUIRED（P1: summary/clipped payload 下 N>payload.length 是舊 client 合法路徑，不得當越界全額）→ 修規格 #1 fallback 加 clipped 分支（user-safe floor 1 + log）
+- 2026-06-11 Codex 終審 @ `ee20949` = **設計把關通過，無剩餘 P0/P1，實作綠燈**。實作後仍須高風險雙審，APPROVED 前不得稱 dogfood/build safe
 
 **決定**: analyze-chat（手動輸入 + OCR 截圖兩入口）扣費由「逐則 `max(1, ceil(字數/200))` 加總」改為**全對話字數加總 → `ceil(總字數/200)`，整次最少 1 則**。
 
