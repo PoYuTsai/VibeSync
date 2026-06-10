@@ -32,15 +32,17 @@ Scope: quota / Edge schema / AI cost（高風險區）— 設計階段，無 cod
 Branch/Commit: `main` @ ADR #19（`docs/decisions.md`）
 
 Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(總字數/200)`、整次最少 1。
-本 item 是**實作前設計把關**，請 Codex 對 ADR #19 規格挑洞，重點：
+本 item 是**實作前設計把關**。
 
-1. **增量字數差 + 雙兼容 fallback**（規格 #1）：舊 client 缺 `previousAnalyzedCharCount` 時整段全額計費——有沒有比「寧多算」更糟的 edge（如 retry + 舊欄位混用）？
-2. **3 個既存 bug 同批修**的單位統一是否完整覆蓋（client `analysis_screen.dart:817` vs server `index.ts:~5308`）。
-3. **部署順序 server 先**的安全論證（舊 client 預覽高估 = 方向安全）是否有反例。
-4. **UTF-16 length 跨端一致**（JS/Dart）有無隱藏 normalization 差異（NFC/NFD、零寬字元）。
-5. `recognizeOnly` 兩道閘（月餘額 >0 + 日上限 ~30）是否足以擋免費 OCR 濫用。
+**Round 1（2026-06-11）= REVISE_REQUIRED**：
+- [P1] 原 fallback「缺 `previousAnalyzedCharCount` 即整段全額計費」使 server-first 不安全（舊 client 補 5 字可能被扣 11 則 / 觸 429）。
+- 其餘：quotedReplyPreview 計費定義缺失、UTF-16 需明寫不 normalize、recognizeOnly 日上限需 server-side atomic gate、單一 helper + requestMessages baseline 前提。
 
-Close Condition: Codex 設計 review 無 P0/P1 → Claude 開實作（實作後另過雙審）；有 P0/P1 → 修 ADR 再審。
+**Claude 修訂（同日）**：ADR #19 規格 #1 改三層 fallback（新欄位 → 舊欄位推導 baseline 只扣字數差 → 全缺失才全額+log）、#4 補 normalization/zero-width 定義 + mirror tests、#5 安全論證改依賴推導 fallback、新增 #7 quotedReplyPreview 不計費、#8 單一 helper + baseline 對應 requestMessages、recognizeOnly 閘門明寫 server-side atomic + vision 前擋。
+
+**待 Round 2**：請 Codex 確認修訂後規格無 P0/P1（review loop 上限 2 輪，r2 仍有分歧 → WAITING_ON_ERIC）。
+
+Close Condition: r2 無 P0/P1 → Claude 開實作（實作後另過雙審）；仍有 → WAITING_ON_ERIC。
 
 ---
 

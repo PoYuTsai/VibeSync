@@ -502,6 +502,7 @@
 ## ADR #19 — [2026-06-11] analyze-chat 扣費改為全對話字數合併計費（取代逐則計費）
 
 **狀態**: 🟡 Proposed — Eric 拍板 2026-06-11，待 Codex 把關後實作；實作 commit 落地後轉 Active
+**修訂**: 2026-06-11 Codex 設計 review r1 = REVISE_REQUIRED（P1: compat fallback 使 server-first 不安全）→ 已修規格 #1/#4/#5，新增 #7/#8，強化 recognizeOnly 閘門；待 r2
 
 **決定**: analyze-chat（手動輸入 + OCR 截圖兩入口）扣費由「逐則 `max(1, ceil(字數/200))` 加總」改為**全對話字數加總 → `ceil(總字數/200)`，整次最少 1 則**。
 
@@ -516,18 +517,24 @@
 | 對方連發 3 張貼圖（OCR 佔位 `[sticker]`） | 3 則 | 併入字數池，幾乎免費 |
 | 450 字單一長文 | 3 則 | 3 則（不變） |
 
-**規格定義（6 條，實作必遵守）**:
+**規格定義（8 條，實作必遵守）**:
 
-1. **增量計費改字數差**：新欄位 `previousAnalyzedCharCount`；舊欄位 `previousAnalyzedCount`（訊息數）雙兼容讀取、保守 fallback（缺新欄位時整段全額計費，寧多算不少算 server 端、client 預覽同步）。
+1. **增量計費改字數差 + 三層 compat fallback**（Codex r1 P1 修訂）：
+   - 新 client：送 `previousAnalyzedCharCount`，**過渡期同時保留送 `previousAnalyzedCount`**。
+   - 舊 client fallback：缺 char count 但有 valid `previousAnalyzedCount` = N → server 用**當次 payload 的前 N 則訊息**加總推回「已分析字數」，只扣後段字數差。
+   - 只有 `previousAnalyzedCount` 也缺失 / 越界（>payload 訊息數）/ 非數字時，才整段全額計費並 **log 告警**。
+   - 欄位職責分離：`lastAnalyzedMessageCount` 留給 stale/UI 判斷；新增 `lastAnalyzedCharCount` 專供 billing。**兩者不得混用**。
 2. **餘字不結轉**：每次分析獨立 `ceil`、整次最少 1 則。不做跨次累積池。
 3. **0 字輸入 → 400 拒絕**，不扣額度（與現行空白輸入提示一致）。
-4. **字數 = UTF-16 length**（JS `String.length` ≡ Dart `String.length`），**禁止單端改 grapheme**，否則兩端預覽/實扣分歧。1 emoji ≈ 2 字（`pricing-final.md` 舊文案「1 emoji = 1 字」於實作 commit 一併修正）。
-5. **部署順序 server 先、App 後**：舊 client 逐則預覽高估、新 server 實扣便宜——錯的方向對用戶有利，安全。
-6. **測試矩陣**必含 `my_message` / `optimize_message` 路徑、retry 同 `analysisRunId` 不重複扣。
+4. **字數 = UTF-16 length**（JS `String.length` ≡ Dart `String.length`），**禁止單端改 grapheme**。計算對象 = sanitized + trim 後的 payload content；**不做 NFC/NFD normalization、不移除 zero-width，零寬字元照算**。必補 JS/Dart mirror tests（同字串集兩端結果一致）。1 emoji ≈ 2 字（`pricing-final.md` 舊文案「1 emoji = 1 字」於實作 commit 一併修正）。
+5. **部署順序 server 先、App 後**：安全前提是規格 #1 的推導式 fallback——舊 client 送舊欄位，server 推回 baseline 只扣字數差，與舊 client 的「只算新增訊息」預覽方向一致（預覽逐則高估、實扣字數制便宜）。⚠️ 若 fallback 做成「缺新欄位即整段全額」則 server-first **不安全**（舊 client 補 5 字可能被扣 11 則），此設計已於 r1 否決。
+6. **測試矩陣**必含 `my_message` / `optimize_message` 路徑、retry 同 `analysisRunId` 不重複扣、三層 fallback 各一案（新欄位 / 舊欄位推導 / 全缺失全額+log）。
+7. **`quotedReplyPreview` 不計費**：billing 只看 `content`（維持現狀）；quoted preview 仍進 prompt 與 server total length limit，但**明確不入字數池**，兩端同此定義。
+8. **單一字數 helper 兩端共用**：client/server 各自只有一個 char-count 函式，billing 與預覽都走它。persist 的 char baseline 必須對應**當次送出的 requestMessages**，不是分析完成時 repository 裡的最新 messages（避免分析中新進訊息造成 baseline 漂移）。
 
 **同批修的 3 個既存 bug**:
 
-1. **增量單位混用**：client 存「訊息數」（`analysis_screen.dart:817`），server 減「計費則數」（`index.ts:~5308`）→ 含長訊息的對話繼續分析會多扣。新制統一為字數差後自然修復。
+1. **增量單位混用**：client 存「訊息數」（`analysis_screen.dart:817`），server 減「計費則數」（`index.ts:~5308`）→ 含長訊息的對話繼續分析會多扣。新制統一為字數差後修復——**前提是規格 #8**（兩端同一 helper + baseline 對應 requestMessages），否則只是把混用搬到字數層。
 2. **空訊息分歧**：server 空白訊息 +1 則、Dart 跳過 → 預覽 < 實扣。新制合併計算後消除。
 3. **`previousAnalyzedCount` 信任 client**（Hive 本地上報不可驗）→ 竄改可永扣 1 則。月額度封頂，標**已知接受**，不在本批修。
 
@@ -547,7 +554,7 @@
 **不做 / 不動**:
 
 - Opener 不動（ADR #18 一律 3 則）。
-- `recognizeOnly` 維持免費；上線前補兩道閘：①月餘額 >0 才可用 ②獨立日上限 ~30 次/日（現制零防護）。
+- `recognizeOnly` 維持免費；上線前補兩道閘：①月餘額 >0 才可用 ②獨立日上限 ~30 次/日（現制零防護）。日上限必須是 **server-side atomic per-user/day gate，且在 Claude vision 呼叫前擋**；現有 `rate_limiter.ts` 尚未接入此路徑，**不得只靠 client 端限制**。
 - 額度數字（Free 30 / Starter 300 / Essential 800）不動，等 dogfood 真實扣費分佈數據再校。
 - 三 tier 共用同一扣費管線，改一處全 tier 同步。
 
