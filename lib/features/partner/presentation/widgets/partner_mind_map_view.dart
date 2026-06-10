@@ -7,61 +7,59 @@ import '../../domain/mindmap/mind_map_models.dart';
 
 /// 作戰板渲染層：BuchheimWalker 樹狀佈局 + 平移縮放。
 /// 「下一步」枝橘色加重（作戰板定位），其餘 glass 語彙。
-class PartnerMindMapView extends StatefulWidget {
+///
+/// Stateless：graph / byId 每次 build 重建，parent（provider）rebuild 換新
+/// map 時不會殘留舊 graph。節點數 ≤ ~20，重建成本可忽略。
+class PartnerMindMapView extends StatelessWidget {
   final PartnerMindMap map;
 
   const PartnerMindMapView({super.key, required this.map});
 
-  @override
-  State<PartnerMindMapView> createState() => _PartnerMindMapViewState();
-}
-
-class _PartnerMindMapViewState extends State<PartnerMindMapView> {
-  late final Graph _graph;
-  late final BuchheimWalkerConfiguration _config;
-  final Map<String, MindMapNode> _byId = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _graph = Graph()..isTree = true;
-    _config = BuchheimWalkerConfiguration()
-      ..siblingSeparation = 24
-      ..levelSeparation = 48
-      ..subtreeSeparation = 32
-      ..orientation = BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT;
-    _addNode(widget.map.root, null);
-  }
-
-  void _addNode(MindMapNode node, Node? parent) {
+  void _addNode(
+    Graph graph,
+    Map<String, MindMapNode> byId,
+    MindMapNode node,
+    Node? parent,
+  ) {
     final gNode = Node.Id(node.id);
-    _byId[node.id] = node;
+    byId[node.id] = node;
     if (parent == null) {
-      _graph.addNode(gNode);
+      graph.addNode(gNode);
     } else {
-      _graph.addEdge(parent, gNode);
+      graph.addEdge(parent, gNode);
     }
     for (final child in node.children) {
-      _addNode(child, gNode);
+      _addNode(graph, byId, child, gNode);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final graph = Graph()..isTree = true;
+    final byId = <String, MindMapNode>{};
+    _addNode(graph, byId, map.root, null);
+    final config = BuchheimWalkerConfiguration()
+      ..siblingSeparation = 24
+      ..levelSeparation = 48
+      ..subtreeSeparation = 32
+      ..orientation = BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT;
+
     return InteractiveViewer(
       constrained: false,
       boundaryMargin: const EdgeInsets.all(80),
       minScale: 0.4,
       maxScale: 2.0,
       child: GraphView(
-        graph: _graph,
-        algorithm: BuchheimWalkerAlgorithm(_config, TreeEdgeRenderer(_config)),
+        graph: graph,
+        algorithm: BuchheimWalkerAlgorithm(config, TreeEdgeRenderer(config)),
         paint: Paint()
           ..color = AppColors.primaryLight.withValues(alpha: 0.45)
           ..strokeWidth = 1.4
           ..style = PaintingStyle.stroke,
         builder: (Node node) {
-          final data = _byId[node.key!.value as String]!;
+          // 不變量：graph 與 byId 來自同一棵樹、builder 保證 id 唯一
+          // （mind_map_builder_test 已覆蓋），lookup 必命中。
+          final data = byId[node.key!.value as String]!;
           return _MindMapNodeChip(node: data);
         },
       ),
@@ -115,6 +113,9 @@ class _MindMapNodeChip extends StatelessWidget {
       ),
       child: Text(
         node.label,
+        // 非 root 枝可能是 AI 長句，夾在 maxWidth 200 內最多 3 行截斷。
+        maxLines: _isRoot ? null : 3,
+        overflow: _isRoot ? null : TextOverflow.ellipsis,
         style: (_isRoot ? AppTypography.titleMedium : AppTypography.bodySmall)
             .copyWith(
           color: textColor,
