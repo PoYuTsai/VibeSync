@@ -1,3 +1,4 @@
+import '../entities/effective_style.dart';
 import '../entities/partner_style_override.dart';
 import '../entities/user_profile.dart';
 import 'resolve_effective_style.dart';
@@ -26,11 +27,8 @@ class EffectiveStylePromptBuilder {
     );
     final lines = <String>[];
 
-    final style = effective.interactionStyle;
-    if (style != null) {
-      lines.add(
-          '- Preferred voice: ${_styleLabel(style)}；${_stylePrompt(style)}');
-    }
+    final voiceLine = _voiceLine(effective);
+    if (voiceLine != null) lines.add(voiceLine);
 
     if (effective.practiceGoals.isNotEmpty) {
       lines.add(
@@ -78,11 +76,8 @@ class EffectiveStylePromptBuilder {
     );
     final lines = <String>[];
 
-    final style = effective.interactionStyle;
-    if (style != null) {
-      lines.add(
-          '- Preferred voice: ${_styleLabel(style)}；${_stylePrompt(style)}');
-    }
+    final voiceLine = _voiceLine(effective);
+    if (voiceLine != null) lines.add(voiceLine);
 
     if (effective.practiceGoals.isNotEmpty) {
       lines.add(
@@ -96,6 +91,25 @@ class EffectiveStylePromptBuilder {
       '- Contract: 僅用來調整教練語氣與任務 framing；不要拿來推斷對方或寫長期人格。',
     );
     return _truncate(lines.join('\n'), coachFollowUpMaxChars);
+  }
+
+  /// Voice line for the (主, 副) style pair.
+  ///
+  /// 主-only output is **byte-for-byte identical** to the pre-pair format —
+  /// that is the regression guarantee for every existing user (snapshot
+  /// tested). 主+副 leads with the pair framing, then full 主 prompt, then
+  /// the deliberately down-weighted 副 prompt so the LLM doesn't average the
+  /// two styles into mush.
+  static String? _voiceLine(EffectiveStyle effective) {
+    final style = effective.interactionStyle;
+    if (style == null) return null;
+    final secondary = effective.secondaryStyle;
+    if (secondary == null) {
+      return '- Preferred voice: ${_styleLabel(style)}；${_stylePrompt(style)}';
+    }
+    return '- Preferred voice: 以${_styleLabel(style)}為主、'
+        '${_styleLabel(secondary)}為輔；${_stylePrompt(style)}。'
+        '${_secondaryStylePrompt(secondary)}';
   }
 
   static String _styleLabel(InteractionStyle style) {
@@ -125,6 +139,24 @@ class EffectiveStylePromptBuilder {
         return '語氣低壓溫和，先安住情緒，不催促、不追問';
       case InteractionStyle.playful:
         return '可以保留曖昧張力與玩心，但尊重對方反應和邊界';
+    }
+  }
+
+  /// Down-weighted 副風格 prompt — 點綴 wording on purpose, never reusing the
+  /// full-strength [_stylePrompt], so the 副 colors the voice without the LLM
+  /// averaging it against the 主基調.
+  static String _secondaryStylePrompt(InteractionStyle style) {
+    switch (style) {
+      case InteractionStyle.steady:
+        return '偶爾點綴一點穩定的底氣讓回覆收得住，不要蓋過主基調';
+      case InteractionStyle.direct:
+        return '偶爾點綴一句更清楚的意圖表達，不要蓋過主基調';
+      case InteractionStyle.humorous:
+        return '偶爾點綴一點輕鬆幽默調味，不要蓋過主基調';
+      case InteractionStyle.gentle:
+        return '在情緒處點綴一點溫柔緩衝，不要蓋過主基調';
+      case InteractionStyle.playful:
+        return '偶爾點綴一點玩心與曖昧張力，不要蓋過主基調';
     }
   }
 

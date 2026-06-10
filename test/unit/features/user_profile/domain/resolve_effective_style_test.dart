@@ -98,4 +98,55 @@ void main() {
       expect(r.notes, '主角');
     });
   });
+
+  group('resolveEffectiveStyle style pair (atomic 主+副)', () {
+    final globalPair = UserProfile.create(
+      interactionStyle: InteractionStyle.steady,
+      secondaryStyle: InteractionStyle.humorous,
+      updatedAt: ts,
+    );
+
+    test('partner with 主 wins the whole pair (主+副 from partner)', () {
+      final partner = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        interactionStyle: InteractionStyle.direct,
+        secondaryStyle: InteractionStyle.playful,
+        updatedAt: ts,
+      );
+      final r = resolveEffectiveStyle(global: globalPair, partner: partner);
+      expect(r.interactionStyle, InteractionStyle.direct);
+      expect(r.secondaryStyle, InteractionStyle.playful);
+    });
+
+    test('partner 主-only wins the whole pair — global 副 must NOT leak in',
+        () {
+      // The contract case: mixing partner 主 + global 副 would compose a
+      // persona the user never picked.
+      final partner = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        interactionStyle: InteractionStyle.direct,
+        updatedAt: ts,
+      );
+      final r = resolveEffectiveStyle(global: globalPair, partner: partner);
+      expect(r.interactionStyle, InteractionStyle.direct);
+      expect(r.secondaryStyle, isNull);
+    });
+
+    test('partner without 主 inherits the whole global pair', () {
+      final partner = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        notes: '只有備註',
+        updatedAt: ts,
+      );
+      final r = resolveEffectiveStyle(global: globalPair, partner: partner);
+      expect(r.interactionStyle, InteractionStyle.steady);
+      expect(r.secondaryStyle, InteractionStyle.humorous);
+    });
+
+    test('partner null inherits the whole global pair', () {
+      final r = resolveEffectiveStyle(global: globalPair, partner: null);
+      expect(r.interactionStyle, InteractionStyle.steady);
+      expect(r.secondaryStyle, InteractionStyle.humorous);
+    });
+  });
 }

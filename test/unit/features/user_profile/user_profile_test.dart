@@ -98,4 +98,48 @@ void main() {
       expect(p.isEmpty, isFalse);
     });
   });
+
+  group('UserProfile.create style pair', () {
+    final ts = DateTime(2026, 6, 10);
+
+    test('secondary without primary throws', () {
+      expect(
+        () => UserProfile.create(
+          secondaryStyle: InteractionStyle.humorous,
+          updatedAt: ts,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('secondary equal to primary throws', () {
+      expect(
+        () => UserProfile.create(
+          interactionStyle: InteractionStyle.steady,
+          secondaryStyle: InteractionStyle.steady,
+          updatedAt: ts,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('primary + distinct secondary is valid', () {
+      final p = UserProfile.create(
+        interactionStyle: InteractionStyle.steady,
+        secondaryStyle: InteractionStyle.humorous,
+        updatedAt: ts,
+      );
+      expect(p.interactionStyle, InteractionStyle.steady);
+      expect(p.secondaryStyle, InteractionStyle.humorous);
+      expect(p.isEmpty, isFalse);
+    });
+
+    test('primary-only stays valid (secondary defaults to null)', () {
+      final p = UserProfile.create(
+        interactionStyle: InteractionStyle.steady,
+        updatedAt: ts,
+      );
+      expect(p.secondaryStyle, isNull);
+    });
+  });
 }

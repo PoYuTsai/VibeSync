@@ -22,12 +22,18 @@ class PartnerStyleOverride {
   @HiveField(4)
   final DateTime updatedAt;
 
+  /// 副風格（style pair 2026-06-10）。[interactionStyle] 原地不動＝主風格。
+  /// Old rows read back as null — zero migration.
+  @HiveField(5)
+  final InteractionStyle? secondaryStyle;
+
   /// Permissive raw constructor — used by Hive codegen and trusted call sites.
   /// Same dual-constructor rationale as [UserProfile]: stored rows must
   /// rebuild without re-running validation that may have tightened.
   const PartnerStyleOverride({
     required this.partnerId,
     this.interactionStyle,
+    this.secondaryStyle,
     this.practiceGoals = const [],
     this.notes,
     required this.updatedAt,
@@ -36,12 +42,19 @@ class PartnerStyleOverride {
   factory PartnerStyleOverride.create({
     required String partnerId,
     InteractionStyle? interactionStyle,
+    InteractionStyle? secondaryStyle,
     List<PracticeGoal> practiceGoals = const [],
     String? notes,
     required DateTime updatedAt,
   }) {
     if (partnerId.isEmpty) {
       throw ArgumentError('partnerId must not be empty');
+    }
+    if (secondaryStyle != null && interactionStyle == null) {
+      throw ArgumentError('secondaryStyle requires interactionStyle (主)');
+    }
+    if (secondaryStyle != null && secondaryStyle == interactionStyle) {
+      throw ArgumentError('secondaryStyle must differ from interactionStyle');
     }
     if (practiceGoals.length > maxPracticeGoals) {
       throw ArgumentError('practiceGoals exceeds max $maxPracticeGoals');
@@ -53,6 +66,7 @@ class PartnerStyleOverride {
     return PartnerStyleOverride(
       partnerId: partnerId,
       interactionStyle: interactionStyle,
+      secondaryStyle: secondaryStyle,
       practiceGoals: List.unmodifiable(practiceGoals),
       notes: (n == null || n.isEmpty) ? null : n,
       updatedAt: updatedAt,
@@ -60,5 +74,8 @@ class PartnerStyleOverride {
   }
 
   bool get isEmpty =>
-      interactionStyle == null && practiceGoals.isEmpty && notes == null;
+      interactionStyle == null &&
+      secondaryStyle == null &&
+      practiceGoals.isEmpty &&
+      notes == null;
 }

@@ -61,6 +61,11 @@ class UserProfile {
   @HiveField(5)
   final DateTime updatedAt;
 
+  /// 副風格（style pair 2026-06-10）。[interactionStyle] 原地不動＝主風格。
+  /// Old rows read back as null — zero migration.
+  @HiveField(6)
+  final InteractionStyle? secondaryStyle;
+
   /// Public raw constructor — used by Hive codegen and trusted call sites.
   /// Callers from UI / controller MUST use [UserProfile.create] instead so
   /// trimming + bounds are enforced. Permissive on purpose so generated
@@ -69,6 +74,7 @@ class UserProfile {
   /// tightened.
   const UserProfile({
     this.interactionStyle,
+    this.secondaryStyle,
     this.practiceGoals = const [],
     this.topicSeeds = const [],
     this.customTopics,
@@ -81,12 +87,19 @@ class UserProfile {
   /// user input. Throws [ArgumentError] on bound violation.
   factory UserProfile.create({
     InteractionStyle? interactionStyle,
+    InteractionStyle? secondaryStyle,
     List<PracticeGoal> practiceGoals = const [],
     List<TopicSeed> topicSeeds = const [],
     String? customTopics,
     String? notes,
     required DateTime updatedAt,
   }) {
+    if (secondaryStyle != null && interactionStyle == null) {
+      throw ArgumentError('secondaryStyle requires interactionStyle (主)');
+    }
+    if (secondaryStyle != null && secondaryStyle == interactionStyle) {
+      throw ArgumentError('secondaryStyle must differ from interactionStyle');
+    }
     if (practiceGoals.length > maxPracticeGoals) {
       throw ArgumentError('practiceGoals exceeds max $maxPracticeGoals');
     }
@@ -103,6 +116,7 @@ class UserProfile {
     }
     return UserProfile(
       interactionStyle: interactionStyle,
+      secondaryStyle: secondaryStyle,
       practiceGoals: List.unmodifiable(practiceGoals),
       topicSeeds: List.unmodifiable(topicSeeds),
       customTopics: (ct == null || ct.isEmpty) ? null : ct,
@@ -113,6 +127,7 @@ class UserProfile {
 
   bool get isEmpty =>
       interactionStyle == null &&
+      secondaryStyle == null &&
       practiceGoals.isEmpty &&
       topicSeeds.isEmpty &&
       customTopics == null &&

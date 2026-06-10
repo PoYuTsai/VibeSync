@@ -67,6 +67,40 @@ void main() {
       expect(ov.isEmpty, isFalse);
     });
 
+    test('should reject secondaryStyle without interactionStyle (主)', () {
+      expect(
+        () => PartnerStyleOverride.create(
+          partnerId: 'p1',
+          secondaryStyle: InteractionStyle.humorous,
+          updatedAt: ts,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('should reject secondaryStyle equal to interactionStyle', () {
+      expect(
+        () => PartnerStyleOverride.create(
+          partnerId: 'p1',
+          interactionStyle: InteractionStyle.steady,
+          secondaryStyle: InteractionStyle.steady,
+          updatedAt: ts,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('should accept 主 + distinct 副 and count toward isEmpty', () {
+      final ov = PartnerStyleOverride.create(
+        partnerId: 'p1',
+        interactionStyle: InteractionStyle.steady,
+        secondaryStyle: InteractionStyle.humorous,
+        updatedAt: ts,
+      );
+      expect(ov.secondaryStyle, InteractionStyle.humorous);
+      expect(ov.isEmpty, isFalse);
+    });
+
     test('should make practiceGoals unmodifiable', () {
       final ov = PartnerStyleOverride.create(
         partnerId: 'p1',

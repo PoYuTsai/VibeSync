@@ -9,6 +9,7 @@ void main() {
 
   UserProfile profile({
     InteractionStyle? style,
+    InteractionStyle? secondaryStyle,
     List<PracticeGoal> goals = const [],
     List<TopicSeed> seeds = const [],
     String? customTopics,
@@ -16,6 +17,7 @@ void main() {
   }) =>
       UserProfile.create(
         interactionStyle: style,
+        secondaryStyle: secondaryStyle,
         practiceGoals: goals,
         topicSeeds: seeds,
         customTopics: customTopics,
@@ -25,12 +27,14 @@ void main() {
 
   PartnerStyleOverride override({
     InteractionStyle? style,
+    InteractionStyle? secondaryStyle,
     List<PracticeGoal> goals = const [],
     String? notes,
   }) =>
       PartnerStyleOverride.create(
         partnerId: 'p-1',
         interactionStyle: style,
+        secondaryStyle: secondaryStyle,
         practiceGoals: goals,
         notes: notes,
         updatedAt: now,
@@ -113,6 +117,71 @@ void main() {
       expect(context, contains('全域低壓'));
       expect(context, isNot(contains('疑似混入的對象備註')));
       expect(context, isNot(contains('模糊邀約')));
+    });
+  });
+
+  group('EffectiveStylePromptBuilder style pair', () {
+    test('主-only output is byte-for-byte identical to pre-pair format', () {
+      // 最重要回歸保險：所有舊用戶（無副風格）的 prompt 必須一字不差。
+      final context = builder.buildForAnalysis(
+        global: profile(style: InteractionStyle.humorous),
+        partner: null,
+        includePartnerOverride: true,
+      );
+
+      expect(
+        context,
+        '- Preferred voice: 幽默；回覆要輕鬆、有畫面感，可以自然幽默但不要硬講笑話\n'
+        '- Contract: 這些設定只調整語氣、練習方向和跟進建議；不要替用戶假裝成另一個人。'
+        '當前對話、同意與安全、1.8x 黃金法則優先。',
+      );
+    });
+
+    test('主+副 leads with pair framing, full 主 prompt, 點綴 副 prompt', () {
+      final context = builder.buildForAnalysis(
+        global: profile(
+          style: InteractionStyle.steady,
+          secondaryStyle: InteractionStyle.humorous,
+        ),
+        partner: null,
+        includePartnerOverride: true,
+      )!;
+
+      expect(context, contains('Preferred voice: 以穩重為主、幽默為輔'));
+      expect(context, contains('回覆乾淨穩定，不急著推進，也不要過度解釋'));
+      expect(context, contains('點綴'));
+      expect(context, contains('不要蓋過主基調'));
+      // 副風格絕不用全力描述（防 LLM 把兩風格平均掉）。
+      expect(context, isNot(contains('可以自然幽默但不要硬講笑話')));
+    });
+
+    test('partner 主-only pair beats global 主+副 atomically in prompt', () {
+      final context = builder.buildForAnalysis(
+        global: profile(
+          style: InteractionStyle.steady,
+          secondaryStyle: InteractionStyle.humorous,
+        ),
+        partner: override(style: InteractionStyle.direct),
+        includePartnerOverride: true,
+      )!;
+
+      expect(context, contains('Preferred voice: 直接'));
+      expect(context, isNot(contains('為輔')));
+      expect(context, isNot(contains('幽默')));
+    });
+
+    test('buildForCoachFollowUp carries the same pair voice line', () {
+      final context = builder.buildForCoachFollowUp(
+        global: profile(
+          style: InteractionStyle.gentle,
+          secondaryStyle: InteractionStyle.playful,
+        ),
+        partner: null,
+        includePartnerOverride: true,
+      )!;
+
+      expect(context, contains('Preferred voice: 以溫柔為主、有玩心為輔'));
+      expect(context, contains('不要蓋過主基調'));
     });
   });
 

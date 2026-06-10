@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../data/providers/user_profile_providers.dart';
 import '../../domain/entities/user_profile.dart';
+import '../style_pair_draft.dart';
 import '../widgets/profile_chip_section.dart';
 
 class AboutMeScreen extends ConsumerStatefulWidget {
@@ -16,7 +17,7 @@ class AboutMeScreen extends ConsumerStatefulWidget {
 }
 
 class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
-  InteractionStyle? _draftStyle;
+  StylePairDraft _draftPair = StylePairDraft.empty;
   final Set<PracticeGoal> _draftGoals = <PracticeGoal>{};
   final Set<TopicSeed> _draftSeeds = <TopicSeed>{};
   final TextEditingController _customController = TextEditingController();
@@ -34,7 +35,10 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   void _hydrate(UserProfile? profile) {
     if (_hydrated || profile == null) return;
     _initialProfile = profile;
-    _draftStyle = profile.interactionStyle;
+    _draftPair = StylePairDraft(
+      primary: profile.interactionStyle,
+      secondary: profile.secondaryStyle,
+    );
     _draftGoals
       ..clear()
       ..addAll(profile.practiceGoals);
@@ -47,7 +51,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   }
 
   bool get _isDraftEmpty =>
-      _draftStyle == null &&
+      _draftPair.primary == null &&
       _draftGoals.isEmpty &&
       _draftSeeds.isEmpty &&
       _customController.text.trim().isEmpty &&
@@ -127,7 +131,8 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     // label == '儲存'
     try {
       final profile = UserProfile.create(
-        interactionStyle: _draftStyle,
+        interactionStyle: _draftPair.primary,
+        secondaryStyle: _draftPair.secondary,
         practiceGoals: _draftGoals.toList(),
         topicSeeds: _draftSeeds.toList(),
         customTopics: _customController.text,
@@ -197,12 +202,13 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
               const SizedBox(height: 24),
               ProfileChipSection<InteractionStyle>(
                 title: '互動風格',
-                subtitle: '單選，告訴 AI 你的氣場。',
+                subtitle: '先點主風格，再點副風格（可只選主）。',
                 options: InteractionStyle.values,
                 labelOf: _interactionStyleLabel,
-                isSelected: (s) => _draftStyle == s,
+                isSelected: _draftPair.contains,
+                badgeOf: _draftPair.badgeOf,
                 onTap: (s) => setState(() {
-                  _draftStyle = (_draftStyle == s) ? null : s;
+                  _draftPair = _draftPair.tap(s);
                 }),
               ),
               const SizedBox(height: 20),

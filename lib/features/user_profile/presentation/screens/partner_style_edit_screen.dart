@@ -9,6 +9,8 @@ import '../../data/providers/partner_style_providers.dart';
 import '../../data/providers/user_profile_providers.dart';
 import '../../domain/entities/partner_style_override.dart';
 import '../../domain/entities/user_profile.dart';
+import '../style_pair_draft.dart';
+import '../widgets/profile_chip_section.dart' show StyleRoleBadge;
 
 /// Edit screen for per-partner style overrides — Spec 2 Phase 6.
 ///
@@ -28,14 +30,17 @@ class PartnerStyleEditScreen extends ConsumerStatefulWidget {
 class _PartnerStyleEditScreenState
     extends ConsumerState<PartnerStyleEditScreen> {
   bool _draftInitialized = false;
-  InteractionStyle? _interactionStyle;
+  StylePairDraft _stylePair = StylePairDraft.empty;
   final List<PracticeGoal> _practiceGoals = [];
   final TextEditingController _notesController = TextEditingController();
 
   void _ensureInit(PartnerStyleOverride? loaded) {
     if (_draftInitialized) return;
     _draftInitialized = true;
-    _interactionStyle = loaded?.interactionStyle;
+    _stylePair = StylePairDraft(
+      primary: loaded?.interactionStyle,
+      secondary: loaded?.secondaryStyle,
+    );
     _practiceGoals
       ..clear()
       ..addAll(loaded?.practiceGoals ?? const []);
@@ -70,7 +75,8 @@ class _PartnerStyleEditScreenState
     final notes = _notesController.text.trim();
     final draft = PartnerStyleOverride.create(
       partnerId: widget.partnerId,
-      interactionStyle: _interactionStyle,
+      interactionStyle: _stylePair.primary,
+      secondaryStyle: _stylePair.secondary,
       practiceGoals: _practiceGoals.toList(),
       notes: notes.isEmpty ? null : notes,
       updatedAt: DateTime.now(),
@@ -113,7 +119,7 @@ class _PartnerStyleEditScreenState
         .clear();
     if (!mounted) return;
     setState(() {
-      _interactionStyle = null;
+      _stylePair = StylePairDraft.empty;
       _practiceGoals.clear();
       _notesController.clear();
     });
@@ -170,10 +176,15 @@ class _PartnerStyleEditScreenState
                   ),
                   const SizedBox(height: 16),
                   _InteractionStyleSection(
-                    selected: _interactionStyle,
-                    globalFallback: globalProfile?.interactionStyle,
-                    onSelect: (s) => setState(() => _interactionStyle = s),
-                    onReset: () => setState(() => _interactionStyle = null),
+                    selected: _stylePair,
+                    globalFallback: StylePairDraft(
+                      primary: globalProfile?.interactionStyle,
+                      secondary: globalProfile?.secondaryStyle,
+                    ),
+                    onTap: (s) =>
+                        setState(() => _stylePair = _stylePair.tap(s)),
+                    onReset: () =>
+                        setState(() => _stylePair = StylePairDraft.empty),
                   ),
                   const SizedBox(height: 16),
                   _PracticeGoalsSection(
@@ -236,19 +247,24 @@ class _InteractionStyleSection extends StatelessWidget {
   const _InteractionStyleSection({
     required this.selected,
     required this.globalFallback,
-    required this.onSelect,
+    required this.onTap,
     required this.onReset,
   });
 
-  final InteractionStyle? selected;
-  final InteractionStyle? globalFallback;
-  final ValueChanged<InteractionStyle> onSelect;
+  final StylePairDraft selected;
+  final StylePairDraft globalFallback;
+  final ValueChanged<InteractionStyle> onTap;
   final VoidCallback onReset;
 
   String? _placeholderHint() {
-    if (selected != null) return null;
-    if (globalFallback != null) {
-      return '（沿用全域：${_styleLabel(globalFallback!)}）';
+    if (selected.primary != null) return null;
+    final globalPrimary = globalFallback.primary;
+    if (globalPrimary != null) {
+      final globalSecondary = globalFallback.secondary;
+      return globalSecondary == null
+          ? '（沿用全域：${_styleLabel(globalPrimary)}）'
+          : '（沿用全域：以${_styleLabel(globalPrimary)}為主、'
+              '${_styleLabel(globalSecondary)}為輔）';
     }
     return '（尚未設定）';
   }
@@ -268,6 +284,13 @@ class _InteractionStyleSection extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            '先點主風格，再點副風格（可只選主）。',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.glassTextSecondary,
+            ),
+          ),
           if (hint != null) ...[
             const SizedBox(height: 4),
             Text(
@@ -282,15 +305,25 @@ class _InteractionStyleSection extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: InteractionStyle.values.map((s) {
+              final badge = selected.badgeOf(s);
               return ChoiceChip(
-                label: Text(_styleLabel(s)),
-                selected: selected == s,
+                label: badge == null
+                    ? Text(_styleLabel(s))
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_styleLabel(s)),
+                          const SizedBox(width: 4),
+                          StyleRoleBadge(text: badge),
+                        ],
+                      ),
+                selected: selected.contains(s),
                 showCheckmark: false,
-                onSelected: (_) => onSelect(s),
+                onSelected: (_) => onTap(s),
               );
             }).toList(),
           ),
-          if (selected != null) ...[
+          if (selected.primary != null) ...[
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,

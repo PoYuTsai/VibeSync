@@ -18,6 +18,7 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
     };
     return UserProfile(
       interactionStyle: fields[0] as InteractionStyle?,
+      secondaryStyle: fields[6] as InteractionStyle?,
       practiceGoals: fields[1] == null
           ? const []
           : (fields[1] as List).cast<PracticeGoal>(),
@@ -32,7 +33,7 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
   @override
   void write(BinaryWriter writer, UserProfile obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.interactionStyle)
       ..writeByte(1)
@@ -44,7 +45,9 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
       ..writeByte(4)
       ..write(obj.notes)
       ..writeByte(5)
-      ..write(obj.updatedAt);
+      ..write(obj.updatedAt)
+      ..writeByte(6)
+      ..write(obj.secondaryStyle);
   }
 
   @override

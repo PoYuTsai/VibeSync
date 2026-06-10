@@ -71,4 +71,75 @@ void main() {
   test('typeId is locked at 13 (forward-compat fence)', () {
     expect(PartnerStyleOverrideAdapter().typeId, 13);
   });
+
+  test('style pair (主+副) survives Hive round-trip', () async {
+    final original = PartnerStyleOverride.create(
+      partnerId: 'p3',
+      interactionStyle: InteractionStyle.steady,
+      secondaryStyle: InteractionStyle.playful,
+      updatedAt: DateTime.utc(2026, 6, 10),
+    );
+
+    await box.put(original.partnerId, original);
+    final restored = box.get('p3')!;
+
+    expect(restored.interactionStyle, InteractionStyle.steady);
+    expect(restored.secondaryStyle, InteractionStyle.playful);
+  });
+
+  test('legacy 5-field binary (pre style pair) reads secondaryStyle=null',
+      () async {
+    // Write with the pre-pair wire format (fields 0..4 only), then re-read
+    // with the current generated adapter — zero migration for existing rows.
+    Hive.registerAdapter(_LegacyPartnerStyleOverrideAdapter(), override: true);
+    final legacyBox = await Hive.openBox<PartnerStyleOverride>(
+      'test_partner_style_legacy_${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await legacyBox.put(
+      'p1',
+      PartnerStyleOverride(
+        partnerId: 'p1',
+        interactionStyle: InteractionStyle.direct,
+        updatedAt: DateTime.utc(2026, 6, 1),
+      ),
+    );
+    final boxName = legacyBox.name;
+    await legacyBox.close();
+
+    Hive.registerAdapter(PartnerStyleOverrideAdapter(), override: true);
+    final reopened = await Hive.openBox<PartnerStyleOverride>(boxName);
+    final restored = reopened.get('p1')!;
+
+    expect(restored.interactionStyle, InteractionStyle.direct);
+    expect(restored.secondaryStyle, isNull);
+    await reopened.close();
+  });
+}
+
+/// The exact `write` shape the generated adapter had before secondaryStyle
+/// (@HiveField(5)) was added — used to fabricate authentic legacy rows.
+class _LegacyPartnerStyleOverrideAdapter
+    extends TypeAdapter<PartnerStyleOverride> {
+  @override
+  final typeId = 13;
+
+  @override
+  PartnerStyleOverride read(BinaryReader reader) =>
+      throw UnsupportedError('write-only legacy adapter');
+
+  @override
+  void write(BinaryWriter writer, PartnerStyleOverride obj) {
+    writer
+      ..writeByte(5)
+      ..writeByte(0)
+      ..write(obj.partnerId)
+      ..writeByte(1)
+      ..write(obj.interactionStyle)
+      ..writeByte(2)
+      ..write(obj.practiceGoals)
+      ..writeByte(3)
+      ..write(obj.notes)
+      ..writeByte(4)
+      ..write(obj.updatedAt);
+  }
 }

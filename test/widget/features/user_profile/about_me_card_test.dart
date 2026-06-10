@@ -53,12 +53,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('關於我'), findsOneWidget);
     expect(find.text('讓 VibeSync 更像你的教練'), findsOneWidget);
-    expect(find.textContaining('花 30 秒'), findsOneWidget);
+    expect(find.textContaining('填一下互動風格'), findsOneWidget);
     expect(find.text('開始設定'), findsOneWidget);
 
     final title = tester.widget<Text>(find.text('關於我'));
     final subtitle = tester.widget<Text>(find.text('讓 VibeSync 更像你的教練'));
-    final body = tester.widget<Text>(find.textContaining('花 30 秒'));
+    final body = tester.widget<Text>(find.textContaining('填一下互動風格'));
     expect(title.style?.color, AppColors.glassTextPrimary);
     expect(subtitle.style?.color, AppColors.glassTextPrimary);
     expect(body.style?.color, AppColors.glassTextSecondary);
@@ -83,6 +83,18 @@ void main() {
     expect(find.textContaining('咖啡'), findsOneWidget);
     expect(find.text('編輯'), findsOneWidget);
     expect(find.text('開始設定'), findsNothing);
+  });
+
+  testWidgets('style pair (主+副) summary line shows 以X為主、Y為輔',
+      (tester) async {
+    final profile = UserProfile.create(
+      interactionStyle: InteractionStyle.steady,
+      secondaryStyle: InteractionStyle.humorous,
+      updatedAt: DateTime.utc(2026, 6, 10),
+    );
+    await tester.pumpWidget(_harness(initial: profile));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('以穩重為主、幽默為輔'), findsOneWidget);
   });
 
   testWidgets('partial profile only renders filled fields', (tester) async {

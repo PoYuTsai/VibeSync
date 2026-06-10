@@ -108,9 +108,12 @@ class _FilledState extends StatelessWidget {
     final lines = <Widget>[];
 
     if (profile.interactionStyle != null) {
+      final primary = _interactionStyleLabel(profile.interactionStyle!);
       lines.add(_summaryLine(
         '互動風格',
-        _interactionStyleLabel(profile.interactionStyle!),
+        profile.secondaryStyle == null
+            ? primary
+            : '以$primary為主、${_interactionStyleLabel(profile.secondaryStyle!)}為輔',
       ));
     }
     if (profile.practiceGoals.isNotEmpty) {

@@ -19,6 +19,7 @@ class PartnerStyleOverrideAdapter extends TypeAdapter<PartnerStyleOverride> {
     return PartnerStyleOverride(
       partnerId: fields[0] as String,
       interactionStyle: fields[1] as InteractionStyle?,
+      secondaryStyle: fields[5] as InteractionStyle?,
       practiceGoals: fields[2] == null
           ? const []
           : (fields[2] as List).cast<PracticeGoal>(),
@@ -30,7 +31,7 @@ class PartnerStyleOverrideAdapter extends TypeAdapter<PartnerStyleOverride> {
   @override
   void write(BinaryWriter writer, PartnerStyleOverride obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.partnerId)
       ..writeByte(1)
@@ -40,7 +41,9 @@ class PartnerStyleOverrideAdapter extends TypeAdapter<PartnerStyleOverride> {
       ..writeByte(3)
       ..write(obj.notes)
       ..writeByte(4)
-      ..write(obj.updatedAt);
+      ..write(obj.updatedAt)
+      ..writeByte(5)
+      ..write(obj.secondaryStyle);
   }
 
   @override

@@ -12,11 +12,16 @@ import 'user_profile.dart';
 @immutable
 class EffectiveStyle {
   final InteractionStyle? interactionStyle;
+
+  /// 副風格 — always resolved as an atomic (主, 副) pair with
+  /// [interactionStyle]; never mixed across layers (see resolver doc).
+  final InteractionStyle? secondaryStyle;
   final List<PracticeGoal> practiceGoals;
   final String? notes;
 
   const EffectiveStyle({
     this.interactionStyle,
+    this.secondaryStyle,
     this.practiceGoals = const [],
     this.notes,
   });
