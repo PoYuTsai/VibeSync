@@ -69,6 +69,51 @@ void main() {
     expect(gradient.colors, [AppColors.ctaStart, AppColors.ctaEnd]);
   });
 
+  testWidgets('縮放平移後雙擊任意處重置回初始視圖', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: PartnerMindMapView(map: _map()))),
+    );
+    await tester.pumpAndSettle();
+
+    // 直接寫 controller 模擬用戶兩指縮小 + 平移後的卡住狀態。
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    final controller = viewer.transformationController!;
+    controller.value = Matrix4.translationValues(40, 60, 0)
+      ..multiply(Matrix4.diagonal3Values(0.5, 0.5, 1.0));
+    await tester.pump();
+    expect(controller.value, isNot(equals(Matrix4.identity())));
+
+    // 雙擊 = 兩次 tap，間隔落在 kDoubleTapMinTime 與 kDoubleTapTimeout 之間。
+    await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(controller.value, equals(Matrix4.identity()));
+  });
+
+  testWidgets('已在初始視圖時雙擊不觸發動畫（無拋錯、transform 不變）',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: PartnerMindMapView(map: _map()))),
+    );
+    await tester.pumpAndSettle();
+
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    final controller = viewer.transformationController!;
+
+    await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(controller.value, equals(Matrix4.identity()));
+  });
+
   testWidgets('parent rebuild 換新 map 時渲染新 graph（不殘留舊節點）',
       (tester) async {
     await tester.pumpWidget(
