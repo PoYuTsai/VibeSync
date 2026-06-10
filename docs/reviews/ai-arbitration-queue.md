@@ -23,6 +23,30 @@
 
 ## Live Queue
 
+## [2026-06-10] Style Pair（主+副互動風格）— Codex 把關
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex (review) → Eric (確認後關閉)
+Scope: AI prompt 行為（高風險區）+ Hive schema 演進
+Branch/Commit: `main` @ `eebef91`
+
+依 `docs/plans/2026-06-10-style-pair-design.md` 全鏈落地（一個 commit `eebef91`）。
+動到高風險區 `EffectiveStylePromptBuilder` → 需 Codex review evidence 才能說 dogfood/build safe。
+
+Review 重點（按風險排序）:
+
+1. **Prompt 回歸**：主-only 輸出 byte-for-byte 不變（`effective_style_prompt_builder_test.dart` 有完整字串快照鎖）；主+副 新格式「以X為主、Y為輔；主全力 prompt。副點綴 prompt」+ 降權措辭是否會被 LLM 平均掉。
+2. **Hive 零遷移**：UserProfile field 6 / PartnerStyleOverride field 5；legacy write-only adapter 測試證明舊 binary 讀出 secondary=null。
+3. **原子合併**：partner 有主 → (主,副) 整組贏，含「partner 主-only 時全域副不得漏入」防混搭 case。
+4. UI 點擊狀態機 5 規則 + 不變量（`style_pair_draft_test.dart`）。
+
+Evidence: 177 targeted tests green（user_profile unit+widget+integration spec2）、`flutter analyze` clean。
+
+Close Condition: Codex review APPROVED + Eric 確認。
+
+---
+
 ## [2026-06-09] Pre-Launch UI Audit Round 1 — follow-ups
 Status: CLOSED
 Request-Type: handoff
