@@ -45,6 +45,7 @@ dependencies:
 
   # Charts
   fl_chart: ^0.70.2
+  graphview: ^1.5.1
 
   # Image Processing
   image_picker: ^1.0.7
