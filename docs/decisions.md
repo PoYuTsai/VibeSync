@@ -498,3 +498,64 @@
 - `docs/pricing-final.md:166` 已同步
 - `docs/cost-optimization.md:55` 已同步
 - ADR #14 計費條目已加上「2026-05-16 改」註記指向本 ADR
+
+## ADR #19 — [2026-06-11] analyze-chat 扣費改為全對話字數合併計費（取代逐則計費）
+
+**狀態**: 🟡 Proposed — Eric 拍板 2026-06-11，待 Codex 把關後實作；實作 commit 落地後轉 Active
+
+**決定**: analyze-chat（手動輸入 + OCR 截圖兩入口）扣費由「逐則 `max(1, ceil(字數/200))` 加總」改為**全對話字數加總 → `ceil(總字數/200)`，整次最少 1 則**。
+
+**起因**: 夥伴 dogfood 抱怨「3 句短訊扣 3 則」違反比例原則——短訊息在現制退化成「1 句 = 1 則」，與實際 AI 成本（input tokens ∝ 總字數）脫鉤。flat-3（分析固定價）已否決：解不了比例原則，且對超長對話虧損。
+
+**效果對比**:
+
+| 場景 | 現制 | 新制 |
+|------|------|------|
+| 3 句廢話（各 <200 字） | 3 則 | 1 則 |
+| 15 句截圖（總 ~300 字） | 15 則 | 2 則 |
+| 對方連發 3 張貼圖（OCR 佔位 `[sticker]`） | 3 則 | 併入字數池，幾乎免費 |
+| 450 字單一長文 | 3 則 | 3 則（不變） |
+
+**規格定義（6 條，實作必遵守）**:
+
+1. **增量計費改字數差**：新欄位 `previousAnalyzedCharCount`；舊欄位 `previousAnalyzedCount`（訊息數）雙兼容讀取、保守 fallback（缺新欄位時整段全額計費，寧多算不少算 server 端、client 預覽同步）。
+2. **餘字不結轉**：每次分析獨立 `ceil`、整次最少 1 則。不做跨次累積池。
+3. **0 字輸入 → 400 拒絕**，不扣額度（與現行空白輸入提示一致）。
+4. **字數 = UTF-16 length**（JS `String.length` ≡ Dart `String.length`），**禁止單端改 grapheme**，否則兩端預覽/實扣分歧。1 emoji ≈ 2 字（`pricing-final.md` 舊文案「1 emoji = 1 字」於實作 commit 一併修正）。
+5. **部署順序 server 先、App 後**：舊 client 逐則預覽高估、新 server 實扣便宜——錯的方向對用戶有利，安全。
+6. **測試矩陣**必含 `my_message` / `optimize_message` 路徑、retry 同 `analysisRunId` 不重複扣。
+
+**同批修的 3 個既存 bug**:
+
+1. **增量單位混用**：client 存「訊息數」（`analysis_screen.dart:817`），server 減「計費則數」（`index.ts:~5308`）→ 含長訊息的對話繼續分析會多扣。新制統一為字數差後自然修復。
+2. **空訊息分歧**：server 空白訊息 +1 則、Dart 跳過 → 預覽 < 實扣。新制合併計算後消除。
+3. **`previousAnalyzedCount` 信任 client**（Hive 本地上報不可驗）→ 竄改可永扣 1 則。月額度封頂，標**已知接受**，不在本批修。
+
+**UX 配套（與公式同批）**:
+
+- 預覽改**即時數字**：分析按鈕顯示「本次將扣 X 則」，扣費前可見（計費 UX 原則：用戶能接受貴、不能接受驚訝）。
+- 文案主角是「**每按一次分析，最少扣 1 則**」——follow-up 補一句再分析仍扣 1 是用戶真實痛點；「200 字 = 1 則」換算率次要。
+- 引導 batch：「補充多句後一起分析較划算」。
+- 對夥伴的說明直接用貼圖場景對比（3 則 → 幾乎免費）回應比例原則。
+
+**已知接受（ADR 明寫，不再翻案）**:
+
+- **vision 成本倒掛**：截圖走 Sonnet vision，input 成本高於純文字，但不加圖片附加費（與 ADR #18 同邏輯：可預期 > 嚴格成本回收）。
+- **每次分析最少 1 則 floor**：有成本基礎——增量計費只少扣額度，server 每次仍整段重送 Claude。
+- bug 3 的 client 信任問題（見上）。
+
+**不做 / 不動**:
+
+- Opener 不動（ADR #18 一律 3 則）。
+- `recognizeOnly` 維持免費；上線前補兩道閘：①月餘額 >0 才可用 ②獨立日上限 ~30 次/日（現制零防護）。
+- 額度數字（Free 30 / Starter 300 / Essential 800）不動，等 dogfood 真實扣費分佈數據再校。
+- 三 tier 共用同一扣費管線，改一處全 tier 同步。
+
+**實作範圍**: server `countMessages`（`analyze-chat/index.ts:2325`）+ client 鏡像 `message_calculator.dart`，兩端同 commit。policy 變動同 commit 更新 `pricing-final.md` + `cost-optimization.md`。
+
+**風險分級**: 高風險區（quota + Edge schema + AI cost）→ 實作後必過 Codex 雙審，APPROVED 前不得稱 dogfood/build safe。
+
+**相關文件**:
+- `docs/pricing-final.md` 訊息計算邏輯段（實作 commit 同步改寫）
+- `docs/cost-optimization.md`（實作 commit 同步）
+- ADR #18（opener flat-3，本 ADR 不動其範圍）
