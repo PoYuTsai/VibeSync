@@ -23,6 +23,27 @@
 
 ## Live Queue
 
+## [2026-06-11] 候選 #12 一球一回 replySegments — Codex 設計把關（實作前）
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex (design review) → Eric/Claude (依結論定實作)
+Scope: analyze-chat prompt/schema（高風險區）+ 破 style-pair byte-for-byte 鎖（eebef91）— 設計階段，無 code 變更
+Branch/Commit: `main` @ `728f670`（設計定案文件）
+
+**請 Codex 審**：`docs/plans/2026-06-11-reply-segments-one-ball-one-reply-design.md`（46 行，含七點規格 + client 現況事實 + #13 接口預留）。
+
+審查重點（依設計文件）：
+
+1. 七點規格有無設計層面的洞——特別是 #1（cap 4 溢出挑球規則是否會讓模型輸出不穩定）、#4（舊 client fallback 改換行 join 的相容性）、#5（prompt 目標式 audit 範圍是否足夠/過寬）。
+2. **破鎖風險**：prompt 變更破 style-pair 主風格 byte-for-byte 鎖（2026-06-10 eebef91）。設計文件已明寫知情破鎖 + 重新驗證義務（規格 #6）；請確認驗收清單（golden case 3 球 3 段 + N=1 回歸 + quick 不變 + style-pair 重驗）是否完備。
+3. #13 接口預留（每段穩定非空 `sourceMessage`/`sourceIndex`，schema 層驗證）是否足以支撐「採用回填」而不過度設計。
+4. Client 現況事實已驗證（`ReplySegment` model + 分段渲染 + 每段複製鈕都已存在），本案主戰場限 server prompt/schema——請確認「幾乎不動 client」的範圍判斷沒有遺漏。
+
+Close condition：Codex 設計 APPROVED（或修訂後 APPROVED）→ 實作另開 item 走高風險雙審（規格 #6 雙軌）。
+
+---
+
 ## [2026-06-11] ADR #19 字數合併計費 — Codex 設計把關（實作前）
 Status: CLOSED（Eric 確認 2026-06-11 深夜；全 close condition 達成：設計把關 APPROVED + 實作 land + 實作雙審 APPROVED 0 findings + Eric 確認）
 Request-Type: review
