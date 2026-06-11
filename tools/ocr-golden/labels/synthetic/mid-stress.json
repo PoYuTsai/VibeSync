@@ -1,0 +1,37 @@
+{
+  "id": "mid-stress",
+  "contactName": "小琪",
+  "classification": "valid_chat",
+  "importPolicy": "allow",
+  "messages": [
+    {
+      "side": "left",
+      "text": "明天的聚餐你確定可以來嗎 大家都很久沒看到你了"
+    },
+    {
+      "side": "right",
+      "text": "可以啊 我下班直接過去 大概七點到"
+    },
+    {
+      "side": "left",
+      "text": "好 那我先跟餐廳說八個人 你要坐我旁邊嗎"
+    },
+    {
+      "side": "right",
+      "text": "當然 不然我跟其他人不熟會很尷尬"
+    },
+    {
+      "side": "left",
+      "text": "放心啦 他們人都很好 你來就知道了"
+    },
+    {
+      "side": "right",
+      "text": "希望如此 對了要不要順便帶瓶酒過去"
+    },
+    {
+      "side": "left",
+      "text": "帶吧 上次你帶的那瓶大家都說讚"
+    }
+  ],
+  "notes": "合成中線氣泡測試（stress），寬氣泡視覺中心趨近 50% 壓 42-58 含糊帶"
+}

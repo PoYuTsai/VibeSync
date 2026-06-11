@@ -164,6 +164,41 @@
       "scenarios": [
         "overlap"
       ]
+    },
+    {
+      "id": "mid-light",
+      "source": "synthetic",
+      "images": [
+        "mid-light.png"
+      ],
+      "label": "synthetic/mid-light.json",
+      "scenarios": [
+        "midline"
+      ]
+    },
+    {
+      "id": "mid-dark",
+      "source": "synthetic",
+      "images": [
+        "mid-dark.png"
+      ],
+      "label": "synthetic/mid-dark.json",
+      "scenarios": [
+        "midline",
+        "dark_mode"
+      ]
+    },
+    {
+      "id": "mid-stress",
+      "source": "synthetic",
+      "images": [
+        "mid-stress.png"
+      ],
+      "label": "synthetic/mid-stress.json",
+      "scenarios": [
+        "midline",
+        "adversarial"
+      ]
     }
   ]
 }
