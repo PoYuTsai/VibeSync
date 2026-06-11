@@ -518,10 +518,12 @@
 ```
 則數 = clamp( ceil(計費字數 / 40), floor = 1, soft_cap = 10 )
 
-0~40 字     → 1 則
-40~400 字   → 1~10 則
-400~2000 字 → 一律 10 則（緩衝帶，免費送，不額外扣）
->2000 字    → 一律固定 20 則，需用戶確認後才扣（r3 定案 #1：乙案，固定值非第二段斜率）
+1~40 字      → 1 則
+41~400 字    → ceil(字數/40) = 2~10 則
+401~2000 字  → 一律 10 則（緩衝帶，免費送，不額外扣）
+2001+ 字     → 一律固定 20 則，需用戶確認後才扣（r3 定案 #1：乙案，固定值非第二段斜率）
+
+（整數閉區間，Codex r3-P2 修訂：原 40/400 邊界重疊已消除；0 字輸入沿用既有「空白不扣費」規則）
 ```
 
 **預覽 UX（覆寫 r2「分析前即時精確數字」）**:
@@ -547,14 +549,16 @@
 原 OPEN 三條結案：
 
 1. **>2000 字 = 乙案，一律固定 20 則**。`ceil(字數/40)` 在 >2000 起跳即 50、必超 cap 20，故第二段實效為固定值——確認框可顯示精確「本次將扣 20 則」，無區間無驚訝。用戶側帳算得攏：拆兩批（各 ≤2000）= 10+10 = 20，一次過也是 20，怎麼選都不吃虧；分批引導純屬品質建議（超長輸入分析品質下降），非省錢套路。
-2. **月額度 30/300/800 不調**。「燒快 5 倍」係只看除數（200→40）、忽略 soft_cap 10 的誤導結論。實際：截圖 OCR 為主流型態（多行）在新制更便宜（舊制逐行無上限、12 行=12 則 vs 新制 ≤10）；僅手打單段長文路徑變貴。各層保證分析次數：Free 30→至少 3 次/月（舊制 12 行截圖只夠 2 次）、Starter 300→至少 30 次、Essential 800→至少 80 次，全部高於舊制。**部署門檻（原 OPEN-2）解除**。上線後觀察真實分佈再議。
+2. **月額度 30/300/800 不調**。「燒快 5 倍」係只看除數（200→40）、忽略 soft_cap 10 的誤導結論。實際：截圖 OCR 為主流型態（多行）在新制更便宜（舊制逐行無上限、12 行=12 則 vs 新制 ≤10）；僅手打單段長文路徑變貴。各層保證分析次數**（以正常 ≤2000 字分析計，Codex r3-P2 修訂）**：Free 30→至少 3 次/月（舊制 12 行截圖只夠 2 次）、Starter 300→至少 30 次、Essential 800→至少 80 次，全部高於舊制。若全做 >2000 confirmed 分析則為 Starter 15 次 / Essential 40 次——**pricing 文案與 App Review 說法不得引用保證次數而不帶 ≤2000 前提**。**部署門檻（原 OPEN-2）解除**。上線後觀察真實分佈再議。
 3. **單位沿用「則」**，不引入「枚」「Token」。預覽文案：「依對話複雜度使用 1–10 則」。
 
 同日補拍的 4 條邊界規則：
 
 4. **額度檢查先於 >2000 確認框**。順序：算出本次需要則數 → 既有額度/每日上限檢查 → 不足走既有額度不足 UI（不出確認框）→ 足夠才跳「本次將扣 20 則」確認。推論：Free 日上限 15 < 20 → Free 永遠無法單次做 >2000 分析，自然引導分批（跨日）或升級——不加新機制，屬漏斗設計意圖。
-5. **>2000 確認 = client 預警 + server 守門兩層**。recognizeOnly（免費）後 client 已持有全部 OCR 文字 → 本地算字數、>2000 先跳確認再送（零額外往返）。server 為 authoritative：>2000 且請求無 `confirmedOvercharge` 旗標 → 不分析不扣費，回 `confirmation_required` + 實際則數。扣費只發生在帶旗標的確認後呼叫，無「先扣再退」髒狀態。
-6. **舊 client >2000 = user-safe cap 10 + log**。無新欄位/版本訊號的請求遇 >2000 → 不跳確認、直接以 soft_cap 10 收，log `legacy_over2000_capped`。與 r2 既過審的 user-safe fallback 哲學一致：舊 client 永遠往便宜方向錯、絕不多扣。log 歸零後可拔。
+5. **>2000 確認 = client 預警 + server 守門兩層，確認旗標必綁 payload + idempotent**（Codex r3-P1-3 修訂）。recognizeOnly（免費）後 client 已持有全部 OCR 文字 → 本地算字數、>2000 先跳確認再送（零額外往返）。server 為 authoritative：>2000 且請求無有效確認 → 不分析不扣費，回 `confirmation_required` + 實際則數 + `billableChars`。**確認綁定**：client 重送時帶 `confirmedOvercharge: { billableChars }`（或 payload hash）；server 重算後不符（確認後內容又改過）→ 視同未確認，回新的 `confirmation_required`，絕不拿舊確認扣新內容。**Idempotency**：confirmed >2000 請求帶 idempotency key，同一確認重送/雙送絕不重扣 20。扣費只發生在有效確認的呼叫，無「先扣再退」髒狀態。
+6. **新舊 client 以 capability 訊號硬區分；legacy cap 10 有明確 precedence**（Codex r3-P1-1/P1-2 修訂）。
+   - **Capability contract**：新 client 所有 analyze 請求**必送 `billingProtocolVersion: 3`**（不依賴 baseline 欄位推斷——首次分析本來就沒有 `previousAnalyzedCharCount`，不得因此被誤判為舊 client 而繞過 20 則確認）。「舊 client」定義 = **無 capability 訊號**的請求，僅此類才允許走 legacy 路徑。新 client 無確認送 >2000 → 一律 `confirmation_required`，無例外。
+   - **Legacy 計算順序（precedence，先到先擋）**：(a) 先 resolve r2 三層 fallback；(b) clipped 分支（N>payload.length + summary/clipped 訊號）**永遠 floor 1 + log `legacy_count_exceeds_payload_clipped`，不被任何 cap 覆蓋**——cap 10 是上限不是下限，不得把 1 抬成 10；(c) 只有可計算 diff/全額、且結果 >10 的 legacy 路徑，才以 soft_cap 10 收 + log `legacy_over2000_capped`。與 r2 user-safe 哲學一致：舊 client 永遠往便宜方向錯。log 歸零後可拔 legacy 路徑。
 7. **soft_cap 每次分析各自算（非整段對話累計）**。follow-up 增量走字數差，通常 1~3 則；增量罕見 >2000 同走確認路徑，規則統一。否決累計制理由：扣滿 10 後永久免費 = 收入與 AI 成本脫鉤，且多一個跨端同步狀態。
 8. **範圍與字數定義鎖定**：ADR #19 只動 analyze-chat；開場救星維持一律 3 則（ADR #18）、Coach 1:1 計費不動（釐清不扣、正式建議 1 則）。「計費字數」定義沿用 r2 已過終審版本（UTF-16 code units、不 normalize、`quotedReplyPreview` 不計費），本輪只改除數 200→40 + 加 cap，不重開定義。
 

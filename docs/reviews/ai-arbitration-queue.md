@@ -57,7 +57,15 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 - r2 三層 compat fallback、字數定義（UTF-16、quotedReplyPreview 不計費）**全部保留不重開**。
 - 全文見 `docs/decisions.md` ADR #19 🔴 r3 + 🟢 r3 定案區塊。
 
-**狀態**：r3 規格凍結，**待 Codex r3 設計把關**（r1/r2 終審係對 200 字版；40 字 + cap + 兩層確認 + 舊 client 路徑為新增面，需重走一輪）。把關通過 → 新 session 開實作（同 commit 更新 pricing-final/cost-optimization）→ 實作雙審，**APPROVED 前不得說 dogfood/build safe**。
+**Round 5 = Codex r3 把關第一輪（2026-06-11 晚）= REVISE_REQUIRED（0 P0 / 3 P1 / 2 P2）**：
+- [P1-1] 缺 client capability contract：首次分析無 baseline 欄位，新 client >2000 可能被誤判 legacy cap 10、繞過確認。
+- [P1-2] legacy cap 10 與 r2 clipped floor 1 有 precedence 衝突，可能把 1 抬成 10、重開隱形多扣。
+- [P1-3] `confirmedOvercharge` 未綁 payload、無 idempotency → 確認後內容變更/重送可錯扣或重扣 20。
+- [P2] 40/400 邊界重疊；保證次數文字須限定 ≤2000。
+
+**Claude 修訂（同日）**：定案 #6 加 capability contract（`billingProtocolVersion: 3` 必送、無訊號才算 legacy）+ legacy precedence 三段順序（clipped floor 1 永不被 cap 覆蓋）；定案 #5 加確認綁定 `billableChars`/hash（不符回新 `confirmation_required`）+ idempotency key；公式改整數閉區間；保證次數加 ≤2000 前提 + 禁止 pricing/送審文案裸引用。
+
+**狀態**：修訂已 push，**待 Codex r3 第二輪確認**。通過 → 新 session 開實作（同 commit 更新 pricing-final/cost-optimization）→ 實作雙審，**APPROVED 前不得說 dogfood/build safe**。
 
 Close Condition: Codex r3 設計把關通過 + 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 
