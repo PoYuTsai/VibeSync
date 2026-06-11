@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-11] 候選 #12 一球一回 replySegments — Codex 設計把關（實作前）
-Status: WAITING_ON_ERIC（r1 修訂已入文件，剩 cap 3 vs 4 拍板 → 回 Codex r2）
+Status: IN_REVIEW（r1 修訂 + Eric 拍板 cap 3 已入文件 → Codex r2 確認中）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (design review) → Eric/Claude (依結論定實作)
@@ -49,7 +49,7 @@ Branch/Commit: `main` @ `728f670`（設計定案文件）
 
 **Claude 修訂（同日，已入設計文件）**：#5 audit 範圍加 sanitizer 層；#13 補三層缺 source 規則（sourceIndex 回查修復 → drop 該段 → 全 drop 回退單段，絕不空 source 流出）；驗收清單擴充 cap overflow + schema case + 明列 style-pair byte-for-byte 鎖測試重新基準化。
 
-**⏳ 等 Eric 拍板**：cap 3（Claude 建議——golden case 3 球已滿足、client 完全不動、cap 4 增益無真實案例）vs cap 4（動 client model + sanitizer + prompt + tests 四處）。拍板後回 Codex r2。
+**Eric 拍板（2026-06-11）**：**cap 3**——與現況全鏈對齊、client 完全不動、golden case 3 球已滿足；cap 4 增益無真實案例。規格 #1 已改寫定案。
 
 Close condition：Codex 設計 APPROVED（或修訂後 APPROVED）→ 實作另開 item 走高風險雙審（規格 #6 雙軌）。
 

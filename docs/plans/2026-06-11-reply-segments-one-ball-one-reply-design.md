@@ -1,7 +1,6 @@
 # 一球一回：replySegments 分段回覆設計（候選 #12）
 
-> 2026-06-11 · Eric 與 Claude 定案 → Codex 設計把關 r1 REVISE_REQUIRED（2 P1 / 2 P2）→ Claude 同日修訂。
-> 剩一個 Eric 拍板點：**cap 3（建議）vs cap 4**（見規格 #1）。
+> 2026-06-11 · Eric 與 Claude 定案 → Codex 設計把關 r1 REVISE_REQUIRED（2 P1 / 2 P2）→ Claude 同日修訂 → Eric 拍板 **cap 3**。
 > 來源：Bruce TestFlight smoke feedback（golden case 見「驗收標準」）。
 
 ## 問題
@@ -22,9 +21,8 @@
 
 ## 規格決策（七點，Eric 已同意）
 
-1. **Cap 溢出行為**（cap 值 ⏳ 待 Eric 拍板，見下）：球清單超過 cap 時，AI 挑「互動價值最高」的 cap 顆出段，其餘只留在球清單、不出段、UI 不另外提示。不做「還有其他線」提示——YAGNI。
-   - **Codex r1 發現**：既有全鏈已是 **cap 3**——client parser `.take(3)`（`analysis_models.dart:241`）、server sanitizer `slice(0, 3)`（`post_process.ts:136`）、prompt 與測試鎖「最多 3 段」（`index.ts:1464`、`index_test.ts:257`）。原定 cap 4 與現況硬衝突，且改 4 要動 client model + sanitizer + prompt + tests 四處、舊 client 仍會 `.take(3)` 掉第 4 段。
-   - **Claude 建議 cap 3**：golden case 是 3 球，cap 3 已滿足驗收；cap 4 的增益目前沒有真實案例支撐（同一條 YAGNI 邏輯）。cap 3 則 client 完全不動。等 Eric 拍板。
+1. **Cap 3 溢出行為**（Eric 拍板 2026-06-11，取代原 cap 4）：球清單 >3 顆時，AI 挑「互動價值最高」的 3 顆出段，其餘只留在球清單、不出段、UI 不另外提示。不做「還有其他線」提示——YAGNI。
+   - 依據（Codex r1）：既有全鏈已是 cap 3——client parser `.take(3)`（`analysis_models.dart:241`）、server sanitizer `slice(0, 3)`（`post_process.ts:136`）、prompt 與測試鎖「最多 3 段」（`index.ts:1464`、`index_test.ts:257`）。cap 3 與現況對齊，client 完全不動；golden case 3 球已滿足驗收，cap 4 增益無真實案例（YAGNI）。
 2. **N=1 不變**：只有一顆球時維持現狀單段 + 引用，已運作正常。
 3. **Quick mode 本輪不動**：quick 定位是分析中的快速預覽，單句合理。等 Bruce 對 full mode 分段滿意後再評估（獨立候選）。
 4. **舊 client fallback**：`content` 欄位仍填完整合併版，但 join 用**換行**不用逗點——未更新的 client 也擺脫逗點大句。新 client 有 `segments` 用 `segments`，`content` 只當備援。
