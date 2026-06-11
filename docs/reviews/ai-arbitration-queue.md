@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-11] Smoke 兩修（quota 429 分流 + 實扣常駐）— Codex 實作雙審
-Status: IN_REVIEW（r1 REVISE_REQUIRED 兩 P2 已修 → Codex r2 確認中）
+Status: APPROVED（Codex r2 2026-06-11 — 0 P0/P1/P2；r1 兩 P2 驗證解除。可回 Bruce；⚠️ client 修須新 TestFlight build 才測得到）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (實作雙審) → Eric/Bruce (APPROVED 後 dogfood)
@@ -50,7 +50,9 @@ Branch/Commit: `main` @ `de7b1bb`（P1）+ `12b5895`（P2）；計畫 `docs/plan
 
 **Claude 修訂（同日）**：兩個 failedBeforeRecommendation handler（hydrate + live）quota 分流——非 null 時設 `_quotaExceededInfo` + `_resetErrorState()`（不走 generic error 卡），render gate 擴 `_fullErrorMessage != null || _quotaExceededInfo != null`；`_showPaywall` 加 `_isPaywallInFlight` guard（try/finally 復位）。targeted 42 案重跑全綠。
 
-Close condition：Codex APPROVED → 回 Bruce「可再試」；REVISE_REQUIRED → Claude 修。
+**Round 2（2026-06-11）= APPROVED（0 findings）**：Codex 驗證 r1-P2a/P2b 解除——before-rec 兩 handler 對稱鏡射 + `_resetErrorState` 無 banner 死路（`analysis_screen.dart:785-810/:3674-3700/:5119`）、render gate 與卡片互斥正確（:5810-5826）、`_isPaywallInFlight` guard try/finally 復位且覆蓋全部 11 個 `_showPaywall` 呼叫點（:216-227 + :271/:614/:2564/:3703/:3729/:3790/:3797/:3805/:5823/:6165/:6391）。
+
+Close condition 達成：APPROVED → 回 Bruce。最終 commits：`de7b1bb`（P1）+ `12b5895`（P2）+ `e241471`（r1 修訂）。
 
 ---
 
