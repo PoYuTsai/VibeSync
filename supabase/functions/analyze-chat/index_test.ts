@@ -16,16 +16,6 @@ function base64PayloadWithEstimatedBytes(bytes: number): string {
   return "A".repeat(Math.ceil((bytes * 4) / 3));
 }
 
-// 訊息計算函數
-function countMessages(messages: Array<{ content: string }>): number {
-  let total = 0;
-  for (const msg of messages) {
-    const charCount = msg.content.trim().length;
-    total += Math.max(1, Math.ceil(charCount / 200));
-  }
-  return Math.max(1, total);
-}
-
 // 模型選擇函數
 function selectModel(context: {
   conversationLength: number;
@@ -50,48 +40,8 @@ function selectModel(context: {
   return "claude-3-5-haiku-20241022";
 }
 
-// Test countMessages function
-Deno.test("countMessages - single short message", () => {
-  const messages = [{ content: "你好" }];
-  assertEquals(countMessages(messages), 1);
-});
-
-Deno.test("countMessages - multiple messages", () => {
-  const messages = [
-    { content: "你好" },
-    { content: "在嗎" },
-    { content: "吃飯了嗎" },
-  ];
-  assertEquals(countMessages(messages), 3);
-});
-
-Deno.test("countMessages - long message splits by 200 chars", () => {
-  const longContent = "a".repeat(450); // 450 chars = ceil(450/200) = 3
-  const messages = [{ content: longContent }];
-  assertEquals(countMessages(messages), 3);
-});
-
-Deno.test("countMessages - exactly 200 chars is 1 message", () => {
-  const content = "a".repeat(200);
-  const messages = [{ content }];
-  assertEquals(countMessages(messages), 1);
-});
-
-Deno.test("countMessages - 201 chars is 2 messages", () => {
-  const content = "a".repeat(201);
-  const messages = [{ content }];
-  assertEquals(countMessages(messages), 2);
-});
-
-Deno.test("countMessages - empty message counts as 1", () => {
-  const messages = [{ content: "" }];
-  assertEquals(countMessages(messages), 1);
-});
-
-Deno.test("countMessages - whitespace only message counts as 1", () => {
-  const messages = [{ content: "   " }];
-  assertEquals(countMessages(messages), 1);
-});
+// countMessages 殭屍測試已移除：它測的是本檔內的舊公式複本（逐則 200 字制），
+// 非真實 code。ADR #19 計費測試在 billing_test.ts。
 
 // Test selectModel function
 Deno.test("selectModel - essential tier always uses Sonnet", () => {
