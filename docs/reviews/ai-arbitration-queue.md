@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] AI 模型全面升級 Sonnet 4 → 4.6 — Codex 雙審
-Status: APPROVED（Codex r1 2026-06-12 — 0 P0/P1/P2；待 Eric 確認後關閉）
+Status: CLOSED（Codex r1 APPROVED 0 findings + Eric 確認 2026-06-12。Bruce 實測由 Eric 人工協調，另開 session 回報）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (雙審) → Eric 確認後關閉
