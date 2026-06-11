@@ -70,7 +70,15 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 
 **APPROVED 後補遺（2026-06-11 晚 · 夥伴終確認）**：補 **4000 字硬上限**（4001+ 一律 reject「請分批」不扣費、新舊 client 一視同仁；20 則帶收窄為 2001~4000）。背景：pricing-final 原寫 5000 但 code 從未實作（grep 驗證），原緩衝帶上不封頂 = 成本洞。屬風險收斂、無新計費路徑，不重開設計輪，**實作雙審一併驗收**；實作 commit 同步把 pricing-final 5000 改 4000。
 
-**狀態**：**r3 設計把關 DONE**。下一步 = 新 session 開實作（billing.ts 改常數 + cap + 確認路徑 + capability contract + 4000 上限；同 commit 更新 pricing-final/cost-optimization）→ **實作雙審，APPROVED 前不得說 dogfood/build safe**。
+**Round 7 = 實作 land（2026-06-11 · Claude）**：
+
+- **Server** `f6e8eec`：billing.ts 全改寫（分段帶閉區間 / capability contract / legacy precedence：clipped floor1 永不被 cap 覆蓋 / legacy >2000 cap10+log）+ index.ts 閘門順序「則數 → 4001+ reject(400 不扣費) → 額度 429 → 功能 403 → 確認 409」+ overcharge_claims.ts idempotency（claim-at-gate，失敗方向 = 用戶免費 user-safe；RPC 不可用 fail closed 503 不扣費）+ migration `20260611120000`（claim RPC，INSERT ON CONFLICT 原子、60min replay window）。pricing-final/cost-optimization 同 commit。死碼清除：index.ts 舊 countMessages + index_test.ts 殭屍複本。
+- **Client** `f095603`：MessageCalculator 鏡像 + JS/Dart 共用 fixture 對拍（`test/fixtures/adr19_billing_mirror_vectors.json`，生成器 `tools/billing/`，含 sha256("abc") 外部常數釘）+ 靜態區間預覽 / >2000 確認框（精確 20、額度先行、Free 日上限 15<20 自然擋）/ >4000 本地擋 / 實扣 toast + Hive `lastAnalyzedCharCount`(field 16) + `billingProtocolVersion:3` 全請求必送（wire-contract tests）。
+- **測試證據**：Deno 323 passed（billing 41 + claims 5 含內）；Flutter calculator 17 + dialog 13 + notifier/hydration 61 + analyze modes 29 全綠。
+- **設計取捨（雙審重點）**：①hash mismatch 不做 client auto-rebind，409 fail-loud 要求重按分析（防拿舊確認綁新內容；mirror 漂移屬 bug 須 fail loud）②4000 上限作用對象 = billableChars（計費字數差），payload 總長另有既有 20000 守門 ③Dart/JS trim 對 U+0085 行為差異 = 已知接受（409 自癒路徑）④replay 時 messagesUsed 回 0（該次呼叫實扣 0，原確認已扣 20）。
+- **部署順序**：edge 已隨 push 自動部署（舊 client 走 user-safe legacy 路徑，server-first 安全 = 規格 #5）；**migration 必須在新 App 上架前手動 `supabase db push`**——未套用前新 client 送確認會收 503 不扣費（fail closed，無扣費風險）。
+
+**狀態**：**實作 land DONE → 待 Codex 實作雙審（高風險 quota 區），APPROVED 前不得說 dogfood/build safe**。
 
 Close Condition: Codex r3 設計把關通過 + 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 
