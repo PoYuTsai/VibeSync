@@ -123,4 +123,58 @@ void main() {
       expect(tapped, 0);
     });
   });
+
+  group('QuotaExceededUpgradeCard（smoke P1 fix 2026-06-11）', () {
+    testWidgets('monthly：顯示剩餘/需要則數 + 升級文案 + 查看方案，絕不出現「無法再重試」',
+        (tester) async {
+      var viewed = 0;
+      await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
+        isMonthly: true,
+        remaining: 2,
+        quotaNeeded: 5,
+        onViewPlans: () => viewed++,
+      )));
+
+      expect(
+        find.text('本月額度剩 2 則，這次分析需要 5 則。升級至 Starter 或 Essential 繼續分析。'),
+        findsOneWidget,
+      );
+      expect(find.text(kRetryExhaustedMessage), findsNothing);
+      expect(find.text('無法再重試'), findsNothing);
+
+      await tester.tap(find.text('查看方案'));
+      expect(viewed, 1);
+    });
+
+    testWidgets('daily：明天恢復 + 升級文案', (tester) async {
+      await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
+        isMonthly: false,
+        remaining: 0,
+        quotaNeeded: 3,
+        onViewPlans: () {},
+      )));
+
+      expect(
+        find.text('今日額度剩 0 則，這次分析需要 3 則。明天會自動恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
+      expect(find.text('查看方案'), findsOneWidget);
+    });
+
+    testWidgets('缺 remaining/quotaNeeded 時 fallback 文案不出現 null',
+        (tester) async {
+      await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
+        isMonthly: true,
+        remaining: null,
+        quotaNeeded: null,
+        onViewPlans: () {},
+      )));
+
+      expect(
+        find.text('本月額度不足，升級至 Starter 或 Essential 繼續分析。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('null'), findsNothing);
+    });
+  });
 }

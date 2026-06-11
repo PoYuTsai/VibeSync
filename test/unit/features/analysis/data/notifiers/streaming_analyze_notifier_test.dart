@@ -406,6 +406,194 @@ void main() {
     });
   });
 
+  group('StreamingAnalyzeNotifier — quota 429 分流（smoke P1 fix 2026-06-11）', () {
+    test(
+        'monthly quota 429 after preview → quotaExceeded state（不得落 generic retry-exhausted）',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..recommendationPreviewResult = _preview(runId: 'run_quota')
+        ..streamError = MonthlyLimitExceededException(
+          monthlyLimit: 200,
+          used: 198,
+          remaining: 2,
+          quotaNeeded: 5,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.failedAfterRecommendation);
+      expect(state.quotaExceeded, isNotNull);
+      expect(state.quotaExceeded!.isMonthly, isTrue);
+      expect(state.quotaExceeded!.remaining, 2);
+      expect(state.quotaExceeded!.quotaNeeded, 5);
+      expect(state.retriesRemaining, 0);
+      expect(state.fullErrorCode, 'MONTHLY_LIMIT_EXCEEDED');
+    });
+
+    test(
+        'daily quota 429 after content → quotaExceeded daily + retriesRemaining 0'
+        '（regression：wait action 過去會給 1 次無意義 retry）', () async {
+      final fake = _FakeAnalysisService()
+        ..streamError = DailyLimitExceededException(
+          dailyLimit: 15,
+          used: 15,
+          remaining: 0,
+          quotaNeeded: 3,
+        )
+        ..streamContents = const [
+          AnalysisStreamContent(
+            kind: AnalysisStreamContentKind.decision,
+            title: 'Decision',
+            body: 'partial',
+            rawEvent: {'type': 'analysis.decision'},
+          ),
+        ];
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.failedAfterRecommendation);
+      expect(state.quotaExceeded, isNotNull);
+      expect(state.quotaExceeded!.isMonthly, isFalse);
+      expect(state.quotaExceeded!.remaining, 0);
+      expect(state.quotaExceeded!.quotaNeeded, 3);
+      expect(state.retriesRemaining, 0);
+    });
+
+    test('retryFull 撞 quota 429 → quotaExceeded state（Bruce 實際觸發路）',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..recommendationPreviewResult = _preview(runId: 'run_retry_quota')
+        ..streamError = StreamModeException(
+          'transient',
+          code: 'STREAM_INTERRUPTED_AFTER_RECOMMENDATION',
+          recoverable: true,
+          retriesRemaining: 2,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+      expect(
+        container.read(streamingAnalyzeProvider('conv-1')).quotaExceeded,
+        isNull,
+      );
+
+      fake.streamError = MonthlyLimitExceededException(
+        monthlyLimit: 200,
+        used: 199,
+        remaining: 1,
+        quotaNeeded: 4,
+      );
+
+      await notifier.retryFull();
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.failedAfterRecommendation);
+      expect(state.quotaExceeded, isNotNull);
+      expect(state.quotaExceeded!.isMonthly, isTrue);
+      expect(state.quotaExceeded!.remaining, 1);
+      expect(state.retriesRemaining, 0);
+    });
+
+    test('成功 retry 後 quotaExceeded 清空（不殘留舊 quota 卡）', () async {
+      final fake = _FakeAnalysisService()
+        ..recommendationPreviewResult = _preview(runId: 'run_quota_clear')
+        ..streamError = MonthlyLimitExceededException(
+          monthlyLimit: 200,
+          used: 198,
+          remaining: 2,
+          quotaNeeded: 5,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+      expect(
+        container.read(streamingAnalyzeProvider('conv-1')).quotaExceeded,
+        isNotNull,
+      );
+
+      fake.streamError = null;
+      fake.fullResult = _full();
+
+      await notifier.retryFull();
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.done);
+      expect(state.quotaExceeded, isNull);
+    });
+
+    test('fresh-start quota 429（無 content）維持 failedBeforeRecommendation 並帶 quotaExceeded',
+        () async {
+      final fake = _FakeAnalysisService()
+        ..streamError = MonthlyLimitExceededException(
+          monthlyLimit: 30,
+          used: 30,
+          remaining: 0,
+          quotaNeeded: 2,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.failedBeforeRecommendation);
+      expect(state.recommendationPreviewErrorCode, 'MONTHLY_LIMIT_EXCEEDED');
+      expect(state.quotaExceeded, isNotNull);
+      expect(state.quotaExceeded!.isMonthly, isTrue);
+    });
+
+    test('exception 未帶 remaining 時 fallback 用 limit-used 計算', () async {
+      final fake = _FakeAnalysisService()
+        ..recommendationPreviewResult = _preview(runId: 'run_fallback')
+        ..streamError = DailyLimitExceededException(
+          dailyLimit: 15,
+          used: 13,
+        );
+
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      await notifier.start(messages: [_msg('hi')]);
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.quotaExceeded, isNotNull);
+      expect(state.quotaExceeded!.remaining, 2);
+      expect(state.quotaExceeded!.quotaNeeded, isNull);
+    });
+  });
+
   group('StreamingAnalysisState.copyWith — clearing semantics (P2)', () {
     test('can explicitly clear nullable fields via null', () {
       const state = StreamingAnalysisState(

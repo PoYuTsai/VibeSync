@@ -551,6 +551,109 @@ void main() {
       expect(body['billingProtocolVersion'], 3);
     });
 
+    test(
+        'ADR #19 雙 limit 429：monthlyRemaining < quotaNeeded → Monthly'
+        '（regression：buildQuotaExceededPayload 同時帶兩 limit，舊判別誤報 daily）',
+        () async {
+      final mockClient = MockClient((request) async {
+        // buildQuotaExceededPayload 形狀：兩個 limit 欄位都在。
+        return http.Response(
+          jsonEncode({
+            'error': 'Monthly limit exceeded',
+            'message': '本月額度已用完，升級方案可取得更多分析與教練額度。',
+            'quotaNeeded': 5,
+            'used': 198,
+            'limit': 200,
+            'monthlyLimit': 200,
+            'dailyLimit': 15,
+            'monthlyUsed': 198,
+            'dailyUsed': 3,
+            'monthlyRemaining': 2,
+            'dailyRemaining': 12,
+          }),
+          429,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      expect(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(
+          isA<MonthlyLimitExceededException>()
+              .having((e) => e.remaining, 'remaining', 2)
+              .having((e) => e.quotaNeeded, 'quotaNeeded', 5)
+              .having((e) => e.used, 'used', 198),
+        ),
+      );
+    });
+
+    test('ADR #19 雙 limit 429：daily 擋下時 → DailyLimitExceededException',
+        () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'error': 'Daily limit exceeded',
+            'message': '今日額度已用完，明天會自動恢復；也可以升級取得更多額度。',
+            'quotaNeeded': 5,
+            'used': 14,
+            'limit': 15,
+            'monthlyLimit': 200,
+            'dailyLimit': 15,
+            'monthlyUsed': 60,
+            'dailyUsed': 14,
+            'monthlyRemaining': 140,
+            'dailyRemaining': 1,
+          }),
+          429,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      expect(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(
+          isA<DailyLimitExceededException>()
+              .having((e) => e.remaining, 'remaining', 1)
+              .having((e) => e.quotaNeeded, 'quotaNeeded', 5)
+              .having((e) => e.used, 'used', 14),
+        ),
+      );
+    });
+
+    test('legacy 單 limit 429（只帶 dailyLimit）維持 Daily 判別', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'error': 'Daily limit exceeded',
+            'dailyLimit': 15,
+            'used': 15,
+          }),
+          429,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+      );
+
+      expect(
+        () => service.analyzeStream(messages: [_msg('hi')]).toList(),
+        throwsA(isA<DailyLimitExceededException>()),
+      );
+    });
+
     test('sanitizes progress labels and details while waiting', () async {
       final mockClient = MockClient((request) async {
         return http.Response.bytes(

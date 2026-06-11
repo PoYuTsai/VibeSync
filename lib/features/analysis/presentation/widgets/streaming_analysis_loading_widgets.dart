@@ -206,6 +206,123 @@ class _SkeletonBlock extends StatelessWidget {
   }
 }
 
+/// 額度不足升級卡（smoke P1 fix 2026-06-11）。
+///
+/// Quota 429 中止分析時取代 [FullAnalysisRetryCard]：解釋剩餘/需要則數並給
+/// 「查看方案」CTA（caller 接 paywall）。絕不顯示「無法再重試」——額度不足
+/// 不是技術失敗，重試只會再撞 429。
+class QuotaExceededUpgradeCard extends StatelessWidget {
+  final bool isMonthly;
+  final int? remaining;
+  final int? quotaNeeded;
+  final VoidCallback? onViewPlans;
+
+  const QuotaExceededUpgradeCard({
+    super.key,
+    required this.isMonthly,
+    this.remaining,
+    this.quotaNeeded,
+    this.onViewPlans,
+  });
+
+  String get _headline {
+    final hasNumbers = remaining != null && quotaNeeded != null;
+    if (isMonthly) {
+      return hasNumbers
+          ? '本月額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。升級至 Starter 或 Essential 繼續分析。'
+          : '本月額度不足，升級至 Starter 或 Essential 繼續分析。';
+    }
+    return hasNumbers
+        ? '今日額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。明天會自動恢復，也可以升級取得更多額度。'
+        : '今日額度不足，明天會自動恢復，也可以升級取得更多額度。';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.backgroundGradientMid,
+            Color(0xFF351A52),
+            Color(0xFF4A245C),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.primaryLight.withValues(alpha: 0.42),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryDark.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.primaryLight.withValues(alpha: 0.34),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.workspace_premium_outlined,
+                  size: 18,
+                  color: AppColors.primaryLight,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _headline,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: Colors.white,
+                    height: 1.45,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FilledButton(
+            onPressed: onViewPlans,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryLight,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            child: Text(
+              '查看方案',
+              style: AppTypography.bodyMedium.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Retry CTA card for failed full analysis.
 ///
 /// When [retriesRemaining] > 0, shows the user-facing error plus a primary

@@ -140,6 +140,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // only for retry compatibility and is not rendered on this screen.
   String? _fullErrorMessage;
   int _fullErrorRetriesRemaining = 0;
+
+  /// Quota 429 分流（smoke P1 fix 2026-06-11）：非 null 時 retry 卡換升級卡。
+  /// 生命週期與 _fullErrorMessage 配對——所有清除/賦值點必須同步。
+  QuotaExceededInfo? _quotaExceededInfo;
   String? _streamProgressLabel;
   String? _streamProgressDetail;
   List<AnalysisStreamContent> _streamContents = const [];
@@ -684,6 +688,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = true;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _quotaExceededInfo = null;
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
           _streamContents = s.streamContents;
@@ -697,6 +702,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = true;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _quotaExceededInfo = null;
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
           _streamContents = s.streamContents;
@@ -712,6 +718,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _isAnalyzing = false;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
+            _quotaExceededInfo = null;
             _streamContents = const [];
             _activeAnalysisMessageCount = s.conversationMessageCount;
             _clearDetailedAnalysisStateForStreamingAnalyzePartial();
@@ -722,6 +729,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _quotaExceededInfo = null;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
           _streamContents = const [];
@@ -754,6 +762,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _fullErrorMessage = s.fullErrorMessage;
           _fullErrorRetriesRemaining = s.retriesRemaining;
+          _quotaExceededInfo = s.quotaExceeded;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
           _streamContents = s.streamContents;
@@ -3457,6 +3466,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _isAnalyzing = true;
         _fullErrorMessage = null;
         _fullErrorRetriesRemaining = 0;
+        _quotaExceededInfo = null;
         _streamProgressLabel = '開始完整分析';
         _streamProgressDetail = '正在建立串流連線。';
         _streamContents = const [];
@@ -3534,6 +3544,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = true;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _quotaExceededInfo = null;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
@@ -3547,6 +3558,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = true;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _quotaExceededInfo = null;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
@@ -3563,6 +3575,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = true;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _quotaExceededInfo = null;
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
@@ -3578,6 +3591,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _isAnalyzing = false;
             _fullErrorMessage = '你剛剛補了新的聊天紀錄，這份完整分析先不套用。請按「分析新增內容」更新到最新版。';
             _fullErrorRetriesRemaining = 0;
+            _quotaExceededInfo = null;
             _streamContents = const [];
             _activeAnalysisMessageCount = next.conversationMessageCount;
             _clearDetailedAnalysisStateForStreamingAnalyzePartial();
@@ -3592,6 +3606,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _fullErrorMessage = null;
           _fullErrorRetriesRemaining = 0;
+          _quotaExceededInfo = null;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
           _streamContents = const [];
@@ -3627,6 +3642,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _isAnalyzing = false;
           _fullErrorMessage = next.fullErrorMessage;
           _fullErrorRetriesRemaining = next.retriesRemaining;
+          _quotaExceededInfo = next.quotaExceeded;
           _streamProgressLabel = null;
           _streamProgressDetail = null;
           _streamContents = next.streamContents;
@@ -5764,13 +5780,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           if (_fullErrorMessage != null) ...[
                             const SizedBox(height: 12),
-                            FullAnalysisRetryCard(
-                              retriesRemaining: _fullErrorRetriesRemaining,
-                              errorMessage: _fullErrorMessage,
-                              onRetry: _fullErrorRetriesRemaining > 0
-                                  ? _retryFullAnalysis
-                                  : null,
-                            ),
+                            // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
+                            // 而非「無法再重試」（smoke P1 fix 2026-06-11）。
+                            if (_quotaExceededInfo != null)
+                              QuotaExceededUpgradeCard(
+                                isMonthly: _quotaExceededInfo!.isMonthly,
+                                remaining: _quotaExceededInfo!.remaining,
+                                quotaNeeded: _quotaExceededInfo!.quotaNeeded,
+                                onViewPlans: () => _showPaywall(context),
+                              )
+                            else
+                              FullAnalysisRetryCard(
+                                retriesRemaining: _fullErrorRetriesRemaining,
+                                errorMessage: _fullErrorMessage,
+                                onRetry: _fullErrorRetriesRemaining > 0
+                                    ? _retryFullAnalysis
+                                    : null,
+                              ),
                           ],
 
                           if (_enthusiasmScore != null) ...[

@@ -49,6 +49,47 @@ const List<(String, String)> _streamPreludeProgress = <(String, String)>[
 
 const Duration _streamPreludeProgressInterval = Duration(seconds: 3);
 
+/// Quota 不足明細。當 analyze 串流以 429 的
+/// [DailyLimitExceededException] / [MonthlyLimitExceededException] 中止時
+/// 鏡射進 [StreamingAnalysisState]，UI 據此渲染升級卡而非 generic retry 卡
+/// （smoke P1 fix 2026-06-11：quota 429 絕不能顯示成「無法再重試」）。
+class QuotaExceededInfo {
+  final bool isMonthly;
+
+  /// 剩餘則數（server 給的 remaining；缺時以 limit-used 推算）。
+  final int? remaining;
+
+  /// 本次分析需要的則數（server 429 payload 的 quotaNeeded，可能缺）。
+  final int? quotaNeeded;
+
+  const QuotaExceededInfo({
+    required this.isMonthly,
+    this.remaining,
+    this.quotaNeeded,
+  });
+
+  /// 從 service 層 429 異常轉換；非 quota 異常回 null。
+  static QuotaExceededInfo? fromException(Exception e) {
+    if (e is MonthlyLimitExceededException) {
+      return QuotaExceededInfo(
+        isMonthly: true,
+        remaining: e.remaining ?? _nonNegative(e.monthlyLimit - e.used),
+        quotaNeeded: e.quotaNeeded,
+      );
+    }
+    if (e is DailyLimitExceededException) {
+      return QuotaExceededInfo(
+        isMonthly: false,
+        remaining: e.remaining ?? _nonNegative(e.dailyLimit - e.used),
+        quotaNeeded: e.quotaNeeded,
+      );
+    }
+    return null;
+  }
+
+  static int _nonNegative(int value) => value < 0 ? 0 : value;
+}
+
 /// Immutable orchestrator state. Carries the streaming preview + full result,
 /// plus the cached [analysisRunId] used by [StreamingAnalyzeNotifier.retryFull]
 /// so the server can match the run without re-charging quota (invariant I1).
@@ -67,6 +108,9 @@ class StreamingAnalysisState {
   final int retriesRemaining;
   final int? conversationMessageCount;
 
+  /// 非 null 表示這次失敗是額度不足（429），UI 必須走升級卡分流。
+  final QuotaExceededInfo? quotaExceeded;
+
   const StreamingAnalysisState({
     required this.phase,
     this.recommendationPreview,
@@ -81,6 +125,7 @@ class StreamingAnalysisState {
     this.streamContents = const [],
     this.retriesRemaining = 0,
     this.conversationMessageCount,
+    this.quotaExceeded,
   });
 
   const StreamingAnalysisState.idle() : this(phase: StreamingAnalyzePhase.idle);
@@ -105,6 +150,7 @@ class StreamingAnalysisState {
     List<AnalysisStreamContent>? streamContents,
     int? retriesRemaining,
     Object? conversationMessageCount = _unset,
+    Object? quotaExceeded = _unset,
   }) {
     return StreamingAnalysisState(
       phase: phase ?? this.phase,
@@ -140,6 +186,9 @@ class StreamingAnalysisState {
       conversationMessageCount: identical(conversationMessageCount, _unset)
           ? this.conversationMessageCount
           : conversationMessageCount as int?,
+      quotaExceeded: identical(quotaExceeded, _unset)
+          ? this.quotaExceeded
+          : quotaExceeded as QuotaExceededInfo?,
     );
   }
 }
@@ -363,6 +412,7 @@ class StreamingAnalyzeNotifier
               ),
               retriesRemaining: 0,
               conversationMessageCount: conversationMessageCount,
+              quotaExceeded: null,
             );
             break;
           case AnalysisStreamUpdateKind.recommendation:
@@ -378,6 +428,7 @@ class StreamingAnalyzeNotifier
               streamProgressDetail: update.detail,
               retriesRemaining: 0,
               conversationMessageCount: conversationMessageCount,
+              quotaExceeded: null,
             );
             break;
           case AnalysisStreamUpdateKind.done:
@@ -398,6 +449,7 @@ class StreamingAnalyzeNotifier
               streamProgressDetail: null,
               retriesRemaining: 0,
               conversationMessageCount: conversationMessageCount,
+              quotaExceeded: null,
             );
             return;
         }
@@ -413,12 +465,18 @@ class StreamingAnalyzeNotifier
       if (generation != _generation) return;
       final message = e is AnalysisException ? e.message : '完整分析暫時失敗，請重新分析。';
       final code = e is AnalysisException ? e.code : null;
+      // Quota 429 走升級卡分流：retriesRemaining 強制 0（重試只會再撞 429），
+      // 但 UI 不得渲染「無法再重試」——quotaExceeded 非 null 時改渲染升級卡。
+      final quotaExceeded = QuotaExceededInfo.fromException(e);
       final recommendationPreview = state.recommendationPreview;
       final hasStreamContent = state.streamContents.isNotEmpty;
-      final retriesRemaining = _streamRetriesRemaining(
-        e,
-        hasRecommendation: recommendationPreview != null || hasStreamContent,
-      );
+      final retriesRemaining = quotaExceeded != null
+          ? 0
+          : _streamRetriesRemaining(
+              e,
+              hasRecommendation:
+                  recommendationPreview != null || hasStreamContent,
+            );
 
       if (recommendationPreview != null || hasStreamContent) {
         state = state.copyWith(
@@ -429,6 +487,7 @@ class StreamingAnalyzeNotifier
           streamProgressDetail: null,
           retriesRemaining: retriesRemaining,
           conversationMessageCount: conversationMessageCount,
+          quotaExceeded: quotaExceeded,
         );
         return;
       }
@@ -438,6 +497,7 @@ class StreamingAnalyzeNotifier
         recommendationPreviewErrorMessage: message,
         recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
+        quotaExceeded: quotaExceeded,
       );
     } finally {
       stopLocalProgress();
@@ -522,6 +582,7 @@ class StreamingAnalyzeNotifier
       streamContents: const <AnalysisStreamContent>[],
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
+      quotaExceeded: null,
     );
 
     if (_shouldUseStreamingFull) {
@@ -579,6 +640,7 @@ class StreamingAnalyzeNotifier
       fullErrorCode: null,
       retriesRemaining: 0,
       conversationMessageCount: conversationMessageCount,
+      quotaExceeded: null,
     );
 
     try {
@@ -600,6 +662,7 @@ class StreamingAnalyzeNotifier
         fullErrorCode: null,
         retriesRemaining: 0,
         conversationMessageCount: conversationMessageCount,
+        quotaExceeded: null,
       );
     } on FullModeException catch (e) {
       if (generation != _generation) return;
@@ -609,6 +672,7 @@ class StreamingAnalyzeNotifier
         fullErrorCode: e.code,
         retriesRemaining: e.retriesRemaining,
         conversationMessageCount: conversationMessageCount,
+        quotaExceeded: null,
       );
     } on Exception catch (e) {
       if (generation != _generation) return;
@@ -618,6 +682,8 @@ class StreamingAnalyzeNotifier
         fullErrorCode: e is AnalysisException ? e.code : null,
         retriesRemaining: 0,
         conversationMessageCount: conversationMessageCount,
+        // Legacy 回退路同樣分流 quota 429（smoke P1 fix 2026-06-11）。
+        quotaExceeded: QuotaExceededInfo.fromException(e),
       );
     }
   }

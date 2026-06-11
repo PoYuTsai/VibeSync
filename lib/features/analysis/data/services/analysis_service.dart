@@ -776,6 +776,54 @@ String _friendlyStreamErrorMessage(String? rawMessage) {
   return '這次分析沒順利完成，請稍後再試一次。';
 }
 
+/// 429 quota payload → typed exception。集中三個 429 呼叫點的判別邏輯。
+///
+/// 舊 server payload 只帶單一 limit 欄位（monthly 或 daily 擇一）；ADR #19 的
+/// `buildQuotaExceededPayload` 同時帶 `monthlyLimit` + `dailyLimit`，必須改用
+/// remaining vs quotaNeeded 判別是哪個額度擋下這次分析——否則月額度爆掉會被
+/// `dailyLimit != null` 先判而誤報成「今日額度已用完」（wait 而非 upgrade，
+/// 直接傷 Free→付費轉換；smoke P1 fix 2026-06-11）。
+AnalysisException? _quotaExceptionFrom429(Map<String, dynamic> data) {
+  final monthlyLimit = (data['monthlyLimit'] as num?)?.toInt();
+  final dailyLimit = (data['dailyLimit'] as num?)?.toInt();
+  if (monthlyLimit == null && dailyLimit == null) return null;
+
+  final quotaNeeded = (data['quotaNeeded'] as num?)?.toInt();
+  final monthlyRemaining = (data['monthlyRemaining'] as num?)?.toInt();
+  final dailyRemaining = (data['dailyRemaining'] as num?)?.toInt();
+  final used = (data['used'] as num?)?.toInt() ?? 0;
+  final monthlyUsed = (data['monthlyUsed'] as num?)?.toInt() ?? used;
+  final dailyUsed = (data['dailyUsed'] as num?)?.toInt() ?? used;
+
+  final bool isMonthly;
+  if (monthlyLimit != null && dailyLimit == null) {
+    isMonthly = true;
+  } else if (dailyLimit != null && monthlyLimit == null) {
+    isMonthly = false;
+  } else if (monthlyRemaining != null && quotaNeeded != null) {
+    // server 先檢查月額度、月夠才輪到日，所以月剩餘不足 = 月額度擋下。
+    isMonthly = monthlyRemaining < quotaNeeded;
+  } else {
+    // 無法判別時偏向 monthly：upgrade CTA 比「明天再試」安全。
+    isMonthly = true;
+  }
+
+  if (isMonthly) {
+    return MonthlyLimitExceededException(
+      monthlyLimit: monthlyLimit ?? 0,
+      used: monthlyUsed,
+      remaining: monthlyRemaining,
+      quotaNeeded: quotaNeeded,
+    );
+  }
+  return DailyLimitExceededException(
+    dailyLimit: dailyLimit ?? 0,
+    used: dailyUsed,
+    remaining: dailyRemaining,
+    quotaNeeded: quotaNeeded,
+  );
+}
+
 AnalysisException _mapAnalysisHttpError({
   required int statusCode,
   required String? errorCode,
@@ -1536,23 +1584,8 @@ class AnalysisService {
                     : 'Analysis failed');
 
             if (status == 429) {
-              final monthlyLimit = responseData['monthlyLimit'];
-              final dailyLimit = responseData['dailyLimit'];
-              final used = (responseData['used'] as num?)?.toInt() ?? 0;
-
-              if (dailyLimit != null) {
-                throw DailyLimitExceededException(
-                  dailyLimit: (dailyLimit as num).toInt(),
-                  used: used,
-                );
-              }
-
-              if (monthlyLimit != null) {
-                throw MonthlyLimitExceededException(
-                  monthlyLimit: (monthlyLimit as num).toInt(),
-                  used: used,
-                );
-              }
+              final quotaException = _quotaExceptionFrom429(responseData);
+              if (quotaException != null) throw quotaException;
             }
 
             throw _mapAnalysisHttpError(
@@ -1748,21 +1781,8 @@ class AnalysisService {
         );
 
         if (response.statusCode == 429) {
-          final dailyLimit = responseData['dailyLimit'];
-          final monthlyLimit = responseData['monthlyLimit'];
-          final used = (responseData['used'] as num?)?.toInt() ?? 0;
-          if (dailyLimit != null) {
-            throw DailyLimitExceededException(
-              dailyLimit: (dailyLimit as num).toInt(),
-              used: used,
-            );
-          }
-          if (monthlyLimit != null) {
-            throw MonthlyLimitExceededException(
-              monthlyLimit: (monthlyLimit as num).toInt(),
-              used: used,
-            );
-          }
+          final quotaException = _quotaExceptionFrom429(responseData);
+          if (quotaException != null) throw quotaException;
         }
 
         throw _mapAnalysisHttpError(
@@ -2172,21 +2192,8 @@ class AnalysisService {
       }
 
       if (status == 429) {
-        final dailyLimit = responseData['dailyLimit'];
-        final monthlyLimit = responseData['monthlyLimit'];
-        final used = (responseData['used'] as num?)?.toInt() ?? 0;
-        if (dailyLimit != null) {
-          throw DailyLimitExceededException(
-            dailyLimit: (dailyLimit as num).toInt(),
-            used: used,
-          );
-        }
-        if (monthlyLimit != null) {
-          throw MonthlyLimitExceededException(
-            monthlyLimit: (monthlyLimit as num).toInt(),
-            used: used,
-          );
-        }
+        final quotaException = _quotaExceptionFrom429(responseData);
+        if (quotaException != null) throw quotaException;
       }
 
       if (onErrorResponse != null) {
@@ -2292,9 +2299,17 @@ class DailyLimitExceededException extends AnalysisException {
   final int dailyLimit;
   final int used;
 
+  /// 429 payload 的 dailyRemaining（server 算好的剩餘則數），可能缺。
+  final int? remaining;
+
+  /// 429 payload 的 quotaNeeded（本次分析需要的則數），可能缺。
+  final int? quotaNeeded;
+
   DailyLimitExceededException({
     required this.dailyLimit,
     required this.used,
+    this.remaining,
+    this.quotaNeeded,
   }) : super(
           '今日額度已用完，可以明天再試，或升級解鎖更多分析。',
           code: 'DAILY_LIMIT_EXCEEDED',
@@ -2306,9 +2321,17 @@ class MonthlyLimitExceededException extends AnalysisException {
   final int monthlyLimit;
   final int used;
 
+  /// 429 payload 的 monthlyRemaining（server 算好的剩餘則數），可能缺。
+  final int? remaining;
+
+  /// 429 payload 的 quotaNeeded（本次分析需要的則數），可能缺。
+  final int? quotaNeeded;
+
   MonthlyLimitExceededException({
     required this.monthlyLimit,
     required this.used,
+    this.remaining,
+    this.quotaNeeded,
   }) : super(
           '本月額度已用完，升級後可以繼續分析。',
           code: 'MONTHLY_LIMIT_EXCEEDED',
