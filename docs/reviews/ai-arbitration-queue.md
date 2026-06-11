@@ -23,6 +23,38 @@
 
 ## Live Queue
 
+## [2026-06-12] #12 一球一回 replySegments 實作 — Codex 實作雙審
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex (實作雙審) → Eric/Bruce (APPROVED 後 dogfood)
+Scope: analyze-chat prompt/schema + sanitizer（高風險區）— **server only，client 零變更**
+Branch/Commit: `main` @ `1fd4f5c` + `a6bc654` + `4143895` + `b91ee77` + `0a39621`；計畫 `docs/plans/2026-06-12-reply-segments-implementation.md`；設計 `docs/plans/2026-06-11-reply-segments-one-ball-one-reply-design.md`（設計把關 r2 APPROVED @ `435e6a1`，cap 3）
+
+**實作內容（依設計七點規格）**：
+
+1. **Sanitizer 三層缺 source 規則**（`1fd4f5c` + `a6bc654`）：`post_process.ts` 新增 `extractPartnerBallList`（球清單 = trailing partner run，1-based；vision 優先 `result.recognizedConversation.messages`；run 空時回退最近 10 則對方訊息）+ `enforceReplySegmentSourceContract`（①sourceIndex 缺/越界 → sourceMessage 正規化文字回查修復（exact → 雙向 substring、≥4 字门槛）②修不回 → drop 該段 ③全 drop → content 回退 drop 前換行合併版，絕不空 source 流出）。接線 `ensureNonEmptyAnalysisOutput` + `postProcessAnalysisResult` Step 3 兩處輸出點；`index.ts` 三呼叫點（:6395 full / :6677 stream markDone / :7159 legacy+vision）傳 `requestMessages`。contract 只在 `!recognizeOnly && !isMyMessageMode` 啟用。球清單不可得時防衛路徑只驗形狀（sourceIndex≥1 + sourceMessage 非空）不驗範圍。
+2. **SYSTEM_PROMPT 條件式 → 強制式**（`b91ee77`）：§1.5 改「一球一回」——≥2 顆值得接的球**必須**分開回、每球一段、cap 3 挑互動價值最高、每段必填 sourceIndex（她這輪連發第幾句，1-based，與 server 球清單同語意）+ sourceMessage、各段獨立成立、content 仍填換行合併版（規格 #4）；「同一情緒/生活片段算同一顆球」防過度拆段。§1.2 範例消滅兩球串一句示範；§1.3 加指向 + 五句連發=同一行程球註記；§1.5 範例升級三球三段（Bruce golden case 同構）；vision Multi-Message Reminder（:1135）鏡射強制式；schema 範例擴 2 段。
+3. **Stream contract 堵 compact 掉段**（`0a39621`）：偵察發現 streaming（現行產品路徑）segments 唯一通道 = `analysis.done.finalResult`，而舊 contract「compact finalResult」是反向拉力 → 明定多球時 `finalResult.finalRecommendation.replySegments` REQUIRED、Never omit to save tokens。
+4. **規格 #4 已存在**：content 換行 join 本來就在（`post_process.ts` 兩處 `join("\n")`），新增測試上鎖。
+
+**測試證據**：Deno 全套 **335 passed**（新增 sanitizer 7 + 接線 2 + 換行 join 1 + stream contract 1 + index_test 字串鎖更新）；style-pair 鎖 `effective_style_prompt_builder_test.dart` **10/10 原樣通過**——本案只動 server prompt，client builder 一字未碰，**byte-for-byte 鎖實際未破**（比設計文件保守假設的「知情破鎖重立基準」更強，如實記載）；quick mode 測試零變更通過（quick 用獨立 `QUICK_SYSTEM_PROMPT`，規格 #3 天然成立）。
+
+**過程透明**：`a6bc654` 曾帶著 index_test 一個紅燈 push（字串鎖釘舊接線 `replySegments: safeRecommendationSegments`），同分鐘內 `4143895` 修復——紅燈期間僅字串鎖測試紅，無行為缺陷；prod 部署的 code 本身一致。
+
+**審查重點建議**：
+
+1. 球清單語意：trailing partner run + 空 run 回退最近 10 則——「我已回一半再分析」案例的 sourceIndex 語意是否可接受（index 對 run 計，回退清單時可能與模型認知偏移；display 主鍵是 sourceMessage，`analysis_screen.dart:4372`）。
+2. Contract 誤殺風險：文字回查的 ≥4 字 substring 門檻、短訊息（「好啊」「哈哈」）球的修復成功率；防衛路徑（球清單空）只驗形狀是否夠保守。
+3. 三層回退與既有 precedence 互動：`replies[pick]` 優先於 segment 合併版（既有行為，測試已釘）；全 drop 時 content 用 drop 前合併版的位置（ensureNonEmpty :segmentMappedContent / Step 3 :segmentRecommendationContent）是否漏。
+4. Prompt 一致性：§1.2/1.3/1.5/vision reminder/schema 範例五處同步後有無殘留反向拉力（「精簡」「一句總回」類指令）；§1.3 ✅ 範例與強制式的「同一片段=同一球」調和是否清楚。
+5. Stream contract 措辭是否會讓模型在單球時硬湊多段（regression 方向：N=1 不變）。
+6. Golden case（行程/電量/吃飯三球 → 3 段）為 **TF 行為驗收**，單元測試只能鎖 prompt 字串與 sanitizer——server-only 變更已隨 push 自動部署，**現有 TestFlight build 即可測**（client 零變更，無需新 build）。
+
+Close Condition: Codex 實作雙審 APPROVED + golden case Bruce TF 實測（一球一回體感）+ Eric 確認。APPROVED 前不得對 Bruce 說 dogfood safe。
+
+---
+
 ## [2026-06-11] Smoke 兩修（quota 429 分流 + 實扣常駐）— Codex 實作雙審
 Status: APPROVED（Codex r2 2026-06-11 — 0 P0/P1/P2；r1 兩 P2 驗證解除。可回 Bruce；⚠️ client 修須新 TestFlight build 才測得到）
 Request-Type: review
