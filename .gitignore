@@ -64,3 +64,7 @@ supabase/.env.local
 
 # Externally-cloned GitHub Pages repo (has its own .git, should live outside this repo)
 vibesync-web/
+
+# OCR golden set：真實圖 labels 與跑分結果不入 git（隱私）
+tools/ocr-golden/labels/real/
+tools/ocr-golden/results/
