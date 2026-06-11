@@ -72,6 +72,12 @@ Eric/Bruce lead:
 - Product feel, TestFlight smoke, real dating/chat UX judgment.
 - Final call when product/payment/data tradeoffs are ambiguous.
 
+## DB Migration Deploy Rule（2026-06-11 Eric 拍板）
+
+- **絕不對 prod 跑 `supabase db push`**。歷史原因：repo 曾有重複版本號 migration（20260315×2，後改名 20260316），帳本與檔案曾長期漂移，盲 push 會重放歷史孤兒 SQL（見 `docs/security/2026-05-11-prelaunch-security-scan.md`）。
+- 標準流程 = **目標式套用**：Supabase MCP `apply_migration` 只打該份 SQL → 功能驗證（含清理測試列）→ **把帳本 version 對齊本地檔名**（MCP 自動產生的 timestamp ≠ 檔名時必須 UPDATE `supabase_migrations.schema_migrations`，否則製造新漂移）。
+- 範例：ADR #19 `20260611120000_adr19_overcharge_confirmations.sql` 即依此流程套用（claimed/replay/mismatch 三態驗證通過）。
+
 ## High-Risk Changes Need Codex Review
 
 High-risk includes:
