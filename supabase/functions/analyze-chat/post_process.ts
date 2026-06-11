@@ -172,9 +172,11 @@ export function sanitizeReplySegments(value: unknown) {
 
 const BALL_LIST_FALLBACK_LIMIT = 10;
 
+export type BallListMessage = { isFromMe?: unknown; content?: unknown };
+
 export function extractPartnerBallList({ result, requestMessages }: {
   result?: Record<string, unknown>;
-  requestMessages?: Array<Record<string, unknown>>;
+  requestMessages?: BallListMessage[];
 }): string[] {
   const recognized = (result?.recognizedConversation as
     | Record<string, unknown>
@@ -487,11 +489,13 @@ export function ensureNonEmptyAnalysisOutput({
   recognizeOnly,
   isMyMessageMode,
   allowedFeatures,
+  ballList = [],
 }: {
   result: Record<string, unknown>;
   recognizeOnly: boolean;
   isMyMessageMode: boolean;
   allowedFeatures: string[];
+  ballList?: string[];
 }) {
   if (recognizeOnly || isMyMessageMode) {
     return result;
@@ -555,9 +559,16 @@ export function ensureNonEmptyAnalysisOutput({
   const effectiveSegments = preferredSegments.length > 0
     ? preferredSegments
     : fallbackOptionSegments;
-  const segmentMappedContent = effectiveSegments
-    .map((segment) => segment.reply)
-    .join("\n");
+  // #12 一球一回：輸出段必過 source contract；第三層（全段被 drop）時
+  // content 回退「現狀單段行為」用 drop 前的換行合併版。
+  const contractSegments = enforceReplySegmentSourceContract(
+    effectiveSegments,
+    ballList,
+  );
+  const segmentMappedContent =
+    (contractSegments.length > 0 ? contractSegments : effectiveSegments)
+      .map((segment) => segment.reply)
+      .join("\n");
   const fallbackContent = replyMappedContent.length > 0
     ? replyMappedContent
     : (preferredPick === fallbackPick
@@ -579,7 +590,7 @@ export function ensureNonEmptyAnalysisOutput({
     psychology: preferredPsychology.length > 0
       ? preferredPsychology
       : fallbackExplanation.psychology,
-    replySegments: effectiveSegments,
+    replySegments: contractSegments,
   };
 
   return result;
@@ -598,18 +609,28 @@ export function postProcessAnalysisResult({
   recognizeOnly,
   isMyMessageMode,
   allowedFeatures,
+  requestMessages,
 }: {
   result: Record<string, unknown>;
   recognizeOnly: boolean;
   isMyMessageMode: boolean;
   allowedFeatures: string[];
+  requestMessages?: BallListMessage[];
 }): Record<string, unknown> {
+  // #12 一球一回：球清單供 replySegments source contract 驗證/修復。
+  // recognizeOnly / my-message 不產 segments，contract 不啟用（防誤傷）。
+  const enforceSegmentContract = !recognizeOnly && !isMyMessageMode;
+  const ballList = enforceSegmentContract
+    ? extractPartnerBallList({ result, requestMessages })
+    : [];
+
   // Step 1 — backfill empty fields (no-op for recognizeOnly / my-message).
   result = ensureNonEmptyAnalysisOutput({
     result,
     recognizeOnly,
     isMyMessageMode,
     allowedFeatures,
+    ballList,
   });
 
   // Step 2 — entitlement: replies must be a subset of allowedFeatures.
@@ -661,7 +682,15 @@ export function postProcessAnalysisResult({
       normalizedRecommendationSegments.length > 0
         ? normalizedRecommendationSegments
         : fallbackOptionSegments;
-    const segmentRecommendationContent = safeRecommendationSegments
+    // #12 一球一回：同 ensureNonEmpty——輸出段過 source contract，
+    // 全段被 drop 時 content 回退 drop 前合併版（現狀單段行為）。
+    const contractRecommendationSegments = enforceSegmentContract
+      ? enforceReplySegmentSourceContract(safeRecommendationSegments, ballList)
+      : safeRecommendationSegments;
+    const segmentRecommendationContent = (contractRecommendationSegments
+          .length > 0
+      ? contractRecommendationSegments
+      : safeRecommendationSegments)
       .map((segment) => segment.reply)
       .filter((reply) => reply.trim().length > 0)
       .join("\n")
@@ -685,7 +714,7 @@ export function postProcessAnalysisResult({
       psychology: normalizedRecommendationPsychology.length > 0
         ? normalizedRecommendationPsychology
         : fallbackExplanation.psychology,
-      replySegments: safeRecommendationSegments,
+      replySegments: contractRecommendationSegments,
     };
   }
 

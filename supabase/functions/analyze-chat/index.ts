@@ -6397,6 +6397,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         recognizeOnly: false,
         isMyMessageMode,
         allowedFeatures,
+        requestMessages: messages,
       });
       const dogfoodOfficialFullRecommendation = normalizeDogfoodRecommendation(
         postProcessed.finalRecommendation,
@@ -6679,6 +6680,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             recognizeOnly: false,
             isMyMessageMode: false,
             allowedFeatures,
+            requestMessages: messages,
           });
           const latencyMs = Date.now() - streamStartTime;
           const finalPayload = {
@@ -7161,6 +7163,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       recognizeOnly,
       isMyMessageMode: isMyMessageMode || isOptimizeMessageMode,
       allowedFeatures,
+      requestMessages: messages,
     });
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
       ? ((result as {

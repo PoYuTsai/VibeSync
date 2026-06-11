@@ -404,3 +404,102 @@ Deno.test("source contract: empty ball list keeps well-formed segments, drops em
   assertEquals(repaired.length, 1);
   assertEquals(repaired[0].reply, "保留");
 });
+
+Deno.test("postProcess repairs finalRecommendation segment sources against ball list", () => {
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: { extend: "合併版" },
+      finalRecommendation: {
+        pick: "extend",
+        content: "合併版",
+        reason: "r",
+        psychology: "p",
+        replySegments: [
+          { sourceMessage: "剛來吃晚餐", reply: "回吃飯球", reason: "" },
+          {
+            sourceIndex: 3,
+            sourceMessage: "等等要去樂華夜市",
+            reply: "回夜市球",
+            reason: "",
+          },
+        ],
+      },
+    },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend"],
+    requestMessages: [
+      { isFromMe: false, content: "紅牛跟賓士差點打起來XD" },
+      { isFromMe: false, content: "剛來吃晚餐" },
+      { isFromMe: false, content: "等等要去樂華夜市" },
+    ],
+  });
+  const rec = result.finalRecommendation as Record<string, unknown>;
+  const segments = rec.replySegments as Array<Record<string, unknown>>;
+  assertEquals(segments.length, 2);
+  assertEquals(segments[0].sourceIndex, 2); // 文字回查修復
+  assertEquals(segments[1].sourceIndex, 3); // 原本就合法
+});
+
+Deno.test("postProcess layer 3: all segments dropped falls back to merged content, never empty-source segments", () => {
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: {},
+      finalRecommendation: {
+        pick: "extend",
+        content: "",
+        reason: "r",
+        psychology: "p",
+        replySegments: [
+          { sourceMessage: "", reply: "第一段", reason: "" },
+          { sourceMessage: "", reply: "第二段", reason: "" },
+        ],
+      },
+    },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend"],
+    requestMessages: [{ isFromMe: false, content: "她的球" }],
+  });
+  const rec = result.finalRecommendation as Record<string, unknown>;
+  // 第三層不變量：空 source 段絕不流出 server。
+  assertEquals((rec.replySegments as unknown[]).length, 0);
+  // 現狀單段行為：content 仍非空可用（replies 空時走 safe-reply 回填，
+  // 為既有 precedence——replies[pick] 優先於 segment 合併版）。
+  assert((rec.content as string).trim().length > 0);
+});
+
+Deno.test("postProcess keeps newline-joined segment content when replies lack the pick (規格 #4 換行 join)", () => {
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: { extend: "" },
+      replyOptions: {},
+      finalRecommendation: {
+        pick: "extend",
+        content: "",
+        reason: "r",
+        psychology: "p",
+        replySegments: [
+          {
+            sourceIndex: 1,
+            sourceMessage: "球一",
+            reply: "第一段",
+            reason: "",
+          },
+          {
+            sourceIndex: 2,
+            sourceMessage: "球二",
+            reply: "第二段",
+            reason: "",
+          },
+        ],
+      },
+    },
+    recognizeOnly: true, // 跳過 ensureNonEmpty 的 safe-reply 回填，直驗 Step 3 join
+    isMyMessageMode: false,
+    allowedFeatures: ["extend"],
+  });
+  const rec = result.finalRecommendation as Record<string, unknown>;
+  // 規格 #4：合併版用換行 join，不用逗點。
+  assertEquals(rec.content, "第一段\n第二段");
+});
