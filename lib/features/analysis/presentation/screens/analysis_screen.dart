@@ -211,9 +211,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 分析後繼續對話展開狀態
   bool _showContinueConversation = false;
 
+  /// 重入防護（Codex 雙審 r1-P2b 2026-06-11）：quota 升級卡新增了高頻
+  /// paywall 入口，快速連點不得 push 多個 paywall route。
+  bool _isPaywallInFlight = false;
+
   Future<void> _showPaywall(BuildContext context) async {
+    if (_isPaywallInFlight) return;
+    _isPaywallInFlight = true;
     _clearAnalysisSnackBarsBeforePush();
-    final unlockedTier = await context.push<String>('/paywall');
+    final String? unlockedTier;
+    try {
+      unlockedTier = await context.push<String>('/paywall');
+    } finally {
+      _isPaywallInFlight = false;
+    }
     if (!mounted) {
       return;
     }
@@ -772,6 +783,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         });
         break;
       case StreamingAnalyzePhase.failedBeforeRecommendation:
+        final hydrateQuotaInfo = s.quotaExceeded;
         final isQuotaError =
             s.recommendationPreviewErrorCode == 'DAILY_LIMIT_EXCEEDED' ||
                 s.recommendationPreviewErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
@@ -781,13 +793,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = null;
           _streamContents = const [];
           _activeAnalysisMessageCount = null;
-          _applyErrorState(
-            message: s.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。',
-            action: isQuotaError
-                ? AnalysisErrorAction.upgrade
-                : AnalysisErrorAction.retry,
-            origin: _AnalysisErrorOrigin.analysis,
-          );
+          if (hydrateQuotaInfo != null) {
+            // Quota 429 升級卡分流（Codex 雙審 r1-P2a）：fresh-start 也渲染
+            // QuotaExceededUpgradeCard（剩 N/需 M），不走 generic error 卡。
+            _quotaExceededInfo = hydrateQuotaInfo;
+            _resetErrorState();
+          } else {
+            _applyErrorState(
+              message:
+                  s.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。',
+              action: isQuotaError
+                  ? AnalysisErrorAction.upgrade
+                  : AnalysisErrorAction.retry,
+              origin: _AnalysisErrorOrigin.analysis,
+            );
+          }
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         // Skip _showPaywall — already opened on the original transition.
@@ -3655,6 +3675,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         final code = next.recommendationPreviewErrorCode;
         final message =
             next.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。';
+        final liveQuotaInfo = next.quotaExceeded;
         final isQuotaError =
             code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
@@ -3663,13 +3684,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = null;
           _streamContents = const [];
           _activeAnalysisMessageCount = null;
-          _applyErrorState(
-            message: message,
-            action: isQuotaError
-                ? AnalysisErrorAction.upgrade
-                : AnalysisErrorAction.retry,
-            origin: _AnalysisErrorOrigin.analysis,
-          );
+          if (liveQuotaInfo != null) {
+            // Quota 429 升級卡分流（Codex 雙審 r1-P2a）：fresh-start 也渲染
+            // QuotaExceededUpgradeCard（剩 N/需 M），不走 generic error 卡。
+            _quotaExceededInfo = liveQuotaInfo;
+            _resetErrorState();
+          } else {
+            _applyErrorState(
+              message: message,
+              action: isQuotaError
+                  ? AnalysisErrorAction.upgrade
+                  : AnalysisErrorAction.retry,
+              origin: _AnalysisErrorOrigin.analysis,
+            );
+          }
         });
         if (isQuotaError) {
           unawaited(_showPaywall(context));
@@ -5779,7 +5807,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             _buildStreamingContentCard(),
                           ],
 
-                          if (_fullErrorMessage != null) ...[
+                          // gate 含 _quotaExceededInfo：fresh-start quota 429
+                          // （failedBeforeRecommendation）只設 quota state、
+                          // 不設 _fullErrorMessage（Codex 雙審 r1-P2a）。
+                          if (_fullErrorMessage != null ||
+                              _quotaExceededInfo != null) ...[
                             const SizedBox(height: 12),
                             // Quota 429 分流：額度不足不是技術失敗，渲染升級卡
                             // 而非「無法再重試」（smoke P1 fix 2026-06-11）。
