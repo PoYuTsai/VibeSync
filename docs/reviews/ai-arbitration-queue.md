@@ -49,9 +49,17 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 **Round 3 確認（2026-06-11）= 設計把關通過，無剩餘 P0/P1**：
 > Codex 確認 ADR #19 @ `ee20949`：r2 P1 已補到位，clipped/summary 舊 client 路徑改為 user-safe floor 1 + log；無剩餘 P0/P1。設計綠燈，Claude 可開實作；實作後另跑高風險雙審。
 
-**狀態**：設計階段 DONE。下一步 = 新 session 開實作（ADR #19 規格 8 條 + 3 既存 bug 同批 + 即時預覽數字；同 commit 更新 pricing-final/cost-optimization）。實作後仍是高風險 quota/Edge schema 變更，**必過實作雙審，APPROVED 前不得說 dogfood/build safe**。
+**Round 4 = r3 參數修訂 + 定案（2026-06-11 PM~晚，夥伴新需求 → Eric 全數拍板，規格凍結）**：
+- 公式改 `clamp(ceil(字數/40), 1, 10)`、400~2000 緩衝帶一律 10 則、**>2000 一律固定 20 則需確認**（乙案）。
+- 預覽改靜態區間文案「依對話複雜度使用 1–10 則」（不再 pre-flight 精確值）；分析後顯示實扣。
+- 月額度 30/300/800 不調（cap 10 推理：各層保證次數均高於舊制，原「燒快 5 倍」係忽略 cap 的誤導）。
+- 邊界 4 條：額度檢查先於確認框 / client 預警+server 守門（`confirmation_required` + `confirmedOvercharge` 旗標）/ 舊 client >2000 → user-safe cap 10 + log `legacy_over2000_capped` / soft_cap 每次分析各自算。
+- r2 三層 compat fallback、字數定義（UTF-16、quotedReplyPreview 不計費）**全部保留不重開**。
+- 全文見 `docs/decisions.md` ADR #19 🔴 r3 + 🟢 r3 定案區塊。
 
-Close Condition: 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
+**狀態**：r3 規格凍結，**待 Codex r3 設計把關**（r1/r2 終審係對 200 字版；40 字 + cap + 兩層確認 + 舊 client 路徑為新增面，需重走一輪）。把關通過 → 新 session 開實作（同 commit 更新 pricing-final/cost-optimization）→ 實作雙審，**APPROVED 前不得說 dogfood/build safe**。
+
+Close Condition: Codex r3 設計把關通過 + 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 
 ---
 
