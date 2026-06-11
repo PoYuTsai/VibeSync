@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-11] Smoke 兩修（quota 429 分流 + 實扣常駐）— Codex 實作雙審
-Status: OPEN
+Status: IN_REVIEW（r1 REVISE_REQUIRED 兩 P2 已修 → Codex r2 確認中）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (實作雙審) → Eric/Bruce (APPROVED 後 dogfood)
@@ -42,6 +42,13 @@ Branch/Commit: `main` @ `de7b1bb`（P1）+ `12b5895`（P2）；計畫 `docs/plan
 **測試證據**：notifier quota 6 案 + service 雙 limit 判別 3 案 + widget 升級卡 3 案 + 常駐行 6 案；targeted 全綠；`flutter analyze` 乾淨（僅既有 `test/visual_proof` info）。
 
 審查重點建議：429 判別 heuristic 的邊界（opener 雙 limit + quotaNeeded=0、remaining 缺失 fallback）、quotaExceeded 清空點是否漏（殘留舊卡）、P2 顯示條件與 hydration 去重互動、快照 remaining 過期語意是否可接受。
+
+**Round 1（2026-06-11）= REVISE_REQUIRED（0 P0 / 0 P1 / 2 P2）**：
+- [P2] fresh-start quota 429（failedBeforeRecommendation）notifier 有設 quotaExceeded 但 screen 兩個 handler 沒鏡射 `_quotaExceededInfo` → 不顯示新升級卡（仍走舊 error 卡 + paywall，不會回到「無法再重試」，但分流不完整）。
+- [P2] `_showPaywall` 無重入防護，quota 卡新增高頻入口，快速連點可 push 多個 paywall route。
+- Codex 驗證成立的 claims：429 heuristic 對 server 三種 payload（單 monthly/單 daily/雙 limit）正確；opener 429 走 OpenerService 自己解析、不受影響；quotaExceeded 清空點主路徑完整；failedAfter 卡互斥正確；P2 顯示條件與 SnackBar 一致、Map round-trip 安全。
+
+**Claude 修訂（同日）**：兩個 failedBeforeRecommendation handler（hydrate + live）quota 分流——非 null 時設 `_quotaExceededInfo` + `_resetErrorState()`（不走 generic error 卡），render gate 擴 `_fullErrorMessage != null || _quotaExceededInfo != null`；`_showPaywall` 加 `_isPaywallInFlight` guard（try/finally 復位）。targeted 42 案重跑全綠。
 
 Close condition：Codex APPROVED → 回 Bruce「可再試」；REVISE_REQUIRED → Claude 修。
 
