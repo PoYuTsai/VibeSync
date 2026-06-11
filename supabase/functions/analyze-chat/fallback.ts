@@ -36,7 +36,7 @@ const DEFAULT_OPTIONS: CallOptions = {
 };
 
 const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
-  "claude-sonnet-4-20250514": "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
   "claude-haiku-4-5-20251001": null,
 };
 

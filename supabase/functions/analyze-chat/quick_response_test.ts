@@ -273,7 +273,7 @@ Deno.test("applyQuickGuardrails — non-string fields are coerced before pattern
 
 Deno.test("estimateFullSeconds — images → 22s (Sonnet vision)", () => {
   assertEquals(
-    estimateFullSeconds({ model: "claude-sonnet-4-20250514", hasImages: true }),
+    estimateFullSeconds({ model: "claude-sonnet-4-6", hasImages: true }),
     22,
   );
 });
@@ -291,7 +291,7 @@ Deno.test("estimateFullSeconds — haiku text → 5s", () => {
 Deno.test("estimateFullSeconds — sonnet text → 17s", () => {
   assertEquals(
     estimateFullSeconds({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       hasImages: false,
     }),
     17,

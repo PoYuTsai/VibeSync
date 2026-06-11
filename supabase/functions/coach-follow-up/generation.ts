@@ -86,7 +86,7 @@ export async function runCoachFollowUp(
 
   const model = input.tier === "free"
     ? "claude-haiku-4-5-20251001"
-    : "claude-sonnet-4-20250514";
+    : "claude-sonnet-4-6";
 
   const prompt = buildCoachFollowUpPrompt(
     input.phase,

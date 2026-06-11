@@ -125,7 +125,7 @@ Deno.test("T7: tier=starter selects sonnet model in response", async () => {
 
   assertEquals(
     (result.body as Record<string, unknown>).model,
-    "claude-sonnet-4-20250514",
+    "claude-sonnet-4-6",
   );
 });
 

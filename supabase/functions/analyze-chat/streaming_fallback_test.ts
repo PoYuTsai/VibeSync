@@ -93,7 +93,7 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
 
   const result = await callClaudeStreaming(
     {
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 1536,
       system: "system prompt",
       messages: [{ role: "user", content: "hello" }],
@@ -131,9 +131,9 @@ Deno.test("callClaudeStreaming sends streaming request with cached system prompt
   assertEquals(headers["anthropic-beta"], "prompt-caching-2024-07-31");
   assertEquals(body.stream, true);
   assertEquals(body.system[0].cache_control.type, "ephemeral");
-  assertEquals(body.model, "claude-sonnet-4-20250514");
+  assertEquals(body.model, "claude-sonnet-4-6");
   assertEquals(body.messages[0].content, "hello");
-  assertEquals(result.model, "claude-sonnet-4-20250514");
+  assertEquals(result.model, "claude-sonnet-4-6");
   assertEquals(await collect(result.textStream), ["first", " second"]);
 });
 
@@ -142,7 +142,7 @@ Deno.test("callClaudeStreaming maps non-ok Anthropic responses", async () => {
     () =>
       callClaudeStreaming(
         {
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 1536,
           system: "system",
           messages: [{ role: "user", content: "hello" }],

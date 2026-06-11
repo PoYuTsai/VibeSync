@@ -123,7 +123,7 @@ Deno.test("T8 succeeded: phase + tier + model + latencyMs + costDeducted only", 
   assertEquals(succeeded?.level, "info");
   assertEquals(succeeded?.data.phase, "postDateReflection");
   assertEquals(succeeded?.data.tier, "starter");
-  assertEquals(succeeded?.data.model, "claude-sonnet-4-20250514");
+  assertEquals(succeeded?.data.model, "claude-sonnet-4-6");
   assertEquals(typeof succeeded?.data.latencyMs, "number");
   assertEquals(succeeded?.data.costDeducted, 1);
   assertEquals(Object.keys(succeeded!.data).sort(), [

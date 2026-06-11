@@ -465,7 +465,7 @@ async function repairMalformedOpenerPayload({
 }> {
   const repairResult = await callClaudeWithFallback(
     {
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 1400,
       system: OPENER_REPAIR_PROMPT,
       messages: [
@@ -671,7 +671,7 @@ const MAX_EFFECTIVE_STYLE_CONTEXT_LENGTH = 1200;
 const VALID_ANALYZE_MODES = new Set(["normal", "my_message"]);
 const VALID_FORCE_MODELS = new Set([
   "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-20250514",
+  "claude-sonnet-4-6",
 ]);
 const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 
@@ -4120,7 +4120,7 @@ function selectModel(context: {
 
   // Starter / Essential 用戶優先使用 Sonnet
   if (context.tier === "starter" || context.tier === "essential") {
-    return "claude-sonnet-4-20250514";
+    return "claude-sonnet-4-6";
   }
 
   // 使用 Sonnet 的情況 (30%)
@@ -4130,7 +4130,7 @@ function selectModel(context: {
     context.hasComplexEmotions || // 複雜情緒
     context.isFirstAnalysis // 首次分析建立基準
   ) {
-    return "claude-sonnet-4-20250514";
+    return "claude-sonnet-4-6";
   }
 
   // 預設使用 Haiku (70%)
@@ -4816,7 +4816,7 @@ serve(async (req) => {
 
       // Select model based on tier
       const openerModel = imageCount > 0 || effectiveTier !== "free"
-        ? "claude-sonnet-4-20250514"
+        ? "claude-sonnet-4-6"
         : "claude-haiku-4-5-20251001";
 
       // Build messages for Claude API
@@ -5324,10 +5324,10 @@ ${recentText}`;
     // 有圖片時強制使用 Sonnet (Vision 功能需要)
     const VALID_MODELS = [
       "claude-haiku-4-5-20251001",
-      "claude-sonnet-4-20250514",
+      "claude-sonnet-4-6",
     ];
     const model = hasImages
-      ? "claude-sonnet-4-20250514" // Vision 強制 Sonnet
+      ? "claude-sonnet-4-6" // Vision 強制 Sonnet
       : (forceModel && (accountIsTest || TEST_MODE) &&
           VALID_MODELS.includes(forceModel))
       ? forceModel
@@ -5726,7 +5726,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
 
     // 「我說」模式用 Haiku 省成本（但有圖片時強制 Sonnet）
     const selectedModel = hasImages
-      ? "claude-sonnet-4-20250514"
+      ? "claude-sonnet-4-6"
       : isMyMessageMode
       ? "claude-haiku-4-5-20251001"
       : model;
@@ -6018,7 +6018,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       }
 
       const fullModelForEta = hasImages
-        ? "claude-sonnet-4-20250514"
+        ? "claude-sonnet-4-6"
         : isMyMessageMode
         ? "claude-haiku-4-5-20251001"
         : model;

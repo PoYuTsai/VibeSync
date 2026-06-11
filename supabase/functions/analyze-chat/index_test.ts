@@ -25,7 +25,7 @@ function selectModel(context: {
   tier: string;
 }): string {
   if (context.tier === "essential") {
-    return "claude-sonnet-4-20250514";
+    return "claude-sonnet-4-6";
   }
 
   if (
@@ -34,7 +34,7 @@ function selectModel(context: {
     context.hasComplexEmotions ||
     context.isFirstAnalysis
   ) {
-    return "claude-sonnet-4-20250514";
+    return "claude-sonnet-4-6";
   }
 
   return "claude-3-5-haiku-20241022";
@@ -52,7 +52,7 @@ Deno.test("selectModel - essential tier always uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "essential",
   });
-  assertEquals(model, "claude-sonnet-4-20250514");
+  assertEquals(model, "claude-sonnet-4-6");
 });
 
 Deno.test("selectModel - first analysis uses Sonnet", () => {
@@ -63,7 +63,7 @@ Deno.test("selectModel - first analysis uses Sonnet", () => {
     isFirstAnalysis: true,
     tier: "free",
   });
-  assertEquals(model, "claude-sonnet-4-20250514");
+  assertEquals(model, "claude-sonnet-4-6");
 });
 
 Deno.test("selectModel - cold enthusiasm uses Sonnet", () => {
@@ -74,7 +74,7 @@ Deno.test("selectModel - cold enthusiasm uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "starter",
   });
-  assertEquals(model, "claude-sonnet-4-20250514");
+  assertEquals(model, "claude-sonnet-4-6");
 });
 
 Deno.test("selectModel - long conversation uses Sonnet", () => {
@@ -85,7 +85,7 @@ Deno.test("selectModel - long conversation uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "free",
   });
-  assertEquals(model, "claude-sonnet-4-20250514");
+  assertEquals(model, "claude-sonnet-4-6");
 });
 
 Deno.test("selectModel - simple conversation uses Haiku", () => {
@@ -107,7 +107,7 @@ Deno.test("selectModel - complex emotions uses Sonnet", () => {
     isFirstAnalysis: false,
     tier: "starter",
   });
-  assertEquals(model, "claude-sonnet-4-20250514");
+  assertEquals(model, "claude-sonnet-4-6");
 });
 
 Deno.test({

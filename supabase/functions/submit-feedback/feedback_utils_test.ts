@@ -147,7 +147,7 @@ Deno.test("buildDiscordNotificationContent formats Discord webhook text", () => 
             content: "真的假的，你每次都這麼會接球喔？",
           },
         },
-        modelUsed: "claude-sonnet-4-20250514",
+        modelUsed: "claude-sonnet-4-6",
       },
       {
         timestamp: "2026-04-24T12:00:00.000Z",
@@ -167,7 +167,7 @@ Deno.test("buildDiscordNotificationContent formats Discord webhook text", () => 
       "AI recommendation:",
       'extend: "真的假的，你每次都這麼會接球喔？"',
       "",
-      "Model: claude-sonnet-4-20250514",
+      "Model: claude-sonnet-4-6",
       "Time: 2026-04-24T12:00:00.000Z",
     ].join("\n"),
   );
