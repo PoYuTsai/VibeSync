@@ -47,6 +47,7 @@ import '../../domain/services/screenshot_recognition_helper.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_added_feedback_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
+import '../widgets/analysis_usage_summary_line.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
@@ -5800,6 +5801,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           if (_enthusiasmScore != null) ...[
+                            // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：
+                            // 隨快照持久化，回看也顯示；SnackBar 保留即時感知。
+                            AnalysisUsageSummaryLine(
+                              usage: _lastAiResponse?['usage'],
+                            ),
                             _buildDetailedAnalysisToggle(),
                             if (_showDetailedAnalysis) ...[
                               const SizedBox(height: 12),
