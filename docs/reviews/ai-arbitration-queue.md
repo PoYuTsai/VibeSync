@@ -23,6 +23,30 @@
 
 ## Live Queue
 
+## [2026-06-11] Smoke 兩修（quota 429 分流 + 實扣常駐）— Codex 實作雙審
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex (實作雙審) → Eric/Bruce (APPROVED 後 dogfood)
+Scope: quota / paywall / 429 / analyze UI（高風險區）— client only，server 免改
+Branch/Commit: `main` @ `de7b1bb`（P1）+ `12b5895`（P2）；計畫 `docs/plans/2026-06-11-smoke-quota-display-fix.md` @ `d8604ae`
+
+**P1（de7b1bb）quota 429 分流升級卡**：
+- 根因鏈：retryFull 撞 429 保留 preview → failedAfterRecommendation → `_streamRetriesRemaining` 對 upgrade 落 0 → 「無法再重試」；legacy `_runFull` generic catch 同病。
+- **計畫外發現**：ADR #19 `buildQuotaExceededPayload` 無條件雙 limit，client 三處 429 解析 `dailyLimit != null` 先判 → 月爆誤報日。修法：收斂單一 `_quotaExceptionFrom429`，雙 limit 用 `monthlyRemaining < quotaNeeded` 判別（server 月先查），無法判別偏 monthly；exceptions 補 `remaining`/`quotaNeeded`。
+- notifier `QuotaExceededInfo` 入 state（兩條失敗路捕獲、全清空點配對）；UI 分流 `QuotaExceededUpgradeCard`（剩 N/需 M + 查看方案接 `_showPaywall`）。
+
+**P2（12b5895）實扣顯示常駐**：
+- `AnalysisUsageSummaryLine` 常駐結果區，讀 `rawResponse['usage']`（隨快照持久化，回看顯示）；顯示條件與 SnackBar 一致；「剩餘」為快照當下值（已註記非即時）。
+
+**測試證據**：notifier quota 6 案 + service 雙 limit 判別 3 案 + widget 升級卡 3 案 + 常駐行 6 案；targeted 全綠；`flutter analyze` 乾淨（僅既有 `test/visual_proof` info）。
+
+審查重點建議：429 判別 heuristic 的邊界（opener 雙 limit + quotaNeeded=0、remaining 缺失 fallback）、quotaExceeded 清空點是否漏（殘留舊卡）、P2 顯示條件與 hydration 去重互動、快照 remaining 過期語意是否可接受。
+
+Close condition：Codex APPROVED → 回 Bruce「可再試」；REVISE_REQUIRED → Claude 修。
+
+---
+
 ## [2026-06-11] 候選 #12 一球一回 replySegments — Codex 設計把關（實作前）
 Status: APPROVED（Codex r2 設計綠燈 2026-06-11 — 0 findings，r1 四項全數驗證解除；實作另開 item 走高風險雙審）
 Request-Type: review
