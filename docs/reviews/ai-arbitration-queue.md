@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-11] ADR #19 字數合併計費 — Codex 設計把關（實作前）
-Status: WAITING_ON_ERIC
+Status: CLOSED（Eric 確認 2026-06-11 深夜；全 close condition 達成：設計把關 APPROVED + 實作 land + 實作雙審 APPROVED 0 findings + Eric 確認）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (design review) → Claude (實作) → Codex (實作雙審) → Eric (關閉)
