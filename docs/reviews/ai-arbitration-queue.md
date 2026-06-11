@@ -68,7 +68,9 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 **Round 6 = Codex r3 把關第二輪（2026-06-11 晚）@ `ad10718` = APPROVED，設計綠燈**：
 > 3 P1（capability contract / legacy precedence / 確認綁定+idempotency）+ 2 P2（閉區間 / ≤2000 前提）全數確認解除，無新問題。實作建議：確認綁定優先 payload hash（已記入 ADR 定案 #5）。註：本輪未審 worktree 既存 code 草稿（index.ts / billing.ts）。
 
-**狀態**：**r3 設計把關 DONE**。下一步 = 新 session 開實作（billing.ts 改常數 + cap + 確認路徑 + capability contract；同 commit 更新 pricing-final/cost-optimization）→ **實作雙審，APPROVED 前不得說 dogfood/build safe**。
+**APPROVED 後補遺（2026-06-11 晚 · 夥伴終確認）**：補 **4000 字硬上限**（4001+ 一律 reject「請分批」不扣費、新舊 client 一視同仁；20 則帶收窄為 2001~4000）。背景：pricing-final 原寫 5000 但 code 從未實作（grep 驗證），原緩衝帶上不封頂 = 成本洞。屬風險收斂、無新計費路徑，不重開設計輪，**實作雙審一併驗收**；實作 commit 同步把 pricing-final 5000 改 4000。
+
+**狀態**：**r3 設計把關 DONE**。下一步 = 新 session 開實作（billing.ts 改常數 + cap + 確認路徑 + capability contract + 4000 上限；同 commit 更新 pricing-final/cost-optimization）→ **實作雙審，APPROVED 前不得說 dogfood/build safe**。
 
 Close Condition: Codex r3 設計把關通過 + 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 
