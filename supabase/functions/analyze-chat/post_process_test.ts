@@ -17,7 +17,11 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
-import { postProcessAnalysisResult } from "./post_process.ts";
+import {
+  enforceReplySegmentSourceContract,
+  extractPartnerBallList,
+  postProcessAnalysisResult,
+} from "./post_process.ts";
 
 // Mirror of TIER_FEATURES from index.ts. If the tier definition there
 // changes, update this fixture too.
@@ -285,4 +289,118 @@ Deno.test("postProcess: recognizeOnly skips ensureNonEmpty but still gates healt
     "healthCheck" in result,
     "healthCheck must be stripped even in recognizeOnly mode for Free tier",
   );
+});
+
+// ---------------------------------------------------------------------------
+// #12 一球一回 — extractPartnerBallList + enforceReplySegmentSourceContract
+//
+// 球清單 = 對方這一輪連發（trailing partner run），1-based。
+// 三層缺 source 規則：回查修復 → drop 該段 → 全 drop 回退單段 content。
+// ---------------------------------------------------------------------------
+
+Deno.test("extractPartnerBallList takes trailing partner run from request messages", () => {
+  const balls = extractPartnerBallList({
+    requestMessages: [
+      { isFromMe: true, content: "我先說一句" },
+      { isFromMe: false, content: "紅牛跟賓士差點打起來XD" },
+      { isFromMe: false, content: "剛來吃晚餐" },
+      { isFromMe: false, content: "等等要去樂華夜市" },
+    ],
+  });
+  assertEquals(balls, [
+    "紅牛跟賓士差點打起來XD",
+    "剛來吃晚餐",
+    "等等要去樂華夜市",
+  ]);
+});
+
+Deno.test("extractPartnerBallList prefers recognizedConversation over request messages", () => {
+  const balls = extractPartnerBallList({
+    result: {
+      recognizedConversation: {
+        messages: [
+          { isFromMe: false, content: "OCR 球一" },
+          { isFromMe: false, content: "OCR 球二" },
+        ],
+      },
+    },
+    requestMessages: [{ isFromMe: false, content: "request 球" }],
+  });
+  assertEquals(balls, ["OCR 球一", "OCR 球二"]);
+});
+
+Deno.test("extractPartnerBallList falls back to last partner messages when trailing run is mine", () => {
+  const balls = extractPartnerBallList({
+    requestMessages: [
+      { isFromMe: false, content: "她的舊球" },
+      { isFromMe: true, content: "我剛回了一句" },
+    ],
+  });
+  assertEquals(balls, ["她的舊球"]);
+});
+
+Deno.test("source contract layer 1: invalid sourceIndex repaired by text lookup", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      sourceIndex: 99,
+      label: "",
+      sourceMessage: "剛來吃晚餐",
+      reply: "回吃飯球",
+      reason: "",
+    }],
+    ["紅牛跟賓士差點打起來XD", "剛來吃晚餐"],
+  );
+  assertEquals(repaired.length, 1);
+  assertEquals(repaired[0].sourceIndex, 2);
+});
+
+Deno.test("source contract layer 1b: valid sourceIndex backfills empty sourceMessage", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      sourceIndex: 1,
+      label: "",
+      sourceMessage: "",
+      reply: "回 F1 球",
+      reason: "",
+    }],
+    ["紅牛跟賓士差點打起來XD"],
+  );
+  assertEquals(repaired.length, 1);
+  assertEquals(repaired[0].sourceMessage, "紅牛跟賓士差點打起來XD");
+});
+
+Deno.test("source contract layer 2: unrepairable segment is dropped", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [
+      { label: "", sourceMessage: "", reply: "沒 source 的段", reason: "" },
+      {
+        sourceIndex: 1,
+        label: "",
+        sourceMessage: "球一",
+        reply: "好段",
+        reason: "",
+      },
+    ],
+    ["球一"],
+  );
+  assertEquals(repaired.length, 1);
+  assertEquals(repaired[0].reply, "好段");
+});
+
+Deno.test("source contract: empty ball list keeps well-formed segments, drops empty-source ones", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [
+      {
+        sourceIndex: 2,
+        label: "",
+        sourceMessage: "她的原句",
+        reply: "保留",
+        reason: "",
+      },
+      { label: "", sourceMessage: "", reply: "丟棄", reason: "" },
+    ],
+    [],
+  );
+  assertEquals(repaired.length, 1);
+  assertEquals(repaired[0].reply, "保留");
 });

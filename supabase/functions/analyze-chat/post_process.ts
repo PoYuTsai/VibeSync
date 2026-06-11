@@ -161,6 +161,105 @@ export function sanitizeReplySegments(value: unknown) {
   return segments;
 }
 
+// ---------------------------------------------------------------------------
+// #12 一球一回 — 球清單抽取 + 三層缺 source 規則
+//
+// 球清單 = 對方這一輪連發（trailing partner run）的訊息內容，1-based，
+// 與 prompt 對 sourceIndex 的定義一致。vision 路徑優先用 OCR 結果
+// recognizedConversation.messages。trailing run 為空（最後一則是我）時
+// 回退最近 10 則對方訊息，讓「我已回一半再分析」的真實案例不至於全段被丟。
+// ---------------------------------------------------------------------------
+
+const BALL_LIST_FALLBACK_LIMIT = 10;
+
+export function extractPartnerBallList({ result, requestMessages }: {
+  result?: Record<string, unknown>;
+  requestMessages?: Array<Record<string, unknown>>;
+}): string[] {
+  const recognized = (result?.recognizedConversation as
+    | Record<string, unknown>
+    | undefined)?.messages;
+  const source = Array.isArray(recognized) && recognized.length > 0
+    ? recognized
+    : (requestMessages ?? []);
+
+  const trailingRun: string[] = [];
+  for (let i = source.length - 1; i >= 0; i--) {
+    const item = source[i];
+    if (!item || typeof item !== "object") break;
+    const record = item as Record<string, unknown>;
+    if (record.isFromMe === true) break;
+    const content = normalizeAiText(record.content);
+    if (content.length > 0) trailingRun.unshift(content);
+  }
+  if (trailingRun.length > 0) return trailingRun;
+
+  const fallback: string[] = [];
+  for (let i = source.length - 1; i >= 0; i--) {
+    const item = source[i];
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (record.isFromMe === true) continue;
+    const content = normalizeAiText(record.content);
+    if (content.length > 0) fallback.unshift(content);
+    if (fallback.length >= BALL_LIST_FALLBACK_LIMIT) break;
+  }
+  return fallback;
+}
+
+function normalizeForBallMatch(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+export function enforceReplySegmentSourceContract(
+  segments: ReturnType<typeof sanitizeReplySegments>,
+  ballList: string[],
+): ReturnType<typeof sanitizeReplySegments> {
+  const repaired: ReturnType<typeof sanitizeReplySegments> = [];
+  for (const segment of segments) {
+    let sourceIndex = segment.sourceIndex;
+    let sourceMessage = segment.sourceMessage;
+
+    if (ballList.length === 0) {
+      // 球清單不可得（防衛路徑）：只驗形狀，不驗範圍。
+      if (sourceIndex != null && sourceIndex >= 1 && sourceMessage.length > 0) {
+        repaired.push(segment);
+      }
+      continue;
+    }
+
+    const indexValid = sourceIndex != null && sourceIndex >= 1 &&
+      sourceIndex <= ballList.length;
+
+    if (!indexValid) {
+      sourceIndex = undefined;
+      if (sourceMessage.length > 0) {
+        // 第一層：以 sourceMessage 文字回查球清單修復 sourceIndex。
+        const target = normalizeForBallMatch(sourceMessage);
+        const matched = ballList.findIndex((ball) => {
+          const normalizedBall = normalizeForBallMatch(ball);
+          return normalizedBall === target ||
+            (target.length >= 4 && normalizedBall.includes(target)) ||
+            (normalizedBall.length >= 4 && target.includes(normalizedBall));
+        });
+        if (matched >= 0) sourceIndex = matched + 1;
+      }
+    }
+
+    if (sourceIndex != null && sourceMessage.length === 0) {
+      sourceMessage = ballList[sourceIndex - 1].slice(0, 120);
+    }
+
+    if (sourceIndex == null || sourceMessage.length === 0) {
+      // 第二層：兩者都缺 / 修不回 → drop 該段，絕不讓空 source 流出 server。
+      continue;
+    }
+
+    repaired.push({ ...segment, sourceIndex, sourceMessage });
+  }
+  return repaired;
+}
+
 function buildReplyOptionFallbackApproach(feature: string): string {
   switch (feature) {
     case "resonate":
