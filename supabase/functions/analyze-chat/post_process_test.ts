@@ -503,3 +503,121 @@ Deno.test("postProcess keeps newline-joined segment content when replies lack th
   // 規格 #4：合併版用換行 join，不用逗點。
   assertEquals(rec.content, "第一段\n第二段");
 });
+
+// ---------------------------------------------------------------------------
+// #12 Codex 實作雙審 r1 — 兩 P2 修訂
+// ---------------------------------------------------------------------------
+
+Deno.test("r1-P2a: multi-segment content prefers newline join over comma-joined replies[pick]", () => {
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: { extend: "回F1球，回夜市球，全部擠成一句" },
+      finalRecommendation: {
+        pick: "extend",
+        content: "",
+        reason: "r",
+        psychology: "p",
+        replySegments: [
+          {
+            sourceIndex: 1,
+            sourceMessage: "紅牛跟賓士差點打起來XD",
+            reply: "回F1球",
+            reason: "",
+          },
+          {
+            sourceIndex: 2,
+            sourceMessage: "等等要去樂華夜市",
+            reply: "回夜市球",
+            reason: "",
+          },
+        ],
+      },
+    },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend"],
+    requestMessages: [
+      { isFromMe: false, content: "紅牛跟賓士差點打起來XD" },
+      { isFromMe: false, content: "等等要去樂華夜市" },
+    ],
+  });
+  const rec = result.finalRecommendation as Record<string, unknown>;
+  // 規格 #4：多球時舊 client 合併版必須是段落換行 join，不是逗點 replies。
+  assertEquals(rec.content, "回F1球\n回夜市球");
+});
+
+Deno.test("r1-P2a guard: single segment keeps existing replies[pick] precedence (N=1 現狀)", () => {
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: { extend: "replies 的單球版本" },
+      finalRecommendation: {
+        pick: "extend",
+        content: "",
+        reason: "r",
+        psychology: "p",
+        replySegments: [
+          {
+            sourceIndex: 1,
+            sourceMessage: "她的球",
+            reply: "segment 的單球版本",
+            reason: "",
+          },
+        ],
+      },
+    },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend"],
+    requestMessages: [{ isFromMe: false, content: "她的球" }],
+  });
+  const rec = result.finalRecommendation as Record<string, unknown>;
+  assertEquals(rec.content, "replies 的單球版本");
+});
+
+Deno.test("r1-P2b: mismatched sourceMessage pointing at another ball corrects sourceIndex", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      sourceIndex: 1,
+      label: "",
+      sourceMessage: "等等要去樂華夜市",
+      reply: "回夜市球",
+      reason: "",
+    }],
+    ["紅牛跟賓士差點打起來XD", "等等要去樂華夜市"],
+  );
+  assertEquals(repaired.length, 1);
+  // message 是 UI 引用主鍵 → 信 message、修 index。
+  assertEquals(repaired[0].sourceIndex, 2);
+});
+
+Deno.test("r1-P2b: hallucinated sourceMessage canonicalized from indexed ball", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      sourceIndex: 1,
+      label: "",
+      sourceMessage: "模型幻覺出來的引用",
+      reply: "回球",
+      reason: "",
+    }],
+    ["紅牛跟賓士差點打起來XD"],
+  );
+  assertEquals(repaired.length, 1);
+  // 匹配不到任何球 → 以 index 球回填真實原句，絕不流出幻覺引用。
+  assertEquals(repaired[0].sourceMessage, "紅牛跟賓士差點打起來XD");
+});
+
+Deno.test("r1-P2b guard: fragment sourceMessage matching its own ball passes unchanged", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      sourceIndex: 1,
+      label: "",
+      sourceMessage: "紅牛跟賓士",
+      reply: "回球",
+      reason: "",
+    }],
+    ["紅牛跟賓士差點打起來XD"],
+  );
+  assertEquals(repaired.length, 1);
+  assertEquals(repaired[0].sourceIndex, 1);
+  assertEquals(repaired[0].sourceMessage, "紅牛跟賓士");
+});

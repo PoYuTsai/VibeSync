@@ -213,6 +213,19 @@ function normalizeForBallMatch(value: string): string {
   return value.replace(/\s+/g, "").toLowerCase();
 }
 
+function textMatchesBall(target: string, ball: string): boolean {
+  const normalizedTarget = normalizeForBallMatch(target);
+  const normalizedBall = normalizeForBallMatch(ball);
+  return normalizedBall === normalizedTarget ||
+    (normalizedTarget.length >= 4 &&
+      normalizedBall.includes(normalizedTarget)) ||
+    (normalizedBall.length >= 4 && normalizedTarget.includes(normalizedBall));
+}
+
+function matchBallIndex(target: string, ballList: string[]): number {
+  return ballList.findIndex((ball) => textMatchesBall(target, ball));
+}
+
 export function enforceReplySegmentSourceContract(
   segments: ReturnType<typeof sanitizeReplySegments>,
   ballList: string[],
@@ -237,14 +250,21 @@ export function enforceReplySegmentSourceContract(
       sourceIndex = undefined;
       if (sourceMessage.length > 0) {
         // 第一層：以 sourceMessage 文字回查球清單修復 sourceIndex。
-        const target = normalizeForBallMatch(sourceMessage);
-        const matched = ballList.findIndex((ball) => {
-          const normalizedBall = normalizeForBallMatch(ball);
-          return normalizedBall === target ||
-            (target.length >= 4 && normalizedBall.includes(target)) ||
-            (normalizedBall.length >= 4 && target.includes(normalizedBall));
-        });
+        const matched = matchBallIndex(sourceMessage, ballList);
         if (matched >= 0) sourceIndex = matched + 1;
+      }
+    } else if (
+      sourceMessage.length > 0 &&
+      !textMatchesBall(sourceMessage, ballList[sourceIndex! - 1])
+    ) {
+      // r1-P2b：index 合法但 message 與該球不符——message 是 UI 引用與
+      // #13 回填的主鍵：指向別顆球 → 信 message 修 index；全都匹配不到
+      // （幻覺引用）→ 以 index 球 canonical 回填，絕不流出假引用。
+      const matched = matchBallIndex(sourceMessage, ballList);
+      if (matched >= 0) {
+        sourceIndex = matched + 1;
+      } else {
+        sourceMessage = ballList[sourceIndex! - 1].slice(0, 120);
       }
     }
 
@@ -569,11 +589,19 @@ export function ensureNonEmptyAnalysisOutput({
     (contractSegments.length > 0 ? contractSegments : effectiveSegments)
       .map((segment) => segment.reply)
       .join("\n");
-  const fallbackContent = replyMappedContent.length > 0
-    ? replyMappedContent
-    : (preferredPick === fallbackPick
-      ? (preferredContent.length > 0 ? preferredContent : segmentMappedContent)
-      : "");
+  // r1-P2a：多球（contract 後 ≥2 段）且 pick 未被 remap 時，舊 client 合併版
+  // 必須是段落換行 join（規格 #4），不得被逗點 replies[pick] 蓋掉；
+  // 單段維持既有 precedence（規格 #2 N=1 現狀）。
+  const fallbackContent =
+    contractSegments.length >= 2 && preferredPick === fallbackPick
+      ? segmentMappedContent
+      : (replyMappedContent.length > 0
+        ? replyMappedContent
+        : (preferredPick === fallbackPick
+          ? (preferredContent.length > 0
+            ? preferredContent
+            : segmentMappedContent)
+          : ""));
   const fallbackExplanation = buildFallbackRecommendationText(fallbackPick);
   const guaranteedContent = fallbackContent.length > 0
     ? fallbackContent
@@ -695,12 +723,18 @@ export function postProcessAnalysisResult({
       .filter((reply) => reply.trim().length > 0)
       .join("\n")
       .trim();
-    const safeRecommendationContent = normalizeAiText(
-      normalizedReplies[safeRecommendationPick],
-    ) || segmentRecommendationContent ||
-      (normalizedRecommendationPick === safeRecommendationPick
-        ? normalizeAiText(recommendation.content)
-        : "");
+    // r1-P2a：多球時合併版以段落換行 join 優先（規格 #4）——contract 段
+    // 只可能來自 pick 未 remap 的 preferred segments 或 safe pick 自己的
+    // replyOptions messages，無 pick 錯配風險；單段維持既有 precedence。
+    const safeRecommendationContent =
+      contractRecommendationSegments.length >= 2
+        ? segmentRecommendationContent
+        : normalizeAiText(
+          normalizedReplies[safeRecommendationPick],
+        ) || segmentRecommendationContent ||
+          (normalizedRecommendationPick === safeRecommendationPick
+            ? normalizeAiText(recommendation.content)
+            : "");
     const fallbackExplanation = buildFallbackRecommendationText(
       safeRecommendationPick,
     );
