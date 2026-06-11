@@ -51,6 +51,16 @@ Branch/Commit: `main` @ `1fd4f5c` + `a6bc654` + `4143895` + `b91ee77` + `0a39621
 5. Stream contract 措辭是否會讓模型在單球時硬湊多段（regression 方向：N=1 不變）。
 6. Golden case（行程/電量/吃飯三球 → 3 段）為 **TF 行為驗收**，單元測試只能鎖 prompt 字串與 sanitizer——server-only 變更已隨 push 自動部署，**現有 TestFlight build 即可測**（client 零變更，無需新 build）。
 
+**Round 1（2026-06-12）= REVISE_REQUIRED（0 P0 / 0 P1 / 2 P2）**：
+- [P2a] 規格 #4 claim 不成立於常見路徑：Step 3 `replies[pick]` 優先於 segment join——模型 replies 仍逗點大句而 segments 正常時，舊 client content 還是逗點串；原測試用 `recognizeOnly: true` 繞過常見路徑，證據力不足。
+- [P2b] source contract 漏交叉驗證：`sourceIndex` 合法時不檢查 `sourceMessage` 是否真屬該球——錯位引用/幻覺引用可流出（UI 引用主鍵是 sourceMessage）。
+- Codex 驗證成立的 claims：球清單三模式抽取 / contract gating / 三呼叫點接線 / prompt 五處同步無殘留反向拉力 / quick 獨立不動 / Deno 335 全綠（Codex 自行重跑）。Flutter style-pair 鎖因 sandbox 唯讀無法重跑，採實作方證據。
+
+**Claude 修訂（同日 `b14ea0c`）**：
+- P2a：兩輸出點（ensureNonEmpty + Step 3）改「contract 後 ≥2 段且 pick 未 remap → content = 段落換行 join」；單段維持既有 precedence（守規格 #2 N=1 現狀）。contract 段只可能來自 pick 未 remap 的 preferred segments 或 safe pick 自己的 replyOptions messages，無 pick 錯配風險。
+- P2b：indexValid 時交叉驗證——message 與 index 球不符 → 回查別球修 index（message 是 UI/#13 主鍵，信 message）；全都匹配不到（幻覺）→ 以 index 球 canonical 回填 sourceMessage。兩方向都保證流出真實引用。
+- 測試：新增 5 案（P2a 多球 join + N=1 guard；P2b 修 index / canonical 回填 / fragment guard）；全套 **340 passed**。
+
 Close Condition: Codex 實作雙審 APPROVED + golden case Bruce TF 實測（一球一回體感）+ Eric 確認。APPROVED 前不得對 Bruce 說 dogfood safe。
 
 ---
