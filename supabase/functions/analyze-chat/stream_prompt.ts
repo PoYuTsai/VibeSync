@@ -36,6 +36,7 @@ export function buildStreamSystemPrompt(
     "5. `analysis.coach_hint` once when useful.",
     "6. `analysis.report_section` for deeper sections.",
     "7. `analysis.done` once at the end. Include a compact `finalResult` with legacy-compatible analysis fields.",
+    "When the base rules require split replies (the other person threw 2+ catchable balls), `finalResult.finalRecommendation.replySegments` is REQUIRED: one segment per caught ball (max 3), each with non-empty `sourceIndex`, `sourceMessage`, `reply`, and `reason`. Never omit `replySegments` to save tokens; shorten optional report sections instead.",
     "Do not spend finalResult tokens duplicating the full five-style replyOptions; the stream assembler will copy emitted `analysis.reply_option` events into `replies` and `replyOptions`.",
     "`analysis.progress` is optional after `analysis.decision` only. It must contain status/waiting copy only. Do not include advice, reply text, selected style, doThis, avoidThis, or conversation-specific coaching in progress events.",
     "",

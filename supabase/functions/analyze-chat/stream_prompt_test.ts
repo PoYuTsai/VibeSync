@@ -76,3 +76,12 @@ Deno.test("stream prompt can restrict reply styles for the active tier", () => {
   assertEquals(prompt.includes("`humor`"), false);
   assertEquals(prompt.includes("`coldRead`"), false);
 });
+
+Deno.test("stream contract requires replySegments in finalResult for multi-ball replies (#12 一球一回)", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  // streaming 掉段根因：compact finalResult 不得犧牲 replySegments。
+  assert(prompt.includes("finalResult.finalRecommendation.replySegments"));
+  assert(prompt.includes("Never omit `replySegments` to save tokens"));
+  assert(prompt.includes("one segment per caught ball (max 3)"));
+});
