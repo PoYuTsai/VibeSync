@@ -23,6 +23,40 @@
 
 ## Live Queue
 
+## [2026-06-12] AI 模型全面升級 Sonnet 4 → 4.6 — Codex 雙審
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex (雙審) → Eric 確認後關閉
+Scope: AI model / opener / analyze-chat / coach-chat / coach-follow-up（高風險區：AI 行為）
+Branch/Commit: `main` @ `157f2af`（已 push，auto-deploy 生效）
+
+背景與證據：
+
+- Bruce 回報 opener「context 理解不夠」並貼出 Claude app 對照（同 profile，前沿模型輸出明顯較佳）。
+- Claude 離線 A/B：臨時 Edge Function（已滅成 410 stub `tmp-model-ab`，可從 dashboard 刪）、同 prod OPENER_PROMPT byte-for-byte、Bruce golden case bio（毛茸犬/不怕蟑螂/幫殺蟲）、各模型兩輪。
+- 結果：Sonnet 4 兩輪皆產「妳這反差好可愛」模板 + coldRead 原文複述 bio（prompt 明文禁止旁路冷讀不得複述——模型守不住規則）；Sonnet 4.6 兩輪皆抓到她自留鉤子（幫我把蟲蟲殺光）做交換條件/共逃 frame，與 Claude app 神回同構。結論：瓶頸為模型代差，非 prompt。
+- Eric 拍板（2026-06-12）：全 repo Sonnet 換 4.6；Haiku 4.5 已是最新不動。
+
+變更內容（12 files, +32/-30）：
+
+- `claude-sonnet-4-20250514` → `claude-sonnet-4-6` 全 repo 零殘留：analyze-chat（index.ts 9 處 + fallback.ts 降級鏈 + logger.ts）、coach-chat/generation.ts、coach-follow-up/generation.ts、Deno 測試檔、dart doc comment（coach_follow_up_result.dart:16，僅註解）。
+- logger.ts TOKEN_COSTS 保留舊 Sonnet 4 key（歷史 log/在途請求計價）。
+- 同價 $3/$15；max_tokens、temperature、prompt 全不動。
+
+Tests: Deno 全測 598 passed / 0 failed（commit 前本機自跑）。
+
+審查重點（給 Codex）：
+
+1. fallback.ts 降級鏈 key 換名後 sonnet→haiku 降級路徑是否仍成立。
+2. index.ts VALID_MODELS / forceModel（測試帳號）換名後測試路徑一致性。
+3. 是否有遺漏的 model id 引用（docs/客戶端 fixture 刻意不動，理由：非 runtime）。
+4. #12 一球一回 golden case 明天 Bruce 實測會同時吃到新模型——確認 segments contract/sanitizer 對模型不敏感。
+
+Close Condition: Codex 雙審 APPROVED + Eric 確認。APPROVED 前不得宣稱 dogfood safe。
+
+---
+
 ## [2026-06-12] #12 一球一回 replySegments 實作 — Codex 實作雙審
 Status: APPROVED（Codex r2 2026-06-12 — 0 P0/P1/P2；r1 兩 P2 驗證解除、340 Deno 全綠 Codex 自跑。**server-only 已自動部署，現有 TF build 即可測**——剩 golden case Bruce 實測 + Eric 確認後關閉）
 Request-Type: review
