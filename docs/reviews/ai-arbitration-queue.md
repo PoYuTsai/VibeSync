@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] #12 一球一回 replySegments 實作 — Codex 實作雙審
-Status: OPEN
+Status: APPROVED（Codex r2 2026-06-12 — 0 P0/P1/P2；r1 兩 P2 驗證解除、340 Deno 全綠 Codex 自跑。**server-only 已自動部署，現有 TF build 即可測**——剩 golden case Bruce 實測 + Eric 確認後關閉）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (實作雙審) → Eric/Bruce (APPROVED 後 dogfood)
@@ -61,7 +61,11 @@ Branch/Commit: `main` @ `1fd4f5c` + `a6bc654` + `4143895` + `b91ee77` + `0a39621
 - P2b：indexValid 時交叉驗證——message 與 index 球不符 → 回查別球修 index（message 是 UI/#13 主鍵，信 message）；全都匹配不到（幻覺）→ 以 index 球 canonical 回填 sourceMessage。兩方向都保證流出真實引用。
 - 測試：新增 5 案（P2a 多球 join + N=1 guard；P2b 修 index / canonical 回填 / fragment guard）；全套 **340 passed**。
 
-Close Condition: Codex 實作雙審 APPROVED + golden case Bruce TF 實測（一球一回體感）+ Eric 確認。APPROVED 前不得對 Bruce 說 dogfood safe。
+**Round 2（2026-06-12）= APPROVED（0 P0/P1/P2）**：Codex 驗證 r1 兩 P2 解除——P2a 兩輸出點對稱（ensureNonEmpty `post_process.ts:595` + Step 3 `:729`）、N=1 precedence 測試鎖住、pick remap 路徑不受影響（preferred segments 僅在 pick 未 remap 時使用）；P2b 交叉驗證三分支完備（同球/fragment 通過、別球修 index、全不 match canonical 回填，`:216`）。Codex 自跑全套 `340 passed / 0 failed`。
+
+最終 commits：`1fd4f5c` + `a6bc654` + `4143895` + `b91ee77` + `0a39621` + `b14ea0c`。
+
+Close Condition: ~~Codex 實作雙審 APPROVED~~（達成）+ golden case Bruce TF 實測（一球一回體感）+ Eric 確認。
 
 ---
 
