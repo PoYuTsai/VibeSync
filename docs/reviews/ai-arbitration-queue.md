@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-11] ADR #19 字數合併計費 — Codex 設計把關（實作前）
-Status: OPEN
+Status: WAITING_ON_ERIC
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (design review) → Claude (實作) → Codex (實作雙審) → Eric (關閉)
@@ -78,7 +78,11 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 - **設計取捨（雙審重點）**：①hash mismatch 不做 client auto-rebind，409 fail-loud 要求重按分析（防拿舊確認綁新內容；mirror 漂移屬 bug 須 fail loud）②4000 上限作用對象 = billableChars（計費字數差），payload 總長另有既有 20000 守門 ③Dart/JS trim 對 U+0085 行為差異 = 已知接受（409 自癒路徑）④replay 時 messagesUsed 回 0（該次呼叫實扣 0，原確認已扣 20）。
 - **部署順序**：edge 已隨 push 自動部署（舊 client 走 user-safe legacy 路徑，server-first 安全 = 規格 #5）；**migration 必須在新 App 上架前手動 `supabase db push`**——未套用前新 client 送確認會收 503 不扣費（fail closed，無扣費風險）。
 
-**狀態**：**實作 land DONE → 待 Codex 實作雙審（高風險 quota 區），APPROVED 前不得說 dogfood/build safe**。
+**Round 8 = Codex 實作雙審（2026-06-11 深夜）= APPROVED，0 P0 / 0 P1 / 0 P2**：
+
+> 8 條 implementer claims 逐項確認成立（claim-at-gate user-safe / 409 不 auto-rebind / 4000 上限作用 billableChars + 20000 payload 守門 / replay messagesUsed=0 / hash+billableChars 雙比對 / TTL 60min / U+0085 已知接受 + 409 自癒 / skipPreview 仰賴 server 守門），各附 file:line 證據。測試矩陣覆蓋足夠；Codex 自行重跑 Deno billing+claims 46 passed 驗證；Flutter targeted tests 因 sandbox 唯讀無法重跑，採實作方提供之 120 全綠證據（queue R7）。
+
+**狀態**：**實作雙審 APPROVED → WAITING_ON_ERIC（close condition 最後一關：Eric 確認後關閉）**。計費新制具備 dogfood 條件（雙審證據在案）；⚠️ 唯 migration `20260611120000` 須在新 App build 發 TF 前手動 `supabase db push`。
 
 Close Condition: Codex r3 設計把關通過 + 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 
