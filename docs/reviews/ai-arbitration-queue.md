@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] AI 模型全面升級 Sonnet 4 → 4.6 — Codex 雙審
-Status: OPEN
+Status: APPROVED（Codex r1 2026-06-12 — 0 P0/P1/P2；待 Eric 確認後關閉）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (雙審) → Eric 確認後關閉
@@ -54,6 +54,12 @@ Tests: Deno 全測 598 passed / 0 failed（commit 前本機自跑）。
 4. #12 一球一回 golden case 明天 Bruce 實測會同時吃到新模型——確認 segments contract/sanitizer 對模型不敏感。
 
 Close Condition: Codex 雙審 APPROVED + Eric 確認。APPROVED 前不得宣稱 dogfood safe。
+
+Codex evidence（r1 = APPROVED, 2026-06-12）：
+
+- 注：首發背景 r1（`task-mqa0dcay-her2k8`）被 session rotation 的 SessionEnd lifecycle hook 殺掉且紀錄全刪（plugin 行為：背景 job 綁 sessionId，session 結束即 terminate + 從 state 移除）。本筆為同步重跑，scope `a208fd7..157f2af`。
+- 審查重點逐項驗證：(1) fallback.ts:38 降級鏈 `claude-sonnet-4-6 → claude-haiku-4-5-20251001` 成立；(2) index.ts:672 `VALID_FORCE_MODELS`/forceModel 只接受 Haiku 4.5 + Sonnet 4.6，舊 id 400 擋下；(3) runtime 舊 id 零遺漏，僅 logger.ts:4 歷史計價 key（刻意保留）；(4) #12 segments contract 在 deterministic post-process 層（cap 3、sourceIndex/sourceMessage 交叉驗證、全 drop fallback），對模型不敏感。
+- Codex 自跑 targeted Deno：153 passed / 0 failed（analyze model/prompt/stream/post_process、coach-chat/coach-follow-up generation+telemetry、submit-feedback fixture）；`git diff --check` passed。
 
 ---
 
