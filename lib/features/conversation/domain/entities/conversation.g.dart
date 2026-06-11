@@ -33,13 +33,14 @@ class ConversationAdapter extends TypeAdapter<Conversation> {
       lastAnalyzedMessageCount: (fields[13] as num?)?.toInt(),
       ownerUserId: fields[14] as String?,
       partnerId: fields[15] as String?,
+      lastAnalyzedCharCount: (fields[16] as num?)?.toInt(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Conversation obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -71,7 +72,9 @@ class ConversationAdapter extends TypeAdapter<Conversation> {
       ..writeByte(14)
       ..write(obj.ownerUserId)
       ..writeByte(15)
-      ..write(obj.partnerId);
+      ..write(obj.partnerId)
+      ..writeByte(16)
+      ..write(obj.lastAnalyzedCharCount);
   }
 
   @override

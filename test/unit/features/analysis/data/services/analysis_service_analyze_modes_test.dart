@@ -88,6 +88,63 @@ void main() {
       expect(body['revenueCatAppUserId'], r'$RCAnonymousID:abc');
       expect(body['messages'], isA<List<dynamic>>());
       expect((body['messages'] as List).length, 2);
+      // ADR #19 定案 #6 capability contract：所有 analyze 請求必送
+      // billingProtocolVersion: 3（缺了 server 會把新 client 當 legacy，
+      // >2000 字繞過 20 則確認 = Codex r3-P1-1 的洞）。
+      expect(body['billingProtocolVersion'], 3);
+    });
+
+    test('ADR #19 wire contract: char baseline + confirmedOvercharge 透傳',
+        () async {
+      late http.Request capturedRequest;
+      final mockClient = MockClient((request) async {
+        capturedRequest = request;
+        return http.Response(
+          jsonEncode({
+            'analysisRunId': 'run_q2',
+            'estimatedFullSeconds': 16,
+            'quickResult': {
+              'nextStep': 'n',
+              'recommendedReply': 'r',
+              'shortReason': 's',
+              'insufficientContext': false,
+              'confidence': 'high',
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final service = AnalysisService(
+        clientFactory: () => mockClient,
+        accessTokenProvider: () => 'fake-token',
+        expectedTierProvider: () => 'essential',
+        revenueCatAppUserIdProvider: () async => r'$RCAnonymousID:abc',
+      );
+
+      final confirmation = OverchargeConfirmationPayload(
+        payloadHash: 'a' * 64,
+        billableChars: 2500,
+        confirmationId: 'confirm-1',
+      );
+      await service.analyzeQuick(
+        messages: [_msg('在家追劇')],
+        previousAnalyzedCount: 5,
+        previousAnalyzedCharCount: 1200,
+        confirmedOvercharge: confirmation,
+      );
+
+      final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
+      expect(body['billingProtocolVersion'], 3);
+      // 過渡期雙欄位並送（規格 #1）：舊欄位給 server fallback 相容。
+      expect(body['previousAnalyzedCount'], 5);
+      expect(body['previousAnalyzedCharCount'], 1200);
+      expect(body['confirmedOvercharge'], {
+        'payloadHash': 'a' * 64,
+        'billableChars': 2500,
+        'confirmationId': 'confirm-1',
+      });
     });
 
     test('POSTs analysis context note inside sessionContext', () async {
@@ -490,6 +547,8 @@ void main() {
       expect(body.containsKey('analysisRunId'), isFalse);
       expect(body['expectedTier'], 'starter');
       expect(body['revenueCatAppUserId'], r'$RCAnonymousID:def');
+      // ADR #19 定案 #6：stream 路徑同樣必送 capability 訊號。
+      expect(body['billingProtocolVersion'], 3);
     });
 
     test('sanitizes progress labels and details while waiting', () async {

@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -1194,6 +1196,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;
     conv.lastAnalyzedMessageCount = conv.messages.length;
+    // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
+    //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
+    //（避免分析中新進訊息造成 baseline 漂移）。
+    final payloadCharCount = ref
+        .read(streamingAnalyzeProvider(widget.conversationId).notifier)
+        .lastPayloadCharCount;
+    if (payloadCharCount != null) {
+      conv.lastAnalyzedCharCount = payloadCharCount;
+    }
     conv.currentGameStage = result.gameStage.current.name;
     conv.lastAnalysisSnapshotJson =
         result.rawResponse == null || result.rawResponse!.isEmpty
@@ -2487,44 +2498,84 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Future<bool> _confirmAnalysisPreview(List<Message> requestMessages) async {
+  /// ADR #19 r3 分析前確認流程。
+  ///
+  /// 順序（定案 #4）：算出本次計費字數/則數 → 4001+ 先擋（請分批，不送出）
+  /// → 額度檢查（preview dialog 內建，不足時無法確認、給升級 CTA）→
+  /// >2000 確認框（同一 dialog 的 overcharge 變體，顯示精確 20 則）。
+  Future<({bool confirmed, OverchargeConfirmationPayload? overcharge})>
+      _confirmAnalysisPreview(List<Message> requestMessages) async {
     if (!mounted) {
-      return false;
+      return (confirmed: false, overcharge: null);
     }
 
-    // 只計算新增的訊息（繼續對話時不重複收費）
     final conversation = ref.read(conversationProvider(widget.conversationId));
-    final lastAnalyzed = conversation?.lastAnalyzedMessageCount ?? 0;
-    final totalMessages =
-        conversation?.messages.length ?? requestMessages.length;
+    // 增量 = 字數差：billing baseline 用 lastAnalyzedCharCount（ADR #19
+    // 規格 #1 欄位職責分離——lastAnalyzedMessageCount 只留給 stale/UI 判斷）。
+    final preview = MessageCalculator.previewConversation(
+      requestMessages,
+      previousAnalyzedCharCount: conversation?.lastAnalyzedCharCount ?? 0,
+    );
 
-    List<Message> billableMessages;
-    if (lastAnalyzed > 0 && lastAnalyzed < totalMessages) {
-      // 只算新增的部分
-      billableMessages = requestMessages.length > (totalMessages - lastAnalyzed)
-          ? requestMessages
-              .sublist(requestMessages.length - (totalMessages - lastAnalyzed))
-          : requestMessages;
-    } else {
-      // 第一次分析，算全部
-      billableMessages = requestMessages;
+    if (preview.band.kind == BillingBandKind.reject) {
+      // 4000 字硬上限本地預警層（server 守門 CONTENT_TOO_LONG 是第二層）。
+      _showFloatingSnackBar(
+        '這次新增內容超過 ${MessageCalculator.maxBillableChars} 字，請分批分析。',
+      );
+      return (confirmed: false, overcharge: null);
     }
 
-    return showAnalysisPreviewDialog(
+    final confirmed = await showAnalysisPreviewDialog(
       context: context,
-      preview: MessageCalculator.previewConversation(billableMessages),
+      preview: preview,
       usage: _buildPreviewUsageData(),
       onUpgrade: () {
         Navigator.of(context, rootNavigator: true).pop(false);
         _showPaywall(context);
       },
     );
+    if (!confirmed || !mounted) {
+      return (confirmed: false, overcharge: null);
+    }
+
+    if (preview.band.kind == BillingBandKind.overcharge) {
+      // 用戶已在確認框看到精確「本次將使用 20 則」。生成一次性確認憑證：
+      // 綁定即將送出 payload 的 hash + 計費字數 + confirmationId
+      //（定案 #5：server 以 hash 驗證內容未變、以 confirmationId 做
+      // idempotency claim，重送/雙送絕不重扣 20）。
+      return (
+        confirmed: true,
+        overcharge: OverchargeConfirmationPayload(
+          payloadHash: MessageCalculator.computeBillingPayloadHash(
+            requestMessages.map((message) => message.content).toList(),
+          ),
+          billableChars: preview.billableChars,
+          confirmationId: const Uuid().v4(),
+        ),
+      );
+    }
+
+    return (confirmed: true, overcharge: null);
   }
 
-  void _syncSubscriptionUsageFromResult(AnalysisResult result) {
+  void _syncSubscriptionUsageFromResult(
+    AnalysisResult result, {
+    bool showChargeToast = false,
+  }) {
     final usage = result.rawResponse?['usage'];
     if (usage is! Map) {
       return;
+    }
+
+    // ADR #19 r3：預覽只報區間，分析後告知 server 實扣則數。
+    // 只在分析完成現場顯示（hydration 恢復快照時不顯示）。
+    if (showChargeToast) {
+      final messagesUsed = usage['messagesUsed'];
+      if (messagesUsed is num &&
+          messagesUsed > 0 &&
+          usage['isTestAccount'] != true) {
+        _showFloatingSnackBar('本次分析使用 ${messagesUsed.round()} 則');
+      }
     }
 
     final monthlyRemaining = usage['monthlyRemaining'];
@@ -3380,12 +3431,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       );
 
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
-      final confirmed = skipPreview
-          ? true
-          : await _confirmAnalysisPreview(
-              analysisContext.requestMessages,
-            );
-      if (!confirmed || !mounted) {
+      // skipPreview 路徑刻意拿不到 overcharge 憑證：>2000 字會被 server
+      // 守門擋回（409 要求重新確認），絕不可能未經確認被扣 20 則。
+      ({bool confirmed, OverchargeConfirmationPayload? overcharge})
+          previewDecision;
+      if (skipPreview) {
+        previewDecision = (confirmed: true, overcharge: null);
+      } else {
+        previewDecision = await _confirmAnalysisPreview(
+          analysisContext.requestMessages,
+        );
+      }
+      if (!previewDecision.confirmed || !mounted) {
         return;
       }
       final consented = await AiDataSharingConsent.ensure(
@@ -3433,6 +3490,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     ? null
                     : conversation.name.trim(),
             previousAnalyzedCount: conversation.lastAnalyzedMessageCount,
+            previousAnalyzedCharCount: conversation.lastAnalyzedCharCount,
+            confirmedOvercharge: previewDecision.overcharge,
             conversationMessageCount: conversation.messages.length,
           );
       if (waitForCompletion) {
@@ -3561,7 +3620,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _persistLatestAnalysisSnapshot(result).catchError((_) {
           // Ignore errors in test environment.
         });
-        _syncSubscriptionUsageFromResult(result);
+        _syncSubscriptionUsageFromResult(result, showChargeToast: true);
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
         setState(() {
@@ -3676,7 +3735,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (_optimizedMessage == null || _optimizedMessage!.optimized.isEmpty) {
         _showFloatingSnackBar('這次沒有產生可用的優化結果，請稍後再試。');
       }
-      _syncSubscriptionUsageFromResult(result);
+      _syncSubscriptionUsageFromResult(result, showChargeToast: true);
     } on DailyLimitExceededException catch (e) {
       if (!mounted) return;
       setState(() {

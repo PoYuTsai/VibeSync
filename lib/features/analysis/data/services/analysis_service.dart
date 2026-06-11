@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../../core/config/environment.dart';
+import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -723,6 +724,29 @@ enum AnalysisErrorAction {
   addIncomingMessage,
 }
 
+/// ADR #19 定案 #5 — >2000 字確認帶的用戶確認憑證。
+///
+/// 用戶在本地確認框按下「確認扣 20 則」後生成；綁定送出 payload 的
+/// hash（MessageCalculator.computeBillingPayloadHash）＋計費字數＋
+/// 一次性 confirmationId（idempotency：同一確認重送絕不重扣）。
+class OverchargeConfirmationPayload {
+  final String payloadHash;
+  final int billableChars;
+  final String confirmationId;
+
+  const OverchargeConfirmationPayload({
+    required this.payloadHash,
+    required this.billableChars,
+    required this.confirmationId,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'payloadHash': payloadHash,
+        'billableChars': billableChars,
+        'confirmationId': confirmationId,
+      };
+}
+
 void _debugLog(String message) {
   if (kDebugMode) {
     debugPrint(message);
@@ -802,6 +826,14 @@ AnalysisException _mapAnalysisHttpError({
                 : '這張圖暫時辨識不穩，請換一張更清楚的截圖再試。',
             code: errorCode,
             suggestedAction: AnalysisErrorAction.rescreenshot,
+          );
+        case 'CONTENT_TOO_LONG_FOR_ANALYSIS':
+          // ADR #19：計費字數 4001+ server 守門 reject（不扣費）。
+          // 正常流程 client 預覽層已先擋，這是雙層防線的 server 層。
+          return AnalysisException(
+            '內容過長，請分批分析。',
+            code: errorCode,
+            suggestedAction: AnalysisErrorAction.shortenInput,
           );
       }
 
@@ -922,6 +954,23 @@ AnalysisException _mapAnalysisHttpError({
         code: errorCode ?? 'FORBIDDEN',
         suggestedAction: AnalysisErrorAction.wait,
       );
+    case 409:
+      if (errorCode == 'OVERCHARGE_CONFIRMATION_REQUIRED') {
+        // ADR #19 定案 #5：>2000 字確認帶 server 守門。正常流程 client
+        // 已先本地確認；走到這代表確認缺失或內容已變更（hash 不符）。
+        // fail loud 請用戶重按分析重新走確認流程，絕不自動拿舊確認
+        // 重綁新內容。
+        return AnalysisException(
+          '這次內容較長，需要重新確認一次扣費。請再按一次分析。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.retry,
+        );
+      }
+      return AnalysisException(
+        '這次分析狀態有衝突，請重新分析一次。',
+        code: errorCode ?? 'CONFLICT',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
     case 413:
       return AnalysisException(
         '這次上傳的內容太大，請減少張數或重新截圖後再試。',
@@ -931,6 +980,14 @@ AnalysisException _mapAnalysisHttpError({
     case 502:
     case 503:
     case 504:
+      if (errorCode == 'OVERCHARGE_CLAIM_UNAVAILABLE') {
+        // ADR #19：idempotency claim 不可用時 server fail closed 不扣費。
+        return AnalysisException(
+          '長內容分析暫時無法啟動，請稍後再試。本次不會扣額度。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.wait,
+        );
+      }
       return AnalysisException(
         hasImages
             ? recognizeOnly
@@ -1085,6 +1142,8 @@ class AnalysisService {
     String? analyzeMode,
     bool recognizeOnly = false,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
     AnalysisProgressCallback? onProgress,
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
@@ -1132,6 +1191,8 @@ class AnalysisService {
           analyzeMode: analyzeMode,
           recognizeOnly: recognizeOnly,
           previousAnalyzedCount: previousAnalyzedCount,
+          previousAnalyzedCharCount: previousAnalyzedCharCount,
+          confirmedOvercharge: confirmedOvercharge,
           onProgress: onProgress,
           onTelemetry: onTelemetry,
         );
@@ -1212,6 +1273,8 @@ class AnalysisService {
     String? analyzeMode,
     required bool recognizeOnly,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
     AnalysisProgressCallback? onProgress,
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
@@ -1298,6 +1361,12 @@ class AnalysisService {
         if (recognizeOnly) 'recognizeOnly': true,
         if (previousAnalyzedCount != null && previousAnalyzedCount > 0)
           'previousAnalyzedCount': previousAnalyzedCount,
+        // ADR #19 定案 #6 capability contract：所有 analyze 請求必送。
+        'billingProtocolVersion': MessageCalculator.billingProtocolVersion,
+        if (previousAnalyzedCharCount != null && previousAnalyzedCharCount > 0)
+          'previousAnalyzedCharCount': previousAnalyzedCharCount,
+        if (confirmedOvercharge != null)
+          'confirmedOvercharge': confirmedOvercharge.toJson(),
         if (entitlementContext.expectedTier != null)
           'expectedTier': entitlementContext.expectedTier,
         if (entitlementContext.revenueCatAppUserId != null)
@@ -1541,6 +1610,8 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
   }) async {
     final entitlementContext = await _buildEntitlementContext();
     final responseData = await _postAnalyzeModeRequest(
@@ -1554,6 +1625,8 @@ class AnalysisService {
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
+        previousAnalyzedCharCount: previousAnalyzedCharCount,
+        confirmedOvercharge: confirmedOvercharge,
         entitlementContext: entitlementContext,
       ),
       timeout: const Duration(seconds: 15),
@@ -1587,6 +1660,7 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
   }) async {
     final entitlementContext = await _buildEntitlementContext();
     final responseData = await _postAnalyzeModeRequest(
@@ -1600,6 +1674,7 @@ class AnalysisService {
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
+        previousAnalyzedCharCount: previousAnalyzedCharCount,
         entitlementContext: entitlementContext,
       ),
       timeout: const Duration(seconds: 60),
@@ -1617,6 +1692,8 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
   }) async* {
     final accessToken = _accessTokenProvider();
     if (accessToken == null) {
@@ -1655,6 +1732,8 @@ class AnalysisService {
             effectiveStyleContext: effectiveStyleContext,
             knownContactName: knownContactName,
             previousAnalyzedCount: previousAnalyzedCount,
+            previousAnalyzedCharCount: previousAnalyzedCharCount,
+            confirmedOvercharge: confirmedOvercharge,
             entitlementContext: entitlementContext,
           ),
         );
@@ -1992,6 +2071,8 @@ class AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
     _AnalysisEntitlementContext entitlementContext =
         const _AnalysisEntitlementContext(),
   }) {
@@ -2034,6 +2115,12 @@ class AnalysisService {
         'knownContactName': knownContactName.trim(),
       if (previousAnalyzedCount != null && previousAnalyzedCount > 0)
         'previousAnalyzedCount': previousAnalyzedCount,
+      // ADR #19 定案 #6 capability contract：所有 analyze 請求必送。
+      'billingProtocolVersion': MessageCalculator.billingProtocolVersion,
+      if (previousAnalyzedCharCount != null && previousAnalyzedCharCount > 0)
+        'previousAnalyzedCharCount': previousAnalyzedCharCount,
+      if (confirmedOvercharge != null)
+        'confirmedOvercharge': confirmedOvercharge.toJson(),
       if (entitlementContext.expectedTier != null)
         'expectedTier': entitlementContext.expectedTier,
       if (entitlementContext.revenueCatAppUserId != null)

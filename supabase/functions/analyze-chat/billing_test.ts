@@ -515,3 +515,47 @@ Deno.test("parseConfirmedOvercharge: malformed → invalid (400 at index)", () =
     false,
   );
 });
+
+// ---------------------------------------------------------------------------
+// JS/Dart 鏡像共用樣本（規格 #4：同字串集兩端結果一致）
+// Dart 端：test/unit/services/message_calculator_test.dart 讀同一份 fixture。
+// ---------------------------------------------------------------------------
+
+Deno.test("mirror fixture: JS side matches shared vectors", async () => {
+  const url = new URL(
+    "../../../test/fixtures/adr19_billing_mirror_vectors.json",
+    import.meta.url,
+  );
+  const fixture = JSON.parse(await Deno.readTextFile(url)) as {
+    vectors: Array<{
+      name: string;
+      contents: Array<string | { repeat: string; times: number }>;
+      charCount: number;
+      band: string;
+      units: number | null;
+      sha256: string;
+    }>;
+  };
+  assertEquals(fixture.vectors.length > 10, true);
+  for (const v of fixture.vectors) {
+    const contents = v.contents.map((c) =>
+      typeof c === "string" ? c : c.repeat.repeat(c.times)
+    );
+    const messages = contents.map((content) => ({ content }));
+    assertEquals(countPayloadChars(messages), v.charCount, `${v.name}: chars`);
+    const band = bandForBillableChars(v.charCount);
+    assertEquals(band.band, v.band, `${v.name}: band`);
+    if (v.units != null) {
+      assertEquals(
+        (band as { band: string; units: number }).units,
+        v.units,
+        `${v.name}: units`,
+      );
+    }
+    assertEquals(
+      await computeBillingPayloadHash(messages),
+      v.sha256,
+      `${v.name}: hash`,
+    );
+  }
+});

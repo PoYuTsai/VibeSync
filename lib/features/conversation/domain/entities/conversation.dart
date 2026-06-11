@@ -69,6 +69,13 @@ class Conversation extends HiveObject {
   @HiveField(15)
   String? partnerId;
 
+  /// ADR #19 計費字數 baseline：上次成功分析「實際送出的 requestMessages」
+  /// 的計費字數（規格 #8：對應送出 payload，不是完成時 repository 的最新
+  /// messages）。專供 billing；stale/UI 判斷仍用 lastAnalyzedMessageCount，
+  /// 兩者不得混用（規格 #1 欄位職責分離）。
+  @HiveField(16)
+  int? lastAnalyzedCharCount;
+
   Conversation({
     required this.id,
     required this.name,
@@ -86,6 +93,7 @@ class Conversation extends HiveObject {
     this.lastAnalyzedMessageCount,
     this.ownerUserId,
     this.partnerId,
+    this.lastAnalyzedCharCount,
   });
 
   Message? get lastMessage => messages.isNotEmpty ? messages.last : null;

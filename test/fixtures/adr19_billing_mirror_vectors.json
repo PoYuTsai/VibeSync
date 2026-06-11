@@ -1,0 +1,179 @@
+{
+  "_comment": "ADR #19 JS/Dart 計費鏡像共用樣本（規格 #4 mirror tests）。由 tools 腳本以 server billing.ts 生成；known_sha256_abc 的 hash 是外部已知常數，釘死 SHA-256 演算法本身。兩端測試（billing_test.ts / message_calculator_test.dart）必須同時讀本檔。",
+  "vectors": [
+    {
+      "name": "simple_chinese",
+      "contents": [
+        "你好"
+      ],
+      "charCount": 2,
+      "band": "standard",
+      "units": 1,
+      "sha256": "670d9743542cae3ea7ebe36af56bd53648b0a1126162e78d81a32934a711302e"
+    },
+    {
+      "name": "known_sha256_abc",
+      "contents": [
+        "abc"
+      ],
+      "charCount": 3,
+      "band": "standard",
+      "units": 1,
+      "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "name": "trim_whitespace",
+      "contents": [
+        " ab ",
+        "c"
+      ],
+      "charCount": 3,
+      "band": "standard",
+      "units": 1,
+      "sha256": "6c032e631d39a14d85aff7e319546af701e26c97b57ca95fbfe9c6ba855f67bf"
+    },
+    {
+      "name": "emoji_two_units_each",
+      "contents": [
+        "😀😀😀"
+      ],
+      "charCount": 6,
+      "band": "standard",
+      "units": 1,
+      "sha256": "6d765426282a92f4b13cf7b0498f36d26b56f227a6743ce80993834ba230bc83"
+    },
+    {
+      "name": "zero_width_counted",
+      "contents": [
+        "a​b"
+      ],
+      "charCount": 3,
+      "band": "standard",
+      "units": 1,
+      "sha256": "8df62aef5f92e4c30c0c938497f55f60078c361a476e7e0448485194ad79f884"
+    },
+    {
+      "name": "two_units_41",
+      "contents": [
+        {
+          "repeat": "a",
+          "times": 41
+        }
+      ],
+      "charCount": 41,
+      "band": "standard",
+      "units": 2,
+      "sha256": "c0f8bd4dbc2b0c03107c1c37913f2a7501f521467f45dd0fef6958e9a4692719"
+    },
+    {
+      "name": "soft_cap_edge_400",
+      "contents": [
+        {
+          "repeat": "好",
+          "times": 400
+        }
+      ],
+      "charCount": 400,
+      "band": "standard",
+      "units": 10,
+      "sha256": "b56dc32c31a0718994d75f4bbc5f759df54204bb5b224b0c5b71dfc8d377f03a"
+    },
+    {
+      "name": "buffer_band_401",
+      "contents": [
+        {
+          "repeat": "a",
+          "times": 401
+        }
+      ],
+      "charCount": 401,
+      "band": "standard",
+      "units": 10,
+      "sha256": "15284784611353b6efe63673dceed62633e84e51cfcd65b0c0bcff9794d9c09f"
+    },
+    {
+      "name": "buffer_band_2000",
+      "contents": [
+        {
+          "repeat": "安",
+          "times": 2000
+        }
+      ],
+      "charCount": 2000,
+      "band": "standard",
+      "units": 10,
+      "sha256": "1dc72134fb52c052ade3935e4118008d465466aa6059e6b7d838c94882dd5104"
+    },
+    {
+      "name": "overcharge_2001",
+      "contents": [
+        {
+          "repeat": "a",
+          "times": 2001
+        }
+      ],
+      "charCount": 2001,
+      "band": "overcharge",
+      "units": 20,
+      "sha256": "a0b153f094495e7397ecded317f606264cb1b8dd33e650ddd4be00c2674aa5e7"
+    },
+    {
+      "name": "overcharge_4000",
+      "contents": [
+        {
+          "repeat": "安",
+          "times": 4000
+        }
+      ],
+      "charCount": 4000,
+      "band": "overcharge",
+      "units": 20,
+      "sha256": "da3a7ff0e3c2fceb92df7509495a6fbfb010bb23f2f22bb3b67971f5f4b5c66a"
+    },
+    {
+      "name": "reject_4001",
+      "contents": [
+        {
+          "repeat": "a",
+          "times": 4001
+        }
+      ],
+      "charCount": 4001,
+      "band": "reject",
+      "units": null,
+      "sha256": "8d0cec18ccbfc807a30c866218b0720a9fe8c43b50572dc675ec2992ffeac87b"
+    },
+    {
+      "name": "multi_message_mixed",
+      "contents": [
+        "哈囉😀",
+        "今天 要去夜市嗎？"
+      ],
+      "charCount": 13,
+      "band": "standard",
+      "units": 1,
+      "sha256": "266e41b20d98bcabf3eaee3d12b0b61b9993a1d8a4cbce0c9c702ca8d3a441ac"
+    },
+    {
+      "name": "boundary_no_collision_a_b",
+      "contents": [
+        "a b"
+      ],
+      "charCount": 3,
+      "band": "standard",
+      "units": 1,
+      "sha256": "c8687a08aa5d6ed2044328fa6a697ab8e96dc34291e8c2034ae8c38e6fcc6d65"
+    },
+    {
+      "name": "boundary_no_collision_a__b",
+      "contents": [
+        "a",
+        "b"
+      ],
+      "charCount": 2,
+      "band": "standard",
+      "units": 1,
+      "sha256": "59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138"
+    }
+  ]
+}

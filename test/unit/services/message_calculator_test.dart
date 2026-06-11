@@ -1,92 +1,198 @@
+// ADR #19 r3 計費鏡像測試（Dart 端）。
+//
+// 與 server 端 supabase/functions/analyze-chat/billing_test.ts 共用
+// test/fixtures/adr19_billing_mirror_vectors.json（規格 #4 mirror tests：
+// 同字串集兩端結果必須一致）。逐則 200 字制舊測試已隨舊公式退役。
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
+
+Message _msg(String content) => Message(
+      id: 'm-${content.hashCode}',
+      content: content,
+      isFromMe: false,
+      timestamp: DateTime(2026, 1, 1),
+    );
+
+List<Message> _ofChars(int n) => [_msg('a' * n)];
 
 void main() {
-  group('MessageCalculator.countMessages', () {
-    test('counts single short message as 1', () {
-      expect(MessageCalculator.countMessages('你好'), 1);
-    });
-
-    test('counts multiple lines correctly', () {
-      expect(MessageCalculator.countMessages('你好\n在嗎\n吃飯了嗎'), 3);
-    });
-
-    test('counts long message by 200 char chunks', () {
-      final longText = 'a' * 450; // 450 chars = ceil(450/200) = 3
-      expect(MessageCalculator.countMessages(longText), 3);
-    });
-
-    test('handles empty lines', () {
-      expect(MessageCalculator.countMessages('你好\n\n\n在嗎'), 2);
-    });
-
-    test('returns 0 for empty input', () {
-      expect(MessageCalculator.countMessages(''), 0);
-    });
-
-    test('returns 0 for whitespace only', () {
-      expect(MessageCalculator.countMessages('   \n\n   '), 0);
-    });
-
-    test('counts exactly 200 chars as 1 message', () {
-      final text = 'a' * 200;
-      expect(MessageCalculator.countMessages(text), 1);
-    });
-
-    test('counts 201 chars as 2 messages', () {
-      final text = 'a' * 201;
-      expect(MessageCalculator.countMessages(text), 2);
-    });
-
-    test('counts mixed short and long lines', () {
-      // Line 1: "Hi" = 1 message
-      // Line 2: 300 chars = 2 messages
-      final line2 = 'a' * 300;
-      expect(MessageCalculator.countMessages('Hi\n$line2'), 3);
-    });
-
-    test('handles Chinese characters correctly', () {
-      // 5 Chinese characters = 1 message (< 200 chars)
-      expect(MessageCalculator.countMessages('我今天很開心'), 1);
-    });
-
-    test('clamps minimum to 1 for non-empty', () {
-      expect(MessageCalculator.countMessages('a'), 1);
+  group('billing constants (ADR #19 r3 frozen spec)', () {
+    test('mirror server billing.ts constants', () {
+      expect(MessageCalculator.charsPerMessageUnit, 40);
+      expect(MessageCalculator.softCapUnits, 10);
+      expect(MessageCalculator.softCapBandMaxChars, 2000);
+      expect(MessageCalculator.overchargeUnits, 20);
+      expect(MessageCalculator.maxBillableChars, 4000);
+      expect(MessageCalculator.billingProtocolVersion, 3);
     });
   });
 
-  group('MessageCalculator.exceedsMaxLength', () {
-    test('returns false for short text', () {
-      expect(MessageCalculator.exceedsMaxLength('短文字'), false);
+  group('bandForBillableChars (整數閉區間)', () {
+    test('1~40 = 1 unit', () {
+      expect(MessageCalculator.bandForBillableChars(1).units, 1);
+      expect(MessageCalculator.bandForBillableChars(40).units, 1);
     });
 
-    test('returns false at exactly 5000 chars', () {
-      final text = 'a' * 5000;
-      expect(MessageCalculator.exceedsMaxLength(text), false);
+    test('41~400 = ceil(chars/40)', () {
+      expect(MessageCalculator.bandForBillableChars(41).units, 2);
+      expect(MessageCalculator.bandForBillableChars(81).units, 3);
+      expect(MessageCalculator.bandForBillableChars(400).units, 10);
     });
 
-    test('returns true at 5001 chars', () {
-      final text = 'a' * 5001;
-      expect(MessageCalculator.exceedsMaxLength(text), true);
+    test('401~2000 = 緩衝帶一律 10', () {
+      expect(MessageCalculator.bandForBillableChars(401).units, 10);
+      expect(MessageCalculator.bandForBillableChars(2000).units, 10);
+    });
+
+    test('2001~4000 = overcharge 固定 20', () {
+      final low = MessageCalculator.bandForBillableChars(2001);
+      final high = MessageCalculator.bandForBillableChars(4000);
+      expect(low.kind, BillingBandKind.overcharge);
+      expect(low.units, 20);
+      expect(high.kind, BillingBandKind.overcharge);
+      expect(high.units, 20);
+    });
+
+    test('4001+ = reject', () {
+      expect(
+        MessageCalculator.bandForBillableChars(4001).kind,
+        BillingBandKind.reject,
+      );
+      expect(MessageCalculator.bandForBillableChars(4001).units, isNull);
+    });
+
+    test('0 chars = floor 1（再分析最少扣 1 則）', () {
+      expect(MessageCalculator.bandForBillableChars(0).units, 1);
     });
   });
 
-  group('MessageCalculator.preview', () {
-    test('returns correct preview for short text', () {
-      final preview = MessageCalculator.preview('你好\n在嗎');
+  group('countPayloadChars', () {
+    test('trims each message, sums UTF-16 lengths, ignores quoted preview',
+        () {
+      final messages = [
+        Message(
+          id: 'q',
+          content: ' ab ',
+          isFromMe: false,
+          timestamp: DateTime(2026, 1, 1),
+          quotedReplyPreview: '這段引用不計費',
+        ),
+        _msg('c'),
+      ];
+      expect(MessageCalculator.countPayloadChars(messages), 3);
+    });
+  });
 
-      expect(preview.messageCount, 2);
-      expect(preview.charCount, 5); // "你好\n在嗎" = 5 chars
-      expect(preview.exceedsLimit, false);
+  group('previewConversation（增量 = 字數差）', () {
+    test('first analysis bills full chars', () {
+      final preview = MessageCalculator.previewConversation(_ofChars(100));
+      expect(preview.billableChars, 100);
+      expect(preview.band.units, 3);
+      expect(preview.band.kind, BillingBandKind.standard);
     });
 
-    test('returns exceeds limit for long text', () {
-      final longText = 'a' * 6000;
-      final preview = MessageCalculator.preview(longText);
+    test('incremental bills only the delta beyond char baseline', () {
+      final preview = MessageCalculator.previewConversation(
+        _ofChars(2100),
+        previousAnalyzedCharCount: 2000,
+      );
+      expect(preview.billableChars, 100);
+      expect(preview.band.units, 3);
+    });
 
-      expect(preview.messageCount, 30); // 6000 / 200 = 30
-      expect(preview.charCount, 6000);
-      expect(preview.exceedsLimit, true);
+    test('baseline >= payload clamps to floor 1 (user-safe)', () {
+      final preview = MessageCalculator.previewConversation(
+        _ofChars(500),
+        previousAnalyzedCharCount: 3000,
+      );
+      expect(preview.billableChars, 0);
+      expect(preview.band.units, 1);
+    });
+
+    test('diff in 2001~4000 → overcharge band（需確認框）', () {
+      final preview = MessageCalculator.previewConversation(
+        _ofChars(5000),
+        previousAnalyzedCharCount: 2000,
+      );
+      expect(preview.billableChars, 3000);
+      expect(preview.band.kind, BillingBandKind.overcharge);
+      expect(preview.band.units, 20);
+    });
+
+    test('diff 4001+ → reject band（請分批，不送出）', () {
+      final preview = MessageCalculator.previewConversation(_ofChars(4001));
+      expect(preview.band.kind, BillingBandKind.reject);
+    });
+
+    test('payloadChars covers the FULL request payload (hash binding base)',
+        () {
+      final preview = MessageCalculator.previewConversation(
+        _ofChars(2100),
+        previousAnalyzedCharCount: 2000,
+      );
+      // billable 是差額，但 payloadChars / hash 綁定對象是整包 requestMessages
+      expect(preview.payloadChars, 2100);
+    });
+  });
+
+  group('computeBillingPayloadHash', () {
+    test('separator never collides with in-content whitespace', () {
+      final joined = MessageCalculator.computeBillingPayloadHash(['a b']);
+      final split = MessageCalculator.computeBillingPayloadHash(['a', 'b']);
+      expect(joined, isNot(split));
+    });
+
+    test('trims content before hashing', () {
+      expect(
+        MessageCalculator.computeBillingPayloadHash([' ab ', 'c']),
+        MessageCalculator.computeBillingPayloadHash(['ab', 'c']),
+      );
+    });
+  });
+
+  group('JS/Dart mirror fixture（規格 #4）', () {
+    test('Dart side matches every shared vector', () {
+      final fixtureFile =
+          File('test/fixtures/adr19_billing_mirror_vectors.json');
+      expect(fixtureFile.existsSync(), isTrue,
+          reason: 'mirror fixture 不存在 — JS/Dart 對拍樣本是規格 #4 硬要求');
+      final fixture =
+          jsonDecode(fixtureFile.readAsStringSync()) as Map<String, dynamic>;
+      final vectors = fixture['vectors'] as List<dynamic>;
+      expect(vectors.length, greaterThan(10));
+
+      for (final raw in vectors) {
+        final vector = raw as Map<String, dynamic>;
+        final name = vector['name'] as String;
+        final contents = (vector['contents'] as List<dynamic>).map((c) {
+          if (c is String) return c;
+          final spec = c as Map<String, dynamic>;
+          return (spec['repeat'] as String) * (spec['times'] as int);
+        }).toList();
+
+        final messages = contents.map(_msg).toList();
+        expect(
+          MessageCalculator.countPayloadChars(messages),
+          vector['charCount'],
+          reason: '$name: charCount',
+        );
+
+        final band = MessageCalculator.bandForBillableChars(
+          vector['charCount'] as int,
+        );
+        expect(band.kind.name, vector['band'], reason: '$name: band');
+        expect(band.units, vector['units'], reason: '$name: units');
+
+        expect(
+          MessageCalculator.computeBillingPayloadHash(contents),
+          vector['sha256'],
+          reason: '$name: hash（兩端綁定 hash 必須 byte-for-byte 一致）',
+        );
+      }
     });
   });
 }

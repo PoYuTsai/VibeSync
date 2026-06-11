@@ -61,6 +61,8 @@ class _RecordingAnalysisService extends AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
   }) async {
     recommendationPreviewCalls++;
     throw StateError('analyzeQuick must not be called on remount');
@@ -76,6 +78,7 @@ class _RecordingAnalysisService extends AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
   }) async {
     fullCalls++;
     throw StateError('analyzeFull must not be called on remount');

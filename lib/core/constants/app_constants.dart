@@ -34,8 +34,8 @@ class AppConstants {
   static const paidMemoryRounds = 15;
 
   // Message Calculation (訊息計算)
-  static const maxCharsPerMessage = 200; // 單則上限 200 字
-  static const maxTotalChars = 5000; // 單次分析上限 5000 字
+  // ADR #19 r3 起計費常數集中在 MessageCalculator（40字/則、cap 10、
+  // 4000 字硬上限），與 server billing.ts 鏡像；舊 200 字/5000 字制已退役。
 
   // Local Storage
   static const conversationsBox = 'conversations';

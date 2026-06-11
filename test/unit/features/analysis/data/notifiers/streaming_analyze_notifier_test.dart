@@ -98,6 +98,8 @@ class _FakeAnalysisService extends AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
   }) async {
     recommendationPreviewCallCount++;
     if (recommendationPreviewError != null) throw recommendationPreviewError!;
@@ -114,6 +116,7 @@ class _FakeAnalysisService extends AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
   }) async {
     fullCallCount++;
     lastFullRunId = analysisRunId;
@@ -133,6 +136,8 @@ class _FakeAnalysisService extends AnalysisService {
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
   }) async* {
     streamCallCount++;
     lastStreamRunId = analysisRunId;

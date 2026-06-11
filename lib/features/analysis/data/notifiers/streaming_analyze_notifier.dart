@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/services/message_calculator.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
@@ -170,6 +171,15 @@ class StreamingAnalyzeNotifier
   String? _cachedKnownContactName;
   int? _cachedPreviousAnalyzedCount;
   int? _cachedConversationMessageCount;
+  int? _cachedPreviousAnalyzedCharCount;
+  OverchargeConfirmationPayload? _cachedConfirmedOvercharge;
+  int? _cachedPayloadCharCount;
+
+  /// ADR #19 規格 #8：最近一次 [start] 實際送出 payload 的計費字數。
+  /// 分析成功後由 screen 持久化為 conversation.lastAnalyzedCharCount
+  /// （baseline 必須對應送出的 requestMessages，不是完成時 repository
+  /// 裡的最新 messages）。
+  int? get lastPayloadCharCount => _cachedPayloadCharCount;
 
   @override
   StreamingAnalysisState build(String conversationId) {
@@ -193,6 +203,8 @@ class StreamingAnalyzeNotifier
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
     int? conversationMessageCount,
   }) async {
     final myGen = ++_generation;
@@ -208,6 +220,10 @@ class StreamingAnalyzeNotifier
     _cachedKnownContactName = knownContactName;
     _cachedPreviousAnalyzedCount = previousAnalyzedCount;
     _cachedConversationMessageCount = conversationMessageCount;
+    _cachedPreviousAnalyzedCharCount = previousAnalyzedCharCount;
+    _cachedConfirmedOvercharge = confirmedOvercharge;
+    // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages。
+    _cachedPayloadCharCount = MessageCalculator.countPayloadChars(messages);
 
     state = StreamingAnalysisState(
       phase: StreamingAnalyzePhase.connecting,
@@ -226,6 +242,8 @@ class StreamingAnalyzeNotifier
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
+        previousAnalyzedCharCount: previousAnalyzedCharCount,
+        confirmedOvercharge: confirmedOvercharge,
         conversationMessageCount: conversationMessageCount,
       );
       return;
@@ -241,6 +259,8 @@ class StreamingAnalyzeNotifier
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
+        previousAnalyzedCharCount: previousAnalyzedCharCount,
+        confirmedOvercharge: confirmedOvercharge,
       );
     } on Exception catch (e) {
       if (myGen != _generation) return;
@@ -288,6 +308,8 @@ class StreamingAnalyzeNotifier
     String? effectiveStyleContext,
     String? knownContactName,
     int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
     int? conversationMessageCount,
   }) async {
     final stopLocalProgress = _startLocalStreamPreludeProgress(
@@ -304,6 +326,8 @@ class StreamingAnalyzeNotifier
         effectiveStyleContext: effectiveStyleContext,
         knownContactName: knownContactName,
         previousAnalyzedCount: previousAnalyzedCount,
+        previousAnalyzedCharCount: previousAnalyzedCharCount,
+        confirmedOvercharge: confirmedOvercharge,
       )) {
         stopLocalProgress();
         if (generation != _generation) return;
@@ -511,6 +535,8 @@ class StreamingAnalyzeNotifier
         effectiveStyleContext: _cachedEffectiveStyleContext,
         knownContactName: _cachedKnownContactName,
         previousAnalyzedCount: _cachedPreviousAnalyzedCount,
+        previousAnalyzedCharCount: _cachedPreviousAnalyzedCharCount,
+        confirmedOvercharge: _cachedConfirmedOvercharge,
         conversationMessageCount: _cachedConversationMessageCount,
       );
       return;
