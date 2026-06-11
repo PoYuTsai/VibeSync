@@ -65,7 +65,10 @@ Eric 拍板（2026-06-11）：analyze-chat 扣費改全對話字數合併 `ceil(
 
 **Claude 修訂（同日）**：定案 #6 加 capability contract（`billingProtocolVersion: 3` 必送、無訊號才算 legacy）+ legacy precedence 三段順序（clipped floor 1 永不被 cap 覆蓋）；定案 #5 加確認綁定 `billableChars`/hash（不符回新 `confirmation_required`）+ idempotency key；公式改整數閉區間；保證次數加 ≤2000 前提 + 禁止 pricing/送審文案裸引用。
 
-**狀態**：修訂已 push，**待 Codex r3 第二輪確認**。通過 → 新 session 開實作（同 commit 更新 pricing-final/cost-optimization）→ 實作雙審，**APPROVED 前不得說 dogfood/build safe**。
+**Round 6 = Codex r3 把關第二輪（2026-06-11 晚）@ `ad10718` = APPROVED，設計綠燈**：
+> 3 P1（capability contract / legacy precedence / 確認綁定+idempotency）+ 2 P2（閉區間 / ≤2000 前提）全數確認解除，無新問題。實作建議：確認綁定優先 payload hash（已記入 ADR 定案 #5）。註：本輪未審 worktree 既存 code 草稿（index.ts / billing.ts）。
+
+**狀態**：**r3 設計把關 DONE**。下一步 = 新 session 開實作（billing.ts 改常數 + cap + 確認路徑 + capability contract；同 commit 更新 pricing-final/cost-optimization）→ **實作雙審，APPROVED 前不得說 dogfood/build safe**。
 
 Close Condition: Codex r3 設計把關通過 + 實作 land + 實作雙審 APPROVED + Eric 確認後關閉。
 
