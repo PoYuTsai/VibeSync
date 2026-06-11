@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-11] 候選 #12 一球一回 replySegments — Codex 設計把關（實作前）
-Status: OPEN
+Status: WAITING_ON_ERIC（r1 修訂已入文件，剩 cap 3 vs 4 拍板 → 回 Codex r2）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (design review) → Eric/Claude (依結論定實作)
@@ -39,6 +39,17 @@ Branch/Commit: `main` @ `728f670`（設計定案文件）
 2. **破鎖風險**：prompt 變更破 style-pair 主風格 byte-for-byte 鎖（2026-06-10 eebef91）。設計文件已明寫知情破鎖 + 重新驗證義務（規格 #6）；請確認驗收清單（golden case 3 球 3 段 + N=1 回歸 + quick 不變 + style-pair 重驗）是否完備。
 3. #13 接口預留（每段穩定非空 `sourceMessage`/`sourceIndex`，schema 層驗證）是否足以支撐「採用回填」而不過度設計。
 4. Client 現況事實已驗證（`ReplySegment` model + 分段渲染 + 每段複製鈕都已存在），本案主戰場限 server prompt/schema——請確認「幾乎不動 client」的範圍判斷沒有遺漏。
+
+**Round 1（2026-06-11）= REVISE_REQUIRED（0 P0 / 2 P1 / 2 P2）**：
+- [P1] cap 4 與現況硬衝突：既有全鏈 cap 3（client `analysis_models.dart:241` `.take(3)`、server `post_process.ts:136` `slice(0,3)`、prompt `index.ts:1464`、`index_test.ts:257`）。改 4 動四處且舊 client 掉第 4 段——「幾乎不動 client」前提不成立。
+- [P1] 規格 #5 audit 範圍過窄：實際讓 cap/source 生效的是 `post_process.ts` `sanitizeReplySegments`（:130/:443/:580），只審 prompt 會漏行為決定層。
+- [P2] #13 source contract 不可驗收：現況 sanitizer 只驗 `reply` 非空，`sourceIndex` 可省略、`sourceMessage` 可空（:142/:147/:155），缺 source 處理未定。
+- [P2] 驗收清單缺 cap overflow + schema validation case；style-pair 重驗未明列 golden（鎖在 `effective_style_prompt_builder_test.dart:124`）。
+- Codex 已實際對照 client：ReplySegment model / 解析 / 分段渲染 / 每段 copy 確認存在。
+
+**Claude 修訂（同日，已入設計文件）**：#5 audit 範圍加 sanitizer 層；#13 補三層缺 source 規則（sourceIndex 回查修復 → drop 該段 → 全 drop 回退單段，絕不空 source 流出）；驗收清單擴充 cap overflow + schema case + 明列 style-pair byte-for-byte 鎖測試重新基準化。
+
+**⏳ 等 Eric 拍板**：cap 3（Claude 建議——golden case 3 球已滿足、client 完全不動、cap 4 增益無真實案例）vs cap 4（動 client model + sanitizer + prompt + tests 四處）。拍板後回 Codex r2。
 
 Close condition：Codex 設計 APPROVED（或修訂後 APPROVED）→ 實作另開 item 走高風險雙審（規格 #6 雙軌）。
 
