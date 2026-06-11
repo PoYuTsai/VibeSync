@@ -982,7 +982,13 @@ Deno.test({
     assert(
       source.includes("const fallbackOptionSegments = sanitizeReplySegments"),
     );
-    assert(source.includes("replySegments: safeRecommendationSegments"));
+    // #12 一球一回：輸出段必過 source contract（修復 → drop → 全 drop 回退）。
+    assert(
+      source.includes(
+        "enforceReplySegmentSourceContract(safeRecommendationSegments, ballList)",
+      ),
+    );
+    assert(source.includes("replySegments: contractRecommendationSegments"));
   },
 });
 
