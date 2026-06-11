@@ -247,14 +247,16 @@ Deno.test({
       new URL("./index.ts", import.meta.url),
     );
 
-    assert(source.includes("分段引用與 emoji 畫龍點睛"));
-    assert(source.includes("一句總回"));
-    assert(source.includes("分開回"));
+    // #12 一球一回：條件式改強制式（≥2 球必分段、source 必填、cap 3）。
+    assert(source.includes("一球一回：分段引用與 emoji 畫龍點睛"));
+    assert(source.includes("必須分開回"));
+    assert(source.includes("每顆值得接的球各出一段"));
     assert(source.includes("finalRecommendation.replySegments"));
     assert(source.includes("replyOptions.*.messages 也要套用同樣規則"));
-    assert(source.includes("sourceMessage"));
-    assert(source.includes("sourceIndex"));
+    assert(source.includes("必填 sourceIndex"));
+    assert(source.includes("缺 sourceMessage 或 sourceIndex 的段會被系統丟棄"));
     assert(source.includes("replySegments 最多 3 段"));
+    assert(source.includes("各段獨立成立"));
     assert(source.includes("讓 App 顯示引用原句與分段複製"));
     assert(source.includes("可直接複製送出的那句"));
     assert(source.includes("emoji 是畫龍點睛，不是裝飾品"));
