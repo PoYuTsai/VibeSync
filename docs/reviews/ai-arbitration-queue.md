@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-11] 候選 #12 一球一回 replySegments — Codex 設計把關（實作前）
-Status: IN_REVIEW（r1 修訂 + Eric 拍板 cap 3 已入文件 → Codex r2 確認中）
+Status: APPROVED（Codex r2 設計綠燈 2026-06-11 — 0 findings，r1 四項全數驗證解除；實作另開 item 走高風險雙審）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (design review) → Eric/Claude (依結論定實作)
@@ -51,7 +51,9 @@ Branch/Commit: `main` @ `728f670`（設計定案文件）
 
 **Eric 拍板（2026-06-11）**：**cap 3**——與現況全鏈對齊、client 完全不動、golden case 3 球已滿足；cap 4 增益無真實案例。規格 #1 已改寫定案。
 
-Close condition：Codex 設計 APPROVED（或修訂後 APPROVED）→ 實作另開 item 走高風險雙審（規格 #6 雙軌）。
+**Round 2（2026-06-11）= APPROVED（0 P0/P1/P2）**：Codex 驗證 r1 四項全數解除——cap 3 與 `.take(3)`/`slice(0,3)`/prompt 對齊（`analysis_models.dart:241`、`post_process.ts:136`、`index.ts:1464`）；audit 範圍含 sanitizer 層（`post_process.ts:130/:443/:580`）；#13 三層 source 規則 + `quotedReplyPreview` 欄位存在（`message.dart:23`）；驗收清單完備、style-pair 鎖測試在案（`effective_style_prompt_builder_test.dart:124`）；「幾乎不動 client」在 cap 3 下成立（`analysis_screen.dart:4316/:4422`）。
+
+Close condition 達成：設計 APPROVED。實作另開 item 走高風險雙審（規格 #6 雙軌）。
 
 ---
 
