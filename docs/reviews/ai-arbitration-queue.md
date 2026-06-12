@@ -563,3 +563,5 @@ Closed items before 2026-05-14 were intentionally pruned from this live queue. U
 5. **gate 缺口**（root cause 的測試面）：anchor/黑箱套件加 forceModel=haiku 案例＋「client 形狀」驗證器，免費層模型列入必測。
 
 **判定**：1+2 先做（同一手法：擴大 coerce 守門），3 順手，4 評估範圍（巢狀驗證器 vs client 寬容），5 開工前排。
+
+**1–4 完成（2026-06-13，`11c7052`）**：①absorbReportSection 改走 coerceClientShapeValue（原 coerceRecordOnlyValue 改名）；②warnings 入 ARRAY_ONLY 守門＝字串包單元素陣列、物件丟棄、陣列過濾非字串元素（`[42]` 也炸 client 的 List<String>.from）；③enthusiasm 全寫入路徑 Math.round（metrics heat／record 直寫／done merge record 內 float）；④範圍評估結論＝目標式 server 守門（不做全巢狀驗證器＝過度工程；不等 client 寬容 cast＝要 rebuild 舊 build 不受益，同 06954f8 拍板邏輯）——psychology.shitTest 非物件丟 key（字串語意不可靠，可能說「沒有測試」，誤映射比丟棄糟）＋healthCheck.issues/suggestions 同 warnings 手法（評估時新發現的同家族巢狀漏洞，Codex 清單外）。TDD 紅燈先行 7 條（含 1 條 record 形狀 regression pin），Deno 387 綠。**剩**：⑤anchor/黑箱套件 forceModel=haiku＋client 形狀驗證器（下一案開工前排）＋本補強 Codex 雙審。
