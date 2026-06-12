@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] 主 prompt 全面 few-shot 化 = voice few-shot 化（高手感/幽默感缺口）
-Status: OPEN — **範例 1 定稿 ✅（Eric 2026-06-12「照推薦寫的」，D-1~D-3 全過；D-4/D-5 待 Bruce 非阻斷）**。下一步：範例 2 轉寫（素材 = Eric 兩年前與現任太太早期對話，OCR測試圖片資料夾）→ benchmark baseline → TDD 改 prompt。golden baseline 在 `tools/voice-benchmark/baselines/`
+Status: OPEN — **範例 2 草稿落檔 ✅（`docs/plans/2026-06-12-voice-fewshot-example2-draft.md`，待 Eric 逐句定稿）**。Eric 補充「當年生澀不懂技巧，當 golden 合適嗎」→ 判斷：輸入用真實對話（無可取代）、輸出全部重寫＋Eric 定稿，歷史回覆不是 imitation target（草稿「素材適用性」節）。事實更正：太太對話實為 8 張（糖糖 4 張非 2 張）。下一步：Eric 定稿 D-1~D-3 → 兩個陌生局 case 舊 prompt baseline → TDD 改 prompt。golden baseline 在 `tools/voice-benchmark/baselines/`
 Request-Type: design → implementation
 Design: `docs/plans/2026-06-12-voice-fewshot-design.md`
 Raised-By: Eric（實測 verdict：結構贏、voice 輸 free ChatGPT）
