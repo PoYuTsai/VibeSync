@@ -23,8 +23,31 @@
 
 ## Live Queue
 
+## [2026-06-12] #12 一球一回 OCR 路徑單段化「敷衍」— 品質調查
+Status: OPEN
+Request-Type: investigation
+Raised-By: Bruce（Eric 轉達）
+Owner: Claude（新 session 調查）→ 結論後決定送 Codex 與否
+Scope: analyze-chat post_process segments contract / OCR 文字對齊（高風險區：AI 行為）
+
+現象（Bruce 2026-06-12，build 256，P0 修復後）：
+
+- 截圖 OCR 餵多球對話（糖糖老師梗 / 加料 / 晚餐照片+茄汁牛肉飯 / missed call / 到家🤲🤲🤲）。
+- 兩輪分析皆只出 1 段推薦回覆（「到家了，茄汁牛肉飯有撐到嗎」單句兩球串接 / 「平安回家了✓」只接一球）；五維展開細節亦無分段。Bruce：「對方回那麼多只有一個，太敷衍」。
+
+主嫌假說（未驗證，依 code 結構）：
+
+1. `post_process.ts` `enforceReplySegmentSourceContract`（b14ea0c 防幻覺交叉驗證）對 OCR 文字過嚴：貼圖/照片/emoji（🤲）造成 sourceMessage 對不上 ballList → 全段 drop → 回退合併單句（code 註解明示此回退）。
+2. 次嫌：模型只出 1 段（球判斷把貼圖/照片當低價值球略過）——需 server log 或黑箱重現分辨。
+
+調查路徑：黑箱重現手法見 memory `p0-stream-reply-option-fix-2026-06-12`（測試帳號 + curl stream），用「帶 emoji/貼圖雜訊的 OCR 風格訊息」對照「乾淨文字」兩組，看 raw stream 的 reply_option segments 數 vs 最終 finalRecommendation.replySegments 數，即可定位是 contract drop 還是模型未出段。
+
+Close Condition: root cause 定位 + 修法拍板（若動 contract 屬高風險須雙審）。
+
+---
+
 ## [2026-06-12] P0 stream 分析必炸 hotfix（reply_option 段落陣列被丟棄）— Codex 雙審
-Status: WAITING_ON_ERIC（Codex r1 APPROVED 0 findings，2026-06-12。Codex 自跑 reframer+stream_handler+post_process 59 tests 全綠；確認 \n join 與多段 messages 與 client 解析相容（analysis_models.dart:219,259）、#12 source contract repair 路徑不被旁路（post_process.ts:715）、charge/anchor 無回歸。Non-blocking：stream_handler 整合測試可後補。prod 黑箱復測已過（同 payload 修前 analysis.error → 修後 analysis.done）。待 Eric 確認 + Bruce 實機回測後關閉）
+Status: CLOSED（Codex r1 APPROVED 0 findings + prod 黑箱復測過 + Bruce 實機回測 OK「這次可以」兩輪完整跑完，Eric 轉達 2026-06-12）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (雙審) → Eric 確認後關閉
