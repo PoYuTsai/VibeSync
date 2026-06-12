@@ -29,6 +29,7 @@ Request-Type: implementation（Phase 1）+ design（Phase 2 brainstorming）
 Raised-By: Eric（拍板 2026-06-12，背景：golden 影片 = ChatGPT 同截圖輸出，品質勝過產品現狀，定位 P0）
 Owner: Claude（新 session 開工）→ 動 prompt/Edge schema 屬高風險區，完成後必送 Codex 雙審
 Scope: analyze-chat stream_prompt / reframer / post_process contract / client UI（高風險區：AI 行為 + Edge schema）
+Design: `docs/plans/2026-06-12-golden-reshape-phase1-design.md`（2026-06-12 設計定稿，Eric 逐項確認：cap 5 / bind 瘦推薦卡+reframer 扣卡回填 / server→client 契約凍結 / 主 prompt 砍稅+加料全掃）。Phase 1 純 server 出貨。
 
 拍板內容（Eric 2026-06-12）：
 
