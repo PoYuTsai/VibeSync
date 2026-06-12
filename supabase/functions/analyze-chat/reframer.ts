@@ -741,7 +741,12 @@ function createLegacyAnalysisAssembler() {
       }
 
       if (event.type === "analysis.coach_hint") {
-        result.coachActionHint = event.coachActionHint ?? omitType(event);
+        const coerced = coerceClientShapeValue(
+          result,
+          "coachActionHint",
+          event.coachActionHint ?? omitType(event),
+        );
+        if (coerced !== undefined) result.coachActionHint = coerced;
         return;
       }
 
@@ -763,7 +768,9 @@ function createLegacyAnalysisAssembler() {
 
   function absorbMetrics(event: Record<string, unknown>) {
     const enthusiasm = recordField(event.enthusiasm);
-    if (enthusiasm) result.enthusiasm = roundEnthusiasmScore(enthusiasm);
+    if (enthusiasm) {
+      result.enthusiasm = normalizeRecordForClient("enthusiasm", enthusiasm);
+    }
 
     const score = numberField(
       event.heat ?? event.enthusiasmScore ?? event.score,
@@ -834,11 +841,19 @@ const RECORD_ONLY_FINAL_RESULT_KEYS = new Set([
   "optimizedMessage",
   "myMessageAnalysis",
   "recognizedConversation",
+  "coachActionHint",
 ]);
 
 // client 是 List<String>.from(json[key])，字串/物件 clobber 都會 throw。
 const ARRAY_ONLY_FINAL_RESULT_KEYS = new Set([
   "warnings",
+]);
+
+// client 是 json[key] as String?（或直塞 String 欄位），物件/數字 clobber
+// 都會 throw。非字串丟棄保留 assembler 預設值。
+const STRING_ONLY_FINAL_RESULT_KEYS = new Set([
+  "strategy",
+  "reminder",
 ]);
 
 function coerceClientShapeValue(
@@ -848,6 +863,9 @@ function coerceClientShapeValue(
 ): unknown | undefined {
   if (ARRAY_ONLY_FINAL_RESULT_KEYS.has(key)) {
     return coerceStringArray(value);
+  }
+  if (STRING_ONLY_FINAL_RESULT_KEYS.has(key)) {
+    return typeof value === "string" ? value : undefined;
   }
   if (!RECORD_ONLY_FINAL_RESULT_KEYS.has(key)) return value;
   if (isRecord(value)) return normalizeRecordForClient(key, value);
@@ -867,31 +885,125 @@ function coerceClientShapeValue(
   return undefined;
 }
 
-// record 形狀正確不代表巢狀欄位安全——client 對 psychology.shitTest 是
-// as Map? 硬 cast、healthCheck.issues/suggestions 是 List<String>.from，
-// 巢狀字串/混型元素一樣炸。語意不可靠的（字串 shitTest 可能說「沒有測試」）
-// 丟 key 讓 client 走預設值。
+// record 形狀正確不代表欄位安全——client fromJson 對巢狀欄位一樣硬 cast
+// （as String? / as bool? / as int? / List<String>.from），錯型必 throw。
+// 這張表是 client 契約（analysis_models.dart + analysis_result.dart 的
+// fromJson）的 server 端轉錄：宣告每個 key 下 client 會硬 cast 的欄位形狀，
+// 不符就丟欄位讓 client 走預設值，不在表上的欄位原樣放行。
+type ClientFieldShape =
+  | "string"
+  | "boolean"
+  | "int"
+  | "number"
+  | "stringArray"
+  | { record: Record<string, ClientFieldShape> };
+
+const CLIENT_RECORD_FIELD_SHAPES: Record<
+  string,
+  Record<string, ClientFieldShape>
+> = {
+  gameStage: { current: "string", status: "string", nextStep: "string" },
+  topicDepth: { current: "string", suggestion: "string" },
+  psychology: {
+    subtext: "string",
+    qualificationSignal: "boolean",
+    shitTest: {
+      record: { detected: "boolean", type: "string", suggestion: "string" },
+    },
+  },
+  enthusiasm: { score: "int" },
+  healthCheck: {
+    issues: "stringArray",
+    suggestions: "stringArray",
+    hasNeedySignals: "boolean",
+    hasInterviewStyle: "boolean",
+    speakingRatio: "number",
+  },
+  finalRecommendation: {
+    pick: "string",
+    content: "string",
+    reason: "string",
+    psychology: "string",
+  },
+  coachActionHint: {
+    catchablePoint: "string",
+    read: "string",
+    microMove: "string",
+    avoid: "string",
+    actionType: "string",
+    confidence: "string",
+  },
+  usage: { imagesUsed: "int" },
+};
+
 function normalizeRecordForClient(
   key: string,
   record: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (key === "enthusiasm") return roundEnthusiasmScore(record);
-  if (key === "psychology") {
-    if (!("shitTest" in record) || isRecord(record.shitTest)) return record;
-    const { shitTest: _dropped, ...rest } = record;
-    return rest;
+  // legacy client 是 Map<String, String>.from(json['replies'])，非字串
+  // value 必 throw——值全量過濾（key 是動態風格名，無法入欄位表）。
+  if (key === "replies") return filterRecordToStringValues(record);
+  const shapes = CLIENT_RECORD_FIELD_SHAPES[key];
+  if (!shapes) return record;
+  return conformRecordFields(record, shapes);
+}
+
+function conformRecordFields(
+  record: Record<string, unknown>,
+  shapes: Record<string, ClientFieldShape>,
+): Record<string, unknown> {
+  let next: Record<string, unknown> | null = null;
+  for (const [field, shape] of Object.entries(shapes)) {
+    if (!(field in record)) continue;
+    const original = record[field];
+    const conformed = conformFieldShape(shape, original);
+    if (conformed === original) continue;
+    next ??= { ...record };
+    if (conformed === undefined) delete next[field];
+    else next[field] = conformed;
   }
-  if (key === "healthCheck") {
-    const next = { ...record };
-    for (const listKey of ["issues", "suggestions"]) {
-      if (!(listKey in next)) continue;
-      const coerced = coerceStringArray(next[listKey]);
-      if (coerced === undefined) delete next[listKey];
-      else next[listKey] = coerced;
+  return next ?? record;
+}
+
+function conformFieldShape(
+  shape: ClientFieldShape,
+  value: unknown,
+): unknown | undefined {
+  if (typeof shape === "object") {
+    return isRecord(value) ? conformRecordFields(value, shape.record) : undefined;
+  }
+  switch (shape) {
+    case "string":
+      return typeof value === "string" ? value : undefined;
+    case "boolean":
+      return typeof value === "boolean" ? value : undefined;
+    case "number":
+      return typeof value === "number" && Number.isFinite(value)
+        ? value
+        : undefined;
+    case "int": {
+      // client as int? 收到 float 也 throw——一律取整；數字字串（"72.6"）
+      // 語意可靠可 parse，垃圾值丟欄位走 client 預設。
+      const parsed = typeof value === "number"
+        ? value
+        : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : NaN;
+      return Number.isFinite(parsed) ? Math.round(parsed) : undefined;
     }
-    return next;
+    case "stringArray":
+      return coerceStringArray(value);
   }
-  return record;
+}
+
+function filterRecordToStringValues(
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  const entries = Object.entries(record).filter(
+    ([, value]) => typeof value === "string",
+  );
+  if (entries.length === Object.keys(record).length) return record;
+  return Object.fromEntries(entries);
 }
 
 // client 是 List<String>.from——非陣列 clobber 與混型元素都會 throw。
@@ -902,15 +1014,6 @@ function coerceStringArray(value: unknown): string[] | undefined {
   }
   const text = typeof value === "string" ? value.trim() : "";
   return text ? [text] : undefined;
-}
-
-// client enthusiasm['score'] as int? 收到 72.5 會 throw——所有寫入路徑取整。
-function roundEnthusiasmScore(
-  record: Record<string, unknown>,
-): Record<string, unknown> {
-  const score = numberField(record.score);
-  if (score === null || Number.isInteger(score)) return record;
-  return { ...record, score: Math.round(score) };
 }
 
 function ensureRecord(

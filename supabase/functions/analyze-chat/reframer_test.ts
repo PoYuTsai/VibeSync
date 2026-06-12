@@ -1516,3 +1516,259 @@ Deno.test("string-array guards filter non-string elements and coerce nested heal
   assertEquals(healthCheck.suggestions, ["放慢節奏"]);
   assertEquals(healthCheck.score, 60);
 });
+
+Deno.test("done merge guards string-only strategy and reminder from clobbering", async () => {
+  // Codex 雙審 r2 B1（high）：strategy 不在任何守門清單，done finalResult
+  // 帶 object 會原樣 clobber——client json['strategy'] as String? 必 throw。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      strategy: { plan: "slow burn" },
+      reminder: 42,
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals(finalResult.strategy, "");
+  assertEquals(finalResult.reminder, "");
+});
+
+Deno.test("done merge conforms client-casted fields inside psychology and gameStage records", async () => {
+  // Codex 雙審 r2 A1＋自查：record 形狀正確但欄位型別錯——
+  // qualificationSignal as bool?、subtext as String?、nextStep as String?、
+  // shitTest.suggestion as String? 全是硬 cast。錯型丟欄位走 client 預設。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      psychology: {
+        subtext: "She is keeping it light.",
+        qualificationSignal: "yes",
+        shitTest: { detected: true, type: "tease", suggestion: 123 },
+      },
+      gameStage: { current: "premise", nextStep: 5 },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const psychology = finalResult.psychology as Record<string, unknown>;
+  assertEquals(psychology.subtext, "She is keeping it light.");
+  assertEquals("qualificationSignal" in psychology, false);
+  const shitTest = psychology.shitTest as Record<string, unknown>;
+  assertEquals(shitTest.detected, true);
+  assertEquals(shitTest.type, "tease");
+  assertEquals("suggestion" in shitTest, false);
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(gameStage.current, "premise");
+  assertEquals("nextStep" in gameStage, false);
+});
+
+Deno.test("done merge conforms healthCheck bool and num fields", async () => {
+  // Codex 雙審 r2 A2：hasNeedySignals/hasInterviewStyle as bool?、
+  // speakingRatio as num?——字串會炸 client。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      healthCheck: {
+        issues: ["回覆間隔越來越長"],
+        hasNeedySignals: "false",
+        hasInterviewStyle: true,
+        speakingRatio: "0.4",
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const healthCheck = finalResult.healthCheck as Record<string, unknown>;
+  assertEquals(healthCheck.issues, ["回覆間隔越來越長"]);
+  assertEquals("hasNeedySignals" in healthCheck, false);
+  assertEquals(healthCheck.hasInterviewStyle, true);
+  assertEquals("speakingRatio" in healthCheck, false);
+});
+
+Deno.test("done merge rounds numeric-string enthusiasm score and drops junk score", async () => {
+  // Codex 雙審 r2 B2：numberField 只收 typeof number，record 內
+  // score: "72.6" 會原樣放行——client as int? 必 throw。數字字串可
+  // 語意映射（parse＋round），垃圾值丟 key 走 client 預設 50。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { enthusiasm: { score: "72.6" } },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals(
+    (finalResult.enthusiasm as Record<string, unknown>).score,
+    73,
+  );
+});
+
+Deno.test("coach_hint event and done merge conform coachActionHint string fields", async () => {
+  // Codex 雙審 r2 B3：absorb 的 coach_hint 直寫 result，done merge 也沒守
+  // ——client text(key) = json[key] as String?，數字必 throw。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.coach_hint",
+    coachActionHint: {
+      catchablePoint: 123,
+      read: "She gave you an opening.",
+      confidence: 0.8,
+    },
+  }));
+  reframer.pushText(line({ type: "analysis.done", finalResult: {} }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const hint = finalResult.coachActionHint as Record<string, unknown>;
+  assertEquals("catchablePoint" in hint, false);
+  assertEquals(hint.read, "She gave you an opening.");
+  assertEquals("confidence" in hint, false);
+});
+
+Deno.test("done merge conforms finalRecommendation strings and replies string map", async () => {
+  // Codex 雙審 r2 B4＋自查 replies：pick/content/reason/psychology 全
+  // as String?；legacy client replies 是 Map<String, String>.from，
+  // 非字串 value 必 throw。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  // recommendation 不帶 segments：finalRecommendation 不會被標 authoritative，
+  // done merge 對該 key 仍生效，守門測得到。
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      finalRecommendation: { pick: 1, content: "use humor" },
+      replies: { humor: 123, tease: "你這樣我要收費了喔" },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const recommendation = finalResult.finalRecommendation as Record<
+    string,
+    unknown
+  >;
+  assertEquals("pick" in recommendation, false);
+  assertEquals(recommendation.content, "use humor");
+  const replies = finalResult.replies as Record<string, unknown>;
+  assertEquals("humor" in replies, false);
+  assertEquals(replies.tease, "你這樣我要收費了喔");
+});
