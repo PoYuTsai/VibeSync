@@ -219,6 +219,16 @@
 
 ---
 
+## 補充（非盲測計分）　夥伴另跑一輪 ChatGPT（同 case1/2/3 輸入）
+
+> 夥伴用同份 chatgpt_paste/ 輸入自己餵了一輪，主觀覺得有時免費版輸出更好（個人感受，亦顯示 ChatGPT 單次輸出變異度不小——正式計分仍以上方 Eric 跑的那輪為準）。share 連結留檔：
+>
+> - case1：https://chatgpt.com/s/t_6a2bcd6d69108191b411adc241c6dff7
+> - case2：https://chatgpt.com/s/t_6a2bcdb168048191a95d4718d2953b17
+> - case3：https://chatgpt.com/s/t_6a2bcdeddb3881918e868baef0a941ab
+
+---
+
 ## 加映（非盲測計分）　golden 糖糖老師案 × GPT-5.5
 
 > Eric 只貼截圖＋「怎麼回」問 GPT-5.5，輸入形式與盲測不同源（截圖 vs 轉寫），僅供參考對照，不進盲測門檻。
