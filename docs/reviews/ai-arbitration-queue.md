@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] 主 prompt 全面 few-shot 化 = voice few-shot 化（高手感/幽默感缺口）
-Status: OPEN — **範例 1＋2 雙定稿 ✅（範例 2：Eric 2026-06-12「照你寫的」，D-1~D-3 全過），可進實作**。下一步：兩個陌生局 case 舊 prompt baseline（case 2 = 範例 2 切點；case 3 = 冷淡局另從 dogfood 選材）→ TDD 改 prompt → 黑箱契約復測 → 3-case 盲測 → Codex 雙審。golden baseline 在 `tools/voice-benchmark/baselines/`
+Status: OPEN — **範例 1＋2 雙定稿 ✅（範例 2：Eric 2026-06-12「照你寫的」，D-1~D-3 全過），可進實作**。**盲測 case 3 素材已定**：Bruce 4 年前案例（`OCR測試圖片/Bruce4年前案例(有2個人)`，21 張、2 位對象；第二位有「你有約過別人不是去那邊的嗎」教科書試探球 = case 3 首選；肉伊 KTV 局備用）。Bruce「4 年前不確定值得參考嗎」→ 同小雲案例判斷：取輸入不取當年回覆，年代無妨。下一步：兩個陌生局 case 舊 prompt baseline（case 2 = 範例 2 切點；case 3 = Bruce 試探局轉寫選切點）→ TDD 改 prompt → 黑箱契約復測 → 3-case 盲測 → Codex 雙審。golden baseline 在 `tools/voice-benchmark/baselines/`
 Request-Type: design → implementation
 Design: `docs/plans/2026-06-12-voice-fewshot-design.md`
 Raised-By: Eric（實測 verdict：結構贏、voice 輸 free ChatGPT）
