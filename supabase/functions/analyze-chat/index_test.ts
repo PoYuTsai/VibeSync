@@ -1106,24 +1106,31 @@ Deno.test({
 
 Deno.test({
   name:
-    "SYSTEM_PROMPT carries voice few-shot example 2 (cold-start early stage, light and low pressure)",
+    "SYSTEM_PROMPT carries voice few-shot example 2 (Wen cold-open arc with cooperative frame, 2026-06-12 game-system design §5)",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
 
-    // 關係階段標籤（主用戶場景：交友軟體陌生局）
-    assert(source.includes("陌生早期局"));
-    // finalRecommendation：先答題再給精準觀察
-    assert(source.includes("等等，妳是泰國人？中文也打得太順了吧，我完全沒發現"));
-    // extend 槽：互教語言 frame（低壓推進）
-    assert(source.includes("妳教我泰文，我教妳課本不會教的中文"));
-    // 陌生局教練判斷：精準觀察 > 新話題
-    assert(source.includes("陌生局有問必答"));
-    // 匿名化（範例2 D-3 拍板）：可識別細節不得進 prompt
-    assertFalse(source.includes("2361"));
-    assertFalse(source.includes("Fang"));
+    // 關係階段標籤（檔位制：冷開→升溫中完整弧線）
+    assert(source.includes("陌生冷開局→升溫中"));
+    // finalRecommendation：S1 快照點，承瑋合作框架原句 verbatim（Eric 拍板）
+    assert(source.includes("那可以組隊了"));
+    assert(source.includes("你酒量如何"));
+    // rationale：合作框架定義（不是邀約，是把她的事變成兩個人的事）
+    assert(source.includes("『組隊』不是邀約，是合作框架"));
+    // psychology：兩字回覆教「看素材不看字數」（制衡 pushy guard 過度收斂）
+    assert(source.includes("高手看素材不看字數"));
+    // 弧線敘事：模糊邀約沒反應→不追→轉話題（輸入段）＋實戰後續收線教訓
+    assert(source.includes("有空可以約個咖啡吧鄰居"));
+    assert(source.includes("實戰後續"));
+    // 小雲範例退役（測試資產對調）：舊範例 2 文字不得殘留
+    assertFalse(source.includes("等等，妳是泰國人？"));
+    assertFalse(source.includes("妳教我泰文"));
+    // PII（Wen 素材兩處：S__42246217 手機號＋S__42246234 IG 帳號）不得進 prompt
+    assertFalse(source.includes("yawen"));
+    assertFalse(/09\d{8}/.test(source));
   },
 });
 
