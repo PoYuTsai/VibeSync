@@ -69,6 +69,27 @@ void main() {
     expect(gradient.colors, [AppColors.ctaStart, AppColors.ctaEnd]);
   });
 
+  testWidgets('下一步葉節點長文完整顯示不截斷；其他枝維持 3 行截斷', (tester) async {
+    const longStep = '她打過來但沒接到，這是高價值升溫訊號。'
+        '不追問原因（會顯得被動），改成用輕鬆懸念帶過，同時確認她安全到家。';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PartnerMindMapView(map: _map(nextStepLabel: longStep)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final stepText = tester.widget<Text>(find.text(longStep));
+    expect(stepText.maxLines, isNull);
+    expect(stepText.overflow, isNull);
+
+    final stageText = tester.widget<Text>(find.text('💫 建立男女感'));
+    expect(stageText.maxLines, 3);
+    expect(stageText.overflow, TextOverflow.ellipsis);
+  });
+
   testWidgets('縮放平移後雙擊任意處重置回初始視圖', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: PartnerMindMapView(map: _map()))),

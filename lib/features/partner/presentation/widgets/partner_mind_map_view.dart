@@ -168,11 +168,14 @@ class _MindMapNodeChip extends StatelessWidget {
       textColor = Colors.white.withValues(alpha: 0.92);
     }
 
+    // 「下一步」是整句教練建議（可達 60+ 字），截斷會讓人覺得話沒說完，
+    // 而且葉節點單擊已被「問教練」佔用，沒有第二個看全文的出口 → 不截斷。
+    // 其餘枝（興趣/特質）是短語，維持 3 行截斷防爆版。
+    final untruncated = _isRoot || _isNextStep;
     final label = Text(
       node.label,
-      // 非 root 枝可能是 AI 長句，夾在 maxWidth 200 內最多 3 行截斷。
-      maxLines: _isRoot ? null : 3,
-      overflow: _isRoot ? null : TextOverflow.ellipsis,
+      maxLines: untruncated ? null : 3,
+      overflow: untruncated ? null : TextOverflow.ellipsis,
       style: (_isRoot ? AppTypography.titleMedium : AppTypography.bodySmall)
           .copyWith(
         color: textColor,
@@ -181,7 +184,8 @@ class _MindMapNodeChip extends StatelessWidget {
     );
 
     final chip = Container(
-      constraints: const BoxConstraints(maxWidth: 200),
+      // 下一步節點放寬到 260：長句行數收斂（畫布可平移，不會擠版）。
+      constraints: BoxConstraints(maxWidth: _isNextStep ? 260 : 200),
       padding: EdgeInsets.symmetric(
         horizontal: _isRoot ? 20 : 14,
         vertical: _isRoot ? 12 : 8,
