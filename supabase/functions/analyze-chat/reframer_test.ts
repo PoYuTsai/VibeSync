@@ -2053,3 +2053,38 @@ Deno.test("done merge conforms replyOptions values and their segment lists", asy
   assertEquals(messages[0].reply, "你這樣我要收費了喔");
   assertEquals("label" in messages[0], false);
 });
+
+Deno.test("done merge drops non-string enthusiasm level", async () => {
+  // Codex 雙審 r4：stream client 有 enthusiasm?['level'] as String?
+  // （analysis_models.dart:911）——數字 level 必 throw。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { enthusiasm: { score: 70, level: 3 } },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const enthusiasm = finalResult.enthusiasm as Record<string, unknown>;
+  assertEquals(enthusiasm.score, 70);
+  assertEquals("level" in enthusiasm, false);
+});

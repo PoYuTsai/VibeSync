@@ -944,7 +944,8 @@ const CLIENT_RECORD_FIELD_SHAPES: Record<
       record: { detected: "boolean", type: "string", suggestion: "string" },
     },
   },
-  enthusiasm: { score: "int" },
+  // stream client 另有 enthusiasm?['level'] as String?。
+  enthusiasm: { score: "int", level: "string" },
   healthCheck: {
     issues: "stringArray",
     suggestions: "stringArray",
