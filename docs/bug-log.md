@@ -10,6 +10,17 @@
 
 ## 2026-06
 
+### [2026-06-13] replySegments cap 3→5 改了 prompt＋server 卻漏改 Flutter client
+**Symptom**: 對方連發多球時 app 最多只顯示 3 段分段回覆；模型照新標準出 4-5 段被靜默剪掉。
+
+**Root Cause**: `c3f3ac6`（方案二件1 D1）把球判準 cap 放寬 3→5，同步了 prompt 與 server `sanitizeReplySegments`，但 client `_parseReplySegments` 的 `.take(3)` 漏改——同一條契約常數活在三處（prompt 文字、server sanitize、client parse），沒有單點。
+
+**Fix**: `991f202` client `.take(3)`→`.take(5)`＋鎖 5 段的單元測試。
+
+**預防**: 改任何 AI 輸出契約的數量/形狀上限時，grep 三處：`index.ts` prompt 字樣、`post_process.ts` sanitize、`analysis_models.dart` parse。測試端 `index_test.ts` 已有 prompt cap 錨，client 端現在也有 5 段錨。
+
+**相關檔案**: `lib/features/analysis/domain/entities/analysis_models.dart`、`supabase/functions/analyze-chat/post_process.ts`
+
 ### [2026-06-09] Coach 0 quota showed generic failure and clarification had no hard cap
 **Symptom**:
 
