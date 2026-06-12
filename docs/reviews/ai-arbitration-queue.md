@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] 方案二：分析輸出 Golden 形狀重構（策略意圖選項 + 真一球一回）
-Status: OPEN — Phase 1 五件套已 land + prod 黑箱復測 PASS，送 Codex 雙審中
+Status: OPEN — Codex r1 REVISE_REQUIRED（僅 1 P2，無 P0/P1）→ P2 已修 `3fff1b9`，r2 複審中
 Request-Type: implementation（Phase 1）+ design（Phase 2 brainstorming）
 Raised-By: Eric（拍板 2026-06-12，背景：golden 影片 = ChatGPT 同截圖輸出，品質勝過產品現狀，定位 P0）
 Owner: Codex（雙審 d868b6d..a9cfb80）→ APPROVED 後 Eric 確認 + Bruce 實測有感才 CLOSE
@@ -43,6 +43,11 @@ Prod 黑箱復測（測試帳號 curl stream，多球+marker golden case）：
 - **Marker 實證翻轉**：`[Missed video call]` 五張卡全部優先接（修前 A/B 判「別提」）。
 
 審查重點（給 Codex）：扣費路徑時序（pendingThin 先掛再扣費 / emitDone 守門 / 合成卡不改扣費錨點）、D3 契約凍結（build 256 事件順序與形狀）、late-bind 順序偏移（rec 晚於 option）對 client 的影響、prompt 砍稅是否誤刪判斷資產。
+
+Codex r1（task-mqahqt1v-0ltt6q，2026-06-12）：**REVISE_REQUIRED — 1 P2、無 P0/P1**。
+- P2：瘦卡 fallback 扣費（錨在 recommendation、message 空）存進 ledger 後，retry loader `streamRecommendationFromRun` 因 `message.length === 0` 回 null → STREAM_RUN_NOT_RETRYABLE，已扣費 run 不可續跑（reframer/handler 的 thin-resume 支援被 loader 擋在門外）。
+- r1 已確認無虞：build 256 解析（server join 相容欄位、Dart parser 拿得到 rec message）、late-bind 順序、post_process ambiguity 為 intended fail-closed、prompt 內部一致。
+- P2 修復 `3fff1b9`：loader 放行合法瘦卡形狀 thinResume + reframer init 防 ledger 損壞瘦卡靜默完成；紅燈先行、Deno 366 passed。r2 複審範圍 `a9cfb80..3fff1b9`。
 Scope: analyze-chat stream_prompt / reframer / post_process contract / client UI（高風險區：AI 行為 + Edge schema）
 Design: `docs/plans/2026-06-12-golden-reshape-phase1-design.md`（2026-06-12 設計定稿，Eric 逐項確認：cap 5 / bind 瘦推薦卡+reframer 扣卡回填 / server→client 契約凍結 / 主 prompt 砍稅+加料全掃）。Phase 1 純 server 出貨。
 
