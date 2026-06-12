@@ -1,0 +1,12 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "messages": [
+    { "isFromMe": true, "content": "嗨" },
+    { "isFromMe": false, "content": "嗨" }
+  ],
+  "sessionContext": {
+    "meetingContext": "交友軟體剛配對，還沒見過面",
+    "analysisContextNote": "罐頭開場，對方隔了一個多小時才回一個「嗨」，沒有其他內容，溫度偏冷"
+  }
+}

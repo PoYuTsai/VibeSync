@@ -1,0 +1,17 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "messages": [
+    { "isFromMe": false, "content": "只喜歡江果先" },
+    { "isFromMe": false, "content": "中午出門前看了一場超精彩的比賽" },
+    { "isFromMe": false, "content": "紅牛跟賓士差點打起來XD" },
+    { "isFromMe": false, "content": "[Photo]（晚餐：茄汁牛肉飯）" },
+    { "isFromMe": false, "content": "[Missed video call]" },
+    { "isFromMe": false, "content": "到家了🤲🤲🤲" }
+  ],
+  "partnerSummary": "瑜伽老師，用戶都叫她「糖糖老師」（用戶自造梗，她會接梗）。兩人已認識一段時間、互動熟絡，會互傳日常照片，她會主動打視訊。",
+  "sessionContext": {
+    "meetingContext": "已熟絡、互動升溫中的對象",
+    "analysisContextNote": "她連發今天行程分享（看比賽、晚餐照），主動打了一通未接視訊，最後傳「到家了」報平安"
+  }
+}
