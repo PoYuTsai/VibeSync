@@ -763,14 +763,14 @@ function createLegacyAnalysisAssembler() {
 
   function absorbMetrics(event: Record<string, unknown>) {
     const enthusiasm = recordField(event.enthusiasm);
-    if (enthusiasm) result.enthusiasm = enthusiasm;
+    if (enthusiasm) result.enthusiasm = roundEnthusiasmScore(enthusiasm);
 
     const score = numberField(
       event.heat ?? event.enthusiasmScore ?? event.score,
     );
     if (score !== null) {
       const target = ensureRecord(result, "enthusiasm");
-      target.score = score;
+      target.score = Math.round(score);
     }
 
     const dimensions = recordField(event.dimensions);
@@ -790,12 +790,16 @@ function createLegacyAnalysisAssembler() {
       return;
     }
 
-    if (section === "warnings" && Array.isArray(payload)) {
-      result.warnings = payload;
-      return;
-    }
-
-    result[section] = payload ?? omitType(event);
+    // 同一個 result 的另一條寫入路徑，必須走與 done merge 相同的形狀守門
+    // （2026-06-13 queue 補強：section=gameStage/psychology 字串 payload 可
+    // 繞過 mergeFinalResult 的 coerce）。
+    const coerced = coerceClientShapeValue(
+      result,
+      section,
+      payload ?? omitType(event),
+    );
+    if (coerced === undefined) return;
+    result[section] = coerced;
   }
 
   function mergeFinalResult(finalResult: Record<string, unknown>) {
@@ -805,7 +809,7 @@ function createLegacyAnalysisAssembler() {
       if (key === "finalRecommendation" && finalRecommendationAuthoritative) {
         continue;
       }
-      const coerced = coerceRecordOnlyValue(result, key, value);
+      const coerced = coerceClientShapeValue(result, key, value);
       if (coerced === undefined) continue;
       result[key] = coerced;
     }
@@ -832,13 +836,21 @@ const RECORD_ONLY_FINAL_RESULT_KEYS = new Set([
   "recognizedConversation",
 ]);
 
-function coerceRecordOnlyValue(
+// client 是 List<String>.from(json[key])，字串/物件 clobber 都會 throw。
+const ARRAY_ONLY_FINAL_RESULT_KEYS = new Set([
+  "warnings",
+]);
+
+function coerceClientShapeValue(
   result: Record<string, unknown>,
   key: string,
   value: unknown,
 ): unknown | undefined {
+  if (ARRAY_ONLY_FINAL_RESULT_KEYS.has(key)) {
+    return coerceStringArray(value);
+  }
   if (!RECORD_ONLY_FINAL_RESULT_KEYS.has(key)) return value;
-  if (isRecord(value)) return value;
+  if (isRecord(value)) return normalizeRecordForClient(key, value);
 
   const existing = isRecord(result[key])
     ? result[key] as Record<string, unknown>
@@ -850,9 +862,55 @@ function coerceRecordOnlyValue(
   if (key === "topicDepth" && text) return { ...existing, current: text };
   if (key === "enthusiasm") {
     const score = numberField(value);
-    if (score !== null) return { ...existing, score };
+    if (score !== null) return { ...existing, score: Math.round(score) };
   }
   return undefined;
+}
+
+// record 形狀正確不代表巢狀欄位安全——client 對 psychology.shitTest 是
+// as Map? 硬 cast、healthCheck.issues/suggestions 是 List<String>.from，
+// 巢狀字串/混型元素一樣炸。語意不可靠的（字串 shitTest 可能說「沒有測試」）
+// 丟 key 讓 client 走預設值。
+function normalizeRecordForClient(
+  key: string,
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  if (key === "enthusiasm") return roundEnthusiasmScore(record);
+  if (key === "psychology") {
+    if (!("shitTest" in record) || isRecord(record.shitTest)) return record;
+    const { shitTest: _dropped, ...rest } = record;
+    return rest;
+  }
+  if (key === "healthCheck") {
+    const next = { ...record };
+    for (const listKey of ["issues", "suggestions"]) {
+      if (!(listKey in next)) continue;
+      const coerced = coerceStringArray(next[listKey]);
+      if (coerced === undefined) delete next[listKey];
+      else next[listKey] = coerced;
+    }
+    return next;
+  }
+  return record;
+}
+
+// client 是 List<String>.from——非陣列 clobber 與混型元素都會 throw。
+// 字串語意映射成單元素陣列，其餘丟棄。
+function coerceStringArray(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  const text = typeof value === "string" ? value.trim() : "";
+  return text ? [text] : undefined;
+}
+
+// client enthusiasm['score'] as int? 收到 72.5 會 throw——所有寫入路徑取整。
+function roundEnthusiasmScore(
+  record: Record<string, unknown>,
+): Record<string, unknown> {
+  const score = numberField(record.score);
+  if (score === null || Number.isInteger(score)) return record;
+  return { ...record, score: Math.round(score) };
 }
 
 function ensureRecord(

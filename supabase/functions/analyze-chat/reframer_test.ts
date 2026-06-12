@@ -1213,3 +1213,306 @@ Deno.test("done merge drops non-record values for record-only client keys", asyn
       typeof finalResult.targetProfile === "object",
   );
 });
+
+Deno.test("report_section string payload for client-shaped sections coerces instead of clobbering", async () => {
+  // 2026-06-13 queue 補強（Codex adversarial high 1）：absorbReportSection
+  // 原樣寫 result[section]，section=gameStage/psychology 等且 payload 為
+  // 字串可繞過 done merge 守門——同一個 result 物件的另一條寫入路徑，
+  // 必須走同一套 coerce。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "I get why that felt off.",
+    reason: "Respect the boundary.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.report_section",
+    section: "gameStage",
+    payload: "premise",
+  }));
+  reframer.pushText(line({
+    type: "analysis.report_section",
+    section: "psychology",
+    payload: "She is testing availability.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.report_section",
+    section: "warnings",
+    payload: "別連發訊息",
+  }));
+  reframer.pushText(line({
+    type: "analysis.report_section",
+    section: "enthusiasm",
+    payload: 90.4,
+  }));
+  reframer.pushText(line({ type: "analysis.done", finalResult: {} }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+
+  assertEquals(typeof finalResult.gameStage, "object");
+  assertEquals(
+    (finalResult.gameStage as Record<string, unknown>).current,
+    "premise",
+  );
+  assertEquals(typeof finalResult.psychology, "object");
+  assertEquals(
+    (finalResult.psychology as Record<string, unknown>).subtext,
+    "She is testing availability.",
+  );
+  assertEquals(finalResult.warnings, ["別連發訊息"]);
+  assertEquals(typeof finalResult.enthusiasm, "object");
+  assertEquals(
+    (finalResult.enthusiasm as Record<string, unknown>).score,
+    90,
+  );
+});
+
+Deno.test("done merge guards warnings as array-only", async () => {
+  // 2026-06-13 queue 補強（Codex adversarial high 2）：client 是
+  // List<String>.from(json['warnings'])，字串/物件 clobber 都會 throw。
+  // 字串語意映射成單元素陣列，物件丟棄保留既有值。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { warnings: "請放慢節奏" },
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { warnings: { note: "should be dropped" } },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+
+  assertEquals(finalResult.warnings, ["請放慢節奏"]);
+});
+
+Deno.test("metrics float enthusiasm score is rounded for client int cast", async () => {
+  // 2026-06-13 queue 補強（Codex adversarial medium 3）：client
+  // enthusiasm['score'] as int? 收到 72.5 會 throw——server 端所有
+  // enthusiasm 寫入路徑一律取整。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.metrics",
+    heat: 72.5,
+  }));
+  reframer.pushText(line({ type: "analysis.done", finalResult: {} }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals(
+    (finalResult.enthusiasm as Record<string, unknown>).score,
+    73,
+  );
+});
+
+Deno.test("done merge rounds float score inside enthusiasm record", async () => {
+  // record 形狀正確但 score 為 float 一樣炸 client——record 路徑也要取整。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { enthusiasm: { score: 88.6, trend: "rising" } },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const enthusiasm = finalResult.enthusiasm as Record<string, unknown>;
+  assertEquals(enthusiasm.score, 89);
+  assertEquals(enthusiasm.trend, "rising");
+});
+
+Deno.test("done merge drops non-record psychology.shitTest instead of passing it to client", async () => {
+  // 2026-06-13 queue 補強（Codex adversarial medium 4）：client 是
+  // json['shitTest'] as Map<String, dynamic>?，巢狀字串硬 cast 必炸。
+  // 語意不可靠（字串可能說「沒有測試」），丟 key 讓 client 走預設值。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      psychology: {
+        subtext: "She is keeping it light.",
+        shitTest: "她在測試你",
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const psychology = finalResult.psychology as Record<string, unknown>;
+  assertEquals(psychology.subtext, "She is keeping it light.");
+  assertEquals("shitTest" in psychology, false);
+});
+
+Deno.test("done merge keeps record-shaped psychology.shitTest intact", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      psychology: {
+        subtext: "She is testing.",
+        shitTest: { detected: true, type: "tease", suggestion: "回得輕鬆" },
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const psychology = finalResult.psychology as Record<string, unknown>;
+  const shitTest = psychology.shitTest as Record<string, unknown>;
+  assertEquals(shitTest.detected, true);
+  assertEquals(shitTest.suggestion, "回得輕鬆");
+});
+
+Deno.test("string-array guards filter non-string elements and coerce nested healthCheck lists", async () => {
+  // client 是 List<String>.from——元素混入數字/物件一樣 throw；
+  // healthCheck.issues/suggestions 是同一家族的巢狀版。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      warnings: ["別連發訊息", 42, { text: "junk" }],
+      healthCheck: {
+        issues: "回覆間隔越來越長",
+        suggestions: ["放慢節奏", 7],
+        score: 60,
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  assertEquals(finalResult.warnings, ["別連發訊息"]);
+  const healthCheck = finalResult.healthCheck as Record<string, unknown>;
+  assertEquals(healthCheck.issues, ["回覆間隔越來越長"]);
+  assertEquals(healthCheck.suggestions, ["放慢節奏"]);
+  assertEquals(healthCheck.score, 60);
+});
