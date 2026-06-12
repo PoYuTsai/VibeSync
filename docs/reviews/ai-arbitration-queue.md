@@ -23,8 +23,45 @@
 
 ## Live Queue
 
-## [2026-06-12] #12 一球一回 OCR 路徑單段化「敷衍」— 品質調查
+## [2026-06-12] 方案二：分析輸出 Golden 形狀重構（策略意圖選項 + 真一球一回）
 Status: OPEN
+Request-Type: implementation（Phase 1）+ design（Phase 2 brainstorming）
+Raised-By: Eric（拍板 2026-06-12，背景：golden 影片 = ChatGPT 同截圖輸出，品質勝過產品現狀，定位 P0）
+Owner: Claude（新 session 開工）→ 動 prompt/Edge schema 屬高風險區，完成後必送 Codex 雙審
+Scope: analyze-chat stream_prompt / reframer / post_process contract / client UI（高風險區：AI 行為 + Edge schema）
+
+拍板內容（Eric 2026-06-12）：
+
+- 終局形狀 = golden：固定 5 風格槽 → 模型按局勢選 3-4 個策略意圖選項（穩接/幽默/推進/高手），每個附「為什麼」+「她可能怎麼回」，最推薦內嵌（bind）。
+- Prompt 價值重定義：「管格式是稅、教判斷+餵專有 context（OCR marker 語意、對象歷史）才是資產」。指揮越少、餵料越多。
+
+Phase 1（先 land，Bruce 立刻有感；皆為 Phase 2 地基、不是死工）：
+
+1. 球判準重寫：預設每顆有內容的球都接，僅純貼圖/單 emoji 可併鄰球；cap 3 放寬。
+2. Marker 語意進 prompt：`[Missed video call]` = 高價值升溫訊號、`[Photo]` = 分享慾訊號（A/B 實測：marker 形式會讓模型把該球判成「別提」，自然語言則正確優先接）。
+3. Stream 協議 v2：reply_option/recommendation 事件以 `segments[]` 為一等公民 + few-shot；flat `message` 降為相容欄位。
+4. Bind：recommendation 指向選中 style、共用其 segments，不再雙軌生成文字。
+5. Contract 堵漏：`/` 併球 sourceMessage 不得再被 containment fuzzy match 放行（實測兩輪都靠此漏洞通過）。
+
+Phase 2（需 brainstorming + Eric 再拍板 UI 細節）：5 風格槽 → 策略意圖選項的 client schema/UI 改造、訂閱分層展示。
+
+成本評估：output token 約 +60~100%（≈ +$0.02/次）；latency 現狀 46-52s、預估 +10-15s，stream 逐卡片 UX 吸收。模型呼叫次數不變。
+
+Close Condition: Phase 1 land + Deno 測試綠 + Codex 雙審 APPROVED + Bruce 實測有感；Phase 2 設計案另立 item。
+
+---
+
+## [2026-06-12] #12 一球一回 OCR 路徑單段化「敷衍」— 品質調查
+Status: CLOSED（root cause 定位 ✅ + 修法拍板 ✅ = 方案二，見上方新 item；Eric 拍板 2026-06-12）
+
+調查結論（prod 黑箱 A/B 實測，OCR 雜訊 vs 乾淨文字各一輪）：
+
+- **主嫌假說推翻**：contract 一段都沒剪。兩組皆為模型出 flat 單句 + `/` 併球 quotedContext。
+- 真 root cause：`stream_prompt.ts:31,34` 事件協議本身只定義 flat `message`+`quotedContext`；#12 分段規格只在 :39 一句話要求塞 finalResult，:40 又叫模型 compact——格式指令打架，模型 2/2 輪未出 replySegments。`reframer.ts:430` 以 quotedContext 合成單一假段（指紋：label="recommended"、psychology==reason，實測輸出吻合）；contract containment fuzzy match 將 `/` 併球 sourceMessage 修出 sourceIndex 放行；段數 <2 → `post_process.ts:729` 回退 replies[pick] 合併單句。**#12 規格從未真正部署到 stream（產品實際路徑）**。
+- 附帶發現（球判準）：`[Missed video call]` marker → 模型判「別提」；同語意自然語言 → 模型當主動球優先接。OCR marker 無語意教學是判準缺陷主因之一。
+
+原始 item（歷史紀錄）：
+
 Request-Type: investigation
 Raised-By: Bruce（Eric 轉達）
 Owner: Claude（新 session 調查）→ 結論後決定送 Codex 與否
