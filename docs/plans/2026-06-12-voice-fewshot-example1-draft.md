@@ -93,10 +93,12 @@ pick = coldRead（= ChatGPT 高手版，懸念鉤）：
 ## D. 待 Eric 拍板
 
 1. ✅ **slot 映射**（Eric 拍板 2026-06-12，golden1.mp4 指認）：高手版 = finalRecommendation（pick=coldRead）；最推薦版（糖糖老師 callback）放 tease 槽。
-2. **resonate 槽**三句【補】是 Claude 寫的，最需要 Eric 的筆。
-3. **emoji 密度**：G 每句 1 個（☺️👌🫶）；現行 prompt 規則是 0-1 個，相容，但要不要照搬 G 的選字？
-4. **「江果先」**：影片轉寫不確定是不是這三個字（可能是用戶本名梗），待 Bruce 確認；few-shot 裡是否保留真實暱稱或改通用化？
-5. index 0/3 重建字句待 Bruce 截圖確認後回填。
+2. ✅ **resonate 槽**：Eric 拍板（2026-06-12）「照你推薦寫的」——C 節三句【補】照案通過。
+3. ✅ **emoji**：照草稿（G 的選字保留，符合現行 0-1 規則）。
+4. **「江果先」**：待 Bruce 確認字句（**非阻斷**——few-shot 是教材不是用戶資料，先用重建句實作，Bruce 回報後再校）。
+5. index 0/3 重建字句同上，非阻斷，Bruce 截圖後回填。
+
+**→ C 節即為定稿版（2026-06-12 Eric 拍板），可進實作。**
 
 ## E. 下一步（定稿後）
 
