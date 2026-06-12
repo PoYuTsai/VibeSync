@@ -781,7 +781,9 @@ function createLegacyAnalysisAssembler() {
     }
 
     const dimensions = recordField(event.dimensions);
-    if (dimensions) result.dimensions = dimensions;
+    if (dimensions) {
+      result.dimensions = normalizeRecordForClient("dimensions", dimensions);
+    }
 
     const topicDepth = recordField(event.topicDepth);
     if (topicDepth) result.topicDepth = topicDepth;
@@ -842,6 +844,8 @@ const RECORD_ONLY_FINAL_RESULT_KEYS = new Set([
   "myMessageAnalysis",
   "recognizedConversation",
   "coachActionHint",
+  "dimensions",
+  "dogfoodComparison",
 ]);
 
 // client 是 List<String>.from(json[key])，字串/物件 clobber 都會 throw。
@@ -896,7 +900,36 @@ type ClientFieldShape =
   | "int"
   | "number"
   | "stringArray"
-  | { record: Record<string, ClientFieldShape> };
+  | { record: Record<string, ClientFieldShape> }
+  | { recordArray: Record<string, ClientFieldShape> };
+
+// client ReplySegment.fromJson：label/sourceMessage/reply/reason 全
+// as String?（sourceIndex 是 is num 檢查，client 端寬容不用守）。
+const REPLY_SEGMENT_FIELD_SHAPES: Record<string, ClientFieldShape> = {
+  label: "string",
+  sourceMessage: "string",
+  reply: "string",
+  reason: "string",
+};
+
+const FINAL_RECOMMENDATION_FIELD_SHAPES: Record<string, ClientFieldShape> = {
+  pick: "string",
+  content: "string",
+  reason: "string",
+  psychology: "string",
+  replySegments: { recordArray: REPLY_SEGMENT_FIELD_SHAPES },
+};
+
+// client ReplyOption.fromJson 的 fallback 路徑 sourceMessage/reason
+// as String?；messages/messageGroup/replySegments 走 ReplySegment 硬 cast。
+// approach/reply/content 走 _normalizeRecommendationText，client 端寬容。
+const REPLY_OPTION_FIELD_SHAPES: Record<string, ClientFieldShape> = {
+  sourceMessage: "string",
+  reason: "string",
+  messages: { recordArray: REPLY_SEGMENT_FIELD_SHAPES },
+  messageGroup: { recordArray: REPLY_SEGMENT_FIELD_SHAPES },
+  replySegments: { recordArray: REPLY_SEGMENT_FIELD_SHAPES },
+};
 
 const CLIENT_RECORD_FIELD_SHAPES: Record<
   string,
@@ -919,12 +952,7 @@ const CLIENT_RECORD_FIELD_SHAPES: Record<
     hasInterviewStyle: "boolean",
     speakingRatio: "number",
   },
-  finalRecommendation: {
-    pick: "string",
-    content: "string",
-    reason: "string",
-    psychology: "string",
-  },
+  finalRecommendation: FINAL_RECOMMENDATION_FIELD_SHAPES,
   coachActionHint: {
     catchablePoint: "string",
     read: "string",
@@ -934,6 +962,57 @@ const CLIENT_RECORD_FIELD_SHAPES: Record<
     confidence: "string",
   },
   usage: { imagesUsed: "int" },
+  optimizedMessage: {
+    original: "string",
+    optimized: "string",
+    reason: "string",
+  },
+  myMessageAnalysis: {
+    sentMessage: "string",
+    ifColdResponse: {
+      record: { prediction: "string", suggestion: "string" },
+    },
+    ifWarmResponse: {
+      record: { prediction: "string", suggestion: "string" },
+    },
+    backupTopics: "stringArray",
+    warnings: "stringArray",
+  },
+  recognizedConversation: {
+    contactName: "string",
+    messageCount: "int",
+    summary: "string",
+    classification: "string",
+    importPolicy: "string",
+    confidence: "string",
+    sideConfidence: "string",
+    uncertainSideCount: "int",
+    warning: "string",
+    // client 是 (json['messages'] as List).map((m) => fromJson(m as Map))
+    // ——非物件元素必 throw，過濾掉。
+    messages: {
+      recordArray: {
+        side: "string",
+        isFromMe: "boolean",
+        content: "string",
+        quotedReplyPreview: "string",
+        quotedReplyPreviewIsFromMe: "boolean",
+      },
+    },
+  },
+  // client _parseDimensions 五鍵 as num?。
+  dimensions: {
+    heat: "number",
+    engagement: "number",
+    topicDepth: "number",
+    replyWillingness: "number",
+    emotionalConnection: "number",
+  },
+  // dogfood 比對卡內層走 FinalRecommendation.fromJson 同一套硬 cast。
+  dogfoodComparison: {
+    rawFullRecommendation: { record: FINAL_RECOMMENDATION_FIELD_SHAPES },
+    officialFullRecommendation: { record: FINAL_RECOMMENDATION_FIELD_SHAPES },
+  },
 };
 
 function normalizeRecordForClient(
@@ -943,6 +1022,19 @@ function normalizeRecordForClient(
   // legacy client 是 Map<String, String>.from(json['replies'])，非字串
   // value 必 throw——值全量過濾（key 是動態風格名，無法入欄位表）。
   if (key === "replies") return filterRecordToStringValues(record);
+  // replyOptions 同樣是動態風格 key——每個 record value 各自 conform，
+  // 非 record value 放行（client ReplyOption.fromJson 對非 Map 寬容）。
+  if (key === "replyOptions") {
+    let next: Record<string, unknown> | null = null;
+    for (const [style, option] of Object.entries(record)) {
+      if (!isRecord(option)) continue;
+      const conformed = conformRecordFields(option, REPLY_OPTION_FIELD_SHAPES);
+      if (conformed === option) continue;
+      next ??= { ...record };
+      next[style] = conformed;
+    }
+    return next ?? record;
+  }
   const shapes = CLIENT_RECORD_FIELD_SHAPES[key];
   if (!shapes) return record;
   return conformRecordFields(record, shapes);
@@ -970,7 +1062,15 @@ function conformFieldShape(
   value: unknown,
 ): unknown | undefined {
   if (typeof shape === "object") {
-    return isRecord(value) ? conformRecordFields(value, shape.record) : undefined;
+    if ("recordArray" in shape) {
+      if (!Array.isArray(value)) return undefined;
+      return value
+        .filter(isRecord)
+        .map((item) => conformRecordFields(item, shape.recordArray));
+    }
+    return isRecord(value)
+      ? conformRecordFields(value, shape.record)
+      : undefined;
   }
   switch (shape) {
     case "string":
@@ -1113,7 +1213,9 @@ function replySegmentsFrom(value: unknown): Record<string, unknown>[] {
     if (stringField(item.reply ?? item.content ?? item.text).length === 0) {
       continue;
     }
-    segments.push(item);
+    // 段落會經 replyOptions[].messages 與 finalRecommendation.replySegments
+    // 進 client ReplySegment.fromJson 硬 cast——入口即 conform。
+    segments.push(conformRecordFields(item, REPLY_SEGMENT_FIELD_SHAPES));
   }
   return segments;
 }

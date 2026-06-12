@@ -1772,3 +1772,284 @@ Deno.test("done merge conforms finalRecommendation strings and replies string ma
   assertEquals("humor" in replies, false);
   assertEquals(replies.tease, "你這樣我要收費了喔");
 });
+
+Deno.test("done merge conforms optimizedMessage and myMessageAnalysis fields", async () => {
+  // Codex 雙審 r3 A1+A2：optimizedMessage original/optimized/reason 全
+  // as String?；myMessageAnalysis sentMessage as String?、ifCold/ifWarm
+  // as Map?、backupTopics/warnings 是 .cast<String>()。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      optimizedMessage: { original: "嗨", optimized: 123 },
+      myMessageAnalysis: {
+        sentMessage: 5,
+        ifColdResponse: "she ghosts",
+        ifWarmResponse: { prediction: "she laughs", suggestion: 9 },
+        backupTopics: "旅行",
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const optimized = finalResult.optimizedMessage as Record<string, unknown>;
+  assertEquals(optimized.original, "嗨");
+  assertEquals("optimized" in optimized, false);
+  const myMessage = finalResult.myMessageAnalysis as Record<string, unknown>;
+  assertEquals("sentMessage" in myMessage, false);
+  assertEquals("ifColdResponse" in myMessage, false);
+  const warm = myMessage.ifWarmResponse as Record<string, unknown>;
+  assertEquals(warm.prediction, "she laughs");
+  assertEquals("suggestion" in warm, false);
+  assertEquals(myMessage.backupTopics, ["旅行"]);
+});
+
+Deno.test("done merge conforms recognizedConversation including message list", async () => {
+  // Codex 雙審 r3 A3：messageCount/uncertainSideCount as int?、messages
+  // as List 且每則 m as Map<String, dynamic>——非物件元素必 throw。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      recognizedConversation: {
+        messageCount: "12",
+        summary: "輕鬆閒聊",
+        messages: [
+          { content: "嗨", isFromMe: "yes", side: "left" },
+          "junk entry",
+        ],
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const conversation = finalResult.recognizedConversation as Record<
+    string,
+    unknown
+  >;
+  assertEquals(conversation.messageCount, 12);
+  assertEquals(conversation.summary, "輕鬆閒聊");
+  const messages = conversation.messages as Record<string, unknown>[];
+  assertEquals(messages.length, 1);
+  assertEquals(messages[0].content, "嗨");
+  assertEquals(messages[0].side, "left");
+  assertEquals("isFromMe" in messages[0], false);
+});
+
+Deno.test("done merge conforms dimensions numbers and dogfoodComparison recommendations", async () => {
+  // Codex 雙審 r3 B2+B3：client _parseDimensions 五鍵 as num?；
+  // dogfoodComparison 內層走 FinalRecommendation.fromJson as String?。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      dimensions: { heat: "72", engagement: 60 },
+      dogfoodComparison: {
+        tierUsed: "essential",
+        rawFullRecommendation: { pick: 1, content: "use humor" },
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const dimensions = finalResult.dimensions as Record<string, unknown>;
+  assertEquals("heat" in dimensions, false);
+  assertEquals(dimensions.engagement, 60);
+  const dogfood = finalResult.dogfoodComparison as Record<string, unknown>;
+  assertEquals(dogfood.tierUsed, "essential");
+  const raw = dogfood.rawFullRecommendation as Record<string, unknown>;
+  assertEquals("pick" in raw, false);
+  assertEquals(raw.content, "use humor");
+});
+
+Deno.test("metrics dimensions are conformed before reaching result", async () => {
+  // dimensions 也從 analysis.metrics 直寫——同一守門。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.metrics",
+    dimensions: { replyWillingness: "80", topicDepth: 55 },
+  }));
+  reframer.pushText(line({ type: "analysis.done", finalResult: {} }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const dimensions = finalResult.dimensions as Record<string, unknown>;
+  assertEquals("replyWillingness" in dimensions, false);
+  assertEquals(dimensions.topicDepth, 55);
+});
+
+Deno.test("reply segments are conformed at intake before entering replyOptions and finalRecommendation", async () => {
+  // Codex 雙審 r3 B1（high）：ReplySegment.fromJson 對 label/
+  // sourceMessage/reply/reason 全 as String?——模型 segments 帶錯型
+  // 會經 replyOptions[].messages 與 finalRecommendation.replySegments
+  // 炸 client。replySegmentsFrom 是單一咽喉點，入口 conform。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+    replySegments: [
+      { reply: "我先放慢", label: 1, sourceMessage: "太快了", reason: "降壓" },
+    ],
+  }));
+  reframer.pushText(line({ type: "analysis.done", finalResult: {} }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const recommendation = finalResult.finalRecommendation as Record<
+    string,
+    unknown
+  >;
+  const segments = recommendation.replySegments as Record<string, unknown>[];
+  assertEquals(segments.length, 1);
+  assertEquals(segments[0].reply, "我先放慢");
+  assertEquals(segments[0].sourceMessage, "太快了");
+  assertEquals("label" in segments[0], false);
+  const replyOptions = finalResult.replyOptions as Record<string, unknown>;
+  const humor = replyOptions.humor as Record<string, unknown>;
+  const messages = humor.messages as Record<string, unknown>[];
+  assertEquals("label" in messages[0], false);
+  assertEquals(messages[0].reply, "我先放慢");
+});
+
+Deno.test("done merge conforms replyOptions values and their segment lists", async () => {
+  // done finalResult 的 replyOptions 是動態風格 key——每個 value record
+  // 過 sourceMessage/reason string 守門＋messages/messageGroup/
+  // replySegments 段落 conform（client fallback 路徑 sourceMessage
+  // as String? 硬 cast）。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      replyOptions: {
+        tease: {
+          sourceMessage: 9,
+          reason: "輕推",
+          messages: [{ reply: "你這樣我要收費了喔", label: 2 }],
+        },
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const replyOptions = finalResult.replyOptions as Record<string, unknown>;
+  const tease = replyOptions.tease as Record<string, unknown>;
+  assertEquals("sourceMessage" in tease, false);
+  assertEquals(tease.reason, "輕推");
+  const messages = tease.messages as Record<string, unknown>[];
+  assertEquals(messages[0].reply, "你這樣我要收費了喔");
+  assertEquals("label" in messages[0], false);
+});
