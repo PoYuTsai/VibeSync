@@ -1,0 +1,20 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "messages": [
+    { "isFromMe": true, "content": "妳好" },
+    { "isFromMe": false, "content": "嗨嗨嗨～" },
+    { "isFromMe": false, "content": "你好啊" },
+    { "isFromMe": true, "content": "全家的冰淇淋 懂吃！" },
+    { "isFromMe": true, "content": "哈哈哈看到就想吃欸" },
+    { "isFromMe": true, "content": "妳哪裡人啊來這遊學" },
+    { "isFromMe": false, "content": "現在全家冰淇淋買一送一 就吃吃看～" },
+    { "isFromMe": false, "content": "我是泰國人" },
+    { "isFromMe": false, "content": "看你跟老虎拍照好像是在泰國嗎" }
+  ],
+  "sessionContext": {
+    "meetingContext": "交友軟體剛配對",
+    "targetDescription": "27 歲，profile 照是在全家吃冰淇淋",
+    "analysisContextNote": "用戶 profile 有一張與老虎的合照"
+  }
+}

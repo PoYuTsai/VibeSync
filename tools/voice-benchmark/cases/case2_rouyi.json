@@ -1,0 +1,40 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "messages": [
+    { "isFromMe": true, "content": "可惜KTV沒伍佰的被動" },
+    { "isFromMe": true, "content": "播史詩的時候唱白鴿 還是播白鴿的時候唱史詩" },
+    { "isFromMe": false, "content": "哈哈哈" },
+    { "isFromMe": false, "content": "笑死，好反骨" },
+    { "isFromMe": false, "content": "點的蘇慧倫的被動唱伍佰的被動" },
+    { "isFromMe": false, "content": "1、2、3、4～～" },
+    { "isFromMe": true, "content": "是倒數開始唱的意思嗎" },
+    { "isFromMe": true, "content": "～我顆以很久不和尼聯絡" },
+    { "isFromMe": true, "content": "你的主打歌是？" },
+    { "isFromMe": true, "content": "1、2、3、4～～" },
+    { "isFromMe": false, "content": "沒錯～～" },
+    { "isFromMe": false, "content": "你很6喔～～" },
+    { "isFromMe": false, "content": "我的主打歌，倒帶" },
+    { "isFromMe": false, "content": "哈哈哈哈哈完全沒關係" },
+    { "isFromMe": true, "content": "倒帶不會常被搶麥嗎" },
+    { "isFromMe": true, "content": "連我都想搶" },
+    { "isFromMe": true, "content": "我是會準備一些冷門歌曲防範宵小之徒來蹭麥" },
+    { "isFromMe": false, "content": "笑死" },
+    { "isFromMe": false, "content": "真的超多人搶麥ㄟ是不是瘋了" },
+    { "isFromMe": false, "content": "直接跟你合唱，唱到你唱不下去他變成麥霸" },
+    { "isFromMe": false, "content": "你是真懂" },
+    { "isFromMe": false, "content": "你被宵小之徒搬走了嗎" },
+    { "isFromMe": true, "content": "宵小之徒這幾天忘了打開來交友" },
+    { "isFromMe": true, "content": "剛聽 Podcast 主持人訪問到 Post Malone 才驚覺" },
+    { "isFromMe": true, "content": "（貼圖：小貓合掌道歉，I'M SO SORRY PLEASE FORGIVE ME）" },
+    { "isFromMe": true, "content": "而且你覺得我像Gay嗎 幾天沒開 一堆沒滑過的男生密我也是傻眼" },
+    { "isFromMe": false, "content": "哈哈哈哈哈哈哈哈" },
+    { "isFromMe": false, "content": "還可以自動被配對喔" },
+    { "isFromMe": false, "content": "我覺得還蠻像的" },
+    { "isFromMe": false, "content": "有一股溫柔感" }
+  ],
+  "sessionContext": {
+    "meetingContext": "交友軟體剛配對，還沒見過面",
+    "analysisContextNote": "兩人一直圍繞 KTV 唱歌話題互虧；用戶幾天沒開 app，是對方主動傳訊找用戶"
+  }
+}

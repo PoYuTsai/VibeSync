@@ -24,7 +24,10 @@
 ## Live Queue
 
 ## [2026-06-12] 主 prompt 全面 few-shot 化 = voice few-shot 化（高手感/幽默感缺口）
-Status: OPEN — **範例 1＋2 雙定稿 ✅（範例 2：Eric 2026-06-12「照你寫的」，D-1~D-3 全過），可進實作**。**盲測 case 3 素材已定**：Bruce 4 年前案例（`OCR測試圖片/Bruce4年前案例(有2個人)`，21 張、2 位對象；第二位有「你有約過別人不是去那邊的嗎」教科書試探球 = case 3 首選；肉伊 KTV 局備用）。Bruce「4 年前不確定值得參考嗎」→ 同小雲案例判斷：取輸入不取當年回覆，年代無妨。下一步：兩個陌生局 case 舊 prompt baseline（case 2 = 範例 2 切點；case 3 = Bruce 試探局轉寫選切點）→ TDD 改 prompt → 黑箱契約復測 → 3-case 盲測 → Codex 雙審。golden baseline 在 `tools/voice-benchmark/baselines/`
+Status: OPEN — **盲測素材＋全部舊 prompt baseline 完成 ✅（2026-06-12 晚），下一步 TDD 改 prompt（含 audit 刪減）**。本輪兩個新拍板（Eric）：
+1. **盲測全換 held-out**：few-shot 範例輸入（golden/小雲）進盲測=開卷背誦會失真 → 盲測三題改 case 1'=承瑋 R 局（升溫）、case 2'=肉伊（陌生早期）、case 3=Ashley 試探球；golden＋小雲降級非盲 anchor 檢查；承瑋 Wen 冷啟動段當冷局 smoke test（倖存者偏誤防呆）。
+2. **prompt 刪減=審計後砍實證冗餘**：Claude 先列刪減候選+證據給 Eric 過目再砍；12 場景判斷區不動。
+新素材（Eric 補充）：**承瑋案例 22 張 3 對象**（`OCR測試圖片/承瑋(幾年前案例)有3個人)`）——真人高手、自帶 18 處戰術標籤+紅筆步驟編號，**輸出可參考**（與小雲/Bruce「只取輸入」不同）；含失敗分支筆記（「模糊邀約沒反應→轉話題」）。轉寫完成+抽查目檢：`tools/voice-benchmark/{case3-bruce,chengwei}-transcript-draft.md`（⚠️ S__42246217 有真實手機號，素材化前必匿名）。Baseline：3 盲測題+小雲 anchor 各 2 輪、全五槽零 error，`tools/voice-benchmark/baselines/`；runner=`run_baseline.sh`。下一步：TDD 改 prompt（範例 1+2 進 prompt+占位句換血+audit 刪減+承瑋筆記用法提案）→ 黑箱契約復測+anchor/冷局 smoke → 盲測（ChatGPT 欄需 Eric 餵 free ChatGPT）→ Codex 雙審。
 Request-Type: design → implementation
 Design: `docs/plans/2026-06-12-voice-fewshot-design.md`
 Raised-By: Eric（實測 verdict：結構贏、voice 輸 free ChatGPT）
