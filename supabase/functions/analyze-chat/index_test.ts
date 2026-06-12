@@ -1219,3 +1219,45 @@ Deno.test({
     assert(source.includes("我用了 DHV / 冷讀"));
   },
 });
+
+// ─── 盲測修字（2026-06-12 盲測不過門檻後 Eric 拍板兩題：case1 pushy guard + case2 框架）───
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT guards hot-stage invites: never insert into the other person's third-party plans (升溫≠可帶隊)",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // case1 實錘：新版 tease「我帶你們去」把自己插進她跟學妹的局（Eric+Bruce 一致判輸）
+    assert(source.includes("### 對方的局不是你的局（升溫 ≠ 可帶隊）"));
+    // 禁帶隊/插隊句式要點名
+    assert(source.includes("不說「我帶你們去」「叫上我」"));
+    // 正確替代：展示自己的行程而不是投靠她的行程，鉤子留到下次
+    assert(source.includes("展示自己的行程"));
+    assert(source.includes("把真正的見面鉤子埋到下次"));
+    // 不誤殺合法邀約：她明確邀請時走情境6
+    assert(source.includes("她明確邀你加入時"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT keeps frame on playful labels: never hand evaluation power back (case2 框架修正)",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // case2 實錘：「這樣算加分還是扣分，妳給我一個說法」把評價權丟給對方（Eric 拍板照 Bruce＝新輸）
+    assert(source.includes("自己給定性"));
+    assert(source.includes("不把裁決權交回去"));
+    // 反問圍欄：只能問她，不能問她怎麼評價我
+    assert(source.includes("不能問「她怎麼評價我」"));
+    // 禁句要點名，模型才不會再產同型句
+    assert(source.includes("「這樣算加分還是扣分？」「妳給我一個說法」"));
+  },
+});
