@@ -60,7 +60,10 @@ import {
   AnalysisStreamRunStore,
   createSupabaseAnalysisStreamRunDriver,
 } from "./stream_run_store.ts";
-import type { StreamRecommendationForCharge } from "./reframer.ts";
+import {
+  isThinRecommendationEvent,
+  type StreamRecommendationForCharge,
+} from "./reframer.ts";
 import { isStreamStyle, STREAM_STYLES } from "./stream_events.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import {
@@ -770,7 +773,16 @@ function streamRecommendationFromRun(
     .filter(Boolean);
   const raw = isPlainObject(stored.raw) ? stored.raw : stored;
 
-  if (!isStreamStyle(selectedStyle) || message.length === 0) {
+  // Codex r1 P2：瘦卡 fallback 扣費（message 空、raw 是合法瘦卡形狀）的
+  // 已扣費 run 必須可 resume——reframer init 會重掛 pendingThin，由 replay
+  // 的 selected reply_option 綁卡回填。否則回 null → STREAM_RUN_NOT_RETRYABLE，
+  // 已扣費卻不可續跑。
+  const thinResume = message.length === 0 && reason.length > 0 &&
+    isThinRecommendationEvent(raw);
+
+  if (
+    !isStreamStyle(selectedStyle) || (message.length === 0 && !thinResume)
+  ) {
     return null;
   }
 

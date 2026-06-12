@@ -65,6 +65,17 @@ Deno.test("stream retry reuses the stream ledger without charging again", async 
   assert(source.includes("prechargedRecommendation,"));
 });
 
+Deno.test("stream retry accepts thin precharged recommendation (Codex r1 P2)", async () => {
+  const source = await readIndexSource();
+
+  // 方案二件4：瘦卡 fallback 扣費（message 空、raw 帶 expectedReaction）
+  // 的已扣費 run 必須可 resume；否則 streamRecommendationFromRun 回 null
+  // → STREAM_RUN_NOT_RETRYABLE，已扣費卻不可續跑。
+  assert(source.includes("const thinResume = message.length === 0"));
+  assert(source.includes("isThinRecommendationEvent(raw)"));
+  assert(source.includes("message.length === 0 && !thinResume"));
+});
+
 Deno.test("stream retry reports non-charging usage and telemetry", async () => {
   const branch = streamBranch(await readIndexSource());
 

@@ -937,6 +937,48 @@ Deno.test("bind: resume with thin precharged recommendation rebinds from replaye
   assertEquals(events.at(-1)?.type, "analysis.done");
 });
 
+Deno.test("bind: corrupt thin precharged card still rebinds from replayed stream", async () => {
+  // 防禦路徑：存進 ledger 的瘦卡 resume 時 revalidation 失敗（理論上扣費
+  // 時已驗過，僅防 ledger 損壞）——不得讓 officialRecommendationEmitted
+  // 卡成 true 而靜默完成；replay 的瘦卡要能重新掛 pending 綁卡。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    prechargedRecommendation: {
+      selectedStyle: "extend",
+      message: "",
+      reason: "",
+      quotedContext: "",
+      warnings: [],
+      raw: {
+        type: "analysis.recommendation",
+        selectedStyle: "extend",
+        reason: "", // 缺 reason → revalidation 失敗
+        expectedReaction: "她大概會回",
+      },
+    },
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  reframer.pushText(line(v2ReplyOption("extend")));
+  reframer.pushText(line({ type: "analysis.done" }));
+  await reframer.flush();
+
+  const recommendation = events.find(
+    (event) => event.type === "analysis.recommendation",
+  ) as Record<string, unknown>;
+  assert(recommendation);
+  assertEquals(recommendation.message, "extend 段落一\nextend 段落二");
+  assertEquals(events.at(-1)?.type, "analysis.done");
+});
+
 Deno.test("reframer filters reply options outside the active tier", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({

@@ -86,11 +86,13 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     const raw = options.prechargedRecommendation.raw;
     if (isThinRecommendationEvent(raw)) {
       // resume 自 v2 瘦卡扣費：重掛 pending，由 replay 的 selected
-      // reply_option 重新綁卡回填；瘦卡本身不可直接外流。
+      // reply_option 重新綁卡回填；瘦卡本身不可直接外流。revalidation
+      // 失敗（ledger 損壞）也不得讓 officialRecommendationEmitted 卡成
+      // true 靜默完成——交給 replay 的瘦卡重新走 fresh 驗證。
+      officialRecommendationEmitted = false;
       const revalidated = validateThinRecommendationEvent(raw);
       if (revalidated.ok) {
         pendingThinRecommendation = revalidated;
-        officialRecommendationEmitted = false;
       }
     } else {
       if (raw?.type === "analysis.decision") {
