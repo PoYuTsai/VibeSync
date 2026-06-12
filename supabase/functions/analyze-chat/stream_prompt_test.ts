@@ -120,6 +120,16 @@ Deno.test("v2: recommendation event is thin (selectedStyle + reason + expectedRe
   assert(prompt.includes("Do not repeat the reply text"));
 });
 
+Deno.test("v2: thin recommendation is explicitly required with its own few-shot", () => {
+  // prod 黑箱 r1：瘦卡內容少到被模型視為可省略 → 整條 stream 沒出
+  // recommendation。標 REQUIRED + 給 few-shot，與 reply_option 同款待遇。
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("analysis.recommendation` is REQUIRED"));
+  assert(prompt.includes('{"type":"analysis.recommendation"'));
+  assert(prompt.includes('"expectedReaction"'));
+});
+
 Deno.test("v2: prompt carries a one-line multi-ball reply_option few-shot", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 

@@ -816,6 +816,90 @@ Deno.test("bind: model finalResult cannot clobber the bound finalRecommendation"
   assertEquals((finalRecommendation.replySegments as unknown[]).length, 2);
 });
 
+Deno.test("bind: late thin recommendation after its reply_option still backfills", async () => {
+  // prod 黑箱 r1 發現：模型可能亂序或晚出瘦卡。option 先過、瘦卡後到，
+  // 也要立刻綁卡回填（rec 事件晚於 option 屬可接受的順序偏移）。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(v2ReplyOption("extend")));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  reframer.pushText(line({ type: "analysis.done" }));
+  await reframer.flush();
+
+  const recommendation = events.find(
+    (event) => event.type === "analysis.recommendation",
+  ) as Record<string, unknown>;
+  assert(recommendation);
+  assertEquals(recommendation.message, "extend 段落一\nextend 段落二");
+  assertEquals(events.at(-1)?.type, "analysis.done");
+});
+
+Deno.test("bind: omitted recommendation synthesized from decision + selected reply_option", async () => {
+  // prod 黑箱 r1 實測：模型整條 stream 沒出 recommendation 事件（瘦卡被
+  // 視為與 decision 重複而省略）。decision 已扣費、selected style 的
+  // option 有完整內容 → 合成推薦卡，不準把整次分析打成錯誤。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(v2ReplyOption("extend")));
+  reframer.pushText(line({ type: "analysis.done" }));
+  await reframer.flush();
+
+  const recommendation = events.find(
+    (event) => event.type === "analysis.recommendation",
+  ) as Record<string, unknown>;
+  assert(recommendation);
+  assertEquals(recommendation.selectedStyle, "extend");
+  assertEquals(recommendation.message, "extend 段落一\nextend 段落二");
+  assertEquals(events.at(-1)?.type, "analysis.done");
+  const finalResult = (events.at(-1) as Record<string, unknown>)
+    .finalResult as Record<string, unknown>;
+  assertEquals(
+    (finalResult.finalRecommendation as Record<string, unknown>).pick,
+    "extend",
+  );
+});
+
+Deno.test("bind: omitted recommendation without matching option still errors", async () => {
+  // 合成的前提是 selected style 的 option 真的有貨；都沒有就維持既有
+  // MISSING_COMPLETION_ANCHOR（不能無中生有推薦卡）。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  await reframer.flush();
+
+  assertEquals(events.at(-1)?.type, "analysis.error");
+  assertEquals(events.at(-1)?.code, "STREAM_MISSING_COMPLETION_ANCHOR");
+});
+
 Deno.test("bind: resume with thin precharged recommendation rebinds from replayed stream", async () => {
   let chargeCalls = 0;
   const events: StreamOutputEvent[] = [];

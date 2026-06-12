@@ -69,6 +69,13 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let pendingThinRecommendation:
     | Extract<RecommendationValidation, { ok: true }>
     | null = null;
+  // 黑箱 r1 韌性網：記住已轉發的 reply_option 與 decision 的 selectedStyle，
+  // 瘦卡晚到（option 已過）或整個沒來時可在終局 late-bind / 合成推薦卡。
+  const seenReplyOptions = new Map<
+    StreamStyle,
+    { compat: StreamEvent; segments: Record<string, unknown>[] }
+  >();
+  let decisionSelectedStyle: StreamStyle | null = null;
   const preChargeEvents: StreamEvent[] = [];
   const requiredReplyStyles = normalizeRequiredReplyStyles(
     options.requiredReplyStyles,
@@ -86,6 +93,9 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         officialRecommendationEmitted = false;
       }
     } else {
+      if (raw?.type === "analysis.decision") {
+        decisionSelectedStyle = options.prechargedRecommendation.selectedStyle;
+      }
       assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
     }
   }
@@ -107,6 +117,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
 
   const emitDone = () => {
     if (doneEmitted || closed) return;
+    tryLateBind();
+    if (closed) return; // late-bind 的 safety 檢查可能擋下並關閉 stream。
     if (pendingThinRecommendation) {
       // 件4 測試重點：buffer 中的瘦卡（已扣費）不得造成「已扣費但無輸出」
       // 的靜默 done——selected reply_option 沒到就走既有 INCOMPLETE 路徑，
@@ -194,6 +206,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
         event.replySegments,
     );
     const compat = withReplyOptionCompatFields(event, segments);
+    const style = replyStyleFrom(compat);
+    if (style) seenReplyOptions.set(style, { compat, segments });
     if (
       pendingThinRecommendation &&
       replyStyleFrom(compat) === pendingThinRecommendation.selectedStyle &&
@@ -240,6 +254,36 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     return true;
   };
 
+  // 黑箱 r1 韌性網：瘦卡晚到（selected option 已轉發）→ 立即補綁；瘦卡
+  // 整條 stream 沒來 → 用 decision 的 selectedStyle + 該風格 option 合成
+  // 推薦卡（扣費語意不變，decision 仍是第一扣費錨點）。
+  const tryLateBind = () => {
+    if (closed || officialRecommendationEmitted || !chargeCompleted) return;
+    if (!pendingThinRecommendation) {
+      if (!decisionSelectedStyle) return;
+      const stored = seenReplyOptions.get(decisionSelectedStyle);
+      if (!stored) return;
+      pendingThinRecommendation = {
+        ok: true,
+        selectedStyle: decisionSelectedStyle,
+        message: "",
+        reason: stringField(stored.compat.reason ?? stored.compat.approach),
+        quotedContext: "",
+        warnings: [],
+        raw: {
+          type: "analysis.recommendation",
+          selectedStyle: decisionSelectedStyle,
+          synthesizedFromDecision: true,
+        },
+      };
+    }
+    const stored = seenReplyOptions.get(
+      pendingThinRecommendation.selectedStyle,
+    );
+    if (!stored) return;
+    bindPendingRecommendation(stored.compat, stored.segments);
+  };
+
   const chargeFromValidation = async (
     validation: Extract<RecommendationValidation, { ok: true }>,
   ): Promise<boolean> => {
@@ -265,6 +309,10 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (resumeDecisionReplayPending) {
       resumeDecisionReplayPending = false;
       return;
+    }
+
+    if (isStreamStyle(event.selectedStyle)) {
+      decisionSelectedStyle = event.selectedStyle;
     }
 
     if (chargeCompleted) {
@@ -320,6 +368,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       pendingThinRecommendation = null;
       return;
     }
+    // 瘦卡晚到：selected option 已轉發過 → 立即補綁。
+    tryLateBind();
   };
 
   const handleRecommendation = async (event: StreamEvent) => {
@@ -412,6 +462,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       if (doneResultField(event)) {
         modelDoneHadFinalResult = true;
       }
+      tryLateBind();
+      if (closed) return;
       if (!hasCompletionAnchor()) {
         emitMissingCompletionAnchor();
         return;
@@ -462,6 +514,8 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       buffer = "";
       await drain();
       if (!closed && sawValidEvent) {
+        if (chargeCompleted) tryLateBind();
+        if (closed) return;
         if (chargeCompleted && hasCompletionAnchor()) {
           emitDone();
         } else if (chargeCompleted) {
