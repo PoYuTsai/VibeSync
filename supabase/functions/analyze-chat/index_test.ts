@@ -705,7 +705,8 @@ Deno.test({
     assert(source.includes("金錢/利用風險"));
     assert(source.includes("借錢、投資、訂房、機票、送禮、一直要求請客"));
     assert(source.includes("減法原則（不要補這些）"));
-    assert(source.includes("不補 PUA 技巧庫"));
+    // 刀3 改詞：黑名單詞（PUA）零出現於 prompt，原句改寫但語意保留
+    assert(source.includes("不補操控話術庫"));
     assert(source.includes("不做人格診斷"));
     assert(source.includes("不把所有問題都導向邀約、聊騷或短期親密"));
     assert(source.includes("risk_time_cost"));
@@ -764,7 +765,8 @@ Deno.test({
     assert(source.includes("備用技巧工具箱（服從狀態機）"));
     assert(source.includes("不是必套模板"));
     assert(source.includes("先判斷這回合卡點"));
-    assert(source.includes("可見輸出不要寫技巧名"));
+    // 刀3 顯現規則取代「可見輸出不要寫技巧名」：分析欄位標名、messages 不夾名
+    assert(source.includes("技巧名的顯現位置見「技巧詞彙表」的顯現規則"));
     assert(source.includes("可見輸出欄位語氣規則"));
     assert(source.includes("不要寫成報表、心理學課、技巧教科書"));
     assert(source.includes("finalRecommendation.reason：一句教練式判斷"));
@@ -1221,9 +1223,10 @@ Deno.test({
     assert(source.includes("### 良性冒犯 (Benign Violation)"));
     assert(source.includes("### 回調 (Callback)"));
     assert(source.includes("### 幽默禁區"));
-    // 砍剝洋蔥後「不寫技巧名」例句不得留 dangling 引用
+    // 砍剝洋蔥後不得留 dangling 引用；「不寫技巧名」舊句已被刀3顯現規則取代
+    // （新分工：分析欄位用到技巧才標名，messages 本身不夾技巧名）
     assertFalse(source.includes("DHV / 冷讀 / 剝洋蔥"));
-    assert(source.includes("我用了 DHV / 冷讀"));
+    assertFalse(source.includes("我用了 DHV / 冷讀"));
   },
 });
 
@@ -1266,5 +1269,143 @@ Deno.test({
     assert(source.includes("不能問「她怎麼評價我」"));
     // 禁句要點名，模型才不會再產同型句
     assert(source.includes("「這樣算加分還是扣分？」「妳給我一個說法」"));
+  },
+});
+
+// ─── 刀3 技巧詞彙表＋顯現規則＋Apple 三層線（2026-06-12 game-system design §6/§2）───
+
+// 範圍切片：只測 analyze-chat 的 SYSTEM_PROMPT 本體。
+// OPENER_PROMPT 的 Game 化是下一案，殘留行話不在本刀範圍。
+async function readAnalyzeSystemPrompt(): Promise<string> {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+  const start = source.indexOf("const SYSTEM_PROMPT");
+  const end = source.indexOf("const OPTIMIZE_MESSAGE_MAX_TOKENS");
+  assert(start >= 0 && end > start, "SYSTEM_PROMPT 邊界定位失敗");
+  return source.slice(start, end);
+}
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT carries the 10-term technique vocabulary verbatim (game-system design §6)",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 10 詞全名以表格列錨定（「推」「失格」單字詞必須靠表格列防誤命中）
+    for (
+      const row of [
+        "| 價值展示 |",
+        "| 模糊邀約 |",
+        "| 合作框架 |",
+        "| 約會幻想 |",
+        "| 吐槽冷讀 |",
+        "| 失格 |",
+        "| 推 |",
+        "| 不自證 |",
+        "| 框架維持 |",
+        "| 懸念鉤 |",
+      ]
+    ) {
+      assert(prompt.includes(row), `詞彙表缺：${row}`);
+    }
+    // 定義句抽查（防表頭在、內容空殼）
+    assert(prompt.includes("把「她的事」變成「兩個人的事」")); // 合作框架
+    assert(prompt.includes("自嘲式暴露無傷小缺點")); // 失格
+    assert(prompt.includes("對冷回不追、降低投入")); // 推
+    assert(prompt.includes("留半句不說完，讓她主動來問")); // 懸念鉤
+    // 反例句抽查（反例是這張表的防油護欄）
+    assert(prompt.includes("無觸發的炫耀是掉價")); // 價值展示反例
+    assert(prompt.includes("失格是可愛，自貶是掉價")); // 失格反例
+    // 附帶拍板：callback 不佔額直接標、「試探」維持判讀詞身份
+    assert(prompt.includes("callback 不在表內"));
+    assert(prompt.includes("「試探」是判讀詞"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT manifestation rule: label techniques in analysis fields only when actually used",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 硬指令：分析欄位用到表內技巧必須標名＋一句為什麼
+    assert(prompt.includes("必須標技巧名＋一句為什麼"));
+    // 標注位置分工：分析欄位標名，messages 永遠是自然句子
+    assert(prompt.includes("messages 本身永遠是自然句子，不夾技巧名"));
+    // 技巧密度原則（Eric 拍板）：時機性不是密度性，平聊零標籤完全合格
+    assert(prompt.includes("技巧是時機性的，不是密度性的"));
+    assert(prompt.includes("整篇零技巧標籤也完全合格"));
+    // 反向禁令（gate 3 雙向目檢的另一半）
+    assert(prompt.includes("不得為了標名而出招"));
+    // B 砍刀時代的舊禁令句已被顯現規則取代，不得殘留
+    assertFalse(prompt.includes("可見輸出不要寫技巧名"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT three-layer jargon line keeps layer 2-3 blacklist words out of the prompt",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 三層線結構存在（標題保留舊錨「可見輸出禁用內部術語」）
+    assert(prompt.includes("技巧名詞三層線"));
+    assert(prompt.includes("可見輸出禁用內部術語"));
+    // 第二層出口：對方的測試行為在輸出一律轉寫「試探」
+    assert(prompt.includes("輸出一律寫「試探」"));
+    // 第 2-3 層黑名單詞零出現於 prompt 本體（App Review 安全＋未來餵 game 資料的過濾標準）
+    for (
+      const banned of [
+        "PUA",
+        "紅藥丸",
+        "紅丸",
+        "DHV",
+        "shit test",
+        "廢物測試",
+        "高價值男性",
+        "高分妹",
+        "撈女",
+        "壞女人",
+        "公主病",
+        "婊子",
+        "怪男",
+        "噁男",
+        "收割",
+        "控住",
+        "攻略",
+        "玩咖",
+      ]
+    ) {
+      assertFalse(prompt.includes(banned), `黑名單詞殘留：${banned}`);
+    }
+    // IOI/IOD（英文縮寫單獨檢，audit cut B 已砍判讀節，不得回流）
+    assertFalse(/IO[ID]/.test(prompt));
+    // 例外：legacy schema key psychology.shitTest 是 client 契約，保留（無空格，不命中「shit test」）
+    assert(prompt.includes("shitTest"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT example 1 analysis carries technique-name annotations (顯現規則示範)",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 範例前言點明：標注是顯現規則的示範，平聊槽不標
+    assert(prompt.includes("平聊接住的槽（如範例 1 的 resonate）就不標"));
+    // 範例 1 finalRecommendation.reason 標名懸念鉤＋為什麼
+    assert(prompt.includes("懸念鉤：那通未接來電是她沒解釋的行為"));
+    // 範例 1 extend 槽標名模糊邀約（晚餐照片→下次去處，不綁時間）
+    assert(prompt.includes("模糊邀約：把晚餐照片變成下次的去處"));
+    // 範例 1 humor 槽同球不同打法，也標懸念鉤
+    assert(prompt.includes("懸念鉤變體：未接來電不追問、先記帳"));
+    // 範例 2（Eric §5 定稿）原有標注不動：合作框架／吐槽冷讀 callback
+    assert(prompt.includes("『組隊』不是邀約，是合作框架"));
+    assert(prompt.includes("吐槽冷讀 callback"));
   },
 });
