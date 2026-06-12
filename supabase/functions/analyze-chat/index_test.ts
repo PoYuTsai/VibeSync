@@ -1163,3 +1163,59 @@ Deno.test({
     assert(source.includes("replies：舊版 App fallback"));
   },
 });
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT audit cut A: duplicated rules collapse to one canonical copy",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // Audit 拍板（Eric 2026-06-12）A 組全砍：重複規則去重，每條留一份 canonical。
+    // A1 fallback 規則 ×2 → 留 1.2 輸出分工那份，砍 1.8 品質契約的重複句
+    assert(source.includes("replies：舊版 App fallback"));
+    assertFalse(source.includes("replies 只作為舊版 App fallback"));
+    // A2 ①②禁令 ×4 → 留 1.8x 自然引用原則的 ✅/❌ 教學塊，砍三處 inline 重複
+    assert(source.includes("❌「① 回 F1 ② 回夜市」"));
+    assertFalse(source.includes("不能出現 ①②、箭頭、或「回某句」這種報告格式"));
+    assertFalse(source.includes("但不能用 ①② 或箭頭格式"));
+    assertFalse(source.includes("不能用 ①②、箭頭或「回某句」報告格式"));
+    // buildScreenshotPrompt 的 reminder 是獨立請求元件，不算 SYSTEM_PROMPT 內重複，保留
+    assert(source.includes("可用換行表示 2-5 則真人訊息，但不要放 ①②"));
+    // A3 1.5 範例與 schema 換血後同場景同句 → 砍 1.5 範例塊，schema 範例是唯一示範
+    assertFalse(source.includes("範例（三顆球都值得接 → 三段，不准串成一句）"));
+    assertFalse(source.includes("先報告晚餐吃了什麼"));
+    assert(source.includes('"label": "接她的 F1 興奮"'));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT audit cut B: zero-manifestation technique prose removed, C group kept",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // Audit 拍板（Eric 2026-06-12）B 組全砍：10 份 baseline catchphrase grep 全零命中的技巧散文。
+    assertFalse(source.includes("### 橫向思維 (Lateral Thinking)"));
+    assertFalse(source.includes("### 剝洋蔥效應 (Peeling the Onion)"));
+    assertFalse(source.includes("### 書籤技術 (Bookmarking)"));
+    assertFalse(source.includes("### IOI/IOD 判讀"));
+    assertFalse(source.includes("### 假設性提問"));
+    assertFalse(source.includes("### 三段式法則 (Rule of Three)"));
+    // IOI/IOD 的判讀職責由 ###10 熱度分析規則承接（長度/emoji/提問/延伸/態度）
+    assert(source.includes("### 10. 熱度分析規則"));
+    // C 組這輪不動：守護空間（情境8 引用）、良性冒犯（tease 理論基礎）、Callback、幽默禁區
+    assert(source.includes("### 守護空間 (Holding Space)"));
+    assert(source.includes("### 良性冒犯 (Benign Violation)"));
+    assert(source.includes("### 回調 (Callback)"));
+    assert(source.includes("### 幽默禁區"));
+    // 砍剝洋蔥後「不寫技巧名」例句不得留 dangling 引用
+    assertFalse(source.includes("DHV / 冷讀 / 剝洋蔥"));
+    assert(source.includes("我用了 DHV / 冷讀"));
+  },
+});
