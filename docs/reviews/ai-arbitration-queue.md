@@ -23,6 +23,40 @@
 
 ## Live Queue
 
+## [2026-06-12] P0 stream 分析必炸 hotfix（reply_option 段落陣列被丟棄）— Codex 雙審
+Status: OPEN
+Request-Type: review
+Raised-By: Claude
+Owner: Codex (雙審) → Eric 確認後關閉
+Scope: analyze-chat reframer（高風險區：analyze-chat / AI 行為 / 扣費已發生後的 stream 完成判定）
+Branch/Commit: `main` @ `167e26a`（已 push，auto-deploy 生效）
+
+背景與證據：
+
+- Bruce 2026-06-12 早回報「分析又失敗」（build 256、Essential 季繳、額度正常 774/800）。截圖：分析內容有渲染但結尾「這次分析沒順利完成，請重新分析一次」→ 重試亦炸 →「無法再重試」。
+- Edge request log：Bruce 的請求全程 HTTP 200（streaming 錯誤藏在 stream 內），dashboard 無異常。同時段 17× 400 burst 經查為 Eric 本機 OCR golden set 跑分工具（order 0-based 修復前），與本案無關。
+- 黑箱重現（prod + 測試帳號，多球對話「茄汁牛肉飯」+「到家🤙🤙🤙」）：stream 射出 5 個 reply_option（五風格齊全）後，結尾收到 `analysis.error` `STREAM_INCOMPLETE_REPLY_OPTIONS` missingStyles=[extend,tease,humor,coldRead]。
+- Root cause：#12 一球一回強制式 prompt 下，≥2 顆球的對話 reply_option 事件只帶 `messages` 段落陣列、無頂層 `message` 字串（stream_prompt 規格要求 `message`，模型未遵守）；`reframer.ts` assembler absorb 只認 `message` 字串 → 五風格全被靜默丟棄 → emitDone 誤判缺風格。守門函式 `findMissingRequiredReplyStyles` 本就支援 segments，兩層寬容度不一致。
+- 影響：多球對話 100% 必炸且重試必炸（deterministic）；recommendation 已扣費後才炸（quota 照扣、無 refund 路徑觸發）。單球對話不受影響。觸發窗口：#12 prompt 上線起，Sonnet 4.6（157f2af）後模型更遵守強制分段 → 發生率上升。
+
+變更內容（167e26a，reframer.ts +49/reframer_test.ts +59）：
+
+- absorb reply_option：`message` 缺失時回退 `messages ?? messageGroup ?? replySegments` 段落 join（與 findMissingRequiredReplyStyles 同一套 `reply ?? content ?? text` 寬容規則），並保留原始段落陣列進 `replyOptions[style].messages`（原本為合成單段）。
+- 新增紅燈測試：鏡射 prod 事件序列（recommendation 帶 message + 5 reply_option 只帶 messages 陣列）→ 修前 STREAM_INCOMPLETE_REPLY_OPTIONS、修後 analysis.done。
+
+Tests: analyze-chat Deno 全測 341 passed / 0 failed。Prod 黑箱重現 curl 修後復測證據見 queue 更新。
+
+審查重點（給 Codex）：
+
+1. segments join 用 `\n` 接 `replies[style]` 字串——client `AnalysisResult.fromJson` 對多行 reply 與多段 `replyOptions[style].messages` 的相容性。
+2. 保留原始段落陣列（含 sourceIndex/sourceMessage）外溢進 finalResult 是否與 #12/#13 client 接口一致。
+3. prompt 規格 vs 模型實際輸出的長期解法：是否該同步收緊 stream_prompt 或放寬規格文字（本修走 server 寬容、prompt 未動）。
+4. 扣費後才炸的舊案例：是否需要補償機制（本修未處理，僅止血）。
+
+Close Condition: Codex 雙審 APPROVED + prod 復測通過 + Eric 確認。APPROVED 前不得宣稱 dogfood safe。
+
+---
+
 ## [2026-06-12] AI 模型全面升級 Sonnet 4 → 4.6 — Codex 雙審
 Status: CLOSED（Codex r1 APPROVED 0 findings + Eric 確認 2026-06-12。Bruce 實測由 Eric 人工協調，另開 session 回報）
 Request-Type: review
