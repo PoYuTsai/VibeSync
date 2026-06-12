@@ -204,7 +204,7 @@ Deno.test({
     assert(source.includes("不算獨立球，併進相鄰的球"));
     assertFalse(source.includes("通常只選 1-2 顆球，最多 3 顆"));
     assertFalse(source.includes("最多 3 顆"));
-    assert(source.includes("不要把 4-5 則內容硬擠成一句"));
+    assert(source.includes("不要把多則內容硬擠成一句"));
     assert(source.includes("replyOptions：五種風格的主要輸出"));
     assert(source.includes("messages 每段都盡量有 sourceMessage"));
     assert(source.includes("finalRecommendation.reason 要簡短說明"));
@@ -214,6 +214,33 @@ Deno.test({
     assert(source.includes("可用換行表示 2-5 則真人訊息，但不要放 ①②"));
     assertFalse(source.includes("finalRecommendation.content 必須分句標註"));
     assertFalse(source.includes("① 回「她的原文關鍵詞」"));
+  },
+});
+
+Deno.test({
+  name: "SYSTEM_PROMPT teaches OCR media marker semantics (方案二件2)",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // A/B 實證：裸 marker 會讓模型判「別提」，要用人話教語意。
+    assert(source.includes("截圖媒體標記語意"));
+    assert(source.includes("[Missed video call]"));
+    assert(source.includes("她主動打過來"));
+    assert(source.includes("高價值升溫訊號"));
+    assert(source.includes("[Photo]"));
+    assert(source.includes("分享慾"));
+    assert(source.includes("不要假裝看得到照片內容"));
+    assert(source.includes("[Sticker]"));
+    assert(source.includes("[Voice message]"));
+    assert(source.includes("收回了訊息"));
+    // 加餵料：對象歷史 context 進球價值判斷。
+    assert(source.includes("對象歷史").valueOf());
+    assert(source.includes("高價值延續球"));
+    // 砍稅：cap 殘骸不得留（與 D1 cap 5 對齊）。
+    assertFalse(source.includes("2-3 則"));
   },
 });
 
