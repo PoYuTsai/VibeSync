@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] P0 stream 分析必炸 hotfix（reply_option 段落陣列被丟棄）— Codex 雙審
-Status: OPEN
+Status: WAITING_ON_ERIC（Codex r1 APPROVED 0 findings，2026-06-12。Codex 自跑 reframer+stream_handler+post_process 59 tests 全綠；確認 \n join 與多段 messages 與 client 解析相容（analysis_models.dart:219,259）、#12 source contract repair 路徑不被旁路（post_process.ts:715）、charge/anchor 無回歸。Non-blocking：stream_handler 整合測試可後補。prod 黑箱復測已過（同 payload 修前 analysis.error → 修後 analysis.done）。待 Eric 確認 + Bruce 實機回測後關閉）
 Request-Type: review
 Raised-By: Claude
 Owner: Codex (雙審) → Eric 確認後關閉
