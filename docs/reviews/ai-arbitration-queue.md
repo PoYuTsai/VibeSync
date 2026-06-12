@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] 主 prompt 全面 few-shot 化 = voice few-shot 化（高手感/幽默感缺口）
-Status: OPEN — **盲測素材＋全部舊 prompt baseline 完成 ✅（2026-06-12 晚），下一步 TDD 改 prompt（含 audit 刪減）**。本輪兩個新拍板（Eric）：
+Status: OPEN — **TDD 改 prompt 第一刀已 land＋部署 ✅（c64bbed：範例1+2 進場、schema 占位句換血、callback 挖掘指令；Deno 370 綠；淨增 +11.3% 略超目標，audit 砍完回 +4~5%）**。盲測三題 ChatGPT 可貼檔在 `tools/voice-benchmark/chatgpt_paste/`（ef57a93）。**Audit 拍板（Eric 2026-06-12）：A 組全砍（重複規則 ×3 處）＋ B 組全砍（零顯現技巧散文：橫向思維/剝洋蔥/書籤/假設性提問/三段式/IOI-IOD，含 B4）＋ C 組這輪不動**（守護空間/良性冒犯/Callback 保留）。發現：analyze-chat 三呼叫點全無 prompt caching（system 純字串）→ 另開小案，盲測後做。下一步（新 session）：砍 A+B（TDD）→ 黑箱契約復測＋anchor 非盲檢查＋Wen 冷局 smoke → 盲測 → Codex 雙審；承瑋 18 處戰術標籤用法提案仍 open。原兩個拍板（Eric）：
 1. **盲測全換 held-out**：few-shot 範例輸入（golden/小雲）進盲測=開卷背誦會失真 → 盲測三題改 case 1'=承瑋 R 局（升溫）、case 2'=肉伊（陌生早期）、case 3=Ashley 試探球；golden＋小雲降級非盲 anchor 檢查；承瑋 Wen 冷啟動段當冷局 smoke test（倖存者偏誤防呆）。
 2. **prompt 刪減=審計後砍實證冗餘**：Claude 先列刪減候選+證據給 Eric 過目再砍；12 場景判斷區不動。
 新素材（Eric 補充）：**承瑋案例 22 張 3 對象**（`OCR測試圖片/承瑋(幾年前案例)有3個人)`）——真人高手、自帶 18 處戰術標籤+紅筆步驟編號，**輸出可參考**（與小雲/Bruce「只取輸入」不同）；含失敗分支筆記（「模糊邀約沒反應→轉話題」）。轉寫完成+抽查目檢：`tools/voice-benchmark/{case3-bruce,chengwei}-transcript-draft.md`（⚠️ S__42246217 有真實手機號，素材化前必匿名）。Baseline：3 盲測題+小雲 anchor 各 2 輪、全五槽零 error，`tools/voice-benchmark/baselines/`；runner=`run_baseline.sh`。下一步：TDD 改 prompt（範例 1+2 進 prompt+占位句換血+audit 刪減+承瑋筆記用法提案）→ 黑箱契約復測+anchor/冷局 smoke → 盲測（ChatGPT 欄需 Eric 餵 free ChatGPT）→ Codex 雙審。
