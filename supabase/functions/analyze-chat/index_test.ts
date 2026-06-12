@@ -777,7 +777,10 @@ Deno.test({
     assert(source.includes("healthCheck：只有當目前對話真的有明顯雷點才輸出"));
     assert(source.includes("最多 1 個 issue + 1 個 suggestion"));
     assert(source.includes("不要每次都像老師批改作業"));
-    assert(source.includes("互動判斷：對方為什麼比較容易接"));
+    // 2026-06-12 voice few-shot 化：schema 占位句換血後，錨點移到語氣規則區的 durable 句
+    assert(
+      source.includes("說明對方為什麼比較容易接、不會有壓力或會感覺被看見"),
+    );
   },
 });
 
@@ -1074,5 +1077,89 @@ Deno.test({
     assert(source.includes('error: "credit_deduct_failed"'));
     assert(source.includes("本次不會扣額度"));
     assertFalse(source.includes('console.error("Failed to increment usage:"'));
+  },
+});
+
+// ─── voice few-shot 化（2026-06-12 design：docs/plans/2026-06-12-voice-fewshot-design.md）───
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT carries voice few-shot example 1 (warm/established stage with callback and hook)",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // 關係階段標籤（核心原則：高手感隨關係階段縮放）
+    assert(source.includes("已升溫／熟絡局"));
+    // finalRecommendation = 高手版（懸念鉤，Eric 拍板 pick=coldRead）
+    assert(source.includes("不過妳剛剛那通電話，害我有點好奇到底想跟我說什麼"));
+    // tease 槽 = 糖糖老師 callback 示範（用戶自造梗）
+    assert(source.includes("今天還特地打給我，是不是糖糖老師待遇升級了？"));
+    // rationale 是洞察句，不是標籤句
+    assert(source.includes("比連發好幾句更有吸引力"));
+    // 防過擬合：pick 依對話而定，不是永遠 coldRead
+    assert(source.includes("pick 依對話而定"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT carries voice few-shot example 2 (cold-start early stage, light and low pressure)",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // 關係階段標籤（主用戶場景：交友軟體陌生局）
+    assert(source.includes("陌生早期局"));
+    // finalRecommendation：先答題再給精準觀察
+    assert(source.includes("等等，妳是泰國人？中文也打得太順了吧，我完全沒發現"));
+    // extend 槽：互教語言 frame（低壓推進）
+    assert(source.includes("妳教我泰文，我教妳課本不會教的中文"));
+    // 陌生局教練判斷：精準觀察 > 新話題
+    assert(source.includes("陌生局有問必答"));
+    // 匿名化（範例2 D-3 拍板）：可識別細節不得進 prompt
+    assertFalse(source.includes("2361"));
+    assertFalse(source.includes("Fang"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT mines callbacks from history instead of forcing them",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // callback 挖掘指令：從對象歷史/對話挖用戶自造梗、暱稱、重複元素
+    assert(source.includes("用戶自造梗"));
+    assert(source.includes("有梗才 callback，沒梗不硬造"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT JSON schema examples carry golden voice values instead of placeholder prose",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // 占位句移除：模型會模仿 JSON 範例值，不能讓它學「描述腔」
+    assertFalse(
+      source.includes("舊版 App fallback：extend.messages 的 reply 合併文字"),
+    );
+    assertFalse(
+      source.includes("舊版 App fallback：coldRead.messages 的 reply 合併文字"),
+    );
+    assertFalse(source.includes("推薦的完整訊息組文字；可用換行表示 2-5 則真人訊息"));
+    // replies fallback 的合併語意仍須保留（在 1.2 輸出分工，不是在 schema 占位句）
+    assert(source.includes("replies：舊版 App fallback"));
   },
 });
