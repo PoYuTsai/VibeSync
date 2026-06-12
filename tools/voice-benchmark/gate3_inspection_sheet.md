@@ -61,7 +61,7 @@
 
 1. 契約測試：✅ Deno 636 綠 / 0 failed
 2. anchor 復測：✅ 兩條 PASS（五槽零 error、黑名單/失格零、messages 零夾名、糖糖 callback 重現、冷局不 pushy 不裝熟）
-3. 體系感雙向目檢：Eric ✅ PASS（2026-06-12）／Bruce ⏳
+3. 體系感雙向目檢：Eric ✅＋Bruce ✅ PASS（2026-06-12）
 4. Codex 雙審：review ✅ 0 findings；adversarial ⚠️ needs-attention 1 high＝披露點 3（已拍板範圍切割，非新缺陷）
 
-**現狀＝未 dogfood safe**：等關 3 目檢＋Eric 對三披露點裁決。
+**四關全過（2026-06-12）＝dogfood safe ✅**。Eric 拍板：主要看 dogfood 實測再判斷，案子等體感回報才 CLOSE。
