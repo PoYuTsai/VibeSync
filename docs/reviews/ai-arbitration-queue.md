@@ -24,10 +24,25 @@
 ## Live Queue
 
 ## [2026-06-12] 方案二：分析輸出 Golden 形狀重構（策略意圖選項 + 真一球一回）
-Status: OPEN
+Status: OPEN — Phase 1 五件套已 land + prod 黑箱復測 PASS，送 Codex 雙審中
 Request-Type: implementation（Phase 1）+ design（Phase 2 brainstorming）
 Raised-By: Eric（拍板 2026-06-12，背景：golden 影片 = ChatGPT 同截圖輸出，品質勝過產品現狀，定位 P0）
-Owner: Claude（新 session 開工）→ 動 prompt/Edge schema 屬高風險區，完成後必送 Codex 雙審
+Owner: Codex（雙審 d868b6d..a9cfb80）→ APPROVED 後 Eric 確認 + Bruce 實測有感才 CLOSE
+
+實作進度（2026-06-12，TDD 全程紅燈先行，Deno 全測 364 passed / 0 failed）：
+
+- `9cb3484` 件5 contract 堵漏：matchBallIndices 唯一性，併球指紋（≥2 匹配）不放行；exact 優先防 OCR 重疊球誤判。
+- `467362e` 件3+件4 原子 land：stream 協議 v2（segments[] 一等公民、瘦 recommendation、few-shot、D4 server join）+ reframer 扣卡回填（buffer→回填→舊順序轉發、safety 後移驗 join 全文、emitDone 守門已扣費無輸出、廢除雙軌、瘦 precharged 不直接回放）。
+- `c3f3ac6` 件1 球判準：預設全接 cap 3→5，prompt 全處 cap 字樣同步 + sanitizeReplySegments slice 5。
+- `91511aa` 件2 marker 語意小節 + 對象歷史餵料 + cap 殘骸清掃。
+- `a9cfb80` 黑箱 r1 修：模型省略瘦卡（視為與 decision 重複）→ prompt 標 REQUIRED+瘦卡 few-shot + reframer late-bind/合成韌性網。
+
+Prod 黑箱復測（測試帳號 curl stream，多球+marker golden case）：
+- r1（修韌性網前）：五 reply_option 帶 segments ✓ 但模型沒出 recommendation → MISSING_COMPLETION_ANCHOR（已修）。
+- r2：全鏈通過 decision→recommendation（回填 message+replySegments+expectedReaction）→5 reply_option（每風格 segments 2 段、source 全過 contract）→done；finalRecommendation 與推薦卡一致（雙軌已廢）。
+- **Marker 實證翻轉**：`[Missed video call]` 五張卡全部優先接（修前 A/B 判「別提」）。
+
+審查重點（給 Codex）：扣費路徑時序（pendingThin 先掛再扣費 / emitDone 守門 / 合成卡不改扣費錨點）、D3 契約凍結（build 256 事件順序與形狀）、late-bind 順序偏移（rec 晚於 option）對 client 的影響、prompt 砍稅是否誤刪判斷資產。
 Scope: analyze-chat stream_prompt / reframer / post_process contract / client UI（高風險區：AI 行為 + Edge schema）
 Design: `docs/plans/2026-06-12-golden-reshape-phase1-design.md`（2026-06-12 設計定稿，Eric 逐項確認：cap 5 / bind 瘦推薦卡+reframer 扣卡回填 / server→client 契約凍結 / 主 prompt 砍稅+加料全掃）。Phase 1 純 server 出貨。
 
