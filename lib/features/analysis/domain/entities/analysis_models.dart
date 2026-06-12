@@ -239,7 +239,9 @@ List<ReplySegment> _parseReplySegments(dynamic rawSegments) {
         );
       })
       .where((segment) => segment.isUsable)
-      .take(3)
+      // 球判準 cap 與 prompt/server（sanitizeReplySegments）同步上限 5，
+      // 否則模型照規矩出的 4-5 段會被 client 靜默剪掉。
+      .take(5)
       .toList();
 }
 

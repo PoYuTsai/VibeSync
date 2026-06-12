@@ -150,6 +150,27 @@ void main() {
       );
     });
 
+    test('keeps up to 5 reply segments (D1 球判準 cap 3→5，client 同步)', () {
+      final recommendation = FinalRecommendation.fromJson({
+        'pick': 'extend',
+        'content': '五段測試',
+        'reason': '對方連發五顆球',
+        'psychology': '每顆有內容的球都接',
+        'replySegments': [
+          for (var i = 1; i <= 5; i++)
+            {
+              'sourceIndex': i,
+              'sourceMessage': '她的第 $i 句',
+              'reply': '接第 $i 球',
+              'reason': '值得單獨接',
+            },
+        ],
+      });
+
+      expect(recommendation.replySegments, hasLength(5));
+      expect(recommendation.replySegments.last.reply, '接第 5 球');
+    });
+
     test('localizes stable reply segment labels from model schema', () {
       final recommendation = FinalRecommendation.fromJson({
         'pick': 'extend',
