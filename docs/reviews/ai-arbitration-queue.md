@@ -551,3 +551,15 @@ Close Condition:
 ## Recently Closed / Reference
 
 Closed items before 2026-05-14 were intentionally pruned from this live queue. Use git history and `docs/reviews/` files for older review records.
+
+## OPEN — 2026-06-13 stream 形狀守門補強（Codex adversarial 2 high + 2 medium）
+
+**脈絡**：dogfood P0（free/Haiku 分析收尾必炸）root cause 已修＋prod 黑箱驗證 PASS（06954f8，repro 在 tools/voice-benchmark cases/repro_haiku_small.json）。Codex 雙審對該修復 0 否定，但 adversarial 找到同類漏網路徑，需補強＋紅燈先行：
+
+1. **high** reframer.ts absorbReportSection：`result[section] = payload` 未過 coerceRecordOnlyValue——section=gameStage/psychology 等且 payload 為字串可繞過守門。
+2. **high** `warnings` 不在守門清單：done finalResult `warnings: "字串"` 會 clobber 陣列，client `as List?` throw。需「array-only key」守門。
+3. **medium** enthusiasm float（72.5）→ client `as int?` 仍炸；coerce 時 Math.round。
+4. **medium** 巢狀形狀未驗：`psychology.shitTest` 為字串時 client 硬 cast Map 仍 throw。
+5. **gate 缺口**（root cause 的測試面）：anchor/黑箱套件加 forceModel=haiku 案例＋「client 形狀」驗證器，免費層模型列入必測。
+
+**判定**：1+2 先做（同一手法：擴大 coerce 守門），3 順手，4 評估範圍（巢狀驗證器 vs client 寬容），5 開工前排。
