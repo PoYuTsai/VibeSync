@@ -615,6 +615,35 @@ Deno.test("r1-P2b: hallucinated sourceMessage canonicalized from indexed ball", 
 // 有合法 sourceIndex 則回填該球正典原文，否則丟段。
 // ---------------------------------------------------------------------------
 
+Deno.test("件1: sanitizeReplySegments keeps up to 5 segments (cap 3→5)", () => {
+  const result = postProcessAnalysisResult({
+    result: {
+      replies: { extend: "五段合併版" },
+      finalRecommendation: {
+        pick: "extend",
+        content: "五段合併版",
+        reason: "r",
+        psychology: "p",
+        replySegments: [1, 2, 3, 4, 5].map((n) => ({
+          sourceIndex: n,
+          sourceMessage: `球${n}`,
+          reply: `回球${n}`,
+          reason: "",
+        })),
+      },
+    },
+    recognizeOnly: false,
+    isMyMessageMode: false,
+    allowedFeatures: ["extend"],
+    requestMessages: [1, 2, 3, 4, 5].map((n) => ({
+      isFromMe: false,
+      content: `球${n}`,
+    })),
+  });
+  const rec = result.finalRecommendation as Record<string, unknown>;
+  assertEquals((rec.replySegments as unknown[]).length, 5);
+});
+
 Deno.test("件5: merged-ball sourceMessage with invalid index is dropped, not repaired", () => {
   const repaired = enforceReplySegmentSourceContract(
     [{

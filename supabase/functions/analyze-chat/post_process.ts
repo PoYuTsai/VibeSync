@@ -133,7 +133,8 @@ export function sanitizeReplySegments(value: unknown) {
   }
 
   const segments = [];
-  for (const item of value.slice(0, 3)) {
+  // 方案二件1 D1：球判準 cap 3→5，server 端同步放寬。
+  for (const item of value.slice(0, 5)) {
     if (!item || typeof item !== "object") {
       continue;
     }

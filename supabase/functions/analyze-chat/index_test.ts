@@ -198,7 +198,12 @@ Deno.test({
     assert(source.includes("多句連續分享的選球規則"));
     assert(source.includes("不要逐句查戶口"));
     assert(source.includes("先做「選球」"));
-    assert(source.includes("通常只選 1-2 顆球，最多 3 顆"));
+    // 方案二 D1：預設全接、cap 3→5、貼圖/單 emoji/純時間戳併鄰球。
+    assert(source.includes("預設每顆有內容的球都接"));
+    assert(source.includes("上限 5 顆"));
+    assert(source.includes("不算獨立球，併進相鄰的球"));
+    assertFalse(source.includes("通常只選 1-2 顆球，最多 3 顆"));
+    assertFalse(source.includes("最多 3 顆"));
     assert(source.includes("不要把 4-5 則內容硬擠成一句"));
     assert(source.includes("replyOptions：五種風格的主要輸出"));
     assert(source.includes("messages 每段都盡量有 sourceMessage"));
@@ -206,7 +211,7 @@ Deno.test({
     assert(source.includes("接住她對 F1 的興奮，再順到夜市行程"));
     assert(source.includes("白天看人差點打起來"));
     assert(source.includes("樂華夜市最後會帶什麼罪惡美食回家"));
-    assert(source.includes("可用換行表示 2-3 則真人訊息，但不要放 ①②"));
+    assert(source.includes("可用換行表示 2-5 則真人訊息，但不要放 ①②"));
     assertFalse(source.includes("finalRecommendation.content 必須分句標註"));
     assertFalse(source.includes("① 回「她的原文關鍵詞」"));
   },
@@ -247,7 +252,8 @@ Deno.test({
       new URL("./index.ts", import.meta.url),
     );
 
-    // #12 一球一回：條件式改強制式（≥2 球必分段、source 必填、cap 3）。
+    // #12 一球一回：條件式改強制式（≥2 球必分段、source 必填）。
+    // 方案二 D1：cap 3→5。
     assert(source.includes("一球一回：分段引用與 emoji 畫龍點睛"));
     assert(source.includes("必須分開回"));
     assert(source.includes("每顆值得接的球各出一段"));
@@ -255,7 +261,9 @@ Deno.test({
     assert(source.includes("replyOptions.*.messages 也要套用同樣規則"));
     assert(source.includes("必填 sourceIndex"));
     assert(source.includes("缺 sourceMessage 或 sourceIndex 的段會被系統丟棄"));
-    assert(source.includes("replySegments 最多 3 段"));
+    assert(source.includes("replySegments 最多 5 段"));
+    assertFalse(source.includes("replySegments 最多 3 段"));
+    assertFalse(source.includes("最多 3 段"));
     assert(source.includes("各段獨立成立"));
     assert(source.includes("讓 App 顯示引用原句與分段複製"));
     assert(source.includes("可直接複製送出的那句"));
