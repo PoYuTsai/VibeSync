@@ -54,18 +54,16 @@
 
 ## C. few-shot 輸出草稿（segments 格式，逐句定稿區）
 
-### finalRecommendation（pick 待 Eric 拍板，見 D-1）
+### finalRecommendation（✅ Eric 拍板 2026-06-12：高手版）
 
-暫定 pick = tease（= ChatGPT 最推薦版，callback 示範最強）：
+pick = coldRead（= ChatGPT 高手版，懸念鉤）：
 
-- seg1 接 #5 到家：「平安到家就好☺️」【拆】
-- seg2 接 #4 未接來電：「今天還特地打給我，是不是糖糖老師待遇升級了？」【拆】
-- reason（洞察句）：「把『她主動打來』變成她要解釋的事——既像關心又是輕推拉，她很容易回『才沒有～』『你沒接啊』，球自然回到她手上」【補，揉合 G 的易回清單】
+- seg1 接 #5 到家：「到家就好🫶」【拆】
+- seg2 接 #4 未接來電：「不過妳剛剛那通電話，害我有點好奇到底想跟我說什麼。」【拆】
+- reason（洞察句）：「這句會讓她開始投入，甚至解釋為什麼打電話——比『到家就好，早點休息』更容易把聊天拉長」【G】
 - psychology：「她都已經打電話了，互動在升溫。這時一句有情緒、有懸念的回覆，比連發好幾句更有吸引力」【G】
 
 ### 五槽
-
-**tease**（= G 最推薦）：同上 finalRecommendation。
 
 **humor**（= G 幽默版）：
 - seg1 接 #5：「收到，到家就放心了👌」【拆】
@@ -77,10 +75,15 @@
 - seg2 接 #3：「下次不要只傳晚餐照片了，直接帶我去吃那家茄汁牛肉飯。」【拆】
 - reason：「既像開玩笑，又是在埋下一個邀約」【G 原句】
 
-**coldRead**（= G 高手版；懸念鉤，見 D-1 映射爭議）：
+**coldRead**（= G 高手版；同 finalRecommendation）：
 - seg1 接 #5：「到家就好🫶」【拆】
 - seg2 接 #4：「不過妳剛剛那通電話，害我有點好奇到底想跟我說什麼。」【拆】
 - reason：「這句會讓她開始投入，甚至解釋為什麼打電話——比『早點休息』更容易把聊天拉長」【G】
+
+**tease**（= G 最推薦版，糖糖老師 callback 示範）：
+- seg1 接 #5：「平安到家就好☺️」【拆】
+- seg2 接 #4：「今天還特地打給我，是不是糖糖老師待遇升級了？」【拆】
+- reason：「把『她主動打來』變成她要解釋的事——既像關心又是輕推拉，她很容易回『才沒有～』『你沒接啊』」【補，揉合 G 易回清單】
 
 **resonate**（G 沒給，補寫草稿）：
 - seg1 接 #5：「到家啦🫶 今天從比賽一路衝到晚上，這電量我真的佩服」【補】
@@ -89,7 +92,7 @@
 
 ## D. 待 Eric 拍板
 
-1. **slot 映射**：G 高手版（懸念鉤）放 coldRead 槽還是直接當 finalRecommendation？ChatGPT 自己最喜歡高手版；草稿暫定 pick=tease（callback 示範最強、最能教 few-shot）。
+1. ✅ **slot 映射**（Eric 拍板 2026-06-12，golden1.mp4 指認）：高手版 = finalRecommendation（pick=coldRead）；最推薦版（糖糖老師 callback）放 tease 槽。
 2. **resonate 槽**三句【補】是 Claude 寫的，最需要 Eric 的筆。
 3. **emoji 密度**：G 每句 1 個（☺️👌🫶）；現行 prompt 規則是 0-1 個，相容，但要不要照搬 G 的選字？
 4. **「江果先」**：影片轉寫不確定是不是這三個字（可能是用戶本名梗），待 Bruce 確認；few-shot 裡是否保留真實暱稱或改通用化？
@@ -97,6 +100,6 @@
 
 ## E. 下一步（定稿後）
 
-1. 範例 2（交友軟體陌生早期局＋對方偏冷）從真實 dogfood 選材，另出草稿。
+1. 範例 2（交友軟體陌生早期局＋對方偏冷）：**素材已定（Eric 2026-06-12）= Eric 兩年前與現任太太的早期對話**，截圖在 `C:\Users\eric1\OneDrive\Desktop\VibeSync測試照片\OCR測試圖片`（12 張中扣除 2 張已標註糖糖圖的其餘 10 張）。真實陌生早期＋最後成功約出 = 正是主用戶場景；下個 session 轉寫選材出草稿（注意語言：若為英文/泰文，輸入照真實、輸出示範仍是繁中教練聲音）。
 2. 建 3-case benchmark、跑舊 prompt baseline 留檔（golden case 的舊 prompt baseline 已在 `/tmp/golden_v2_run2.ndjson`，全五槽留存）。
 3. TDD 改 prompt → 黑箱契約復測 → 盲測 → Codex 雙審。
