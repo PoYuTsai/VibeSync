@@ -33,6 +33,25 @@ deno run --allow-net --allow-read --allow-write --allow-env run_benchmark.ts \
   --endpoint http://localhost:54321/functions/v1/analyze-chat
 ```
 
+### 無 Docker 機器（2026-06-13 消融跑分實證路徑）
+
+`supabase functions serve` 需要 Docker。沒有時改用 deno 直跑＋auth 改寫 proxy（function code byte-for-byte 不動）：
+
+```bash
+# 1. 測試帳號 JWT（password grant，見上）寫入 /tmp/ocr-bench-token.env：OCR_GOLDEN_TOKEN=<jwt>
+# 2. proxy：/rest/v1/* 的 Authorization 改寫成 user JWT（RLS 走 authenticated 自讀）
+SUPABASE_URL=<prod url> deno run --allow-net --allow-read --allow-env bench_auth_proxy.ts &
+# 3. function 指向 proxy；service key 缺席用 anon key 頂（只夠 auth.getUser，DB 寫入靠 RLS 自讀）
+CLAUDE_API_KEY=<key> SUPABASE_URL=http://localhost:9999 SUPABASE_SERVICE_ROLE_KEY=<anon key> \
+  deno run --allow-net --allow-env --allow-read supabase/functions/analyze-chat/index.ts &
+# 4. 跑分（OneDrive 圖檔若被整理進子目錄，先攤平到 /tmp 再用 OCR_GOLDEN_IMAGES_DIR 指過去）
+deno run --allow-net --allow-read --allow-write --allow-env run_benchmark.ts \
+  --endpoint http://localhost:8000
+
+# 多輪結果逐單元對照
+./compare_runs.sh results/<runA>.json results/<runB>.json
+```
+
 ## 其他參數
 
 - `--only <unit-id>`：只跑單一 unit（debug 用）
