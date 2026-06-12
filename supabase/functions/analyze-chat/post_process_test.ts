@@ -606,6 +606,62 @@ Deno.test("r1-P2b: hallucinated sourceMessage canonicalized from indexed ball", 
   assertEquals(repaired[0].sourceMessage, "紅牛跟賓士差點打起來XD");
 });
 
+// ---------------------------------------------------------------------------
+// 方案二件5 contract 堵漏 — 併球 sourceMessage 唯一性
+//
+// #12 調查實測：模型把兩顆球串成「球A / 球B」當 sourceMessage，
+// containment 對每顆球都成立 → 舊 matchBallIndex 取第一個匹配放行。
+// 新規則：containment 同時匹配 ≥2 顆不同的球 = 併球指紋 → 不放行；
+// 有合法 sourceIndex 則回填該球正典原文，否則丟段。
+// ---------------------------------------------------------------------------
+
+Deno.test("件5: merged-ball sourceMessage with invalid index is dropped, not repaired", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      label: "",
+      sourceMessage: "剛來吃晚餐 / 等等要去樂華夜市",
+      reply: "晚餐有吃飽嗎？等等夜市幫我吃份地瓜球",
+      reason: "",
+    }],
+    ["紅牛跟賓士差點打起來XD", "剛來吃晚餐", "等等要去樂華夜市"],
+  );
+  // 併球指紋匹配到 2 顆球 → ambiguous，不得修出任一 sourceIndex 放行。
+  assertEquals(repaired.length, 0);
+});
+
+Deno.test("件5: merged-ball sourceMessage with valid index backfills canonical ball text", () => {
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      sourceIndex: 2,
+      label: "",
+      sourceMessage: "剛來吃晚餐 / 等等要去樂華夜市",
+      reply: "晚餐有吃飽嗎",
+      reason: "",
+    }],
+    ["紅牛跟賓士差點打起來XD", "剛來吃晚餐", "等等要去樂華夜市"],
+  );
+  // index 合法但 message 是併球指紋 → 信 index、回填正典單球原文。
+  assertEquals(repaired.length, 1);
+  assertEquals(repaired[0].sourceIndex, 2);
+  assertEquals(repaired[0].sourceMessage, "剛來吃晚餐");
+});
+
+Deno.test("件5 guard: exact-equal sourceMessage wins over containment overlap", () => {
+  // 球二是球一的子字串（OCR 重疊球會出現）：整句引用球一不該被判 ambiguous。
+  const repaired = enforceReplySegmentSourceContract(
+    [{
+      sourceIndex: 99,
+      label: "",
+      sourceMessage: "剛到家了好累",
+      reply: "回球",
+      reason: "",
+    }],
+    ["剛到家了好累", "到家了"],
+  );
+  assertEquals(repaired.length, 1);
+  assertEquals(repaired[0].sourceIndex, 1);
+});
+
 Deno.test("r1-P2b guard: fragment sourceMessage matching its own ball passes unchanged", () => {
   const repaired = enforceReplySegmentSourceContract(
     [{

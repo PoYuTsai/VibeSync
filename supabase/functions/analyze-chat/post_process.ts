@@ -222,8 +222,21 @@ function textMatchesBall(target: string, ball: string): boolean {
     (normalizedBall.length >= 4 && normalizedTarget.includes(normalizedBall));
 }
 
-function matchBallIndex(target: string, ballList: string[]): number {
-  return ballList.findIndex((ball) => textMatchesBall(target, ball));
+// 件5 contract 堵漏：回傳全部匹配的球（0-based）。完整原文引用（exact）
+// 優先於 containment——球清單有重疊球（OCR dedup）時，整句引用不該被
+// containment 撞出第二顆球而誤判 ambiguous。
+function matchBallIndices(target: string, ballList: string[]): number[] {
+  const normalizedTarget = normalizeForBallMatch(target);
+  const exact: number[] = [];
+  const fuzzy: number[] = [];
+  ballList.forEach((ball, index) => {
+    if (normalizeForBallMatch(ball) === normalizedTarget) {
+      exact.push(index);
+    } else if (textMatchesBall(target, ball)) {
+      fuzzy.push(index);
+    }
+  });
+  return exact.length > 0 ? exact : fuzzy;
 }
 
 export function enforceReplySegmentSourceContract(
@@ -250,19 +263,18 @@ export function enforceReplySegmentSourceContract(
       sourceIndex = undefined;
       if (sourceMessage.length > 0) {
         // 第一層：以 sourceMessage 文字回查球清單修復 sourceIndex。
-        const matched = matchBallIndex(sourceMessage, ballList);
-        if (matched >= 0) sourceIndex = matched + 1;
+        // 件5：同時匹配 ≥2 顆不同的球 = 「球A / 球B」併球指紋 → 不放行修復。
+        const matches = matchBallIndices(sourceMessage, ballList);
+        if (matches.length === 1) sourceIndex = matches[0] + 1;
       }
-    } else if (
-      sourceMessage.length > 0 &&
-      !textMatchesBall(sourceMessage, ballList[sourceIndex! - 1])
-    ) {
-      // r1-P2b：index 合法但 message 與該球不符——message 是 UI 引用與
-      // #13 回填的主鍵：指向別顆球 → 信 message 修 index；全都匹配不到
-      // （幻覺引用）→ 以 index 球 canonical 回填，絕不流出假引用。
-      const matched = matchBallIndex(sourceMessage, ballList);
-      if (matched >= 0) {
-        sourceIndex = matched + 1;
+    } else if (sourceMessage.length > 0) {
+      // r1-P2b + 件5：message 是 UI 引用與 #13 回填的主鍵。
+      // 唯一匹配自己的球 → 原樣放行（片段引用）；唯一匹配別顆球 → 信
+      // message 修 index；0 匹配（幻覺引用）或 ≥2 匹配（併球指紋）→ 以
+      // index 球 canonical 回填，絕不流出假引用或串接引用。
+      const matches = matchBallIndices(sourceMessage, ballList);
+      if (matches.length === 1) {
+        if (matches[0] !== sourceIndex! - 1) sourceIndex = matches[0] + 1;
       } else {
         sourceMessage = ballList[sourceIndex! - 1].slice(0, 120);
       }
