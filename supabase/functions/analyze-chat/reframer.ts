@@ -805,9 +805,54 @@ function createLegacyAnalysisAssembler() {
       if (key === "finalRecommendation" && finalRecommendationAuthoritative) {
         continue;
       }
-      result[key] = value;
+      const coerced = coerceRecordOnlyValue(result, key, value);
+      if (coerced === undefined) continue;
+      result[key] = coerced;
     }
   }
+}
+
+// client AnalysisResult.fromJson 對這些 key 是硬 cast Map<String, dynamic>，
+// 收到字串會 throw INVALID_STREAM_RESULT（dogfood P0 2026-06-13：Haiku 常把
+// gameStage/psychology 攤平成字串，Sonnet 偶發）。merge 時必須守門：能語意
+// 映射的塞回正確欄位，不能的丟棄保留 assembler 既有值，絕不原樣 clobber。
+const RECORD_ONLY_FINAL_RESULT_KEYS = new Set([
+  "gameStage",
+  "psychology",
+  "topicDepth",
+  "enthusiasm",
+  "replies",
+  "replyOptions",
+  "finalRecommendation",
+  "usage",
+  "targetProfile",
+  "healthCheck",
+  "optimizedMessage",
+  "myMessageAnalysis",
+  "recognizedConversation",
+]);
+
+function coerceRecordOnlyValue(
+  result: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): unknown | undefined {
+  if (!RECORD_ONLY_FINAL_RESULT_KEYS.has(key)) return value;
+  if (isRecord(value)) return value;
+
+  const existing = isRecord(result[key])
+    ? result[key] as Record<string, unknown>
+    : {};
+  const text = typeof value === "string" ? value.trim() : "";
+
+  if (key === "gameStage" && text) return { ...existing, current: text };
+  if (key === "psychology" && text) return { ...existing, subtext: text };
+  if (key === "topicDepth" && text) return { ...existing, current: text };
+  if (key === "enthusiasm") {
+    const score = numberField(value);
+    if (score !== null) return { ...existing, score };
+  }
+  return undefined;
 }
 
 function ensureRecord(

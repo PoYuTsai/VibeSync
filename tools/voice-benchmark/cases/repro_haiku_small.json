@@ -1,0 +1,14 @@
+{
+  "responseMode": "stream",
+  "billingProtocolVersion": 3,
+  "forceModel": "claude-haiku-4-5-20251001",
+  "messages": [
+    { "isFromMe": true, "content": "今天的展好看嗎" },
+    { "isFromMe": false, "content": "超好看！人有點多" },
+    { "isFromMe": false, "content": "[Photo]" },
+    { "isFromMe": false, "content": "這張是我最喜歡的一幅" },
+    { "isFromMe": true, "content": "哇 妳眼光不錯" },
+    { "isFromMe": false, "content": "下次帶你去" },
+    { "isFromMe": false, "content": "你週末通常都在幹嘛呀" }
+  ]
+}

@@ -1095,3 +1095,121 @@ Deno.test("reframer ignores malformed trailing text on flush", async () => {
   ]);
   assertEquals(events.at(-1)?.code, "STREAM_MISSING_CHARGE_ANCHOR");
 });
+
+Deno.test("done merge coerces string gameStage/psychology into client-parseable records", async () => {
+  // 2026-06-13 dogfood P0：Haiku（free tier）常把 finalResult 的 gameStage/
+  // psychology 寫成字串，Sonnet 偶發。client AnalysisResult.fromJson 對這些
+  // key 是硬 cast Map，字串會 throw INVALID_STREAM_RESULT——形狀守門必須在
+  // server 端 merge 時擋下，不能原樣 clobber assembler 的物件預設值。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "resonate",
+    nextStepBody: "Keep the pace she set.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "I get why that felt off.",
+    reason: "Respect the boundary.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      gameStage: "premise",
+      psychology: "She is testing availability, answer light.",
+      topicDepth: "facts",
+      enthusiasm: 72,
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(typeof finalResult.gameStage, "object");
+  assertEquals(gameStage.current, "premise");
+  assertEquals(gameStage.nextStep, "Keep the pace she set.");
+
+  const psychology = finalResult.psychology as Record<string, unknown>;
+  assertEquals(typeof finalResult.psychology, "object");
+  assertEquals(
+    psychology.subtext,
+    "She is testing availability, answer light.",
+  );
+
+  const topicDepth = finalResult.topicDepth as Record<string, unknown>;
+  assertEquals(typeof finalResult.topicDepth, "object");
+  assertEquals(topicDepth.current, "facts");
+
+  const enthusiasm = finalResult.enthusiasm as Record<string, unknown>;
+  assertEquals(typeof finalResult.enthusiasm, "object");
+  assertEquals(enthusiasm.score, 72);
+});
+
+Deno.test("done merge drops non-record values for record-only client keys", async () => {
+  // replies/replyOptions/finalRecommendation/usage/targetProfile 在 client
+  // 也是硬 cast Map——模型亂寫字串時保留 assembler 既有值，不得 clobber。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "I will slow down before I get a ticket.",
+    reason: "Softens the pressure.",
+    quotedContext: "too fast",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      replies: "humor: I will slow down before I get a ticket.",
+      replyOptions: "see replies",
+      finalRecommendation: "use humor",
+      usage: "n/a",
+      targetProfile: "unknown",
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+
+  assertEquals(typeof finalResult.replies, "object");
+  const replies = finalResult.replies as Record<string, unknown>;
+  assertEquals(replies.humor, "I will slow down before I get a ticket.");
+  assertEquals(typeof finalResult.replyOptions, "object");
+  assertEquals(typeof finalResult.finalRecommendation, "object");
+  const finalRecommendation = finalResult.finalRecommendation as Record<
+    string,
+    unknown
+  >;
+  assertEquals(finalRecommendation.pick, "humor");
+  assert(!("usage" in finalResult) || typeof finalResult.usage === "object");
+  assert(
+    !("targetProfile" in finalResult) ||
+      typeof finalResult.targetProfile === "object",
+  );
+});
