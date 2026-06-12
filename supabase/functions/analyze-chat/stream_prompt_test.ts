@@ -49,7 +49,8 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
     assert(prompt.includes(style));
   }
   assert(prompt.includes("Traditional Chinese"));
-  assert(prompt.length < 4000);
+  // v2 加 few-shot 後放寬，仍鎖上限防 contract 無限膨脹。
+  assert(prompt.length < 5000);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {
@@ -77,11 +78,54 @@ Deno.test("stream prompt can restrict reply styles for the active tier", () => {
   assertEquals(prompt.includes("`coldRead`"), false);
 });
 
-Deno.test("stream contract requires replySegments in finalResult for multi-ball replies (#12 一球一回)", () => {
+// ---------------------------------------------------------------------------
+// 方案二件3 stream 協議 v2 — segments[] 一等公民 + 瘦 recommendation + few-shot
+//
+// #12 root cause：分段規格從未進事件協議（只在 finalResult 一句話帶過，又被
+// compact 指令吃掉）。v2 把 segments 直接定義在 reply_option 事件上，模型不再
+// 寫 flat message（D4，server join 合成相容欄位）、recommendation 不再帶回覆
+// 全文（D2 瘦推薦卡，字只寫一次在 selected reply_option）。
+// ---------------------------------------------------------------------------
+
+Deno.test("v2: reply_option spec makes segments first-class, no flat message", () => {
   const prompt = buildStreamSystemPrompt("BASE");
 
-  // streaming 掉段根因：compact finalResult 不得犧牲 replySegments。
-  assert(prompt.includes("finalResult.finalRecommendation.replySegments"));
-  assert(prompt.includes("Never omit `replySegments` to save tokens"));
-  assert(prompt.includes("one segment per caught ball (max 3)"));
+  assert(prompt.includes("`segments`"));
+  assert(prompt.includes("`sourceIndex`"));
+  assert(prompt.includes("`sourceMessage`"));
+  assert(prompt.includes("one segment per caught ball"));
+  // D4：模型不寫 flat message，server join 合成。
+  assert(prompt.includes("Do not write a flat `message` field"));
+  // 舊規格殘骸不得留下：finalResult replySegments 條款與 max 3 cap。
+  assertEquals(
+    prompt.includes("finalResult.finalRecommendation.replySegments"),
+    false,
+  );
+  assertEquals(prompt.includes("(max 3)"), false);
+  // D1：cap 放寬到 5。
+  assert(prompt.includes("up to 5"));
+});
+
+Deno.test("v2: recommendation event is thin (selectedStyle + reason + expectedReaction)", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("`expectedReaction`"));
+  // 瘦卡：不再要求 message/quotedContext 全文欄位。
+  assertEquals(
+    prompt.includes(
+      "fields `selectedStyle`, `message`, `reason`, and `quotedContext`",
+    ),
+    false,
+  );
+  assert(prompt.includes("Do not repeat the reply text"));
+});
+
+Deno.test("v2: prompt carries a one-line multi-ball reply_option few-shot", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes('{"type":"analysis.reply_option"'));
+  assert(prompt.includes('"segments":['));
+  // few-shot 必須示範多球（≥2 段），單段範例會被模型當預設形狀。
+  const example = prompt.slice(prompt.indexOf('{"type":"analysis.reply_option"'));
+  assertEquals(example.split('"sourceIndex"').length >= 3, true);
 });

@@ -569,6 +569,290 @@ Deno.test("reframer absorbs segmented reply options without top-level message", 
   assertEquals(finalRecommendation.pick, "resonate");
 });
 
+// ---------------------------------------------------------------------------
+// 方案二件4 — Bind 扣卡回填（D2 瘦推薦卡 + D3 契約凍結 + D4 server join）
+//
+// v2 模型輸出：瘦 recommendation（無 message、帶 expectedReaction）→
+// reply_option[selected]（segments 一等公民）→ 其餘風格。reframer 把瘦卡
+// buffer 住，等 selected reply_option 到貨後 join 全文回填，再按今天的
+// 順序轉發——App 收到的事件順序與形狀不變。
+// ---------------------------------------------------------------------------
+
+const V2_STYLES = ["extend", "resonate", "tease", "humor", "coldRead"] as const;
+
+function v2ReplyOption(style: string): Record<string, unknown> {
+  return {
+    type: "analysis.reply_option",
+    style,
+    reason: `${style} approach`,
+    segments: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "剛來吃晚餐",
+        reply: `${style} 段落一`,
+        reason: "接晚餐球",
+      },
+      {
+        sourceIndex: 2,
+        sourceMessage: "等等要去樂華夜市",
+        reply: `${style} 段落二`,
+        reason: "延伸夜市話題",
+      },
+    ],
+  };
+}
+
+const V2_THIN_RECOMMENDATION = {
+  type: "analysis.recommendation",
+  selectedStyle: "extend",
+  reason: "兩顆球都接住才有互動感",
+  expectedReaction: "她大概會分享夜市買了什麼",
+};
+
+const V2_DECISION = {
+  type: "analysis.decision",
+  selectedStyle: "extend",
+  nextStepBody: "接住晚餐與夜市兩顆球。",
+  doThis: "兩段都回。",
+  avoidThis: "不要只回一句。",
+};
+
+Deno.test("bind: thin recommendation buffers until selected reply_option backfills it", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: [...V2_STYLES],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  for (const style of V2_STYLES) {
+    reframer.pushText(line(v2ReplyOption(style)));
+  }
+  reframer.pushText(line({ type: "analysis.done" }));
+  await reframer.flush();
+
+  // D3 契約凍結：client 看到的順序與今天相同。
+  assertEquals(events.map((event) => event.type), [
+    "analysis.decision",
+    "analysis.recommendation",
+    "analysis.reply_option",
+    "analysis.reply_option",
+    "analysis.reply_option",
+    "analysis.reply_option",
+    "analysis.reply_option",
+    "analysis.done",
+  ]);
+
+  const recommendation = events[1] as Record<string, unknown>;
+  assertEquals(recommendation.selectedStyle, "extend");
+  // 回填：join 後全文 + 原始段落陣列。
+  assertEquals(recommendation.message, "extend 段落一\nextend 段落二");
+  assertEquals((recommendation.replySegments as unknown[]).length, 2);
+
+  // D4 相容欄位：reply_option 的 flat message 由 server join 合成。
+  const selectedOption = events[2] as Record<string, unknown>;
+  assertEquals(selectedOption.style, "extend");
+  assertEquals(selectedOption.message, "extend 段落一\nextend 段落二");
+
+  // 廢除雙軌：finalRecommendation 從 selected reply_option 回填。
+  const finalResult = (events.at(-1) as Record<string, unknown>)
+    .finalResult as Record<string, unknown>;
+  const finalRecommendation = finalResult.finalRecommendation as Record<
+    string,
+    unknown
+  >;
+  assertEquals(finalRecommendation.pick, "extend");
+  assertEquals(finalRecommendation.content, "extend 段落一\nextend 段落二");
+  assertEquals((finalRecommendation.replySegments as unknown[]).length, 2);
+});
+
+Deno.test("bind: missing selected reply_option fails INCOMPLETE, never a silent done", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: [...V2_STYLES],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  for (const style of V2_STYLES.filter((s) => s !== "extend")) {
+    reframer.pushText(line(v2ReplyOption(style)));
+  }
+  // 模型雙軌殘骸：finalResult 塞滿五風格也不得讓瘦卡靜默消失。
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      replies: Object.fromEntries(V2_STYLES.map((s) => [s, `${s} 假全文`])),
+      finalRecommendation: { pick: "extend", content: "extend 假全文" },
+    },
+  }));
+  await reframer.flush();
+
+  assertEquals(events.at(-1)?.type, "analysis.error");
+  assertEquals(events.at(-1)?.code, "STREAM_INCOMPLETE_REPLY_OPTIONS");
+  assert(
+    (events.at(-1)?.missingStyles as string[]).includes("extend"),
+  );
+  assertEquals(events.some((event) => event.type === "analysis.done"), false);
+  assertEquals(
+    events.some((event) => event.type === "analysis.recommendation"),
+    false,
+  );
+});
+
+Deno.test("bind: unsafe joined reply text fails hard safety after backfill", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  reframer.pushText(line({
+    type: "analysis.reply_option",
+    style: "extend",
+    reason: "extend approach",
+    segments: [
+      {
+        sourceIndex: 1,
+        sourceMessage: "她說晚安",
+        reply: "Follow her home and pressure her until she replies.",
+        reason: "unsafe",
+      },
+    ],
+  }));
+  await reframer.flush();
+
+  assertEquals(events.at(-1)?.type, "analysis.error");
+  assertEquals(events.at(-1)?.code, "STREAM_UNSAFE_RECOMMENDATION");
+  assertEquals(
+    events.some((event) => event.type === "analysis.recommendation"),
+    false,
+  );
+});
+
+Deno.test("bind: thin recommendation charge flushes buffered reply_option through bind", async () => {
+  // 模型亂序（reply_option 先於 recommendation、且無 decision）：
+  // 瘦卡扣費成功後 flush pre-charge buffer，selected option 仍要綁卡。
+  const timeline: string[] = [];
+  const emitted: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      timeline.push(`emit:${event.type}`);
+      emitted.push(event);
+    },
+    onRecommendation(recommendation) {
+      timeline.push(`charge:${recommendation.selectedStyle}`);
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(v2ReplyOption("extend")));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  reframer.pushText(line({ type: "analysis.done" }));
+  await reframer.flush();
+
+  assertEquals(timeline, [
+    "charge:extend",
+    "emit:analysis.recommendation",
+    "emit:analysis.reply_option",
+    "emit:analysis.done",
+  ]);
+  const recommendation = emitted[0] as Record<string, unknown>;
+  assertEquals(recommendation.message, "extend 段落一\nextend 段落二");
+});
+
+Deno.test("bind: model finalResult cannot clobber the bound finalRecommendation", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  reframer.pushText(line(v2ReplyOption("extend")));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      strategy: "model 補充的策略",
+      finalRecommendation: { pick: "extend", content: "模型亂寫的合併單句" },
+    },
+  }));
+  await reframer.flush();
+
+  const finalResult = (events.at(-1) as Record<string, unknown>)
+    .finalResult as Record<string, unknown>;
+  // 其他欄位照常 merge；finalRecommendation 以 bind 結果為權威。
+  assertEquals(finalResult.strategy, "model 補充的策略");
+  const finalRecommendation = finalResult.finalRecommendation as Record<
+    string,
+    unknown
+  >;
+  assertEquals(finalRecommendation.content, "extend 段落一\nextend 段落二");
+  assertEquals((finalRecommendation.replySegments as unknown[]).length, 2);
+});
+
+Deno.test("bind: resume with thin precharged recommendation rebinds from replayed stream", async () => {
+  let chargeCalls = 0;
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    prechargedRecommendation: {
+      selectedStyle: "extend",
+      message: "",
+      reason: "兩顆球都接住才有互動感",
+      quotedContext: "",
+      warnings: [],
+      raw: V2_THIN_RECOMMENDATION,
+    },
+    requiredReplyStyles: ["extend"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line(V2_DECISION));
+  reframer.pushText(line(V2_THIN_RECOMMENDATION));
+  reframer.pushText(line(v2ReplyOption("extend")));
+  reframer.pushText(line({ type: "analysis.done" }));
+  await reframer.flush();
+
+  assertEquals(chargeCalls, 0);
+  const recommendation = events.find(
+    (event) => event.type === "analysis.recommendation",
+  ) as Record<string, unknown>;
+  assert(recommendation);
+  assertEquals(recommendation.message, "extend 段落一\nextend 段落二");
+  assertEquals(events.at(-1)?.type, "analysis.done");
+});
+
 Deno.test("reframer filters reply options outside the active tier", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({

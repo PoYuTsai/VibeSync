@@ -2,7 +2,11 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { validateRecommendationEvent } from "./stream_recommendation_guardrail.ts";
+import {
+  validateRecommendationBackfill,
+  validateRecommendationEvent,
+  validateThinRecommendationEvent,
+} from "./stream_recommendation_guardrail.ts";
 
 const validRecommendation = {
   type: "analysis.recommendation",
@@ -115,5 +119,80 @@ Deno.test("validateRecommendationEvent keeps fuzzy contradiction as warning-only
   assert(result.ok);
   if (result.ok) {
     assertEquals(result.warnings, ["semantic_contradiction_log_only"]);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 方案二件4 — 瘦推薦卡（D2）扣費時驗證 + 回填後 safety
+// 瘦卡只帶 selectedStyle / reason / expectedReaction，回覆全文在 selected
+// reply_option；hard safety 對全文的檢查移到 reframer 回填後（時機後移、
+// 檢查內容不變）。
+// ---------------------------------------------------------------------------
+
+const validThinRecommendation = {
+  type: "analysis.recommendation",
+  selectedStyle: "extend",
+  reason: "兩顆球都接住才有互動感",
+  expectedReaction: "她大概會分享夜市買了什麼",
+};
+
+Deno.test("validateThinRecommendationEvent accepts a thin v2 recommendation", () => {
+  const result = validateThinRecommendationEvent(validThinRecommendation);
+
+  assert(result.ok);
+  if (result.ok) {
+    assertEquals(result.selectedStyle, "extend");
+    assertEquals(result.message, "");
+    assertEquals(result.reason, validThinRecommendation.reason);
+  }
+});
+
+Deno.test("validateThinRecommendationEvent rejects missing reason or expectedReaction", () => {
+  const noReason = validateThinRecommendationEvent({
+    ...validThinRecommendation,
+    reason: "  ",
+  });
+  assertEquals(noReason.ok, false);
+
+  const noReaction = validateThinRecommendationEvent({
+    ...validThinRecommendation,
+    expectedReaction: "",
+  });
+  assertEquals(noReaction.ok, false);
+});
+
+Deno.test("validateThinRecommendationEvent runs hard safety on thin card text", () => {
+  const result = validateThinRecommendationEvent({
+    ...validThinRecommendation,
+    reason: "Pressure her until she replies tonight.",
+  });
+
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.code, "STREAM_UNSAFE_RECOMMENDATION");
+  }
+});
+
+Deno.test("validateRecommendationBackfill passes safe joined text with warnings check", () => {
+  const result = validateRecommendationBackfill(
+    "I will ask one more time tonight, then wait.",
+    "I need space and do not want to be pushed.",
+  );
+
+  assert(result.ok);
+  if (result.ok) {
+    assertEquals(result.warnings, ["semantic_contradiction_log_only"]);
+  }
+});
+
+Deno.test("validateRecommendationBackfill rejects unsafe joined reply text", () => {
+  const result = validateRecommendationBackfill(
+    "Follow her home and pressure her until she replies.",
+    "she said good night",
+  );
+
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.code, "STREAM_UNSAFE_RECOMMENDATION");
   }
 });

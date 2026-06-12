@@ -409,6 +409,67 @@ Deno.test("stream handler preserves charged content before post-charge failure",
   );
 });
 
+Deno.test("stream handler does not replay a thin precharged recommendation to the client", async () => {
+  // 件4 D2：v2 瘦卡扣費後 retry——空 message 的瘦卡不可直接回放給 App，
+  // 必須由 reframer 用 replay 的 selected reply_option 綁卡回填後再 emit。
+  let chargeCalls = 0;
+  const thinRaw = {
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    reason: "兩顆球都接住才有互動感",
+    expectedReaction: "她大概會分享夜市買了什麼",
+  };
+  const response = handleStreamAnalysisRequest(createOptions({
+    requiredReplyStyles: ["extend"],
+    prechargedRecommendation: {
+      selectedStyle: "extend",
+      message: "",
+      reason: "兩顆球都接住才有互動感",
+      quotedContext: "",
+      warnings: [],
+      raw: thinRaw,
+    },
+    textChunks: [
+      line(thinRaw),
+      line({
+        type: "analysis.reply_option",
+        style: "extend",
+        reason: "extend approach",
+        segments: [
+          {
+            sourceIndex: 1,
+            sourceMessage: "剛來吃晚餐",
+            reply: "吃了什麼好料？",
+            reason: "接晚餐球",
+          },
+          {
+            sourceIndex: 2,
+            sourceMessage: "等等要去樂華夜市",
+            reply: "夜市幫我吃份地瓜球",
+            reason: "延伸夜市話題",
+          },
+        ],
+      }),
+      line({ type: "analysis.done" }),
+    ],
+    chargeRun: () => {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(chargeCalls, 0);
+  const recommendations = events.filter(
+    (event) => event.type === "analysis.recommendation",
+  );
+  // 只有一張推薦卡，且是回填後的全文版——不得有空 message 的瘦卡外流。
+  assertEquals(recommendations.length, 1);
+  assertEquals(recommendations[0].message, "吃了什麼好料？\n夜市幫我吃份地瓜球");
+  assertEquals(events.at(-1)?.type, "analysis.done");
+});
+
 Deno.test("stream handler can resume from a precharged recommendation without charging again", async () => {
   let chargeCalls = 0;
   const response = handleStreamAnalysisRequest(createOptions({

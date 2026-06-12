@@ -1,6 +1,7 @@
 import { type NdjsonEmit, ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamReframer,
+  isThinRecommendationEvent,
   type StreamChargeResult,
   type StreamOutputEvent,
   type StreamRecommendationForCharge,
@@ -95,7 +96,11 @@ export function handleStreamAnalysisRequest(
 
     if (options.prechargedRecommendation) {
       chargedContentEmitted = true;
-      emit(toRecommendationEvent(options.prechargedRecommendation));
+      // 件4 D2：v2 瘦卡（無 message）不可直接回放給 client；reframer 會用
+      // replay 的 selected reply_option 綁卡回填後再 emit 完整推薦卡。
+      if (!isThinRecommendationEvent(options.prechargedRecommendation.raw)) {
+        emit(toRecommendationEvent(options.prechargedRecommendation));
+      }
     }
 
     const stopHeartbeat = startHeartbeat(options, emit);

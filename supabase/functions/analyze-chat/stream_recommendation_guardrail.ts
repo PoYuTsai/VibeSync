@@ -136,6 +136,82 @@ function collectWarnings(message: string, quotedContext: string): string[] {
   return [];
 }
 
+// 方案二件4（D2 瘦推薦卡）：v2 瘦 recommendation 只帶 selectedStyle /
+// reason / expectedReaction，回覆全文在 selected reply_option。扣費時驗
+// 瘦卡形狀 + 瘦卡文字的 hard safety；全文 safety 由回填後的
+// validateRecommendationBackfill 補上（時機後移、檢查內容不變）。
+export function validateThinRecommendationEvent(
+  event: StreamEvent | Record<string, unknown>,
+): RecommendationValidation {
+  if (event.type !== "analysis.recommendation") {
+    return {
+      ok: false,
+      code: "STREAM_MALFORMED_RECOMMENDATION",
+      reason: "expected analysis.recommendation event",
+    };
+  }
+
+  if (!isStreamStyle(event.selectedStyle)) {
+    return {
+      ok: false,
+      code: "STREAM_MALFORMED_RECOMMENDATION",
+      reason: "invalid selectedStyle",
+    };
+  }
+
+  const reason = textField(event.reason);
+  const expectedReaction = textField(event.expectedReaction);
+
+  if (!reason || !expectedReaction) {
+    return {
+      ok: false,
+      code: "STREAM_MALFORMED_RECOMMENDATION",
+      reason: "thin recommendation reason and expectedReaction are required",
+    };
+  }
+
+  const modelAuthoredText = `${reason}\n${expectedReaction}`;
+  if (
+    hasPromptInjection(modelAuthoredText) ||
+    hasUnsafeRecommendation(modelAuthoredText)
+  ) {
+    return {
+      ok: false,
+      code: "STREAM_UNSAFE_RECOMMENDATION",
+      reason: "thin recommendation failed hard safety rules",
+    };
+  }
+
+  return {
+    ok: true,
+    selectedStyle: event.selectedStyle,
+    message: "",
+    reason,
+    quotedContext: "",
+    warnings: [],
+    raw: event,
+  };
+}
+
+// 回填後 safety：檢查 join 後的回覆全文——與今天 validateRecommendationEvent
+// 對 message 的檢查相同，只是時機移到 selected reply_option 到貨後。
+export function validateRecommendationBackfill(
+  message: string,
+  quotedContext: string,
+):
+  | { ok: true; warnings: string[] }
+  | { ok: false; code: StreamRecommendationGuardrailCode; reason: string } {
+  if (hasPromptInjection(message) || hasUnsafeRecommendation(message)) {
+    return {
+      ok: false,
+      code: "STREAM_UNSAFE_RECOMMENDATION",
+      reason: "backfilled recommendation failed hard safety rules",
+    };
+  }
+
+  return { ok: true, warnings: collectWarnings(message, quotedContext) };
+}
+
 export function validateRecommendationEvent(
   event: StreamEvent | Record<string, unknown>,
 ): RecommendationValidation {

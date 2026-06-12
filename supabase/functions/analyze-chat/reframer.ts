@@ -7,7 +7,9 @@ import {
 import {
   type RecommendationValidation,
   validateDecisionChargeEvent,
+  validateRecommendationBackfill,
   validateRecommendationEvent,
+  validateThinRecommendationEvent,
 } from "./stream_recommendation_guardrail.ts";
 
 export type StreamOutputEvent =
@@ -62,6 +64,11 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   let officialRecommendationEmitted = options.prechargedRecommendation?.raw
     ?.type === "analysis.recommendation";
   let modelDoneHadFinalResult = false;
+  // 件4 D2 瘦推薦卡：buffer 住的瘦 recommendation，等 selected
+  // reply_option 到貨後回填全文再轉發（D3 契約凍結：App 看到的順序不變）。
+  let pendingThinRecommendation:
+    | Extract<RecommendationValidation, { ok: true }>
+    | null = null;
   const preChargeEvents: StreamEvent[] = [];
   const requiredReplyStyles = normalizeRequiredReplyStyles(
     options.requiredReplyStyles,
@@ -69,7 +76,18 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const requiredReplyStyleSet = new Set(requiredReplyStyles);
 
   if (options.prechargedRecommendation) {
-    assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
+    const raw = options.prechargedRecommendation.raw;
+    if (isThinRecommendationEvent(raw)) {
+      // resume 自 v2 瘦卡扣費：重掛 pending，由 replay 的 selected
+      // reply_option 重新綁卡回填；瘦卡本身不可直接外流。
+      const revalidated = validateThinRecommendationEvent(raw);
+      if (revalidated.ok) {
+        pendingThinRecommendation = revalidated;
+        officialRecommendationEmitted = false;
+      }
+    } else {
+      assembler.absorb(toRecommendationEvent(options.prechargedRecommendation));
+    }
   }
 
   const emitError = (
@@ -89,6 +107,19 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
 
   const emitDone = () => {
     if (doneEmitted || closed) return;
+    if (pendingThinRecommendation) {
+      // 件4 測試重點：buffer 中的瘦卡（已扣費）不得造成「已扣費但無輸出」
+      // 的靜默 done——selected reply_option 沒到就走既有 INCOMPLETE 路徑，
+      // 模型在 finalResult 塞滿五風格（雙軌殘骸）也一樣。
+      emitError(
+        "STREAM_INCOMPLETE_REPLY_OPTIONS",
+        "Streaming analysis ended before the selected reply option arrived.",
+        true,
+        { missingStyles: [pendingThinRecommendation.selectedStyle] },
+      );
+      closed = true;
+      return;
+    }
     const finalResult = assembler.build();
     const missingStyles = findMissingRequiredReplyStyles(
       finalResult,
@@ -143,9 +174,70 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
 
   const flushPreChargeEvents = () => {
     for (const bufferedEvent of preChargeEvents) {
-      absorbAndEmit(bufferedEvent);
+      if (closed) break;
+      // pre-charge buffer 裡的 reply_option 也要過 bind（模型亂序時
+      // selected option 可能先於瘦卡到貨）。
+      if (bufferedEvent.type === "analysis.reply_option") {
+        forwardReplyOption(bufferedEvent);
+      } else {
+        absorbAndEmit(bufferedEvent);
+      }
     }
     preChargeEvents.length = 0;
+  };
+
+  // 件4 D4：reply_option 轉發前由 server 合成 flat message / quotedContext
+  // 相容欄位（segments join），App 收到的形狀與今天相同。
+  const forwardReplyOption = (event: StreamEvent) => {
+    const segments = replySegmentsFrom(
+      event.segments ?? event.messages ?? event.messageGroup ??
+        event.replySegments,
+    );
+    const compat = withReplyOptionCompatFields(event, segments);
+    if (
+      pendingThinRecommendation &&
+      replyStyleFrom(compat) === pendingThinRecommendation.selectedStyle &&
+      !bindPendingRecommendation(compat, segments)
+    ) {
+      return; // 回填後 safety 擋下，stream 已關。
+    }
+    if (closed) return;
+    absorbAndEmit(compat);
+  };
+
+  // 件4 扣卡回填：join 後全文 + 原始段落塞回瘦推薦卡，先轉發 enriched
+  // recommendation 再轉發 selected reply_option（D3 舊順序）。safety 檢查
+  // 對象是 join 後全文——驗的內容跟今天相同，只是時機後移。
+  const bindPendingRecommendation = (
+    option: StreamEvent,
+    segments: readonly Record<string, unknown>[],
+  ): boolean => {
+    const thin = pendingThinRecommendation!;
+    const joined = stringField(option.message) || joinedSegmentReply(segments);
+    if (!joined) return true; // 無文字可回填：留 pending，終局走 INCOMPLETE。
+
+    const quotedContext = stringField(option.quotedContext) ||
+      joinedSegmentSources(segments);
+    const backfill = validateRecommendationBackfill(joined, quotedContext);
+    if (!backfill.ok) {
+      emitError(backfill.code, backfill.reason);
+      closed = true;
+      return false;
+    }
+
+    pendingThinRecommendation = null;
+    officialRecommendationEmitted = true;
+    absorbAndEmit({
+      ...thin.raw,
+      type: "analysis.recommendation",
+      selectedStyle: thin.selectedStyle,
+      message: joined,
+      reason: thin.reason,
+      quotedContext,
+      warnings: [...thin.warnings, ...backfill.warnings],
+      ...(segments.length > 0 ? { replySegments: [...segments] } : {}),
+    });
+    return true;
   };
 
   const chargeFromValidation = async (
@@ -196,7 +288,46 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     absorbAndEmit(event);
   };
 
+  // 件4：v2 瘦卡（無 message、帶 expectedReaction）→ buffer 等回填；
+  // 帶 message 的 legacy 形狀照舊立即驗證+轉發（rollback 安全網）。
+  const handleThinRecommendation = async (event: StreamEvent) => {
+    const validation = validateThinRecommendationEvent(event);
+    if (!validation.ok) {
+      emitError(validation.code, validation.reason);
+      closed = true;
+      return;
+    }
+
+    if (!styleIsAllowed(validation.selectedStyle)) {
+      rejectUnavailableAnchorStyle(validation.selectedStyle);
+      return;
+    }
+
+    if (officialRecommendationEmitted || pendingThinRecommendation) {
+      if (isResume) return;
+      emitError(
+        "STREAM_DUPLICATE_RECOMMENDATION",
+        "Streaming analysis emitted more than one official recommendation.",
+      );
+      closed = true;
+      return;
+    }
+
+    // 先掛 pending 再扣費：扣費成功的 flushPreChargeEvents 會把先到的
+    // selected reply_option 路過 bind。
+    pendingThinRecommendation = validation;
+    if (!chargeCompleted && !(await chargeFromValidation(validation))) {
+      pendingThinRecommendation = null;
+      return;
+    }
+  };
+
   const handleRecommendation = async (event: StreamEvent) => {
+    if (isThinRecommendationEvent(event)) {
+      await handleThinRecommendation(event);
+      return;
+    }
+
     const validation = validateRecommendationEvent(event);
     if (!validation.ok) {
       emitError(validation.code, validation.reason);
@@ -256,6 +387,11 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     if (event.type === "analysis.reply_option") {
       const style = replyStyleFrom(event);
       if (style && !styleIsAllowed(style)) return;
+      if (chargeCompleted) {
+        forwardReplyOption(event);
+        return;
+      }
+      // 未扣費：落到下方 pre-charge buffer，flush 時再過 bind。
     }
 
     if (!chargeCompleted) {
@@ -344,6 +480,40 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
 
 export const createReframer = createStreamReframer;
 
+// v2 瘦推薦卡判別：無 message + 帶 expectedReaction。message 缺但也沒
+// expectedReaction 的事件仍走 legacy 驗證（維持 malformed 既有行為）。
+export function isThinRecommendationEvent(
+  event: StreamEvent | Record<string, unknown> | undefined,
+): boolean {
+  if (!event || event.type !== "analysis.recommendation") return false;
+  return stringField(event.message) === "" &&
+    stringField(event.expectedReaction) !== "";
+}
+
+function withReplyOptionCompatFields(
+  event: StreamEvent,
+  segments: readonly Record<string, unknown>[],
+): StreamEvent {
+  if (segments.length === 0) return event;
+  const compat: StreamEvent = { ...event };
+  if (stringField(compat.message) === "") {
+    compat.message = joinedSegmentReply(segments);
+  }
+  if (stringField(compat.quotedContext) === "") {
+    compat.quotedContext = joinedSegmentSources(segments);
+  }
+  return compat;
+}
+
+function joinedSegmentSources(
+  segments: readonly Record<string, unknown>[],
+): string {
+  return segments
+    .map((item) => stringField(item.sourceMessage))
+    .filter((text) => text.length > 0)
+    .join(" / ");
+}
+
 function stripCarriageReturn(line: string): string {
   return line.endsWith("\r") ? line.slice(0, -1) : line;
 }
@@ -413,6 +583,10 @@ function createLegacyAnalysisAssembler() {
     reminder: "",
   };
 
+  // 件4 廢除雙軌：bind 過的 finalRecommendation（帶 segments）為權威，
+  // 模型 done finalResult 不得 clobber。
+  let finalRecommendationAuthoritative = false;
+
   const absorbReply = (
     style: StreamStyle,
     message: string,
@@ -438,12 +612,15 @@ function createLegacyAnalysisAssembler() {
     };
 
     if (markFinal) {
+      const hasSegments = segments != null && segments.length > 0;
       result.finalRecommendation = {
         pick: style,
         content: message,
         reason,
         psychology: reason,
+        ...(hasSegments ? { replySegments: [...segments] } : {}),
       };
+      if (hasSegments) finalRecommendationAuthoritative = true;
     }
   };
 
@@ -459,6 +636,8 @@ function createLegacyAnalysisAssembler() {
           stringField(event.reason),
           stringField(event.quotedContext),
           true,
+          // bind 回填的 enriched recommendation 帶原始段落陣列。
+          replySegmentsFrom(event.replySegments ?? event.segments),
         );
         return;
       }
@@ -471,7 +650,8 @@ function createLegacyAnalysisAssembler() {
         // STREAM_INCOMPLETE_REPLY_OPTIONS（與 findMissingRequiredReplyStyles
         // 的 segments 寬容度對齊）。
         const segments = replySegmentsFrom(
-          event.messages ?? event.messageGroup ?? event.replySegments,
+          event.segments ?? event.messages ?? event.messageGroup ??
+            event.replySegments,
         );
         const message = stringField(event.message) ||
           joinedSegmentReply(segments);
@@ -564,6 +744,11 @@ function createLegacyAnalysisAssembler() {
 
   function mergeFinalResult(finalResult: Record<string, unknown>) {
     for (const [key, value] of Object.entries(finalResult)) {
+      // 廢除雙軌：finalRecommendation 一律以 selected reply_option 回填
+      // 的版本為準，模型 done 殘骸不得覆蓋。
+      if (key === "finalRecommendation" && finalRecommendationAuthoritative) {
+        continue;
+      }
       result[key] = value;
     }
   }
