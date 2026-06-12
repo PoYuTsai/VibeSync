@@ -24,14 +24,14 @@
 ## Live Queue
 
 ## [2026-06-13] OCR 左右判讀 ~60% 根因鎖定：layoutFirst parser 級聯翻面——待量測消融
-Status: OPEN — 根因已證明，修法卡量測憑證。
+Status: OPEN — **Eric 拍板（2026-06-13）：給權限修，目標方向判斷 >98%**。Claude 評估：標準版面可行（baseline 中 parser 未碰單元 17/17 全對），交友軟體版面/中線模糊/圖中圖是難尾巴；路徑＝parser 修復（預估先回 ~85-90%）→ golden set 量測迭代逼近，非一步到位。**待 Eric**：從 console.anthropic.com 拿 CLAUDE_API_KEY 值給本機 env（Supabase secrets 讀不回）。**量測維度清單（Eric 點名）**：她說/我說、圖中圖、引用回覆準確度（`quotedReplyPreviewIsFromMe` 可單獨算）、emoji、圖中大貼圖、表情貼圖。根因證據如下。
 證據（零 API 成本，全可重跑）：①baseline results（`tools/ocr-golden/results/2026-06-12-02-21-38-prod.json`）分佈分析＝**layoutFirstAdjustedCount=0 的單元 17/17 全對；>0 的單元 63 錯、準確率 ~57%**；②錯誤方向 87%（55/63）是 right→left（我方被吞成她方；Eric 觀察到的「全變我方」是同機制鏡像，方向由 dominant side 決定）；③機制確定性重現＝`layout_parser.ts` 的夾心翻面規則（:328-338）把模型明確標 `right/isFromMe:true` 的我方短訊息整 run 翻面——`isLikelyShortContinuationContent` 把 ≤16 字單行全當 flexible（中文聊天大半如此），`while(changed)` 跑到不動點造成級聯塌縮（demo：7 則含 2 則明確 right → 全變 left）。
 修法方向（待量測證實）：layoutFirst 只填 unknown、**絕不推翻模型明確的 left/right**（回歸式減法，符合 2026-04-05 rollback note「一次一變數」）。風險：S__5480452 有 8 次修復且 4/4 全對——部分修復可能是在救模型錯誤，砍掉前必須消融跑分對照。
 卡點（需 Eric 二擇一）：①給本機 `CLAUDE_API_KEY` env → local serve 消融版重跑 golden set（圖檔已在本機，anon key 已有）；②給測試帳號 JWT/密碼 → 部署 tmp 消融 Edge Function 打 prod 跑分（tmp-model-ab 前例）。labels 仍是 AI 草稿未校對，方向性對照夠用、正式數字仍待 Eric 校對。
 另：3a 編輯 UI 已改唯讀預覽＋編輯功能鍵（8fd5a97 含 Codex P2 修復），不動 OCR code path。
 
 ## [2026-06-13] 球數標準要不要加下限（連發 N 球至少出 M 段）？
-Status: WAITING_ON_ERIC — 問題2 診斷完。
+Status: OPEN — **Eric 拍板（2026-06-13）：下限「連發 ≥4 句至少出 3 段」要加**；golden 預期＝GPT 回覆（golden1.mp4，Claude 已抽幀全讀），目標「至少不比它差」。**Golden 反推三缺口**：①真差距是**素材使用率**不是段數——我方高手版單句幾乎逐字等於 GPT 高手版，但 GPT 用掉她 6 球中 4 顆（糖糖梗callback→撩、晚餐照→邀約埋點、未接來電→懸念、到家→關心），我們只用 2 顆，糖糖梗＋晚餐照整組丟掉（prompt 1458「對象歷史=高價值延續球」沒被執行）；②缺「選球盤點先行」強制步驟（GPT 先列訊號清單再寫回覆），併球裁量在無盤點時變吞球後門（6球→2球）；③下限是檢核錨，但單加下限模型會出水段應付——**盤點＋下限＋「生活分享=邀約埋點素材」入優先接清單，三件一起上**。實作（下個 session）：TDD（本組截圖＋GPT 高手版做 anchor）＋Codex 雙審；voice dogfood 污染風險 Eric 知情接受。原診斷如下。
 現行標準（c3f3ac6 已訂）：「預設每顆有內容的球都接，上限 5」＋併球規則（同生活片段算一球、貼圖 emoji 不佔額）。Bruce 案 7 連發只出 2 段＝模型用併球裁量把 7 句併成 2 球（截圖輸入強制 Sonnet，非 Haiku 鍋）；server 丟段零 telemetry 無法驗屍。已修：client `.take(3)` 漏改（991f202，模型出 4-5 段不再被剪）。
 決策點：①要不要加 prompt 下限「對方連發 ≥4 句有內容時 replySegments 通常 ≥3 段」？利＝接住投入感；弊＝與「技巧密度原則／不硬出招」拉扯＋**voice Game 化 dogfood 進行中，現在動 SYSTEM_PROMPT 會污染體感回報**。建議：等 voice 案 CLOSE 再動，屆時連 server 丟段 telemetry（log-only）一起上。②或先只加 telemetry 觀察一週再判。
 
