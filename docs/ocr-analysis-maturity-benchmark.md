@@ -39,6 +39,28 @@
 - 錯圖誤放行率：`<= 3%`
 - 混不同人 / 不同 thread 偵測率：`>= 90%`
 
+### 2.1 首次實測 baseline（2026-06-12，草稿 labels）
+
+> 工具：`tools/ocr-golden/`（黑箱打 prod `recognizeOnly`，17 units：12 真實圖 + 2 重疊組 + 3 合成中線圖，共 ~150 則標注訊息）。
+> **labels 為 AI 草稿、Eric 尚未校對**，數字屬草稿 baseline；但關鍵 mismatch 已抽樣對原圖人工裁定確認。
+
+| 指標 | 目標 | 實測（草稿） |
+|---|---|---|
+| 左右 side 正確率 | ≥98% | **61.3%**（real-only 59.6%） |
+| 訊息召回率 | ≥95% | 84.0% |
+| 訊息精確率（無幻覺） | — | 88.6% |
+| 最終 unknown 率 | — | 0.0% |
+| 逐字率 / CER | — | 85.9% / 1.8% |
+
+關鍵發現（已人工裁定，非 label 錯）：
+
+- **交友軟體版面（綠右白左+頭像）side 接近五五開**（standard 56.3%、overlap 52.9%），LINE 暗色版面反而 87-100%。
+- S__5513245_0 鐵證：4 則 `right→left` mismatch 數 = telemetry 修復數（layoutFirst 3 + grouped 1）——**嫌疑為 layout repair 鏈在此版面把對的翻成錯的**，與 read-only audit 風險 #1「heuristic 修復成功率從未量化」直接對上。原圖人工目檢確認該 4 則為清楚右側綠氣泡。
+- 中線合成圖（42-58 含糊帶）：72.7%，對抗性版 57.1%——含糊帶確實是弱點但非最大失血點。
+- unknown 率 0%：pipeline 從不輸出 unknown 給 client，全部被 heuristic「修掉」——修錯也不留痕跡，正是 telemetry 案要補的洞。
+
+下一步（依設計文件）：Eric 校對 `tools/ocr-golden/labels/real/` → 重跑出正式數字；之後任何 OCR 修復鏈改動，land 前必跑 golden set 比分。
+
 ## 3. OCR 結構規則
 
 ### 必須成立

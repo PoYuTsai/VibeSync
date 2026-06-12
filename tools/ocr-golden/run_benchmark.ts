@@ -203,7 +203,7 @@ async function callRecognizeOnly(
     images.push({
       data: await loadImageBase64(imagePaths[i]),
       mediaType: detectMediaType(imagePaths[i]),
-      order: i,
+      order: i + 1, // server 驗證 1-based（index.ts: img.order < 1 → 400）
     });
   }
   const headers: Record<string, string> = {

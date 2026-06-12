@@ -68,3 +68,4 @@ vibesync-web/
 # OCR golden set：真實圖 labels 與跑分結果不入 git（隱私）
 tools/ocr-golden/labels/real/
 tools/ocr-golden/results/
+tools/ocr-golden/.env.golden
