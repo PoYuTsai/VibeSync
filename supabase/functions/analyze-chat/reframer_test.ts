@@ -496,6 +496,79 @@ Deno.test("reframer rejects paid completion when four reply styles are missing",
   ]);
 });
 
+Deno.test("reframer absorbs segmented reply options without top-level message", async () => {
+  // 2026-06-12 P0：#12 一球一回 prompt 下，多球對話的 reply_option 事件
+  // 只帶 messages 段落陣列、無頂層 message 字串。absorb 必須回退到
+  // segments，否則五風格全被丟棄 → STREAM_INCOMPLETE_REPLY_OPTIONS。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    requiredReplyStyles: ["extend", "resonate", "tease", "humor", "coldRead"],
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "到家啦，今天辛苦了",
+    reason: "接住到家訊號",
+    quotedContext: "到家 🤙🤙🤙",
+  }));
+  for (const style of ["resonate", "extend", "tease", "humor", "coldRead"]) {
+    reframer.pushText(line({
+      type: "analysis.reply_option",
+      style,
+      approach: `${style} approach`,
+      quotedContext: "到家 🤙🤙🤙",
+      messages: [
+        {
+          sourceIndex: 4,
+          label: "接到家",
+          sourceMessage: "到家 🤙🤙🤙",
+          reply: `${style} 段落一`,
+          reason: "接住到家",
+        },
+        {
+          sourceIndex: 2,
+          label: "接晚餐",
+          sourceMessage: "茄汁牛肉飯",
+          reply: `${style} 段落二`,
+          reason: "順接晚餐",
+        },
+      ],
+    }));
+  }
+
+  await reframer.flush();
+
+  assertEquals(events.at(-1)?.type, "analysis.done");
+  const finalResult = events.at(-1)?.finalResult as Record<string, unknown>;
+  const replies = finalResult.replies as Record<string, unknown>;
+  assertEquals(replies.tease, "tease 段落一\ntease 段落二");
+  const replyOptions = finalResult.replyOptions as Record<
+    string,
+    { approach: string; messages: Record<string, unknown>[] }
+  >;
+  for (const style of ["extend", "tease", "humor", "coldRead"]) {
+    assertEquals(replyOptions[style].messages.length, 2);
+    assertEquals(
+      replyOptions[style].messages[1].sourceMessage,
+      "茄汁牛肉飯",
+    );
+  }
+  // 官方 recommendation（resonate）後到的同風格 reply_option 段落版要能
+  // 覆蓋成完整段落，但 finalRecommendation 的 pick 不變。
+  const finalRecommendation = finalResult.finalRecommendation as Record<
+    string,
+    unknown
+  >;
+  assertEquals(finalRecommendation.pick, "resonate");
+});
+
 Deno.test("reframer filters reply options outside the active tier", async () => {
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({

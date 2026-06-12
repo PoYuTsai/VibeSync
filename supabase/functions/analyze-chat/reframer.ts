@@ -419,6 +419,7 @@ function createLegacyAnalysisAssembler() {
     reason: string,
     quotedContext: string,
     markFinal: boolean,
+    segments?: readonly Record<string, unknown>[],
   ) => {
     const replies = ensureRecord(result, "replies");
     replies[style] = message;
@@ -426,7 +427,7 @@ function createLegacyAnalysisAssembler() {
     const replyOptions = ensureRecord(result, "replyOptions");
     replyOptions[style] = {
       approach: reason,
-      messages: [
+      messages: segments && segments.length > 0 ? [...segments] : [
         {
           label: "recommended",
           sourceMessage: quotedContext,
@@ -464,7 +465,16 @@ function createLegacyAnalysisAssembler() {
 
       if (event.type === "analysis.reply_option") {
         const style = streamStyleFrom(event.style ?? event.selectedStyle);
-        const message = stringField(event.message);
+        // 2026-06-12 P0：#12 一球一回 prompt 下，多球對話的 reply_option
+        // 常只帶 messages 段落陣列、無頂層 message 字串——必須回退到
+        // segments join，否則該風格被靜默丟棄，emitDone 會誤判
+        // STREAM_INCOMPLETE_REPLY_OPTIONS（與 findMissingRequiredReplyStyles
+        // 的 segments 寬容度對齊）。
+        const segments = replySegmentsFrom(
+          event.messages ?? event.messageGroup ?? event.replySegments,
+        );
+        const message = stringField(event.message) ||
+          joinedSegmentReply(segments);
         if (!style || !message) return;
         absorbReply(
           style,
@@ -472,6 +482,7 @@ function createLegacyAnalysisAssembler() {
           stringField(event.reason ?? event.approach),
           stringField(event.quotedContext ?? event.sourceMessage),
           event.isSelected === true,
+          segments,
         );
         return;
       }
@@ -645,6 +656,28 @@ function hasUsableReplyOption(value: unknown): boolean {
     hasUsableReplySegments(
       value.messages ?? value.messageGroup ?? value.replySegments,
     );
+}
+
+function replySegmentsFrom(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  const segments: Record<string, unknown>[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    if (stringField(item.reply ?? item.content ?? item.text).length === 0) {
+      continue;
+    }
+    segments.push(item);
+  }
+  return segments;
+}
+
+function joinedSegmentReply(
+  segments: readonly Record<string, unknown>[],
+): string {
+  return segments
+    .map((item) => stringField(item.reply ?? item.content ?? item.text))
+    .filter((text) => text.length > 0)
+    .join("\n");
 }
 
 function hasUsableReplySegments(value: unknown): boolean {
