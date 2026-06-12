@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-06-12] 主 prompt 全面 few-shot 化 = voice few-shot 化（高手感/幽默感缺口）
-Status: OPEN — **設計定稿**（Eric 拍板 2026-06-12：A 案漸進置換／ChatGPT 轉寫+Eric 定稿／3-case 盲測／分層留 Phase 2），待實作
+Status: OPEN — **範例 1 草稿落檔，WAITING_ON_ERIC 逐句定稿**（`docs/plans/2026-06-12-voice-fewshot-example1-draft.md`；golden baseline 已留檔 `tools/voice-benchmark/baselines/`）。待拍板：slot 映射／resonate 補寫句／「江果先」字句確認（見草稿 D 節）
 Request-Type: design → implementation
 Design: `docs/plans/2026-06-12-voice-fewshot-design.md`
 Raised-By: Eric（實測 verdict：結構贏、voice 輸 free ChatGPT）
