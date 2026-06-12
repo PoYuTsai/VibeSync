@@ -158,6 +158,8 @@ class _ScreenshotRecognitionDialogState
     if (sanitizedMessages.isEmpty) {
       setState(() {
         _editValidationMessage = '至少要保留一則可加入對話的訊息。';
+        // 直接帶用戶進能修的地方，預設唯讀預覽下不留無聲死路。
+        _showDetailedEditor = true;
       });
       return;
     }
@@ -1077,14 +1079,18 @@ class _ScreenshotRecognitionDialogState
                         ),
                       ),
                     ),
-                    if (_editValidationMessage != null)
-                      Text(
-                        _editValidationMessage!,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.error,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  ],
+                  // 驗證訊息放在預覽/編輯分支外：預設收合時驗證失敗也看得到
+                  // （Codex review P2，2026-06-13）。
+                  if (_editValidationMessage != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _editValidationMessage!,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.error,
+                        fontWeight: FontWeight.w600,
                       ),
+                    ),
                   ],
                 ],
               ),

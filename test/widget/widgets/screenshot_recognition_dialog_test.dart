@@ -278,6 +278,39 @@ void main() {
       expect(find.widgetWithText(ChoiceChip, '我說'), findsNothing);
     });
 
+    testWidgets('收合預覽下送出 0 則有效訊息 → 驗證訊息可見並自動展開編輯',
+        (tester) async {
+      await _useTallSurface(tester);
+
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await _tapVisible(tester, find.text('編輯內容'));
+      for (final original in ['你今天在忙嗎', '剛忙完', '那晚點聊']) {
+        final field = find.widgetWithText(TextField, original);
+        await tester.ensureVisible(field);
+        await tester.pumpAndSettle();
+        await tester.enterText(field, '');
+        await tester.pumpAndSettle();
+      }
+      await _tapVisible(tester, find.text('完成編輯'));
+
+      await _tapVisible(tester, find.text('確認加入對話'));
+
+      expect(find.text('至少要保留一則可加入對話的訊息。'), findsOneWidget);
+      // 自動展開編輯模式，讓用戶能直接修。
+      expect(find.widgetWithText(ChoiceChip, '我說'), findsWidgets);
+    });
+
     testWidgets('allows editing speaker and content before import',
         (tester) async {
       await _useTallSurface(tester);
