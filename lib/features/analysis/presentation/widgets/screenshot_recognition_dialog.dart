@@ -239,8 +239,10 @@ class _ScreenshotRecognitionDialogState
     return groupIndexes.length > 1 && groupIndexes.first == index;
   }
 
-  // Always expand editor by default to encourage users to verify OCR text accuracy
-  bool get _shouldExpandEditorByDefault => true;
+  // 預設唯讀預覽：內容照樣攤開給用戶檢查，但編輯（TextField＋她說/我說
+  // chip）是高密度操作，等用戶點「編輯內容」才開啟（Eric 2026-06-13：
+  // 預設全展開用很多次仍覺得複雜）。
+  bool get _shouldExpandEditorByDefault => false;
 
   bool get _isCompactHighConfidenceFlow =>
       widget.recognized.importPolicy == 'allow' &&
@@ -397,6 +399,76 @@ class _ScreenshotRecognitionDialogState
       labelStyle: TextStyle(
         color: selected ? AppColors.primary : AppColors.glassTextPrimary,
         fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+
+  /// 唯讀預覽：左右對齊氣泡＋她說/我說標籤，攤開 OCR 結果供快速目檢。
+  /// 不放任何輸入元件——編輯一律走「編輯內容」功能鍵。
+  /// 讀 controller 現值而非原始 OCR 結果，編輯後收合預覽才會同步。
+  Widget _buildReadOnlyPreviewList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final message in _editableMessages)
+          _buildReadOnlyPreviewRow(message),
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyPreviewRow(_EditableRecognizedMessage message) {
+    final isMe = message.isFromMe;
+    final quoted = message.quotedReplyController?.text.trim() ?? '';
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        constraints: const BoxConstraints(maxWidth: 280),
+        decoration: BoxDecoration(
+          color: isMe
+              ? AppColors.primary.withValues(alpha: 0.14)
+              : const Color(0xFFF0EAF5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: message.side == 'unknown'
+                ? AppColors.warning.withValues(alpha: 0.6)
+                : AppColors.primary.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Text(
+              isMe ? '我說' : '她說',
+              style: AppTypography.bodySmall.copyWith(
+                color: message.side == 'unknown'
+                    ? AppColors.warning
+                    : AppColors.unselectedText,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (quoted.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                '引用：$quoted',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextHint,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+            const SizedBox(height: 2),
+            Text(
+              message.controller.text,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextPrimary,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -885,11 +957,11 @@ class _ScreenshotRecognitionDialogState
                         },
                         icon: Icon(
                           _showDetailedEditor
-                              ? Icons.expand_less_rounded
+                              ? Icons.check_rounded
                               : Icons.edit_note_rounded,
                         ),
                         label: Text(
-                          _showDetailedEditor ? '先收起來' : '查看內容',
+                          _showDetailedEditor ? '完成編輯' : '編輯內容',
                         ),
                       ),
                     ],
@@ -903,12 +975,13 @@ class _ScreenshotRecognitionDialogState
                     ),
                   ),
                   if (!_showDetailedEditor) ...[
+                    const SizedBox(height: 10),
+                    _buildReadOnlyPreviewList(),
                     const SizedBox(height: 8),
                     Text(
-                      '建議展開確認 AI 識別的文字是否正確，小字容易辨識錯誤。',
+                      '內容或「她說／我說」有錯？點右上「編輯內容」即可修改。',
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w500,
+                        color: AppColors.unselectedText,
                         height: 1.4,
                       ),
                     ),

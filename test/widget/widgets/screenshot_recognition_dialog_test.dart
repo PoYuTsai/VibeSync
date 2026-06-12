@@ -246,6 +246,38 @@ void main() {
       expect(dialogResult!.analysisContextNote, '她是我女友');
     });
 
+    testWidgets('預設唯讀預覽：內容攤開可檢查但不可直接編輯，點「編輯內容」才開啟',
+        (tester) async {
+      await _useTallSurface(tester);
+
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      // 唯讀預覽：訊息內容看得到（攤開給用戶質疑），但不在 TextField 裡，
+      // 也沒有她說／我說切換 chip。
+      expect(find.text('你今天在忙嗎'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '你今天在忙嗎'), findsNothing);
+      expect(find.widgetWithText(ChoiceChip, '我說'), findsNothing);
+
+      // 點功能鍵才進入編輯模式。
+      await _tapVisible(tester, find.text('編輯內容'));
+      expect(find.widgetWithText(TextField, '你今天在忙嗎'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, '我說'), findsWidgets);
+
+      // 完成編輯收回唯讀預覽。
+      await _tapVisible(tester, find.text('完成編輯'));
+      expect(find.widgetWithText(ChoiceChip, '我說'), findsNothing);
+    });
+
     testWidgets('allows editing speaker and content before import',
         (tester) async {
       await _useTallSurface(tester);
@@ -264,6 +296,8 @@ void main() {
 
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
+
+      await _tapVisible(tester, find.text('編輯內容'));
 
       expect(find.textContaining('有問題可以直接修改'), findsOneWidget);
       expect(find.text('依左／右重新套用'), findsOneWidget);
@@ -305,6 +339,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
+      await _tapVisible(tester, find.text('編輯內容'));
       await _tapVisible(tester, find.text('依左／右重新套用'));
 
       await _tapVisible(tester, find.text('這幾則都改成我說'));
@@ -330,6 +365,8 @@ void main() {
 
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
+
+      await _tapVisible(tester, find.text('編輯內容'));
 
       expect(find.text('這幾則都改成我說'), findsOneWidget);
       expect(find.textContaining('如果每則都判對了'), findsOneWidget);
