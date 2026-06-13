@@ -1475,3 +1475,31 @@ Deno.test({
     assertFalse(prompt.includes("最多 3 段"));
   },
 });
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT ships a worked example demonstrating full inventory then ≥3 caught balls (球數案 few-shot 正例)",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 黑箱根因＝模型不聽散文，補一個 worked example 把「盤點先行→段數下限」演一遍。
+    assert(prompt.includes("完整範例 3：多球連發→盤點全列→接 ≥3 顆"));
+    // 範例必須是虛構非-golden 情境（陽明山夜景／麻糬），絕不可用 golden 測試圖本身。
+    assert(prompt.includes("欸我把上次說的陽明山夜景點查好了"));
+    assert(prompt.includes("麻糬"));
+    // 強制步驟：先把 6 句連發逐項列成盤點清單再決定出幾段。
+    assert(prompt.includes("盤點清單（強制步驟，先列全 6 項再決定出幾段）"));
+    // 段數下限落地：6 句連發接出 ≥3 段（這裡 4 段），證明不是縮成 2 球。
+    assert(prompt.includes("值得接的真球有 4 顆"));
+    assert(prompt.includes("出 4 段"));
+    assert(prompt.includes("6 句連發明顯不只 1-2 顆球"));
+    // 每段引原句＋掛素材鉤子：callback／埋約／懸念各示範一次，reply 是可直送真句。
+    assert(prompt.includes("callback「上次說的」延續球"));
+    assert(prompt.includes("挑一天天氣好的我們直接殺上去"));
+    assert(prompt.includes("被妳發現了，剛好在等一個人傳訊息"));
+    // reply 須是真句不是罩句／空泛附和。
+    assert(prompt.includes("不空泛回『真好』"));
+    assert(prompt.includes("不假裝看得到照片也不空讚『好可愛』"));
+  },
+});
