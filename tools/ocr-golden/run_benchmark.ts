@@ -35,6 +35,7 @@ interface LabelMessage {
   side: "left" | "right";
   text: string;
   quotedReplyPreview?: string;
+  quotedReplyPreviewIsFromMe?: boolean; // 引用的舊訊息是誰發的（誰引用誰）
 }
 
 interface GoldenLabel {
@@ -51,6 +52,7 @@ interface RecognizedMessage {
   isFromMe?: boolean;
   content?: string;
   quotedReplyPreview?: string;
+  quotedReplyPreviewIsFromMe?: boolean;
 }
 
 interface RecognizedConversation {
@@ -84,18 +86,77 @@ interface UnitResult {
   charTotal?: number;
   missed?: { side: string; text: string }[];
   hallucinated?: { side: string; text: string }[];
+  // 多出來的 actual 列依性質拆桶（皆為真實污染 analyze-chat 的列，不從 precision 抹掉，只標明性質）
+  quotedPreviewLeaks?: { side: string; text: string }[]; // 引用預覽被當訊息吐（③ 鬼訊息）
+  activityCardNoise?: { side: string; text: string }[]; // 活動卡被拆成日期/時段/按鈕碎片
   sideMismatches?: { expected: string; actual: string; text: string }[];
   classificationMatch?: boolean;
   importPolicyMatch?: boolean;
   uncertainSideCount?: number;
   sideConfidence?: string;
   telemetry?: Record<string, number>;
+  quoteAuthorCorrect?: number; // 誰引用誰：isFromMe 判對數（只計 label 有標 quotedReplyPreviewIsFromMe 的 aligned 則）
+  quoteAuthorTotal?: number;
+  quotePreviewCorrect?: number; // 引用預覽文字判對數（只計 label 有 quotedReplyPreview 的 aligned 則）
+  quotePreviewTotal?: number;
 }
 
 // ---------- 文字比對 ----------
 
 export function normalizeText(s: string): string {
   return s.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+}
+
+// 媒體 token 歸一：把描述型媒體標記（[sticker: 狗]、[photo of x]、sent a photo、
+// [貼圖]）收斂成 label 採用的裸 token（[sticker] / [photo] / [video]）。
+// 真實 OCR 會吐豐富描述，label 只記 [sticker]/[photo]，不歸一會被當「漏抓+幻覺」雙重扣分。
+export function canonicalizeMedia(s: string): string {
+  const lower = s.trim().toLowerCase();
+  const toToken = (kind: string): string => {
+    if (kind === "sticker" || kind === "貼圖") return "[sticker]";
+    if (kind === "video" || kind === "影片" || kind === "gif") return "[video]";
+    return "[photo]"; // photo/image/picture/照片/圖片 → photo bucket
+  };
+  const kinds = "sticker|photo|image|picture|video|gif|貼圖|照片|圖片|影片";
+  // (?![a-z]) 取代 \b：CJK kind（貼圖/照片）後接 ] 時 ASCII \b 不成立，但仍要擋 photographic
+  const bracket = lower.match(new RegExp(`^\\[\\s*(${kinds})(?![a-z])[^\\]]*\\]?$`));
+  if (bracket) return toToken(bracket[1]);
+  const desc = lower.match(
+    new RegExp(`\\b(?:sent|shared|uploaded|attached)\\s+(?:an?\\s+)?(${kinds})\\b`),
+  );
+  if (desc) return toToken(desc[1]);
+  const of = lower.match(/\b(photo|image|picture|video)\s+of\b/);
+  if (of) return toToken(of[1]);
+  return s;
+}
+
+// emoji 容差：去 emoji、膚色修飾（U+1F3FB-1F3FF）、variation selector（U+FE0F）、ZWJ。
+// emoji 真值本身常不可靠（label 註記 😯/😲 難辨），不該讓 emoji 差異打斷文字對齊或污染逐字率/CER。
+export function stripEmoji(s: string): string {
+  // Extended_Pictographic = 多數 emoji；外加膚色修飾、variation selector(FE0F)、ZWJ(200D)。
+  const EMOJI = /[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}️‍]/gu;
+  return s.replace(EMOJI, "");
+}
+
+// 計分用歸一：媒體歸一 + 去 emoji + 文字歸一。對齊、逐字率、CER 都走這條，
+// 確保量到的是「文字內容對不對」，而非媒體描述風格或 emoji 變體。
+function normalizeForScoring(s: string): string {
+  return normalizeText(stripEmoji(canonicalizeMedia(s)));
+}
+
+// 活動卡雜訊：LINE 預約/連結卡被 OCR 拆成日期/時段/按鈕碎片列。
+// label 只保留卡片標題為一則訊息，碎片列若當一般幻覺會冤枉 precision；獨立歸類才看得出真相。
+export function isActivityCardNoise(content: string): boolean {
+  const t = content.trim();
+  if (!t || t.length > 24) return false;
+  if (/^(預約|報名|查看|加入|前往|reserve|book|join)$/i.test(t)) return true;
+  // 純日期：06/10 (三) / 2026/06/10 / 6-10
+  if (/^\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,2})?\s*(?:[（(][^）)]{1,3}[）)])?$/.test(t)) {
+    return true;
+  }
+  // 純時段：19:00 ~ 20:00 / 19:00-20:00 / 19:00
+  if (/^\d{1,2}:\d{2}(?:\s*[~\-－—至]\s*\d{1,2}:\d{2})?$/.test(t)) return true;
+  return false;
 }
 
 export function levenshtein(a: string, b: string): number {
@@ -118,8 +179,8 @@ export function levenshtein(a: string, b: string): number {
 }
 
 export function similarity(a: string, b: string): number {
-  const na = normalizeText(a);
-  const nb = normalizeText(b);
+  const na = normalizeForScoring(a);
+  const nb = normalizeForScoring(b);
   if (!na.length && !nb.length) return 1;
   const maxLen = Math.max(na.length, nb.length);
   return maxLen === 0 ? 1 : 1 - levenshtein(na, nb) / maxLen;
@@ -292,6 +353,10 @@ export function scoreUnit(
   let exactTextMatches = 0;
   let charErrors = 0;
   let charTotal = 0;
+  let quoteAuthorCorrect = 0;
+  let quoteAuthorTotal = 0;
+  let quotePreviewCorrect = 0;
+  let quotePreviewTotal = 0;
   const sideMismatches: UnitResult["sideMismatches"] = [];
 
   for (const [ei, ai] of pairs) {
@@ -308,8 +373,26 @@ export function scoreUnit(
         text: exp.text.slice(0, 30),
       });
     }
-    const expNorm = exp.text.normalize("NFKC").trim();
-    const actNorm = (act.content ?? "").normalize("NFKC").trim();
+    // 誰引用誰：只在 label 標了 quotedReplyPreviewIsFromMe 時計分
+    if (typeof exp.quotedReplyPreviewIsFromMe === "boolean") {
+      quoteAuthorTotal++;
+      if (act.quotedReplyPreviewIsFromMe === exp.quotedReplyPreviewIsFromMe) {
+        quoteAuthorCorrect++;
+      }
+    }
+    // 引用預覽文字：只在 label 有 quotedReplyPreview 時計分（抓 dim 灰小字讀錯，如 睏睏→眯眯）
+    if (typeof exp.quotedReplyPreview === "string" && exp.quotedReplyPreview.trim()) {
+      quotePreviewTotal++;
+      if (
+        similarity(exp.quotedReplyPreview, act.quotedReplyPreview ?? "") >=
+          SIMILARITY_THRESHOLD
+      ) {
+        quotePreviewCorrect++;
+      }
+    }
+    // 逐字率/CER 走計分歸一（媒體歸一 + 去 emoji），量文字內容而非媒體描述風格/emoji 變體
+    const expNorm = normalizeForScoring(exp.text);
+    const actNorm = normalizeForScoring(act.content ?? "");
     if (expNorm === actNorm) exactTextMatches++;
     charErrors += levenshtein(expNorm, actNorm);
     charTotal += expNorm.length;
@@ -317,6 +400,26 @@ export function scoreUnit(
 
   const alignedExpected = new Set(pairs.map(([e]) => e));
   const alignedActual = new Set(pairs.map(([, a]) => a));
+
+  // 多出來的 actual 列拆桶：引用預覽洩漏（鬼訊息）／活動卡碎片／真幻覺
+  const previewTexts = expected
+    .map((e) => e.quotedReplyPreview)
+    .filter((p): p is string => typeof p === "string" && p.trim().length > 0);
+  const hallucinated: { side: string; text: string }[] = [];
+  const quotedPreviewLeaks: { side: string; text: string }[] = [];
+  const activityCardNoise: { side: string; text: string }[] = [];
+  actual.forEach((m, i) => {
+    if (alignedActual.has(i)) return;
+    const content = m.content ?? "";
+    const entry = { side: m.side ?? "?", text: content.slice(0, 40) };
+    if (previewTexts.some((p) => similarity(p, content) >= SIMILARITY_THRESHOLD)) {
+      quotedPreviewLeaks.push(entry);
+    } else if (isActivityCardNoise(content)) {
+      activityCardNoise.push(entry);
+    } else {
+      hallucinated.push(entry);
+    }
+  });
 
   return {
     ...base,
@@ -331,18 +434,19 @@ export function scoreUnit(
     missed: expected
       .filter((_, i) => !alignedExpected.has(i))
       .map((mes) => ({ side: mes.side, text: mes.text.slice(0, 40) })),
-    hallucinated: actual
-      .filter((_, i) => !alignedActual.has(i))
-      .map((mes) => ({
-        side: mes.side ?? "?",
-        text: (mes.content ?? "").slice(0, 40),
-      })),
+    hallucinated,
+    quotedPreviewLeaks,
+    activityCardNoise,
     sideMismatches,
     classificationMatch: rec.classification === label.classification,
     importPolicyMatch: rec.importPolicy === label.importPolicy,
     uncertainSideCount: rec.uncertainSideCount,
     sideConfidence: rec.sideConfidence,
     telemetry: rec.normalizationTelemetry,
+    quoteAuthorCorrect,
+    quoteAuthorTotal,
+    quotePreviewCorrect,
+    quotePreviewTotal,
   };
 }
 
@@ -371,6 +475,18 @@ export function aggregate(results: UnitResult[]) {
     classificationMatchRate: scored.length
       ? scored.filter((r) => r.classificationMatch).length / scored.length
       : null,
+    quoteAuthorAccuracy: sum((r) => r.quoteAuthorTotal ?? 0) > 0
+      ? sum((r) => r.quoteAuthorCorrect ?? 0) / sum((r) => r.quoteAuthorTotal ?? 0)
+      : null,
+    quoteAuthorTotal: sum((r) => r.quoteAuthorTotal ?? 0),
+    quotePreviewAccuracy: sum((r) => r.quotePreviewTotal ?? 0) > 0
+      ? sum((r) => r.quotePreviewCorrect ?? 0) /
+        sum((r) => r.quotePreviewTotal ?? 0)
+      : null,
+    quotePreviewTotal: sum((r) => r.quotePreviewTotal ?? 0),
+    // 引用預覽洩漏（③ 鬼訊息）與活動卡碎片總數：真實污染 analyze-chat 的列，獨立追蹤
+    quotedPreviewLeakTotal: sum((r) => r.quotedPreviewLeaks?.length ?? 0),
+    activityCardNoiseTotal: sum((r) => r.activityCardNoise?.length ?? 0),
     totalRepairAdjustments: sum((r) =>
       Object.entries(r.telemetry ?? {})
         .filter(([k]) => k.endsWith("AdjustedCount"))
@@ -485,15 +601,21 @@ async function main() {
   );
 
   console.log(`\n## 彙總（主指標 = real）\n`);
-  console.log(`| 分層 | side acc | recall | precision | unknown | 逐字率 | CER |`);
-  console.log(`|---|---|---|---|---|---|---|`);
+  console.log(
+    `| 分層 | side acc | recall | precision | unknown | 逐字率 | CER | 引用誰(n) | 引用文(n) |`,
+  );
+  console.log(`|---|---|---|---|---|---|---|---|---|`);
   const row = (name: string, a: ReturnType<typeof aggregate>) =>
     console.log(
-      `| ${name} | ${pct(a.sideAccuracy)} | ${pct(a.messageRecall)} | ${pct(a.messagePrecision)} | ${pct(a.finalUnknownRate)} | ${pct(a.exactTextRate)} | ${pct(a.cer)} |`,
+      `| ${name} | ${pct(a.sideAccuracy)} | ${pct(a.messageRecall)} | ${pct(a.messagePrecision)} | ${pct(a.finalUnknownRate)} | ${pct(a.exactTextRate)} | ${pct(a.cer)} | ${pct(a.quoteAuthorAccuracy)}(${a.quoteAuthorTotal}) | ${pct(a.quotePreviewAccuracy)}(${a.quotePreviewTotal}) |`,
     );
   row("整體", overall);
   for (const [k, v] of Object.entries(bySource)) row(`source:${k}`, v);
   for (const [k, v] of Object.entries(byScenario)) row(`scenario:${k}`, v);
+  // 真實污染 analyze-chat 的多出列（不計入 precision 抹除，獨立追蹤，可逐單元下鑽）
+  console.log(
+    `\n引用預覽洩漏（鬼訊息）總數: ${overall.quotedPreviewLeakTotal} · 活動卡碎片雜訊總數: ${overall.activityCardNoiseTotal}`,
+  );
   console.log(`\n結果已寫入 ${outPath}`);
 }
 
