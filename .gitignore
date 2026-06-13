@@ -69,3 +69,6 @@ vibesync-web/
 tools/ocr-golden/labels/real/
 tools/ocr-golden/results/
 tools/ocr-golden/.env.golden
+
+# voice-benchmark 黑箱驗證跑分輸出（throwaway，留本機供檢視，不入 git）
+tools/voice-benchmark/baselines/verify_*.ndjson
