@@ -36,6 +36,10 @@ export function buildStreamSystemPrompt(
     `3. Emit exactly ${replyStyles.length} \`analysis.reply_option\` events: one for each allowed reply style (${styleList}). Emit the selected style first, then the other allowed styles.`,
     "Complete all required `analysis.reply_option` events before any metrics, report sections, or done event.",
     "Each `analysis.reply_option` must include `style`, `reason`, and `segments`: one segment per caught ball (up to 5), each with non-empty `sourceIndex` (1-based position in her latest run), `sourceMessage` (her original text), `reply`, and `reason`. Do not write a flat `message` field; the server joins `segments` into legacy fields.",
+    // ⚠️ 字面已非真實（2026-06-13 fail-soft，f417bd8）：server 不再 reject／retry，
+    //    floor 現為 prompt-only 準則，違反只記 log（見 reframer.ts ball_inventory canary）。
+    //    這句「server rejects」措辭刻意保留——它是模型乖乖達標的 compliance 壓力來源，
+    //    dogfood 已驗證有效。絕不據此句重新加硬 enforcement。改字串＝動高風險 prompt，必黑箱重驗。
     "Server-enforced floor: when she sent several messages, your SELECTED style must contain at least min(3, number of balls you marked 接 or 併) segments, every one sourced from a 接 or 併 ball. The server rejects and forces a retry if the selected style falls below that floor or pulls a segment from a 略 ball, so satisfy the floor in your first pass instead of dropping caught balls.",
     "The selected style is the reply the user will actually send, so never write it more tersely than your other styles — it must catch at least as many balls as your fullest non-selected style. Even a cold read or a tease must spread across the floor's worth of 接/併 balls (one sharp segment per ball); do not collapse the lead reply into a single quip while padding the styles she will not use.",
     'Example reply_option line: {"type":"analysis.reply_option","style":"extend","reason":"接住晚餐球再順勢延伸夜市","segments":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","reply":"吃了什麼好料？","reason":"接住晚餐球"},{"sourceIndex":2,"sourceMessage":"等等要去樂華夜市","reply":"夜市幫我吃份地瓜球","reason":"延伸夜市話題"}]}',

@@ -225,8 +225,12 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     // 球數案閘 — 2026-06-13 改 fail-soft（log-only）。
     // 原硬擋（不達下限/取略球→丟 option→終局 INCOMPLETE）在 dogfood 造成真實
     // 分析失敗（「請重新分析」）＝guard 非 generator，模型不服從時倒楣的是用戶。
-    // 暫改：只記錄、不擋，照出選中風格回覆；接球率由 (b)(c) prompt 提升。
-    // 閘的正確軟著陸（例如只丟略球段不卡數量）留新 session 重設計。
+    // 定調（2026-06-13 dogfood 後）：只記錄、不擋，照出選中風格回覆；接球率由
+    // (b)(c) prompt 提升，dogfood 第2/3張圖確認 prompt 單獨即達標。
+    // 重設計（讓閘改丟略球段）已主動劃掉——重進丟段＋扣費高風險區去解一個
+    // dogfood 已不存在的問題＝YAGNI。此處永久保留為 observability canary：
+    // verdict.ok=false 的 log 是「prompt 接球率退步」的免費預警，不擋用戶。
+    // ⚠️ 絕不把此 block 改回丟 option／終局 INCOMPLETE——那正是炸過的 guard。
     if (inventory && style && style === selectedStyleNow()) {
       const verdict = validateSelectedSegments(inventory, segments);
       if (!verdict.ok) {
