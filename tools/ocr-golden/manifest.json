@@ -53,6 +53,19 @@
       ]
     },
     {
+      "id": "S__42237983",
+      "source": "real",
+      "images": [
+        "S__42237983.jpg"
+      ],
+      "label": "real/S__42237983.json",
+      "scenarios": [
+        "dark_mode",
+        "quoted_card",
+        "sticker_media"
+      ]
+    },
+    {
       "id": "S__5513245_0",
       "source": "real",
       "images": [
