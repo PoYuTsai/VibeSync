@@ -58,10 +58,10 @@ line[0] 是 name-line 但「看起來是句子不是名字」→ 不排除（視
 4. `deno test` ＋ `deno check` 綠。本機 only。
 5. **重跑測試集**（Eric 要的最終回報）：fix 後對 dark/quoted 多輪跑分，回報 `quotedPreviewLeakTotal`→0、side/recall/exactText/quotePreviewAccuracy before vs after。
 6. **Codex 雙審**（高風險 gate）→ APPROVED。
-7. **僅在 APPROVED ＋ Eric 確認後** push/deploy（auto-deploy aware；會帶出 9f74885/547ee10）。
+7. **僅在 APPROVED ＋ Eric 確認後** push/deploy（auto-deploy aware；幾何閘 9f74885 已於 2026-06-13 上 prod，本案 push 只帶鬼訊息修法本身）。
 
 ## 絕不
 
-- 絕不本輪 push（origin/main..HEAD 已含未審 9f74885/547ee10 OCR 幾何閘，push 即 auto-deploy 進 prod）。
+- 絕不未經 Codex APPROVED＋Eric 確認就 push（OCR/analyze-chat prod 高風險區，push 即 auto-deploy 進 prod）。
 - 絕不放寬 `!!previous`（首訊息保護）。
 - 絕不全域改 `isLikelyQuotedReplyPreviewNameLine`（傷 explicit path）。
