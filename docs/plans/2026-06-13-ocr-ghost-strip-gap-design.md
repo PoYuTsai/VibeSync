@@ -1,7 +1,42 @@
 # OCR ③ 鬼訊息 strip-gap 修復設計（2026-06-13）
 
 > 高風險區（OCR / analyze-chat prod code）。本檔為動碼前的 invariants ＋ failure matrix 契約。
-> 狀態：設計定稿（Eric 拍板 A／下刀位置／N=5／failure matrix）。**尚未實作**，下一 session 進 TDD。
+> 狀態：**方案 A 作廢（2026-06-13 翻案）**。根因更正為 vision 層雙 bug，strip 層補救對此 case 無效。下一 session 研究 vision 修法。
+
+---
+
+## ⛔ 翻案（2026-06-13，撈 raw 後）——方案 A 作廢
+
+**動碼前撈 `S__5513242_0` 實際 OCR 輸出**（`tools/ocr-golden/results/before/2026-06-13-11-16-22-local.json`），推翻本檔原本對 case 形狀的假設：
+
+- `expectedCount 3 → actualCount 5`（多 2 鬼）。
+- 鬼 content = **單行「這小孩也太刺激」**——卡片的「Bruce Chiang」**名字列被 OCR 丟掉** → explicit path（需 ≥2 行）天生接不到。
+- 鬼 side = **left（對方 candy）**；但 `sideMismatches` 顯示 candy 的**兩則真回覆**「教小孩真不容易」「等等見」被 OCR **翻到 right（我側）= side-flip bug**。
+
+**致命點：方案 A 在此 case 根本不會觸發。** body-only strip 的前置硬條件 `current.side === next.side`（`index.ts:3300-3304`）——鬼=left、其後真回覆被翻成 right → `left === right` = false、皆非 unknown → **側連續性 guard 直接 fail** → 不論文字判別（≥5 漢字）怎麼改，strip 永不啟動。
+
+**∴ 原 must-strip 假設「鬼與其回覆同側」是事實錯誤；方案 A 修完 S__5513242 仍漏。** 文字層補救是白做工。
+
+### 更正後的根因（兩個糾纏 bug，都在 vision 層）
+
+- (a) **鬼洩漏**：vision 把引用卡當獨立 left 訊息 ＋ 丟掉卡內「Bruce Chiang」名字頭。
+- (b) **side-flip**：vision 把 candy 真回覆翻到右側。
+- **(b) 讓 (a) 的下游補救（strip / 方案 A）失效。**
+
+### 下一 session 研究方向（不再走 strip 文字啟發式）
+
+1. **先單獨解 side-flip (b)**（candy 真回覆不該翻右），再評估 strip 是否足夠；或
+2. **直接修 vision**：別丟卡片名字列 ＋ 正確掛 `quotedReplyPreview`；含「**label 而非 suppress**」構想——叫 vision 對每塊文字標 `blockType: message|quotedPreview|notice`，下游確定性 filter，把易漏的二元抑制決定換成貼標籤。
+
+**待確認**：此 before-run 是否含幾何閘 9f74885？若含，代表幾何閘對暗色引用卡場景的 side 判定仍漏。
+
+### 暗色實證（Eric 親驗截圖）
+
+引用卡四訊號（頭像／白粗體名字「Bruce Chiang」／淺灰內文／圓角邊框）在原圖**全部清楚**——非「讀不出」，是 vision 抽取失誤。卡內「對方在一面倒側出現的他方名字頭」近乎確定性訊號，方案 A 卻丟掉它改數內文漢字（最弱訊號）。
+
+---
+
+> ⬇️ 以下為**已作廢**的方案 A 原始設計，保留供溯源，**不得照此實作**。
 
 ## 問題（CONFIRMED REAL）
 
