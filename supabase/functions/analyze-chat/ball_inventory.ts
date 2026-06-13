@@ -95,11 +95,27 @@ export function validateSelectedSegments(
     }
   }
 
+  // 下限數「不同的接/併球」而非段數（Codex adversarial P2）：重複 sourceIndex
+  // 只算一次，盤點外（absent）的索引不算真接球。盤點外的段不會單獨致 REJECT
+  // ——達標後多帶一段盤點外的句子仍放行（不誤殺 INV-H6'）。
+  const distinctCatchable = new Set<number>();
+  for (const segment of segments) {
+    const sourceIndex = segment?.sourceIndex;
+    if (typeof sourceIndex !== "number" || !Number.isFinite(sourceIndex)) {
+      continue;
+    }
+    const disposition = inventory.dispositions.get(sourceIndex);
+    if (disposition === "接" || disposition === "併") {
+      distinctCatchable.add(sourceIndex);
+    }
+  }
+
   const floor = segmentFloor(inventory);
-  if (segments.length < floor) {
+  if (distinctCatchable.size < floor) {
     return {
       ok: false,
-      reason: `選中風格段數 ${segments.length} 未達下限 ${floor}`,
+      reason:
+        `選中風格實際接到 ${distinctCatchable.size} 顆不同的接/併球，未達下限 ${floor}`,
     };
   }
 
