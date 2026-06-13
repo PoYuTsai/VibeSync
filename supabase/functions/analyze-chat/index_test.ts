@@ -1409,3 +1409,69 @@ Deno.test({
     assert(prompt.includes("吐槽冷讀 callback"));
   },
 });
+
+// ── golden 反推三缺口（Eric 拍板 2026-06-13，盤點＋下限＋邀約埋點素材三件一起上） ──
+// 背景：golden_anchor_recon 案她連發 6 球，GPT 高手版接 4（糖糖 callback／晚餐照邀約埋點／
+// 未接懸念／到家關心），產品只接 2，糖糖梗＋晚餐照整組被吞。真差距是「素材使用率」不是段數。
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT forces a ball inventory before selecting (盤點先行，堵吞球後門)",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 強制盤點：寫回覆前先把每句／每個 marker 列清單、逐項標接／併／略。
+    assert(prompt.includes("盤點先行（強制步驟，不可跳過）"));
+    assert(prompt.includes("列成一張盤點清單"));
+    assert(prompt.includes("逐項標「接／併／略」"));
+    // 併球不得當吞球後門（6 球縮 2 球）。
+    assert(prompt.includes("把 6 句連發硬縮成 2 球是吞球，不是併球"));
+    // 對象歷史延續球（糖糖梗）務必列進清單——這是被漏掉的那組。
+    assert(prompt.includes("把對象歷史的延續球"));
+    assert(prompt.includes("它最常被漏掉、卻是最高價值的球"));
+    // reason 要交代盤點結論（接／併／略各一句）。
+    assert(prompt.includes("要交代這張盤點表的結論"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT lists life-sharing as date-invitation seed material (邀約埋點素材入優先接清單)",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 生活分享不只是「分享慾要回應」，更是邀約埋點素材（晚餐照→下次去處）。
+    assert(prompt.includes("生活分享裡的邀約埋點素材"));
+    assert(prompt.includes("埋邀約鉤子的素材"));
+    assert(prompt.includes("把她的生活素材變成下一次見面的理由"));
+    // 串既有詞彙表（模糊邀約／約會幻想／合作框架），不另造名詞。
+    assert(prompt.includes("模糊邀約、約會幻想或合作框架"));
+    // 反向護欄：冷場／她剛放掉邀約時不硬約（同 case1 pushy 教訓）。
+    assert(prompt.includes("她剛放掉邀約時不硬約"));
+  },
+});
+
+Deno.test({
+  name:
+    "SYSTEM_PROMPT adds a segment floor backed by real balls, not filler (連發≥4句≥3段＋反水段)",
+  permissions: { read: true },
+  fn: async () => {
+    const prompt = await readAnalyzeSystemPrompt();
+
+    // 下限檢核錨：連發 4 句以上通常 ≥3 段。
+    assert(prompt.includes("段數下限（檢核錨）"));
+    assert(prompt.includes("連發 4 句以上有內容的訊息"));
+    assert(prompt.includes("replySegments 通常要 ≥3 段"));
+    assert(prompt.includes("出 1-2 段多半是盤點時把球吞掉了"));
+    // 例外：多句同屬一球可少於 3 段，但要說明。
+    assert(prompt.includes("才可以少於 3 段"));
+    // 反水段：段數來自盤點真球，嚴禁湊水段應付下限。
+    assert(prompt.includes("下限要靠真球達標，不是硬湊水段"));
+    assert(prompt.includes("嚴禁為了湊滿段數生出沒有實質"));
+    assert(prompt.includes("寧可少一段紮實，也不要多一段敷衍"));
+    // 下限是「至少」不是「最多」——不得退回舊 cap 字樣。
+    assertFalse(prompt.includes("最多 3 段"));
+  },
+});
