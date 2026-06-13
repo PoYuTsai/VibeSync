@@ -15,6 +15,10 @@ export type StreamStyle = typeof STREAM_STYLES[number];
 export const STREAM_EVENT_TYPES = [
   "analysis.started",
   "analysis.progress",
+  // 球數案修法二：盤點逼進輸出契約（軟版）。模型最先 emit 列全 N 球各標
+  // 接/併/略，機制＝強迫分類在選球之前。known-optional：reframer 純放行、
+  // 不驗證、不碰丟段路徑；App default:break 可忽略不渲染。
+  "analysis.inventory",
   "analysis.decision",
   "analysis.recommendation",
   "analysis.reply_option",

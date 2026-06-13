@@ -39,7 +39,8 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
     prompt.indexOf("analysis.decision") <
       prompt.indexOf("analysis.recommendation"),
   );
-  assert(prompt.includes("first, as soon as you know the next move"));
+  // 球數案修法二：inventory 是 step 0，decision 改為 step 1（不再是「first」）。
+  assert(prompt.includes("as soon as you know the next move"));
   assert(prompt.includes("analysis.progress` is optional after"));
   assert(prompt.includes("status/waiting copy only"));
   assert(prompt.includes("Do not include advice"));
@@ -138,4 +139,39 @@ Deno.test("v2: prompt carries a one-line multi-ball reply_option few-shot", () =
   // few-shot 必須示範多球（≥2 段），單段範例會被模型當預設形狀。
   const example = prompt.slice(prompt.indexOf('{"type":"analysis.reply_option"'));
   assertEquals(example.split('"sourceIndex"').length >= 3, true);
+});
+
+// ---------------------------------------------------------------------------
+// 球數案修法二：盤點逼進輸出契約（軟版）— stream_prompt step 0 = analysis.inventory
+//
+// 黑箱根因：盤點寫在 reason（決策後才填的事後辯解欄）→ 模型先選球再補理由、
+// 靜默吞球。修法＝把盤點做成「最先 emit、列全 N 球」的事件，autoregressive 上
+// 強迫分類在選球之前。step 0 必須排在 analysis.decision 之前。
+// ---------------------------------------------------------------------------
+
+Deno.test("inventory: stream prompt emits analysis.inventory as step 0 before the decision", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("analysis.inventory"));
+  // 順序契約：盤點事件必須排在 decision 之前（autoregressive 強迫先分類後選球）。
+  assert(
+    prompt.indexOf("analysis.inventory") < prompt.indexOf("analysis.decision"),
+    "inventory step must precede the decision step",
+  );
+  // 列全 N 球、寫進 inventory 事件而非只寫進 reason（堵事後辯解後門）。
+  assert(prompt.includes("before you pick a style"));
+  assert(prompt.includes("not only"));
+});
+
+Deno.test("inventory: stream prompt ships a 接/併/略 example inventory line", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes('{"type":"analysis.inventory"'));
+  assert(prompt.includes('"disposition"'));
+  // 範例必須示範三種處置，模型才知道 略 也要顯式列出（吞球的反面）。
+  const example = prompt.slice(prompt.indexOf('{"type":"analysis.inventory"'));
+  const head = example.slice(0, example.indexOf("\n"));
+  assert(head.includes("接"));
+  assert(head.includes("併"));
+  assert(head.includes("略"));
 });

@@ -2088,3 +2088,126 @@ Deno.test("done merge drops non-string enthusiasm level", async () => {
   assertEquals(enthusiasm.score, 70);
   assertEquals("level" in enthusiasm, false);
 });
+
+// ---------------------------------------------------------------------------
+// 球數案修法二：盤點逼進輸出契約（軟版）— reframer 容忍 analysis.inventory
+//
+// inventory 在 decision（扣費錨）之前最先到貨。reframer 必須：純放行轉發給
+// client（rides pre-charge buffer，charge 後 flush）、絕不當扣費錨、絕不碰丟段
+// 路徑、絕不污染 finalResult、絕不阻斷 decision/done。守上輪紅線：完全不動
+// segments / sanitize。
+// ---------------------------------------------------------------------------
+
+Deno.test("inventory: leading inventory is forwarded after charge, never blocks the stream", async () => {
+  const timeline: string[] = [];
+  let chargeCalls = 0;
+  const reframer = createStreamReframer({
+    emit(event) {
+      timeline.push(`emit:${event.type}`);
+    },
+    onRecommendation() {
+      chargeCalls += 1;
+      timeline.push("charge");
+      return { charged: true };
+    },
+  });
+
+  // step 0：盤點先到（在 decision 之前），列全球各標 接/併/略。
+  reframer.pushText(line({
+    type: "analysis.inventory",
+    balls: [
+      { sourceIndex: 1, sourceMessage: "剛來吃晚餐", disposition: "接", reason: "生活分享可延伸" },
+      { sourceIndex: 2, sourceMessage: "[Photo]", disposition: "略", reason: "無文字訊息點" },
+    ],
+  }));
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "coldRead",
+    nextStepBody: "接住晚餐球順勢延伸。",
+    doThis: "問她吃了什麼。",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "coldRead",
+    message: "吃晚餐配那張照片的氣氛，看起來今天心情不錯齁",
+    reason: "接住晚餐球＋讀她的心情。",
+    quotedContext: "剛來吃晚餐",
+  }));
+
+  await reframer.flush();
+
+  // 不阻斷：charge 一次、inventory 在 charge 後 flush（decision 之前）、done 收尾、零 error。
+  assertEquals(chargeCalls, 1);
+  assertEquals(timeline, [
+    "charge",
+    "emit:analysis.inventory",
+    "emit:analysis.decision",
+    "emit:analysis.recommendation",
+    "emit:analysis.done",
+  ]);
+});
+
+Deno.test("inventory: never charges, never pollutes finalResult, never touches segments", async () => {
+  const events: StreamOutputEvent[] = [];
+  let chargeCalls = 0;
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.inventory",
+    balls: [
+      { sourceIndex: 1, sourceMessage: "剛來吃晚餐", disposition: "接", reason: "可延伸" },
+      { sourceIndex: 2, sourceMessage: "等等去夜市", disposition: "併", reason: "同片段合併" },
+      { sourceIndex: 3, sourceMessage: "[Photo]", disposition: "略", reason: "無文字點" },
+    ],
+  }));
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "extend",
+    nextStepBody: "接晚餐＋夜市兩球。",
+    doThis: "順勢延伸。",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "吃了什麼好料？夜市幫我吃份地瓜球",
+    reason: "接住兩球。",
+    quotedContext: "剛來吃晚餐",
+  }));
+  reframer.pushText(line({ type: "analysis.done" }));
+
+  await reframer.flush();
+
+  // inventory 不是扣費錨：charge 只因 decision 觸發一次。
+  assertEquals(chargeCalls, 1);
+  assertEquals(events.some((e) => e.type === "analysis.error"), false);
+
+  const done = events.find((e) => e.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+
+  // 不污染 finalResult：盤點不外溢成頂層欄位。
+  assertEquals("balls" in finalResult, false);
+  assertEquals("inventory" in finalResult, false);
+
+  // 不碰丟段路徑：盤點的球（帶 sourceMessage、無 reply）絕不變成 replySegments。
+  const finalRecommendation = finalResult.finalRecommendation as Record<
+    string,
+    unknown
+  >;
+  assertEquals("balls" in finalRecommendation, false);
+  assertEquals("disposition" in finalRecommendation, false);
+  const segments = finalRecommendation.replySegments;
+  if (Array.isArray(segments)) {
+    for (const seg of segments) {
+      assertEquals("disposition" in (seg as Record<string, unknown>), false);
+    }
+  }
+});

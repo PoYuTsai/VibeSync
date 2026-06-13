@@ -30,6 +30,7 @@ Deno.test("STREAM_EVENT_TYPES includes the streaming contract events", () => {
   assertEquals(STREAM_EVENT_TYPES, [
     "analysis.started",
     "analysis.progress",
+    "analysis.inventory",
     "analysis.decision",
     "analysis.recommendation",
     "analysis.reply_option",
@@ -39,6 +40,25 @@ Deno.test("STREAM_EVENT_TYPES includes the streaming contract events", () => {
     "analysis.done",
     "analysis.error",
   ]);
+});
+
+Deno.test("parseEventLine recognizes analysis.inventory as a known-optional event", () => {
+  // 球數案修法二：盤點逼進輸出契約。inventory 是 known-optional 事件，
+  // parseEventLine 必須認得（不再走 unknown→null 靜默丟棄），reframer 才能
+  // 純放行它，App default:break 才有事件可忽略。
+  const event = parseEventLine(
+    '{"type":"analysis.inventory","balls":[{"sourceIndex":1,"sourceMessage":"剛來吃晚餐","disposition":"接","reason":"生活分享可延伸"}]}',
+  );
+
+  assertEquals(event, {
+    type: "analysis.inventory",
+    balls: [{
+      sourceIndex: 1,
+      sourceMessage: "剛來吃晚餐",
+      disposition: "接",
+      reason: "生活分享可延伸",
+    }],
+  });
 });
 
 Deno.test("parseEventLine returns null for blank, partial, or non-object lines", () => {
