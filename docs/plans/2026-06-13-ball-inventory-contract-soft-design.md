@@ -52,6 +52,24 @@ few-shot 正例（範例3）與三件套散文同命：被當散文略過。
 
 ---
 
+## ✅ 硬版 SHIPPED（2026-06-13）
+
+實作完成並通過全部 gate，dogfood-safe（WAITING Eric/Bruce 體感）。commits：
+`0a571ae`（reframer disposition 閘＋新 `ball_inventory.ts`）、`ef9c601`（compliance
+floor (b)＋callback 原則 (c) prompt）、`7cee711`（b2 選中風格別寫得比其他短）、
+`7380a29`（Codex adversarial P2 修：下限數 distinct 接/併球）。黑箱重打 golden
+（b2 ×3＋P2 confirm）：選中風格穩定 ≥3 真接球、零 INCOMPLETE、msg1 callback 會
+被撩回。Codex 雙審：review APPROVED 0；adversarial r1 P2→修→r2 APPROVED 0。
+**實作偏離原設計（更安全）**：閘設在 reframer `forwardReplyOption` 轉發上游＝
+直接丟棄不誠實 option 走既有 INCOMPLETE，**完全沒碰 `sanitizeReplySegments`／
+丟段路徑**（INV-H5 trivially 守住，比下方原設計步驟 4 預期更安全）。(c) 不寫死
+golden、改通則 prompt 原則，黑箱證實生效（msg1 每跑都接）。詳見 queue item。
+
+P3 follow-up（非阻斷）：`catchableCount` 按 row 累加而非 distinct sourceIndex，
+僅模型 emit 重複列時才偏差，正常流量零影響。
+
+---
+
 ## 硬版升級設計（2026-06-13，soft 黑箱 FAILED 後，Eric 拍板升級）
 
 > soft 版 `c782e98` 已 land＋deploy。黑箱重打 golden ×3 完全一致：inventory 機制成功（模型顯式列全 6 球 `1略 2併 3接 4接 5接 6接`），但選中風格仍 2 段（srcIdx 6,5）。下面是硬版 TDD 開工前必備的 invariants＋failure matrix。**新 session 執行，先讀三檔。**
