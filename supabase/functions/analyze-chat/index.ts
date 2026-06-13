@@ -14,6 +14,7 @@ import {
   type FallbackResult,
 } from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
+import { buildQuotedReplyPrefix } from "./quoted_reply_context.ts";
 import {
   type BlockType,
   foldQuotedPreviewBlocks,
@@ -5426,22 +5427,8 @@ serve(async (req) => {
     const formatConversationLine = (
       message: AnalyzeMessage,
     ) => {
-      const quotedReplyPreview = message.quotedReplyPreview?.trim()
-        ? message.quotedReplyPreview.trim().replace(/\s+/g, " ").replace(
-          /"/g,
-          "'",
-        )
-        : "";
-      const quotedReplySpeaker = message.quotedReplyPreviewIsFromMe == null
-        ? ""
-        : message.quotedReplyPreviewIsFromMe
-        ? "my earlier message"
-        : "her earlier message";
-      const replyPrefix = quotedReplyPreview
-        ? quotedReplySpeaker
-          ? ` (replying to ${quotedReplySpeaker}: "${quotedReplyPreview}")`
-          : ` (replying to: "${quotedReplyPreview}")`
-        : "";
+      // 引用回覆前綴一律中性、不做認人歸屬（見 quoted_reply_context.ts）。
+      const replyPrefix = buildQuotedReplyPrefix(message);
 
       return `${
         message.isFromMe ? "Me" : "Her"
