@@ -246,10 +246,14 @@ class _ScreenshotRecognitionDialogState
   // 預設全展開用很多次仍覺得複雜）。
   bool get _shouldExpandEditorByDefault => false;
 
+  bool get _hasQuotedReplyPreview =>
+      ScreenshotRecognitionHelper.hasQuotedReplyPreview(widget.recognized);
+
   bool get _isCompactHighConfidenceFlow =>
       widget.recognized.importPolicy == 'allow' &&
       widget.recognized.confidence == 'high' &&
       widget.recognized.sideConfidence == 'high' &&
+      !_hasQuotedReplyPreview &&
       (widget.warningMessage?.trim().isEmpty ?? true);
 
   int get _priorityMessageCount =>
@@ -262,6 +266,10 @@ class _ScreenshotRecognitionDialogState
 
     if (_isCompactHighConfidenceFlow) {
       return 'AI 識別小字可能會有誤（如「佳評如潮」變成「住評如潮」），建議快速掃一下內容是否正確。';
+    }
+
+    if (_hasQuotedReplyPreview) {
+      return '這次含回覆引用框，AI 可能把引用卡裡的人名誤當成發話方向。加入前請特別確認每則是「我說」還是「她說」，有問題可直接修改。';
     }
 
     return 'AI 識別截圖文字可能會有小誤差，建議快速確認內容是否正確，有問題可以直接修改。';

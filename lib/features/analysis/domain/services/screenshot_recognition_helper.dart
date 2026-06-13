@@ -213,9 +213,19 @@ class ScreenshotRecognitionHelper {
     }
   }
 
+  static bool hasQuotedReplyPreview(RecognizedConversation recognized) {
+    return (recognized.messages ?? const <RecognizedMessage>[]).any(
+      (message) => message.quotedReplyPreview?.trim().isNotEmpty ?? false,
+    );
+  }
+
   static String? sideConfidenceWarning(RecognizedConversation recognized) {
     if (recognized.uncertainSideCount > 0) {
       return '有 ${recognized.uncertainSideCount} 則訊息的左右還不夠清楚，加入前請再看一下「我說 / 她說」有沒有判對。';
+    }
+
+    if (hasQuotedReplyPreview(recognized)) {
+      return '這批訊息含回覆引用框，暗色或長截圖時 AI 較容易把引用卡裡的人名誤當成發話方向。加入前請特別確認「我說 / 她說」。';
     }
 
     if (recognized.sideConfidence == 'medium') {
@@ -315,6 +325,14 @@ class ScreenshotRecognitionHelper {
       );
     }
 
+    if (hasQuotedReplyPreview(recognized)) {
+      return const ScreenshotRecognitionGuidance(
+        title: '先確認我說 / 她說',
+        body: '這批訊息含回覆引用框。暗色、長截圖或引用卡裡的人名可能讓 AI 誤判左右，加入前請特別確認每則是「我說」還是「她說」。',
+        tone: ScreenshotRecognitionGuidanceTone.review,
+      );
+    }
+
     if (recognized.importPolicy == 'confirm' ||
         recognized.confidence != 'high') {
       return const ScreenshotRecognitionGuidance(
@@ -351,6 +369,8 @@ class ScreenshotRecognitionHelper {
         recognizedName != currentName;
     final mixedThread =
         _looksLikeMixedThreadWarning(recognized.warning?.trim() ?? '');
+    final hasQuotedReplyPreview =
+        ScreenshotRecognitionHelper.hasQuotedReplyPreview(recognized);
     final shouldPreferNewConversation =
         recognized.importPolicy == 'confirm' || nameMismatch || mixedThread;
 
@@ -362,6 +382,10 @@ class ScreenshotRecognitionHelper {
       if (recognized.sideConfidence == 'low' ||
           recognized.uncertainSideCount > 0) {
         return '加入目前對話前，建議先把「我說 / 她說」看清楚，避免接錯。';
+      }
+
+      if (hasQuotedReplyPreview) {
+        return '這批截圖含回覆引用框，加入目前對話前請特別確認「我說 / 她說」，避免引用卡的人名讓左右判反。';
       }
 
       if (shouldPreferNewConversation) {

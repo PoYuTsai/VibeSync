@@ -79,6 +79,30 @@ void main() {
     ],
   );
 
+  const quotedHighConfidenceConversation = RecognizedConversation(
+    contactName: 'Candy',
+    messageCount: 2,
+    summary: '識別到 2 則訊息',
+    classification: 'valid_chat',
+    importPolicy: 'allow',
+    confidence: 'high',
+    sideConfidence: 'high',
+    messages: [
+      RecognizedMessage(
+        side: 'left',
+        isFromMe: false,
+        content: '好可愛',
+        quotedReplyPreview: 'Bruce Chiang: 🐶',
+        quotedReplyPreviewIsFromMe: true,
+      ),
+      RecognizedMessage(
+        side: 'left',
+        isFromMe: false,
+        content: '今天北鼻都是這隻紅貴賓',
+      ),
+    ],
+  );
+
   group('ScreenshotRecognitionDialog', () {
     testWidgets('shows OCR status badges and guidance', (tester) async {
       await tester.pumpWidget(
@@ -100,6 +124,26 @@ void main() {
       expect(find.textContaining('請先確認內容和「我說／她說」'), findsOneWidget);
       expect(find.textContaining('LINE 的回覆引用框'), findsOneWidget);
       expect(find.text('另存成新對話'), findsOneWidget);
+    });
+
+    testWidgets('quoted replies keep side-direction review copy visible',
+        (tester) async {
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: quotedHighConfidenceConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('先確認我說 / 她說'), findsOneWidget);
+      expect(find.textContaining('回覆引用框'), findsWidgets);
+      expect(find.textContaining('引用卡裡的人名'), findsWidgets);
+      expect(find.textContaining('方向看起來很穩'), findsNothing);
     });
 
     testWidgets('returns selected import mode on confirm', (tester) async {
@@ -246,8 +290,7 @@ void main() {
       expect(dialogResult!.analysisContextNote, '她是我女友');
     });
 
-    testWidgets('預設唯讀預覽：內容攤開可檢查但不可直接編輯，點「編輯內容」才開啟',
-        (tester) async {
+    testWidgets('預設唯讀預覽：內容攤開可檢查但不可直接編輯，點「編輯內容」才開啟', (tester) async {
       await _useTallSurface(tester);
 
       await tester.pumpWidget(
@@ -278,8 +321,7 @@ void main() {
       expect(find.widgetWithText(ChoiceChip, '我說'), findsNothing);
     });
 
-    testWidgets('收合預覽下送出 0 則有效訊息 → 驗證訊息可見並自動展開編輯',
-        (tester) async {
+    testWidgets('收合預覽下送出 0 則有效訊息 → 驗證訊息可見並自動展開編輯', (tester) async {
       await _useTallSurface(tester);
 
       await tester.pumpWidget(

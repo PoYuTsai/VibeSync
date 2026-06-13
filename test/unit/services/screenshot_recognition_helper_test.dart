@@ -316,5 +316,50 @@ void main() {
       expect(result, contains('我說 / 她說'));
       expect(result, contains('加入目前對話前'));
     });
+
+    test('treats quoted replies as speaker-direction review risk', () {
+      const recognized = RecognizedConversation(
+        messageCount: 2,
+        summary: '識別到 2 則訊息',
+        importPolicy: 'allow',
+        confidence: 'high',
+        sideConfidence: 'high',
+        messages: [
+          RecognizedMessage(
+            side: 'left',
+            isFromMe: false,
+            content: '好可愛',
+            quotedReplyPreview: 'Bruce Chiang: 🐶',
+            quotedReplyPreviewIsFromMe: true,
+          ),
+          RecognizedMessage(
+            side: 'left',
+            isFromMe: false,
+            content: '今天北鼻都是這隻紅貴賓',
+          ),
+        ],
+      );
+      final conversation = buildConversation(
+        name: 'Candy',
+        messages: [buildMessage(isFromMe: false, content: '前文')],
+      );
+
+      final warning =
+          ScreenshotRecognitionHelper.sideConfidenceWarning(recognized);
+      final guidance = ScreenshotRecognitionHelper.guidance(recognized);
+      final appendCopy = ScreenshotRecognitionHelper.importModeDescription(
+        recognized: recognized,
+        currentConversation: conversation,
+        selectedImportMode: ScreenshotRecognitionHelper.importModeAppendCurrent,
+      );
+
+      expect(warning, contains('回覆引用框'));
+      expect(warning, contains('我說 / 她說'));
+      expect(guidance.title, '先確認我說 / 她說');
+      expect(guidance.body, contains('引用'));
+      expect(guidance.tone, ScreenshotRecognitionGuidanceTone.review);
+      expect(appendCopy, contains('回覆引用框'));
+      expect(appendCopy, contains('我說 / 她說'));
+    });
   });
 }
