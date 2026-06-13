@@ -28,7 +28,28 @@
 1. **先單獨解 side-flip (b)**（candy 真回覆不該翻右），再評估 strip 是否足夠；或
 2. **直接修 vision**：別丟卡片名字列 ＋ 正確掛 `quotedReplyPreview`；含「**label 而非 suppress**」構想——叫 vision 對每塊文字標 `blockType: message|quotedPreview|notice`，下游確定性 filter，把易漏的二元抑制決定換成貼標籤。
 
-**待確認**：此 before-run 是否含幾何閘 9f74885？若含，代表幾何閘對暗色引用卡場景的 side 判定仍漏。
+### 🔒 LOCKED 決策（2026-06-13，Eric 拍板）
+
+- **幾何閘開放迴圈已解**：before-run `11:16:22 UTC` 晚於閘 commit `9f74885`（`07:32:40 UTC`）→ 閘當時 active，side-flip 仍發生。更糟：`isGeometrySideDecisive`（index.ts:3094）只要 vision 帶 `outerColumn` 就 `true`，而 vision **每筆 row 都帶 outerColumn**（prompt 範例 1040-1064）→ **幾乎全部訊息被 geometryDecisive 鎖死** → layout_parser 的 dominant-side 救援（`applyRunSide` line 259 跳過鎖定者）對 vision flip 失效。**幾何閘在暗色引用卡場景淨負面。**
+- **strip 文字啟發式徹底丟棄**（方案 A 已作廢，不復活）。
+- **Eric 的 goal = vision 最終判斷精準度，怕 per-case whack-a-mole。** ∴ 改用**源頭級 bake-off、數據決定**，不靠論證猜歸因。
+- **主修方向 = ②（schema `blockType` 逐塊分類）**——通用 reframe 非 per-case，降低要求 vision 答對的東西，泛化所有引用卡。
+- **side-flip (b) = 獨立 track**：修法為「強單側 dominance 時放寬 geometryDecisive 鎖」，獨立 commit ＋ 獨立 Codex（動的是剛上 prod 的幾何閘）。
+
+### Bake-off 計畫（下一 session 執行，產出量化證據）
+
+只在 hard bucket（dark_mode + quoted_card）比較：
+1. baseline（現碼，**記 git SHA**）
+2. + 暗色預處理（對比正規化/反白/放大）
+3. + ② blockType schema
+4.（選配）+ Opus vision
+
+判據：`quotedPreviewLeakTotal`、`sideAccuracy`、`quotePreviewAccuracy` 的 before→after delta。
+矛盾點待 bake-off 釐清：Eric 稱「四訊號原圖全清楚」→ 若真清楚則**預處理應幫不大**（瓶頸在契約/注意力 → ②）；預處理一上分就跳 → 反證 salience 不足。
+
+**先決條件（均已備）**：bench `CLAUDE_API_KEY` 已寫 `tools/ocr-golden/.env.golden`（gitignored，**用完 rotate**）。執行前需 dump `S__5513242` 逐訊息 output 坐實幾何閘鎖死推論（目前 result JSON 只存 summary）。
+
+**bake-off 不是修 prod**：純本機量測，preprocessing/② 實作完跑分 → Codex 雙審 → Eric 確認 → 才 push。
 
 ### 暗色實證（Eric 親驗截圖）
 
