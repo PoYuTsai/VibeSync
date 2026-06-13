@@ -2211,3 +2211,208 @@ Deno.test("inventory: never charges, never pollutes finalResult, never touches s
     }
   }
 });
+
+// ── 球數案硬版：inventory disposition gate（INV-H1..H6 / failure matrix） ──
+
+function inventoryLine(balls: Array<[number, string, string]>): string {
+  return line({
+    type: "analysis.inventory",
+    balls: balls.map(([sourceIndex, disposition, sourceMessage]) => ({
+      sourceIndex,
+      sourceMessage,
+      disposition,
+      reason: "r",
+    })),
+  });
+}
+
+function replyOptionLine(
+  style: string,
+  segIdx: number[],
+): string {
+  return line({
+    type: "analysis.reply_option",
+    style,
+    reason: "接住球",
+    segments: segIdx.map((i) => ({
+      sourceIndex: i,
+      sourceMessage: `m${i}`,
+      reply: `r${i}`,
+      reason: "x",
+    })),
+  });
+}
+
+function thinRecommendationLine(style: string): string {
+  return line({
+    type: "analysis.recommendation",
+    selectedStyle: style,
+    reason: "接住才有互動感",
+    expectedReaction: "她大概會繼續聊",
+  });
+}
+
+function decisionLine(style: string): string {
+  return line({
+    type: "analysis.decision",
+    selectedStyle: style,
+    nextStepBody: "順著她的生活分享接住再延伸。",
+    doThis: "接住晚餐與夜市兩顆球。",
+    avoidThis: "不要只回一句敷衍。",
+  });
+}
+
+const FOUR_CATCHABLE: Array<[number, string, string]> = [
+  [1, "略", "只喜歡江果先"],
+  [2, "併", "在比賽"],
+  [3, "接", "剛來吃晚餐"],
+  [4, "接", "晚餐照"],
+  [5, "接", "到家了"],
+  [6, "接", "視訊"],
+];
+
+Deno.test("hard gate: selected style below floor (4接,2段) → INCOMPLETE, bad option dropped", async () => {
+  let chargeCalls = 0;
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      chargeCalls += 1;
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(inventoryLine(FOUR_CATCHABLE));
+  reframer.pushText(decisionLine("coldRead"));
+  reframer.pushText(thinRecommendationLine("coldRead"));
+  reframer.pushText(replyOptionLine("coldRead", [5, 6])); // selected, only 2 segs
+  reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { recommendation: { selectedStyle: "coldRead" } },
+  }));
+
+  await reframer.flush();
+
+  assertEquals(chargeCalls, 1); // INV-H1: charge once, unmoved
+  const error = events.find((e) => e.type === "analysis.error");
+  assert(error, "expected an analysis.error");
+  assertEquals(error!.code, "STREAM_INCOMPLETE_REPLY_OPTIONS");
+  // 沒有 analysis.done（選中風格被擋）
+  assert(!events.some((e) => e.type === "analysis.done"));
+  // 違反盤點的選中風格 reply_option 不得外流
+  const leaked = events.some(
+    (e) => e.type === "analysis.reply_option" &&
+      (e as Record<string, unknown>).style === "coldRead",
+  );
+  assert(!leaked, "bad coldRead reply_option must not be emitted");
+});
+
+Deno.test("hard gate: selected style meets floor (4接,3段 皆接) → PASS, done emitted", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(inventoryLine(FOUR_CATCHABLE));
+  reframer.pushText(decisionLine("coldRead"));
+  reframer.pushText(thinRecommendationLine("coldRead"));
+  reframer.pushText(replyOptionLine("coldRead", [4, 5, 6]));
+  reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
+
+  await reframer.flush();
+
+  assert(!events.some((e) => e.type === "analysis.error"));
+  assert(events.some((e) => e.type === "analysis.done"));
+  assert(events.some(
+    (e) => e.type === "analysis.reply_option" &&
+      (e as Record<string, unknown>).style === "coldRead",
+  ));
+});
+
+Deno.test("hard gate: absent inventory → soft fallback, 2段選中風格不被誤殺", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  // 不送 inventory 事件
+  reframer.pushText(decisionLine("coldRead"));
+  reframer.pushText(thinRecommendationLine("coldRead"));
+  reframer.pushText(replyOptionLine("coldRead", [5, 6])); // 2 段
+  reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
+
+  await reframer.flush();
+
+  assert(!events.some((e) => e.type === "analysis.error"));
+  assert(events.some((e) => e.type === "analysis.done"));
+});
+
+Deno.test("hard gate: per-style isolation — non-selected below floor does not block", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(inventoryLine(FOUR_CATCHABLE));
+  reframer.pushText(decisionLine("coldRead"));
+  reframer.pushText(thinRecommendationLine("coldRead"));
+  reframer.pushText(replyOptionLine("coldRead", [4, 5, 6])); // selected ok
+  reframer.pushText(replyOptionLine("extend", [3])); // non-selected, 1 seg, must not block
+
+  await reframer.flush();
+
+  assert(!events.some((e) => e.type === "analysis.error"));
+  assert(events.some((e) => e.type === "analysis.done"));
+});
+
+Deno.test("hard gate: selected style segment sourced from 略 ball → REJECT, not leaked", async () => {
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(inventoryLine(FOUR_CATCHABLE)); // idx1 = 略
+  reframer.pushText(decisionLine("coldRead"));
+  reframer.pushText(thinRecommendationLine("coldRead"));
+  reframer.pushText(replyOptionLine("coldRead", [1, 4, 5])); // 3 段, but idx1 是略球
+  reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { recommendation: { selectedStyle: "coldRead" } },
+  }));
+
+  await reframer.flush();
+
+  const error = events.find((e) => e.type === "analysis.error");
+  assert(error, "expected an analysis.error");
+  assertEquals(error!.code, "STREAM_INCOMPLETE_REPLY_OPTIONS");
+  assert(!events.some((e) => e.type === "analysis.done"));
+  const leaked = events.some(
+    (e) => e.type === "analysis.reply_option" &&
+      (e as Record<string, unknown>).style === "coldRead",
+  );
+  assert(!leaked, "略-sourced coldRead reply_option must not be emitted");
+});

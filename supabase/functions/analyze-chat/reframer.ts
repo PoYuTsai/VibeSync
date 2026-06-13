@@ -5,6 +5,11 @@ import {
   type StreamStyle,
 } from "./stream_events.ts";
 import {
+  type BallInventory,
+  parseBallInventory,
+  validateSelectedSegments,
+} from "./ball_inventory.ts";
+import {
   type RecommendationValidation,
   validateDecisionChargeEvent,
   validateRecommendationBackfill,
@@ -76,6 +81,10 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     { compat: StreamEvent; segments: Record<string, unknown>[] }
   >();
   let decisionSelectedStyle: StreamStyle | null = null;
+  // 球數案硬版：保留模型最先 emit 的盤點 disposition map，等選中風格的
+  // reply_option 到貨時驗「段⊆接/併」＋「段數達下限」。缺席/全略＝null＝退回
+  // soft 不驗證（INV-H4 fallback，絕不誤殺）。
+  let inventory: BallInventory | null = null;
   const preChargeEvents: StreamEvent[] = [];
   const requiredReplyStyles = normalizeRequiredReplyStyles(
     options.requiredReplyStyles,
@@ -200,6 +209,10 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     preChargeEvents.length = 0;
   };
 
+  // 選中風格＝扣費錨點的風格：瘦卡優先，否則 decision。
+  const selectedStyleNow = (): StreamStyle | null =>
+    pendingThinRecommendation?.selectedStyle ?? decisionSelectedStyle;
+
   // 件4 D4：reply_option 轉發前由 server 合成 flat message / quotedContext
   // 相容欄位（segments join），App 收到的形狀與今天相同。
   const forwardReplyOption = (event: StreamEvent) => {
@@ -209,6 +222,14 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     );
     const compat = withReplyOptionCompatFields(event, segments);
     const style = replyStyleFrom(compat);
+    // 球數案硬版閘：只驗「選中風格」（INV-H3 per-style 隔離），且僅當盤點
+    // 存在（INV-H4 fallback）。不誠實＝丟棄此 option（不 store/不 emit/不
+    // bind），讓終局走既有 STREAM_INCOMPLETE_REPLY_OPTIONS（INV-H2，絕不
+    // 製造已扣費卻外流違反盤點的回覆）。不改既有合法 segment 處理（INV-H5）。
+    if (inventory && style && style === selectedStyleNow()) {
+      const verdict = validateSelectedSegments(inventory, segments);
+      if (!verdict.ok) return;
+    }
     if (style) seenReplyOptions.set(style, { compat, segments });
     if (
       pendingThinRecommendation &&
@@ -419,6 +440,13 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
   const handleEvent = async (event: StreamEvent) => {
     if (closed) return;
     sawValidEvent = true;
+
+    if (event.type === "analysis.inventory") {
+      // 硬版：保留 disposition map（軟版的純放行/buffer/emit 行為不變——
+      // 不 return，讓事件照舊落到下方 buffer/emit）。
+      const parsed = parseBallInventory(event);
+      if (parsed) inventory = parsed;
+    }
 
     if (event.type === "analysis.recommendation") {
       await handleRecommendation(event);
