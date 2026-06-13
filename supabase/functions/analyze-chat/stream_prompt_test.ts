@@ -50,8 +50,9 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
     assert(prompt.includes(style));
   }
   assert(prompt.includes("Traditional Chinese"));
-  // v2 加 few-shot 後放寬，仍鎖上限防 contract 無限膨脹。
-  assert(prompt.length < 5000);
+  // v2 加 few-shot、硬版加 compliance floor (b) ＋ callback 分類原則 (c) 後再放寬，
+  // 仍鎖上限防 contract 無限膨脹。
+  assert(prompt.length < 5300);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {
@@ -174,4 +175,40 @@ Deno.test("inventory: stream prompt ships a 接/併/略 example inventory line",
   assert(head.includes("接"));
   assert(head.includes("併"));
   assert(head.includes("略"));
+});
+
+// ---------------------------------------------------------------------------
+// 球數案硬版：compliance prompt (b) ＋ callback 分類原則 (c)
+//
+// (b) reframer 已加 server 硬閘（段數下限＋略球擋），但閘是 guard 非 generator：
+//     不告訴模型「會被退回」它仍只寫 2 段→只是把 reply 變 INCOMPLETE error。
+//     prompt 必須宣告 server 強制下限，模型才上游服從而非被退。
+// (c) golden msg1「只喜歡江果先」被誤判略：partnerSummary 顯示自造梗時，缺
+//     背景的個人 callback 應順著接住，不判略。略只留給真的沒文字鉤的球。
+// ---------------------------------------------------------------------------
+
+Deno.test("compliance(b): prompt declares the server-enforced segment floor and 略-ball block", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("Server-enforced floor"));
+  assert(prompt.includes("min(3,"));
+  // 明說不足/取略球會被退回重來，模型才知道要上游服從。
+  assert(prompt.includes("rejects and forces a retry"));
+  assert(prompt.includes("略 ball"));
+});
+
+Deno.test("callback(c): prompt tells model not to mark a personal callback 略 for lack of backstory", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("inside joke"));
+  assert(prompt.includes("play along"));
+  assert(prompt.includes("never mark it 略 just because you lack the backstory"));
+  // (c) 屬分類原則，須落在 inventory step（decision 之前）。
+  assert(
+    prompt.indexOf("never mark it 略 just because you lack the backstory") <
+      prompt.indexOf("analysis.decision"),
+    "callback principle must live in the inventory step",
+  );
+  // 略 只留給真的沒文字鉤的球。
+  assert(prompt.includes("no usable textual hook"));
 });
