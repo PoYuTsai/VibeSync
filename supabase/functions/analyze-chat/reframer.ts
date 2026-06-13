@@ -222,13 +222,18 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
     );
     const compat = withReplyOptionCompatFields(event, segments);
     const style = replyStyleFrom(compat);
-    // 球數案硬版閘：只驗「選中風格」（INV-H3 per-style 隔離），且僅當盤點
-    // 存在（INV-H4 fallback）。不誠實＝丟棄此 option（不 store/不 emit/不
-    // bind），讓終局走既有 STREAM_INCOMPLETE_REPLY_OPTIONS（INV-H2，絕不
-    // 製造已扣費卻外流違反盤點的回覆）。不改既有合法 segment 處理（INV-H5）。
+    // 球數案閘 — 2026-06-13 改 fail-soft（log-only）。
+    // 原硬擋（不達下限/取略球→丟 option→終局 INCOMPLETE）在 dogfood 造成真實
+    // 分析失敗（「請重新分析」）＝guard 非 generator，模型不服從時倒楣的是用戶。
+    // 暫改：只記錄、不擋，照出選中風格回覆；接球率由 (b)(c) prompt 提升。
+    // 閘的正確軟著陸（例如只丟略球段不卡數量）留新 session 重設計。
     if (inventory && style && style === selectedStyleNow()) {
       const verdict = validateSelectedSegments(inventory, segments);
-      if (!verdict.ok) return;
+      if (!verdict.ok) {
+        console.warn(
+          `[ball_inventory] soft-pass selected style ${style}: ${verdict.reason}`,
+        );
+      }
     }
     if (style) seenReplyOptions.set(style, { compat, segments });
     if (

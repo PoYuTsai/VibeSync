@@ -2271,7 +2271,9 @@ const FOUR_CATCHABLE: Array<[number, string, string]> = [
   [6, "接", "視訊"],
 ];
 
-Deno.test("hard gate: selected style below floor (4接,2段) → INCOMPLETE, bad option dropped", async () => {
+Deno.test("fail-soft: selected style below floor is NOT blocked (logged, passes through)", async () => {
+  // 2026-06-13 dogfood：硬擋會讓真實分析失敗（「請重新分析」）。閘改 fail-soft：
+  // 選中風格不達下限時不擋、照出，避免 block 用戶；接球率靠 prompt 提升。
   let chargeCalls = 0;
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
@@ -2296,18 +2298,14 @@ Deno.test("hard gate: selected style below floor (4接,2段) → INCOMPLETE, bad
 
   await reframer.flush();
 
-  assertEquals(chargeCalls, 1); // INV-H1: charge once, unmoved
-  const error = events.find((e) => e.type === "analysis.error");
-  assert(error, "expected an analysis.error");
-  assertEquals(error!.code, "STREAM_INCOMPLETE_REPLY_OPTIONS");
-  // 沒有 analysis.done（選中風格被擋）
-  assert(!events.some((e) => e.type === "analysis.done"));
-  // 違反盤點的選中風格 reply_option 不得外流
-  const leaked = events.some(
+  assertEquals(chargeCalls, 1);
+  // 不再 block：沒有 INCOMPLETE error、done 正常出、選中風格照出。
+  assert(!events.some((e) => e.type === "analysis.error"));
+  assert(events.some((e) => e.type === "analysis.done"));
+  assert(events.some(
     (e) => e.type === "analysis.reply_option" &&
       (e as Record<string, unknown>).style === "coldRead",
-  );
-  assert(!leaked, "bad coldRead reply_option must not be emitted");
+  ));
 });
 
 Deno.test("hard gate: selected style meets floor (4接,3段 皆接) → PASS, done emitted", async () => {
@@ -2383,7 +2381,8 @@ Deno.test("hard gate: per-style isolation — non-selected below floor does not 
   assert(events.some((e) => e.type === "analysis.done"));
 });
 
-Deno.test("hard gate: selected style segment sourced from 略 ball → REJECT, not leaked", async () => {
+Deno.test("fail-soft: selected style segment sourced from 略 ball is NOT blocked", async () => {
+  // fail-soft：即使選中風格取了略球段，也不擋（不 block 用戶）；只記錄。
   const events: StreamOutputEvent[] = [];
   const reframer = createStreamReframer({
     emit(event) {
@@ -2397,7 +2396,7 @@ Deno.test("hard gate: selected style segment sourced from 略 ball → REJECT, n
   reframer.pushText(inventoryLine(FOUR_CATCHABLE)); // idx1 = 略
   reframer.pushText(decisionLine("coldRead"));
   reframer.pushText(thinRecommendationLine("coldRead"));
-  reframer.pushText(replyOptionLine("coldRead", [1, 4, 5])); // 3 段, but idx1 是略球
+  reframer.pushText(replyOptionLine("coldRead", [1, 4, 5])); // idx1 是略球
   reframer.pushText(replyOptionLine("extend", [3, 4, 5]));
   reframer.pushText(line({
     type: "analysis.done",
@@ -2406,13 +2405,10 @@ Deno.test("hard gate: selected style segment sourced from 略 ball → REJECT, n
 
   await reframer.flush();
 
-  const error = events.find((e) => e.type === "analysis.error");
-  assert(error, "expected an analysis.error");
-  assertEquals(error!.code, "STREAM_INCOMPLETE_REPLY_OPTIONS");
-  assert(!events.some((e) => e.type === "analysis.done"));
-  const leaked = events.some(
+  assert(!events.some((e) => e.type === "analysis.error"));
+  assert(events.some((e) => e.type === "analysis.done"));
+  assert(events.some(
     (e) => e.type === "analysis.reply_option" &&
       (e as Record<string, unknown>).style === "coldRead",
-  );
-  assert(!leaked, "略-sourced coldRead reply_option must not be emitted");
+  ));
 });
