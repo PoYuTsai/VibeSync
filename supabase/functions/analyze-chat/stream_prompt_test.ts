@@ -50,9 +50,9 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
     assert(prompt.includes(style));
   }
   assert(prompt.includes("Traditional Chinese"));
-  // v2 加 few-shot、硬版加 compliance floor (b) ＋ callback 分類原則 (c) 後再放寬，
-  // 仍鎖上限防 contract 無限膨脹。
-  assert(prompt.length < 5300);
+  // v2 few-shot、硬版 compliance floor (b)＋callback (c)＋黑箱後選中風格強化 (b2)
+  // 後再放寬，仍鎖上限防 contract 無限膨脹。
+  assert(prompt.length < 5600);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {
@@ -211,4 +211,13 @@ Deno.test("callback(c): prompt tells model not to mark a personal callback 略 f
   );
   // 略 只留給真的沒文字鉤的球。
   assert(prompt.includes("no usable textual hook"));
+});
+
+Deno.test("compliance(b2): prompt forbids writing the selected/lead style more tersely than the others", () => {
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  // 黑箱實證：模型把「主打/選中」風格寫最短（coldRead/tease 2 段），非選中
+  // 卻到 3 段 → 閘每跑退回選中風格。專打這個系統性偏差。
+  assert(prompt.includes("never write it more tersely than your other styles"));
+  assert(prompt.includes("one sharp segment per ball"));
 });
