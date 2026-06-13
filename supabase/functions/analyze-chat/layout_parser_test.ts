@@ -8,6 +8,7 @@ function buildMessage(
   content: string,
   options?: {
     quotedReplyPreview?: string;
+    geometryDecisive?: boolean;
   },
 ): LayoutFirstMessage {
   return {
@@ -15,6 +16,7 @@ function buildMessage(
     isFromMe: side === "right",
     content,
     quotedReplyPreview: options?.quotedReplyPreview,
+    geometryDecisive: options?.geometryDecisive,
   };
 }
 
@@ -72,5 +74,57 @@ Deno.test("repairs a media bridge between same-side messages", () => {
     throw new Error(
       "Expected the media placeholder to follow the right-side run",
     );
+  }
+});
+
+Deno.test("never flips a geometry-decisive run against neighbors and dominant side", () => {
+  // 5513245 級聯重現：明確 right（幾何決定性）被 dominant=left＋兩側 left 鄰居吞成 left。
+  const result = applyLayoutFirstParser([
+    buildMessage("left", "在嗎"),
+    buildMessage("left", "今天好嗎"),
+    buildMessage("right", "我很好", { geometryDecisive: true }),
+    buildMessage("right", "妳呢", { geometryDecisive: true }),
+    buildMessage("left", "我也不錯"),
+    buildMessage("left", "在幹嘛"),
+  ]);
+
+  if (result.messages[2].side !== "right" || !result.messages[2].isFromMe) {
+    throw new Error("Expected the first geometry-decisive bubble to stay right");
+  }
+  if (result.messages[3].side !== "right" || !result.messages[3].isFromMe) {
+    throw new Error(
+      "Expected the second geometry-decisive bubble to stay right",
+    );
+  }
+});
+
+Deno.test("still rescues a non-decisive run in the same shape", () => {
+  // 同形狀但 right 來自字串 fallback（非幾何決定性）＝救援允許區，維持既有翻面行為。
+  const result = applyLayoutFirstParser([
+    buildMessage("left", "在嗎"),
+    buildMessage("left", "今天好嗎"),
+    buildMessage("right", "我很好"),
+    buildMessage("right", "妳呢"),
+    buildMessage("left", "我也不錯"),
+    buildMessage("left", "在幹嘛"),
+  ]);
+
+  if (result.messages[2].side !== "left" || result.messages[2].isFromMe) {
+    throw new Error("Expected the non-decisive bubble to be rescued to left");
+  }
+});
+
+Deno.test("fills an unknown run between decisive anchors without moving them", () => {
+  const result = applyLayoutFirstParser([
+    buildMessage("right", "我先說", { geometryDecisive: true }),
+    buildMessage("unknown", "看不太清楚"),
+    buildMessage("right", "再補一句", { geometryDecisive: true }),
+  ]);
+
+  if (result.messages[0].side !== "right" || result.messages[2].side !== "right") {
+    throw new Error("Expected the decisive anchors to stay right");
+  }
+  if (result.messages[1].side !== "right" || !result.messages[1].isFromMe) {
+    throw new Error("Expected the unknown row to be filled to the right run");
   }
 });

@@ -5,6 +5,12 @@ export interface LayoutFirstMessage {
   isFromMe: boolean;
   content: string;
   quotedReplyPreview?: string;
+  /**
+   * True when `side` was resolved from an unambiguous spatial signal
+   * (explicit outer column, or horizontalPosition past the ≥58/≤42 gates).
+   * Geometry-decisive messages are locked: the layout parser never flips them.
+   */
+  geometryDecisive?: boolean;
 }
 
 export interface LayoutFirstParseResult<TMessage extends LayoutFirstMessage> {
@@ -250,6 +256,9 @@ function applyRunSide<TMessage extends LayoutFirstMessage>(
     if (!message) {
       continue; // Skip undefined elements
     }
+    if (message.geometryDecisive === true) {
+      continue; // Geometry-locked: an unambiguous spatial side never flips.
+    }
     if (
       message.side !== side ||
       message.isFromMe !== (side === "right")
@@ -304,9 +313,12 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
         previous.side !== "unknown" &&
         previous.side === next?.side
       ) {
-        adjustedCount += applyRunSide(adjusted, run, previous.side);
-        changed = true;
-        break;
+        const moved = applyRunSide(adjusted, run, previous.side);
+        if (moved > 0) {
+          adjustedCount += moved;
+          changed = true;
+          break;
+        }
       }
 
       if (run.side === "unknown") {
@@ -332,9 +344,12 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
           isFlexible ||
           dominantSide === neighborSide)
       ) {
-        adjustedCount += applyRunSide(adjusted, run, neighborSide);
-        changed = true;
-        break;
+        const moved = applyRunSide(adjusted, run, neighborSide);
+        if (moved > 0) {
+          adjustedCount += moved;
+          changed = true;
+          break;
+        }
       }
 
       if (
@@ -349,9 +364,12 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
         !currentHasSupportElsewhere &&
         (isFlexible || run.length === 1)
       ) {
-        adjustedCount += applyRunSide(adjusted, run, previous.side);
-        changed = true;
-        break;
+        const moved = applyRunSide(adjusted, run, previous.side);
+        if (moved > 0) {
+          adjustedCount += moved;
+          changed = true;
+          break;
+        }
       }
 
       if (
@@ -364,9 +382,12 @@ export function applyLayoutFirstParser<TMessage extends LayoutFirstMessage>(
         !currentHasSupportElsewhere &&
         isFlexible
       ) {
-        adjustedCount += applyRunSide(adjusted, run, next.side);
-        changed = true;
-        break;
+        const moved = applyRunSide(adjusted, run, next.side);
+        if (moved > 0) {
+          adjustedCount += moved;
+          changed = true;
+          break;
+        }
       }
     }
   }

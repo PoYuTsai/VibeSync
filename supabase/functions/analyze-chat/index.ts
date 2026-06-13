@@ -645,6 +645,9 @@ interface NormalizedRecognizedMessage {
   content: string;
   quotedReplyPreview?: string;
   quotedReplyPreviewIsFromMe?: boolean;
+  // Carries the geometry-lock signal down to applyLayoutFirstParser so an
+  // unambiguous spatial side is never flipped by neighbour/dominant heuristics.
+  geometryDecisive?: boolean;
 }
 
 type VisibleSpeakerPattern = "mixed" | "only_left" | "only_right" | "unknown";
@@ -3028,6 +3031,21 @@ function deduplicateSequentialMessages(
   };
 }
 
+// Horizontal-position gates (0=far left, 100=far right). A bubble past either
+// gate is geometrically unambiguous; the band between them is the mid-zone where
+// spatial signal is too weak to lock a side. Shared by normalizeBubbleSide and
+// isGeometrySideDecisive so the thresholds can never drift apart.
+const RIGHT_HORIZONTAL_THRESHOLD = 58;
+const LEFT_HORIZONTAL_THRESHOLD = 42;
+
+function readHorizontalPosition(record: Record<string, unknown>): number {
+  return typeof record.horizontalPosition === "number"
+    ? record.horizontalPosition
+    : typeof record.horizontalPosition === "string"
+    ? Number(record.horizontalPosition)
+    : Number.NaN;
+}
+
 function normalizeBubbleSide(
   record: Record<string, unknown>,
 ): RecognizedBubbleSide {
@@ -3042,16 +3060,12 @@ function normalizeBubbleSide(
     return "left";
   }
 
-  const rawHorizontalPosition = typeof record.horizontalPosition === "number"
-    ? record.horizontalPosition
-    : typeof record.horizontalPosition === "string"
-    ? Number(record.horizontalPosition)
-    : Number.NaN;
+  const rawHorizontalPosition = readHorizontalPosition(record);
   if (!Number.isNaN(rawHorizontalPosition)) {
-    if (rawHorizontalPosition >= 58) {
+    if (rawHorizontalPosition >= RIGHT_HORIZONTAL_THRESHOLD) {
       return "right";
     }
-    if (rawHorizontalPosition <= 42) {
+    if (rawHorizontalPosition <= LEFT_HORIZONTAL_THRESHOLD) {
       return "left";
     }
   }
@@ -3069,6 +3083,26 @@ function normalizeBubbleSide(
   }
 
   return "unknown";
+}
+
+// True when the resolved side came from an unambiguous spatial signal: an
+// explicit outer column, or a horizontalPosition past either gate. The string
+// `side` fallback and the mid-zone band are NOT decisive — those stay eligible
+// for the layout parser's neighbour/dominant/quoted rescues. Mirrors the
+// precedence in normalizeBubbleSide exactly; a decisive record always resolves
+// to a concrete left/right side.
+function isGeometrySideDecisive(record: Record<string, unknown>): boolean {
+  const rawOuterColumn = typeof record.outerColumn === "string"
+    ? record.outerColumn.trim().toLowerCase()
+    : "";
+  if (rawOuterColumn === "right" || rawOuterColumn === "left") {
+    return true;
+  }
+
+  const rawHorizontalPosition = readHorizontalPosition(record);
+  return !Number.isNaN(rawHorizontalPosition) &&
+    (rawHorizontalPosition >= RIGHT_HORIZONTAL_THRESHOLD ||
+      rawHorizontalPosition <= LEFT_HORIZONTAL_THRESHOLD);
 }
 
 function sideToIsFromMe(
@@ -3832,7 +3866,7 @@ function normalizeRecognizedConversation(
   }
 
   const normalizedMessagesWithSidePriority = rawMessages
-    .map((message) => {
+    .map((message): NormalizedRecognizedMessage | null => {
       if (!message || typeof message !== "object") {
         return null;
       }
@@ -3847,6 +3881,8 @@ function normalizeRecognizedConversation(
       }
 
       const side = normalizeBubbleSide(record);
+      const geometryDecisive = side !== "unknown" &&
+        isGeometrySideDecisive(record);
       const quotedReplyPreview = sanitizeQuotedReplyPreviewValue(
         record.quotedReplyPreview,
       );
@@ -3858,6 +3894,7 @@ function normalizeRecognizedConversation(
         side,
         isFromMe: sideToIsFromMe(side, record.isFromMe),
         content,
+        ...(geometryDecisive ? { geometryDecisive } : {}),
         ...(quotedReplyPreview ? { quotedReplyPreview } : {}),
         ...(quotedReplyPreview != null && quotedReplyPreviewIsFromMe != null
           ? { quotedReplyPreviewIsFromMe }
