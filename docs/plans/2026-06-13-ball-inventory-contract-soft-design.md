@@ -49,3 +49,46 @@ few-shot 正例（範例3）與三件套散文同命：被當散文略過。
 ## 風險 / 回退
 - 軟版不改丟段路徑、不 reject，回退＝移除 inventory step + 事件註冊即可。
 - 若軟版黑箱仍不達標 → 升級硬驗證（server 驗 segments 只來自接/併球、接數達下限），但那會碰丟段路徑、需重評風險。
+
+---
+
+## 硬版升級設計（2026-06-13，soft 黑箱 FAILED 後，Eric 拍板升級）
+
+> soft 版 `c782e98` 已 land＋deploy。黑箱重打 golden ×3 完全一致：inventory 機制成功（模型顯式列全 6 球 `1略 2併 3接 4接 5接 6接`），但選中風格仍 2 段（srcIdx 6,5）。下面是硬版 TDD 開工前必備的 invariants＋failure matrix。**新 session 執行，先讀三檔。**
+
+### 根因二分（黑箱實證）
+- **(b) inventory→reply 斷層**：模型標 4 顆接（idx 3,4,5,6）卻只寫 2 段（5,6），公然違反自己的盤點＋「segments 只來自接/併球」指令。← **硬版 server 驗證可治**。
+- **(c) msg1（只喜歡江果先）誤判略**：模型 reason「語境不明…無可接球點」。**經查 golden `partnerSummary` 只寫「糖糖老師」自造梗、完全沒有「江果先」字串**——模型沒有任何脈絡能把「只喜歡江果先」連到對象歷史，標略**可能是正確行為不是 bug**。← **硬版 server 驗證治不了**（server 無法叫模型去接一顆它自己標略的球）。
+
+### ⚠️ 關鍵結論：硬版單獨無法滿足 gate「≥3 含 msg1+msg4」
+- server 硬驗證（接數下限＋segments⊆接/併）能逼出 **≥3 段＋msg4**（從接集 {3,4,5,6} 挑 3 顆必含 4），治 (b)。
+- 但 **msg1 永遠進不來**，因為模型標它略、server 不能強接略球。
+- **(c) 兩條路選一，需 Eric 拍板**：
+  1. **修 golden payload**：把「江果先」自造梗補進 `partnerSummary`（若它真是糖糖梗的具體說法），模型有脈絡才可能標接——這是 golden 標註修正，不是 prompt/server 改動。
+  2. **改 gate 定義**：承認 msg1 在當前 payload 無脈絡、標略合理，gate 改「≥3 段＋含 msg4＋接集涵蓋率」，msg1 移出硬預期。
+- **在 (c) 拍板前，硬版只能宣稱治 (b)；不要假裝黑箱會過含-msg1 的舊 gate。**
+
+### 硬版 invariants（碰丟段路徑＝上輪紅線，逐條守）
+- **INV-H1 扣費時機不變**：驗證**絕不**移動/重複扣費。charge 仍在 decision/recommendation 觸發，早於 reply_option 的 segment 驗證。
+- **INV-H2 不製造已扣費無輸出**：選中風格 reply 若驗證不過，走既有 `STREAM_INCOMPLETE_REPLY_OPTIONS`／error 路徑（emitDone 已守「已扣費無輸出」紅線），**不**新增靜默 done。
+- **INV-H3 per-style 失敗隔離**：非選中風格未達下限**不得**阻斷選中風格或 done 事件。
+- **INV-H4 inventory 狀態保留**：硬版需在 reframer 保留 inventory 的 disposition map（sourceIndex→接/併/略）直到 reply_option 到貨比對。**現在 inventory 只 ride pre-charge buffer 被 emit、未存 state**——這是硬版第一個新增 state，須 TDD 覆蓋（含 inventory 缺席時的 fallback：無 map＝退回 soft 行為不驗證，絕不誤殺）。
+- **INV-H5 合法段 sanitize 不變**：只「加」一道下限/涵蓋率閘，**絕不**改既有合法 segment 怎麼被 `sanitizeReplySegments` 處理。
+- **INV-H6 略球誤判出範圍**：server 只能驗「segments⊆接/併」＋「count≥下限」；catching 略球＝模型分類問題，見 (c)。
+
+### Failure matrix（她連發 ≥4 句，下限 = min(3, 接+併 數)）
+| inventory 接/併 數 | reply 段數/來源 | server 動作 |
+|---|---|---|
+| 4 接 | 2 段（皆接球） | **REJECT 選中風格** → INCOMPLETE/retry（未達下限）|
+| 4 接 | 3 段（皆接球） | PASS |
+| 4 接 | 3 段，1 段來自略球 | REJECT or 丟該段（丟後可能跌破下限→連帶 REJECT）|
+| 2 接（真的球少） | 2 段 | PASS（下限例外：接數<3，不能要求超過真球數）|
+| 0 接/inventory 缺席 | — | 退回 soft 不驗證（INV-H4 fallback），絕不誤殺 |
+
+### TDD 順序（新 session）
+1. 🔴 reframer 保留 inventory disposition map（含缺席 fallback）。
+2. 🔴 選中風格 segments 全來自接/併、count≥min(3,接併數) → PASS；否則 → 既有 INCOMPLETE/error（不新增 code，重用）。
+3. 🔴 非選中風格失敗隔離、不阻斷 done（INV-H3）。
+4. 🔴 段來自略球 → 丟段或 REJECT 的明確契約（碰 `sanitizeReplySegments`，最高風險，先寫 invariant 再改）。
+5. 🟢 全綠＋deno check → 黑箱重打 golden（驗治 (b)：≥3＋msg4）→ Codex 雙審（必，碰丟段路徑＋扣費語意）。
+6. (c) 依 Eric 拍板另案處理（改 golden payload 或改 gate 定義）。
