@@ -886,13 +886,13 @@ const RECORD_ONLY_FINAL_RESULT_KEYS = new Set([
 ]);
 
 // client 是 List<String>.from(json[key])，字串/物件 clobber 都會 throw。
-const ARRAY_ONLY_FINAL_RESULT_KEYS = new Set([
+export const ARRAY_ONLY_FINAL_RESULT_KEYS = new Set([
   "warnings",
 ]);
 
 // client 是 json[key] as String?（或直塞 String 欄位），物件/數字 clobber
 // 都會 throw。非字串丟棄保留 assembler 預設值。
-const STRING_ONLY_FINAL_RESULT_KEYS = new Set([
+export const STRING_ONLY_FINAL_RESULT_KEYS = new Set([
   "strategy",
   "reminder",
 ]);
@@ -931,7 +931,7 @@ function coerceClientShapeValue(
 // 這張表是 client 契約（analysis_models.dart + analysis_result.dart 的
 // fromJson）的 server 端轉錄：宣告每個 key 下 client 會硬 cast 的欄位形狀，
 // 不符就丟欄位讓 client 走預設值，不在表上的欄位原樣放行。
-type ClientFieldShape =
+export type ClientFieldShape =
   | "string"
   | "boolean"
   | "int"
@@ -960,7 +960,7 @@ const FINAL_RECOMMENDATION_FIELD_SHAPES: Record<string, ClientFieldShape> = {
 // client ReplyOption.fromJson 的 fallback 路徑 sourceMessage/reason
 // as String?；messages/messageGroup/replySegments 走 ReplySegment 硬 cast。
 // approach/reply/content 走 _normalizeRecommendationText，client 端寬容。
-const REPLY_OPTION_FIELD_SHAPES: Record<string, ClientFieldShape> = {
+export const REPLY_OPTION_FIELD_SHAPES: Record<string, ClientFieldShape> = {
   sourceMessage: "string",
   reason: "string",
   messages: { recordArray: REPLY_SEGMENT_FIELD_SHAPES },
@@ -968,7 +968,7 @@ const REPLY_OPTION_FIELD_SHAPES: Record<string, ClientFieldShape> = {
   replySegments: { recordArray: REPLY_SEGMENT_FIELD_SHAPES },
 };
 
-const CLIENT_RECORD_FIELD_SHAPES: Record<
+export const CLIENT_RECORD_FIELD_SHAPES: Record<
   string,
   Record<string, ClientFieldShape>
 > = {
