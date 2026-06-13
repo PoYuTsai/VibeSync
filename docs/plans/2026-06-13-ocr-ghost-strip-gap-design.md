@@ -51,6 +51,18 @@
 
 **bake-off 不是修 prod**：純本機量測，preprocessing/② 實作完跑分 → Codex 雙審 → Eric 確認 → 才 push。
 
+### ✅ 幾何閘鎖死推論 = 實證坐實（2026-06-13，baseline arm-1 @ `1b9ac4d`）
+
+無-Docker local stack（deno proxy:9999 + function:8000）跑通，dump 逐訊息 raw（run_benchmark 新增 `--dump-raw`/`--scenarios`/`gitSha`，scoring-neutral，tools-only）。原本「每筆帶 outerColumn → `geometryDecisive` 全 true → rescue 失效」是**從碼推**；現**直接觀測坐實**：
+
+- **全 hard bucket 5 單元（real 4 + synth mid-dark）35/35 訊息 `geometryDecisive=true`、`layoutFirstAdjustedCount=0`**——dominant-side 救援被 100% 跳過，閘**結構性鎖死**（非單一 case、非 run-to-run 噪音）。∴「幾何閘在暗色引用卡場景淨負面」由 n=1 升為 n=bucket 實證。
+- **S__5513242 逐訊息精確重現設計假設**：idx0/2 = 2 鬼（引用卡 `這小孩也太刺激`／`北鼻我睏睏想躺一下`吐成獨立 **left** 訊息、名字頭丟失）；idx1/3 = candy 真回覆（`教小孩真不容易`／`等等見`）被翻到 **right**；idx4 真訊留 left。鬼=left、next 真回覆=right → `left≠right` → strip 側連續 guard fail → `quotedPreviewRemovedCount=0`。**(b) side-flip 讓 (a) 鬼的下游 strip 補救失效＝實錘。**
+- **strip 對照組**：S__5480452／S__5513243 `quotedPreviewRemovedCount=1`（無側翻 → strip 正常觸發），唯 S__5513242 =0 → 坐實「鬼-then-翻」是 strip 失效的**特定**形狀。
+
+**baseline arm-1 數字（real hard bucket，單輪，variance 重——僅方向性）**：side ~33%（S__5480452 2/8・5513241 3/3・5513242 1/3・5513243 1/7，後者 run-to-run 已知大變異）、`quotedPreviewLeakTotal=3`（達 handoff 標靶）、`quotePreviewAccuracy=0%(7)`、exactText 95%+（**文字讀對、emoji 變體容差內** → 瓶頸非圖像可讀性而是契約/注意力，早期支持 ② 而非預處理；矛盾點待四臂全跑定論）。SHA-stamped 結果＋raw dump 在本機 `/tmp`（results gitignored）。
+
+**未完（下一 session 同輪跑控變異）**：arms 2-4 需先實作兩根槓桿（②blockType schema／暗色預處理）才存在；單輪 side variance 大，四臂必同 session 連跑多輪。bench key 用完 **ROTATE**。
+
 ### 暗色實證（Eric 親驗截圖）
 
 引用卡四訊號（頭像／白粗體名字「Bruce Chiang」／淺灰內文／圓角邊框）在原圖**全部清楚**——非「讀不出」，是 vision 抽取失誤。卡內「對方在一面倒側出現的他方名字頭」近乎確定性訊號，方案 A 卻丟掉它改數內文漢字（最弱訊號）。

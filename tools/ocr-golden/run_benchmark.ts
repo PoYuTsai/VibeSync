@@ -513,6 +513,9 @@ async function main() {
   const args = parseArgs(Deno.args);
   const scriptDir = new URL(".", import.meta.url).pathname;
   const endpoint = args.endpoint ?? DEFAULT_ENDPOINT;
+  const dumpRawDir = args["dump-raw"];
+  const gitSha = Deno.env.get("OCR_BENCH_GIT_SHA") ?? null;
+  if (dumpRawDir) await Deno.mkdir(dumpRawDir, { recursive: true });
   const imagesDir = Deno.env.get("OCR_GOLDEN_IMAGES_DIR") ?? DEFAULT_IMAGES_DIR;
   const token = Deno.env.get("OCR_GOLDEN_TOKEN");
   const anonKey = Deno.env.get("OCR_GOLDEN_ANON_KEY");
@@ -530,6 +533,10 @@ async function main() {
   );
   let units = manifest.units;
   if (args.only) units = units.filter((u) => u.id === args.only);
+  if (args.scenarios) {
+    const want = args.scenarios.split(",").map((s) => s.trim()).filter(Boolean);
+    units = units.filter((u) => u.scenarios.some((s) => want.includes(s)));
+  }
   if (!units.length) {
     console.error("manifest 無符合的 unit");
     Deno.exit(1);
@@ -569,6 +576,13 @@ async function main() {
     );
     const r = scoreUnit(unit, label, status, body, latencyMs);
     results.push(r);
+    if (dumpRawDir) {
+      // 逐訊息原始 vision/parser 輸出（含 outerColumn/side），坐實鎖死推論用。scoring-neutral。
+      await Deno.writeTextFile(
+        `${dumpRawDir}/${unit.id}.raw.json`,
+        JSON.stringify({ unit: unit.id, gitSha, httpStatus: status, latencyMs, body }, null, 2),
+      );
+    }
     if (r.error) {
       console.log(`  ✗ ${r.error}`);
     } else if (r.rejected) {
@@ -597,7 +611,7 @@ async function main() {
   const outPath = `${outDir}/${stamp}${isLocal ? "-local" : "-prod"}.json`;
   await Deno.writeTextFile(
     outPath,
-    JSON.stringify({ endpoint, timestamp: stamp, overall, bySource, byScenario, results }, null, 2),
+    JSON.stringify({ endpoint, gitSha, timestamp: stamp, overall, bySource, byScenario, results }, null, 2),
   );
 
   console.log(`\n## 彙總（主指標 = real）\n`);
