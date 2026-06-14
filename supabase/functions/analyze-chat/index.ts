@@ -92,6 +92,10 @@ const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REVENUECAT_IOS_API_KEY = Deno.env.get("REVENUECAT_IOS_API_KEY");
+// OCR 第③軌 Phase 1（量測閘）：純觀測插樁旗標。只在本機 bench serve 設 "1"；
+// prod 一律不設 ⇒ 下方所有 Phase1 分支死碼，prompt/回應 byte-for-byte 不變、
+// 不碰任何 isFromMe/side 判讀路徑。設計：docs/plans/2026-06-14-ocr-dark-fill-color-side-design.md
+const OCR_PHASE1_INSTRUMENT = Deno.env.get("OCR_PHASE1_INSTRUMENT") === "1";
 
 // JSON 修復函數 - 處理 Claude 有時輸出不完整的 JSON
 function repairJson(jsonString: string): string {
@@ -3705,6 +3709,90 @@ function normalizeWarningMessage(
   }
 }
 
+// ── OCR 第③軌 Phase 1（量測閘）純觀測插樁 ──────────────────────────────
+// 只在 OCR_PHASE1_INSTRUMENT=1（本機 bench）時掛上。教模型「額外」吐每泡填色、
+// 發話者名字字串+位置、引用卡名字、整圖我方泡色+證據來源——全是 append-only 觀測欄，
+// 明令「絕不」改變 side/isFromMe 判讀（仍只認外層泡泡位置）。
+// 設計：docs/plans/2026-06-14-ocr-dark-fill-color-side-design.md「Phase 1 補強」段。
+const PHASE1_VISION_INSTRUMENT_ADDENDUM =
+  `### PHASE 1 OBSERVATION FIELDS (measurement only — do NOT change how you decide side / isFromMe)
+These are extra append-only observation fields. They must NEVER change your side / isFromMe
+decision, which still comes ONLY from the outer bubble position exactly as instructed above.
+Report what you actually see; if unsure use null (or "unknown").
+
+For EACH message object, additionally include:
+- "bubbleFillColor": dominant fill color of THIS message's OUTER bubble, as a plain lowercase
+  English color word ("green", "gray", "dark_gray", "white", "blue", "none" for transparent /
+  media-only). Report the color you actually observe, independent of which side it is on.
+- "senderNameRaw": the small display name shown ABOVE this bubble, copied verbatim INCLUDING any
+  emoji / decoration, or null if no name label is shown above this bubble.
+- "senderNameX": approximate 0-100 horizontal center of that sender-name label (0=far left,
+  100=far right), or null if there is no name label.
+- "quotedName": if this row is or carries a quoted-reply card, the author name shown INSIDE the
+  quoted card, copied verbatim, or null. This is whoever is being QUOTED — never the speaker of
+  the outer bubble.
+- "quotedNamePresent": true if a quoted-reply card is visible for this row, else false.
+
+Also add to the top-level "recognizedConversation" object:
+- "myBubbleColor": fill color (same vocabulary as bubbleFillColor) of bubbles that are MINE
+  (right side / isFromMe:true), or null if no right-side bubble is visible on screen.
+- "myBubbleColorEvidence": exactly one of "right_anchor" (a right-side bubble is visible so my
+  color is anchored directly), "app_convention" (no right-side bubble visible; inferred from app
+  convention, e.g. LINE renders my bubbles green), or "unknown".
+
+Do not omit any existing required fields. These observations are additive only.`;
+
+// 把單次 recognizeOnly 的「原始 vision 輸出」（normalize 折疊/重排之前）抽成觀測快照。
+// 只讀、不改 result。harness 對它算 fill-only 側別、名字召回率、名字位置正確率。
+function extractPhase1VisionTelemetry(
+  rawResult: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const rc = rawResult?.recognizedConversation;
+  if (!rc || typeof rc !== "object") return null;
+  const rcObj = rc as Record<string, unknown>;
+  const rawMessages = Array.isArray(rcObj.messages) ? rcObj.messages : [];
+  const messages = rawMessages.map((m) => {
+    const r = (m && typeof m === "object" ? m : {}) as Record<string, unknown>;
+    return {
+      content: typeof r.content === "string" ? r.content : "",
+      side: typeof r.side === "string" ? r.side : null,
+      outerColumn: typeof r.outerColumn === "string" ? r.outerColumn : null,
+      horizontalPosition: typeof r.horizontalPosition === "number"
+        ? r.horizontalPosition
+        : (typeof r.horizontalPosition === "string" &&
+            r.horizontalPosition.trim() !== "" &&
+            !Number.isNaN(Number(r.horizontalPosition))
+          ? Number(r.horizontalPosition)
+          : null),
+      blockType: typeof r.blockType === "string" ? r.blockType : null,
+      isFromMe: r.isFromMe === true || r.isFromMe === "true",
+      bubbleFillColor: typeof r.bubbleFillColor === "string"
+        ? r.bubbleFillColor
+        : null,
+      senderNameRaw: typeof r.senderNameRaw === "string"
+        ? r.senderNameRaw
+        : null,
+      senderNameX: typeof r.senderNameX === "number" ? r.senderNameX : null,
+      quotedName: typeof r.quotedName === "string" ? r.quotedName : null,
+      quotedNamePresent: typeof r.quotedNamePresent === "boolean"
+        ? r.quotedNamePresent
+        : null,
+    };
+  });
+  return {
+    myBubbleColor: typeof rcObj.myBubbleColor === "string"
+      ? rcObj.myBubbleColor
+      : null,
+    myBubbleColorEvidence: typeof rcObj.myBubbleColorEvidence === "string"
+      ? rcObj.myBubbleColorEvidence
+      : null,
+    screenSpeakerPattern: typeof rcObj.screenSpeakerPattern === "string"
+      ? rcObj.screenSpeakerPattern
+      : null,
+    messages,
+  };
+}
+
 function normalizeRecognizedConversation(
   result: Record<string, unknown>,
   options: {
@@ -5871,6 +5959,14 @@ ${recentText}`;
           historicalContextInfo,
           compiledConversationText,
         });
+      // Phase 1 量測閘：只在本機 bench（OCR_PHASE1_INSTRUMENT=1）且純識別模式追加
+      // 觀測欄指示。prod 旗標不設 ⇒ prompt 不變。
+      if (OCR_PHASE1_INSTRUMENT && recognizeOnly) {
+        userPrompt = joinPromptSections(
+          userPrompt,
+          PHASE1_VISION_INSTRUMENT_ADDENDUM,
+        );
+      }
     }
 
     // 如果有用戶草稿，加入優化請求（只在 normal 模式）
@@ -7203,6 +7299,13 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       }
     }
 
+    // Phase 1 量測閘：在 normalize 折疊/重排「之前」快照原始 vision 觀測欄。
+    // 只在本機 bench（旗標）且 recognizeOnly；prod 旗標不設 ⇒ 恆 null、零開銷。
+    const phase1VisionTelemetry =
+      (OCR_PHASE1_INSTRUMENT && recognizeOnly)
+        ? extractPhase1VisionTelemetry(result)
+        : null;
+
     result = normalizeRecognizedConversation(result, {
       knownContactName,
     });
@@ -7506,6 +7609,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       estimatedMessageCount: quotaUsage.estimatedMessageCount,
       quotaReason: quotaUsage.quotaReason,
     };
+
+    // Phase 1 量測閘：把原始 vision 觀測快照掛在回應頂層（sibling，不進
+    // recognizedConversation）。只在本機 bench 旗標下非 null；prod 恆無此欄。
+    if (phase1VisionTelemetry) {
+      (result as Record<string, unknown>).phase1Vision = phase1VisionTelemetry;
+    }
 
     return jsonResponse(result);
   } catch (error) {

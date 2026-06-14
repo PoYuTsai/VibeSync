@@ -36,6 +36,7 @@ interface LabelMessage {
   text: string;
   quotedReplyPreview?: string;
   quotedReplyPreviewIsFromMe?: boolean; // 引用的舊訊息是誰發的（誰引用誰）
+  quotedName?: string; // 引用卡內被引用者的顯示名（第③軌 Phase1 名字量測 ground truth）
 }
 
 interface GoldenLabel {
@@ -66,6 +67,55 @@ interface RecognizedConversation {
   messages?: RecognizedMessage[];
   normalizationTelemetry?: Record<string, number>;
   warning?: string | null;
+}
+
+// ── 第③軌 Phase 1（量測閘）純觀測 telemetry ────────────────────────────
+// server 在 OCR_PHASE1_INSTRUMENT=1 時於回應頂層附 phase1Vision（normalize 折疊前的
+// 原始 vision 輸出）。harness 對它算 fill-only 側別、名字召回/正確率，與 position-only 對打。
+interface Phase1VisionMessage {
+  content: string;
+  side: string | null;
+  outerColumn: string | null;
+  horizontalPosition: number | null;
+  blockType: string | null;
+  isFromMe: boolean;
+  bubbleFillColor: string | null;
+  senderNameRaw: string | null;
+  senderNameX: number | null;
+  quotedName: string | null;
+  quotedNamePresent: boolean | null;
+}
+
+interface Phase1Vision {
+  myBubbleColor: string | null;
+  myBubbleColorEvidence: string | null;
+  screenSpeakerPattern: string | null;
+  messages: Phase1VisionMessage[];
+}
+
+// 一則對齊後的側別量測：fill-only 與 position-only 各自對 ground truth 的判斷。
+interface Phase1SideRow {
+  text: string; // 截斷，audit 用
+  gtSide: "left" | "right";
+  rawSide: string | null; // 模型自報 side（= position-only 訊號）
+  fillSide: "left" | "right" | "unknown"; // (bubbleFillColor==myBubbleColor)?right:left
+  bubbleFillColor: string | null;
+  senderNameRaw: string | null;
+  visionQuotedName: string | null;
+}
+
+interface Phase1UnitResult {
+  myBubbleColor: string | null;
+  myBubbleColorEvidence: string | null;
+  alignedRows: number;
+  fillKnown: number; // fill-only 能判（myBubbleColor 已知且泡色非空）的列數
+  fillCorrect: number; // fill-only 判對數（只計 fillKnown）
+  posCorrect: number; // position-only（raw side）判對數（計全部 aligned）
+  posKnown: number; // raw side ∈ {left,right} 的列數
+  // 名字（以 label 有標 quotedName 的列為 ground truth；set-level 比對避免脆弱逐列歸屬）
+  quotedNameExpected: number;
+  quotedNameRecalled: number; // vision 任一列吐出可匹配的 quotedName
+  rows: Phase1SideRow[]; // 逐列 audit dump（含 senderNameRaw，供「不混欄」目檢）
 }
 
 interface UnitResult {
@@ -99,6 +149,7 @@ interface UnitResult {
   quoteAuthorTotal?: number;
   quotePreviewCorrect?: number; // 引用預覽文字判對數（只計 label 有 quotedReplyPreview 的 aligned 則）
   quotePreviewTotal?: number;
+  phase1?: Phase1UnitResult; // 第③軌 Phase1 純觀測（server 旗標開時才有）
 }
 
 // ---------- 文字比對 ----------
@@ -233,6 +284,107 @@ export function alignMessages(
     }
   }
   return pairs.reverse();
+}
+
+// ---------- 第③軌 Phase 1 量測 ----------
+
+// 顏色歸一：小寫去空白，grey→gray。fill-only 只需判「此泡色 == 我方色」，
+// 故比較歸一字串即可（不做色系模糊歸併，避免把 gray/green 誤併）。
+function normalizeColor(c: string | null | undefined): string {
+  if (typeof c !== "string") return "";
+  return c.trim().toLowerCase().replace(/grey/g, "gray");
+}
+
+// fill-only 側別：myBubbleColor 已知且本泡色非空才可判，否則 unknown（不亂猜）。
+function deriveFillSide(
+  bubbleFillColor: string | null,
+  myBubbleColor: string | null,
+): "left" | "right" | "unknown" {
+  const my = normalizeColor(myBubbleColor);
+  const fill = normalizeColor(bubbleFillColor);
+  if (!my || my === "unknown" || !fill || fill === "none") return "unknown";
+  return fill === my ? "right" : "left";
+}
+
+// Wilson 95% 下界：擋小樣本假漂亮（gate 第 2 層）。
+export function wilsonLowerBound(correct: number, n: number): number | null {
+  if (n <= 0) return null;
+  const z = 1.96;
+  const p = correct / n;
+  const z2 = z * z;
+  const denom = 1 + z2 / n;
+  const centre = p + z2 / (2 * n);
+  const margin = z *
+    Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  return (centre - margin) / denom;
+}
+
+// 對單一 unit 算 Phase1 純觀測指標。phase1Vision 缺席（旗標關/舊 run）回 undefined。
+export function scorePhase1(
+  label: GoldenLabel,
+  phase1: Phase1Vision | undefined,
+): Phase1UnitResult | undefined {
+  if (!phase1 || !Array.isArray(phase1.messages)) return undefined;
+  const visionMsgs = phase1.messages;
+  // 對齊：label 活訊息 ↔ raw vision 列（含 quoted_preview，多半不對齊即略過）。
+  const actualForAlign: RecognizedMessage[] = visionMsgs.map((m) => ({
+    content: m.content,
+    side: m.side ?? undefined,
+  }));
+  const pairs = alignMessages(label.messages, actualForAlign);
+
+  const rows: Phase1SideRow[] = [];
+  let fillKnown = 0, fillCorrect = 0, posCorrect = 0, posKnown = 0;
+  for (const [ei, ai] of pairs) {
+    const gtSide = label.messages[ei].side;
+    const vm = visionMsgs[ai];
+    const rawSide = vm.side;
+    const fillSide = deriveFillSide(vm.bubbleFillColor, phase1.myBubbleColor);
+    if (rawSide === "left" || rawSide === "right") {
+      posKnown++;
+      if (rawSide === gtSide) posCorrect++;
+    }
+    if (fillSide !== "unknown") {
+      fillKnown++;
+      if (fillSide === gtSide) fillCorrect++;
+    }
+    rows.push({
+      text: label.messages[ei].text.slice(0, 24),
+      gtSide,
+      rawSide,
+      fillSide,
+      bubbleFillColor: vm.bubbleFillColor,
+      senderNameRaw: vm.senderNameRaw,
+      visionQuotedName: vm.quotedName,
+    });
+  }
+
+  // 名字：以 label 標了 quotedName 的列為 ground truth；set-level 召回（避免脆弱逐列歸屬）。
+  const expectedNames = label.messages
+    .map((m) => m.quotedName)
+    .filter((n): n is string => typeof n === "string" && n.trim().length > 0);
+  const visionNames = visionMsgs
+    .map((m) => m.quotedName)
+    .filter((n): n is string => typeof n === "string" && n.trim().length > 0);
+  let quotedNameRecalled = 0;
+  for (const expName of expectedNames) {
+    if (visionNames.some((vn) => similarity(expName, vn) >= SIMILARITY_THRESHOLD)) {
+      quotedNameRecalled++;
+    }
+  }
+
+  return {
+    myBubbleColor: phase1.myBubbleColor,
+    myBubbleColorEvidence: phase1.myBubbleColorEvidence,
+    alignedRows: pairs.length,
+    fillKnown,
+    fillCorrect,
+    posCorrect,
+    posKnown,
+    quotedNameExpected: expectedNames.length,
+    quotedNameRecalled,
+    rows,
+  };
 }
 
 // ---------- HTTP ----------
@@ -447,6 +599,7 @@ export function scoreUnit(
     quoteAuthorTotal,
     quotePreviewCorrect,
     quotePreviewTotal,
+    phase1: scorePhase1(label, body.phase1Vision as Phase1Vision | undefined),
   };
 }
 
@@ -492,6 +645,44 @@ export function aggregate(results: UnitResult[]) {
         .filter(([k]) => k.endsWith("AdjustedCount"))
         .reduce((a, [, v]) => a + v, 0)
     ),
+  };
+}
+
+// 第③軌 Phase1 彙總：fill-only vs position-only 對打 + 名字召回 + evidence 分佈 + Wilson LB。
+export function aggregatePhase1(results: UnitResult[]) {
+  const withP1 = results.filter((r) => r.phase1);
+  if (!withP1.length) return null;
+  const sum = (f: (p: Phase1UnitResult) => number) =>
+    withP1.reduce((acc, r) => acc + f(r.phase1!), 0);
+  const fillKnown = sum((p) => p.fillKnown);
+  const fillCorrect = sum((p) => p.fillCorrect);
+  const posKnown = sum((p) => p.posKnown);
+  const posCorrect = sum((p) => p.posCorrect);
+  const nameExpected = sum((p) => p.quotedNameExpected);
+  const nameRecalled = sum((p) => p.quotedNameRecalled);
+  const fillOnlyAccuracy = fillKnown ? fillCorrect / fillKnown : null;
+  const positionOnlyAccuracy = posKnown ? posCorrect / posKnown : null;
+  const evidenceDist: Record<string, number> = {};
+  for (const r of withP1) {
+    const e = r.phase1!.myBubbleColorEvidence ?? "null";
+    evidenceDist[e] = (evidenceDist[e] ?? 0) + 1;
+  }
+  return {
+    units: withP1.length,
+    alignedRows: sum((p) => p.alignedRows),
+    fillKnown,
+    fillCorrect,
+    posKnown,
+    posCorrect,
+    fillOnlyAccuracy,
+    positionOnlyAccuracy,
+    deltaPp: (fillOnlyAccuracy !== null && positionOnlyAccuracy !== null)
+      ? (fillOnlyAccuracy - positionOnlyAccuracy) * 100
+      : null,
+    fillWilsonLowerBound: wilsonLowerBound(fillCorrect, fillKnown),
+    quotedNameRecall: nameExpected ? nameRecalled / nameExpected : null,
+    quotedNameExpected: nameExpected,
+    evidenceDist,
   };
 }
 
@@ -630,6 +821,75 @@ async function main() {
   console.log(
     `\n引用預覽洩漏（鬼訊息）總數: ${overall.quotedPreviewLeakTotal} · 活動卡碎片雜訊總數: ${overall.activityCardNoiseTotal}`,
   );
+
+  // ── 第③軌 Phase 1 量測閘報表（server 旗標開時才有 phase1）──────────────
+  const darkResults = results.filter((r) => r.scenarios.includes("dark_mode"));
+  const p1Dark = aggregatePhase1(darkResults);
+  if (p1Dark) {
+    console.log(`\n## 第③軌 Phase 1 量測（暗色 gated subset，純觀測）\n`);
+    console.log(
+      `對齊列 ${p1Dark.alignedRows} · fill 可判 ${p1Dark.fillKnown} · pos 可判 ${p1Dark.posKnown}`,
+    );
+    console.log(
+      `| 訊號 | side accuracy | 判對/可判 |`,
+    );
+    console.log(`|---|---|---|`);
+    console.log(
+      `| fill-only | ${pct(p1Dark.fillOnlyAccuracy)} | ${p1Dark.fillCorrect}/${p1Dark.fillKnown} |`,
+    );
+    console.log(
+      `| position-only（模型自報 side） | ${pct(p1Dark.positionOnlyAccuracy)} | ${p1Dark.posCorrect}/${p1Dark.posKnown} |`,
+    );
+    console.log(
+      `\nΔ(fill − position) = ${p1Dark.deltaPp === null ? "—" : p1Dark.deltaPp.toFixed(1) + "pp"} · fill-only Wilson 95% LB = ${pct(p1Dark.fillWilsonLowerBound)}`,
+    );
+    console.log(
+      `名字（quotedName）召回 = ${pct(p1Dark.quotedNameRecall)}（ground truth ${p1Dark.quotedNameExpected} 個）· evidence 分佈 = ${JSON.stringify(p1Dark.evidenceDist)}`,
+    );
+
+    // 三層 hard gate 自動判定（設計：fill≥95% 且 +10pp / Wilson LB≥90% / anchor 改善＋零回退）
+    const layer1 = p1Dark.fillOnlyAccuracy !== null &&
+      p1Dark.fillOnlyAccuracy >= 0.95 &&
+      p1Dark.deltaPp !== null && p1Dark.deltaPp >= 10;
+    const layer2 = p1Dark.fillWilsonLowerBound !== null &&
+      p1Dark.fillWilsonLowerBound >= 0.90;
+    console.log(`\n### Phase 1 Hard Gate`);
+    console.log(
+      `- Layer 1（fill-only ≥95% 且比 position +10pp）: ${layer1 ? "✅ PASS" : "❌ FAIL"}`,
+    );
+    console.log(
+      `- Layer 2（fill-only Wilson LB ≥90%）: ${layer2 ? "✅ PASS" : "❌ FAIL"}`,
+    );
+    console.log(
+      `- Layer 3（anchor 改善＋淺色/交友 app 零回退）: 需與 baseline run 比對，見下方 anchor/淺色 side acc 與 compare_runs.sh`,
+    );
+
+    // anchor：S__5480452 的 fill vs position
+    const anchor = darkResults.find((r) => r.id === "S__5480452");
+    if (anchor?.phase1) {
+      const a = anchor.phase1;
+      console.log(
+        `\nAnchor S__5480452: fill ${a.fillCorrect}/${a.fillKnown}・pos ${a.posCorrect}/${a.posKnown}・myColor=${a.myBubbleColor}(${a.myBubbleColorEvidence})`,
+      );
+    }
+
+    // 逐列 audit dump（含 senderNameRaw / quotedName，供 Eric 目檢「不混欄」）
+    console.log(`\n### 暗色逐列 audit（gt|raw|fill ・色 ・senderName ・quotedName）`);
+    for (const r of darkResults) {
+      if (!r.phase1) continue;
+      console.log(`▶ ${r.id}  myColor=${r.phase1.myBubbleColor}(${r.phase1.myBubbleColorEvidence})`);
+      for (const row of r.phase1.rows) {
+        const flagFill = row.fillSide !== "unknown" && row.fillSide !== row.gtSide ? "✗fill" : "";
+        const flagPos = row.rawSide !== row.gtSide ? "✗pos" : "";
+        console.log(
+          `   ${row.gtSide.padEnd(5)}|${(row.rawSide ?? "?").padEnd(5)}|${row.fillSide.padEnd(7)} ` +
+          `${(row.bubbleFillColor ?? "-").padEnd(10)} name=${row.senderNameRaw ?? "-"} quoted=${row.visionQuotedName ?? "-"} ` +
+          `${flagFill}${flagPos}  「${row.text}」`,
+        );
+      }
+    }
+  }
+
   console.log(`\n結果已寫入 ${outPath}`);
 }
 
