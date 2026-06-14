@@ -18,15 +18,22 @@ for name in "$@"; do
   # segments source contract：出段就必須有 sourceIndex + sourceMessage
   bad_segments=$(jq -c 'select(.type=="analysis.reply_option") | .segments[]? | select((.sourceIndex == null) or (.sourceMessage == null) or (.sourceMessage == ""))' "$f" | wc -l)
 
+  # client 形狀守門：finalResult＋reply_option 不得吐會讓 client fromJson 硬 cast throw 的型別
+  shape_out=$(deno run --allow-read "$SCRIPT_DIR/check_client_shape.ts" "$f" 2>&1)
+  shape_rc=$?
+  if [ "$shape_rc" -eq 0 ]; then shape=ok; else shape=VIOLATION; fi
+
   status=PASS
   [ "$errors" -eq 0 ] || status=FAIL
   [ "$style_count" -eq 5 ] || status=FAIL
   [ "$has_decision" -ge 1 ] || status=FAIL
   [ "$has_reco" -ge 1 ] || status=FAIL
   [ "$bad_segments" -eq 0 ] || status=FAIL
+  [ "$shape_rc" -eq 0 ] || status=FAIL
   [ "$status" = PASS ] || FAIL=1
 
-  echo "[$name] $status — errors=$errors styles($style_count)=$styles decision=$has_decision reco=$has_reco badSegments=$bad_segments"
+  echo "[$name] $status — errors=$errors styles($style_count)=$styles decision=$has_decision reco=$has_reco badSegments=$bad_segments shape=$shape"
+  [ "$shape_rc" -eq 0 ] || echo "$shape_out" | sed 's/^/    /'
 done
 
 exit $FAIL
