@@ -66,6 +66,46 @@
       ]
     },
     {
+      "id": "dark_bruce_1",
+      "source": "real",
+      "images": [
+        "1.jpg"
+      ],
+      "label": "real/dark_bruce_1.json",
+      "scenarios": [
+        "dark_mode",
+        "quoted_card",
+        "both_sides"
+      ]
+    },
+    {
+      "id": "dark_candy_2",
+      "source": "real",
+      "images": [
+        "2.jpg"
+      ],
+      "label": "real/dark_candy_2.json",
+      "scenarios": [
+        "dark_mode",
+        "quoted_card",
+        "sticker_media",
+        "both_sides"
+      ]
+    },
+    {
+      "id": "dark_bruce_3",
+      "source": "real",
+      "images": [
+        "3.jpg"
+      ],
+      "label": "real/dark_bruce_3.json",
+      "scenarios": [
+        "dark_mode",
+        "quoted_card",
+        "both_sides"
+      ]
+    },
+    {
       "id": "S__5513245_0",
       "source": "real",
       "images": [
