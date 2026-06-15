@@ -7,16 +7,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/data/services/partner_context_resolver.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
+import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/partner/domain/services/partner_summary_builder.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repo_view.dart';
+import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import 'package:vibesync/shared/widgets/coach_action_card.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 
@@ -51,6 +61,11 @@ class _MutableStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 class _RecordingAnalysisService extends AnalysisService {
   int recommendationPreviewCalls = 0;
   int fullCalls = 0;
+  int streamCalls = 0;
+  List<Message>? streamMessages;
+  int? streamPreviousAnalyzedCount;
+  int? streamPreviousAnalyzedCharCount;
+  AnalysisResult? streamResult;
 
   @override
   Future<AnalysisRecommendationPreview> analyzeQuick({
@@ -83,6 +98,110 @@ class _RecordingAnalysisService extends AnalysisService {
     fullCalls++;
     throw StateError('analyzeFull must not be called on remount');
   }
+
+  @override
+  Stream<AnalysisStreamUpdate> analyzeStream({
+    String? analysisRunId,
+    required List<Message> messages,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    int? previousAnalyzedCount,
+    int? previousAnalyzedCharCount,
+    OverchargeConfirmationPayload? confirmedOvercharge,
+  }) async* {
+    streamCalls++;
+    streamMessages = List<Message>.from(messages);
+    streamPreviousAnalyzedCount = previousAnalyzedCount;
+    streamPreviousAnalyzedCharCount = previousAnalyzedCharCount;
+    yield AnalysisStreamUpdate.done(
+      result: streamResult ?? _full(),
+      runId: analysisRunId ?? 'stream-premium-refresh',
+    );
+  }
+}
+
+class _SeededSubscriptionNotifier extends SubscriptionNotifier {
+  _SeededSubscriptionNotifier(this._seed) {
+    state = _seed;
+  }
+
+  final SubscriptionState _seed;
+  int refreshCalls = 0;
+  int syncWithRevenueCatCalls = 0;
+  int ensureEntitlementCalls = 0;
+
+  void restoreSeed() {
+    state = _seed;
+  }
+
+  @override
+  Future<void> refresh() async {
+    refreshCalls++;
+    restoreSeed();
+  }
+
+  @override
+  Future<void> syncWithRevenueCat() async {
+    syncWithRevenueCatCalls++;
+    restoreSeed();
+  }
+
+  @override
+  Future<void> ensureServerEntitlementSyncedForAnalysis() async {
+    ensureEntitlementCalls++;
+    restoreSeed();
+  }
+
+  @override
+  void syncUsageFromServer({
+    required int monthlyRemaining,
+    required int dailyRemaining,
+    bool isTestAccount = false,
+  }) {}
+}
+
+class _EmptyCoachChatRepository extends CoachChatRepository {
+  @override
+  List<CoachChatResult> listByConversation(String conversationId) => const [];
+
+  @override
+  CoachChatResult? latestForConversation(String conversationId) => null;
+
+  @override
+  Future<void> put(CoachChatResult result) async {}
+
+  @override
+  Future<void> deleteConversation(String conversationId) async {}
+
+  @override
+  Future<void> clearAll() async {}
+}
+
+class _NoPartnerRepo implements PartnerRepoView {
+  @override
+  Partner? getById(String id) => null;
+}
+
+class _NoPartnerConversationList implements ConversationListByPartnerView {
+  @override
+  List<Conversation> listByPartner(String partnerId) => const [];
+}
+
+class _NoPartnerDataQualityRepo implements PartnerDataQualityRepoView {
+  @override
+  bool isFlaggedUnresolved(String partnerId) => false;
+}
+
+PartnerContextResolver _emptyPartnerContextResolver() {
+  return PartnerContextResolver(
+    partnerRepo: _NoPartnerRepo(),
+    conversationRepo: _NoPartnerConversationList(),
+    summaryBuilder: PartnerSummaryBuilder(),
+    dataQualityRepo: _NoPartnerDataQualityRepo(),
+  );
 }
 
 AnalysisRecommendationPreview _preview({
@@ -210,6 +329,31 @@ Map<String, dynamic> _fullRawResponse() {
   };
 }
 
+Map<String, dynamic> _freeSingleReplyRawResponse() {
+  final raw = _fullRawResponse();
+  raw['replies'] = <String, dynamic>{
+    'extend': 'free tier reply',
+  };
+  raw['recommendation'] = <String, dynamic>{
+    'pick': 'extend',
+    'content': 'free tier reply',
+    'reason': 'free tier',
+    'psychology': 'free tier',
+  };
+  raw['usage'] = <String, dynamic>{
+    'tierUsed': SubscriptionTierHelper.free,
+  };
+  return raw;
+}
+
+Map<String, dynamic> _paidRawResponse() {
+  final raw = _fullRawResponse();
+  raw['usage'] = <String, dynamic>{
+    'tierUsed': SubscriptionTierHelper.essential,
+  };
+  return raw;
+}
+
 Conversation _conversation({
   String? lastAnalysisSnapshotJson,
   int? lastAnalyzedMessageCount,
@@ -312,9 +456,14 @@ Future<_RecordingAnalysisService> _pumpHydratedAnalysisScreen(
 }
 
 class _HydrationHarness {
-  _HydrationHarness({required this.recorder, required this.repo});
+  _HydrationHarness({
+    required this.recorder,
+    required this.repo,
+    this.subscription,
+  });
   final _RecordingAnalysisService recorder;
   final _StubConversationRepository repo;
+  final _SeededSubscriptionNotifier? subscription;
 }
 
 class _MutableHydrationHarness extends _HydrationHarness {
@@ -392,6 +541,62 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
     recorder: recorder,
     repo: repo,
     notifier: notifier,
+  );
+}
+
+Future<_HydrationHarness> _pumpAnalysisScreenForPremiumRefresh(
+  WidgetTester tester, {
+  required Conversation conversation,
+  required AnalysisResult streamResult,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1800));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  final recorder = _RecordingAnalysisService()..streamResult = streamResult;
+  final repo = _StubConversationRepository(conversation);
+  final limits =
+      SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
+  late final _SeededSubscriptionNotifier subscriptionNotifier;
+  final paidSubscription = SubscriptionState(
+    tier: SubscriptionTierHelper.essential,
+    monthlyLimit: limits.monthly,
+    dailyLimit: limits.daily,
+  );
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        conversationRepositoryProvider.overrideWithValue(repo),
+        conversationProvider(_conversationId).overrideWithValue(conversation),
+        analysisServiceProvider.overrideWithValue(recorder),
+        partnerContextResolverProvider.overrideWithValue(
+          _emptyPartnerContextResolver(),
+        ),
+        coachChatRepositoryProvider.overrideWithValue(
+          _EmptyCoachChatRepository(),
+        ),
+        coachChatHistoryProvider(_conversationId).overrideWithValue(const []),
+        subscriptionProvider.overrideWith(
+          (ref) {
+            subscriptionNotifier =
+                _SeededSubscriptionNotifier(paidSubscription);
+            return subscriptionNotifier;
+          },
+        ),
+      ],
+      child: const MaterialApp(
+        home: AnalysisScreen(conversationId: _conversationId),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+  subscriptionNotifier.restoreSeed();
+  await tester.pump();
+  return _HydrationHarness(
+    recorder: recorder,
+    repo: repo,
+    subscription: subscriptionNotifier,
   );
 }
 
@@ -831,6 +1036,101 @@ void main() {
                 'Stale full result must not persist or advance analyzed count.');
         expect(harness.recorder.recommendationPreviewCalls, 0);
         expect(harness.recorder.fullCalls, 0);
+      },
+    );
+  });
+
+  group('AnalysisScreen premium reply refresh after upgrade', () {
+    testWidgets(
+      'reanalyzes the previously analyzed slice and keeps pending outgoing messages pending',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          AiDataSharingConsent.acceptedKeyForTesting: true,
+        });
+
+        final freeRaw = _freeSingleReplyRawResponse();
+        final paidRaw = _paidRawResponse();
+        final conversationWithPendingOutgoing = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(freeRaw),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 72,
+          extraMessages: [
+            Message(
+              id: 'm2',
+              content: 'pending outgoing',
+              isFromMe: true,
+              timestamp: DateTime(2026, 5, 28, 12, 1),
+            ),
+          ],
+        );
+
+        final harness = await _pumpAnalysisScreenForPremiumRefresh(
+          tester,
+          conversation: conversationWithPendingOutgoing,
+          streamResult: _fullWithRawResponse(paidRaw),
+        );
+        tester.takeException();
+
+        final dismissCoachMark = find.text('知道了');
+        if (dismissCoachMark.evaluate().isNotEmpty) {
+          await tester.tap(dismissCoachMark);
+          await tester.pump();
+        }
+
+        await tester.tap(find.text('展開'));
+        await tester.pump();
+        final refreshButton = find.text('重新分析完整回覆');
+        expect(refreshButton, findsOneWidget);
+
+        await tester.ensureVisible(refreshButton);
+        await tester.pump();
+        final refreshOutlinedButton = find.ancestor(
+          of: refreshButton,
+          matching: find.byType(OutlinedButton),
+        );
+        final onRefreshPressed =
+            tester.widget<OutlinedButton>(refreshOutlinedButton).onPressed;
+        expect(onRefreshPressed, isNotNull);
+        onRefreshPressed!();
+        for (var i = 0;
+            i < 40 &&
+                (harness.recorder.streamCalls == 0 ||
+                    harness.repo.lastSaved == null);
+            i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        tester.takeException();
+
+        expect(
+          harness.subscription?.refreshCalls,
+          greaterThan(0),
+          reason:
+              'Premium reply refresh button should refresh entitlement state.',
+        );
+        expect(
+          harness.subscription?.ensureEntitlementCalls,
+          1,
+          reason:
+              'Refresh should reach the analysis path after bypassing pending outgoing guard.',
+        );
+        expect(
+          harness.recorder.streamCalls,
+          1,
+          reason: 'Refresh should start a streaming paid reanalysis.',
+        );
+        expect(
+          harness.recorder.streamMessages?.map((m) => m.id).toList(),
+          <String>['m1'],
+          reason:
+              'Premium refresh should rerun the paid answer for the old analyzed slice only.',
+        );
+        expect(harness.recorder.streamPreviousAnalyzedCount, 1);
+        expect(harness.repo.lastSaved?.lastAnalysisSnapshotJson,
+            jsonEncode(paidRaw));
+        expect(harness.repo.lastSaved?.lastAnalyzedMessageCount, 1,
+            reason:
+                'The pending outgoing message must stay pending after paid reply refresh.');
+        await tester.pump(const Duration(milliseconds: 500));
       },
     );
   });

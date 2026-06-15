@@ -107,6 +107,7 @@ class StreamingAnalysisState {
   final List<AnalysisStreamContent> streamContents;
   final int retriesRemaining;
   final int? conversationMessageCount;
+  final int? analyzedMessageCount;
 
   /// 非 null 表示這次失敗是額度不足（429），UI 必須走升級卡分流。
   final QuotaExceededInfo? quotaExceeded;
@@ -125,6 +126,7 @@ class StreamingAnalysisState {
     this.streamContents = const [],
     this.retriesRemaining = 0,
     this.conversationMessageCount,
+    this.analyzedMessageCount,
     this.quotaExceeded,
   });
 
@@ -150,6 +152,7 @@ class StreamingAnalysisState {
     List<AnalysisStreamContent>? streamContents,
     int? retriesRemaining,
     Object? conversationMessageCount = _unset,
+    Object? analyzedMessageCount = _unset,
     Object? quotaExceeded = _unset,
   }) {
     return StreamingAnalysisState(
@@ -186,6 +189,9 @@ class StreamingAnalysisState {
       conversationMessageCount: identical(conversationMessageCount, _unset)
           ? this.conversationMessageCount
           : conversationMessageCount as int?,
+      analyzedMessageCount: identical(analyzedMessageCount, _unset)
+          ? this.analyzedMessageCount
+          : analyzedMessageCount as int?,
       quotaExceeded: identical(quotaExceeded, _unset)
           ? this.quotaExceeded
           : quotaExceeded as QuotaExceededInfo?,
@@ -220,6 +226,7 @@ class StreamingAnalyzeNotifier
   String? _cachedKnownContactName;
   int? _cachedPreviousAnalyzedCount;
   int? _cachedConversationMessageCount;
+  int? _cachedAnalyzedMessageCount;
   int? _cachedPreviousAnalyzedCharCount;
   OverchargeConfirmationPayload? _cachedConfirmedOvercharge;
   int? _cachedPayloadCharCount;
@@ -255,9 +262,12 @@ class StreamingAnalyzeNotifier
     int? previousAnalyzedCharCount,
     OverchargeConfirmationPayload? confirmedOvercharge,
     int? conversationMessageCount,
+    int? analyzedMessageCount,
   }) async {
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
+    final effectiveAnalyzedMessageCount =
+        analyzedMessageCount ?? conversationMessageCount ?? messages.length;
 
     // Cache the payload so retryFull can replay analyzeFull with the same
     // conversation hash even after the calling screen is disposed/remounted.
@@ -269,6 +279,7 @@ class StreamingAnalyzeNotifier
     _cachedKnownContactName = knownContactName;
     _cachedPreviousAnalyzedCount = previousAnalyzedCount;
     _cachedConversationMessageCount = conversationMessageCount;
+    _cachedAnalyzedMessageCount = effectiveAnalyzedMessageCount;
     _cachedPreviousAnalyzedCharCount = previousAnalyzedCharCount;
     _cachedConfirmedOvercharge = confirmedOvercharge;
     // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages。
@@ -279,6 +290,7 @@ class StreamingAnalyzeNotifier
       streamProgressLabel: '開始完整分析',
       streamProgressDetail: '正在建立串流連線。',
       conversationMessageCount: conversationMessageCount,
+      analyzedMessageCount: effectiveAnalyzedMessageCount,
     );
 
     if (_shouldUseStreamingFull) {
@@ -294,6 +306,7 @@ class StreamingAnalyzeNotifier
         previousAnalyzedCharCount: previousAnalyzedCharCount,
         confirmedOvercharge: confirmedOvercharge,
         conversationMessageCount: conversationMessageCount,
+        analyzedMessageCount: effectiveAnalyzedMessageCount,
       );
       return;
     }
@@ -320,6 +333,7 @@ class StreamingAnalyzeNotifier
         recommendationPreviewErrorMessage: message,
         recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
+        analyzedMessageCount: effectiveAnalyzedMessageCount,
       );
       return;
     }
@@ -331,6 +345,7 @@ class StreamingAnalyzeNotifier
       recommendationPreview: recommendationPreview,
       analysisRunId: recommendationPreview.analysisRunId,
       conversationMessageCount: conversationMessageCount,
+      analyzedMessageCount: effectiveAnalyzedMessageCount,
     );
 
     await _runFull(
@@ -344,6 +359,7 @@ class StreamingAnalyzeNotifier
       knownContactName: knownContactName,
       previousAnalyzedCount: previousAnalyzedCount,
       conversationMessageCount: conversationMessageCount,
+      analyzedMessageCount: effectiveAnalyzedMessageCount,
     );
   }
 
@@ -360,10 +376,12 @@ class StreamingAnalyzeNotifier
     int? previousAnalyzedCharCount,
     OverchargeConfirmationPayload? confirmedOvercharge,
     int? conversationMessageCount,
+    int? analyzedMessageCount,
   }) async {
     final stopLocalProgress = _startLocalStreamPreludeProgress(
       generation: generation,
       conversationMessageCount: conversationMessageCount,
+      analyzedMessageCount: analyzedMessageCount,
     );
     try {
       await for (final update in _service.analyzeStream(
@@ -392,6 +410,7 @@ class StreamingAnalyzeNotifier
               streamProgressLabel: update.label,
               streamProgressDetail: update.detail,
               conversationMessageCount: conversationMessageCount,
+              analyzedMessageCount: analyzedMessageCount,
             );
             break;
           case AnalysisStreamUpdateKind.content:
@@ -412,6 +431,7 @@ class StreamingAnalyzeNotifier
               ),
               retriesRemaining: 0,
               conversationMessageCount: conversationMessageCount,
+              analyzedMessageCount: analyzedMessageCount,
               quotaExceeded: null,
             );
             break;
@@ -428,6 +448,7 @@ class StreamingAnalyzeNotifier
               streamProgressDetail: update.detail,
               retriesRemaining: 0,
               conversationMessageCount: conversationMessageCount,
+              analyzedMessageCount: analyzedMessageCount,
               quotaExceeded: null,
             );
             break;
@@ -449,6 +470,7 @@ class StreamingAnalyzeNotifier
               streamProgressDetail: null,
               retriesRemaining: 0,
               conversationMessageCount: conversationMessageCount,
+              analyzedMessageCount: analyzedMessageCount,
               quotaExceeded: null,
             );
             return;
@@ -487,6 +509,7 @@ class StreamingAnalyzeNotifier
           streamProgressDetail: null,
           retriesRemaining: retriesRemaining,
           conversationMessageCount: conversationMessageCount,
+          analyzedMessageCount: analyzedMessageCount,
           quotaExceeded: quotaExceeded,
         );
         return;
@@ -497,6 +520,7 @@ class StreamingAnalyzeNotifier
         recommendationPreviewErrorMessage: message,
         recommendationPreviewErrorCode: code,
         conversationMessageCount: conversationMessageCount,
+        analyzedMessageCount: analyzedMessageCount,
         quotaExceeded: quotaExceeded,
       );
     } finally {
@@ -507,6 +531,7 @@ class StreamingAnalyzeNotifier
   void Function() _startLocalStreamPreludeProgress({
     required int generation,
     int? conversationMessageCount,
+    int? analyzedMessageCount,
   }) {
     var stopped = false;
     var tick = 0;
@@ -525,6 +550,7 @@ class StreamingAnalyzeNotifier
         streamProgressLabel: step.$1,
         streamProgressDetail: step.$2,
         conversationMessageCount: conversationMessageCount,
+        analyzedMessageCount: analyzedMessageCount,
       );
     }
 
@@ -582,6 +608,7 @@ class StreamingAnalyzeNotifier
       streamContents: const <AnalysisStreamContent>[],
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
+      analyzedMessageCount: _cachedAnalyzedMessageCount,
       quotaExceeded: null,
     );
 
@@ -599,6 +626,7 @@ class StreamingAnalyzeNotifier
         previousAnalyzedCharCount: _cachedPreviousAnalyzedCharCount,
         confirmedOvercharge: _cachedConfirmedOvercharge,
         conversationMessageCount: _cachedConversationMessageCount,
+        analyzedMessageCount: _cachedAnalyzedMessageCount,
       );
       return;
     }
@@ -614,6 +642,7 @@ class StreamingAnalyzeNotifier
       knownContactName: _cachedKnownContactName,
       previousAnalyzedCount: _cachedPreviousAnalyzedCount,
       conversationMessageCount: _cachedConversationMessageCount,
+      analyzedMessageCount: _cachedAnalyzedMessageCount,
     );
   }
 
@@ -628,6 +657,7 @@ class StreamingAnalyzeNotifier
     String? knownContactName,
     int? previousAnalyzedCount,
     int? conversationMessageCount,
+    int? analyzedMessageCount,
   }) async {
     if (generation != _generation) return;
     // Clear any stale error fields on every full attempt so invariants
@@ -640,6 +670,7 @@ class StreamingAnalyzeNotifier
       fullErrorCode: null,
       retriesRemaining: 0,
       conversationMessageCount: conversationMessageCount,
+      analyzedMessageCount: analyzedMessageCount,
       quotaExceeded: null,
     );
 
@@ -662,6 +693,7 @@ class StreamingAnalyzeNotifier
         fullErrorCode: null,
         retriesRemaining: 0,
         conversationMessageCount: conversationMessageCount,
+        analyzedMessageCount: analyzedMessageCount,
         quotaExceeded: null,
       );
     } on FullModeException catch (e) {
@@ -672,6 +704,7 @@ class StreamingAnalyzeNotifier
         fullErrorCode: e.code,
         retriesRemaining: e.retriesRemaining,
         conversationMessageCount: conversationMessageCount,
+        analyzedMessageCount: analyzedMessageCount,
         quotaExceeded: null,
       );
     } on Exception catch (e) {
@@ -682,6 +715,7 @@ class StreamingAnalyzeNotifier
         fullErrorCode: e is AnalysisException ? e.code : null,
         retriesRemaining: 0,
         conversationMessageCount: conversationMessageCount,
+        analyzedMessageCount: analyzedMessageCount,
         // Legacy 回退路同樣分流 quota 429（smoke P1 fix 2026-06-11）。
         quotaExceeded: QuotaExceededInfo.fromException(e),
       );

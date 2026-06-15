@@ -10,6 +10,19 @@
 
 ## 2026-06
 
+### [2026-06-15] 升級後「重新分析完整回覆」仍被 pending 我說擋住
+
+**Symptom**: Free 分析後升級到 paid，點「重新分析完整回覆」仍顯示「已記錄你剛剛說的內容，先不預測她可能怎麼回」，看起來像夥伴升級後還不能用完整回覆。
+
+**Root Cause**: paid reply refresh 直接重用 `_runAnalysis()` 的完整對話路徑；若分析後使用者又補了一則「我說」，pending-outgoing guard 會在 entitlement/streaming 前早退。refresh 本意是重跑「上一輪已分析 slice」取得 paid replies，不應把後續 pending 我說納入。
+
+**Fix**: `_refreshPremiumReplies()` 以 `lastAnalyzedMessageCount` 截出上一輪 slice，允許此路徑略過 pending guard；streaming state 額外攜帶 `analyzedMessageCount`，讓完成/重掛載持久化仍把 pending 訊息留在未分析狀態。
+
+**Validation**:
+
+- `flutter test test/widget/features/analysis/analysis_screen_hydration_test.dart`
+- `dart analyze lib/features/analysis/presentation/screens/analysis_screen.dart lib/features/analysis/data/notifiers/streaming_analyze_notifier.dart test/widget/features/analysis/analysis_screen_hydration_test.dart`
+
 ### [2026-06-13] replySegments cap 3→5 改了 prompt＋server 卻漏改 Flutter client
 **Symptom**: 對方連發多球時 app 最多只顯示 3 段分段回覆；模型照新標準出 4-5 段被靜默剪掉。
 

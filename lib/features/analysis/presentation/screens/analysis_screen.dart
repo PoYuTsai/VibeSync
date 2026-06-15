@@ -317,7 +317,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         }
       }
 
-      await _runAnalysis(skipPreview: true, waitForCompletion: true);
+      final conversation =
+          ref.read(conversationProvider(widget.conversationId));
+      final refreshThrough = conversation == null
+          ? null
+          : _effectiveLastAnalyzedMessageCount(conversation)
+              .clamp(
+                0,
+                conversation.messages.length,
+              )
+              .toInt();
+      await _runAnalysis(
+        skipPreview: true,
+        waitForCompletion: true,
+        analysisMessageLimit: refreshThrough,
+        allowPendingOutgoingRefresh: true,
+      );
       if (!mounted) {
         return;
       }
@@ -704,7 +719,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
           _streamContents = s.streamContents;
-          _activeAnalysisMessageCount = s.conversationMessageCount;
+          _activeAnalysisMessageCount =
+              s.analyzedMessageCount ?? s.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
@@ -718,7 +734,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressLabel = s.streamProgressLabel;
           _streamProgressDetail = s.streamProgressDetail;
           _streamContents = s.streamContents;
-          _activeAnalysisMessageCount = s.conversationMessageCount;
+          _activeAnalysisMessageCount =
+              s.analyzedMessageCount ?? s.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
@@ -732,7 +749,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _fullErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
-            _activeAnalysisMessageCount = s.conversationMessageCount;
+            _activeAnalysisMessageCount =
+                s.analyzedMessageCount ?? s.conversationMessageCount;
             _clearDetailedAnalysisStateForStreamingAnalyzePartial();
           });
           return;
@@ -767,7 +785,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // streamingReport and the done transition arrived off-screen). If the
         // listener already wrote this exact snapshot, the dedup signal below
         // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
-        _maybePersistAndSyncOnHydrate(result);
+        _maybePersistAndSyncOnHydrate(
+          result,
+          analyzedMessageCount: s.analyzedMessageCount,
+        );
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
         setState(() {
@@ -778,7 +799,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressLabel = null;
           _streamProgressDetail = null;
           _streamContents = s.streamContents;
-          _activeAnalysisMessageCount = s.conversationMessageCount;
+          _activeAnalysisMessageCount =
+              s.analyzedMessageCount ?? s.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
@@ -800,8 +822,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _resetErrorState();
           } else {
             _applyErrorState(
-              message:
-                  s.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。',
+              message: s.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。',
               action: isQuotaError
                   ? AnalysisErrorAction.upgrade
                   : AnalysisErrorAction.retry,
@@ -829,16 +850,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// the screen mid-`streamingReport`, the notifier transitions to `done`
   /// while the listener is unmounted; on return the screen sees `done`
   /// but the snapshot + usage were never written.
-  void _maybePersistAndSyncOnHydrate(AnalysisResult result) {
+  void _maybePersistAndSyncOnHydrate(
+    AnalysisResult result, {
+    int? analyzedMessageCount,
+  }) {
     final repository = ref.read(conversationRepositoryProvider);
     final conv = repository.getConversation(widget.conversationId);
     if (conv == null) return;
+    final expectedAnalyzedCount = analyzedMessageCount ?? conv.messages.length;
 
     final encoded = result.rawResponse == null || result.rawResponse!.isEmpty
         ? null
         : jsonEncode(result.rawResponse);
     final alreadyPersisted =
-        conv.lastAnalyzedMessageCount == conv.messages.length &&
+        conv.lastAnalyzedMessageCount == expectedAnalyzedCount &&
             conv.lastAnalysisSnapshotJson == encoded;
     if (alreadyPersisted) {
       return;
@@ -846,10 +871,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     if (mounted) {
       setState(() {
-        _lastAnalyzedMessageCount = conv.messages.length;
+        _lastAnalyzedMessageCount = expectedAnalyzedCount;
       });
     }
-    _persistLatestAnalysisSnapshot(result).catchError((_) {
+    _persistLatestAnalysisSnapshot(
+      result,
+      analyzedMessageCount: expectedAnalyzedCount,
+    ).catchError((_) {
       // Same fire-and-forget contract as the listener path — Hive failures in
       // tests must not surface as unhandled futures.
     });
@@ -1216,8 +1244,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   Future<void> _persistLatestAnalysisSnapshot(
-    AnalysisResult result,
-  ) async {
+    AnalysisResult result, {
+    int? analyzedMessageCount,
+  }) async {
     final repository = ref.read(conversationRepositoryProvider);
     final conv = repository.getConversation(widget.conversationId);
     if (conv == null) {
@@ -1225,7 +1254,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     conv.lastEnthusiasmScore = result.enthusiasmScore;
-    conv.lastAnalyzedMessageCount = conv.messages.length;
+    conv.lastAnalyzedMessageCount =
+        analyzedMessageCount ?? conv.messages.length;
     // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
     //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
     //（避免分析中新進訊息造成 baseline 漂移）。
@@ -3388,6 +3418,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _runAnalysis({
     bool skipPreview = false,
     bool waitForCompletion = false,
+    int? analysisMessageLimit,
+    bool allowPendingOutgoingRefresh = false,
   }) async {
     // 先關閉 SnackBar (如果有的話)
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -3424,9 +3456,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    final messagesForAnalysis = _buildMessagesForReplyAnalysis(
-      conversation.messages,
-    );
+    final clampedAnalysisMessageLimit =
+        analysisMessageLimit?.clamp(0, conversation.messages.length).toInt();
+    final sourceMessages = clampedAnalysisMessageLimit == null
+        ? conversation.messages
+        : conversation.messages
+            .take(clampedAnalysisMessageLimit)
+            .toList(growable: false);
+
+    final messagesForAnalysis = _buildMessagesForReplyAnalysis(sourceMessages);
     if (messagesForAnalysis == null) {
       setState(() {
         _isAnalyzing = false;
@@ -3440,7 +3478,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    if (conversation.messages.last.isFromMe &&
+    if (!allowPendingOutgoingRefresh &&
+        conversation.messages.last.isFromMe &&
         _pendingMessageCount(conversation) > 0) {
       setState(() {
         _isAnalyzing = false;
@@ -3455,6 +3494,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     try {
+      final analyzedMessageCount = sourceMessages.length;
       final analysisContext = await _buildSummaryAwareAnalysisContext(
         conversation: conversation,
         baseMessages: messagesForAnalysis,
@@ -3463,8 +3503,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       // skipPreview 路徑刻意拿不到 overcharge 憑證：>2000 字會被 server
       // 守門擋回（409 要求重新確認），絕不可能未經確認被扣 20 則。
-      ({bool confirmed, OverchargeConfirmationPayload? overcharge})
-          previewDecision;
+      ({
+        bool confirmed,
+        OverchargeConfirmationPayload? overcharge
+      }) previewDecision;
       if (skipPreview) {
         previewDecision = (confirmed: true, overcharge: null);
       } else {
@@ -3491,7 +3533,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _streamProgressLabel = '開始完整分析';
         _streamProgressDetail = '正在建立串流連線。';
         _streamContents = const [];
-        _activeAnalysisMessageCount = conversation.messages.length;
+        _activeAnalysisMessageCount = analyzedMessageCount;
       });
 
       await ref
@@ -3524,6 +3566,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             previousAnalyzedCharCount: conversation.lastAnalyzedCharCount,
             confirmedOvercharge: previewDecision.overcharge,
             conversationMessageCount: conversation.messages.length,
+            analyzedMessageCount: analyzedMessageCount,
           );
       if (waitForCompletion) {
         await analysisFuture;
@@ -3569,7 +3612,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
-          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _activeAnalysisMessageCount =
+              next.analyzedMessageCount ?? next.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
           _resetErrorState();
         });
@@ -3583,7 +3627,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
-          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _activeAnalysisMessageCount =
+              next.analyzedMessageCount ?? next.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
@@ -3600,7 +3645,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressLabel = next.streamProgressLabel;
           _streamProgressDetail = next.streamProgressDetail;
           _streamContents = next.streamContents;
-          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _activeAnalysisMessageCount =
+              next.analyzedMessageCount ?? next.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
@@ -3614,7 +3660,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             _fullErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
-            _activeAnalysisMessageCount = next.conversationMessageCount;
+            _activeAnalysisMessageCount =
+                next.analyzedMessageCount ?? next.conversationMessageCount;
             _clearDetailedAnalysisStateForStreamingAnalyzePartial();
           });
           return;
@@ -3623,6 +3670,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
         }
         final conv = ref.read(conversationProvider(widget.conversationId));
+        final analyzedMessageCount = next.analyzedMessageCount ??
+            next.conversationMessageCount ??
+            conv?.messages.length;
         setState(() {
           _isAnalyzing = false;
           _fullErrorMessage = null;
@@ -3632,8 +3682,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressDetail = null;
           _streamContents = const [];
           _activeAnalysisMessageCount = null;
-          if (conv != null) {
-            _lastAnalyzedMessageCount = conv.messages.length;
+          if (conv != null && analyzedMessageCount != null) {
+            _lastAnalyzedMessageCount = analyzedMessageCount;
             _hasEditedAnalyzedMessage = false;
           }
           _applyAnalysisResult(result);
@@ -3653,7 +3703,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _lastAiResponse = result.rawResponse;
           _resetFeedbackState();
         });
-        _persistLatestAnalysisSnapshot(result).catchError((_) {
+        _persistLatestAnalysisSnapshot(
+          result,
+          analyzedMessageCount: analyzedMessageCount,
+        ).catchError((_) {
           // Ignore errors in test environment.
         });
         _syncSubscriptionUsageFromResult(result, showChargeToast: true);
@@ -3667,7 +3720,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _streamProgressLabel = null;
           _streamProgressDetail = null;
           _streamContents = next.streamContents;
-          _activeAnalysisMessageCount = next.conversationMessageCount;
+          _activeAnalysisMessageCount =
+              next.analyzedMessageCount ?? next.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
         break;
