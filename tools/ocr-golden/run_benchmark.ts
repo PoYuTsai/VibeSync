@@ -102,11 +102,17 @@ interface Phase1SideRow {
   bubbleFillColor: string | null;
   senderNameRaw: string | null;
   visionQuotedName: string | null;
+  // Track 2 量測：模型自報幾何/欄位訊號，用來判斷暗色單側失敗時是否存在「可靠右 anchor」
+  horizontalPosition: number | null;
+  outerColumn: string | null;
+  isFromMe: boolean | null;
+  senderNameX: number | null;
 }
 
 interface Phase1UnitResult {
   myBubbleColor: string | null;
   myBubbleColorEvidence: string | null;
+  screenSpeakerPattern: string | null; // Track 2：模型自報單側/雙側型態（only_left/only_right/...）
   alignedRows: number;
   fillKnown: number; // fill-only 能判（myBubbleColor 已知且泡色非空）的列數
   fillCorrect: number; // fill-only 判對數（只計 fillKnown）
@@ -356,6 +362,10 @@ export function scorePhase1(
       bubbleFillColor: vm.bubbleFillColor,
       senderNameRaw: vm.senderNameRaw,
       visionQuotedName: vm.quotedName,
+      horizontalPosition: vm.horizontalPosition,
+      outerColumn: vm.outerColumn,
+      isFromMe: vm.isFromMe ?? null,
+      senderNameX: vm.senderNameX,
     });
   }
 
@@ -376,6 +386,7 @@ export function scorePhase1(
   return {
     myBubbleColor: phase1.myBubbleColor,
     myBubbleColorEvidence: phase1.myBubbleColorEvidence,
+    screenSpeakerPattern: phase1.screenSpeakerPattern,
     alignedRows: pairs.length,
     fillKnown,
     fillCorrect,
