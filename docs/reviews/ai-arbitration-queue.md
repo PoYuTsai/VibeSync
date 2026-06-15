@@ -629,7 +629,15 @@ Closed items before 2026-05-14 were intentionally pruned from this live queue. U
 
 ## CLOSED(FAIL) — 2026-06-16 pixel detector Gate-2 量測＝FAIL（P0 G2-3），停 client 兜底
 
-**結案狀態**：Gate-2 prototype **FAIL**＝**不接 pipeline**，停在現有 client 兜底（一鍵「全部改成對方說」）。**pixel x 幾何未判 DEAD**（暗單側/正常雙側仍有效），但目前 prototype 過不了 P0。
+**🔒 LOCKED 結論（Eric 2026-06-16 拍板，寫死）**：
+- **Gate-2 FAIL / do not ship / client fallback only。**
+- pixel detector **不接 pipeline**。
+- **不再做第二輪 mask 調參。**
+- 根因＝**右欄泡泡 recall / 分欄解析不穩，會把 mixed 誤收成 single-left，命中 P0**。
+- 產品只保留 **client confirm UI / 一鍵「全部都是對方說的」兜底**。
+- **後續除非「全新 detector 設計」或「大幅新增 golden」，不要再沿這條 prototype 調參。**
+
+**結案狀態**：Gate-2 prototype **FAIL**＝**不接 pipeline、do not ship、client fallback only**。**pixel x 幾何未判 DEAD**（暗單側/正常雙側仍有效），但目前 prototype 過不了 P0、且本條 prototype 調參到此為止。
 
 **量測（現有 33 張 labeled 樹，未補圖、未換樣本）**：total 33／exact-OK 28／fail-open 3／**wrong 2**。
 - ❌ **G2-3 mixed→single ＝ 2/21（P0）**：`暗色both_sides/S__42319882`、`淺色雙側/S__42319885` 被收成 SINGLE-LEFT。
