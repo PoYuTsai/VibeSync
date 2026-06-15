@@ -24,7 +24,13 @@
 ## Live Queue
 
 ## [2026-06-15] OCR side：nested-screenshot guard + single-side fallback gate（Eric 拍板方向，待 TDD）
-Status: OPEN — 設計定案、**先量後寫**，下個 session 進 TDD＋Codex 雙審。Eric 方向＝gated fallback 非全域 default；不要再 prompt-whacking，走 parser/post-process＋必要時簡單幾何 detector。
+Status: OPEN — **Track 2 step-2＝Path A client-only SHIPPED `5a54ae1`（push origin/main，無 Edge deploy，待新 TF build＋Eric/Bruce 目檢）**；server only_right default 已實作+TDD 後**依 Eric 撤回**（見下）；Track 1 nested-screenshot guard 仍 OPEN（另案）。
+**🚢 Track 2 step-2 DONE（2026-06-15）——產品前提重設＋Path A 出貨**：
+- **Eric 產品前提重設**：截圖匯入＝建立/補充互動紀錄、重點是「她說」；「我說優化」是分析頁草稿功能、**不經截圖 OCR**，不該拿來限制截圖 default。∴ 不再做「偵測假 mixed→自動翻側」（量測 B 證 per-bubble/幾何零獨立訊號、自動翻側會誤傷正常雙側），改把安全壓在 **截圖匯入 UX**。
+- **Path A client-only SHIPPED `5a54ae1`**（`screenshot_recognition_dialog.dart`，純 client、零 server/分析/資料變更、無 Edge deploy）：①假 mixed（同時有我說/她說）不再印「方向看起來很穩」安撫框（會誘導跳過檢查）——只收這顆框、compact 其餘行為不動＝正常雙側零額外摩擦；②預覽層顯眼一鍵「全部都是對方說的」（有任何我說才出現）一次整段改回對方、可逆、需主動點、不自動改資料。TDD 紅→綠 dialog widget **16/16**、flutter analyze 乾淨。**需新 TF build 才到 dogfood**。
+- **server only_right default＝撤回（Eric 拍板，不混進本輪）**：曾實作「only_right 截圖匯入→全她說/left + importPolicy=confirm + 文案『已先按對方說處理，可手動改成我說』」（抽 `single_side_recognition_default.ts` 純函式、Deno 6/6、最終覆蓋套在 finalMessages 後避免 geometryDecisive 翻回，deno check 乾淨、零新失敗）。**但實查 golden：`only_right` 單元＝0**（pattern 只有 mixed×10/only_left×1，坐實量測 A＝暗色失敗全長成 mixed），∴ server only_right 修法在現有 golden 與真實暗色失敗上**＝no-op**、只保護「真 only_right 截圖」這個目前無樣本族群。Eric 判：OCR server 高風險、不把理論安全網混進本輪→**git checkout 全撤、刪 helper+test**。**待真 only_right 樣本/新 golden 後另開一輪 TDD＋Codex**。
+- **殘留暴露面（如實）**：暗色 fake-mixed 仍**未被自動修**（Eric 知情取捨：mixed 不碰、靠 client 一鍵手動兜底）；圖中圖另走 Track 1 nested guard。
+**（前態保留）** 設計定案、**先量後寫**。Eric 方向＝gated fallback 非全域 default；不要再 prompt-whacking，走 parser/post-process＋必要時簡單幾何 detector。
 **現況數字**（harness `tools/ocr-golden/results/2026-06-14-15-57-32-local.json`，全暗色、N 小、labels 未正式校對，僅方向性）：暗色雙側 side=100%、暗色單側 quoted_card 61.5%／sticker_media 31.6%／long_screenshot 0%。淺色單側**目前無乾淨量測**（舊「淺色單側 3/8」已被 Eric 推翻＝圖中圖）。`finalUnknownRate=0`＝暗色單側是模型**自信吐錯右**、非棄權（∴「unknown→左」字面改法無效）。
 **掛點**：`index.ts:2850 applySingleVisibleSpeakerPattern` 已在 `only_left/only_right` 強制收側，但**無條件信任模型挑的側**→ 暗色「我方先驗」被放大往右釘死。現成材料：`isGeometrySideDecisive`(3133)、`RIGHT|LEFT_HORIZONTAL_THRESHOLD`(3077-78)、`sideToIsFromMe`(3147)、`VisibleSpeakerPattern`(666)。
 **Track 1 — nested-screenshot guard**：外層 LINE 泡含內嵌聊天截圖→只抽外層泡、內嵌一律 `[screenshot]`/`[photo]` placeholder，不遞迴轉錄成對話。⚠️**做不到純 parser**（pipeline 無像素 bbox，內外層文字事後不可分）＝機制須一條原則性 prompt 規則，parser/golden 當洩漏護欄。第一步＝拿原始外層檔建 golden leakage 案量基線。
