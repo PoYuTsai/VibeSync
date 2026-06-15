@@ -627,7 +627,26 @@ Closed items before 2026-05-14 were intentionally pruned from this live queue. U
 
 ---
 
-## OPEN — 2026-06-16 pixel detector Gate-2 spec / pending measurement
+## CLOSED(FAIL) — 2026-06-16 pixel detector Gate-2 量測＝FAIL（P0 G2-3），停 client 兜底
+
+**結案狀態**：Gate-2 prototype **FAIL**＝**不接 pipeline**，停在現有 client 兜底（一鍵「全部改成對方說」）。**pixel x 幾何未判 DEAD**（暗單側/正常雙側仍有效），但目前 prototype 過不了 P0。
+
+**量測（現有 33 張 labeled 樹，未補圖、未換樣本）**：total 33／exact-OK 28／fail-open 3／**wrong 2**。
+- ❌ **G2-3 mixed→single ＝ 2/21（P0）**：`暗色both_sides/S__42319882`、`淺色雙側/S__42319885` 被收成 SINGLE-LEFT。
+- ❌ G2-1 activated 非零誤判（同上 2 張高信度出手判錯）。
+- ✅ G2-2 單側零左右翻側（9 判對側、3 fail-open）／✅ G2-4 fail-open 正常／⚠️ G2-6 coverage：暗單側 9/9 好，**淺色 only_right 0/3＝0%**。
+
+**one bounded recall iteration（Eric 授權上限，已用完）**：mask 關掉飽和死區 S∈(28,45)＋放寬色泡亮度帶（greenSat 45→28、lum 90-230→60-245），元件過濾不動。**結果 G2-3 仍 2/21**——撿回像素全進 ambig、右欄仍 0；淺色右單側仍各 1 泡。
+
+**死因（定版）**：右欄泡泡無法解析成乾淨 right-column（撿回像素不成泡或落在 isRight 判準外＝ambig），淺色右單側 recall 結構性崩。**是幾何分欄/recall 的牆，非顏色死區。** MIXED 漏右側→看成單左→中 P0。
+
+**鐵律執行紀錄**：只動 mask、未碰 pipeline/OCR/LLM、固定同 33 張、最多一輪。修完仍 fail＝即收，不續調參。
+
+**下一步**：停。若未來要復活＝另案重啟（需新假設攻「右欄 recall」，非再調 mask 參數）。spec 仍存 `docs/plans/2026-06-16-pixel-side-detector-gate2-spec.md` 供後人。
+
+---
+
+## ~~OPEN~~ → 見上方 CLOSED(FAIL)：2026-06-16 pixel detector Gate-2 spec
 
 **狀態**：spec DRAFT 完成、**尚未量測、尚未實作、未 approve**。**不是 implementation approved。**
 
