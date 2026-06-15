@@ -624,3 +624,25 @@ Closed items before 2026-05-14 were intentionally pruned from this live queue. U
 - **(a) client 形狀驗證器（env-free，可純 TDD）＝SHIPPED（2026-06-14）**：reframer.ts 五張表加 `export`（`CLIENT_RECORD_FIELD_SHAPES`／`REPLY_OPTION_FIELD_SHAPES`／`ClientFieldShape`＋`ARRAY_ONLY_FINAL_RESULT_KEYS`／`STRING_ONLY_FINAL_RESULT_KEYS`——後兩張為涵蓋 warnings／strategy／reminder 入口必需，純附加行為中性）。新模組 `client_shape_validator.ts`＝偵測版（只看不改）：`findClientShapeViolations(finalResult)`＋`findRecordShapeViolations(record,shapes,basePath)`，驗 string／boolean／int=Number.isInteger／number／stringArray／record／recordArray；**欄位層 undefined/null 放行**（client nullable cast），但 **recordArray／stringArray 的元素層不放行 null/錯型**（client `.map((m)=>fromJson(m as Map))`／`List<String>.from` 對元素是非 nullable cast）。CLI `tools/voice-benchmark/check_client_shape.ts` 讀 ndjson、取 `analysis.done.finalResult`＋每個 `analysis.reply_option` 走 REPLY_OPTION 表，有 violation 退非零。TDD 紅→綠 17 測（good 合成 fixture 零 violation＋5 bad＋null/undefined 放行＋表外 key 忽略＋dynamic replies/replyOptions），合成 fixture（**未用既有 baselines 當 good**）。全套 Deno 474 綠、`deno check` 乾淨。CLI 實證：`gate4_golden_anchor`（守門前 psychology 裸字串）FAIL exit1、`case1_chengwei`（psychology=object）PASS exit0＝坐實「baselines 不可當 good fixture」。**純 tools 測試基建、無任何 prod runtime import（只 test＋CLI 引用）＝免 Codex 雙審**。
 - **(b) forceModel=haiku 真實 baseline ＋接 CI（需 bench 環境，Eric 跑）＝待辦**：用 (a) 的 CLI 當斷言。`cases/repro_haiku_small.json` 已有 forceModel=haiku；跑 haiku baseline ndjson → 過 `check_client_shape.ts` 必須零 violation → 存進 baselines/ 當免費層 must-test 錨 → check_contract.sh 旁併 check_client_shape 一起跑（現有 baselines 多為守門前產物會 FAIL，故 wiring 待 fresh haiku baseline 才接）。
 - **(b) forceModel=haiku 真實 baseline ＋接 CI（需 bench 環境，Eric 跑）**：`cases/repro_haiku_small.json` 已有 forceModel=haiku；用 `supabase functions serve analyze-chat --no-verify-jwt --env-file ~/.vibesync-bench.env` 跑出 haiku baseline ndjson → 過 (a) 驗證器必須零 violation → 存進 baselines/ 當免費層 must-test 錨 → check_contract.sh 旁併 check_client_shape 一起跑。haiku＝最易吐壞型，列入必測才補上 root cause 測試面。
+
+---
+
+## OPEN — 2026-06-16 pixel detector Gate-2 spec / pending measurement
+
+**狀態**：spec DRAFT 完成、**尚未量測、尚未實作、未 approve**。**不是 implementation approved。**
+
+**脈絡**：
+- 自動 side 修法（snap 模型主側 / 語意 probe / 幾何欄位聚類 / dark-fill 顏色）全線證偽結案（detector 第二輪結案，Eric 2026-06-15 拍板）。
+- 唯一還活的線＝pixel-x 幾何 anchor：Phase1 已 PASS（3 張確定性分單/雙側）。
+- 本案＝把擴樣驗證的 Gate-2 從定性變成可量化門檻，spec 落 `docs/plans/2026-06-16-pixel-side-detector-gate2-spec.md`。
+
+**Gate-2 門檻（全過才接 pipeline）**：
+- 安全：G2-1 activated subset 零誤判／G2-3 mixed→single＝0（P0）／G2-4 fail-open 100%／G2-5 純幾何。
+- 有用性：G2-6 activation coverage 夠高，否則「safe but not useful」也不接。
+- UNKNOWN/fail-open 不算誤判也不算成功；報表須分列 coverage / fail-open rate。
+
+**下一步（pending，未排程）**：補樣本（15-20 張，only_right/暗雙側/裸貼圖 golden 0 張）→ 重建離線 prototype（/tmp 版已失）→ 量測填 τ 數值 → 判 Gate-2。**prototype 門檻 ≠ ship 門檻**；上 prod 要擴大 golden 重跑。
+
+**鐵律**：只在高信度單側 anchor、絕不取代 LLM、絕不自動翻側、不碰 recognized side/isFromMe、引用/圖中圖另案。
+
+**Close 條件**：量測跑完、Gate-2 五條（安全四＋有用性一）判定有結論（過＝開實作 plan 案＋Codex 雙審；不過＝記死因停在 client 兜底）。
