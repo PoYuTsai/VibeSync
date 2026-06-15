@@ -212,6 +212,38 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
+  // 假 mixed 偵測：同時存在「我說」「她說」。暗色單側誤讀的失敗型態正是被
+  // 拆成 mixed（見 ai-arbitration-queue Track 2 量測 A/B：幻覺右泡與真右泡
+  // 逐欄相同、零獨立訊號，無法可靠自動翻側）。所以 mixed 不走 compact
+  // 安撫流程，而是攤開預覽＋給「全部都是對方說的」一鍵兜底。
+  bool get _isMixedSpeakerConversation {
+    var hasFromMe = false;
+    var hasFromOther = false;
+    for (final message in _editableMessages) {
+      if (message.isFromMe) {
+        hasFromMe = true;
+      } else {
+        hasFromOther = true;
+      }
+      if (hasFromMe && hasFromOther) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _hasAnyFromMeMessage() =>
+      _editableMessages.any((message) => message.isFromMe);
+
+  void _markAllAsOtherPerson() {
+    setState(() {
+      for (final message in _editableMessages) {
+        message.isFromMe = false;
+      }
+      _editValidationMessage = null;
+    });
+  }
+
   List<int> _contiguousSideIndexes(int index) {
     if (index < 0 || index >= _editableMessages.length) {
       return const <int>[];
@@ -754,7 +786,11 @@ class _ScreenshotRecognitionDialogState
                   ),
                 ),
               ),
-            if (_isCompactHighConfidenceFlow) ...[
+            // 假 mixed（同時有我說／她說）不印「方向看起來很穩」——暗色單側誤讀
+            // 正是長成 mixed，這句安撫會讓用戶跳過檢查（Eric 2026-06-15）。
+            // 只收掉這顆安撫框，不動 compact 其餘行為＝不給正常雙側額外摩擦。
+            if (_isCompactHighConfidenceFlow &&
+                !_isMixedSpeakerConversation) ...[
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
@@ -987,6 +1023,26 @@ class _ScreenshotRecognitionDialogState
                   if (!_showDetailedEditor) ...[
                     const SizedBox(height: 10),
                     _buildReadOnlyPreviewList(),
+                    if (_hasAnyFromMeMessage()) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _markAllAsOtherPerson,
+                          icon: const Icon(Icons.swap_horiz_rounded),
+                          label: const Text('全部都是對方說的'),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '單側截圖常常整段都是對方連發。如果 AI 把某幾則誤判成你說的，'
+                        '點這裡一次全部改回對方。',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.unselectedText,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Text(
                       '內容或「她說／我說」有錯？點右上「編輯內容」即可修改。',

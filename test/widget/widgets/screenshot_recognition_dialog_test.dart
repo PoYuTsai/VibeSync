@@ -103,6 +103,41 @@ void main() {
     ],
   );
 
+  // 假 mixed：高信心 allow，但同時有「我說」「她說」。暗色單側誤讀的失敗型態
+  // 正是長成這樣（見 ai-arbitration-queue Track 2 量測 A/B）——所以這種對話
+  // 不該走 compact「方向看起來很穩」安撫流程。
+  const mixedHighConfidenceConversation = RecognizedConversation(
+    contactName: '小美',
+    messageCount: 3,
+    summary: '識別到 3 則訊息',
+    classification: 'valid_chat',
+    importPolicy: 'allow',
+    confidence: 'high',
+    sideConfidence: 'high',
+    messages: [
+      RecognizedMessage(side: 'left', isFromMe: false, content: '在幹嘛'),
+      RecognizedMessage(side: 'right', isFromMe: true, content: '剛回到家'),
+      RecognizedMessage(side: 'left', isFromMe: false, content: '這麼晚還沒睡'),
+    ],
+  );
+
+  // 真正單側（整段她說），高信心。這種沒有可被誤翻的「我說」，仍可走 compact，
+  // 確保 mixed 排除沒有過度擴張到正常單側截圖。
+  const singleSpeakerHighConfidenceConversation = RecognizedConversation(
+    contactName: '小美',
+    messageCount: 3,
+    summary: '識別到 3 則訊息',
+    classification: 'valid_chat',
+    importPolicy: 'allow',
+    confidence: 'high',
+    sideConfidence: 'high',
+    messages: [
+      RecognizedMessage(side: 'left', isFromMe: false, content: '在幹嘛'),
+      RecognizedMessage(side: 'left', isFromMe: false, content: '這麼晚還沒睡'),
+      RecognizedMessage(side: 'left', isFromMe: false, content: '我剛洗完澡'),
+    ],
+  );
+
   group('ScreenshotRecognitionDialog', () {
     testWidgets('shows OCR status badges and guidance', (tester) async {
       await tester.pumpWidget(
@@ -446,6 +481,88 @@ void main() {
       expect(find.text('這幾則都改成我說'), findsOneWidget);
       expect(find.textContaining('如果每則都判對了'), findsOneWidget);
       expect(find.textContaining('這區可以直接略過'), findsOneWidget);
+    });
+
+    testWidgets('mixed-speaker high-confidence conversation cancels the '
+        'compact「方向看起來很穩」reassurance', (tester) async {
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedHighConfidenceConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('方向看起來很穩'), findsNothing);
+    });
+
+    testWidgets('single-speaker high-confidence conversation keeps the compact '
+        'reassurance (mixed exclusion does not over-broaden)', (tester) async {
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: singleSpeakerHighConfidenceConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('方向看起來很穩'), findsOneWidget);
+    });
+
+    testWidgets('offers a one-tap「全部都是對方說的」fallback that marks every '
+        'message as the other person', (tester) async {
+      await _useTallSurface(tester);
+
+      ScreenshotRecognitionDialogResult? dialogResult;
+
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedHighConfidenceConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+          onResult: (result) => dialogResult = result,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      // 兜底鍵在預覽層就看得到，不必先點「編輯內容」。
+      await _tapVisible(tester, find.text('全部都是對方說的'));
+      await _tapVisible(tester, find.text('確認加入對話'));
+
+      expect(dialogResult, isNotNull);
+      expect(dialogResult!.messages, hasLength(3));
+      expect(
+        dialogResult!.messages.every((message) => !message.isFromMe),
+        isTrue,
+      );
+    });
+
+    testWidgets('hides the「全部都是對方說的」fallback when nothing is marked '
+        'as me', (tester) async {
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: singleSpeakerHighConfidenceConversation,
+          initialImportMode:
+              ScreenshotRecognitionHelper.importModeAppendCurrent,
+          forceShowSessionContextFields: false,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('全部都是對方說的'), findsNothing);
     });
   });
 }
