@@ -24,7 +24,13 @@
 ## Live Queue
 
 ## [2026-06-15] OCR side：nested-screenshot guard + single-side fallback gate（Eric 拍板方向，待 TDD）
-Status: OPEN — **Track 2 step-2＝Path A client-only SHIPPED `5a54ae1`（push origin/main，無 Edge deploy，待新 TF build＋Eric/Bruce 目檢）**；server only_right default 已實作+TDD 後**依 Eric 撤回**（見下）；Track 1 nested-screenshot guard 仍 OPEN（另案）。
+Status: OPEN — **自動 side detector 全線停（Eric 拍板 2026-06-15，見下「detector 第二輪結案」）**；短期靠 client confirm UI 兜底、承認暗色單側殘差。Track 2 step-2＝Path A client-only SHIPPED `5a54ae1`（push origin/main，無 Edge deploy，待新 TF build＋Eric/Bruce 目檢）；server only_right default 已實作+TDD 後依 Eric 撤回；Track 1 nested-screenshot guard 仍 OPEN（另案）。
+**🛑 detector 第二輪＝結案，自動 side 修法全線停（Eric 拍板 2026-06-15）**：
+- **決策**：停掉所有自動 side detector，**語意連貫判斷不進 OCR**——理由：(a) 把語意分析搬進 OCR 會把「辨識」與「後續分析」混在一起、讓 vision 做太多事；(b) 所有 LLM-based side 修法已接近證偽。**不再 prompt-whacking。**
+- **第二輪量測證據（grounding，未實作 detector）**：續第一輪「per-bubble anchor 證偽」後，本輪再證偽**幾何欄位聚類**這條候選——拿 `2026-06-15-03-04-03-local.json` 重算，假 mixed 與真 mixed 的 `horizontalPosition` 聚類 **byte 級相同**（兩者皆雙峰 ≈[25–30, 72–75]）；vision 會幻覺出一整條幾何自洽的假右欄（hPos≈72＋綠泡＋isFromMe=true）。⟹ 任何逐泡/幾何訊號都分不出假/真 mixed（證偽兩次）。唯一確定性可抓＝「全泡同欄卻標 mixed」自相矛盾案（4 失敗單元僅 1 顆＝`S__5480452` 全 hPos=[75]）。唯一未證偽訊號＝語意（讀起來像一人連發），但 Eric 判定不該進 OCR ＝**放棄**。
+- **語意 probe 可行性量測設計＝起草後即停**（依本拍板作廢、不落檔）：曾規劃「側別剝除文字→LLM 判有無兩人輪流→只吐 risk flag 不改 message→量 recall/FP 分桶」，gate ＝假 mixed recall ≥80%／真 mixed FP <5–10%。**依 Eric 拍板不執行**（語意不進 OCR）。
+- **下一步只保留兩件**：①**UX**：確認頁持續打磨，讓一鍵「全部改成對方說」修正更直覺（接 Path A `5a54ae1`）；②**工程探索**：pixel detector **獨立研究**（不靠 vision 自報側、直接讀像素幾何），但 **Gate-2 沒過前絕不接 pipeline**（Gate-2 定義待 pixel 研究案開工時明訂）。
+- **鐵律（invariant）**：只准抬高確認摩擦、絕不自動翻側；絕不碰 recognized messages 的 side/isFromMe；不把語意分析搬進 OCR。
 **🚢 Track 2 step-2 DONE（2026-06-15）——產品前提重設＋Path A 出貨**：
 - **Eric 產品前提重設**：截圖匯入＝建立/補充互動紀錄、重點是「她說」；「我說優化」是分析頁草稿功能、**不經截圖 OCR**，不該拿來限制截圖 default。∴ 不再做「偵測假 mixed→自動翻側」（量測 B 證 per-bubble/幾何零獨立訊號、自動翻側會誤傷正常雙側），改把安全壓在 **截圖匯入 UX**。
 - **Path A client-only SHIPPED `5a54ae1`**（`screenshot_recognition_dialog.dart`，純 client、零 server/分析/資料變更、無 Edge deploy）：①假 mixed（同時有我說/她說）不再印「方向看起來很穩」安撫框（會誘導跳過檢查）——只收這顆框、compact 其餘行為不動＝正常雙側零額外摩擦；②預覽層顯眼一鍵「全部都是對方說的」（有任何我說才出現）一次整段改回對方、可逆、需主動點、不自動改資料。TDD 紅→綠 dialog widget **16/16**、flutter analyze 乾淨。**需新 TF build 才到 dogfood**。
