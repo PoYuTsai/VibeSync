@@ -1549,15 +1549,17 @@ Deno.test({
   },
 });
 
-// ── REPRO（路 1，2026-06-16）：applySingleVisibleSpeakerPattern sibling-path 破口 ──
-// 目標：把「single-visible 可能壓掉 geometryDecisive=true 反側泡」的潛在破口變成
-// 可觀測證據。它不在四 heuristic guard 範圍（Eric 只點四個），且：
+// ── single-visible sibling-path：geometryDecisive guard 紅綠測（2026-06-17）──
+// 原為 REPRO（證明會翻），破口確認後改為紅綠測：「guard 後不翻」。
+// 注意：這不是 S__5701639_0 的直接根因（那是 applyTrailingSpeakerHeuristics）；
+// 這是同一 invariant 的 sibling-path 補洞——只要某泡已幾何決定側別，任何 speaker
+// heuristic（含整體單側 pattern）都不該再翻它。
 //   1. 無法直接 import 真函式測——index.ts 頂層 `serve()` 未用 import.meta.main 守，
 //      且 applySingleVisibleSpeakerPattern 未 export（全專案無任何 test import index.ts）。
 //   2. 無法用合成圖逼真——screenSpeakerPattern 與逐泡 outerColumn 都由模型自報，
 //      沒法確定性地逼模型「整體報 only_right 又標一顆決定性左泡」的自我矛盾。
 // 故用「真函式邏輯的 byte-faithful 複本」＋「source-assertion 把複本鎖死在真源現狀」
-// （前提一旦失效＝prod 真的加了 guard，本測立刻紅燈逼人更新，杜絕殭屍複本漂移）。
+// （複本與真源一旦漂移，前提鎖立即紅燈逼更新，杜絕殭屍複本）。
 type ReproVisibleMessage = {
   side: "left" | "right" | "unknown";
   isFromMe: boolean;
@@ -1565,7 +1567,7 @@ type ReproVisibleMessage = {
   geometryDecisive?: boolean;
 };
 
-// index.ts:2850-2889 邏輯的 byte-faithful 複本（含「不讀 geometryDecisive、無條件覆寫」缺口）。
+// index.ts:2850-2895 邏輯的 byte-faithful 複本（含已補的 geometryDecisive guard）。
 function reproApplySingleVisibleSpeakerPattern(
   messages: ReproVisibleMessage[],
   pattern: "mixed" | "only_left" | "only_right" | "unknown",
@@ -1580,6 +1582,10 @@ function reproApplySingleVisibleSpeakerPattern(
   const adjusted = messages.map((message) => ({ ...message }));
   let adjustedCount = 0;
   for (let index = 0; index < adjusted.length; index += 1) {
+    if (adjusted[index].geometryDecisive === true) {
+      continue;
+    }
+
     if (
       adjusted[index].side !== targetSide ||
       adjusted[index].isFromMe !== targetIsFromMe
@@ -1597,10 +1603,10 @@ function reproApplySingleVisibleSpeakerPattern(
 
 Deno.test({
   name:
-    "REPRO: only_right 場景下 applySingleVisibleSpeakerPattern 會把 geometryDecisive=true 的反側 media 泡壓成整段同側（破口未 guard）",
+    "applySingleVisibleSpeakerPattern：only_right 下 geometryDecisive=true 的反側 media 泡不被壓單側（guard 後）",
   permissions: { read: true },
   fn: async () => {
-    // 前提鎖：確認真函式現狀仍「無 geometryDecisive guard 且無條件覆寫」。
+    // 前提鎖：確認真函式已有 geometryDecisive guard，且本檔複本與真源邏輯一致。
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
@@ -1608,13 +1614,16 @@ Deno.test({
     assert(start >= 0, "找不到 applySingleVisibleSpeakerPattern");
     const body = source.slice(start + 1);
     const realBody = body.slice(0, body.indexOf("\nfunction "));
+    const guardAt = realBody.indexOf("adjusted[index].geometryDecisive === true");
+    const overwriteAt = realBody.indexOf("side: targetSide");
     assert(
-      !realBody.includes("geometryDecisive"),
-      "前提失效：single-visible 已加 geometryDecisive guard，請改寫／移除本 REPRO 與相關討論",
+      guardAt >= 0,
+      "前提失效：single-visible 缺 geometryDecisive guard（sibling-path 補洞被移除？）",
     );
+    assert(overwriteAt >= 0, "找不到 single-visible 的 side 覆寫（測試假設失效）");
     assert(
-      realBody.includes("side: targetSide"),
-      "前提失效：single-visible 已不再無條件覆寫 side，請更新 REPRO 複本",
+      guardAt < overwriteAt,
+      "guard 必須在 side 覆寫之前才有效",
     );
 
     // only_right 截圖（模型整體自報全右），但其中一顆 [貼圖] 被決定性幾何判為左（她貼的）。
@@ -1629,15 +1638,13 @@ Deno.test({
       },
     ];
 
-    const { messages: out, adjustedCount } = reproApplySingleVisibleSpeakerPattern(
-      input,
-      "only_right",
-    );
+    const { messages: out, adjustedCount } =
+      reproApplySingleVisibleSpeakerPattern(input, "only_right");
 
-    // 破口成立：決定性左泡被壓成右（我說），且確實計入一次調整。
-    assertEquals(out[2].side, "right");
-    assertEquals(out[2].isFromMe, true);
-    assertEquals(out[2].geometryDecisive, true); // 仍標 decisive，卻被翻側＝invariant 破
-    assert(adjustedCount >= 1);
+    // guard 後：決定性左泡保留左/她說不被壓；非決定性右泡本就 = target，零調整。
+    assertEquals(out[2].side, "left");
+    assertEquals(out[2].isFromMe, false);
+    assertEquals(out[2].geometryDecisive, true);
+    assertEquals(adjustedCount, 0);
   },
 });

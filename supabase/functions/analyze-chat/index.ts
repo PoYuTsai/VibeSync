@@ -2869,6 +2869,12 @@ function applySingleVisibleSpeakerPattern(
   let adjustedCount = 0;
 
   for (let index = 0; index < adjusted.length; index += 1) {
+    // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被
+    // 整體單側 pattern 壓掉——與四個 neighbour heuristic 同一 invariant。
+    if (adjusted[index].geometryDecisive === true) {
+      continue;
+    }
+
     if (
       adjusted[index].side !== targetSide ||
       adjusted[index].isFromMe !== targetIsFromMe
