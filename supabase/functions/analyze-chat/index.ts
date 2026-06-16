@@ -3202,6 +3202,11 @@ function applySpeakerContinuityHeuristics(
       continue;
     }
 
+    // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
+    if (current.geometryDecisive === true) {
+      continue;
+    }
+
     adjusted[index] = {
       ...current,
       side: previousSide,
@@ -3419,6 +3424,11 @@ function applyGroupedSpeakerHeuristics(
       continue;
     }
 
+    // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
+    if (current.geometryDecisive === true) {
+      continue;
+    }
+
     adjusted[index] = {
       ...current,
       side: anchor.side,
@@ -3520,6 +3530,11 @@ function applySideRunGroupingHeuristics(
       continue;
     }
 
+    // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
+    if (current.geometryDecisive === true) {
+      continue;
+    }
+
     adjusted[index] = {
       ...current,
       side: previous.side,
@@ -3595,6 +3610,14 @@ function applyTrailingSpeakerHeuristics(
     (!currentSideSeenEarlier || currentLooksFlexible);
 
   if (!canRepairQuotedTail) {
+    return {
+      messages: adjusted,
+      adjustedCount: 0,
+    };
+  }
+
+  // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
+  if (current.geometryDecisive === true) {
     return {
       messages: adjusted,
       adjustedCount: 0,

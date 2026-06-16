@@ -1503,3 +1503,48 @@ Deno.test({
     assert(prompt.includes("不假裝看得到照片也不空讚『好可愛』"));
   },
 });
+
+Deno.test({
+  name:
+    "四 neighbour speaker heuristics 都以 geometryDecisive guard 保護幾何已定側的泡不被翻側",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // 抽出某 function 從宣告到下一個 top-level `function` 之間的 body。
+    const bodyOf = (name: string): string => {
+      const start = source.indexOf(`function ${name}(`);
+      assert(start >= 0, `找不到 function ${name}`);
+      const rest = source.slice(start + 1);
+      const nextDecl = rest.indexOf("\nfunction ");
+      return nextDecl >= 0 ? rest.slice(0, nextDecl) : rest;
+    };
+
+    const guard = "current.geometryDecisive === true";
+    // 三個迴圈 heuristic mutate `adjusted[index]`，trailing mutate
+    // `adjusted[currentIndex]`。guard 必須出現在該 mutation 之前才有效。
+    const guarded: Array<{ name: string; mutation: string }> = [
+      { name: "applySpeakerContinuityHeuristics", mutation: "adjusted[index] = {" },
+      { name: "applyGroupedSpeakerHeuristics", mutation: "adjusted[index] = {" },
+      { name: "applySideRunGroupingHeuristics", mutation: "adjusted[index] = {" },
+      {
+        name: "applyTrailingSpeakerHeuristics",
+        mutation: "adjusted[currentIndex] = {",
+      },
+    ];
+
+    for (const { name, mutation } of guarded) {
+      const body = bodyOf(name);
+      const guardAt = body.indexOf(guard);
+      const mutationAt = body.indexOf(mutation);
+      assert(guardAt >= 0, `${name} 缺少 geometryDecisive guard`);
+      assert(mutationAt >= 0, `${name} 找不到 side mutation（測試假設失效）`);
+      assert(
+        guardAt < mutationAt,
+        `${name} 的 geometryDecisive guard 必須在 side mutation 之前`,
+      );
+    }
+  },
+});
