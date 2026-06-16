@@ -1141,6 +1141,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return diff > 0 ? diff : 0;
   }
 
+  List<Message> _pendingMessages(Conversation conversation) {
+    final baseline = _pendingAnalysisBaselineMessageCount(conversation);
+    if (baseline >= conversation.messages.length) {
+      return const <Message>[];
+    }
+    return conversation.messages.sublist(baseline);
+  }
+
+  bool _pendingMessagesAreOutgoingOnly(Conversation conversation) {
+    final pendingMessages = _pendingMessages(conversation);
+    return pendingMessages.isNotEmpty &&
+        pendingMessages.every((message) => message.isFromMe);
+  }
+
+  bool _pendingMessagesContainIncoming(Conversation conversation) {
+    return _pendingMessages(conversation).any((message) => !message.isFromMe);
+  }
+
   bool _isStreamingAnalyzeResultStaleForCurrentConversation(
     StreamingAnalysisState state,
   ) {
@@ -2466,12 +2484,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (count == null || preview == null || isFromMe == null) {
       return const SizedBox.shrink();
     }
+    final conversation = ref.read(conversationProvider(widget.conversationId));
 
     return ScreenshotAddedFeedbackCard(
       messageCount: count,
       lastMessageIsFromMe: isFromMe,
       lastMessagePreview: preview,
       isAnalyzing: _isAnalyzing,
+      canAnalyzeNow: conversation == null
+          ? !isFromMe
+          : _pendingMessagesContainIncoming(conversation),
       onShowConversation: _collapseComposerAndShowMessages,
       onAnalyze: _runAnalysis,
     );
@@ -3479,8 +3501,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     if (!allowPendingOutgoingRefresh &&
-        conversation.messages.last.isFromMe &&
-        _pendingMessageCount(conversation) > 0) {
+        _pendingMessagesAreOutgoingOnly(conversation)) {
       setState(() {
         _isAnalyzing = false;
         _applyErrorState(
@@ -6886,9 +6907,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     conversation.messages.last.isFromMe;
                                 final pendingCount =
                                     _pendingMessageCount(conversation);
+                                final pendingContainsIncoming =
+                                    _pendingMessagesContainIncoming(
+                                  conversation,
+                                );
 
-                                if (lastIsFromMe) {
-                                  // 最後是「我說」→ 只記錄，不預測她可能怎麼回。
+                                if (lastIsFromMe && !pendingContainsIncoming) {
+                                  // 只有新的「我說」→ 只記錄，不預測她可能怎麼回。
                                   return Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
@@ -6914,7 +6939,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     ),
                                   );
                                 } else {
-                                  // 最後是「她說」→ 可以重新分析
+                                  // 有新的「她說」→ 可以重新分析；若最後是「我說」，
+                                  // request payload 仍會截到最後一則「她說」為止。
                                   return Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
@@ -6932,7 +6958,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            '有 $pendingCount 則新訊息，可以更新下一步建議。',
+                                            lastIsFromMe
+                                                ? '有 $pendingCount 則新訊息，包含她的新回覆；會分析到她最新回覆，不預測最後那句你說之後她怎麼回。'
+                                                : '有 $pendingCount 則新訊息，可以更新下一步建議。',
                                             style: AppTypography.bodyMedium,
                                           ),
                                         ),

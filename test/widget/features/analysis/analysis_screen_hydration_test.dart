@@ -1040,6 +1040,88 @@ void main() {
     );
   });
 
+  group('AnalysisScreen pending outgoing analysis guard', () {
+    testWidgets(
+      'shows analyze CTA when pending segment contains her reply even if latest message is outgoing',
+      (tester) async {
+        final conversationWithMixedPending = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+          extraMessages: [
+            Message(
+              id: 'm2',
+              content: 'new incoming reply',
+              isFromMe: false,
+              timestamp: DateTime(2026, 5, 28, 12, 1),
+            ),
+            Message(
+              id: 'm3',
+              content: 'latest outgoing follow-up',
+              isFromMe: true,
+              timestamp: DateTime(2026, 5, 28, 12, 2),
+            ),
+          ],
+        );
+
+        await _pumpAnalysisScreenForPremiumRefresh(
+          tester,
+          conversation: conversationWithMixedPending,
+          streamResult: _fullWithRawResponse(_paidRawResponse()),
+        );
+        tester.takeException();
+
+        final analyzeButton = find.widgetWithText(TextButton, '分析新增內容');
+        expect(
+          analyzeButton,
+          findsOneWidget,
+          reason:
+              'A mixed pending OCR import should remain analyzable even when the latest row is outgoing.',
+        );
+
+        expect(
+          find.textContaining('包含她的新回覆'),
+          findsOneWidget,
+          reason:
+              'The CTA copy should explain that analysis is based on her latest reply, not predicting after my final row.',
+        );
+      },
+    );
+
+    testWidgets(
+      'keeps blocking when all pending messages are outgoing',
+      (tester) async {
+        final conversationWithOutgoingOnlyPending = _conversation(
+          lastAnalysisSnapshotJson: jsonEncode(_staleSnapshotJson()),
+          lastAnalyzedMessageCount: 1,
+          lastEnthusiasmScore: 33,
+          extraMessages: [
+            Message(
+              id: 'm2',
+              content: 'pending outgoing only',
+              isFromMe: true,
+              timestamp: DateTime(2026, 5, 28, 12, 1),
+            ),
+          ],
+        );
+
+        await _pumpAnalysisScreenForPremiumRefresh(
+          tester,
+          conversation: conversationWithOutgoingOnlyPending,
+          streamResult: _fullWithRawResponse(_paidRawResponse()),
+        );
+        tester.takeException();
+
+        expect(
+          find.widgetWithText(TextButton, '分析新增內容'),
+          findsNothing,
+          reason:
+              'Pure outgoing pending content should still wait for her reply.',
+        );
+      },
+    );
+  });
+
   group('AnalysisScreen premium reply refresh after upgrade', () {
     testWidgets(
       'reanalyzes the previously analyzed slice and keeps pending outgoing messages pending',

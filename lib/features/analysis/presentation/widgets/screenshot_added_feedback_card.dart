@@ -8,6 +8,7 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
   final bool lastMessageIsFromMe;
   final String lastMessagePreview;
   final bool isAnalyzing;
+  final bool canAnalyzeNow;
   final VoidCallback onShowConversation;
   final VoidCallback onAnalyze;
 
@@ -17,9 +18,10 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
     required this.lastMessageIsFromMe,
     required this.lastMessagePreview,
     required this.isAnalyzing,
+    bool? canAnalyzeNow,
     required this.onShowConversation,
     required this.onAnalyze,
-  });
+  }) : canAnalyzeNow = canAnalyzeNow ?? !lastMessageIsFromMe;
 
   String get _countLabel {
     final count = messageCount > 0 ? messageCount : 1;
@@ -37,6 +39,9 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
   }
 
   String get _nextStep {
+    if (canAnalyzeNow && lastMessageIsFromMe) {
+      return '這批截圖含對方的新回覆，按「分析新增內容」後會分析到她最新回覆；最後一則你說的內容先作紀錄，不預測她下一句。';
+    }
     if (lastMessageIsFromMe) {
       return '最後一則是你說。等她回覆後，再補上「她說」，我會用最新來回分析下一步。';
     }
@@ -101,7 +106,7 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ),
-              if (!lastMessageIsFromMe)
+              if (canAnalyzeNow)
                 TextButton.icon(
                   onPressed: isAnalyzing ? null : onAnalyze,
                   icon: const Icon(Icons.auto_graph, size: 16),

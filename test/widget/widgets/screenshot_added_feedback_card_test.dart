@@ -8,6 +8,7 @@ void main() {
     required VoidCallback onAnalyze,
     required VoidCallback onShowConversation,
     bool isAnalyzing = false,
+    bool? canAnalyzeNow,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -16,6 +17,7 @@ void main() {
           lastMessageIsFromMe: lastMessageIsFromMe,
           lastMessagePreview: '馬 來搭車～',
           isAnalyzing: isAnalyzing,
+          canAnalyzeNow: canAnalyzeNow,
           onAnalyze: onAnalyze,
           onShowConversation: onShowConversation,
         ),
@@ -62,5 +64,25 @@ void main() {
     expect(find.textContaining('最新：我說「馬 來搭車～」'), findsOneWidget);
     expect(find.textContaining('等她回覆後'), findsOneWidget);
     expect(find.text('分析新增內容'), findsNothing);
+  });
+
+  testWidgets(
+      'shows analyze CTA for an OCR batch ending with mine when the batch contains her reply',
+      (tester) async {
+    var analyzed = false;
+
+    await tester.pumpWidget(
+      buildHost(
+        lastMessageIsFromMe: true,
+        canAnalyzeNow: true,
+        onAnalyze: () => analyzed = true,
+        onShowConversation: () {},
+      ),
+    );
+
+    expect(find.text('分析新增內容'), findsOneWidget);
+
+    await tester.tap(find.text('分析新增內容'));
+    expect(analyzed, isTrue);
   });
 }
