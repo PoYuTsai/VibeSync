@@ -768,6 +768,19 @@
       "scenarios": [
         "standard"
       ]
+    },
+    {
+      "id": "S__5701639_0",
+      "source": "real",
+      "images": [
+        "S__5701639_0.jpg"
+      ],
+      "label": "real/S__5701639_0.json",
+      "scenarios": [
+        "nested_screenshot",
+        "media_placeholder",
+        "light_mode"
+      ]
     }
   ]
 }
