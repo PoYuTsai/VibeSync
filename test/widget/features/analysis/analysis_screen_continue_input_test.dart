@@ -391,6 +391,12 @@ void main() {
 
       expect(find.text('正在補聊天紀錄'), findsOneWidget);
       expect(find.byType(ImagePickerWidget), findsOneWidget);
+      final uploadHint = find.text('請上傳聊天畫面，盡量保留標題列、訊息泡泡和前後文。');
+      expect(uploadHint, findsOneWidget);
+      expect(
+        tester.widget<Text>(uploadHint).style?.color,
+        AppColors.glassTextSecondary,
+      );
       expect(find.text('這次分析設定（可不改）'), findsNothing);
       expect(find.text('交友軟體・剛認識・邀約見面'), findsNothing);
       expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsNothing);

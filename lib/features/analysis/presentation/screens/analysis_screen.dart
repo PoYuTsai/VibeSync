@@ -1999,6 +1999,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ImagePickerWidget(
           maxImages: 3,
           externalImages: _selectedImages,
+          helperTextColor: AppColors.glassTextSecondary,
           onImagesChanged: _handleSelectedImagesChanged,
           onMetricsChanged: _handleSelectedImageMetricsChanged,
         ),
@@ -5298,6 +5299,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   ImagePickerWidget(
                                     maxImages: 3,
                                     externalImages: _selectedImages, // 同步外部狀態
+                                    helperTextColor:
+                                        AppColors.glassTextSecondary,
                                     onImagesChanged:
                                         _handleSelectedImagesChanged,
                                     onMetricsChanged:
