@@ -1983,7 +1983,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  Widget _buildConversationScreenshotSection() {
+  Widget _buildConversationScreenshotSection({
+    bool showAnalysisSettings = true,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2000,7 +2002,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           onImagesChanged: _handleSelectedImagesChanged,
           onMetricsChanged: _handleSelectedImageMetricsChanged,
         ),
-        _buildScreenshotSettingSection(),
+        if (showAnalysisSettings) _buildScreenshotSettingSection(),
         if (_selectedImages.isNotEmpty) ...[
           const SizedBox(height: 10),
           Row(
@@ -7159,7 +7161,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                     ),
                   ),
                 ),
-                _buildMessageInput(showScreenshotUpload: true),
+                _buildMessageInput(
+                  showScreenshotUpload: true,
+                  showScreenshotAnalysisSettings: false,
+                ),
               ],
             ),
         ],
@@ -7168,7 +7173,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   /// 建立訊息輸入區
-  Widget _buildMessageInput({required bool showScreenshotUpload}) {
+  Widget _buildMessageInput({
+    required bool showScreenshotUpload,
+    bool showScreenshotAnalysisSettings = true,
+  }) {
     final canAddManualMessage =
         !_isAnalyzing && !_isRecognizing && _selectedImages.isEmpty;
     final isTypingMessage = _messageFocusNode.hasFocus;
@@ -7192,7 +7200,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               const SizedBox(height: 12),
             ],
             if (showScreenshotUpload && showComposerHelp) ...[
-              _buildConversationScreenshotSection(),
+              _buildConversationScreenshotSection(
+                showAnalysisSettings: showScreenshotAnalysisSettings,
+              ),
               const SizedBox(height: 12),
             ],
             if (showComposerHelp) ...[

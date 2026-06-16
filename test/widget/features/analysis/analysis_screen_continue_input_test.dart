@@ -6,8 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
+import 'package:vibesync/features/coach_chat/domain/repositories/coach_chat_repository.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
+import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
@@ -39,12 +43,16 @@ Future<void> _pumpAnalysisScreen(
         createdAt: DateTime(2026, 5, 4),
         updatedAt: DateTime(2026, 5, 4),
       );
+  final repository = _StubConversationRepository(testConversation);
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        conversationRepositoryProvider.overrideWithValue(repository),
         conversationProvider('continue-input-test')
             .overrideWithValue(testConversation),
+        coachChatRepositoryProvider
+            .overrideWithValue(_StubCoachChatRepository()),
         if (writeController != null)
           conversationWriteControllerProvider
               .overrideWith(() => writeController),
@@ -56,6 +64,73 @@ Future<void> _pumpAnalysisScreen(
   );
   await tester.pump();
   await _dismissEditHintIfVisible(tester);
+}
+
+class _StubConversationRepository extends ConversationRepository {
+  _StubConversationRepository(this._conversation);
+
+  Conversation _conversation;
+
+  @override
+  Conversation? getConversation(String id) {
+    return id == _conversation.id ? _conversation : null;
+  }
+
+  @override
+  Future<void> updateConversation(Conversation conversation) async {
+    _conversation = conversation;
+  }
+}
+
+class _StubCoachChatRepository implements CoachChatRepository {
+  @override
+  List<CoachChatResult> listByConversation(String conversationId) => const [];
+
+  @override
+  CoachChatResult? latestForConversation(String conversationId) => null;
+
+  @override
+  Future<void> put(CoachChatResult result) async {}
+
+  @override
+  Future<void> deleteConversation(String conversationId) async {}
+
+  @override
+  Future<void> clearAll() async {}
+}
+
+Map<String, dynamic> _analysisSnapshotJson({int score = 65}) {
+  return <String, dynamic>{
+    'enthusiasm': {'score': score},
+    'strategy': '保持輕鬆節奏',
+    'gameStage': {
+      'current': 'opening',
+      'status': 'normal',
+      'nextStep': '接著回應她的甜點話題',
+    },
+    'psychology': {
+      'subtext': '願意延續話題',
+      'qualificationSignal': true,
+    },
+    'topicDepth': {
+      'current': 'small_talk',
+      'suggestion': '先接住情緒，再自然延伸',
+    },
+    'replies': {
+      'extend': '那家真的不錯，下次可以再去試別的口味',
+      'resonate': '我也覺得那個甜點有驚喜',
+      'tease': '你是不是已經偷偷列甜點清單了',
+      'humor': '看來甜點雷達有開到最大',
+      'coldRead': '你應該是會為了甜點特地繞路的人',
+    },
+    'finalRecommendation': {
+      'pick': 'extend',
+      'content': '那家真的不錯，下次可以再去試別的口味',
+      'reason': '接住她的回饋並留下延續空間',
+      'psychology': '保持輕鬆投入感',
+    },
+    'reminder': '用自己的語氣講就好',
+  };
 }
 
 Future<void> _dismissEditHintIfVisible(WidgetTester tester) async {
@@ -284,6 +359,41 @@ void main() {
       );
       expect(noteField.maxLength, 300);
       expect(noteField.textInputAction, TextInputAction.done);
+    });
+
+    testWidgets(
+        'continue composer hides screenshot analysis settings to keep the follow-up flow clean',
+        (tester) async {
+      final conversation = Conversation(
+        id: 'continue-input-test',
+        name: '小雲',
+        messages: [
+          Message(
+            id: 'm1',
+            content: '昨天那家甜點不錯耶',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 4),
+          ),
+        ],
+        createdAt: DateTime(2026, 5, 4),
+        updatedAt: DateTime(2026, 5, 4),
+        lastAnalyzedMessageCount: 1,
+        lastAnalysisSnapshotJson: jsonEncode(_analysisSnapshotJson()),
+      );
+
+      await _pumpAnalysisScreen(tester, conversation: conversation);
+
+      final continueButton = find.text('補聊天紀錄');
+      await tester.ensureVisible(continueButton);
+      await tester.tap(continueButton);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pump(const Duration(milliseconds: 180));
+
+      expect(find.text('正在補聊天紀錄'), findsOneWidget);
+      expect(find.byType(ImagePickerWidget), findsOneWidget);
+      expect(find.text('這次分析設定（可不改）'), findsNothing);
+      expect(find.text('交友軟體・剛認識・邀約見面'), findsNothing);
+      expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsNothing);
     });
 
     testWidgets('collapsed preview shows latest messages instead of oldest',
