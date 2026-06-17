@@ -538,7 +538,7 @@ class _CoachFollowUpFocusTargetState extends State<_CoachFollowUpFocusTarget> {
         inputContext,
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
-        alignment: 0.30,
+        alignment: 0.08,
       );
       return;
     }

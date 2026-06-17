@@ -566,7 +566,7 @@ void main() {
     expect(inputEntry, findsOneWidget);
     expect(
       t.getTopLeft(inputEntry).dy,
-      lessThan(240),
+      lessThan(140),
       reason: 'Mind map focus should land on the input affordance, not the '
           'top of the whole CoachFollowUp card.',
     );
