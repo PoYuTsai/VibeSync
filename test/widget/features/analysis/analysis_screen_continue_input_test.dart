@@ -179,7 +179,7 @@ void main() {
       expect(tester.testTextInput.isVisible, isFalse);
     });
 
-    testWidgets('edit dialog keeps the text field readable on a light surface',
+    testWidgets('edit dialog keeps the text field readable on a dark surface',
         (tester) async {
       await _pumpAnalysisScreen(
         tester,
@@ -202,7 +202,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       final dialog = tester.widget<AlertDialog>(find.byType(AlertDialog));
-      expect(dialog.backgroundColor, AppColors.glassWhite);
+      expect(dialog.backgroundColor, AppColors.brandSurface2);
       expect(dialog.surfaceTintColor, Colors.transparent);
 
       final fieldFinder = find.descendant(
@@ -210,10 +210,11 @@ void main() {
         matching: find.byType(TextField),
       );
       final field = tester.widget<TextField>(fieldFinder);
-      expect(field.cursorColor, AppColors.primary);
-      expect(field.style?.color, AppColors.glassTextPrimary);
+      expect(field.cursorColor, AppColors.ctaStart);
+      expect(field.style?.color, AppColors.onBackgroundPrimary);
       expect(field.decoration?.filled, isTrue);
-      expect(field.decoration?.fillColor, Colors.white);
+      expect(
+          field.decoration?.fillColor, AppColors.brandInk.withValues(alpha: 0.4));
     });
 
     testWidgets('editing an analyzed bubble shows a reanalysis call to action',
@@ -395,7 +396,7 @@ void main() {
       expect(uploadHint, findsOneWidget);
       expect(
         tester.widget<Text>(uploadHint).style?.color,
-        AppColors.glassTextSecondary,
+        AppColors.onBackgroundSecondary,
       );
       expect(find.text('這次分析設定（可不改）'), findsNothing);
       expect(find.text('交友軟體・剛認識・邀約見面'), findsNothing);
