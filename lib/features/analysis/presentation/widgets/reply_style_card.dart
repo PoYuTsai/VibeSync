@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_models.dart';
 
 class ReplyStyleCard extends StatelessWidget {
@@ -51,7 +51,7 @@ class ReplyStyleCard extends StatelessWidget {
       case 'coldRead':
         return AppColors.primaryLight;
       default:
-        return AppColors.glassTextPrimary;
+        return AppColors.onBackgroundPrimary;
     }
   }
 
@@ -87,8 +87,9 @@ class ReplyStyleCard extends StatelessWidget {
     return Container(
       width: 312,
       margin: const EdgeInsets.only(right: 12),
-      child: GlassmorphicContainer(
+      child: BrandSurfaceCard(
         padding: const EdgeInsets.all(14),
+        borderRadius: 18,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -122,7 +123,7 @@ class ReplyStyleCard extends StatelessWidget {
                       Text(
                         approach,
                         style: AppTypography.caption.copyWith(
-                          color: AppColors.glassTextSecondary,
+                          color: AppColors.onBackgroundSecondary,
                           height: 1.35,
                         ),
                       ),
@@ -131,7 +132,8 @@ class ReplyStyleCard extends StatelessWidget {
                     Text(
                       '訊息組',
                       style: AppTypography.caption.copyWith(
-                        color: AppColors.glassTextHint,
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.6),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -151,7 +153,8 @@ class ReplyStyleCard extends StatelessWidget {
                       Text(
                         '還有 ${messages.length - visibleMessages.length} 則可在推薦卡查看',
                         style: AppTypography.caption.copyWith(
-                          color: AppColors.glassTextHint,
+                          color: AppColors.onBackgroundSecondary
+                              .withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -173,7 +176,8 @@ class ReplyStyleCard extends StatelessWidget {
                   child: Text(
                     '・${_reasons[type] ?? ''}',
                     style: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextHint,
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -185,6 +189,12 @@ class ReplyStyleCard extends StatelessWidget {
                 width: double.infinity,
                 height: 34,
                 child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.ctaStart,
+                    side: BorderSide(
+                      color: AppColors.ctaStart.withValues(alpha: 0.55),
+                    ),
+                  ),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: _copyAllText));
                     onCopy(
@@ -260,10 +270,10 @@ class _ReplyOptionMessageRow extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.surface.withValues(alpha: 0.72),
+          color: AppColors.brandInk.withValues(alpha: 0.40),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: AppColors.divider.withValues(alpha: 0.45),
+            color: Colors.white.withValues(alpha: 0.12),
           ),
         ),
         child: Row(
@@ -277,7 +287,7 @@ class _ReplyOptionMessageRow extends StatelessWidget {
                   Text(
                     sourceLabel,
                     style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
+                      color: AppColors.onBackgroundSecondary,
                       height: 1.2,
                     ),
                   ),
@@ -285,7 +295,7 @@ class _ReplyOptionMessageRow extends StatelessWidget {
                   Text(
                     reply,
                     style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textPrimary,
+                      color: AppColors.onBackgroundPrimary,
                       height: 1.28,
                     ),
                   ),
@@ -293,10 +303,10 @@ class _ReplyOptionMessageRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            const Icon(
+            Icon(
               Icons.copy_rounded,
               size: 15,
-              color: AppColors.textSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
             ),
           ],
         ),

@@ -76,7 +76,7 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
                 child: Text(
                   '$_countLabel｜最新：$_speakerLabel「$_preview」',
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: AppColors.onBackgroundPrimary,
                     fontWeight: FontWeight.w700,
                     height: 1.35,
                   ),
@@ -88,7 +88,7 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
           Text(
             _nextStep,
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary,
               height: 1.35,
             ),
           ),
@@ -102,7 +102,7 @@ class ScreenshotAddedFeedbackCard extends StatelessWidget {
                 icon: const Icon(Icons.keyboard_arrow_up, size: 16),
                 label: const Text('看上方對話'),
                 style: TextButton.styleFrom(
-                  foregroundColor: AppColors.primary,
+                  foregroundColor: AppColors.ctaStart,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ),

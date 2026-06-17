@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/analysis_result.dart';
 
 /// Card showing AI's final recommendation with coach-style reasoning.
@@ -13,20 +14,9 @@ class FinalRecommendationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return BrandSurfaceCard(
+      borderRadius: 18,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary.withAlpha(25), // ~0.1 opacity
-            AppColors.primary.withAlpha(13), // ~0.05 opacity
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withAlpha(77)), // ~0.3 opacity
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -38,9 +28,10 @@ class FinalRecommendationCard extends StatelessWidget {
               Text('AI 推薦回覆', style: AppTypography.titleLarge),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.primary,
+                  color: AppColors.ctaStart,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -60,7 +51,7 @@ class FinalRecommendationCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: AppColors.brandInk.withValues(alpha: 0.40),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -96,7 +87,7 @@ class FinalRecommendationCard extends StatelessWidget {
               icon: const Icon(Icons.copy, size: 18),
               label: const Text('複製推薦回覆'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.ctaStart,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
@@ -144,7 +135,7 @@ class _InfoRow extends StatelessWidget {
               Text(
                 title,
                 style: AppTypography.labelMedium.copyWith(
-                  color: AppColors.textSecondary,
+                  color: AppColors.onBackgroundSecondary,
                 ),
               ),
               const SizedBox(height: 2),

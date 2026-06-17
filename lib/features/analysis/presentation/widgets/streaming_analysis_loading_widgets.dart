@@ -274,16 +274,16 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: AppColors.primaryLight.withValues(alpha: 0.18),
+                  color: AppColors.ctaStart.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.primaryLight.withValues(alpha: 0.34),
+                    color: AppColors.ctaStart.withValues(alpha: 0.34),
                   ),
                 ),
                 child: const Icon(
                   Icons.workspace_premium_outlined,
                   size: 18,
-                  color: AppColors.primaryLight,
+                  color: AppColors.ctaStart,
                 ),
               ),
               const SizedBox(width: 12),
@@ -303,7 +303,7 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
           FilledButton(
             onPressed: onViewPlans,
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryLight,
+              backgroundColor: AppColors.ctaStart,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 13),
               shape: RoundedRectangleBorder(
@@ -411,7 +411,7 @@ class FullAnalysisRetryCard extends StatelessWidget {
           FilledButton(
             onPressed: _canRetry ? onRetry : null,
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primaryLight,
+              backgroundColor: AppColors.ctaStart,
               disabledBackgroundColor: Colors.white.withValues(alpha: 0.16),
               disabledForegroundColor: Colors.white.withValues(alpha: 0.46),
               foregroundColor: Colors.white,
