@@ -165,10 +165,12 @@ class PartnerDetailScreen extends ConsumerWidget {
                 _PartnerDetailSection(
                   child: _CoachFollowUpFocusTarget(
                     focusOnFirstBuild: focusCoachFollowUp,
-                    child: CoachFollowUpSection(
+                    builder: (_, openCoachEntryAnchorKey) =>
+                        CoachFollowUpSection(
                       partnerId: partnerId,
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
+                      openCoachEntryAnchorKey: openCoachEntryAnchorKey,
                     ),
                   ),
                 ),
@@ -488,11 +490,12 @@ class PartnerDetailScreen extends ConsumerWidget {
 
 class _CoachFollowUpFocusTarget extends StatefulWidget {
   final bool focusOnFirstBuild;
-  final Widget child;
+  final Widget Function(BuildContext context, Key openCoachEntryAnchorKey)
+      builder;
 
   const _CoachFollowUpFocusTarget({
     required this.focusOnFirstBuild,
-    required this.child,
+    required this.builder,
   });
 
   @override
@@ -501,7 +504,8 @@ class _CoachFollowUpFocusTarget extends StatefulWidget {
 }
 
 class _CoachFollowUpFocusTargetState extends State<_CoachFollowUpFocusTarget> {
-  final _targetKey = GlobalKey();
+  final _sectionKey = GlobalKey();
+  final _openCoachEntryAnchorKey = GlobalKey();
   bool _didFocus = false;
 
   @override
@@ -522,22 +526,43 @@ class _CoachFollowUpFocusTargetState extends State<_CoachFollowUpFocusTarget> {
     if (!widget.focusOnFirstBuild || _didFocus) return;
     _didFocus = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = _targetKey.currentContext;
-      if (!mounted || context == null) return;
+      _ensureFocusTarget(retryInputNextFrame: true);
+    });
+  }
+
+  void _ensureFocusTarget({required bool retryInputNextFrame}) {
+    if (!mounted) return;
+    final inputContext = _openCoachEntryAnchorKey.currentContext;
+    if (inputContext != null) {
       Scrollable.ensureVisible(
-        context,
+        inputContext,
         duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+        alignment: 0.30,
+      );
+      return;
+    }
+
+    final sectionContext = _sectionKey.currentContext;
+    if (sectionContext != null) {
+      Scrollable.ensureVisible(
+        sectionContext,
+        duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
         alignment: 0.08,
       );
+    }
+    if (!retryInputNextFrame) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureFocusTarget(retryInputNextFrame: false);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return KeyedSubtree(
-      key: _targetKey,
-      child: widget.child,
+      key: _sectionKey,
+      child: widget.builder(context, _openCoachEntryAnchorKey),
     );
   }
 }

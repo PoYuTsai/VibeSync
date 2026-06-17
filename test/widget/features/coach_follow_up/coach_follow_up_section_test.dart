@@ -160,6 +160,7 @@ Future<void> _pump(
   DataQualityFlag flag = const DataQualityFlag.unflagged(),
   ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry,
   Future<void> Function()? onQuotaExceeded,
+  Key? openCoachEntryAnchorKey,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -180,6 +181,7 @@ Future<void> _pump(
               partnerId: _partnerId,
               onTelemetry: onTelemetry,
               onQuotaExceeded: onQuotaExceeded,
+              openCoachEntryAnchorKey: openCoachEntryAnchorKey,
             ),
           ),
         ),
@@ -199,6 +201,26 @@ void main() {
   });
 
   group('CoachFollowUpSection — default state (no stored result)', () {
+    testWidgets('exposes an anchor on the open coach input entry', (t) async {
+      final anchorKey = GlobalKey();
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        openCoachEntryAnchorKey: anchorKey,
+      );
+
+      final anchoredEntry = find.byKey(anchorKey);
+      expect(anchoredEntry, findsOneWidget);
+      expect(
+        find.descendant(
+          of: anchoredEntry,
+          matching: find.text('或直接問教練一個問題...'),
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('renders 3 chips + quota caption, no result-card surface',
         (t) async {
       await _pump(t, repo: _FakeRepo(), partner: _partner());

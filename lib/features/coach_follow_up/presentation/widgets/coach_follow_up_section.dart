@@ -96,12 +96,14 @@ class CoachFollowUpSection extends ConsumerStatefulWidget {
   final String partnerId;
   final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
   final Future<void> Function()? onQuotaExceeded;
+  final Key? openCoachEntryAnchorKey;
 
   const CoachFollowUpSection({
     super.key,
     required this.partnerId,
     this.onTelemetry,
     this.onQuotaExceeded,
+    this.openCoachEntryAnchorKey,
   });
 
   @override
@@ -348,6 +350,7 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
         ),
         const SizedBox(height: 12),
         _OpenCoachEntry(
+          key: widget.openCoachEntryAnchorKey,
           isLoading: isLoading,
           onTap: _onOpenCoachTap,
         ),
@@ -498,6 +501,7 @@ class _OpenCoachEntry extends StatelessWidget {
   final VoidCallback onTap;
 
   const _OpenCoachEntry({
+    super.key,
     required this.isLoading,
     required this.onTap,
   });
