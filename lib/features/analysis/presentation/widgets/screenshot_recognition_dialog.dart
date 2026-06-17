@@ -62,13 +62,11 @@ class _ScreenshotRecognitionDialogState
     extends State<ScreenshotRecognitionDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _analysisContextNoteController;
-  late final ScrollController _messageScrollController;
   late MeetingContext? _selectedMeeting;
   late AcquaintanceDuration? _selectedDuration;
   late UserGoal? _selectedGoal;
   late String _selectedImportMode;
   late final List<_EditableRecognizedMessage> _editableMessages;
-  late bool _showDetailedEditor;
   String? _editValidationMessage;
 
   @override
@@ -77,7 +75,6 @@ class _ScreenshotRecognitionDialogState
     _nameController = TextEditingController(text: widget.initialName);
     _analysisContextNoteController =
         TextEditingController(text: widget.initialAnalysisContextNote);
-    _messageScrollController = ScrollController();
     _selectedMeeting = widget.initialMeetingContext;
     _selectedDuration = widget.initialDuration;
     _selectedGoal = widget.initialGoal;
@@ -86,14 +83,12 @@ class _ScreenshotRecognitionDialogState
         (widget.recognized.messages ?? const <RecognizedMessage>[])
             .map(_EditableRecognizedMessage.fromRecognizedMessage)
             .toList();
-    _showDetailedEditor = _shouldExpandEditorByDefault;
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _analysisContextNoteController.dispose();
-    _messageScrollController.dispose();
     for (final message in _editableMessages) {
       message.dispose();
     }
@@ -121,7 +116,8 @@ class _ScreenshotRecognitionDialogState
     });
   }
 
-  Future<void> _confirmRemoveMessage(int index) async {
+  /// 二次確認後刪除該則。回傳是否真的刪除（給編輯 sheet 用來決定要不要收起）。
+  Future<bool> _confirmRemoveMessage(int index) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -150,7 +146,9 @@ class _ScreenshotRecognitionDialogState
     );
     if (confirmed == true) {
       _removeMessage(index);
+      return true;
     }
+    return false;
   }
 
   void _submit() {
@@ -158,8 +156,6 @@ class _ScreenshotRecognitionDialogState
     if (sanitizedMessages.isEmpty) {
       setState(() {
         _editValidationMessage = '至少要保留一則可加入對話的訊息。';
-        // 直接帶用戶進能修的地方，預設唯讀預覽下不留無聲死路。
-        _showDetailedEditor = true;
       });
       return;
     }
@@ -179,57 +175,12 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
-  void _applySpeakerSelection(int index, bool isFromMe) {
+  // 滑動絕對方向映射：右滑 = 我說、左滑 = 她說。
+  void _setMessageSide(int index, bool isFromMe) {
     setState(() {
       _editableMessages[index].isFromMe = isFromMe;
       _editValidationMessage = null;
     });
-  }
-
-  void _applyQuotedReplySpeakerSelection(int index, bool isFromMe) {
-    setState(() {
-      _editableMessages[index].quotedReplyPreviewIsFromMe = isFromMe;
-      _editValidationMessage = null;
-    });
-  }
-
-  void _applySpeakerToKnownSides() {
-    setState(() {
-      for (final message in _editableMessages) {
-        if (message.side == 'left') {
-          message.isFromMe = false;
-        } else if (message.side == 'right') {
-          message.isFromMe = true;
-        }
-      }
-      _editValidationMessage = null;
-    });
-  }
-
-  bool _hasKnownSideMessages() {
-    return _editableMessages.any(
-      (message) => message.side == 'left' || message.side == 'right',
-    );
-  }
-
-  // 假 mixed 偵測：同時存在「我說」「她說」。暗色單側誤讀的失敗型態正是被
-  // 拆成 mixed（見 ai-arbitration-queue Track 2 量測 A/B：幻覺右泡與真右泡
-  // 逐欄相同、零獨立訊號，無法可靠自動翻側）。所以 mixed 不走 compact
-  // 安撫流程，而是攤開預覽＋給「全部都是對方說的」一鍵兜底。
-  bool get _isMixedSpeakerConversation {
-    var hasFromMe = false;
-    var hasFromOther = false;
-    for (final message in _editableMessages) {
-      if (message.isFromMe) {
-        hasFromMe = true;
-      } else {
-        hasFromOther = true;
-      }
-      if (hasFromMe && hasFromOther) {
-        return true;
-      }
-    }
-    return false;
   }
 
   bool _hasAnyFromMeMessage() =>
@@ -244,174 +195,237 @@ class _ScreenshotRecognitionDialogState
     });
   }
 
-  List<int> _contiguousSideIndexes(int index) {
-    if (index < 0 || index >= _editableMessages.length) {
-      return const <int>[];
-    }
+  /// 單則進階編輯：改錯字 / 刪除 / 唯讀檢視引用。一次只編一則。
+  Future<void> _openMessageEditor(int index) async {
+    final message = _editableMessages[index];
+    final quoted = message.quotedReplyController?.text.trim() ?? '';
 
-    final side = _editableMessages[index].side;
-    if (side != 'left' && side != 'right') {
-      return <int>[index];
-    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.glassWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '編輯這則訊息',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                message.isFromMe ? '目前標記為「我說」' : '目前標記為「她說」',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.unselectedText,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: message.controller,
+                minLines: 1,
+                maxLines: 5,
+                autofocus: false,
+                onChanged: (_) {
+                  if (_editValidationMessage != null) {
+                    setState(() {
+                      _editValidationMessage = null;
+                    });
+                  }
+                },
+                decoration: InputDecoration(
+                  hintText: '修正這則訊息內容',
+                  hintStyle: const TextStyle(color: AppColors.unselectedText),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.5),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                style: const TextStyle(color: AppColors.glassTextPrimary),
+              ),
+              if (quoted.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '引用上一則（唯讀）',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.glassTextHint,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  quoted,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    fontStyle: FontStyle.italic,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      final removed = await _confirmRemoveMessage(index);
+                      if (removed && sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop();
+                      }
+                    },
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: AppColors.error,
+                    ),
+                    label: const Text(
+                      '刪除這則訊息',
+                      style: TextStyle(color: AppColors.error),
+                    ),
+                  ),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                    ),
+                    child: const Text('完成'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
 
-    var start = index;
-    while (start > 0 && _editableMessages[start - 1].side == side) {
-      start--;
-    }
-
-    var end = index;
-    while (end + 1 < _editableMessages.length &&
-        _editableMessages[end + 1].side == side) {
-      end++;
-    }
-
-    return List<int>.generate(end - start + 1, (offset) => start + offset);
-  }
-
-  bool _shouldShowBatchCard(int index) {
-    final groupIndexes = _contiguousSideIndexes(index);
-    return groupIndexes.length > 1 && groupIndexes.first == index;
-  }
-
-  // 預設唯讀預覽：內容照樣攤開給用戶檢查，但編輯（TextField＋她說/我說
-  // chip）是高密度操作，等用戶點「編輯內容」才開啟（Eric 2026-06-13：
-  // 預設全展開用很多次仍覺得複雜）。
-  bool get _shouldExpandEditorByDefault => false;
-
-  bool get _hasQuotedReplyPreview =>
-      ScreenshotRecognitionHelper.hasQuotedReplyPreview(widget.recognized);
-
-  bool get _isCompactHighConfidenceFlow =>
-      widget.recognized.importPolicy == 'allow' &&
-      widget.recognized.confidence == 'high' &&
-      widget.recognized.sideConfidence == 'high' &&
-      !_hasQuotedReplyPreview &&
-      (widget.warningMessage?.trim().isEmpty ?? true);
-
-  int get _priorityMessageCount =>
-      _editableMessages.where((message) => message.side == 'unknown').length;
-
-  String _editorSummaryCopy() {
-    if (_priorityMessageCount > 0) {
-      return '這次有 $_priorityMessageCount 則訊息的左右方向還不夠穩，建議先檢查這幾列。AI 識別小字可能會有誤，請順便確認文字內容是否正確。';
-    }
-
-    if (_isCompactHighConfidenceFlow) {
-      return 'AI 識別小字可能會有誤（如「佳評如潮」變成「住評如潮」），建議快速掃一下內容是否正確。';
-    }
-
-    if (_hasQuotedReplyPreview) {
-      return '這次含回覆引用框，AI 可能把引用卡裡的人名誤當成發話方向。加入前請特別確認每則是「我說」還是「她說」，有問題可直接修改。';
-    }
-
-    return 'AI 識別截圖文字可能會有小誤差，建議快速確認內容是否正確，有問題可以直接修改。';
-  }
-
-  void _applySpeakerToGroup(int index, bool isFromMe) {
-    final groupIndexes = _contiguousSideIndexes(index);
-    setState(() {
-      for (final groupIndex in groupIndexes) {
-        _editableMessages[groupIndex].isFromMe = isFromMe;
-      }
-      _editValidationMessage = null;
-    });
-  }
-
-  Color _confidenceColor(RecognizedConversation recognized) {
-    if (recognized.importPolicy == 'reject') {
-      return AppColors.error;
-    }
-    switch (recognized.confidence) {
-      case 'low':
-        return AppColors.warning;
-      case 'medium':
-        return AppColors.info;
-      case 'high':
-      default:
-        return AppColors.success;
-    }
-  }
-
-  Color _sideConfidenceColor(RecognizedConversation recognized) {
-    switch (recognized.sideConfidence) {
-      case 'low':
-        return AppColors.warning;
-      case 'medium':
-        return AppColors.info;
-      case 'high':
-      default:
-        return AppColors.success;
-    }
-  }
-
-  double _messageEditorHeight(BuildContext context, int messageCount) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final estimatedHeight = switch (messageCount) {
-      <= 2 => 220.0,
-      <= 4 => 300.0,
-      <= 6 => 360.0,
-      _ => screenHeight * 0.42,
-    };
-
-    return estimatedHeight.clamp(220.0, screenHeight * 0.5).toDouble();
-  }
-
-  Color _guidanceColor(ScreenshotRecognitionGuidanceTone tone) {
-    switch (tone) {
-      case ScreenshotRecognitionGuidanceTone.reject:
-        return AppColors.error;
-      case ScreenshotRecognitionGuidanceTone.caution:
-        return AppColors.warning;
-      case ScreenshotRecognitionGuidanceTone.review:
-        return AppColors.info;
-      case ScreenshotRecognitionGuidanceTone.stable:
-        return AppColors.success;
+    // sheet 內改了文字 / 側別後，回到確認頁同步泡泡顯示。
+    if (mounted) {
+      setState(() {});
     }
   }
 
-  IconData _guidanceIcon(ScreenshotRecognitionGuidanceTone tone) {
-    switch (tone) {
-      case ScreenshotRecognitionGuidanceTone.reject:
-        return Icons.block_rounded;
-      case ScreenshotRecognitionGuidanceTone.caution:
-        return Icons.call_split_rounded;
-      case ScreenshotRecognitionGuidanceTone.review:
-        return Icons.fact_check_rounded;
-      case ScreenshotRecognitionGuidanceTone.stable:
-        return Icons.check_circle_outline_rounded;
-    }
+  /// 滑動校正器：左泡她說、右泡我說，左右滑動切換，點泡泡開單則編輯。
+  Widget _buildSwipeCorrector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < _editableMessages.length; index++)
+          _buildSwipeRow(_editableMessages[index], index),
+      ],
+    );
   }
 
-  String _sideLabel(String side) {
-    switch (side) {
-      case 'left':
-        return '原本看起來在左邊';
-      case 'right':
-        return '原本看起來在右邊';
-      default:
-        return '左右還不夠清楚';
-    }
+  Widget _buildSwipeRow(_EditableRecognizedMessage message, int index) {
+    return Dismissible(
+      key: ObjectKey(message),
+      direction: DismissDirection.horizontal,
+      dismissThresholds: const {
+        DismissDirection.startToEnd: 0.25,
+        DismissDirection.endToStart: 0.25,
+      },
+      background: _buildSwipeHint(toMe: true),
+      secondaryBackground: _buildSwipeHint(toMe: false),
+      confirmDismiss: (direction) async {
+        // 絕對方向映射，與目前側別無關：右滑一律我說、左滑一律她說。
+        _setMessageSide(index, direction == DismissDirection.startToEnd);
+        // 永遠回 false → 不真的移除，泡泡彈回後由 AnimatedAlign 滑到正確側。
+        return false;
+      },
+      child: AnimatedAlign(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        alignment:
+            message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _openMessageEditor(index),
+          child: _buildBubble(message),
+        ),
+      ),
+    );
   }
 
-  Widget _buildStatusChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
+  Widget _buildBubble(_EditableRecognizedMessage message) {
+    final isMe = message.isFromMe;
+    final quoted = message.quotedReplyController?.text.trim() ?? '';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      constraints: const BoxConstraints(maxWidth: 280),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        color: isMe
+            ? AppColors.primary.withValues(alpha: 0.14)
+            : const Color(0xFFF0EAF5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Text(
+            isMe ? '我說' : '她說',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.unselectedText,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (quoted.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              '引用：$quoted',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextHint,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+          const SizedBox(height: 2),
+          Text(
+            message.controller.text,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.glassTextPrimary,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSwipeHint({required bool toMe}) {
+    final color = toMe ? AppColors.primary : AppColors.info;
+    return Container(
+      alignment: toMe ? Alignment.centerLeft : Alignment.centerRight,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
+          Icon(Icons.swap_horiz_rounded, size: 16, color: color),
           const SizedBox(width: 6),
           Text(
-            label,
+            toMe ? '改成我說' : '改成她說',
             style: AppTypography.bodySmall.copyWith(
               color: color,
               fontWeight: FontWeight.w600,
@@ -422,313 +436,8 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
-  Widget _buildSpeakerChip({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-      selectedColor: AppColors.primary.withValues(alpha: 0.2),
-      backgroundColor: Colors.white,
-      side: BorderSide(
-        color: selected
-            ? AppColors.primary.withValues(alpha: 0.4)
-            : AppColors.glassTextPrimary.withValues(alpha: 0.2),
-      ),
-      labelStyle: TextStyle(
-        color: selected ? AppColors.primary : AppColors.glassTextPrimary,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-
-  /// 唯讀預覽：左右對齊氣泡＋她說/我說標籤，攤開 OCR 結果供快速目檢。
-  /// 不放任何輸入元件——編輯一律走「編輯內容」功能鍵。
-  /// 讀 controller 現值而非原始 OCR 結果，編輯後收合預覽才會同步。
-  Widget _buildReadOnlyPreviewList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final message in _editableMessages)
-          _buildReadOnlyPreviewRow(message),
-      ],
-    );
-  }
-
-  Widget _buildReadOnlyPreviewRow(_EditableRecognizedMessage message) {
-    final isMe = message.isFromMe;
-    final quoted = message.quotedReplyController?.text.trim() ?? '';
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        constraints: const BoxConstraints(maxWidth: 280),
-        decoration: BoxDecoration(
-          color: isMe
-              ? AppColors.primary.withValues(alpha: 0.14)
-              : const Color(0xFFF0EAF5),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: message.side == 'unknown'
-                ? AppColors.warning.withValues(alpha: 0.6)
-                : AppColors.primary.withValues(alpha: 0.12),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            Text(
-              isMe ? '我說' : '她說',
-              style: AppTypography.bodySmall.copyWith(
-                color: message.side == 'unknown'
-                    ? AppColors.warning
-                    : AppColors.unselectedText,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (quoted.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(
-                '引用：$quoted',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextHint,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-            const SizedBox(height: 2),
-            Text(
-              message.controller.text,
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextPrimary,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEditableMessageCard(
-    _EditableRecognizedMessage message,
-    int index,
-  ) {
-    final showBatchCard = _shouldShowBatchCard(index);
-    final sideGroupLabel = message.side == 'left' ? '左側' : '右側';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0EAF5), // 淡紫色背景，與外層白色區分
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.15),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                '第 ${index + 1} 則',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.unselectedText,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: _editableMessages.length <= 1
-                    ? null
-                    : () => _confirmRemoveMessage(index),
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  size: 20,
-                ),
-                color: _editableMessages.length <= 1
-                    ? AppColors.unselectedText
-                    : AppColors.error,
-                tooltip: '刪除這則訊息',
-              ),
-            ],
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildSpeakerChip(
-                label: '她說',
-                selected: !message.isFromMe,
-                onTap: () => _applySpeakerSelection(index, false),
-              ),
-              _buildSpeakerChip(
-                label: '我說',
-                selected: message.isFromMe,
-                onTap: () => _applySpeakerSelection(index, true),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _sideLabel(message.side),
-            style: AppTypography.bodySmall.copyWith(
-              color: message.side == 'unknown'
-                  ? AppColors.warning
-                  : AppColors.unselectedText,
-              fontWeight:
-                  message.side == 'unknown' ? FontWeight.w600 : FontWeight.w500,
-            ),
-          ),
-          if (showBatchCard) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.14),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '這幾則都是連在一起的 $sideGroupLabel 泡泡。如果整串都被判反，可以一次改掉。',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.glassTextPrimary,
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => _applySpeakerToGroup(index, false),
-                        child: const Text('這幾則都改成她說'),
-                      ),
-                      OutlinedButton(
-                        onPressed: () => _applySpeakerToGroup(index, true),
-                        child: const Text('這幾則都改成我說'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '如果每則都判對了，這區可以直接略過。',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.unselectedText,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (message.quotedReplyController != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              '引用的上一則',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextHint,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildSpeakerChip(
-                  label: '引用對方',
-                  selected: message.quotedReplyPreviewIsFromMe == false,
-                  onTap: () => _applyQuotedReplySpeakerSelection(index, false),
-                ),
-                _buildSpeakerChip(
-                  label: '引用我方',
-                  selected: message.quotedReplyPreviewIsFromMe == true,
-                  onTap: () => _applyQuotedReplySpeakerSelection(index, true),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: message.quotedReplyController,
-              minLines: 1,
-              maxLines: 3,
-              onChanged: (_) {
-                if (_editValidationMessage != null) {
-                  setState(() {
-                    _editValidationMessage = null;
-                  });
-                }
-              },
-              decoration: InputDecoration(
-                hintText: '可選：補上她這句正在回哪個舊訊息',
-                hintStyle: const TextStyle(color: AppColors.unselectedText),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.35),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextPrimary,
-                height: 1.35,
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          TextField(
-            controller: message.controller,
-            minLines: 1,
-            maxLines: 4,
-            onChanged: (_) {
-              if (_editValidationMessage != null) {
-                setState(() {
-                  _editValidationMessage = null;
-                });
-              }
-            },
-            decoration: InputDecoration(
-              hintText: '修正這則訊息內容',
-              hintStyle: const TextStyle(color: AppColors.unselectedText),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.5),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
-              ),
-            ),
-            style: const TextStyle(color: AppColors.glassTextPrimary),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final currentMessages = _sanitizedMessages();
-    final guidance = ScreenshotRecognitionHelper.guidance(widget.recognized);
-    final guidanceColor = _guidanceColor(guidance.tone);
-    final showStatusChips = !_isCompactHighConfidenceFlow &&
-        (widget.recognized.classification != 'valid_chat' ||
-            widget.recognized.confidence != 'high' ||
-            widget.recognized.sideConfidence != 'high');
     final shouldShowSessionContextFields =
         widget.forceShowSessionContextFields ||
             _selectedImportMode ==
@@ -747,7 +456,7 @@ class _ScreenshotRecognitionDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '共抓到 ${widget.recognized.messageCount} 則訊息。請先確認內容和「我說／她說」，再加入對話。',
+              '共抓到 ${widget.recognized.messageCount} 則訊息，加入對話前先確認一下。',
               style: const TextStyle(color: AppColors.glassTextPrimary),
             ),
             if (widget.warningMessage != null &&
@@ -786,108 +495,78 @@ class _ScreenshotRecognitionDialogState
                   ),
                 ),
               ),
-            // 假 mixed（同時有我說／她說）不印「方向看起來很穩」——暗色單側誤讀
-            // 正是長成 mixed，這句安撫會讓用戶跳過檢查（Eric 2026-06-15）。
-            // 只收掉這顆安撫框，不動 compact 其餘行為＝不給正常雙側額外摩擦。
-            if (_isCompactHighConfidenceFlow &&
-                !_isMixedSpeakerConversation) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppColors.info.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: Text(
-                  '這批截圖方向看起來很穩，但建議快速確認文字內容是否正確（AI 識別小字可能有誤）。',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.glassTextPrimary,
-                    height: 1.45,
-                  ),
-                ),
-              ),
-            ],
-            if (showStatusChips) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (widget.recognized.classification != 'valid_chat')
-                    _buildStatusChip(
-                      icon: Icons.chat_bubble_outline,
-                      label: ScreenshotRecognitionHelper.classificationLabel(
-                        widget.recognized.classification,
-                      ),
-                      color: widget.recognized.importPolicy == 'reject'
-                          ? AppColors.error
-                          : AppColors.primary,
-                    ),
-                  if (widget.recognized.confidence != 'high')
-                    _buildStatusChip(
-                      icon: Icons.auto_awesome,
-                      label: ScreenshotRecognitionHelper.confidenceLabel(
-                        widget.recognized.confidence,
-                      ),
-                      color: _confidenceColor(widget.recognized),
-                    ),
-                  if (widget.recognized.sideConfidence != 'high')
-                    _buildStatusChip(
-                      icon: Icons.compare_arrows_rounded,
-                      label: ScreenshotRecognitionHelper.sideConfidenceLabel(
-                        widget.recognized.sideConfidence,
-                      ),
-                      color: _sideConfidenceColor(widget.recognized),
-                    ),
-                ],
-              ),
-            ],
             const SizedBox(height: 12),
+            // 滑動校正器：只留一句能幫使用者完成動作的提示，不放系統狀態說明。
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: guidanceColor.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: guidanceColor.withValues(alpha: 0.18),
-                ),
+                color: Colors.grey.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    _guidanceIcon(guidance.tone),
-                    size: 18,
-                    color: guidanceColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          guidance.title,
-                          style: AppTypography.bodySmall.copyWith(
-                            color: guidanceColor,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          guidance.body,
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.swap_horiz_rounded,
+                        size: 18,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '判錯邊？左右滑動訊息即可切換。',
                           style: AppTypography.bodySmall.copyWith(
                             color: AppColors.glassTextPrimary,
-                            height: 1.45,
+                            fontWeight: FontWeight.w600,
+                            height: 1.4,
                           ),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '左邊是她說、右邊是我說。要改錯字或刪除，點該則訊息即可。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.unselectedText,
+                      height: 1.4,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  _buildSwipeCorrector(),
+                  if (_hasAnyFromMeMessage()) ...[
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _markAllAsOtherPerson,
+                        icon: const Icon(Icons.swap_horiz_rounded),
+                        label: const Text('全部都是對方說的'),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '單側截圖常常整段都是對方連發。如果 AI 把某幾則誤判成你說的，'
+                      '點這裡一次全部改回對方。',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.unselectedText,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                  if (_editValidationMessage != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _editValidationMessage!,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -972,191 +651,6 @@ class _ScreenshotRecognitionDialogState
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.unselectedText,
                 height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '手動修正（選填）',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.glassTextPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _showDetailedEditor = !_showDetailedEditor;
-                          });
-                        },
-                        icon: Icon(
-                          _showDetailedEditor
-                              ? Icons.check_rounded
-                              : Icons.edit_note_rounded,
-                        ),
-                        label: Text(
-                          _showDetailedEditor ? '完成編輯' : '編輯內容',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _editorSummaryCopy(),
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.unselectedText,
-                      height: 1.45,
-                    ),
-                  ),
-                  if (!_showDetailedEditor) ...[
-                    const SizedBox(height: 10),
-                    _buildReadOnlyPreviewList(),
-                    if (_hasAnyFromMeMessage()) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _markAllAsOtherPerson,
-                          icon: const Icon(Icons.swap_horiz_rounded),
-                          label: const Text('全部都是對方說的'),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '單側截圖常常整段都是對方連發。如果 AI 把某幾則誤判成你說的，'
-                        '點這裡一次全部改回對方。',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.unselectedText,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    Text(
-                      '內容或「她說／我說」有錯？點右上「編輯內容」即可修改。',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.unselectedText,
-                        height: 1.4,
-                      ),
-                    ),
-                  ] else ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '逐則確認內容 (${currentMessages.length} 則會被加入)',
-                      style: const TextStyle(
-                        color: AppColors.glassTextPrimary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '請確認文字內容是否正確（AI 識別小字可能有誤），也可以調整她說／我說。',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.unselectedText,
-                        height: 1.45,
-                      ),
-                    ),
-                    if (_hasKnownSideMessages()) ...[
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: _applySpeakerToKnownSides,
-                            icon: const Icon(Icons.compare_arrows_rounded),
-                            label: const Text('依左／右重新套用'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '這顆按鈕會依畫面左右重新判斷她說或我說。如果目前都判對了，可以直接略過。',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.unselectedText,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                    if (widget.recognized.uncertainSideCount > 0) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '這次有 ${widget.recognized.uncertainSideCount} 則左右還不夠清楚，建議先檢查這些列。',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.warning,
-                          fontWeight: FontWeight.w600,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.maxFinite,
-                      height: _messageEditorHeight(
-                        context,
-                        _editableMessages.length,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: Colors.white.withValues(alpha: 0.06),
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.25),
-                          width: 1.2,
-                        ),
-                      ),
-                      child: ScrollbarTheme(
-                        data: ScrollbarThemeData(
-                          thumbColor: WidgetStatePropertyAll(
-                            AppColors.primary.withValues(alpha: 0.4),
-                          ),
-                          thickness: const WidgetStatePropertyAll(6),
-                          radius: const Radius.circular(3),
-                        ),
-                        child: Scrollbar(
-                          controller: _messageScrollController,
-                          thumbVisibility: _editableMessages.length > 2,
-                          child: ListView.builder(
-                            controller: _messageScrollController,
-                            padding: const EdgeInsets.all(8),
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            itemCount: _editableMessages.length,
-                            itemBuilder: (context, index) =>
-                                _buildEditableMessageCard(
-                              _editableMessages[index],
-                              index,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                  // 驗證訊息放在預覽/編輯分支外：預設收合時驗證失敗也看得到
-                  // （Codex review P2，2026-06-13）。
-                  if (_editValidationMessage != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      _editValidationMessage!,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.error,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
               ),
             ),
             const SizedBox(height: 16),
