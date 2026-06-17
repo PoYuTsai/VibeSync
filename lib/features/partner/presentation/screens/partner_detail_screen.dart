@@ -56,14 +56,18 @@ import '../widgets/partner_traits_card.dart';
 class PartnerDetailScreen extends ConsumerWidget {
   static const focusQueryParam = 'focus';
   static const coachFollowUpFocusValue = 'coachFollowUp';
+  static const focusActionQueryParam = 'focusAction';
+  static const openCoachInputFocusActionValue = 'openCoachInput';
 
   final String partnerId;
   final bool focusCoachFollowUp;
+  final bool openCoachInputOnFocus;
 
   const PartnerDetailScreen({
     super.key,
     required this.partnerId,
     this.focusCoachFollowUp = false,
+    this.openCoachInputOnFocus = false,
   });
 
   @override
@@ -171,6 +175,7 @@ class PartnerDetailScreen extends ConsumerWidget {
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
                       openCoachEntryAnchorKey: openCoachEntryAnchorKey,
+                      openCoachInputOnFirstBuild: openCoachInputOnFocus,
                     ),
                   ),
                 ),

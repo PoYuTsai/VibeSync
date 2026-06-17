@@ -70,6 +70,8 @@ class PartnerMindMapScreen extends ConsumerWidget {
                       queryParameters: {
                         PartnerDetailScreen.focusQueryParam:
                             PartnerDetailScreen.coachFollowUpFocusValue,
+                        PartnerDetailScreen.focusActionQueryParam:
+                            PartnerDetailScreen.openCoachInputFocusActionValue,
                       },
                     ).toString(),
                   ),

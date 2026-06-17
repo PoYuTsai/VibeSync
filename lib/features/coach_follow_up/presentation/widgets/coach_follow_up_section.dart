@@ -97,6 +97,7 @@ class CoachFollowUpSection extends ConsumerStatefulWidget {
   final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
   final Future<void> Function()? onQuotaExceeded;
   final Key? openCoachEntryAnchorKey;
+  final bool openCoachInputOnFirstBuild;
 
   const CoachFollowUpSection({
     super.key,
@@ -104,6 +105,7 @@ class CoachFollowUpSection extends ConsumerStatefulWidget {
     this.onTelemetry,
     this.onQuotaExceeded,
     this.openCoachEntryAnchorKey,
+    this.openCoachInputOnFirstBuild = false,
   });
 
   @override
@@ -124,6 +126,7 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
   CoachFollowUpAnswers? _lastAnswers;
   DateTime? _lastGeneratedAt;
   bool _openingQuotaPaywall = false;
+  bool _didAutoOpenCoachInput = false;
 
   @override
   void initState() {
@@ -133,6 +136,25 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
     if (stored != null) {
       _lastPhase = CoachFollowUpPhase.fromString(stored.phase);
     }
+    _scheduleAutoOpenCoachInputIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant CoachFollowUpSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.openCoachInputOnFirstBuild &&
+        !oldWidget.openCoachInputOnFirstBuild) {
+      _scheduleAutoOpenCoachInputIfNeeded();
+    }
+  }
+
+  void _scheduleAutoOpenCoachInputIfNeeded() {
+    if (!widget.openCoachInputOnFirstBuild || _didAutoOpenCoachInput) return;
+    _didAutoOpenCoachInput = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _onOpenCoachTap();
+    });
   }
 
   void _emit(CoachFollowUpTelemetryEvent event) {

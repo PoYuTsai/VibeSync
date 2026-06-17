@@ -14,6 +14,7 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_mind_map_screen.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_mind_map_view.dart';
 
@@ -155,6 +156,11 @@ void main() {
     expect(
       captured.single.queryParameters['focus'],
       'coachFollowUp',
+    );
+    expect(
+      captured
+          .single.queryParameters[PartnerDetailScreen.focusActionQueryParam],
+      PartnerDetailScreen.openCoachInputFocusActionValue,
     );
   });
 }

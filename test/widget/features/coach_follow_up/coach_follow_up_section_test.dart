@@ -161,6 +161,7 @@ Future<void> _pump(
   ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry,
   Future<void> Function()? onQuotaExceeded,
   Key? openCoachEntryAnchorKey,
+  bool openCoachInputOnFirstBuild = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -182,6 +183,7 @@ Future<void> _pump(
               onTelemetry: onTelemetry,
               onQuotaExceeded: onQuotaExceeded,
               openCoachEntryAnchorKey: openCoachEntryAnchorKey,
+              openCoachInputOnFirstBuild: openCoachInputOnFirstBuild,
             ),
           ),
         ),
@@ -219,6 +221,22 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('auto-opens the open coach input sheet on first build',
+        (t) async {
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        openCoachInputOnFirstBuild: true,
+      );
+
+      final fieldFinder = find.byType(TextField);
+      expect(fieldFinder, findsOneWidget);
+      final field = t.widget<TextField>(fieldFinder);
+      expect(field.maxLength, 120);
+      expect(field.maxLines, 4);
     });
 
     testWidgets('renders 3 chips + quota caption, no result-card surface',
