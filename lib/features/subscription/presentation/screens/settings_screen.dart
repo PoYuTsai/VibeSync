@@ -16,7 +16,7 @@ import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -129,153 +129,145 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
 
-    return GradientBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text('設定', style: AppTypography.titleLarge),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => context.pop(),
-          ),
-        ),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                _buildUsageSummaryCard(subscription),
-                if (subscription.hasPendingDowngrade) ...[
-                  const SizedBox(height: 16),
-                  _buildPendingDowngradeCard(subscription),
-                ],
-                _buildSection(
-                  title: '方案與帳號',
-                  children: [
-                    _buildTile(
-                      icon: Icons.workspace_premium,
-                      title: '目前方案',
-                      trailing:
-                          '${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
-                      onTap: () {
-                        context.push('/paywall');
-                      },
-                    ),
-                    if (subscription.renewsAt != null &&
-                        !subscription.isFreeUser)
-                      _buildTile(
-                        icon: Icons.event,
-                        title: '下次續約',
-                        trailing: _isRefreshingSubscription
-                            ? '確認中...'
-                            : _formatDate(subscription.renewsAt),
-                      ),
-                    _buildTile(
-                      icon: Icons.today,
-                      title: '今日剩餘',
-                      trailing:
-                          '${subscription.dailyRemaining}/${subscription.dailyLimit}',
-                    ),
-                    _buildTile(
-                      icon: Icons.calendar_month,
-                      title: '本月剩餘',
-                      trailing:
-                          '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
-                    ),
-                    _buildTile(
-                      icon: Icons.analytics,
-                      title: '本月已使用',
-                      trailing:
-                          '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit}',
-                    ),
-                    _buildTile(
-                      icon: Icons.person,
-                      title: '帳號',
-                      trailing: _accountLabel(),
-                    ),
-                    if (!kIsWeb)
-                      _buildTile(
-                        icon: Icons.subscriptions_outlined,
-                        title: '管理訂閱',
-                        onTap: () {
-                          _openManageSubscriptions();
-                        },
-                      ),
-                    if (!kIsWeb)
-                      _buildTile(
-                        icon: Icons.restore,
-                        title: '恢復購買',
-                        onTap: () {
-                          _restorePurchases(context, ref);
-                        },
-                      ),
-                    if (!kIsWeb)
-                      _buildTile(
-                        icon: Icons.bug_report_outlined,
-                        title: '複製訂閱診斷',
-                        onTap: _copySubscriptionDiagnostics,
-                      ),
-                  ],
-                ),
-                _buildSection(
-                  title: '隱私與資料',
-                  children: [
-                    _buildTile(
-                      icon: Icons.delete_forever,
-                      title: '刪除帳號',
-                      titleColor: AppColors.error,
-                      onTap: () {
-                        _confirmDeleteAccount(context, ref);
-                      },
-                    ),
-                    _buildTile(
-                      icon: Icons.privacy_tip,
-                      title: '隱私政策',
-                      onTap: () {
-                        _launchUrl('https://vibesyncai.app/privacy');
-                      },
-                    ),
-                  ],
-                ),
-                _buildSection(
-                  title: '其他',
-                  children: [
-                    _buildTile(
-                      icon: Icons.info,
-                      title: 'App 版本',
-                      trailing:
-                          _versionString.isNotEmpty ? _versionString : '載入中...',
-                    ),
-                    _buildTile(
-                      icon: Icons.description,
-                      title: '服務條款',
-                      onTap: () {
-                        _launchUrl('https://vibesyncai.app/terms');
-                      },
-                    ),
-                    _buildTile(
-                      icon: Icons.feedback,
-                      title: '客服與支援',
-                      onTap: () {
-                        _openSupportEmail();
-                      },
-                    ),
-                    _buildTile(
-                      icon: Icons.logout,
-                      title: '登出',
-                      titleColor: AppColors.error,
-                      onTap: () {
-                        _logout(context, ref);
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
+    return BrandScaffold(
+      title: '設定',
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => context.pop(),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              _buildUsageSummaryCard(subscription),
+              if (subscription.hasPendingDowngrade) ...[
+                const SizedBox(height: 16),
+                _buildPendingDowngradeCard(subscription),
               ],
-            ),
+              _buildSection(
+                title: '方案與帳號',
+                children: [
+                  _buildTile(
+                    icon: Icons.workspace_premium,
+                    title: '目前方案',
+                    trailing:
+                        '${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
+                    onTap: () {
+                      context.push('/paywall');
+                    },
+                  ),
+                  if (subscription.renewsAt != null && !subscription.isFreeUser)
+                    _buildTile(
+                      icon: Icons.event,
+                      title: '下次續約',
+                      trailing: _isRefreshingSubscription
+                          ? '確認中...'
+                          : _formatDate(subscription.renewsAt),
+                    ),
+                  _buildTile(
+                    icon: Icons.today,
+                    title: '今日剩餘',
+                    trailing:
+                        '${subscription.dailyRemaining}/${subscription.dailyLimit}',
+                  ),
+                  _buildTile(
+                    icon: Icons.calendar_month,
+                    title: '本月剩餘',
+                    trailing:
+                        '${subscription.monthlyRemaining}/${subscription.monthlyLimit}',
+                  ),
+                  _buildTile(
+                    icon: Icons.analytics,
+                    title: '本月已使用',
+                    trailing:
+                        '${subscription.monthlyMessagesUsed}/${subscription.monthlyLimit}',
+                  ),
+                  _buildTile(
+                    icon: Icons.person,
+                    title: '帳號',
+                    trailing: _accountLabel(),
+                  ),
+                  if (!kIsWeb)
+                    _buildTile(
+                      icon: Icons.subscriptions_outlined,
+                      title: '管理訂閱',
+                      onTap: () {
+                        _openManageSubscriptions();
+                      },
+                    ),
+                  if (!kIsWeb)
+                    _buildTile(
+                      icon: Icons.restore,
+                      title: '恢復購買',
+                      onTap: () {
+                        _restorePurchases(context, ref);
+                      },
+                    ),
+                  if (!kIsWeb)
+                    _buildTile(
+                      icon: Icons.bug_report_outlined,
+                      title: '複製訂閱診斷',
+                      onTap: _copySubscriptionDiagnostics,
+                    ),
+                ],
+              ),
+              _buildSection(
+                title: '隱私與資料',
+                children: [
+                  _buildTile(
+                    icon: Icons.delete_forever,
+                    title: '刪除帳號',
+                    titleColor: AppColors.error,
+                    onTap: () {
+                      _confirmDeleteAccount(context, ref);
+                    },
+                  ),
+                  _buildTile(
+                    icon: Icons.privacy_tip,
+                    title: '隱私政策',
+                    onTap: () {
+                      _launchUrl('https://vibesyncai.app/privacy');
+                    },
+                  ),
+                ],
+              ),
+              _buildSection(
+                title: '其他',
+                children: [
+                  _buildTile(
+                    icon: Icons.info,
+                    title: 'App 版本',
+                    trailing:
+                        _versionString.isNotEmpty ? _versionString : '載入中...',
+                  ),
+                  _buildTile(
+                    icon: Icons.description,
+                    title: '服務條款',
+                    onTap: () {
+                      _launchUrl('https://vibesyncai.app/terms');
+                    },
+                  ),
+                  _buildTile(
+                    icon: Icons.feedback,
+                    title: '客服與支援',
+                    onTap: () {
+                      _openSupportEmail();
+                    },
+                  ),
+                  _buildTile(
+                    icon: Icons.logout,
+                    title: '登出',
+                    titleColor: AppColors.error,
+                    onTap: () {
+                      _logout(context, ref);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+            ],
           ),
         ),
       ),
@@ -283,7 +275,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildUsageSummaryCard(SubscriptionState subscription) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,14 +283,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Text(
             '目前方案與額度',
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 12),
@@ -333,9 +325,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.42),
+        color: AppColors.brandInk.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.glassBorder),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,14 +335,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Text(
             label,
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
             ),
           ),
         ],
@@ -359,7 +351,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildPendingDowngradeCard(SubscriptionState subscription) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,7 +365,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Text(
                   '已排程降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}',
                   style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: AppColors.onBackgroundPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -381,7 +373,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   '將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。'
                   '在那之前目前額度仍會維持，今天不會再次扣款。',
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextSecondary,
+                    color: AppColors.onBackgroundSecondary,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -396,7 +388,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       child: Text(
                         '取消降級 / 管理訂閱',
                         style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.primary,
+                          color: AppColors.ctaStart,
                         ),
                       ),
                     ),
@@ -409,7 +401,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ? '同步中...'
                             : '我已取消降級，更新狀態',
                         style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.glassTextPrimary,
+                          color: AppColors.onBackgroundPrimary,
                         ),
                       ),
                     ),
@@ -439,7 +431,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
         ),
-        GlassmorphicContainer(
+        BrandSurfaceCard(
           padding: EdgeInsets.zero,
           child: Column(children: children),
         ),
@@ -455,21 +447,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     VoidCallback? onTap,
   }) {
     return ListTile(
-      leading: Icon(icon, color: titleColor ?? AppColors.glassTextHint),
+      leading: Icon(icon,
+          color: titleColor ??
+              AppColors.onBackgroundSecondary.withValues(alpha: 0.7)),
       title: Text(
         title,
         style: AppTypography.bodyLarge.copyWith(
-          color: titleColor ?? AppColors.glassTextPrimary,
+          color: titleColor ?? AppColors.onBackgroundPrimary,
         ),
       ),
       trailing: trailing != null
           ? Text(
               trailing,
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextHint,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
               ),
             )
-          : Icon(Icons.chevron_right, color: AppColors.glassTextHint),
+          : Icon(Icons.chevron_right,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7)),
       onTap: onTap,
     );
   }
@@ -555,28 +550,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            backgroundColor: AppColors.glassWhite,
+            backgroundColor: AppColors.brandSurface2,
             title: Text(
               '恢復購買',
-              style: TextStyle(color: AppColors.glassTextPrimary),
+              style: TextStyle(color: AppColors.onBackgroundPrimary),
             ),
             content: Text(
               '如果這個 Apple ID 已經有訂閱，但 App 尚未更新狀態，可以在這裡重新同步。',
-              style: TextStyle(color: AppColors.glassTextSecondary),
+              style: TextStyle(color: AppColors.onBackgroundSecondary),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
                 child: Text(
                   '取消',
-                  style: TextStyle(color: AppColors.unselectedText),
+                  style: TextStyle(color: AppColors.onBackgroundSecondary),
                 ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
                 child: Text(
                   '恢復購買',
-                  style: TextStyle(color: AppColors.primary),
+                  style: TextStyle(color: AppColors.ctaStart),
                 ),
               ),
             ],
@@ -618,17 +613,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.glassWhite,
+        backgroundColor: AppColors.brandSurface2,
         title: Text(
           '確認登出',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+          style: TextStyle(color: AppColors.onBackgroundPrimary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(
               '取消',
-              style: TextStyle(color: AppColors.unselectedText),
+              style: TextStyle(color: AppColors.onBackgroundSecondary),
             ),
           ),
           TextButton(
@@ -686,10 +681,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.glassWhite,
+          backgroundColor: AppColors.brandSurface2,
           title: Text(
             '刪除帳號',
-            style: TextStyle(color: AppColors.glassTextPrimary),
+            style: TextStyle(color: AppColors.onBackgroundPrimary),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -698,7 +693,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Text(
                 '這會刪除你的帳號與本機資料。如果你仍有 App Store 訂閱，請另外到 Apple 訂閱管理中取消自動續訂。',
                 style: TextStyle(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   height: 1.5,
                 ),
               ),
@@ -706,7 +701,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Text(
                 '輸入 DELETE 以確認',
                 style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -717,19 +712,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 textCapitalization: TextCapitalization.characters,
                 onChanged: (_) => setDialogState(() {}),
                 style: AppTypography.bodyLarge.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,
                 ),
                 decoration: InputDecoration(
                   hintText: 'DELETE',
                   hintStyle: AppTypography.bodyLarge.copyWith(
-                    color: AppColors.glassTextHint,
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
                   ),
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.45),
+                  fillColor: AppColors.brandInk.withValues(alpha: 0.38),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -743,7 +739,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
                 '取消',
-                style: TextStyle(color: AppColors.unselectedText),
+                style: TextStyle(color: AppColors.onBackgroundSecondary),
               ),
             ),
             TextButton(
