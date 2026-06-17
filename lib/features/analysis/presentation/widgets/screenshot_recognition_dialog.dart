@@ -121,20 +121,20 @@ class _ScreenshotRecognitionDialogState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.glassWhite,
+        backgroundColor: AppColors.brandSurface2,
         title: Text(
           '刪除這則訊息？',
-          style: TextStyle(color: AppColors.glassTextPrimary),
+          style: TextStyle(color: AppColors.onBackgroundPrimary),
         ),
         content: Text(
           '確定要刪除第 ${index + 1} 則訊息嗎？',
-          style: TextStyle(color: AppColors.glassTextSecondary),
+          style: TextStyle(color: AppColors.onBackgroundSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child:
-                Text('取消', style: TextStyle(color: AppColors.unselectedText)),
+            child: Text('取消',
+                style: TextStyle(color: AppColors.onBackgroundSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
@@ -203,7 +203,7 @@ class _ScreenshotRecognitionDialogState
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.glassWhite,
+      backgroundColor: AppColors.brandSurface2,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -222,7 +222,7 @@ class _ScreenshotRecognitionDialogState
               Text(
                 '編輯這則訊息',
                 style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -230,7 +230,7 @@ class _ScreenshotRecognitionDialogState
               Text(
                 message.isFromMe ? '目前標記為「我說」' : '目前標記為「她說」',
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.unselectedText,
+                  color: AppColors.onBackgroundSecondary,
                 ),
               ),
               const SizedBox(height: 12),
@@ -248,22 +248,24 @@ class _ScreenshotRecognitionDialogState
                 },
                 decoration: InputDecoration(
                   hintText: '修正這則訊息內容',
-                  hintStyle: const TextStyle(color: AppColors.unselectedText),
+                  hintStyle:
+                      const TextStyle(color: AppColors.onBackgroundSecondary),
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.5),
+                  fillColor: AppColors.brandInk.withValues(alpha: 0.4),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,
                   ),
                 ),
-                style: const TextStyle(color: AppColors.glassTextPrimary),
+                style: const TextStyle(color: AppColors.onBackgroundPrimary),
               ),
               if (quoted.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
                   '引用上一則（唯讀）',
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.glassTextHint,
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -271,7 +273,7 @@ class _ScreenshotRecognitionDialogState
                 Text(
                   quoted,
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.glassTextSecondary,
+                    color: AppColors.onBackgroundSecondary,
                     fontStyle: FontStyle.italic,
                     height: 1.4,
                   ),
@@ -300,7 +302,7 @@ class _ScreenshotRecognitionDialogState
                   ElevatedButton(
                     onPressed: () => Navigator.of(sheetContext).pop(),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: AppColors.ctaStart,
                     ),
                     child: const Text('完成'),
                   ),
@@ -368,11 +370,11 @@ class _ScreenshotRecognitionDialogState
       constraints: const BoxConstraints(maxWidth: 280),
       decoration: BoxDecoration(
         color: isMe
-            ? AppColors.primary.withValues(alpha: 0.14)
-            : const Color(0xFFF0EAF5),
+            ? AppColors.ctaStart.withValues(alpha: 0.16)
+            : Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.12),
+          color: AppColors.ctaStart.withValues(alpha: 0.12),
         ),
       ),
       child: Column(
@@ -382,7 +384,7 @@ class _ScreenshotRecognitionDialogState
           Text(
             isMe ? '我說' : '她說',
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.unselectedText,
+              color: AppColors.onBackgroundSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -391,7 +393,7 @@ class _ScreenshotRecognitionDialogState
             Text(
               '引用：$quoted',
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextHint,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -400,7 +402,7 @@ class _ScreenshotRecognitionDialogState
           Text(
             message.controller.text,
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
               height: 1.4,
             ),
           ),
@@ -410,7 +412,7 @@ class _ScreenshotRecognitionDialogState
   }
 
   Widget _buildSwipeHint({required bool toMe}) {
-    final color = toMe ? AppColors.primary : AppColors.info;
+    final color = toMe ? AppColors.ctaStart : AppColors.info;
     return Container(
       alignment: toMe ? Alignment.centerLeft : Alignment.centerRight,
       margin: const EdgeInsets.only(bottom: 8),
@@ -444,10 +446,10 @@ class _ScreenshotRecognitionDialogState
                 ScreenshotRecognitionHelper.importModeNewConversation;
 
     return AlertDialog(
-      backgroundColor: AppColors.glassWhite,
+      backgroundColor: AppColors.brandSurface2,
       title: const Text(
         '先確認內容',
-        style: TextStyle(color: AppColors.glassTextPrimary),
+        style: TextStyle(color: AppColors.onBackgroundPrimary),
       ),
       content: SingleChildScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -457,7 +459,7 @@ class _ScreenshotRecognitionDialogState
           children: [
             Text(
               '共抓到 ${widget.recognized.messageCount} 則訊息，加入對話前先確認一下。',
-              style: const TextStyle(color: AppColors.glassTextPrimary),
+              style: const TextStyle(color: AppColors.onBackgroundPrimary),
             ),
             if (widget.warningMessage != null &&
                 widget.warningMessage!.trim().isNotEmpty)
@@ -486,7 +488,7 @@ class _ScreenshotRecognitionDialogState
                         child: Text(
                           widget.warningMessage!,
                           style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.glassTextPrimary,
+                            color: AppColors.onBackgroundPrimary,
                             height: 1.45,
                           ),
                         ),
@@ -501,7 +503,7 @@ class _ScreenshotRecognitionDialogState
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.1),
+                color: Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -512,14 +514,14 @@ class _ScreenshotRecognitionDialogState
                       const Icon(
                         Icons.swap_horiz_rounded,
                         size: 18,
-                        color: AppColors.primary,
+                        color: AppColors.ctaStart,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           '判錯邊？左右滑動訊息即可切換。',
                           style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.glassTextPrimary,
+                            color: AppColors.onBackgroundPrimary,
                             fontWeight: FontWeight.w600,
                             height: 1.4,
                           ),
@@ -531,7 +533,7 @@ class _ScreenshotRecognitionDialogState
                   Text(
                     '左邊是她說、右邊是我說。要改錯字或刪除，點該則訊息即可。',
                     style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.unselectedText,
+                      color: AppColors.onBackgroundSecondary,
                       height: 1.4,
                     ),
                   ),
@@ -552,7 +554,7 @@ class _ScreenshotRecognitionDialogState
                       '單側截圖常常整段都是對方連發。如果 AI 把某幾則誤判成你說的，'
                       '點這裡一次全部改回對方。',
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.unselectedText,
+                        color: AppColors.onBackgroundSecondary,
                         height: 1.45,
                       ),
                     ),
@@ -574,7 +576,7 @@ class _ScreenshotRecognitionDialogState
             const Text(
               '加入方式',
               style: TextStyle(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -595,19 +597,19 @@ class _ScreenshotRecognitionDialogState
                     });
                   },
                   showCheckmark: false,
-                  selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                  backgroundColor: Colors.white,
+                  selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
+                  backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
                   side: BorderSide(
                     color: _selectedImportMode ==
                             ScreenshotRecognitionHelper.importModeAppendCurrent
-                        ? AppColors.primary.withValues(alpha: 0.4)
-                        : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                        ? AppColors.ctaStart.withValues(alpha: 0.4)
+                        : AppColors.onBackgroundPrimary.withValues(alpha: 0.2),
                   ),
                   labelStyle: TextStyle(
                     color: _selectedImportMode ==
                             ScreenshotRecognitionHelper.importModeAppendCurrent
-                        ? AppColors.primary
-                        : AppColors.glassTextPrimary,
+                        ? AppColors.ctaStart
+                        : AppColors.onBackgroundPrimary,
                   ),
                 ),
                 ChoiceChip(
@@ -622,21 +624,21 @@ class _ScreenshotRecognitionDialogState
                     });
                   },
                   showCheckmark: false,
-                  selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                  backgroundColor: Colors.white,
+                  selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
+                  backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
                   side: BorderSide(
                     color: _selectedImportMode ==
                             ScreenshotRecognitionHelper
                                 .importModeNewConversation
-                        ? AppColors.primary.withValues(alpha: 0.4)
-                        : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                        ? AppColors.ctaStart.withValues(alpha: 0.4)
+                        : AppColors.onBackgroundPrimary.withValues(alpha: 0.2),
                   ),
                   labelStyle: TextStyle(
                     color: _selectedImportMode ==
                             ScreenshotRecognitionHelper
                                 .importModeNewConversation
-                        ? AppColors.primary
-                        : AppColors.glassTextPrimary,
+                        ? AppColors.ctaStart
+                        : AppColors.onBackgroundPrimary,
                   ),
                 ),
               ],
@@ -649,7 +651,7 @@ class _ScreenshotRecognitionDialogState
                 selectedImportMode: _selectedImportMode,
               ),
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.unselectedText,
+                color: AppColors.onBackgroundSecondary,
                 height: 1.45,
               ),
             ),
@@ -657,7 +659,7 @@ class _ScreenshotRecognitionDialogState
             const Text(
               '對方名字',
               style: TextStyle(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -666,22 +668,23 @@ class _ScreenshotRecognitionDialogState
               controller: _nameController,
               decoration: InputDecoration(
                 hintText: '輸入對方名字',
-                hintStyle: const TextStyle(color: AppColors.unselectedText),
+                hintStyle:
+                    const TextStyle(color: AppColors.onBackgroundSecondary),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.5),
+                fillColor: AppColors.brandInk.withValues(alpha: 0.4),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
                 ),
               ),
-              style: const TextStyle(color: AppColors.glassTextPrimary),
+              style: const TextStyle(color: AppColors.onBackgroundPrimary),
             ),
             if (shouldShowSessionContextFields) ...[
               const SizedBox(height: 16),
               const Text(
                 '認識場景（選填）',
                 style: TextStyle(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -700,17 +703,18 @@ class _ScreenshotRecognitionDialogState
                         _selectedMeeting = selected ? meetingContext : null;
                       });
                     },
-                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                    backgroundColor: Colors.white,
+                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
+                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
                     side: BorderSide(
                       color: isSelected
-                          ? AppColors.primary.withValues(alpha: 0.4)
-                          : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                          ? AppColors.ctaStart.withValues(alpha: 0.4)
+                          : AppColors.onBackgroundPrimary
+                              .withValues(alpha: 0.2),
                     ),
                     labelStyle: TextStyle(
                       color: isSelected
-                          ? AppColors.primary
-                          : AppColors.glassTextPrimary,
+                          ? AppColors.ctaStart
+                          : AppColors.onBackgroundPrimary,
                     ),
                   );
                 }).toList(),
@@ -719,7 +723,7 @@ class _ScreenshotRecognitionDialogState
               const Text(
                 '認識多久（選填）',
                 style: TextStyle(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -737,17 +741,18 @@ class _ScreenshotRecognitionDialogState
                         _selectedDuration = selected ? duration : null;
                       });
                     },
-                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                    backgroundColor: Colors.white,
+                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
+                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
                     side: BorderSide(
                       color: isSelected
-                          ? AppColors.primary.withValues(alpha: 0.4)
-                          : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                          ? AppColors.ctaStart.withValues(alpha: 0.4)
+                          : AppColors.onBackgroundPrimary
+                              .withValues(alpha: 0.2),
                     ),
                     labelStyle: TextStyle(
                       color: isSelected
-                          ? AppColors.primary
-                          : AppColors.glassTextPrimary,
+                          ? AppColors.ctaStart
+                          : AppColors.onBackgroundPrimary,
                     ),
                   );
                 }).toList(),
@@ -756,7 +761,7 @@ class _ScreenshotRecognitionDialogState
               const Text(
                 '目前目標',
                 style: TextStyle(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -774,17 +779,18 @@ class _ScreenshotRecognitionDialogState
                         _selectedGoal = selected ? goal : null;
                       });
                     },
-                    selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                    backgroundColor: Colors.white,
+                    selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
+                    backgroundColor: AppColors.brandInk.withValues(alpha: 0.4),
                     side: BorderSide(
                       color: isSelected
-                          ? AppColors.primary.withValues(alpha: 0.4)
-                          : AppColors.glassTextPrimary.withValues(alpha: 0.2),
+                          ? AppColors.ctaStart.withValues(alpha: 0.4)
+                          : AppColors.onBackgroundPrimary
+                              .withValues(alpha: 0.2),
                     ),
                     labelStyle: TextStyle(
                       color: isSelected
-                          ? AppColors.primary
-                          : AppColors.glassTextPrimary,
+                          ? AppColors.ctaStart
+                          : AppColors.onBackgroundPrimary,
                     ),
                   );
                 }).toList(),
@@ -793,7 +799,7 @@ class _ScreenshotRecognitionDialogState
               const Text(
                 '補充背景（選填）',
                 style: TextStyle(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -808,21 +814,22 @@ class _ScreenshotRecognitionDialogState
                 onTapOutside: (_) => _dismissKeyboard(),
                 decoration: InputDecoration(
                   hintText: '沒有可以留空',
-                  hintStyle: const TextStyle(color: AppColors.unselectedText),
+                  hintStyle:
+                      const TextStyle(color: AppColors.onBackgroundSecondary),
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.5),
+                  fillColor: AppColors.brandInk.withValues(alpha: 0.4),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,
                   ),
                 ),
-                style: const TextStyle(color: AppColors.glassTextPrimary),
+                style: const TextStyle(color: AppColors.onBackgroundPrimary),
               ),
               const SizedBox(height: 6),
               Text(
                 '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextSecondary,
+                  color: AppColors.onBackgroundSecondary,
                   height: 1.35,
                 ),
               ),
@@ -835,13 +842,13 @@ class _ScreenshotRecognitionDialogState
           onPressed: () => Navigator.of(context).pop(),
           child: const Text(
             '稍後再加入',
-            style: TextStyle(color: AppColors.unselectedText),
+            style: TextStyle(color: AppColors.onBackgroundSecondary),
           ),
         ),
         ElevatedButton(
           onPressed: _submit,
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
+            backgroundColor: AppColors.ctaStart,
           ),
           child: const Text('確認加入對話'),
         ),
