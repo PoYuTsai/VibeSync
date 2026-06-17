@@ -10,6 +10,8 @@ import '../features/partner/presentation/screens/partner_list_screen.dart';
 import '../features/report/presentation/screens/my_report_screen.dart';
 import '../features/learning/presentation/screens/learning_screen.dart';
 
+const double homeFabReservedHeight = 74;
+
 class MainShell extends StatefulWidget {
   const MainShell({
     super.key,
@@ -73,7 +75,22 @@ class _MainShellState extends State<MainShell> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: Text('VibeSync', style: AppTypography.headlineMedium),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('VibeSync', style: AppTypography.headlineMedium),
+              const SizedBox(width: 6),
+              Container(
+                width: 7,
+                height: 7,
+                margin: const EdgeInsets.only(top: 12),
+                decoration: const BoxDecoration(
+                  color: AppColors.ctaStart,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
           actions: [
             IconButton(
               icon: const Icon(Icons.settings),
@@ -81,13 +98,20 @@ class _MainShellState extends State<MainShell> {
             ),
           ],
         ),
-        body: IndexedStack(
-          index: _currentIndex,
-          children: const [
-            PartnerListScreen(),
-            MyReportScreen(),
-            LearningScreen(),
-          ],
+        body: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(
+            bottom: _currentIndex == 0 ? homeFabReservedHeight : 0,
+          ),
+          child: IndexedStack(
+            index: _currentIndex,
+            children: const [
+              PartnerListScreen(),
+              MyReportScreen(),
+              LearningScreen(),
+            ],
+          ),
         ),
         floatingActionButton: _currentIndex == 0 ? const HomeFab() : null,
         bottomNavigationBar: _buildBottomNav(),
@@ -98,15 +122,23 @@ class _MainShellState extends State<MainShell> {
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.backgroundGradientStart.withValues(alpha: 0.95),
+        color: AppColors.brandInk.withValues(alpha: 0.94),
         border: Border(
           top: BorderSide(
-            color: AppColors.glassBorder.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: 0.08),
           ),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 28,
+            offset: const Offset(0, -10),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: const EdgeInsets.only(top: 10, bottom: 8),
       child: SafeArea(
+        top: false,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -120,48 +152,70 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _buildTab(
-      int index, IconData icon, IconData activeIcon, String label) {
+    int index,
+    IconData icon,
+    IconData activeIcon,
+    String label,
+  ) {
     final isSelected = _currentIndex == index;
+    final iconColor =
+        isSelected ? Colors.white : Colors.white.withValues(alpha: 0.66);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _selectTab(index),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(
-            horizontal: isSelected ? 24 : 20,
-            vertical: 12,
-          ),
-          decoration: isSelected
-              ? BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                )
-              : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isSelected ? activeIcon : icon,
-                color:
-                    isSelected ? Colors.white : AppColors.onBackgroundSecondary,
-                size: 22,
-              ),
-              if (isSelected) ...[
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+    return Semantics(
+      selected: isSelected,
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _selectTab(index),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            constraints: const BoxConstraints(minWidth: 54, minHeight: 44),
+            padding: EdgeInsets.symmetric(
+              horizontal: isSelected ? 20 : 14,
+              vertical: 11,
+            ),
+            decoration: isSelected
+                ? BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.ctaStart.withValues(alpha: 0.28),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  )
+                : null,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isSelected ? activeIcon : icon,
+                  color: iconColor,
+                  size: 22,
                 ),
+                if (isSelected) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -196,9 +250,9 @@ class HomeFab extends ConsumerWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: AppColors.ctaStart.withValues(alpha: 0.4),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: AppColors.ctaStart.withValues(alpha: 0.32),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
           ),
         ],
       ),

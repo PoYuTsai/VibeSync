@@ -12,22 +12,30 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _ttcFont = '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf';
-
 /// Loads a real Traditional-Chinese face so headless renders aren't tofu.
 /// Registered as 'AppTC'; harness wraps content in a DefaultTextStyle so the
 /// app's family-less AppTypography styles inherit it (instead of test Ahem).
-const _materialIcons =
-    '/home/eric1/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf';
+String _firstExistingPath(List<String> candidates) {
+  for (final path in candidates) {
+    if (File(path).existsSync()) return path;
+  }
+  throw StateError('No visual proof asset found in: ${candidates.join(', ')}');
+}
 
 Future<void> loadProofFonts() async {
-  final tc = File(_ttcFont).readAsBytesSync();
-  await (FontLoader('AppTC')
-        ..addFont(Future.value(ByteData.view(tc.buffer))))
+  final tc = File(_firstExistingPath(const [
+    'C:/Windows/Fonts/NotoSansTC-VF.ttf',
+    '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf',
+  ])).readAsBytesSync();
+  await (FontLoader('AppTC')..addFont(Future.value(ByteData.view(tc.buffer))))
       .load();
   // Material icons aren't auto-resolved headlessly once a global default font
   // is in play — load the real glyph font so icons aren't tofu.
-  final mi = File(_materialIcons).readAsBytesSync();
+  final mi = File(_firstExistingPath(const [
+    'D:/tools/flutter/bin/cache/artifacts/material_fonts/materialicons-regular.otf',
+    'D:/tools/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+    '/home/eric1/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+  ])).readAsBytesSync();
   await (FontLoader('MaterialIcons')
         ..addFont(Future.value(ByteData.view(mi.buffer))))
       .load();

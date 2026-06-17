@@ -1,22 +1,9 @@
 // lib/features/partner/presentation/widgets/partner_list_card.dart
-//
-// Pure render — receives Partner + already-computed PartnerAggregateView.
-// Does NOT subscribe to providers (lifted-aggregate API, Codex r1 P1.3b).
-// Keeps tests hermetic and allows reuse outside the list screen.
-//
-// Phase 4 Task 2 visual restoration (D-P4-3 / D-P4-4):
-//   1. GlassmorphicContainer card background
-//   2. Yellow gradient avatar circle with name initial
-//   3. Name + relative-date header row
-//   4. Heat indicator (emoji + score) OR "🌡️ 待分析" fallback
-//   5. Interleaved interest/trait preview joined by " · ", capped at 3
-//   6. Trailing delete icon (only when onDelete is non-null)
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/glassmorphic_container.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
@@ -45,8 +32,6 @@ class PartnerListCard extends StatelessWidget {
     return DateFormat('MM/dd').format(date);
   }
 
-  /// interleave interests / traits 後 cap 3，避免 traits 被 interests 餓死。
-  /// (Codex spec review HS-P4-5)
   List<String> _previewTags(List<String> interests, List<String> traits) {
     final out = <String>[];
     final maxLen =
@@ -81,96 +66,210 @@ class PartnerListCard extends StatelessWidget {
     return trimmed.characters.take(2).toString();
   }
 
+  IconData _statusIcon(EnthusiasmLevel? level) {
+    switch (level) {
+      case EnthusiasmLevel.cold:
+        return Icons.ac_unit_rounded;
+      case EnthusiasmLevel.warm:
+        return Icons.auto_awesome_rounded;
+      case EnthusiasmLevel.hot:
+        return Icons.local_fire_department_rounded;
+      case EnthusiasmLevel.veryHot:
+        return Icons.favorite_rounded;
+      case null:
+        return Icons.insights_rounded;
+    }
+  }
+
+  Widget _buildAvatar() {
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [AppColors.ctaStart, AppColors.brandBlush],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ctaStart.withValues(alpha: 0.20),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.brandInk.withValues(alpha: 0.90),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+          ),
+          child: Center(
+            child: Text(
+              _avatarLabel(partner.name),
+              style: AppTypography.titleMedium.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusPill(EnthusiasmLevel? level, int? heat) {
+    final tone = level?.color ?? Colors.white.withValues(alpha: 0.64);
+    final text = heat == null ? '待分析' : '$heat';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: heat == null ? 0.08 : 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: tone.withValues(alpha: heat == null ? 0.12 : 0.28),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_statusIcon(level), size: 13, color: tone),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: AppTypography.caption.copyWith(
+              color: heat == null ? Colors.white.withValues(alpha: 0.70) : tone,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrailing(String date) {
+    return SizedBox(
+      width: 64,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            date,
+            style: AppTypography.caption.copyWith(
+              color: Colors.white.withValues(alpha: 0.50),
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (onDelete != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: Colors.white.withValues(alpha: 0.46),
+                  size: 22,
+                ),
+                onPressed: onDelete,
+                tooltip: '刪除對象',
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tags = _previewTags(aggregate.unionInterests, aggregate.unionTraits);
     final heat = aggregate.latestHeat;
     final level = heat != null ? EnthusiasmLevel.fromScore(heat) : null;
+    final date = _formatDate(aggregate.lastInteraction);
 
-    return GlassmorphicContainer(
-      padding: EdgeInsets.zero,
-      child: Material(
-        color: Colors.transparent,
-        child: ListTile(
-          onTap: onTap,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          leading: Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.avatarHerStart, AppColors.avatarHerEnd],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                _avatarLabel(partner.name),
-                style: AppTypography.titleLarge.copyWith(color: Colors.black87),
-              ),
-            ),
-          ),
-          title: Row(children: [
-            Expanded(
-              child: Text(
-                partner.name,
-                style: AppTypography.titleLarge
-                    .copyWith(color: AppColors.glassTextPrimary),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Text(
-              _formatDate(aggregate.lastInteraction),
-              style: AppTypography.caption
-                  .copyWith(color: AppColors.glassTextHint),
-            ),
-          ]),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 4),
-              if (level != null)
-                Row(children: [
-                  Text(level.emoji),
-                  const SizedBox(width: 4),
-                  Text(
-                    '$heat',
-                    style: AppTypography.caption.copyWith(color: level.color),
-                  ),
-                ])
-              else
-                Row(children: [
-                  const Text('🌡️'),
-                  const SizedBox(width: 4),
-                  Text(
-                    '待分析',
-                    style: AppTypography.caption
-                        .copyWith(color: AppColors.glassTextHint),
-                  ),
-                ]),
-              if (tags.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  tags.join(' · '),
-                  style: AppTypography.caption
-                      .copyWith(color: AppColors.glassTextHint),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.brandSurface.withValues(alpha: 0.96),
+                AppColors.brandSurface2.withValues(alpha: 0.92),
               ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
+              ),
             ],
           ),
-          trailing: onDelete != null
-              ? IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      color: AppColors.glassTextHint),
-                  onPressed: onDelete,
-                  tooltip: '刪除對象',
-                )
-              : null,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 102),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              child: Row(
+                children: [
+                  _buildAvatar(),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          partner.name,
+                          style: AppTypography.titleMedium.copyWith(
+                            color: Colors.white.withValues(alpha: 0.93),
+                            fontWeight: FontWeight.w800,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        _buildStatusPill(level, heat),
+                        if (tags.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            tags.join(' · '),
+                            style: AppTypography.bodySmall.copyWith(
+                              color: Colors.white.withValues(alpha: 0.62),
+                              height: 1.25,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _buildTrailing(date),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

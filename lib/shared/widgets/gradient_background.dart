@@ -29,17 +29,17 @@ class _GradientBackgroundState extends State<GradientBackground>
     // 更明顯的動畫效果
     _controller1 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 6),
+      duration: const Duration(seconds: 14),
     )..repeat(reverse: true);
 
     _controller2 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 8),
+      duration: const Duration(seconds: 18),
     )..repeat(reverse: true);
 
     _controller3 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 7),
+      duration: const Duration(seconds: 20),
     )..repeat(reverse: true);
   }
 
@@ -75,41 +75,41 @@ class _GradientBackgroundState extends State<GradientBackground>
             child: Stack(
               children: [
                 Positioned(
-                  top: -30,
-                  right: -20,
+                  top: -110,
+                  right: -90,
                   child: _AnimatedBokehOrb(
                     controller: _controller1,
                     color: AppColors.bokehPink,
-                    size: 180,
-                    blur: 70,
-                    opacity: 0.7,
-                    floatRange: 30,
+                    size: 260,
+                    blur: 120,
+                    opacity: 0.18,
+                    floatRange: 18,
                     floatAngle: math.pi / 4, // 45度方向浮動
                   ),
                 ),
                 Positioned(
-                  bottom: 80,
-                  left: -30,
+                  bottom: -80,
+                  left: -100,
                   child: _AnimatedBokehOrb(
                     controller: _controller2,
                     color: AppColors.bokehCoral,
-                    size: 160,
-                    blur: 55,
-                    opacity: 0.65,
-                    floatRange: 25,
+                    size: 280,
+                    blur: 130,
+                    opacity: 0.14,
+                    floatRange: 14,
                     floatAngle: -math.pi / 3, // -60度方向浮動
                   ),
                 ),
                 Positioned(
                   top: screenHeight * 0.45,
-                  right: -10,
+                  right: -120,
                   child: _AnimatedBokehOrb(
                     controller: _controller3,
                     color: AppColors.bokehYellow,
-                    size: 140,
-                    blur: 50,
-                    opacity: 0.6,
-                    floatRange: 20,
+                    size: 240,
+                    blur: 120,
+                    opacity: 0.08,
+                    floatRange: 12,
                     floatAngle: math.pi / 6, // 30度方向浮動
                   ),
                 ),

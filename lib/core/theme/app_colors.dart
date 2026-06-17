@@ -29,14 +29,21 @@ class AppColors {
   static const info = Color(0xFF64B5F6);
 
   // Warm theme backgrounds
-  static const backgroundGradientStart = Color(0xFF1A0533);
-  static const backgroundGradientMid = Color(0xFF2D1B4E);
-  static const backgroundGradientEnd = Color(0xFF4A2C6A);
+  static const brandInk = Color(0xFF150C24);
+  static const brandSurface = Color(0xFF1F1330);
+  static const brandSurface2 = Color(0xFF2A1840);
+  static const brandFlame = Color(0xFFFF6A2B);
+  static const brandFlameDark = Color(0xFFE85A1E);
+  static const brandBlush = Color(0xFFFF2D8B);
+
+  static const backgroundGradientStart = brandInk;
+  static const backgroundGradientMid = brandSurface;
+  static const backgroundGradientEnd = brandSurface2;
 
   // Warm theme bokeh
-  static const bokehPink = Color(0xFFFF6B9D);
-  static const bokehCoral = Color(0xFFFF8A65);
-  static const bokehYellow = Color(0xFFFFD54F);
+  static const bokehPink = brandBlush;
+  static const bokehCoral = brandFlame;
+  static const bokehYellow = Color(0xFFFFB34D);
 
   // Warm theme glass surfaces
   static const glassWhite = Color(0xFFF5F0F8);
@@ -59,8 +66,8 @@ class AppColors {
   static const selectedEnd = Color(0xFFFF8A65);
 
   // CTA gradients
-  static const ctaStart = Color(0xFFFF7043);
-  static const ctaEnd = Color(0xFFFF5722);
+  static const ctaStart = brandFlame;
+  static const ctaEnd = brandFlameDark;
 
   // Avatar gradients
   static const avatarHerStart = Color(0xFFFFD54F);

@@ -1,14 +1,6 @@
-// test/widget/features/partner/partner_list_card_test.dart
-//
-// PartnerListCard 視覺還原 5 件套 widget tests (Phase 4 Task 2).
-//
-// Card stays pure render — receives Partner + already-computed
-// PartnerAggregateView via constructor (lifted-aggregate API).
-// No ProviderScope override needed because the card never `ref.watch`es.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
@@ -48,15 +40,15 @@ Future<void> _pump(WidgetTester t, Widget child) async {
 }
 
 void main() {
-  testWidgets('renders 5 visual pieces given Partner + non-empty aggregate',
+  testWidgets('renders core visual pieces given Partner + aggregate',
       (t) async {
     await _pump(
       t,
       PartnerListCard(
         partner: _p('a', 'Alice'),
         aggregate: _agg(
-          interests: const ['咖啡'],
-          traits: const ['溫柔'],
+          interests: const ['coffee'],
+          traits: const ['bold'],
           heat: 70,
           rounds: 3,
           lastInteraction: DateTime(2026, 1, 5),
@@ -66,18 +58,12 @@ void main() {
       ),
     );
 
-    // Piece 1: avatar — readable fallback label, not just first character.
     expect(find.text('AL'), findsOneWidget);
-    // Piece 2: name
     expect(find.text('Alice'), findsOneWidget);
-    // Piece 3: relative date — > 7 days ago, fixed past date renders MM/dd
     expect(find.text('01/05'), findsOneWidget);
-    // Piece 4: heat indicator (hot range emoji + number)
-    expect(find.text('🔥'), findsOneWidget);
+    expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
     expect(find.text('70'), findsOneWidget);
-    // Piece 5: tag preview joined by " · "
-    expect(find.text('咖啡 · 溫柔'), findsOneWidget);
-    // Piece 6: trailing delete icon
+    expect(find.text('coffee · bold'), findsOneWidget);
     expect(find.byIcon(Icons.delete_outline), findsOneWidget);
   });
 
@@ -88,22 +74,17 @@ void main() {
       Column(
         children: [
           PartnerListCard(
-            partner: _p('a', '小明同學'),
+            partner: _p('a', '小美同學'),
             aggregate: _agg(),
             onTap: () {},
           ),
           PartnerListCard(
-            partner: _p('b', '王小明'),
+            partner: _p('b', 'Bruce Chiang'),
             aggregate: _agg(),
             onTap: () {},
           ),
           PartnerListCard(
-            partner: _p('c', 'Bruce Chiang'),
-            aggregate: _agg(),
-            onTap: () {},
-          ),
-          PartnerListCard(
-            partner: _p('d', 'testa'),
+            partner: _p('c', 'testa'),
             aggregate: _agg(),
             onTap: () {},
           ),
@@ -111,13 +92,14 @@ void main() {
       ),
     );
 
-    expect(find.text('小明'), findsOneWidget);
-    expect(find.text('王小'), findsOneWidget);
+    expect(find.text('小美'), findsOneWidget);
+    expect(find.text('小美同學'), findsOneWidget);
     expect(find.text('BC'), findsOneWidget);
     expect(find.text('TE'), findsOneWidget);
   });
 
-  testWidgets('falls back to "🌡️ 待分析" when latestHeat is null', (t) async {
+  testWidgets('falls back to a pending-analysis pill when latestHeat is null',
+      (t) async {
     await _pump(
       t,
       PartnerListCard(
@@ -127,7 +109,7 @@ void main() {
       ),
     );
 
-    expect(find.text('🌡️'), findsOneWidget);
+    expect(find.byIcon(Icons.insights_rounded), findsOneWidget);
     expect(find.text('待分析'), findsOneWidget);
   });
 
@@ -147,7 +129,6 @@ void main() {
       ),
     );
 
-    // Interleave: [i0, t0, i1] — cap at 3 reached after adding i1.
     expect(find.text('i0 · t0 · i1'), findsOneWidget);
   });
 
@@ -158,16 +139,14 @@ void main() {
       PartnerListCard(
         partner: _p('a', 'Alice'),
         aggregate: _agg(
-          interests: const ['咖啡', '電影', '健身'],
-          traits: const ['溫柔', '幽默'],
+          interests: const ['food', 'travel', 'film'],
+          traits: const ['active', 'warm'],
         ),
         onTap: () {},
       ),
     );
 
-    // Even with 3 interests, the interleave guarantees t0 lands in the preview.
-    final preview = find.text('咖啡 · 溫柔 · 電影');
-    expect(preview, findsOneWidget);
+    expect(find.text('food · active · travel'), findsOneWidget);
   });
 
   testWidgets('tap delete fires onDelete callback', (t) async {
@@ -200,7 +179,7 @@ void main() {
     expect(find.byIcon(Icons.delete_outline), findsNothing);
   });
 
-  testWidgets('uses glass hint color for "待分析" fallback', (t) async {
+  testWidgets('uses premium pending-analysis text styling', (t) async {
     await _pump(
       t,
       PartnerListCard(
@@ -209,7 +188,9 @@ void main() {
         onTap: () {},
       ),
     );
+
     final waiting = t.widget<Text>(find.text('待分析'));
-    expect(waiting.style?.color, AppColors.glassTextHint);
+    expect(waiting.style?.color, Colors.white.withValues(alpha: 0.70));
+    expect(waiting.style?.fontWeight, FontWeight.w700);
   });
 }

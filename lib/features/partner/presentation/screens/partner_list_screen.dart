@@ -82,7 +82,7 @@ class PartnerListScreen extends ConsumerWidget {
     final showBanner = dupPair != null && dismissedAsync.value == false;
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       // +1 for the banner slot when shown.
       itemCount: partners.length + (showBanner ? 1 : 0),
       itemBuilder: (context, i) {
@@ -116,7 +116,7 @@ class PartnerListScreen extends ConsumerWidget {
         final convCount =
             ref.watch(conversationsByPartnerProvider(p.id)).length;
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: PartnerListCard(
             partner: p,
             aggregate: agg,

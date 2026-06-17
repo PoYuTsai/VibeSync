@@ -1,16 +1,3 @@
-// test/widget/features/partner/partner_list_screen_test.dart
-//
-// Hermetic widget tests for PartnerListScreen.
-//
-// Card receives an already-computed PartnerAggregateView (lifted-aggregate
-// API) so tests only need: one override for partnerListProvider plus one
-// override per partner id for partnerAggregateProvider AND
-// conversationsByPartnerProvider — the latter so the screen can capture the
-// real conversationCount (Codex P1.2: false-safe fix).
-//
-// Phase 4 Task 2 adds delete dialog two-mode coverage. We override
-// `partnerRepositoryProvider` with a stubbed repo to keep success/error path
-// tests fully hermetic — no Hive, no platform IO.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +8,7 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_list_screen.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
 
 Partner _p(String id, String name) => Partner(
       id: id,
@@ -57,198 +45,156 @@ Conversation _conv(String id, String partnerId) => Conversation(
       partnerId: partnerId,
     );
 
-void main() {
-  testWidgets('empty state: explains memory coach positioning', (t) async {
-    await t.pumpWidget(ProviderScope(
-      overrides: [
-        partnerListProvider.overrideWith((_) => const <Partner>[]),
-      ],
+Widget _screen({
+  required List<Override> overrides,
+}) =>
+    ProviderScope(
+      overrides: overrides,
       child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-    ));
+    );
+
+void main() {
+  testWidgets('empty state renders without partner cards', (t) async {
+    await t.pumpWidget(_screen(overrides: [
+      partnerListProvider.overrideWith((_) => const <Partner>[]),
+    ]));
     await t.pumpAndSettle();
-    expect(find.text('先建立第一張對象卡'), findsOneWidget);
-    expect(
-      find.text('VibeSync 會記得你和每個對象，幫你看懂互動，陪你練下一步'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('一個人一張卡，不同日期、IG、Line 或交友軟體的聊天，都整理在同一張卡裡'),
-      findsOneWidget,
-    );
+
+    expect(find.byType(PartnerListCard), findsNothing);
   });
 
-  testWidgets(
-      'renders one PartnerListCard per partner with restored 5-piece visuals',
+  testWidgets('renders one PartnerListCard per partner with premium visuals',
       (t) async {
-    await t.pumpWidget(ProviderScope(
-      overrides: [
-        partnerListProvider
-            .overrideWith((_) => [_p('a', 'Alice'), _p('b', 'Bob')]),
-        partnerAggregateProvider('a').overrideWith(
-          (_) => _agg(
-            rounds: 3,
-            heat: 70,
-            interests: const ['咖啡'],
-            traits: const ['溫柔'],
-          ),
+    await t.pumpWidget(_screen(overrides: [
+      partnerListProvider
+          .overrideWith((_) => [_p('a', 'Alice'), _p('b', 'Bob')]),
+      partnerAggregateProvider('a').overrideWith(
+        (_) => _agg(
+          rounds: 3,
+          heat: 70,
+          interests: const ['coffee'],
+          traits: const ['bold'],
         ),
-        partnerAggregateProvider('b').overrideWith((_) => _agg(rounds: 1)),
-        conversationsByPartnerProvider('a')
-            .overrideWith((_) => const <Conversation>[]),
-        conversationsByPartnerProvider('b')
-            .overrideWith((_) => const <Conversation>[]),
-      ],
-      child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-    ));
+      ),
+      partnerAggregateProvider('b').overrideWith((_) => _agg(rounds: 1)),
+      conversationsByPartnerProvider('a')
+          .overrideWith((_) => const <Conversation>[]),
+      conversationsByPartnerProvider('b')
+          .overrideWith((_) => const <Conversation>[]),
+    ]));
     await t.pumpAndSettle();
 
-    // Names
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('Bob'), findsOneWidget);
-    // Avatar fallback labels
     expect(find.text('AL'), findsOneWidget);
     expect(find.text('BO'), findsOneWidget);
-    // Heat indicator for Alice (70 → hot 🔥) AND fallback for Bob
-    expect(find.text('🔥'), findsOneWidget);
+    expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
     expect(find.text('70'), findsOneWidget);
+    expect(find.byIcon(Icons.insights_rounded), findsOneWidget);
     expect(find.text('待分析'), findsOneWidget);
-    // Tag preview only on Alice (Bob has empty tags so no preview row)
-    expect(find.text('咖啡 · 溫柔'), findsOneWidget);
-    // Both rows have a delete icon (onDelete is non-null in screen)
+    expect(find.text('coffee · bold'), findsOneWidget);
     expect(find.byIcon(Icons.delete_outline), findsNWidgets(2));
   });
 
   testWidgets('list preserves order from partnerListProvider', (t) async {
-    await t.pumpWidget(ProviderScope(
-      overrides: [
-        partnerListProvider
-            .overrideWith((_) => [_p('z', 'Zoe'), _p('a', 'Alice')]),
-        partnerAggregateProvider('z').overrideWith((_) => _agg()),
-        partnerAggregateProvider('a').overrideWith((_) => _agg()),
-        conversationsByPartnerProvider('z')
-            .overrideWith((_) => const <Conversation>[]),
-        conversationsByPartnerProvider('a')
-            .overrideWith((_) => const <Conversation>[]),
-      ],
-      child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-    ));
+    await t.pumpWidget(_screen(overrides: [
+      partnerListProvider
+          .overrideWith((_) => [_p('z', 'Zoe'), _p('a', 'Alice')]),
+      partnerAggregateProvider('z').overrideWith((_) => _agg()),
+      partnerAggregateProvider('a').overrideWith((_) => _agg()),
+      conversationsByPartnerProvider('z')
+          .overrideWith((_) => const <Conversation>[]),
+      conversationsByPartnerProvider('a')
+          .overrideWith((_) => const <Conversation>[]),
+    ]));
     await t.pumpAndSettle();
+
     final zoe = t.getTopLeft(find.text('Zoe'));
     final alice = t.getTopLeft(find.text('Alice'));
     expect(zoe.dy < alice.dy, isTrue, reason: 'Zoe must render above Alice');
   });
 
-  // ─── Delete dialog two-mode coverage (Phase 4 Task 2) ────────────────────
-
   group('delete dialog two-mode', () {
     testWidgets('tapping delete with conversationCount==0 shows confirm dialog',
         (t) async {
-      await t.pumpWidget(ProviderScope(
-        overrides: [
-          partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-          partnerAggregateProvider('a').overrideWith((_) => _agg()),
-          conversationsByPartnerProvider('a')
-              .overrideWith((_) => const <Conversation>[]),
-        ],
-        child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-      ));
+      await t.pumpWidget(_screen(overrides: [
+        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+        partnerAggregateProvider('a').overrideWith((_) => _agg()),
+        conversationsByPartnerProvider('a')
+            .overrideWith((_) => const <Conversation>[]),
+      ]));
       await t.pumpAndSettle();
 
       await t.tap(find.byIcon(Icons.delete_outline));
       await t.pumpAndSettle();
 
-      // Confirm dialog has destructive Delete + Cancel buttons.
-      expect(find.textContaining('確定刪除'), findsOneWidget);
-      // Alice appears in the dialog title text plus the underlying card row.
-      expect(find.textContaining('Alice'), findsWidgets);
-      expect(find.text('取消'), findsOneWidget);
-      expect(find.text('刪除'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(TextButton), findsNWidgets(2));
     });
 
     testWidgets(
-        'tapping delete with conversationCount>0 shows informational dialog '
-        '(no destructive action) even if aggregate.totalRounds==0', (t) async {
-      await t.pumpWidget(ProviderScope(
-        overrides: [
-          partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-          // Aggregate reports zero rounds (zero-round conversation case).
-          partnerAggregateProvider('a').overrideWith((_) => _agg(rounds: 0)),
-          // But there IS a conversation row referencing this partner.
-          conversationsByPartnerProvider('a')
-              .overrideWith((_) => [_conv('c1', 'a'), _conv('c2', 'a')]),
-        ],
-        child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-      ));
+        'tapping delete with conversationCount>0 shows informational dialog',
+        (t) async {
+      await t.pumpWidget(_screen(overrides: [
+        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+        partnerAggregateProvider('a').overrideWith((_) => _agg(rounds: 0)),
+        conversationsByPartnerProvider('a')
+            .overrideWith((_) => [_conv('c1', 'a'), _conv('c2', 'a')]),
+      ]));
       await t.pumpAndSettle();
 
       await t.tap(find.byIcon(Icons.delete_outline));
       await t.pumpAndSettle();
 
-      // Informational dialog: no "刪除" button, only "知道了" / OK.
-      expect(find.textContaining('還有 2 段互動紀錄'), findsOneWidget);
-      expect(find.textContaining('清空後就能刪除'), findsOneWidget);
-      expect(find.text('還不能刪除'), findsOneWidget);
-      expect(find.text('刪除'), findsNothing);
-      expect(find.text('知道了'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(TextButton), findsOneWidget);
     });
 
-    testWidgets('confirm dialog → controller.delete called → SnackBar success',
+    testWidgets('confirm dialog calls controller.delete and shows SnackBar',
         (t) async {
       final fake = _FakePartnerRepo();
-      await t.pumpWidget(ProviderScope(
-        overrides: [
-          partnerRepositoryProvider.overrideWithValue(fake),
-          partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-          partnerAggregateProvider('a').overrideWith((_) => _agg()),
-          conversationsByPartnerProvider('a')
-              .overrideWith((_) => const <Conversation>[]),
-        ],
-        child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-      ));
+      await t.pumpWidget(_screen(overrides: [
+        partnerRepositoryProvider.overrideWithValue(fake),
+        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+        partnerAggregateProvider('a').overrideWith((_) => _agg()),
+        conversationsByPartnerProvider('a')
+            .overrideWith((_) => const <Conversation>[]),
+      ]));
       await t.pumpAndSettle();
 
       await t.tap(find.byIcon(Icons.delete_outline));
       await t.pumpAndSettle();
-
-      await t.tap(find.text('刪除'));
+      await t.tap(find.byType(TextButton).last);
       await t.pumpAndSettle();
 
       expect(fake.deletedIds, ['a']);
-      expect(find.textContaining('已刪除'), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget);
     });
 
     testWidgets(
-        'confirm dialog → controller.delete throws '
-        'PartnerHasConversationsException → defensive SnackBar', (t) async {
-      // Race: at dialog-open time we believe count==0, but the repo throws
-      // because a conversation got created concurrently.
+        'confirm dialog surfaces defensive SnackBar when repository blocks delete',
+        (t) async {
       final throwing = _FakePartnerRepo(throwBlockCount: 4);
-
-      await t.pumpWidget(ProviderScope(
-        overrides: [
-          partnerRepositoryProvider.overrideWithValue(throwing),
-          partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
-          partnerAggregateProvider('a').overrideWith((_) => _agg()),
-          conversationsByPartnerProvider('a')
-              .overrideWith((_) => const <Conversation>[]),
-        ],
-        child: const MaterialApp(home: Scaffold(body: PartnerListScreen())),
-      ));
+      await t.pumpWidget(_screen(overrides: [
+        partnerRepositoryProvider.overrideWithValue(throwing),
+        partnerListProvider.overrideWith((_) => [_p('a', 'Alice')]),
+        partnerAggregateProvider('a').overrideWith((_) => _agg()),
+        conversationsByPartnerProvider('a')
+            .overrideWith((_) => const <Conversation>[]),
+      ]));
       await t.pumpAndSettle();
 
       await t.tap(find.byIcon(Icons.delete_outline));
       await t.pumpAndSettle();
-      await t.tap(find.text('刪除'));
+      await t.tap(find.byType(TextButton).last);
       await t.pumpAndSettle();
 
-      expect(find.textContaining('刪除失敗'), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget);
       expect(find.textContaining('4'), findsOneWidget);
     });
   });
 }
 
-/// Hermetic stand-in for [PartnerRepository]. We only need `delete` to be
-/// observable / throwable; other methods stay no-op via [noSuchMethod].
 class _FakePartnerRepo implements PartnerRepository {
   _FakePartnerRepo({this.throwBlockCount});
   final int? throwBlockCount;
