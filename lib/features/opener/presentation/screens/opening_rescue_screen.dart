@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/revenuecat_service.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
@@ -493,19 +494,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           content: Text(
             message,
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
               height: 1.35,
             ),
           ),
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.glassWhite,
+          backgroundColor: AppColors.brandSurface2,
           elevation: 8,
           margin: const EdgeInsets.fromLTRB(20, 0, 20, 72),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: AppColors.glassBorder.withValues(alpha: 0.9),
+              color: Colors.white.withValues(alpha: 0.12),
             ),
           ),
         ),
@@ -526,19 +527,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
     final hasGeneratedResult = _result != null;
 
-    return GradientBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-            onPressed: () => context.pop(),
-          ),
-          title: Text('開場救星', style: AppTypography.headlineMedium),
-        ),
-        body: SafeArea(
+    return BrandScaffold(
+      title: '開場救星',
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+        onPressed: () => context.pop(),
+      ),
+      safeArea: false,
+      body: SafeArea(
           top: false,
           child: SingleChildScrollView(
             controller: _scrollController,
@@ -550,7 +546,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 Text(
                   '開場救星',
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.bokehCoral,
+                    color: AppColors.ctaStart,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -566,10 +562,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 const SizedBox(height: 20),
 
                 // Tab switcher
-                GlassmorphicSegmentedButton<int>(
+                BrandSegmentedButton<int>(
                   segments: const [
-                    GlassSegment(value: 0, label: '截圖自介'),
-                    GlassSegment(value: 1, label: '手動輸入'),
+                    BrandSegment(value: 0, label: '截圖自介'),
+                    BrandSegment(value: 1, label: '手動輸入'),
                   ],
                   selected: _selectedTab,
                   onChanged: (val) => setState(() {
@@ -625,8 +621,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 const SizedBox(height: 12),
 
                 // Generate button
-                GradientButton(
-                  text: OpeningRescueScreen.generateButtonText(
+                BrandPrimaryButton(
+                  label: OpeningRescueScreen.generateButtonText(
                     hasResult: hasGeneratedResult,
                   ),
                   isLoading: _isGenerating,
@@ -647,7 +643,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                         const SizedBox(height: 8),
                         const CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(
-                              AppColors.bokehCoral),
+                              AppColors.ctaStart),
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -686,7 +682,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             ),
           ),
         ),
-      ),
     );
   }
 
@@ -718,7 +713,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   Widget _buildRecentDraftsCard() {
     final drafts = _drafts.take(3).toList(growable: false);
 
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -734,7 +729,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               Text(
                 '最近開場草稿',
                 style: AppTypography.titleSmall.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -744,7 +739,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           Text(
             '已生成的開場會保留在本機。新截圖不會自動帶入舊結果，想回看再點「回看」。',
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               height: 1.35,
             ),
           ),
@@ -763,9 +758,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: AppColors.glassWhite.withValues(alpha: 0.42),
+          color: AppColors.brandInk.withValues(alpha: 0.38),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.glassBorder),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
         ),
         child: Row(
           children: [
@@ -779,7 +774,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                         child: Text(
                           draft.title,
                           style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.glassTextPrimary,
+                            color: AppColors.onBackgroundPrimary,
                             fontWeight: FontWeight.w700,
                           ),
                           maxLines: 1,
@@ -802,7 +797,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   Text(
                     draft.preview,
                     style: AppTypography.caption.copyWith(
-                      color: AppColors.glassTextHint,
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.70),
                       height: 1.25,
                     ),
                     maxLines: 2,
@@ -824,7 +820,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               tooltip: '刪除草稿',
               onPressed: () => _deleteDraft(draft.id),
               icon: const Icon(Icons.close, size: 18),
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
             ),
           ],
         ),
@@ -833,88 +829,53 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Widget _buildManualTab() {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '對方名字',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
-          ),
+          _buildFieldLabel('對方名字'),
           const SizedBox(height: 6),
-          GlassmorphicTextField(
+          _buildBrandField(
             controller: _nameController,
             hintText: '輸入對方名字（選填）',
             isDense: true,
           ),
           const SizedBox(height: 16),
-          Text(
-            'Bio / 自我介紹',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
-          ),
+          _buildFieldLabel('Bio / 自我介紹'),
           const SizedBox(height: 6),
-          _buildMultilineField(
+          _buildBrandField(
             controller: _bioController,
             hintText: '貼上對方的自介內容',
             maxLines: 3,
           ),
           const SizedBox(height: 16),
-          Text(
-            '興趣',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
-          ),
+          _buildFieldLabel('興趣'),
           const SizedBox(height: 6),
-          GlassmorphicTextField(
+          _buildBrandField(
             controller: _interestsController,
             hintText: '對方的興趣標籤（選填）',
             isDense: true,
           ),
           const SizedBox(height: 16),
-          Text(
-            '認識場景',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
-          ),
+          _buildFieldLabel('認識場景'),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: _meetingOptions.map((option) {
-              final isSelected = _meetingContext == option;
-              return ChoiceChip(
-                label: Text(option),
-                selected: isSelected,
-                onSelected: (selected) {
+              return BrandChoiceChip(
+                label: option,
+                selected: _meetingContext == option,
+                onTap: () {
                   setState(() {
-                    _meetingContext = selected ? option : null;
+                    _meetingContext =
+                        _meetingContext == option ? null : option;
                     _result = null;
                     _error = null;
                     _currentDraftId = null;
                   });
                 },
-                selectedColor: AppColors.ctaStart.withValues(alpha: 0.2),
-                backgroundColor: AppColors.glassWhite,
-                labelStyle: AppTypography.bodySmall.copyWith(
-                  color: isSelected
-                      ? AppColors.ctaStart
-                      : AppColors.glassTextSecondary,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-                side: BorderSide(
-                  color:
-                      isSelected ? AppColors.ctaStart : AppColors.glassBorder,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
               );
             }).toList(),
           ),
@@ -923,38 +884,29 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
   }
 
-  Widget _buildMultilineField({
+  Widget _buildFieldLabel(String text) {
+    return Text(
+      text,
+      style: AppTypography.bodySmall.copyWith(
+        color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
+      ),
+    );
+  }
+
+  /// 暗紫橘輸入框（取代淺色 GlassmorphicTextField / 自繪多行框）。
+  Widget _buildBrandField({
     required TextEditingController controller,
     required String hintText,
-    int maxLines = 3,
+    bool isDense = false,
+    int maxLines = 1,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.glassWhite,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.glassBorder, width: 1.5),
-      ),
-      child: TextField(
-        controller: controller,
-        maxLines: maxLines,
-        style: AppTypography.bodyMedium.copyWith(
-          color: AppColors.glassTextPrimary,
-        ),
-        decoration: InputDecoration(
-          hintText: hintText,
-          hintStyle: AppTypography.bodyMedium.copyWith(
-            color: AppColors.glassTextHint,
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
-          filled: true,
-          fillColor: Colors.transparent,
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      cursorColor: AppColors.ctaStart,
+      style: AppTypography.bodyMedium.copyWith(color: Colors.white),
+      decoration: brandInputDecoration(hintText: hintText).copyWith(
+        isDense: isDense,
       ),
     );
   }
@@ -968,7 +920,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       children: [
         // Profile analysis card
         if (result.profileAnalysis != null) ...[
-          GlassmorphicContainer(
+          BrandSurfaceCard(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -976,7 +928,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 Text(
                   '對方資料讀取',
                   style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: AppColors.onBackgroundPrimary,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1041,8 +993,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         if (result.recommendedReason != null &&
             (!isFree || result.recommendedPick == 'extend')) ...[
           const SizedBox(height: 12),
-          GlassmorphicContainer(
+          BrandSurfaceCard(
             padding: const EdgeInsets.all(12),
+            elevated: false,
             child: Row(
               children: [
                 const Text('💡', style: TextStyle(fontSize: 16)),
@@ -1051,7 +1004,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   child: Text(
                     'AI 推薦理由：${result.recommendedReason}',
                     style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.glassTextSecondary,
+                      color: AppColors.onBackgroundSecondary,
                     ),
                   ),
                 ),
@@ -1089,8 +1042,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   Widget _buildSavedDraftNotice() {
     final saved = _currentDraftId != null;
 
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(12),
+      elevated: false,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1106,7 +1060,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   ? '這次開場已保存成草稿。你可以離開後再回到開場救星回看，不會自動混到下一個對象。'
                   : '這次結果只顯示在目前頁面；若本機保存失敗，建議先複製想用的開場。',
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
                 height: 1.4,
               ),
             ),
@@ -1117,7 +1071,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Widget _buildNextStepCard() {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1133,7 +1087,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               Text(
                 '下一步怎麼接？',
                 style: AppTypography.titleSmall.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1143,7 +1097,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           Text(
             '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再建立新對話分析後續。',
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary,
               height: 1.45,
             ),
           ),
@@ -1166,34 +1120,23 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             description: '只有真實互動進入分析後，才會接上對象記憶。',
           ),
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () async {
-                await _saveLatestForHandoff();
-                if (!mounted) return;
-                setState(_reloadDrafts);
-                context.push(OpeningRescueScreen.handoffLocationFor(
-                  partnerId: widget.partnerId,
-                ));
-              },
-              icon: const Icon(Icons.add_comment_outlined, size: 18),
-              label: const Text('她回覆了，開始分析對話'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.ctaStart,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-            ),
+          BrandPrimaryButton(
+            label: '她回覆了，開始分析對話',
+            icon: Icons.add_comment_outlined,
+            onPressed: () async {
+              await _saveLatestForHandoff();
+              if (!mounted) return;
+              setState(_reloadDrafts);
+              context.push(OpeningRescueScreen.handoffLocationFor(
+                partnerId: widget.partnerId,
+              ));
+            },
           ),
           const SizedBox(height: 8),
           Text(
             '這次結果只套用在目前這組輸入；換對象或換截圖時會清空，避免混到上一個人的開場。',
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
               height: 1.4,
             ),
             textAlign: TextAlign.center,
@@ -1214,7 +1157,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         Icon(
           icon,
           size: 18,
-          color: AppColors.glassTextHint,
+          color: AppColors.ctaStart.withValues(alpha: 0.86),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -1224,7 +1167,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               Text(
                 title,
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1232,7 +1175,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               Text(
                 description,
                 style: AppTypography.caption.copyWith(
-                  color: AppColors.glassTextHint,
+                  color: AppColors.onBackgroundSecondary
+                      .withValues(alpha: 0.70),
                   height: 1.35,
                 ),
               ),
@@ -1255,7 +1199,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         .where((entry) => entry.value.trim().isNotEmpty)
         .toList();
 
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1271,7 +1215,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               Text(
                 '先鋒備案',
                 style: AppTypography.titleSmall.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1281,7 +1225,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           Text(
             '貼出去後如果她冷回或短回，先照這裡接；有新回覆再回來分析或問教練。',
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               height: 1.4,
             ),
           ),
@@ -1307,7 +1251,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     child: Text(
                       entry.value,
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.glassTextSecondary,
+                        color: AppColors.onBackgroundSecondary,
                         height: 1.45,
                       ),
                     ),
@@ -1357,7 +1301,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               child: Text(
                 label,
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextHint,
+                  color: AppColors.ctaStart.withValues(alpha: 0.86),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1366,7 +1310,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               child: Text(
                 value is List ? value.join('、') : value.toString(),
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: AppColors.onBackgroundPrimary,
                 ),
               ),
             ),
@@ -1388,7 +1332,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     return SizedBox(
       width: 280,
-      child: GlassmorphicContainer(
+      child: BrandSurfaceCard(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1399,7 +1343,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 Text(
                   label,
                   style: AppTypography.titleSmall.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: AppColors.onBackgroundPrimary,
                   ),
                 ),
                 const Spacer(),
@@ -1435,7 +1379,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   : Text(
                       content,
                       style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
+                        color: AppColors.onBackgroundPrimary,
                         height: 1.6,
                       ),
                       maxLines: 6,
@@ -1472,7 +1416,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   icon: const Icon(Icons.copy, size: 16),
                   label: const Text('複製'),
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.glassTextHint,
+                    foregroundColor: AppColors.ctaStart,
                   ),
                 ),
               ),
@@ -1490,13 +1434,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           Icon(
             Icons.lock_outline,
             size: 32,
-            color: AppColors.glassTextHint.withValues(alpha: 0.6),
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 8),
           Text(
             '升級解鎖此風格',
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
             ),
           ),
         ],
