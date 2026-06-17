@@ -572,6 +572,42 @@ void main() {
     );
   });
 
+  testWidgets(
+      'openCoachInputOnFocus opens the coach question sheet immediately',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 520));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => const <Conversation>[]),
+      ],
+      child: const MaterialApp(
+        home: PartnerDetailScreen(
+          partnerId: 'p1',
+          focusCoachFollowUp: true,
+          openCoachInputOnFocus: true,
+        ),
+      ),
+    ));
+    await t.pumpAndSettle();
+
+    final fieldFinder = find.byType(TextField);
+    expect(fieldFinder, findsOneWidget);
+    final field = t.widget<TextField>(fieldFinder);
+    expect(field.maxLength, 120);
+    expect(field.maxLines, 4);
+  });
+
   testWidgets('empty conversation list shows hint text', (t) async {
     // The CoachFollowUpSection (Spec 5 C24) lands above this hint inside
     // the same ListView; default surface keeps the hint outside the lazy

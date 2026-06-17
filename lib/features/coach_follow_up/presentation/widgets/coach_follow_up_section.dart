@@ -92,6 +92,25 @@ class CoachFollowUpPhaseSwitchedEvent extends CoachFollowUpTelemetryEvent {
 
 // ── Section widget ────────────────────────────────────────────────────────
 
+Future<CoachFollowUpAnswers?> showCoachFollowUpInputSheet({
+  required BuildContext context,
+  required CoachFollowUpPhase phase,
+}) {
+  return showModalBottomSheet<CoachFollowUpAnswers>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetCtx) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+      ),
+      child: CoachFollowUpInputSheet(
+        phase: phase,
+        onSubmit: (a) => Navigator.of(sheetCtx).pop(a),
+      ),
+    ),
+  );
+}
+
 class CoachFollowUpSection extends ConsumerStatefulWidget {
   final String partnerId;
   final ValueChanged<CoachFollowUpTelemetryEvent>? onTelemetry;
@@ -230,18 +249,9 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
   }
 
   Future<void> _openInputSheet(CoachFollowUpPhase phase) async {
-    final answers = await showModalBottomSheet<CoachFollowUpAnswers>(
+    final answers = await showCoachFollowUpInputSheet(
       context: context,
-      isScrollControlled: true,
-      builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
-        ),
-        child: CoachFollowUpInputSheet(
-          phase: phase,
-          onSubmit: (a) => Navigator.of(sheetCtx).pop(a),
-        ),
-      ),
+      phase: phase,
     );
     if (answers == null) return;
     if (!mounted) return;

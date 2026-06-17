@@ -34,12 +34,16 @@ import '../../../conversation/presentation/dialogs/conversation_reassign_picker.
 import '../../../conversation/presentation/dialogs/delete_conversation_confirm_dialog.dart';
 import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../analysis/domain/entities/analysis_models.dart';
+import '../../../coach_follow_up/data/providers/coach_follow_up_providers.dart';
+import '../../../coach_follow_up/data/services/coach_follow_up_api_service.dart';
+import '../../../coach_follow_up/domain/entities/coach_follow_up_phase.dart';
 import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
 import '../../../user_profile/domain/services/name_candidate_extractor.dart';
 import '../../../user_profile/presentation/widgets/partner_style_entry_card.dart';
+import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
@@ -168,14 +172,14 @@ class PartnerDetailScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 _PartnerDetailSection(
                   child: _CoachFollowUpFocusTarget(
-                    focusOnFirstBuild: focusCoachFollowUp,
+                    focusOnFirstBuild:
+                        focusCoachFollowUp && !openCoachInputOnFocus,
                     builder: (_, openCoachEntryAnchorKey) =>
                         CoachFollowUpSection(
                       partnerId: partnerId,
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
                       openCoachEntryAnchorKey: openCoachEntryAnchorKey,
-                      openCoachInputOnFirstBuild: openCoachInputOnFocus,
                     ),
                   ),
                 ),
@@ -245,6 +249,11 @@ class PartnerDetailScreen extends ConsumerWidget {
               ],
             ),
           ),
+          if (openCoachInputOnFocus)
+            _CoachFollowUpInputAutoOpener(
+              partnerId: partnerId,
+              onQuotaExceeded: () async => context.push('/paywall'),
+            ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -491,6 +500,106 @@ class PartnerDetailScreen extends ConsumerWidget {
     );
     return result ?? false;
   }
+}
+
+class _CoachFollowUpInputAutoOpener extends ConsumerStatefulWidget {
+  final String partnerId;
+  final Future<void> Function()? onQuotaExceeded;
+
+  const _CoachFollowUpInputAutoOpener({
+    required this.partnerId,
+    this.onQuotaExceeded,
+  });
+
+  @override
+  ConsumerState<_CoachFollowUpInputAutoOpener> createState() =>
+      _CoachFollowUpInputAutoOpenerState();
+}
+
+class _CoachFollowUpInputAutoOpenerState
+    extends ConsumerState<_CoachFollowUpInputAutoOpener> {
+  bool _didOpen = false;
+  bool _openingQuotaPaywall = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleOpen();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CoachFollowUpInputAutoOpener oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.partnerId != oldWidget.partnerId) {
+      _didOpen = false;
+      _scheduleOpen();
+    }
+  }
+
+  void _scheduleOpen() {
+    if (_didOpen) return;
+    _didOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _open();
+    });
+  }
+
+  Future<void> _open() async {
+    if (!mounted) return;
+    final answers = await showCoachFollowUpInputSheet(
+      context: context,
+      phase: CoachFollowUpPhase.openCoach,
+    );
+    if (answers == null || !mounted) return;
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'Coach 跟進',
+    );
+    if (!consented || !mounted) return;
+
+    _logCoachFollowUpTelemetry(CoachFollowUpInvokedEvent(
+      phase: CoachFollowUpPhase.openCoach,
+      hasOptionalText: answers.q3 != null && answers.q3!.isNotEmpty,
+    ));
+
+    final notifier = ref.read(
+      coachFollowUpControllerProvider(widget.partnerId).notifier,
+    );
+    await notifier.generate(
+      phase: CoachFollowUpPhase.openCoach,
+      answers: answers,
+    );
+    if (!mounted) return;
+
+    final error = ref
+        .read(coachFollowUpControllerProvider(widget.partnerId))
+        .whenOrNull(error: (error, _) => error);
+    if (error is QuotaExceededException) {
+      _openQuotaPaywallOnce();
+    }
+  }
+
+  void _openQuotaPaywallOnce() {
+    if (_openingQuotaPaywall) return;
+    _openingQuotaPaywall = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _openingQuotaPaywall = false;
+        return;
+      }
+      try {
+        await widget.onQuotaExceeded?.call();
+      } finally {
+        if (mounted) {
+          _openingQuotaPaywall = false;
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 class _CoachFollowUpFocusTarget extends StatefulWidget {
