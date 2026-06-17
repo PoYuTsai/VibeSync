@@ -62,8 +62,7 @@ void main() {
         conversationsByPartnerProvider('ghost')
             .overrideWith((_) => const <Conversation>[]),
       ],
-      child:
-          const MaterialApp(home: PartnerMindMapScreen(partnerId: 'ghost')),
+      child: const MaterialApp(home: PartnerMindMapScreen(partnerId: 'ghost')),
     ));
     await t.pumpAndSettle();
 
@@ -111,9 +110,7 @@ void main() {
     expect(find.text('完成一次對話分析，解鎖她的作戰板'), findsNothing);
   });
 
-  testWidgets(
-      '單擊 nextStep 葉節點 → 導航到快照來源對話、coachPrefill=如何+節點文字（決策 1/2/3）',
-      (t) async {
+  testWidgets('單擊 nextStep 葉節點 → 導航到對象頁教練跟進區（目的地改自 Coach 1:1）', (t) async {
     final captured = <Uri>[];
     final router = GoRouter(
       initialLocation: '/partner/p1/mindmap',
@@ -125,10 +122,12 @@ void main() {
           ),
         ),
         GoRoute(
-          path: '/conversation/:id',
+          path: '/partner/:partnerId',
           builder: (_, state) {
             captured.add(state.uri);
-            return Scaffold(body: Text('分析頁 ${state.pathParameters['id']}'));
+            return Scaffold(
+              body: Text('對象頁 ${state.pathParameters['partnerId']}'),
+            );
           },
         ),
       ],
@@ -152,10 +151,10 @@ void main() {
     await t.pumpAndSettle();
 
     expect(captured, hasLength(1));
-    expect(captured.single.path, '/conversation/c1');
+    expect(captured.single.path, '/partner/p1');
     expect(
-      captured.single.queryParameters['coachPrefill'],
-      '如何約她週末喝咖啡？',
+      captured.single.queryParameters['focus'],
+      'coachFollowUp',
     );
   });
 }

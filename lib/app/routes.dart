@@ -118,6 +118,9 @@ final router = GoRouter(
       path: '/partner/:partnerId',
       builder: (context, state) => PartnerDetailScreen(
         partnerId: state.pathParameters['partnerId']!,
+        focusCoachFollowUp:
+            state.uri.queryParameters[PartnerDetailScreen.focusQueryParam] ==
+                PartnerDetailScreen.coachFollowUpFocusValue,
       ),
     ),
     GoRoute(

@@ -54,8 +54,17 @@ import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
 
 class PartnerDetailScreen extends ConsumerWidget {
+  static const focusQueryParam = 'focus';
+  static const coachFollowUpFocusValue = 'coachFollowUp';
+
   final String partnerId;
-  const PartnerDetailScreen({super.key, required this.partnerId});
+  final bool focusCoachFollowUp;
+
+  const PartnerDetailScreen({
+    super.key,
+    required this.partnerId,
+    this.focusCoachFollowUp = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -154,10 +163,13 @@ class PartnerDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 _PartnerDetailSection(
-                  child: CoachFollowUpSection(
-                    partnerId: partnerId,
-                    onTelemetry: _logCoachFollowUpTelemetry,
-                    onQuotaExceeded: () async => context.push('/paywall'),
+                  child: _CoachFollowUpFocusTarget(
+                    focusOnFirstBuild: focusCoachFollowUp,
+                    child: CoachFollowUpSection(
+                      partnerId: partnerId,
+                      onTelemetry: _logCoachFollowUpTelemetry,
+                      onQuotaExceeded: () async => context.push('/paywall'),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -471,6 +483,62 @@ class PartnerDetailScreen extends ConsumerWidget {
       ),
     );
     return result ?? false;
+  }
+}
+
+class _CoachFollowUpFocusTarget extends StatefulWidget {
+  final bool focusOnFirstBuild;
+  final Widget child;
+
+  const _CoachFollowUpFocusTarget({
+    required this.focusOnFirstBuild,
+    required this.child,
+  });
+
+  @override
+  State<_CoachFollowUpFocusTarget> createState() =>
+      _CoachFollowUpFocusTargetState();
+}
+
+class _CoachFollowUpFocusTargetState extends State<_CoachFollowUpFocusTarget> {
+  final _targetKey = GlobalKey();
+  bool _didFocus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleFocusIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CoachFollowUpFocusTarget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.focusOnFirstBuild && !oldWidget.focusOnFirstBuild) {
+      _scheduleFocusIfNeeded();
+    }
+  }
+
+  void _scheduleFocusIfNeeded() {
+    if (!widget.focusOnFirstBuild || _didFocus) return;
+    _didFocus = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _targetKey.currentContext;
+      if (!mounted || context == null) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+        alignment: 0.08,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return KeyedSubtree(
+      key: _targetKey,
+      child: widget.child,
+    );
   }
 }
 

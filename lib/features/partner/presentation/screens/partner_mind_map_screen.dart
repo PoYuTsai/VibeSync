@@ -4,10 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../analysis/presentation/screens/analysis_screen.dart';
 import '../../domain/mindmap/mind_map_builder.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_mind_map_view.dart';
+import 'partner_detail_screen.dart';
 
 /// 對象作戰板全螢幕頁。dogfood 期全 tier 免費（決策 A），
 /// 送審前 gating 另案（動訂閱區 → Codex 雙審）。
@@ -27,8 +27,7 @@ class PartnerMindMapScreen extends ConsumerWidget {
     }
 
     final aggregate = ref.watch(partnerAggregateProvider(partnerId));
-    final conversations =
-        ref.watch(conversationsByPartnerProvider(partnerId));
+    final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
 
     final map = buildPartnerMindMap(
       partnerName: partner.name,
@@ -63,21 +62,17 @@ class PartnerMindMapScreen extends ConsumerWidget {
           child: map.hasAnalysisData
               ? PartnerMindMapView(
                   map: map,
-                  // nextStep 葉節點 → 快照來源對話的分析頁，Coach 1:1 預填
-                  // 「如何 + 節點文字」（決策 1/2/3）。來源對話 id 為 null
-                  // （理論上 nextStep 節點存在時不會發生）→ 不可點。
-                  onNextStepTap: map.nextStepSourceConversationId == null
-                      ? null
-                      : (label) => context.push(
-                            Uri(
-                              path:
-                                  '/conversation/${map.nextStepSourceConversationId}',
-                              queryParameters: {
-                                AnalysisScreen.coachPrefillQueryParam:
-                                    '如何$label？',
-                              },
-                            ).toString(),
-                          ),
+                  // nextStep 葉節點 → 對象頁教練跟進區。文案維持「問教練」
+                  // affordance，但目的地改到 partner-level 跟進。
+                  onNextStepTap: (label) => context.push(
+                    Uri(
+                      path: '/partner/$partnerId',
+                      queryParameters: {
+                        PartnerDetailScreen.focusQueryParam:
+                            PartnerDetailScreen.coachFollowUpFocusValue,
+                      },
+                    ).toString(),
+                  ),
                 )
               : const _EmptyState(),
         ),
