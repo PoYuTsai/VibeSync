@@ -99,13 +99,13 @@ void main() {
     expect(find.text('沿用全域預設'), findsNothing);
   });
 
-  testWidgets('uses glassTextPrimary / glassTextSecondary tokens', (tester) async {
+  testWidgets('uses dark-surface onBackground tokens', (tester) async {
     await tester.pumpWidget(_harness(partnerId: 'p1', partnerName: '小明'));
     await tester.pumpAndSettle();
     final title = tester.widget<Text>(find.text('我的風格 · 對小明'));
     final subtitle = tester.widget<Text>(find.text('沿用全域預設'));
-    expect(title.style?.color, AppColors.glassTextPrimary);
-    expect(subtitle.style?.color, AppColors.glassTextSecondary);
+    expect(title.style?.color, AppColors.onBackgroundPrimary);
+    expect(subtitle.style?.color, AppColors.onBackgroundSecondary);
   });
 
   testWidgets('tapping card navigates to /partner/:id/my-style',

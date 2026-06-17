@@ -43,9 +43,9 @@ class PartnerDataQualityBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.glassWhite,
+          color: AppColors.brandSurface2,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.glassBorder),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),
         padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
         child: Column(
@@ -54,7 +54,7 @@ class PartnerDataQualityBanner extends StatelessWidget {
             Text(
               '我們在這個對象的對話裡看到「$nameA」和「$nameB」兩個名字',
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -62,7 +62,7 @@ class PartnerDataQualityBanner extends StatelessWidget {
             Text(
               '想怎麼整理這個對象？',
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
               ),
             ),
             const SizedBox(height: 4),
@@ -73,14 +73,14 @@ class PartnerDataQualityBanner extends StatelessWidget {
                   onPressed: onSplit,
                   child: const Text(
                     '拆成新對象',
-                    style: TextStyle(color: AppColors.glassTextSecondary),
+                    style: TextStyle(color: AppColors.onBackgroundSecondary),
                   ),
                 ),
                 const SizedBox(width: 4),
                 TextButton(
                   onPressed: onMarkSamePerson,
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
+                    foregroundColor: AppColors.ctaStart,
                   ),
                   child: const Text(
                     '這是同一人',

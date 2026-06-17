@@ -1004,10 +1004,10 @@ class _StateBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: AppColors.primaryLight.withValues(alpha: 0.14),
+        color: AppColors.ctaStart.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: AppColors.primaryLight.withValues(alpha: 0.24),
+          color: AppColors.ctaStart.withValues(alpha: 0.24),
         ),
       ),
       child: Text(

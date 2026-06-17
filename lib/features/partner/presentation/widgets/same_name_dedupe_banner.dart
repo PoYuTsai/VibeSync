@@ -31,9 +31,9 @@ class SameNameDedupeBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.glassWhite,
+          color: AppColors.brandSurface2,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.glassBorder),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),
         padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
         child: Column(
@@ -42,7 +42,7 @@ class SameNameDedupeBanner extends StatelessWidget {
             Text(
               '你有兩個「$partnerName」，要合併嗎？',
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -54,14 +54,14 @@ class SameNameDedupeBanner extends StatelessWidget {
                   onPressed: onDismissTap,
                   child: const Text(
                     '以後再說',
-                    style: TextStyle(color: AppColors.glassTextSecondary),
+                    style: TextStyle(color: AppColors.onBackgroundSecondary),
                   ),
                 ),
                 const SizedBox(width: 4),
                 TextButton(
                   onPressed: onMergeTap,
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
+                    foregroundColor: AppColors.ctaStart,
                   ),
                   child: const Text(
                     '立即合併',
