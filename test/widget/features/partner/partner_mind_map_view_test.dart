@@ -101,10 +101,11 @@ void main() {
       find.byType(InteractiveViewer),
     );
     final controller = viewer.transformationController!;
+    final homeMatrix = Matrix4.copy(controller.value);
     controller.value = Matrix4.translationValues(40, 60, 0)
       ..multiply(Matrix4.diagonal3Values(0.5, 0.5, 1.0));
     await tester.pump();
-    expect(controller.value, isNot(equals(Matrix4.identity())));
+    expect(controller.value.storage, isNot(orderedEquals(homeMatrix.storage)));
 
     // 雙擊 = 兩次 tap，間隔落在 kDoubleTapMinTime 與 kDoubleTapTimeout 之間。
     await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
@@ -112,11 +113,10 @@ void main() {
     await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
     await tester.pumpAndSettle();
 
-    expect(controller.value, equals(Matrix4.identity()));
+    expect(controller.value.storage, orderedEquals(homeMatrix.storage));
   });
 
-  testWidgets('已在初始視圖時雙擊不觸發動畫（無拋錯、transform 不變）',
-      (tester) async {
+  testWidgets('已在初始視圖時雙擊不觸發動畫（無拋錯、transform 不變）', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: PartnerMindMapView(map: _map()))),
     );
@@ -126,13 +126,14 @@ void main() {
       find.byType(InteractiveViewer),
     );
     final controller = viewer.transformationController!;
+    final homeMatrix = Matrix4.copy(controller.value);
 
     await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(find.byType(InteractiveViewer), warnIfMissed: false);
     await tester.pumpAndSettle();
 
-    expect(controller.value, equals(Matrix4.identity()));
+    expect(controller.value.storage, orderedEquals(homeMatrix.storage));
   });
 
   group('nextStep 葉節點單擊 → onNextStepTap（決策 3：只有葉節點可點）', () {
@@ -190,8 +191,7 @@ void main() {
       expect(find.byIcon(Icons.forum_outlined), findsNothing);
     });
 
-    testWidgets('可點葉節點帶問教練 icon affordance + Semantics button',
-        (tester) async {
+    testWidgets('可點葉節點帶問教練 icon affordance + Semantics button', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -207,8 +207,7 @@ void main() {
     });
   });
 
-  testWidgets('parent rebuild 換新 map 時渲染新 graph（不殘留舊節點）',
-      (tester) async {
+  testWidgets('parent rebuild 換新 map 時渲染新 graph（不殘留舊節點）', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: PartnerMindMapView(map: _map()))),
     );

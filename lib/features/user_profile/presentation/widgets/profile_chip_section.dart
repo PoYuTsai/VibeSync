@@ -34,32 +34,73 @@ class ProfileChipSection<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.onBackgroundPrimary,
-            fontWeight: FontWeight.w600,
-          ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.brandSurface.withValues(alpha: 0.96),
+            AppColors.brandSurface2.withValues(alpha: 0.92),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-            ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.20),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
           ),
         ],
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _chips(),
-        ),
-      ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 18,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [AppColors.ctaStart, AppColors.brandBlush],
+                  ),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: AppTypography.titleSmall.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _chips(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -81,6 +122,35 @@ class ProfileChipSection<T> extends StatelessWidget {
         selected: selected,
         showCheckmark: false,
         onSelected: (_) => onTap(opt),
+        color: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const Color(0xFF4D2630);
+          }
+          if (states.contains(WidgetState.pressed)) {
+            return const Color(0xFF3A2032);
+          }
+          return const Color(0xFF261735);
+        }),
+        backgroundColor: const Color(0xFF261735),
+        selectedColor: const Color(0xFF4D2630),
+        disabledColor: const Color(0xFF261735),
+        surfaceTintColor: Colors.transparent,
+        labelStyle: AppTypography.bodySmall.copyWith(
+          color: selected
+              ? Colors.white
+              : AppColors.onBackgroundSecondary.withValues(alpha: 0.86),
+          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+          height: 1.2,
+        ),
+        side: BorderSide(
+          color: selected
+              ? AppColors.ctaStart.withValues(alpha: 0.64)
+              : Colors.white.withValues(alpha: 0.16),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       );
     }).toList();
   }
@@ -99,8 +169,17 @@ class StyleRoleBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
-        color: AppColors.ctaStart,
-        borderRadius: BorderRadius.circular(8),
+        gradient: const LinearGradient(
+          colors: [AppColors.ctaStart, AppColors.ctaEnd],
+        ),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ctaStart.withValues(alpha: 0.24),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Text(
         text,

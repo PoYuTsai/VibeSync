@@ -35,50 +35,75 @@ class PartnerMindMapScreen extends ConsumerWidget {
       conversations: conversations,
     );
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
+    return _MindMapBackground(
+      child: Scaffold(
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          '${partner.name} 的作戰板',
-          style: AppTypography.titleMedium
-              .copyWith(color: AppColors.onBackgroundPrimary),
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          title: Text(
+            '${partner.name} 的作戰板',
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
         ),
-        iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.partnerDetailBgTop,
-              AppColors.partnerDetailBgBottom,
-            ],
+        body: Container(
+          decoration: BoxDecoration(
+            color: AppColors.brandInk.withValues(alpha: 0.34),
+          ),
+          child: SafeArea(
+            child: map.hasAnalysisData
+                ? PartnerMindMapView(
+                    map: map,
+                    // nextStep 葉節點 → 對象頁教練跟進區。文案維持「問教練」
+                    // affordance，但目的地改到 partner-level 跟進。
+                    onNextStepTap: (label) => context.push(
+                      Uri(
+                        path: '/partner/$partnerId',
+                        queryParameters: {
+                          PartnerDetailScreen.focusQueryParam:
+                              PartnerDetailScreen.coachFollowUpFocusValue,
+                          PartnerDetailScreen.focusActionQueryParam:
+                              PartnerDetailScreen
+                                  .openCoachInputFocusActionValue,
+                        },
+                      ).toString(),
+                    ),
+                  )
+                : const _EmptyState(),
           ),
         ),
-        child: SafeArea(
-          child: map.hasAnalysisData
-              ? PartnerMindMapView(
-                  map: map,
-                  // nextStep 葉節點 → 對象頁教練跟進區。文案維持「問教練」
-                  // affordance，但目的地改到 partner-level 跟進。
-                  onNextStepTap: (label) => context.push(
-                    Uri(
-                      path: '/partner/$partnerId',
-                      queryParameters: {
-                        PartnerDetailScreen.focusQueryParam:
-                            PartnerDetailScreen.coachFollowUpFocusValue,
-                        PartnerDetailScreen.focusActionQueryParam:
-                            PartnerDetailScreen.openCoachInputFocusActionValue,
-                      },
-                    ).toString(),
-                  ),
-                )
-              : const _EmptyState(),
+      ),
+    );
+  }
+}
+
+class _MindMapBackground extends StatelessWidget {
+  const _MindMapBackground({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.brandInk,
+            AppColors.partnerDetailBgTop,
+            AppColors.brandSurface,
+          ],
+          stops: [0.0, 0.48, 1.0],
         ),
       ),
+      child: child,
     );
   }
 }
@@ -90,19 +115,53 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('🗺️', style: TextStyle(fontSize: 40)),
-            const SizedBox(height: 12),
-            Text(
-              '完成一次對話分析，解鎖她的作戰板',
-              textAlign: TextAlign.center,
-              style: AppTypography.bodyMedium
-                  .copyWith(color: Colors.white.withValues(alpha: 0.85)),
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.brandSurface.withValues(alpha: 0.94),
+                AppColors.brandSurface2.withValues(alpha: 0.90),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ],
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.ctaStart, AppColors.brandBlush],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.account_tree_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '完成一次對話分析，解鎖她的作戰板',
+                textAlign: TextAlign.center,
+                style: AppTypography.titleMedium.copyWith(
+                  color: Colors.white.withValues(alpha: 0.92),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

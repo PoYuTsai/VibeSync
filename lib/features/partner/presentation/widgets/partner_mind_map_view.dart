@@ -37,6 +37,7 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
   @override
   void initState() {
     super.initState();
+    _transformController.value = _homeMatrix();
     // TransformationController 不是 Animation，逐 frame 回寫是官方標準作法。
     _resetController.addListener(() {
       final animation = _resetAnimation;
@@ -53,12 +54,23 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
     super.dispose();
   }
 
-  /// 雙擊任意處：平滑動畫回初始視圖（constrained: false 下即 identity）。
+  Matrix4 _homeMatrix() => Matrix4.diagonal3Values(0.78, 0.78, 1.0)
+    ..setTranslationRaw(-86.0, 6.0, 0);
+
+  bool _isSameMatrix(Matrix4 a, Matrix4 b) {
+    for (var i = 0; i < 16; i++) {
+      if ((a.storage[i] - b.storage[i]).abs() > 0.0001) return false;
+    }
+    return true;
+  }
+
+  /// 雙擊任意處：平滑動畫回舒服的初始縮放視圖。
   void _resetView() {
-    if (_transformController.value == Matrix4.identity()) return;
+    final home = _homeMatrix();
+    if (_isSameMatrix(_transformController.value, home)) return;
     _resetAnimation = Matrix4Tween(
       begin: _transformController.value,
-      end: Matrix4.identity(),
+      end: home,
     ).animate(
       CurvedAnimation(parent: _resetController, curve: Curves.easeOutCubic),
     );
@@ -89,9 +101,9 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
     final byId = <String, MindMapNode>{};
     _addNode(graph, byId, widget.map.root, null);
     final config = BuchheimWalkerConfiguration()
-      ..siblingSeparation = 24
-      ..levelSeparation = 48
-      ..subtreeSeparation = 32
+      ..siblingSeparation = 26
+      ..levelSeparation = 54
+      ..subtreeSeparation = 36
       ..orientation = BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT;
 
     // InteractiveViewer 無內建 double-tap API，外層 GestureDetector 偵測。
@@ -104,29 +116,33 @@ class _PartnerMindMapViewState extends State<PartnerMindMapView>
         // 重置動畫中用戶開始新手勢 → 動畫讓位，避免互搶 transform。
         onInteractionStart: (_) => _resetController.stop(),
         constrained: false,
-        boundaryMargin: const EdgeInsets.all(80),
+        boundaryMargin: const EdgeInsets.all(100),
         minScale: 0.4,
         maxScale: 2.0,
-        child: GraphView(
-          graph: graph,
-          algorithm: BuchheimWalkerAlgorithm(config, TreeEdgeRenderer(config)),
-          paint: Paint()
-            ..color = AppColors.primaryLight.withValues(alpha: 0.45)
-            ..strokeWidth = 1.4
-            ..style = PaintingStyle.stroke,
-          builder: (Node node) {
-            // 不變量：graph 與 byId 來自同一棵樹、builder 保證 id 唯一
-            // （mind_map_builder_test 已覆蓋），lookup 必命中。
-            final data = byId[node.key!.value as String]!;
-            // 決策 3：只有 nextStep「葉」節點可點（父標籤「下一步」有
-            // children，不帶 callback）。
-            final isNextStepLeaf = data.branch == MindMapBranch.nextStep &&
-                data.children.isEmpty;
-            final onTap = isNextStepLeaf && widget.onNextStepTap != null
-                ? () => widget.onNextStepTap!(data.label)
-                : null;
-            return _MindMapNodeChip(node: data, onTap: onTap);
-          },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 72, 88),
+          child: GraphView(
+            graph: graph,
+            algorithm:
+                BuchheimWalkerAlgorithm(config, TreeEdgeRenderer(config)),
+            paint: Paint()
+              ..color = AppColors.primaryLight.withValues(alpha: 0.36)
+              ..strokeWidth = 1.6
+              ..style = PaintingStyle.stroke,
+            builder: (Node node) {
+              // 不變量：graph 與 byId 來自同一棵樹、builder 保證 id 唯一
+              // （mind_map_builder_test 已覆蓋），lookup 必命中。
+              final data = byId[node.key!.value as String]!;
+              // 決策 3：只有 nextStep「葉」節點可點（父標籤「下一步」有
+              // children，不帶 callback）。
+              final isNextStepLeaf = data.branch == MindMapBranch.nextStep &&
+                  data.children.isEmpty;
+              final onTap = isNextStepLeaf && widget.onNextStepTap != null
+                  ? () => widget.onNextStepTap!(data.label)
+                  : null;
+              return _MindMapNodeChip(node: data, onTap: onTap);
+            },
+          ),
         ),
       ),
     );
@@ -145,27 +161,74 @@ class _MindMapNodeChip extends StatelessWidget {
 
   bool get _isNextStep => node.branch == MindMapBranch.nextStep;
 
+  bool get _isNextStepLeaf => _isNextStep && node.children.isEmpty;
+
   @override
   Widget build(BuildContext context) {
     final Gradient? gradient;
     final Color borderColor;
     final Color textColor;
+    final Color? fillColor;
+    final List<BoxShadow> shadows;
     if (_isRoot) {
-      gradient = const LinearGradient(
-        colors: [AppColors.primary, AppColors.primaryLight],
+      gradient = LinearGradient(
+        colors: [
+          AppColors.brandSurface2.withValues(alpha: 0.98),
+          AppColors.brandSurface.withValues(alpha: 0.94),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
       );
-      borderColor = AppColors.primaryLight;
+      fillColor = null;
+      borderColor = AppColors.ctaStart.withValues(alpha: 0.62);
       textColor = Colors.white;
-    } else if (_isNextStep) {
+      shadows = [
+        BoxShadow(
+          color: AppColors.ctaStart.withValues(alpha: 0.20),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
+        ),
+      ];
+    } else if (_isNextStepLeaf) {
       gradient = const LinearGradient(
         colors: [AppColors.ctaStart, AppColors.ctaEnd],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
       );
-      borderColor = AppColors.ctaStart;
+      fillColor = null;
+      borderColor = Colors.white.withValues(alpha: 0.18);
       textColor = Colors.white;
+      shadows = [
+        BoxShadow(
+          color: AppColors.ctaStart.withValues(alpha: 0.30),
+          blurRadius: 18,
+          offset: const Offset(0, 9),
+        ),
+      ];
+    } else if (_isNextStep) {
+      gradient = null;
+      fillColor = AppColors.ctaStart.withValues(alpha: 0.12);
+      borderColor = AppColors.ctaStart.withValues(alpha: 0.55);
+      textColor = Colors.white.withValues(alpha: 0.94);
+      shadows = [
+        BoxShadow(
+          color: AppColors.ctaStart.withValues(alpha: 0.12),
+          blurRadius: 14,
+          offset: const Offset(0, 7),
+        ),
+      ];
     } else {
       gradient = null;
-      borderColor = AppColors.glassBorder.withValues(alpha: 0.5);
-      textColor = Colors.white.withValues(alpha: 0.92);
+      fillColor = AppColors.brandSurface.withValues(alpha: 0.90);
+      borderColor = Colors.white.withValues(alpha: 0.16);
+      textColor = Colors.white.withValues(alpha: 0.88);
+      shadows = [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.22),
+          blurRadius: 14,
+          offset: const Offset(0, 8),
+        ),
+      ];
     }
 
     // 「下一步」是整句教練建議（可達 60+ 字），截斷會讓人覺得話沒說完，
@@ -179,22 +242,24 @@ class _MindMapNodeChip extends StatelessWidget {
       style: (_isRoot ? AppTypography.titleMedium : AppTypography.bodySmall)
           .copyWith(
         color: textColor,
-        fontWeight: _isRoot || _isNextStep ? FontWeight.w700 : FontWeight.w500,
+        fontWeight: _isRoot || _isNextStep ? FontWeight.w800 : FontWeight.w600,
+        height: _isNextStepLeaf ? 1.45 : 1.25,
       ),
     );
 
     final chip = Container(
       // 下一步節點放寬到 260：長句行數收斂（畫布可平移，不會擠版）。
-      constraints: BoxConstraints(maxWidth: _isNextStep ? 260 : 200),
+      constraints: BoxConstraints(maxWidth: _isNextStepLeaf ? 240 : 210),
       padding: EdgeInsets.symmetric(
-        horizontal: _isRoot ? 20 : 14,
-        vertical: _isRoot ? 12 : 8,
+        horizontal: _isRoot ? 20 : (_isNextStepLeaf ? 18 : 14),
+        vertical: _isRoot ? 12 : (_isNextStepLeaf ? 12 : 9),
       ),
       decoration: BoxDecoration(
         gradient: gradient,
-        color: gradient == null ? Colors.white.withValues(alpha: 0.08) : null,
-        borderRadius: BorderRadius.circular(_isRoot ? 18 : 12),
-        border: Border.all(color: borderColor, width: _isRoot ? 1.5 : 1),
+        color: fillColor,
+        borderRadius: BorderRadius.circular(_isRoot ? 18 : 16),
+        border: Border.all(color: borderColor, width: _isRoot ? 1.4 : 1),
+        boxShadow: shadows,
       ),
       child: onTap == null
           ? label
