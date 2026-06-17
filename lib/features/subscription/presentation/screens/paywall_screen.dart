@@ -18,7 +18,7 @@ import '../../../../core/services/usage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 
@@ -231,185 +231,173 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       };
     }
 
-    return GradientBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text(
-            '方案與額度',
-            style: AppTypography.titleLarge.copyWith(
-              color: AppColors.onBackgroundPrimary,
-            ),
-          ),
-          leading: IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => context.pop(),
-          ),
-        ),
-        body: Stack(
-          children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '解鎖完整分析，回得更有把握',
-                    style: AppTypography.headlineLarge.copyWith(
-                      color: AppColors.onBackgroundPrimary,
-                    ),
-                    textAlign: TextAlign.center,
+    return BrandScaffold(
+      title: '方案與額度',
+      leading: IconButton(
+        icon: const Icon(Icons.close, color: Colors.white),
+        onPressed: () => context.pop(),
+      ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '解鎖完整分析，回得更有把握',
+                  style: AppTypography.headlineLarge.copyWith(
+                    color: AppColors.onBackgroundPrimary,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '升級會立即生效，Apple 會自動按比例調整本期費用。降級則會在下次續訂時生效，今天不會再次扣款。',
-                    style: AppTypography.bodyLarge.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                    ),
-                    textAlign: TextAlign.center,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '升級會立即生效，Apple 會自動按比例調整本期費用。降級則會在下次續訂時生效，今天不會再次扣款。',
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.onBackgroundSecondary,
                   ),
-                  const SizedBox(height: 20),
-                  _buildQuotaSummaryCard(subscription),
-                  if (hasPendingDowngrade) ...[
-                    const SizedBox(height: 16),
-                    _buildPendingDowngradeCard(subscription),
-                  ],
-                  if (!plansReady) ...[
-                    const SizedBox(height: 16),
-                    _buildInfoCard(
-                      icon: subscription.isLoading
-                          ? Icons.sync
-                          : Icons.info_outline,
-                      title: subscription.isLoading ? '正在同步方案資訊' : '方案資訊尚未就緒',
-                      message: subscription.isLoading
-                          ? 'App Store 產品同步可能需要 1 到 2 分鐘。'
-                          : '目前還拿不到最新的 App Store 方案，請稍後再試。',
-                      iconColor: subscription.isLoading
-                          ? AppColors.info
-                          : AppColors.warning,
-                    ),
-                  ],
-                  if (subscription.error != null &&
-                      subscription.error!.isNotEmpty &&
-                      subscription.error != 'Not logged in') ...[
-                    const SizedBox(height: 16),
-                    _buildInfoCard(
-                      icon: Icons.error_outline,
-                      title: '方案同步異常',
-                      message: '目前無法更新你的最新方案狀態。若持續失敗，請稍後再試或重新登入。',
-                      iconColor: AppColors.error,
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  _buildFeatureComparisonTable(),
-                  const SizedBox(height: 20),
-                  ...options.map(
-                    (option) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _buildOptionCard(
-                        option: option,
-                        isSelected: _selectedOptionId == option.id,
-                        isCurrentPlan: _isCurrentOption(subscription, option),
-                        onTap: () =>
-                            setState(() => _selectedOptionId = option.id),
-                      ),
-                    ),
-                  ),
-                  if (selected != null) ...[
-                    const SizedBox(height: 4),
-                    _buildSelectedBillingCard(
-                      option: selected,
-                      isDowngrade: isDowngrade,
-                      isCurrentPlan: isCurrentPlan,
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  GradientButton(
-                    text: _primaryButtonText(
-                      subscription,
-                      selected,
-                      selectedTier,
-                      isCurrentPlan,
-                      canManagePendingDowngrade,
-                      pendingDowngradeMatchesSelection,
-                      selectedProduct,
-                    ),
-                    onPressed: primaryAction,
-                    isLoading: _isPurchasing || _isRefreshingPlans,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _primaryFootnote(
-                      subscription,
-                      selected,
-                      isCurrentPlan,
-                      isDowngrade,
-                      canManagePendingDowngrade,
-                      pendingDowngradeMatchesSelection,
-                    ),
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          _launchUrl(_termsUrl);
-                        },
-                        child: Text('服務條款', style: AppTypography.caption),
-                      ),
-                      Text('|', style: AppTypography.caption),
-                      TextButton(
-                        onPressed: () {
-                          _launchUrl(_privacyUrl);
-                        },
-                        child: Text('隱私政策', style: AppTypography.caption),
-                      ),
-                      Text('|', style: AppTypography.caption),
-                      TextButton(
-                        onPressed: () {
-                          _openManageSubscriptions();
-                        },
-                        child: Text('管理訂閱', style: AppTypography.caption),
-                      ),
-                      Text('|', style: AppTypography.caption),
-                      TextButton(
-                        onPressed: () {
-                          _syncPurchasedPlan();
-                        },
-                        child: Text('恢復購買', style: AppTypography.caption),
-                      ),
-                      if (!kIsWeb) ...[
-                        Text('|', style: AppTypography.caption),
-                        TextButton(
-                          onPressed: _copySubscriptionDiagnostics,
-                          child: Text(
-                            '複製訂閱診斷',
-                            style: AppTypography.caption,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 32),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                _buildQuotaSummaryCard(subscription),
+                if (hasPendingDowngrade) ...[
+                  const SizedBox(height: 16),
+                  _buildPendingDowngradeCard(subscription),
                 ],
-              ),
+                if (!plansReady) ...[
+                  const SizedBox(height: 16),
+                  _buildInfoCard(
+                    icon: subscription.isLoading
+                        ? Icons.sync
+                        : Icons.info_outline,
+                    title: subscription.isLoading ? '正在同步方案資訊' : '方案資訊尚未就緒',
+                    message: subscription.isLoading
+                        ? 'App Store 產品同步可能需要 1 到 2 分鐘。'
+                        : '目前還拿不到最新的 App Store 方案，請稍後再試。',
+                    iconColor: subscription.isLoading
+                        ? AppColors.info
+                        : AppColors.warning,
+                  ),
+                ],
+                if (subscription.error != null &&
+                    subscription.error!.isNotEmpty &&
+                    subscription.error != 'Not logged in') ...[
+                  const SizedBox(height: 16),
+                  _buildInfoCard(
+                    icon: Icons.error_outline,
+                    title: '方案同步異常',
+                    message: '目前無法更新你的最新方案狀態。若持續失敗，請稍後再試或重新登入。',
+                    iconColor: AppColors.error,
+                  ),
+                ],
+                const SizedBox(height: 20),
+                _buildFeatureComparisonTable(),
+                const SizedBox(height: 20),
+                ...options.map(
+                  (option) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildOptionCard(
+                      option: option,
+                      isSelected: _selectedOptionId == option.id,
+                      isCurrentPlan: _isCurrentOption(subscription, option),
+                      onTap: () =>
+                          setState(() => _selectedOptionId = option.id),
+                    ),
+                  ),
+                ),
+                if (selected != null) ...[
+                  const SizedBox(height: 4),
+                  _buildSelectedBillingCard(
+                    option: selected,
+                    isDowngrade: isDowngrade,
+                    isCurrentPlan: isCurrentPlan,
+                  ),
+                ],
+                const SizedBox(height: 8),
+                BrandPrimaryButton(
+                  label: _primaryButtonText(
+                    subscription,
+                    selected,
+                    selectedTier,
+                    isCurrentPlan,
+                    canManagePendingDowngrade,
+                    pendingDowngradeMatchesSelection,
+                    selectedProduct,
+                  ),
+                  onPressed: primaryAction,
+                  isLoading: _isPurchasing || _isRefreshingPlans,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _primaryFootnote(
+                    subscription,
+                    selected,
+                    isCurrentPlan,
+                    isDowngrade,
+                    canManagePendingDowngrade,
+                    pendingDowngradeMatchesSelection,
+                  ),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        _launchUrl(_termsUrl);
+                      },
+                      child: Text('服務條款', style: AppTypography.caption),
+                    ),
+                    Text('|', style: AppTypography.caption),
+                    TextButton(
+                      onPressed: () {
+                        _launchUrl(_privacyUrl);
+                      },
+                      child: Text('隱私政策', style: AppTypography.caption),
+                    ),
+                    Text('|', style: AppTypography.caption),
+                    TextButton(
+                      onPressed: () {
+                        _openManageSubscriptions();
+                      },
+                      child: Text('管理訂閱', style: AppTypography.caption),
+                    ),
+                    Text('|', style: AppTypography.caption),
+                    TextButton(
+                      onPressed: () {
+                        _syncPurchasedPlan();
+                      },
+                      child: Text('恢復購買', style: AppTypography.caption),
+                    ),
+                    if (!kIsWeb) ...[
+                      Text('|', style: AppTypography.caption),
+                      TextButton(
+                        onPressed: _copySubscriptionDiagnostics,
+                        child: Text(
+                          '複製訂閱診斷',
+                          style: AppTypography.caption,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 32),
+              ],
             ),
-            if (_isPurchasing)
-              Container(
-                color: Colors.black54,
-                child: const Center(child: CircularProgressIndicator()),
-              ),
-          ],
-        ),
+          ),
+          if (_isPurchasing)
+            Container(
+              color: Colors.black54,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        ],
       ),
     );
   }
@@ -483,7 +471,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         ? '降級會在下次續訂時生效；今天不會再次扣款。'
         : '付款會由 Apple ID 扣款，除非在到期前取消，否則會自動續訂。';
 
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,7 +479,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             title,
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -499,7 +487,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             price,
             style: AppTypography.headlineLarge.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -507,7 +495,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             '${option.name} ${option.period}，$billingCycle',
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -515,7 +503,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             note,
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary,
             ),
           ),
         ],
@@ -524,7 +512,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Widget _buildFeatureComparisonTable() {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -532,7 +520,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             '方案功能比較',
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
             ),
           ),
           const SizedBox(height: 12),
@@ -562,8 +550,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 label,
                 style: AppTypography.caption.copyWith(
                   color: label == 'Essential'
-                      ? AppColors.glassTextPrimary
-                      : AppColors.glassTextHint,
+                      ? AppColors.onBackgroundPrimary
+                      : AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w700,
                 ),
                 textAlign: TextAlign.center,
@@ -589,7 +577,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             child: Text(
               feature,
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextHint,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -597,7 +585,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             child: Text(
               freeValue,
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -606,7 +594,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             child: Text(
               starterValue,
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -615,7 +603,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             child: Text(
               essentialValue,
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
@@ -627,7 +615,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Widget _buildQuotaSummaryCard(SubscriptionState subscription) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,14 +623,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             '目前方案與額度',
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '目前方案：${_tierLabel(subscription.tier)}${_billingPeriodLabel(subscription)}',
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
             ),
           ),
           if (subscription.renewsAt != null) ...[
@@ -650,7 +638,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             Text(
               '下次續約：${_formatDate(subscription.renewsAt!)}',
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextHint,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -683,9 +671,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.42),
+        color: AppColors.brandInk.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.glassBorder),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -693,14 +681,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             label,
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextHint,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: AppColors.onBackgroundPrimary,
             ),
           ),
         ],
@@ -709,7 +697,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Widget _buildPendingDowngradeCard(SubscriptionState subscription) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -723,7 +711,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 Text(
                   '已排程降級到 ${_tierLabel(subscription.pendingDowngradeToTier)}',
                   style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: AppColors.onBackgroundPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -731,7 +719,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   '將於 ${_formatDate(subscription.pendingDowngradeEffectiveAt)} 生效。'
                   '在那之前你仍可使用 ${_tierLabel(subscription.tier)} 的額度與功能，今天不會再次扣款。',
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextSecondary,
+                    color: AppColors.onBackgroundSecondary,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -746,7 +734,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       child: Text(
                         '取消降級 / 管理訂閱',
                         style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.primary,
+                          color: AppColors.ctaStart,
                         ),
                       ),
                     ),
@@ -755,7 +743,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       child: Text(
                         '我已取消降級，更新狀態',
                         style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.glassTextPrimary,
+                          color: AppColors.onBackgroundPrimary,
                         ),
                       ),
                     ),
@@ -775,7 +763,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required String message,
     Color iconColor = AppColors.info,
   }) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -789,14 +777,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 Text(
                   title,
                   style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: AppColors.onBackgroundPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   message,
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+                    color: AppColors.onBackgroundPrimary,
                   ),
                 ),
               ],
@@ -819,9 +807,34 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
     return GestureDetector(
       onTap: onTap,
-      child: GlassmorphicContainer(
-        isSelected: isSelected,
+      child: Container(
         padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.brandSurface2.withValues(alpha: 0.9),
+              AppColors.brandSurface.withValues(alpha: 0.96),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.ctaStart.withValues(alpha: 0.8)
+                : Colors.white.withValues(alpha: 0.1),
+            width: isSelected ? 1.8 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected
+                  ? AppColors.ctaStart.withValues(alpha: 0.22)
+                  : Colors.black.withValues(alpha: 0.22),
+              blurRadius: 22,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -837,7 +850,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       Text(
                         '${option.name} ${option.period}',
                         style: AppTypography.titleLarge.copyWith(
-                          color: AppColors.glassTextPrimary,
+                          color: AppColors.onBackgroundPrimary,
                         ),
                       ),
                       _buildBadge(
@@ -845,14 +858,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         background: isRecommended
                             ? const LinearGradient(
                                 colors: [
-                                  AppColors.selectedStart,
-                                  AppColors.selectedEnd,
+                                  AppColors.ctaStart,
+                                  AppColors.ctaEnd,
                                 ],
                               )
                             : null,
                         color: isRecommended
                             ? Colors.white
-                            : AppColors.glassTextPrimary,
+                            : AppColors.onBackgroundPrimary,
                       ),
                       if (option.discount != null)
                         _buildBadge(
@@ -886,7 +899,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     if (value == null) return;
                     setState(() => _selectedOptionId = value);
                   },
-                  activeColor: AppColors.selectedStart,
+                  activeColor: AppColors.ctaStart,
                 ),
               ],
             ),
@@ -894,7 +907,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             Text(
               priceLabel,
               style: AppTypography.headlineMedium.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -902,7 +915,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             Text(
               option.isReady ? billingCycle : '請重新載入 App Store 價格',
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
               ),
             ),
             const SizedBox(height: 8),
@@ -925,7 +938,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       child: Text(
                         item,
                         style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.glassTextPrimary,
+                          color: AppColors.onBackgroundPrimary,
                         ),
                       ),
                     ),
@@ -948,11 +961,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         gradient: background,
-        color: background == null ? Colors.white.withValues(alpha: 0.7) : null,
+        color: background == null ? Colors.white.withValues(alpha: 0.12) : null,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
           color: background == null
-              ? AppColors.glassBorder
+              ? Colors.white.withValues(alpha: 0.1)
               : Colors.white.withValues(alpha: 0.2),
         ),
       ),
@@ -1095,17 +1108,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            backgroundColor: AppColors.glassWhite,
+            backgroundColor: AppColors.brandSurface2,
             title: Text(
               '恢復購買',
               style: AppTypography.titleMedium.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: AppColors.onBackgroundPrimary,
               ),
             ),
             content: Text(
               '如果這個 Apple ID 已經有訂閱，可以在這裡重新同步。',
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary,
               ),
             ),
             actions: [
@@ -1114,7 +1127,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 child: Text(
                   '取消',
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.unselectedText,
+                    color: AppColors.onBackgroundSecondary,
                   ),
                 ),
               ),
@@ -1123,7 +1136,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 child: Text(
                   '恢復購買',
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.primary,
+                    color: AppColors.ctaStart,
                   ),
                 ),
               ),
