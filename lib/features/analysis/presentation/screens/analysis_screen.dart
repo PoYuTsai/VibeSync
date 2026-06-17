@@ -1960,7 +1960,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
               ),
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.86),
+              fillColor: AppColors.brandInk.withValues(alpha: 0.4),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -6462,8 +6462,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             .withValues(alpha: 0.6),
                                       ),
                                       filled: true,
-                                      fillColor:
-                                          Colors.white.withValues(alpha: 0.5),
+                                      fillColor: AppColors.brandInk
+                                          .withValues(alpha: 0.4),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(8),
                                         borderSide: BorderSide(
@@ -6762,8 +6762,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         ),
                                         isDense: true,
                                         filled: true,
-                                        fillColor:
-                                            Colors.white.withValues(alpha: 0.5),
+                                        fillColor: AppColors.brandInk
+                                            .withValues(alpha: 0.4),
                                         border: OutlineInputBorder(
                                           borderRadius:
                                               BorderRadius.circular(8),
@@ -7203,7 +7203,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
                 ),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.5),
+                fillColor: AppColors.brandInk.withValues(alpha: 0.4),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide:
@@ -7287,7 +7287,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                         side: BorderSide(
                             color: Colors.white.withValues(alpha: 0.12),
                             width: 1.5),
-                        backgroundColor: Colors.white.withValues(alpha: 0.3),
+                        backgroundColor: Colors.white.withValues(alpha: 0.08),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
