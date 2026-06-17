@@ -11,7 +11,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
 import 'package:vibesync/features/conversation/presentation/screens/new_conversation_screen.dart';
-import 'package:vibesync/shared/widgets/warm_theme_widgets.dart'; // GradientButton
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 import '_fakes/recording_conversation_write_controller.dart';
 
@@ -102,11 +102,11 @@ void main() {
     // 只需要灌一則 her message；name 由 _createConversation default 為 '新對話'。
     await _fillOnlyOneMessage(t);
 
-    // CTA = GradientButton (production line 481-485, NOT ElevatedButton).
+    // CTA = BrandPrimaryButton (production line 481-485, NOT ElevatedButton).
     // _hasIncomingMessage=true 後 text 固定「建立對話」(line 46)。
-    final cta = find.byType(GradientButton);
+    final cta = find.byType(BrandPrimaryButton);
     expect(cta, findsOneWidget,
-        reason: 'GradientButton CTA renders after a「her message」 is added');
+        reason: 'BrandPrimaryButton CTA renders after a「her message」 is added');
     expect(find.text('建立對話'), findsOneWidget,
         reason: '_hasIncomingMessage=true 應 render 文字「建立對話」(line 46)');
 
@@ -141,8 +141,8 @@ void main() {
 
     await _fillNameAndOneMessage(t);
 
-    // 同 Task 2：GradientButton + 文字「建立對話」（一條 her message 已入列）。
-    final cta = find.byType(GradientButton);
+    // 同 Task 2：BrandPrimaryButton + 文字「建立對話」（一條 her message 已入列）。
+    final cta = find.byType(BrandPrimaryButton);
     await t.ensureVisible(cta);
     await _settle(t);
     await t.tap(cta);

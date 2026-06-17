@@ -508,6 +508,98 @@ class BrandChoiceChip extends StatelessWidget {
   }
 }
 
+/// 暗紫橘分段選擇器（取代淺色 GlassmorphicSegmentedButton）。深色 track、
+/// 橘漸層選中段 + check icon、白字。API 與舊版對齊（value + label）。
+class BrandSegment<T> {
+  const BrandSegment({required this.value, required this.label});
+
+  final T value;
+  final String label;
+}
+
+class BrandSegmentedButton<T> extends StatelessWidget {
+  const BrandSegmentedButton({
+    super.key,
+    required this.segments,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<BrandSegment<T>> segments;
+  final T selected;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.brandInk.withValues(alpha: 0.40),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: segments.map((segment) {
+          final isSelected = segment.value == selected;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(segment.value),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                decoration: BoxDecoration(
+                  gradient: isSelected
+                      ? const LinearGradient(
+                          colors: [AppColors.ctaStart, AppColors.ctaEnd],
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: AppColors.ctaStart.withValues(alpha: 0.32),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (isSelected) ...[
+                      const Icon(Icons.check, size: 15, color: Colors.white),
+                      const SizedBox(width: 4),
+                    ],
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          segment.label,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: isSelected
+                                ? Colors.white
+                                : AppColors.onBackgroundSecondary
+                                    .withValues(alpha: 0.82),
+                            fontWeight:
+                                isSelected ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
 /// 低對比資訊條（隱私 / 提示），對齊 about_me 的 _PrivacyNote。
 class BrandInfoNote extends StatelessWidget {
   const BrandInfoNote({

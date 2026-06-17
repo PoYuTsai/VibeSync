@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../opener/data/services/opener_result_cache_service.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -302,23 +303,47 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   }
 
   /// Layout-density fold (Bruce/Eric 2026-06-10, proof:
-  /// test/visual_proof/density_proof_test.dart): low-alpha frosted tray gives
-  /// a section visual MASS so the page stops feeling 空, while the fill stays
-  /// faint (7%) so the opaque glassWhite fields/segments inside still pop.
-  /// Same warm tokens (glassWhite/glassBorder), no new brand color.
+  /// test/visual_proof/density_proof_test.dart): the tray gives a section
+  /// visual MASS so the page stops feeling 空. 2026-06-17 暗紫橘統一: switched
+  /// from the light warm-glass fill to a dark brand surface so the inner dark
+  /// BrandKit fields/segments sit on the same surface system as 關於我.
   Widget _frostTray(List<Widget> children) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.glassWhite.withValues(alpha: 0.07),
+        color: AppColors.brandSurface.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.glassBorder.withValues(alpha: 0.22),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
+      ),
+    );
+  }
+
+  /// Dark-brand input field (replaces the light GlassmorphicTextField).
+  Widget _brandField({
+    required TextEditingController controller,
+    required String hintText,
+    bool isDense = false,
+    int? maxLength,
+    int maxLines = 1,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onSubmitted,
+    TapRegionCallback? onTapOutside,
+  }) {
+    return TextField(
+      controller: controller,
+      maxLength: maxLength,
+      maxLines: maxLines,
+      textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
+      onTapOutside: onTapOutside,
+      cursorColor: AppColors.ctaStart,
+      style: AppTypography.bodyMedium.copyWith(color: Colors.white),
+      decoration: brandInputDecoration(hintText: hintText).copyWith(
+        isDense: isDense,
       ),
     );
   }
@@ -329,18 +354,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       child: Container(
         width: 36,
         height: 36,
-        decoration: BoxDecoration(
-          color: AppColors.glassWhite,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: AppColors.glassBorder.withValues(alpha: 0.5),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.ctaStart, AppColors.ctaEnd],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          shape: BoxShape.circle,
         ),
-        child: Icon(
-          Icons.add,
-          size: 20,
-          color: AppColors.unselectedText,
-        ),
+        child: const Icon(Icons.add, size: 20, color: Colors.white),
       ),
     );
   }
@@ -407,7 +429,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           children: [
             Icon(
               _showAnalysisSettings ? Icons.expand_less : Icons.expand_more,
-              color: AppColors.textSecondary,
+              color: AppColors.onBackgroundSecondary,
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -417,15 +439,16 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                   Text(
                     '這次分析設定（可不改）',
                     style: AppTypography.bodyLarge.copyWith(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     _analysisSettingsSummary(),
                     style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.78),
                     ),
                   ),
                 ],
@@ -438,7 +461,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       Text(
         '不確定可以先跳過；AI 會用預設情境分析。',
         style: AppTypography.bodySmall.copyWith(
-          color: AppColors.textSecondary,
+          color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
         ),
       ),
       if (_showAnalysisSettings) ...[
@@ -450,12 +473,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   List<Widget> _buildSessionContextSettings() {
     return [
-      Text('認識情境', style: AppTypography.bodyLarge),
+      _settingLabel('認識情境'),
       const SizedBox(height: 8),
-      GlassmorphicSegmentedButton<MeetingContext>(
+      BrandSegmentedButton<MeetingContext>(
         segments: MeetingContext.visibleAnalysisOptions
             .map(
-              (value) => GlassSegment(
+              (value) => BrandSegment(
                 value: value,
                 label: _meetingContextLabel(value),
               ),
@@ -465,12 +488,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         onChanged: (value) => setState(() => _meetingContext = value),
       ),
       const SizedBox(height: 16),
-      Text('認識多久', style: AppTypography.bodyLarge),
+      _settingLabel('認識多久'),
       const SizedBox(height: 8),
-      GlassmorphicSegmentedButton<AcquaintanceDuration>(
+      BrandSegmentedButton<AcquaintanceDuration>(
         segments: AcquaintanceDuration.values
             .map(
-              (value) => GlassSegment(
+              (value) => BrandSegment(
                 value: value,
                 label: _durationLabel(value),
               ),
@@ -480,12 +503,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         onChanged: (value) => setState(() => _duration = value),
       ),
       const SizedBox(height: 16),
-      Text('目前目標', style: AppTypography.bodyLarge),
+      _settingLabel('目前目標'),
       const SizedBox(height: 8),
-      GlassmorphicSegmentedButton<UserGoal>(
+      BrandSegmentedButton<UserGoal>(
         segments: UserGoal.values
             .map(
-              (value) => GlassSegment(
+              (value) => BrandSegment(
                 value: value,
                 label: _goalLabel(value),
               ),
@@ -495,9 +518,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         onChanged: (value) => setState(() => _goal = value),
       ),
       const SizedBox(height: 16),
-      Text('補充背景（選填）', style: AppTypography.bodyLarge),
+      _settingLabel('補充背景（選填）'),
       const SizedBox(height: 8),
-      GlassmorphicTextField(
+      _brandField(
         controller: _analysisContextNoteController,
         hintText: '沒有可以留空',
         isDense: true,
@@ -510,21 +533,38 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       Text(
         '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
         style: AppTypography.bodySmall.copyWith(
-          color: AppColors.textSecondary,
+          color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
         ),
       ),
     ];
+  }
+
+  /// White section label used on the dark trays (replaces bare bodyLarge,
+  /// which read as muted on the old light glass).
+  Widget _settingLabel(String text) {
+    return Text(
+      text,
+      style: AppTypography.bodyLarge.copyWith(
+        color: Colors.white,
+        fontWeight: FontWeight.w700,
+      ),
+    );
   }
 
   List<Widget> _buildConversationContentInput() {
     // 10px uniform inner rhythm (density proof) — the old 8/12 mix was part
     // of the 間距不一致 problem.
     return [
-      Text('對話內容', style: AppTypography.bodyLarge),
+      _settingLabel('對話內容'),
       const SizedBox(height: 10),
       if (_messages.isNotEmpty) ...[
-        GlassmorphicContainer(
-          borderRadius: 12,
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.brandInk.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 220),
             child: ListView.builder(
@@ -535,8 +575,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 final isFromMe = msg['isFromMe'] as bool;
                 return ListTile(
                   dense: true,
-                  textColor: AppColors.glassTextPrimary,
-                  iconColor: AppColors.glassTextHint,
+                  textColor: Colors.white,
+                  iconColor: AppColors.onBackgroundSecondary,
                   leading: BubbleAvatar(
                     label: isFromMe ? '我' : '她',
                     isMe: isFromMe,
@@ -545,7 +585,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                   title: Text(
                     msg['content'] as String,
                     style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.glassTextPrimary,
+                      color: Colors.white,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -553,7 +593,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     icon: Icon(
                       Icons.close,
                       size: 18,
-                      color: AppColors.glassTextHint,
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.70),
                     ),
                     onPressed: () => _removeMessage(index),
                   ),
@@ -573,7 +614,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: GlassmorphicTextField(
+            child: _brandField(
               controller: _herMessageController,
               hintText: '她說了什麼...',
               onSubmitted: (_) => _addHerMessage(),
@@ -592,7 +633,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: GlassmorphicTextField(
+            child: _brandField(
               controller: _myMessageController,
               hintText: '我說了什麼...',
               onSubmitted: (_) => _addMyMessage(),
@@ -610,14 +651,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             Icon(
               Icons.info_outline,
               size: 18,
-              color: AppColors.textSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 _conversationHint,
                 style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
+                  color: AppColors.onBackgroundSecondary
+                      .withValues(alpha: 0.70),
                 ),
               ),
             ),
@@ -629,7 +671,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   Widget _buildOpenerSeedNotice() {
     final reason = _openerSeedReason;
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,12 +679,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.auto_awesome,
-                color: AppColors.ctaStart,
-                size: 20,
+              const BrandIconBadge(
+                icon: Icons.auto_awesome,
+                size: 30,
+                iconSize: 16,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -650,7 +692,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     Text(
                       '已帶入剛剛的開場白',
                       style: AppTypography.bodyLarge.copyWith(
-                        color: AppColors.glassTextPrimary,
+                        color: Colors.white,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -658,7 +700,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                     Text(
                       '這則已放進「我說」。先傳給對方；等她回覆後回到這裡，把回覆貼進「她說」。',
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.glassTextSecondary,
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.82),
                         height: 1.4,
                       ),
                     ),
@@ -672,7 +715,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             Text(
               'AI 選擇：${_openerSeedLabel ?? '推薦'}，$reason',
               style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextHint,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.66),
                 height: 1.35,
               ),
             ),
@@ -685,7 +728,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               icon: const Icon(Icons.close, size: 16),
               label: const Text('不帶入'),
               style: TextButton.styleFrom(
-                foregroundColor: AppColors.glassTextSecondary,
+                foregroundColor:
+                    AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
               ),
             ),
           ),
@@ -702,9 +746,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
+          iconTheme: const IconThemeData(
+            color: AppColors.onBackgroundPrimary,
+          ),
           title: Text(
             _hasOpenerSeed ? '接續開場' : '手動輸入',
-            style: AppTypography.titleLarge,
+            style: AppTypography.titleLarge.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
@@ -736,9 +786,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                   // identity, so re-typing the name here is redundant double-input.
                   // (Bruce TF feedback 2026-04-28.)
                   if (widget.partnerId == null) ...[
-                    Text('對話對象', style: AppTypography.bodyLarge),
+                    _settingLabel('對話對象'),
                     const SizedBox(height: 8),
-                    GlassmorphicTextField(
+                    _brandField(
                       controller: _nameController,
                       hintText: '例如：小安',
                     ),
@@ -755,8 +805,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                   ],
                   if (_hasIncomingMessage) ...[
                     const SizedBox(height: 20),
-                    GradientButton(
-                      text: '建立對話',
+                    BrandPrimaryButton(
+                      label: '建立對話',
                       onPressed: _isLoading ? null : _createConversation,
                       isLoading: _isLoading,
                     ),
