@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/glassmorphic_container.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../data/providers/partner_style_providers.dart';
 import '../../data/providers/user_profile_providers.dart';
@@ -171,7 +171,9 @@ class _PartnerStyleEditScreenState
                   Text(
                     '只影響你和這位對象的建議；未設定時沿用「關於我」。AI 會調整語氣與練習方向，不會替你假裝成另一個人。',
                     style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.glassTextSecondary,
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.82),
+                      height: 1.45,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -201,24 +203,17 @@ class _PartnerStyleEditScreenState
                     onReset: () => setState(_notesController.clear),
                   ),
                   const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _saveAndPop,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.ctaStart,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: const Text('完成'),
-                    ),
+                  BrandPrimaryButton(
+                    label: '完成',
+                    onPressed: _saveAndPop,
                   ),
                   const SizedBox(height: 8),
                   Center(
                     child: Text(
                       '點「完成」或返回，都會保存這個對象的設定',
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.glassTextSecondary,
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.72),
                       ),
                     ),
                   ),
@@ -272,54 +267,37 @@ class _InteractionStyleSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hint = _placeholderHint();
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
+      elevated: false,
+      borderRadius: 22,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '互動風格',
-            style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '先點主風格，再點副風格（可只選主）。',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
+          const BrandSectionHeader(
+            title: '互動風格',
+            subtitle: '先點主風格，再點副風格（可只選主）。',
           ),
           if (hint != null) ...[
             const SizedBox(height: 4),
             Text(
               hint,
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: InteractionStyle.values.map((s) {
               final badge = selected.badgeOf(s);
-              return ChoiceChip(
-                label: badge == null
-                    ? Text(_styleLabel(s))
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_styleLabel(s)),
-                          const SizedBox(width: 4),
-                          StyleRoleBadge(text: badge),
-                        ],
-                      ),
+              return BrandChoiceChip(
+                label: _styleLabel(s),
                 selected: selected.contains(s),
-                showCheckmark: false,
-                onSelected: (_) => onTap(s),
+                onTap: () => onTap(s),
+                trailing: badge == null ? null : StyleRoleBadge(text: badge),
               );
             }).toList(),
           ),
@@ -330,7 +308,7 @@ class _InteractionStyleSection extends StatelessWidget {
               child: TextButton(
                 onPressed: onReset,
                 style: TextButton.styleFrom(
-                  foregroundColor: AppColors.glassTextSecondary,
+                  foregroundColor: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 4,
@@ -388,37 +366,32 @@ class _PracticeGoalsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hint = _placeholderHint();
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
+      elevated: false,
+      borderRadius: 22,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '練習目標',
-            style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          const BrandSectionHeader(title: '練習目標'),
           if (hint != null) ...[
             const SizedBox(height: 4),
             Text(
               hint,
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: PracticeGoal.values.map((g) {
-              return ChoiceChip(
-                label: Text(_goalLabel(g)),
+              return BrandChoiceChip(
+                label: _goalLabel(g),
                 selected: selected.contains(g),
-                showCheckmark: false,
-                onSelected: (_) => onToggle(g),
+                onTap: () => onToggle(g),
               );
             }).toList(),
           ),
@@ -429,7 +402,7 @@ class _PracticeGoalsSection extends StatelessWidget {
               child: TextButton(
                 onPressed: onReset,
                 style: TextButton.styleFrom(
-                  foregroundColor: AppColors.glassTextSecondary,
+                  foregroundColor: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 4,
@@ -472,37 +445,37 @@ class _NotesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final hint = _placeholderHint();
     final hasOverride = controller.text.trim().isNotEmpty;
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
+      elevated: false,
+      borderRadius: 22,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '備註',
-            style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          const BrandSectionHeader(title: '備註'),
           if (hint != null) ...[
             const SizedBox(height: 4),
             Text(
               hint,
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           TextField(
             key: const Key('partner-style-notes-field'),
             controller: controller,
             maxLength: PartnerStyleOverride.maxNotesLength,
             maxLines: 3,
             onChanged: (_) => onChanged(),
-            decoration: const InputDecoration(
+            cursorColor: AppColors.ctaStart,
+            style: AppTypography.bodyMedium.copyWith(
+              color: Colors.white,
+              height: 1.35,
+            ),
+            decoration: brandInputDecoration(
               hintText: '寫一句你希望 AI 對這個對象記住的事',
-              border: OutlineInputBorder(),
             ),
           ),
           if (hasOverride) ...[
@@ -512,7 +485,7 @@ class _NotesSection extends StatelessWidget {
               child: TextButton(
                 onPressed: onReset,
                 style: TextButton.styleFrom(
-                  foregroundColor: AppColors.glassTextSecondary,
+                  foregroundColor: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 4,
@@ -541,9 +514,11 @@ class _EditScreenBackground extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.partnerDetailBgTop,
-            AppColors.partnerDetailBgBottom,
+            AppColors.brandInk,
+            AppColors.brandSurface,
+            AppColors.brandSurface2,
           ],
+          stops: [0.0, 0.58, 1.0],
         ),
       ),
     );
