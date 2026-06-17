@@ -1,10 +1,20 @@
 // lib/features/learning/presentation/screens/article_detail_screen.dart
+//
+// 2026-06-17 暗紫橘統一 (BrandKit migration): the practice brief / article
+// body / practice action surfaces now use the shared BrandKit primitives
+// (BrandSurfaceCard + BrandSectionHeader + BrandPrimaryButton +
+// BrandSecondaryButton + BrandInfoNote) and brand text tokens instead of the
+// light warm-glass widgets, matching the shipped 關於我/作戰板 dark system.
+// The screen keeps the animated GradientBackground (dynamic bokeh) as-is —
+// only the surfaces on top were migrated. Read-gate / paywall / subscription
+// logic and all navigation are unchanged.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
@@ -92,12 +102,18 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios),
+            icon: const Icon(
+              Icons.arrow_back_ios,
+              color: AppColors.onBackgroundPrimary,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
           title: Text(
             article.title,
-            style: AppTypography.titleMedium,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.onBackgroundPrimary,
+              fontWeight: FontWeight.w800,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -136,8 +152,8 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
               const SizedBox(height: 16),
               _PracticeBriefCard(article: article, guide: practiceGuide),
               const SizedBox(height: 16),
-              // Article content in glass container
-              GlassmorphicContainer(
+              // Article content in brand surface card
+              BrandSurfaceCard(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,7 +190,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
           child: Text(
             text,
             style: AppTypography.titleSmall.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -187,7 +203,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
           child: Text(
             text,
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: 18,
             ),
@@ -207,7 +223,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                   width: 5,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: AppColors.glassTextSecondary,
+                    color: AppColors.ctaStart.withValues(alpha: 0.85),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -251,7 +267,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
 
     // Default style
     var baseStyle = AppTypography.bodyMedium.copyWith(
-      color: AppColors.glassTextPrimary,
+      color: Colors.white.withValues(alpha: 0.92),
       height: 1.6,
     );
 
@@ -297,7 +313,7 @@ class _PracticeBriefCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,7 +323,7 @@ class _PracticeBriefCard extends StatelessWidget {
           Text(
             guide.category,
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -327,7 +343,7 @@ class _PracticeBriefCard extends StatelessWidget {
           Text(
             article.title,
             style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
             ),
           ),
         ],
@@ -364,7 +380,7 @@ class _PracticeActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,7 +390,7 @@ class _PracticeActionCard extends StatelessWidget {
           Text(
             guide.practiceTitle,
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -382,7 +398,7 @@ class _PracticeActionCard extends StatelessWidget {
           Text(
             guide.practicePrompt,
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white.withValues(alpha: 0.92),
               height: 1.55,
             ),
           ),
@@ -402,7 +418,7 @@ class _PracticeActionCard extends StatelessWidget {
           Text(
             '帶回真實對話',
             style: AppTypography.titleSmall.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -410,7 +426,7 @@ class _PracticeActionCard extends StatelessWidget {
           Text(
             guide.carryBackHint,
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
               height: 1.45,
             ),
           ),
@@ -418,35 +434,22 @@ class _PracticeActionCard extends StatelessWidget {
           Text(
             _nextActionHint,
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.85),
               height: 1.45,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 16),
-          GradientButton(
-            text: _primaryActionLabel,
+          BrandPrimaryButton(
+            label: _primaryActionLabel,
             onPressed: () => _openPrimaryAction(context),
           ),
           if (_isOpeningPractice) ...[
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => context.go('/?tab=home'),
-                icon: const Icon(Icons.forum_outlined, size: 18),
-                label: const Text('回首頁找一段真實對話'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.glassTextPrimary,
-                  side: BorderSide(
-                    color: AppColors.glassBorder.withValues(alpha: 0.8),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
+            BrandSecondaryButton(
+              label: '回首頁找一段真實對話',
+              icon: Icons.forum_outlined,
+              onPressed: () => context.go('/?tab=home'),
             ),
           ],
         ],
@@ -497,7 +500,7 @@ class _PracticeInfoRow extends StatelessWidget {
               Text(
                 title,
                 style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.glassTextSecondary,
+                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -505,7 +508,7 @@ class _PracticeInfoRow extends StatelessWidget {
               Text(
                 body,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.glassTextPrimary,
+                  color: Colors.white.withValues(alpha: 0.92),
                   height: 1.45,
                 ),
               ),
@@ -534,9 +537,9 @@ class _ExampleBox extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
+        border: Border.all(color: color.withValues(alpha: 0.42)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,7 +555,7 @@ class _ExampleBox extends StatelessWidget {
           Text(
             text,
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white.withValues(alpha: 0.92),
               height: 1.45,
             ),
           ),

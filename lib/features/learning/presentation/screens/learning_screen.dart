@@ -1,10 +1,18 @@
 // lib/features/learning/presentation/screens/learning_screen.dart
+//
+// 2026-06-17 暗紫橘統一 (BrandKit migration): this list sits inside
+// MainShell's animated GradientBackground (dynamic bokeh) so it adds NO
+// background of its own. The header text already used brand tokens; the
+// free-user daily-read notice now uses the shared BrandInfoNote, and the
+// image-card error fallback swaps the OLD glass* fill for a brand-surface
+// fill. Card overlays sit on cover photos and stay deliberately dark.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
 import '../../data/providers/learning_providers.dart';
@@ -62,18 +70,9 @@ class LearningScreen extends ConsumerWidget {
                 if (subscription.isFreeUser)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline,
-                            size: 14, color: AppColors.onBackgroundSecondary),
-                        const SizedBox(width: 6),
-                        Text(
-                          '今日剩餘 ${readService.remainingReads} 篇免費閱讀',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.onBackgroundSecondary,
-                          ),
-                        ),
-                      ],
+                    child: BrandInfoNote(
+                      icon: Icons.info_outline,
+                      text: '今日剩餘 ${readService.remainingReads} 篇免費閱讀',
                     ),
                   ),
               ],
@@ -115,7 +114,8 @@ class LearningScreen extends ConsumerWidget {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
-                            color: AppColors.glassBorder.withValues(alpha: 0.3),
+                            color: AppColors.brandSurface2
+                                .withValues(alpha: 0.6),
                             child: const Center(
                               child: Icon(Icons.article_outlined,
                                   size: 40, color: Colors.white54),

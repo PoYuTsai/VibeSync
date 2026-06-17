@@ -1,4 +1,13 @@
 // lib/features/conversation/presentation/screens/profile_card_screen.dart
+//
+// 2026-06-17 暗紫橘統一 (BrandKit migration): the info cards / section titles /
+// tag chips now use the shared BrandKit primitives (BrandSurfaceCard +
+// BrandSectionHeader) and brand tokens instead of the light warm-glass
+// GlassmorphicContainer + glassText* system, matching the shipped 關於我/作戰板
+// dark surface look. The animated GradientBackground (dynamic bokeh) and
+// BubbleAvatar are intentionally kept as-is — only the surfaces on top migrate.
+// Display tag chips have no BrandKit equivalent (BrandChoiceChip is for
+// selectable chips), so their styling is replicated inline with brand tokens.
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +15,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/conversation_providers.dart';
 import '../../domain/entities/conversation.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
@@ -27,11 +37,7 @@ class ProfileCardScreen extends ConsumerWidget {
       return GradientBackground(
         child: Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            title: const Text('對方檔案'),
-          ),
+          appBar: brandAppBar(title: '對方檔案'),
           body: const Center(
             child: Text(
               '找不到對話',
@@ -45,14 +51,7 @@ class ProfileCardScreen extends ConsumerWidget {
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text(
-            '對方檔案',
-            style: AppTypography.titleLarge,
-          ),
-        ),
+        appBar: brandAppBar(title: '對方檔案'),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -82,16 +81,11 @@ class ProfileCardScreen extends ConsumerWidget {
               const SizedBox(height: 24),
 
               // Info Card 1: Basic Info
-              GlassmorphicContainer(
+              BrandSurfaceCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '基本資訊',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
-                      ),
-                    ),
+                    const BrandSectionHeader(title: '基本資訊'),
                     const SizedBox(height: 12),
                     _buildInfoRow(
                       '認識場景',
@@ -113,16 +107,11 @@ class ProfileCardScreen extends ConsumerWidget {
               const SizedBox(height: 16),
 
               // Info Card 2: Trend
-              GlassmorphicContainer(
+              BrandSurfaceCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '互動趨勢',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
-                      ),
-                    ),
+                    const BrandSectionHeader(title: '互動趨勢'),
                     const SizedBox(height: 12),
                     _buildInfoRow(
                       '對話輪數',
@@ -182,22 +171,18 @@ class ProfileCardScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        GlassmorphicContainer(
+        BrandSurfaceCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '她的特質',
-                style: AppTypography.titleMedium.copyWith(
-                  color: AppColors.glassTextPrimary,
-                ),
-              ),
+              const BrandSectionHeader(title: '她的特質'),
               if (interests.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
                   '興趣',
                   style: AppTypography.labelMedium.copyWith(
-                    color: AppColors.glassTextSecondary,
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -207,8 +192,8 @@ class ProfileCardScreen extends ConsumerWidget {
                   children: interests
                       .map((interest) => _buildColoredChip(
                             interest,
-                            AppColors.bokehCoral.withValues(alpha: 0.12),
-                            AppColors.bokehCoral,
+                            AppColors.ctaStart.withValues(alpha: 0.16),
+                            AppColors.ctaStart,
                           ))
                       .toList(),
                 ),
@@ -218,7 +203,8 @@ class ProfileCardScreen extends ConsumerWidget {
                 Text(
                   '性格',
                   style: AppTypography.labelMedium.copyWith(
-                    color: AppColors.glassTextSecondary,
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -228,8 +214,8 @@ class ProfileCardScreen extends ConsumerWidget {
                   children: traits
                       .map((trait) => _buildColoredChip(
                             trait,
-                            AppColors.primary.withValues(alpha: 0.12),
-                            AppColors.primary,
+                            AppColors.primaryLight.withValues(alpha: 0.18),
+                            AppColors.onBackgroundSecondary,
                           ))
                       .toList(),
                 ),
@@ -239,7 +225,8 @@ class ProfileCardScreen extends ConsumerWidget {
                 Text(
                   '備註',
                   style: AppTypography.labelMedium.copyWith(
-                    color: AppColors.glassTextSecondary,
+                    color: AppColors.onBackgroundSecondary
+                        .withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -251,17 +238,15 @@ class ProfileCardScreen extends ConsumerWidget {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
+                                const Text(
                                   '  •  ',
-                                  style: AppTypography.bodyMedium.copyWith(
-                                    color: AppColors.glassTextPrimary,
-                                  ),
+                                  style: TextStyle(color: Colors.white),
                                 ),
                                 Expanded(
                                   child: Text(
                                     note,
                                     style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.glassTextPrimary,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
@@ -285,6 +270,7 @@ class ProfileCardScreen extends ConsumerWidget {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Text(
         text,
@@ -305,13 +291,13 @@ class ProfileCardScreen extends ConsumerWidget {
           Text(
             label,
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
             ),
           ),
           Text(
             value,
             style: AppTypography.bodyMedium.copyWith(
-              color: valueColor ?? AppColors.glassTextPrimary,
+              color: valueColor ?? Colors.white,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -333,7 +319,7 @@ class ProfileCardScreen extends ConsumerWidget {
           Text(
             '熱度',
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
             ),
           ),
           Text(
@@ -350,22 +336,18 @@ class ProfileCardScreen extends ConsumerWidget {
 
   Widget _buildSummaryCard(List<dynamic>? summaries) {
     if (summaries != null && summaries.isNotEmpty) {
-      return GlassmorphicContainer(
+      return BrandSurfaceCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'AI 記住的重點',
-              style: AppTypography.titleMedium.copyWith(
-                color: AppColors.glassTextPrimary,
-              ),
-            ),
+            const BrandSectionHeader(title: 'AI 記住的重點'),
             const SizedBox(height: 12),
             for (final summary in summaries) ...[
               Text(
                 summary.content,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.glassTextSecondary,
+                  color: AppColors.onBackgroundSecondary
+                      .withValues(alpha: 0.82),
                 ),
               ),
               if (summary.keyTopics.isNotEmpty) ...[
@@ -397,22 +379,17 @@ class ProfileCardScreen extends ConsumerWidget {
       );
     }
 
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'AI 記住的重點',
-            style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-            ),
-          ),
+          const BrandSectionHeader(title: 'AI 記住的重點'),
           const SizedBox(height: 16),
           Center(
             child: Text(
               '對話超過 15 輪後，AI 會自動整理重點',
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextHint,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -426,13 +403,14 @@ class ProfileCardScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.1),
+        color: AppColors.ctaStart.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Text(
         text,
         style: AppTypography.labelMedium.copyWith(
-          color: AppColors.primary,
+          color: AppColors.ctaStart,
           fontWeight: FontWeight.w500,
         ),
       ),

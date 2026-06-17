@@ -1,11 +1,19 @@
 // lib/features/report/presentation/screens/my_report_screen.dart
+//
+// 2026-06-17 暗紫橘統一 (BrandKit migration): the Free-tier locked card and the
+// three fl_chart surfaces (HeatTrendChart / ConversationComparisonChart /
+// StageDistributionChart) moved off the light warm-glass GlassmorphicContainer
+// onto the shared dark BrandKit surfaces (BrandSurfaceCard + BrandPrimaryButton),
+// with chart labels/legends/lines recolored white / onBackgroundSecondary /
+// orange for legibility on the dark brand surface. No report gating, provider,
+// or navigation behavior changed.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -106,35 +114,33 @@ class MyReportScreen extends ConsumerWidget {
   }
 
   Widget _lockedReportCard(BuildContext context) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.lock_outline, color: AppColors.ctaStart, size: 32),
+          const BrandIconBadge(icon: Icons.lock_outline, size: 40, iconSize: 22),
           const SizedBox(height: 12),
           Text(
             '我的報告會在 Starter 解鎖',
             style: AppTypography.titleLarge.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '升級後可以看五維雷達圖、歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
             style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
               height: 1.45,
             ),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => context.push('/paywall'),
-              icon: const Icon(Icons.workspace_premium),
-              label: const Text('查看升級方案'),
-            ),
+          BrandPrimaryButton(
+            label: '查看升級方案',
+            icon: Icons.workspace_premium,
+            onPressed: () => context.push('/paywall'),
           ),
         ],
       ),

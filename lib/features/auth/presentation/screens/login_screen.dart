@@ -13,6 +13,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/platform_info.dart';
 import '../../../../shared/services/link_launch_service.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
+// warm_theme_widgets is still imported for the animated GradientBackground /
+// dynamic bokeh wrapper, which is intentionally kept (only the glass surfaces
+// on top are migrated to BrandKit — 2026-06-17 暗紫橘統一).
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -859,8 +863,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                     ],
-                    GradientButton(
-                      text: primaryButtonText,
+                    BrandPrimaryButton(
+                      label: primaryButtonText,
                       onPressed: _isLoading ? null : _submit,
                       isLoading: _isLoading,
                     ),
@@ -905,8 +909,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     required String message,
     required Color color,
   }) {
-    return GlassmorphicContainer(
+    // 2026-06-17 暗紫橘統一: nested BrandSurfaceCard (elevated:false) on the
+    // dark brand surface; the error/success color still tints the message text.
+    return BrandSurfaceCard(
+      elevated: false,
       padding: const EdgeInsets.all(12),
+      borderRadius: 18,
       child: Text(
         message,
         style: AppTypography.bodyMedium.copyWith(color: color),
@@ -923,55 +931,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     VoidCallback? onToggleObscureText,
     ValueChanged<String>? onChanged,
   }) {
+    // 2026-06-17 暗紫橘統一: white label over a brandInputDecoration TextField
+    // (replaces the light glassWhite/glassBorder/glassText* warm-glass field).
+    // No BrandKit "labeled field" primitive exists yet, so the white-label +
+    // brandInputDecoration pairing is replicated inline with brand tokens.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.onBackgroundPrimary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.glassWhite,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.glassBorder, width: 1.5),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          obscureText: obscureText,
+          autocorrect: false,
+          onChanged: onChanged,
+          cursorColor: AppColors.ctaStart,
+          style: AppTypography.bodyMedium.copyWith(
+            color: Colors.white,
           ),
-          child: TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            obscureText: obscureText,
-            autocorrect: false,
-            onChanged: onChanged,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-            ),
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextHint,
-              ),
-              suffixIcon: onToggleObscureText == null
-                  ? null
-                  : IconButton(
-                      onPressed: onToggleObscureText,
-                      icon: Icon(
-                        obscureText ? Icons.visibility : Icons.visibility_off,
-                        color: AppColors.glassTextHint,
-                      ),
+          decoration: brandInputDecoration(
+            hintText: hintText,
+            suffixIcon: onToggleObscureText == null
+                ? null
+                : IconButton(
+                    onPressed: onToggleObscureText,
+                    icon: Icon(
+                      obscureText ? Icons.visibility : Icons.visibility_off,
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.7),
                     ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-              filled: true,
-              fillColor: Colors.transparent,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-            ),
+                  ),
           ),
         ),
       ],
@@ -1049,12 +1044,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _buildDivider() {
+    // 2026-06-17 暗紫橘統一: light glassBorder rules → low-contrast white rules
+    // legible on the dark brand background.
+    final ruleColor = Colors.white.withValues(alpha: 0.16);
     return Row(
       children: [
         Expanded(
           child: Container(
             height: 1,
-            color: AppColors.glassBorder,
+            color: ruleColor,
           ),
         ),
         Padding(
@@ -1069,7 +1067,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         Expanded(
           child: Container(
             height: 1,
-            color: AppColors.glassBorder,
+            color: ruleColor,
           ),
         ),
       ],

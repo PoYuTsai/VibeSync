@@ -5,13 +5,15 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../features/analysis/domain/entities/enthusiasm_level.dart';
-import '../../../../shared/widgets/glassmorphic_container.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
 
 /// Horizontal bar chart comparing conversation heat scores.
 ///
 /// Shows up to 5 conversations sorted from highest to lowest score.
-/// Each bar is colored by heat level (cold/warm/hot/veryHot).
+/// Each bar is colored by heat level (cold/warm/hot/veryHot). 2026-06-17
+/// BrandKit migration: wrapped in a dark [BrandSurfaceCard] (was the light
+/// GlassmorphicContainer); name labels recolored white for dark legibility.
 class ConversationComparisonChart extends StatelessWidget {
   final List<ConversationComparison> comparisons;
 
@@ -22,7 +24,7 @@ class ConversationComparisonChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -30,7 +32,7 @@ class ConversationComparisonChart extends StatelessWidget {
           Text(
             '對話比較',
             style: AppTypography.titleMedium.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -51,7 +53,7 @@ class ConversationComparisonChart extends StatelessWidget {
         child: Text(
           '尚無數據',
           style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.glassTextSecondary,
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
           ),
         ),
       ),
@@ -94,7 +96,7 @@ class _ConversationBar extends StatelessWidget {
           child: Text(
             comparison.name,
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextPrimary,
+              color: Colors.white.withValues(alpha: 0.92),
             ),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,

@@ -4,13 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
 
 /// Heat score trend line chart widget.
 ///
-/// Displays a line chart of heat scores over recent analyses,
-/// wrapped in a GlassmorphicContainer with header stats.
+/// Displays a line chart of heat scores over recent analyses, wrapped in a dark
+/// [BrandSurfaceCard] (2026-06-17 BrandKit migration; was the light
+/// GlassmorphicContainer). Axis labels / grid / tooltip recolored for dark
+/// legibility while the orange ctaStart line accent is kept.
 class HeatTrendChart extends StatelessWidget {
   final List<HeatTrendPoint> trendPoints;
   final double averageScore;
@@ -25,7 +27,7 @@ class HeatTrendChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -54,11 +56,12 @@ class HeatTrendChart extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 '\u71B1\u5EA6\u8DA8\u52E2', // 熱度趨勢
                 style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.glassTextSecondary,
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                 ),
               ),
               const SizedBox(height: 4),
@@ -71,7 +74,7 @@ class HeatTrendChart extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.glassTextPrimary,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -104,12 +107,12 @@ class HeatTrendChart extends StatelessWidget {
 
   Widget _buildDeltaBadge() {
     if (scoreDelta == 0) {
-      return const Text(
+      return Text(
         '\u2014 0',
         style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: AppColors.glassTextSecondary,
+          color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
         ),
       );
     }
@@ -134,14 +137,14 @@ class HeatTrendChart extends StatelessWidget {
   // ---------------------------------------------------------------------------
 
   Widget _buildEmptyState() {
-    return const SizedBox(
+    return SizedBox(
       height: 180,
       child: Center(
         child: Text(
           '\u5C1A\u7121\u6578\u64DA', // 尚無數據
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.glassTextSecondary,
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
           ),
         ),
       ),
@@ -211,7 +214,7 @@ class HeatTrendChart extends StatelessWidget {
       horizontalInterval: 25,
       getDrawingHorizontalLine: (value) {
         return FlLine(
-          color: AppColors.glassBorder.withValues(alpha: 0.5),
+          color: Colors.white.withValues(alpha: 0.10),
           strokeWidth: 0.8,
         );
       },
@@ -234,9 +237,9 @@ class HeatTrendChart extends StatelessWidget {
             if (value % 25 != 0) return const SizedBox.shrink();
             return Text(
               value.toInt().toString(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
-                color: AppColors.glassTextSecondary,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
               ),
             );
           },
@@ -260,9 +263,9 @@ class HeatTrendChart extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 dateFormat.format(sorted[idx].date),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
-                  color: AppColors.glassTextSecondary,
+                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
                 ),
               ),
             );
@@ -275,7 +278,7 @@ class HeatTrendChart extends StatelessWidget {
   LineTouchData _touchData(List<HeatTrendPoint> sorted) {
     return LineTouchData(
       touchTooltipData: LineTouchTooltipData(
-        getTooltipColor: (_) => AppColors.glassTextPrimary,
+        getTooltipColor: (_) => AppColors.brandInk.withValues(alpha: 0.94),
         tooltipRoundedRadius: 8,
         getTooltipItems: (touchedSpots) {
           return touchedSpots.map((spot) {

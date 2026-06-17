@@ -4,10 +4,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
 
-/// 對話階段分佈甜甜圈圖
+/// 對話階段分佈甜甜圈圖。2026-06-17 BrandKit migration：包在深色
+/// [BrandSurfaceCard]（原為淺色 GlassmorphicContainer），中央數字 / 圖例文字
+/// 改白字 + onBackgroundSecondary 以在暗底可讀；扇形顏色維持原 stage 配色。
 class StageDistributionChart extends StatelessWidget {
   final List<StageDistribution> distributions;
   final int totalConversations;
@@ -29,21 +31,21 @@ class StageDistributionChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (distributions.isEmpty) {
-      return GlassmorphicContainer(
+      return BrandSurfaceCard(
         padding: const EdgeInsets.all(20),
         child: Center(
           child: Text(
             '尚無數據',
             style: TextStyle(
               fontSize: 14,
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
             ),
           ),
         ),
       );
     }
 
-    return GlassmorphicContainer(
+    return BrandSurfaceCard(
       padding: const EdgeInsets.all(20),
       child: Row(
         children: [
@@ -70,14 +72,15 @@ class StageDistributionChart extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.glassTextPrimary,
+                        color: Colors.white,
                       ),
                     ),
-                    const Text(
+                    Text(
                       '對話',
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.glassTextSecondary,
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.72),
                       ),
                     ),
                   ],
@@ -97,13 +100,13 @@ class StageDistributionChart extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.glassTextPrimary,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 12),
                 ...distributions.map((dist) {
                   final color = _stageColors[dist.stageName] ??
-                      AppColors.glassTextSecondary;
+                      AppColors.onBackgroundSecondary;
                   return _buildLegendItem(dist.stageName, dist.count, color);
                 }),
               ],
@@ -117,7 +120,7 @@ class StageDistributionChart extends StatelessWidget {
   List<PieChartSectionData> _buildSections() {
     return distributions.map((dist) {
       final color =
-          _stageColors[dist.stageName] ?? AppColors.glassTextSecondary;
+          _stageColors[dist.stageName] ?? AppColors.onBackgroundSecondary;
       return PieChartSectionData(
         value: dist.count.toDouble(),
         color: color,
@@ -143,9 +146,9 @@ class StageDistributionChart extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             stageName,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: AppColors.glassTextSecondary,
+              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
             ),
           ),
           const Spacer(),
@@ -154,7 +157,7 @@ class StageDistributionChart extends StatelessWidget {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppColors.glassTextPrimary,
+              color: Colors.white,
             ),
           ),
         ],
