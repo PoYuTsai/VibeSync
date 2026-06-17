@@ -5010,6 +5010,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         showInitialScreenshotSetup && conversation.messages.isEmpty;
 
     return BrandScaffold(
+      // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
+      safeArea: false,
       resizeToAvoidBottomInset: true,
       title: conversation.name,
       leading: IconButton(

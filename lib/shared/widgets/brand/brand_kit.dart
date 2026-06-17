@@ -95,7 +95,11 @@ class BrandScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = safeArea ? SafeArea(child: body) : body;
+    // 有 AppBar（title != null）時 Scaffold 已移除 body 的 top padding，
+    // 故只在無 AppBar 時套 top safe area，避免與 AppBar 的 inset 疊加，
+    // 並讓未來若改用 extendBodyBehindAppBar 也維持正確。
+    final content =
+        safeArea ? SafeArea(top: title == null, child: body) : body;
     return BrandPageBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
