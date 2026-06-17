@@ -57,7 +57,7 @@ import '../widgets/partner_mind_map_entry_card.dart';
 import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
 
-class PartnerDetailScreen extends ConsumerWidget {
+class PartnerDetailScreen extends ConsumerStatefulWidget {
   static const focusQueryParam = 'focus';
   static const coachFollowUpFocusValue = 'coachFollowUp';
   static const focusActionQueryParam = 'focusAction';
@@ -75,7 +75,32 @@ class PartnerDetailScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PartnerDetailScreen> createState() =>
+      _PartnerDetailScreenState();
+}
+
+class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
+  // Owned here (NOT created in build) so the controller + anchor handles
+  // survive rebuilds. The mind-map「下一步」node routes in with
+  // focusCoachFollowUp (and optionally openCoachInputOnFocus). Because the
+  // body is a LAZY ListView, the coach section is not laid out while it sits
+  // below the viewport + cacheExtent — so the scroll MUST be driven from
+  // outside the list by a ScrollController that converges on the anchor even
+  // before it is built. That orchestration, plus the "position before open"
+  // invariant, lives in [_CoachFocusOrchestrator].
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _coachAnchorKey = GlobalKey();
+  final GlobalKey _coachSectionKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final partnerId = widget.partnerId;
     final partner = ref.watch(partnerByIdProvider(partnerId));
     final aggregate = ref.watch(partnerAggregateProvider(partnerId));
     final conversations = ref.watch(conversationsByPartnerProvider(partnerId));
@@ -139,6 +164,7 @@ class PartnerDetailScreen extends ConsumerWidget {
           const Positioned.fill(child: _PartnerDetailBackground()),
           SafeArea(
             child: ListView(
+              controller: _scrollController,
               // SafeArea already keeps the content out of the transparent
               // toolbar zone on device. Do not add another top inset here, or
               // the hero card leaves a visible dead shelf under the title.
@@ -171,20 +197,13 @@ class PartnerDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 _PartnerDetailSection(
-                  child: _CoachFollowUpFocusTarget(
-                    focusOnFirstBuild: focusCoachFollowUp,
-                    inputFocusDuration: openCoachInputOnFocus
-                        ? Duration.zero
-                        : const Duration(milliseconds: 280),
-                    sectionFocusDuration: openCoachInputOnFocus
-                        ? Duration.zero
-                        : const Duration(milliseconds: 160),
-                    builder: (_, openCoachEntryAnchorKey) =>
-                        CoachFollowUpSection(
+                  child: KeyedSubtree(
+                    key: _coachSectionKey,
+                    child: CoachFollowUpSection(
                       partnerId: partnerId,
                       onTelemetry: _logCoachFollowUpTelemetry,
                       onQuotaExceeded: () async => context.push('/paywall'),
-                      openCoachEntryAnchorKey: openCoachEntryAnchorKey,
+                      openCoachEntryAnchorKey: _coachAnchorKey,
                     ),
                   ),
                 ),
@@ -254,8 +273,12 @@ class PartnerDetailScreen extends ConsumerWidget {
               ],
             ),
           ),
-          if (openCoachInputOnFocus)
-            _CoachFollowUpInputAutoOpener(
+          if (widget.focusCoachFollowUp)
+            _CoachFocusOrchestrator(
+              scrollController: _scrollController,
+              anchorKey: _coachAnchorKey,
+              sectionKey: _coachSectionKey,
+              openInputAfterFocus: widget.openCoachInputOnFocus,
               partnerId: partnerId,
               onQuotaExceeded: () async => context.push('/paywall'),
             ),
@@ -507,49 +530,133 @@ class PartnerDetailScreen extends ConsumerWidget {
   }
 }
 
-class _CoachFollowUpInputAutoOpener extends ConsumerStatefulWidget {
+/// Drives the mind-map「下一步」landing on partner detail. Lives OUTSIDE the
+/// lazy body ListView (so it always mounts and runs, unlike a widget pinned at
+/// the off-screen coach section) and owns the only invariant that matters:
+///
+///   position the coach section into view, THEN open the input sheet.
+///
+/// Because the body is a lazy `ListView`, the coach anchor is not laid out
+/// while it sits below the viewport + cacheExtent, so `Scrollable.ensureVisible`
+/// alone cannot reach it (its `currentContext` is null). We converge instead:
+/// step the [scrollController] down by ~viewport chunks until the anchor (or,
+/// for the with-result layout that has no anchor, the section) is built, then
+/// `ensureVisible` aligns it near the top — no animation, per the spec. Only
+/// after positioning settles do we open the sheet.
+class _CoachFocusOrchestrator extends ConsumerStatefulWidget {
+  final ScrollController scrollController;
+  final GlobalKey anchorKey;
+  final GlobalKey sectionKey;
+  final bool openInputAfterFocus;
   final String partnerId;
   final Future<void> Function()? onQuotaExceeded;
 
-  const _CoachFollowUpInputAutoOpener({
+  const _CoachFocusOrchestrator({
+    required this.scrollController,
+    required this.anchorKey,
+    required this.sectionKey,
+    required this.openInputAfterFocus,
     required this.partnerId,
     this.onQuotaExceeded,
   });
 
   @override
-  ConsumerState<_CoachFollowUpInputAutoOpener> createState() =>
-      _CoachFollowUpInputAutoOpenerState();
+  ConsumerState<_CoachFocusOrchestrator> createState() =>
+      _CoachFocusOrchestratorState();
 }
 
-class _CoachFollowUpInputAutoOpenerState
-    extends ConsumerState<_CoachFollowUpInputAutoOpener> {
-  bool _didOpen = false;
+class _CoachFocusOrchestratorState
+    extends ConsumerState<_CoachFocusOrchestrator> {
+  // Upper bound on convergence frames. Generous: even a long page is a handful
+  // of viewport hops. Guards against an unterminated loop if the target never
+  // builds (degrades to "open without positioning", never to a hang).
+  static const _maxSteps = 16;
+
+  bool _started = false;
+  bool _opened = false;
   bool _openingQuotaPaywall = false;
 
   @override
   void initState() {
     super.initState();
-    _scheduleOpen();
+    _scheduleStart();
   }
 
   @override
-  void didUpdateWidget(covariant _CoachFollowUpInputAutoOpener oldWidget) {
+  void didUpdateWidget(covariant _CoachFocusOrchestrator oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.partnerId != oldWidget.partnerId) {
-      _didOpen = false;
-      _scheduleOpen();
+      _started = false;
+      _opened = false;
+      _scheduleStart();
     }
   }
 
-  void _scheduleOpen() {
-    if (_didOpen) return;
-    _didOpen = true;
+  void _scheduleStart() {
+    if (_started) return;
+    _started = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _step(0);
+    });
+  }
+
+  void _step(int step) {
+    if (!mounted) return;
+
+    // Prefer the precise input row; fall back to the whole section (the
+    // with-result layout renders no open-coach entry, so the anchor is absent).
+    final target =
+        widget.anchorKey.currentContext ?? widget.sectionKey.currentContext;
+    if (target != null) {
+      Scrollable.ensureVisible(
+        target,
+        duration: Duration.zero,
+        alignment: 0.08,
+      );
+      // Let the aligned offset paint before the sheet covers it.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _open();
+        _openIfRequested();
       });
+      return;
+    }
+
+    // Target not built yet. Advance the scroll to inflate more slivers, then
+    // re-check next frame. Stop at the bottom or the step cap.
+    final controller = widget.scrollController;
+    if (!controller.hasClients) {
+      _retryOrGiveUp(step);
+      return;
+    }
+    final position = controller.position;
+    if (step >= _maxSteps || position.pixels >= position.maxScrollExtent) {
+      // Could not locate the section (e.g. it never built). Honor the open
+      // request anyway rather than leaving the user with nothing.
+      _openIfRequested();
+      return;
+    }
+    final next = (position.pixels + position.viewportDimension * 0.9)
+        .clamp(0.0, position.maxScrollExtent);
+    controller.jumpTo(next);
+    _retryOrGiveUp(step);
+  }
+
+  void _retryOrGiveUp(int step) {
+    if (step >= _maxSteps) {
+      _openIfRequested();
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _step(step + 1);
     });
+  }
+
+  void _openIfRequested() {
+    if (!widget.openInputAfterFocus || _opened) return;
+    _opened = true;
+    _open();
   }
 
   Future<void> _open() async {
@@ -608,89 +715,6 @@ class _CoachFollowUpInputAutoOpenerState
 
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
-}
-
-class _CoachFollowUpFocusTarget extends StatefulWidget {
-  final bool focusOnFirstBuild;
-  final Duration inputFocusDuration;
-  final Duration sectionFocusDuration;
-  final Widget Function(BuildContext context, Key openCoachEntryAnchorKey)
-      builder;
-
-  const _CoachFollowUpFocusTarget({
-    required this.focusOnFirstBuild,
-    this.inputFocusDuration = const Duration(milliseconds: 280),
-    this.sectionFocusDuration = const Duration(milliseconds: 160),
-    required this.builder,
-  });
-
-  @override
-  State<_CoachFollowUpFocusTarget> createState() =>
-      _CoachFollowUpFocusTargetState();
-}
-
-class _CoachFollowUpFocusTargetState extends State<_CoachFollowUpFocusTarget> {
-  final _sectionKey = GlobalKey();
-  final _openCoachEntryAnchorKey = GlobalKey();
-  bool _didFocus = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scheduleFocusIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(covariant _CoachFollowUpFocusTarget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.focusOnFirstBuild && !oldWidget.focusOnFirstBuild) {
-      _scheduleFocusIfNeeded();
-    }
-  }
-
-  void _scheduleFocusIfNeeded() {
-    if (!widget.focusOnFirstBuild || _didFocus) return;
-    _didFocus = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensureFocusTarget(retryInputNextFrame: true);
-    });
-  }
-
-  void _ensureFocusTarget({required bool retryInputNextFrame}) {
-    if (!mounted) return;
-    final inputContext = _openCoachEntryAnchorKey.currentContext;
-    if (inputContext != null) {
-      Scrollable.ensureVisible(
-        inputContext,
-        duration: widget.inputFocusDuration,
-        curve: Curves.easeOut,
-        alignment: 0.08,
-      );
-      return;
-    }
-
-    final sectionContext = _sectionKey.currentContext;
-    if (sectionContext != null) {
-      Scrollable.ensureVisible(
-        sectionContext,
-        duration: widget.sectionFocusDuration,
-        curve: Curves.easeOut,
-        alignment: 0.08,
-      );
-    }
-    if (!retryInputNextFrame) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensureFocusTarget(retryInputNextFrame: false);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return KeyedSubtree(
-      key: _sectionKey,
-      child: widget.builder(context, _openCoachEntryAnchorKey),
-    );
-  }
 }
 
 class _PartnerLatestInsight {
