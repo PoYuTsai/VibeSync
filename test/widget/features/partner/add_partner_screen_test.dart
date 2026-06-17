@@ -33,8 +33,7 @@ import 'package:vibesync/features/partner/data/repositories/partner_repository.d
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/add_partner_screen.dart';
-import 'package:vibesync/shared/widgets/glassmorphic_text_field.dart';
-import 'package:vibesync/shared/widgets/gradient_button.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 void main() {
   late Directory tmp;
@@ -101,7 +100,7 @@ void main() {
     await t.pumpAndSettle();
 
     final appBarBottom = t.getBottomLeft(find.byType(AppBar)).dy;
-    final inputTop = t.getTopLeft(find.byType(GlassmorphicTextField)).dy;
+    final inputTop = t.getTopLeft(find.byType(TextField)).dy;
 
     expect(
       inputTop,
@@ -114,7 +113,7 @@ void main() {
   testWidgets('submit disabled while name empty', (t) async {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
-    final btn = t.widget<GradientButton>(find.byType(GradientButton));
+    final btn = t.widget<BrandPrimaryButton>(find.byType(BrandPrimaryButton));
     expect(btn.onPressed, isNull);
   });
 
@@ -123,7 +122,7 @@ void main() {
     await t.pumpAndSettle();
     await t.enterText(find.byType(TextField), 'Alice');
     await t.pump();
-    final btn = t.widget<GradientButton>(find.byType(GradientButton));
+    final btn = t.widget<BrandPrimaryButton>(find.byType(BrandPrimaryButton));
     expect(btn.onPressed, isNotNull);
   });
 
@@ -133,7 +132,7 @@ void main() {
     await t.pumpAndSettle();
     await t.enterText(find.byType(TextField), 'Alice');
     await t.pump();
-    final btn = t.widget<GradientButton>(find.byType(GradientButton));
+    final btn = t.widget<BrandPrimaryButton>(find.byType(BrandPrimaryButton));
     expect(btn.onPressed, isNull,
         reason: 'must NOT create ownerless Partner that would be invisible');
     expect(partnerBox.values, isEmpty);
@@ -147,7 +146,7 @@ void main() {
     await t.pumpAndSettle();
     await t.enterText(find.byType(TextField), 'Alice');
     await t.pump();
-    final btn = t.widget<GradientButton>(find.byType(GradientButton));
+    final btn = t.widget<BrandPrimaryButton>(find.byType(BrandPrimaryButton));
     expect(btn.onPressed, isNull, reason: 'must wait for auth resolution');
   });
 
@@ -158,7 +157,7 @@ void main() {
       await t.pumpAndSettle();
       await t.enterText(find.byType(TextField), 'Alice');
       await t.pump();
-      await t.tap(find.byType(GradientButton));
+      await t.tap(find.byType(BrandPrimaryButton));
       await t.pump(const Duration(seconds: 1));
       expect(partnerBox.values.length, 1);
       final p = partnerBox.values.single;

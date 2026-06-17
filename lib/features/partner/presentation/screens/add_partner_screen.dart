@@ -21,9 +21,13 @@
 // Post-A2 visual redesign (Bruce 2026-04-27 Discord, Eric Q1b/Q2b/Q3a):
 // - VibeSync purple gradient bg + 3 static brand-colored bubbles
 //   (purple/orange/pink — purple = mood, orange = action, per token system).
-// - GlassmorphicTextField for input + GradientButton (orange CTA) — orange
-//   matches the FAB the user just tapped to get here.
 // - Single free-text hint signals "name OR description" intent.
+//
+// 2026-06-17 暗紫橘統一 (BrandKit migration): the explanatory card / input /
+// CTA now use the shared BrandKit primitives (BrandSurfaceCard +
+// brandInputDecoration + BrandPrimaryButton) instead of the light warm-glass
+// widgets, matching the shipped 關於我/作戰板 dark surface system. Background
+// bubbles + layout density are unchanged.
 // - Bubbles are intentionally STATIC (no AnimationController) so this
 //   screen's widget tests don't hit GradientBackground's pumpAndSettle hang.
 //
@@ -42,9 +46,8 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../shared/widgets/glassmorphic_container.dart';
-import '../../../../shared/widgets/glassmorphic_text_field.dart';
-import '../../../../shared/widgets/gradient_button.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
@@ -153,26 +156,21 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const GlassmorphicContainer(
-                            borderRadius: 20,
-                            padding: EdgeInsets.fromLTRB(20, 20, 20, 22),
+                          BrandSurfaceCard(
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  '先建立一張對象卡',
-                                  style: TextStyle(
-                                    color: AppColors.glassTextPrimary,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                const BrandSectionHeader(
+                                  title: '先建立一張對象卡',
+                                  icon: Icons.person_add_alt_1_rounded,
                                 ),
-                                SizedBox(height: 8),
+                                const SizedBox(height: 12),
                                 Text(
                                   '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
-                                  style: TextStyle(
-                                    color: AppColors.glassTextSecondary,
-                                    fontSize: 13,
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.onBackgroundSecondary
+                                        .withValues(alpha: 0.82),
                                     height: 1.5,
                                   ),
                                 ),
@@ -180,24 +178,29 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                             ),
                           ),
                           const SizedBox(height: 18),
-                          GlassmorphicTextField(
+                          TextField(
                             controller: _name,
-                            hintText: '例：Alice / Tinder 上的空姐',
+                            cursorColor: AppColors.ctaStart,
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: Colors.white,
+                            ),
+                            decoration: brandInputDecoration(
+                              hintText: '例：Alice / Tinder 上的空姐',
+                            ),
                           ),
                           const SizedBox(height: 18),
-                          GradientButton(
-                            text: '建立',
+                          BrandPrimaryButton(
+                            label: '建立',
                             onPressed: canSubmit ? () => _submit(ownerId) : null,
                             isLoading: _busy,
                           ),
                           if (!authReady)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 12),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
                               child: Text(
                                 '請先登入再建立對象',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12,
+                                style: AppTypography.caption.copyWith(
                                   color: AppColors.onBackgroundSecondary,
                                 ),
                               ),
