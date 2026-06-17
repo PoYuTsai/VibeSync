@@ -606,6 +606,15 @@ void main() {
     final field = t.widget<TextField>(fieldFinder);
     expect(field.maxLength, 120);
     expect(field.maxLines, 4);
+
+    final inputEntry = find.text('或直接問教練一個問題...');
+    expect(inputEntry, findsOneWidget);
+    expect(
+      t.getTopLeft(inputEntry).dy,
+      lessThan(260),
+      reason: 'Mind map open action should leave the underlying page at the '
+          'coach input area, not at the top hero cards.',
+    );
   });
 
   testWidgets('empty conversation list shows hint text', (t) async {

@@ -172,8 +172,13 @@ class PartnerDetailScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 _PartnerDetailSection(
                   child: _CoachFollowUpFocusTarget(
-                    focusOnFirstBuild:
-                        focusCoachFollowUp && !openCoachInputOnFocus,
+                    focusOnFirstBuild: focusCoachFollowUp,
+                    inputFocusDuration: openCoachInputOnFocus
+                        ? Duration.zero
+                        : const Duration(milliseconds: 280),
+                    sectionFocusDuration: openCoachInputOnFocus
+                        ? Duration.zero
+                        : const Duration(milliseconds: 160),
                     builder: (_, openCoachEntryAnchorKey) =>
                         CoachFollowUpSection(
                       partnerId: partnerId,
@@ -540,7 +545,10 @@ class _CoachFollowUpInputAutoOpenerState
     if (_didOpen) return;
     _didOpen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _open();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _open();
+      });
     });
   }
 
@@ -604,11 +612,15 @@ class _CoachFollowUpInputAutoOpenerState
 
 class _CoachFollowUpFocusTarget extends StatefulWidget {
   final bool focusOnFirstBuild;
+  final Duration inputFocusDuration;
+  final Duration sectionFocusDuration;
   final Widget Function(BuildContext context, Key openCoachEntryAnchorKey)
       builder;
 
   const _CoachFollowUpFocusTarget({
     required this.focusOnFirstBuild,
+    this.inputFocusDuration = const Duration(milliseconds: 280),
+    this.sectionFocusDuration = const Duration(milliseconds: 160),
     required this.builder,
   });
 
@@ -650,7 +662,7 @@ class _CoachFollowUpFocusTargetState extends State<_CoachFollowUpFocusTarget> {
     if (inputContext != null) {
       Scrollable.ensureVisible(
         inputContext,
-        duration: const Duration(milliseconds: 280),
+        duration: widget.inputFocusDuration,
         curve: Curves.easeOut,
         alignment: 0.08,
       );
@@ -661,7 +673,7 @@ class _CoachFollowUpFocusTargetState extends State<_CoachFollowUpFocusTarget> {
     if (sectionContext != null) {
       Scrollable.ensureVisible(
         sectionContext,
-        duration: const Duration(milliseconds: 160),
+        duration: widget.sectionFocusDuration,
         curve: Curves.easeOut,
         alignment: 0.08,
       );
