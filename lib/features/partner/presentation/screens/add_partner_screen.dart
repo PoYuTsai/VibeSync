@@ -35,11 +35,13 @@
 // test/visual_proof/density_proof_test.dart):
 // - Problem was 太空/沒重心. ONLY layout density changed — same gradient,
 //   same bubbles, same warm tokens, no new copy.
-// - Explanatory text moved into a GlassmorphicContainer card (heavy,
-//   deliberate center of gravity); text tokens switch to glassText* because
-//   they now sit on a glass surface, not the bare gradient.
-// - Content capped at 358 width, biased to optical centre (Spacer 3:4);
-//   field + CTA stay directly on the gradient under the card, 20px rhythm.
+// - Explanatory text moved into a BrandSurfaceCard (heavy, deliberate center
+//   of gravity); text tokens switch to onBackground* because they now sit on a
+//   dark brand surface, not the bare gradient.
+// - Content capped near full mobile width, biased to optical centre
+//   (Spacer 3:4); field + CTA stay directly on the gradient under the card,
+//   with a larger 24px rhythm so the form reads as a deliberate creation
+//   panel rather than a small floating prompt.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -151,50 +153,75 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                   const Spacer(flex: 3),
                   Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 358),
+                      constraints: const BoxConstraints(maxWidth: 372),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           BrandSurfaceCard(
-                            padding: const EdgeInsets.fromLTRB(24, 24, 24, 26),
+                            padding: const EdgeInsets.fromLTRB(30, 30, 30, 34),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const BrandSectionHeader(
-                                  title: '先建立一張對象卡',
-                                  icon: Icons.person_add_alt_1_rounded,
+                                const Row(
+                                  children: [
+                                    BrandIconBadge(
+                                      icon: Icons.person_add_alt_1_rounded,
+                                      size: 48,
+                                      iconSize: 24,
+                                    ),
+                                    SizedBox(width: 18),
+                                    Expanded(
+                                      child: Text(
+                                        '先建立一張對象卡',
+                                        style: TextStyle(
+                                          color: AppColors.onBackgroundPrimary,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.15,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 20),
                                 Text(
                                   '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
-                                  style: AppTypography.bodySmall.copyWith(
+                                  style: AppTypography.bodyLarge.copyWith(
                                     color: AppColors.onBackgroundSecondary
-                                        .withValues(alpha: 0.82),
-                                    height: 1.5,
+                                        .withValues(alpha: 0.84),
+                                    height: 1.55,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
                           TextField(
                             controller: _name,
                             cursorColor: AppColors.ctaStart,
-                            style: AppTypography.bodyMedium.copyWith(
+                            style: AppTypography.bodyLarge.copyWith(
                               color: Colors.white,
                             ),
                             decoration: brandInputDecoration(
                               hintText: '例：Alice / Tinder 上的空姐',
+                            ).copyWith(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 18,
+                              ),
+                              hintStyle: AppTypography.bodyLarge.copyWith(
+                                color: Colors.white.withValues(alpha: 0.40),
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
                           BrandPrimaryButton(
                             label: '建立',
                             onPressed:
                                 canSubmit ? () => _submit(ownerId) : null,
                             isLoading: _busy,
-                            verticalPadding: 18,
+                            verticalPadding: 22,
                           ),
                           if (!authReady)
                             Padding(
