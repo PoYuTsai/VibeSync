@@ -303,6 +303,7 @@ class _ScreenshotRecognitionDialogState
                     onPressed: () => Navigator.of(sheetContext).pop(),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.ctaStart,
+                      foregroundColor: Colors.white,
                     ),
                     child: const Text('完成'),
                   ),
@@ -365,12 +366,12 @@ class _ScreenshotRecognitionDialogState
     final isMe = message.isFromMe;
     final quoted = message.quotedReplyController?.text.trim() ?? '';
     final fillColor = isMe
-        ? AppColors.ctaStart.withValues(alpha: 0.24)
-        : AppColors.primaryLight.withValues(alpha: 0.16);
+        ? AppColors.ctaStart.withValues(alpha: 0.14)
+        : AppColors.primaryLight.withValues(alpha: 0.18);
     final borderColor = isMe
-        ? AppColors.ctaStart.withValues(alpha: 0.38)
-        : AppColors.primaryLight.withValues(alpha: 0.34);
-    final labelColor = isMe ? Colors.white : AppColors.primaryLight;
+        ? AppColors.ctaEnd.withValues(alpha: 0.46)
+        : AppColors.primaryLight.withValues(alpha: 0.52);
+    final labelColor = isMe ? AppColors.ctaEnd : AppColors.primaryDark;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -396,17 +397,16 @@ class _ScreenshotRecognitionDialogState
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.brandInk.withValues(alpha: 0.42),
+                color: Colors.white.withValues(alpha: 0.58),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: AppColors.glassBorder.withValues(alpha: 0.90),
                 ),
               ),
               child: Text(
                 '引用：$quoted',
                 style: AppTypography.bodySmall.copyWith(
-                  color:
-                      AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
+                  color: AppColors.glassTextSecondary,
                   fontStyle: FontStyle.italic,
                   height: 1.35,
                 ),
@@ -417,7 +417,7 @@ class _ScreenshotRecognitionDialogState
           Text(
             message.controller.text,
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundPrimary,
+              color: AppColors.glassTextPrimary,
               height: 1.4,
             ),
           ),
@@ -449,6 +449,96 @@ class _ScreenshotRecognitionDialogState
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMessageEditWorkspace() {
+    return Container(
+      key: const ValueKey('ocr-message-edit-workspace'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.ctaStart.withValues(alpha: 0.24),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(color: AppColors.glassTextPrimary),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 18,
+                  color: AppColors.ctaStart,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '判錯邊？左右滑動訊息即可切換。',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.glassTextPrimary,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '左邊是她說、右邊是我說。點訊息可改錯字或刪除。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.glassTextSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildSwipeCorrector(),
+            if (_hasAnyFromMeMessage()) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _markAllAsOtherPerson,
+                  icon: const Icon(Icons.swap_horiz_rounded),
+                  label: const Text('全部都是對方說的'),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '單側截圖常常整段都是對方連發。如果 AI 把某幾則誤判成你說的，'
+                '點這裡一次全部改回對方。',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.glassTextSecondary,
+                  height: 1.45,
+                ),
+              ),
+            ],
+            if (_editValidationMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _editValidationMessage!,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -514,82 +604,7 @@ class _ScreenshotRecognitionDialogState
               ),
             const SizedBox(height: 12),
             // 滑動校正器：只留一句能幫使用者完成動作的提示，不放系統狀態說明。
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.brandInk.withValues(alpha: 0.34),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.09),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.swap_horiz_rounded,
-                        size: 18,
-                        color: AppColors.ctaStart,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '判錯邊？左右滑動訊息即可切換。',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                            fontWeight: FontWeight.w600,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '左邊是她說、右邊是我說。要改錯字或刪除，點該則訊息即可。',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSwipeCorrector(),
-                  if (_hasAnyFromMeMessage()) ...[
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _markAllAsOtherPerson,
-                        icon: const Icon(Icons.swap_horiz_rounded),
-                        label: const Text('全部都是對方說的'),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '單側截圖常常整段都是對方連發。如果 AI 把某幾則誤判成你說的，'
-                      '點這裡一次全部改回對方。',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.onBackgroundSecondary,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                  if (_editValidationMessage != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      _editValidationMessage!,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.error,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+            _buildMessageEditWorkspace(),
             const SizedBox(height: 16),
             const Text(
               '加入方式',
