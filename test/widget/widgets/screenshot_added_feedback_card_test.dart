@@ -40,7 +40,8 @@ void main() {
     );
 
     expect(find.textContaining('已從截圖加入 4 則新訊息'), findsOneWidget);
-    expect(find.textContaining('最新：她說「馬 來搭車～」'), findsOneWidget);
+    expect(find.text('最新：她說'), findsOneWidget);
+    expect(find.text('馬 來搭車～'), findsOneWidget);
     expect(find.textContaining('按「分析新增內容」後'), findsOneWidget);
 
     await tester.tap(find.text('看上方對話'));
@@ -61,7 +62,8 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('最新：我說「馬 來搭車～」'), findsOneWidget);
+    expect(find.text('最新：我說'), findsOneWidget);
+    expect(find.text('馬 來搭車～'), findsOneWidget);
     expect(find.textContaining('等她回覆後'), findsOneWidget);
     expect(find.text('分析新增內容'), findsNothing);
   });

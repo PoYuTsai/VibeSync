@@ -182,8 +182,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   int _coachMarkLastSeenMessageCount = 0;
 
   // 截圖 root ScaffoldMessenger reference，避免 dispose 時 context lookup 失敗。
-  // 用於 dispose 時清除可能殘留的 SnackBar，避免綠色 banner 跨頁殘留
-  // （`Colors.green` 的 OCR 加入 SnackBar duration=7s，用戶離開頁面後 root
+  // 用於 dispose 時清除可能殘留的 SnackBar，避免 OCR 加入提示跨頁殘留
+  // （OCR 加入 SnackBar duration=7s，用戶離開頁面後 root
   // messenger 會繼續顯示在其他頁面上，Bruce 2026-05-21 dogfood 回報）。
   ScaffoldMessengerState? _scaffoldMessenger;
 
@@ -2136,19 +2136,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _clearScreenshotAddedFeedback();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已建立新對話並加入 $messageCount 則訊息'),
-          backgroundColor: Colors.green,
-          action: SnackBarAction(
-            label: '前往新對話',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              context.push('/conversation/${createdConversation.id}');
-            },
-          ),
-        ),
+      _showOcrImportSuccessSnackBar(
+        title: '已建立新對話並加入 $messageCount 則訊息',
+        detail: '這批訊息已分開保存，避免不同對方檔案混淆。',
+        actionLabel: '前往新對話',
+        onAction: () => context.push('/conversation/${createdConversation.id}'),
       );
       return;
     }
@@ -2221,37 +2213,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _lastScreenshotAddedCount = messageCount;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('已加入目前對話，共 $messageCount 則訊息'),
-            const SizedBox(height: 4),
-            Text(
-              '💡 若這段訊息不連貫，建議從首頁開新對話避免「對方檔案」混淆',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withValues(alpha: 0.85),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 7),
-        action: SnackBarAction(
-          label: '捲到加入位置',
-          textColor: Colors.white,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            if (!_showAllMessages) {
-              setState(() => _showAllMessages = true);
-            }
-            _scrollToBottom(delay: const Duration(milliseconds: 80));
-          },
-        ),
-      ),
+    _showOcrImportSuccessSnackBar(
+      title: '已加入目前對話，共 $messageCount 則訊息',
+      detail: '若訊息不連貫，建議從首頁開新對話，避免對方檔案混淆。',
+      actionLabel: '捲到加入位置',
+      onAction: () {
+        if (!_showAllMessages) {
+          setState(() => _showAllMessages = true);
+        }
+        _scrollToBottom(delay: const Duration(milliseconds: 80));
+      },
     );
   }
 
@@ -2565,6 +2536,74 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showOcrImportSuccessSnackBar({
+    required String title,
+    required String detail,
+    required String actionLabel,
+    required VoidCallback onAction,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+        backgroundColor: AppColors.glassWhite,
+        elevation: 12,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(
+            color: AppColors.ctaStart.withValues(alpha: 0.24),
+          ),
+        ),
+        content: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.ctaStart,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.glassTextPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    detail,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.glassTextSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 7),
+        action: SnackBarAction(
+          label: actionLabel,
+          textColor: AppColors.ctaEnd,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            onAction();
+          },
+        ),
       ),
     );
   }

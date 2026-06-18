@@ -213,8 +213,8 @@ void main() {
       expect(field.cursorColor, AppColors.ctaStart);
       expect(field.style?.color, AppColors.onBackgroundPrimary);
       expect(field.decoration?.filled, isTrue);
-      expect(
-          field.decoration?.fillColor, AppColors.brandInk.withValues(alpha: 0.4));
+      expect(field.decoration?.fillColor,
+          AppColors.brandInk.withValues(alpha: 0.4));
     });
 
     testWidgets('editing an analyzed bubble shows a reanalysis call to action',
