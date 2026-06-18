@@ -5102,7 +5102,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // Messages preview
-                        BrandSurfaceCard(
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.96),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: AppColors.ctaStart.withValues(alpha: 0.24),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.12),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
                           child: Column(
                             children: [
                               if (conversation.messages.isEmpty)
@@ -5115,8 +5131,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     children: [
                                       Icon(
                                         Icons.chat_bubble_outline,
-                                        color: AppColors.onBackgroundSecondary
-                                            .withValues(alpha: 0.6),
+                                        color: AppColors.ctaStart,
                                         size: 34,
                                       ),
                                       const SizedBox(height: 10),
@@ -5124,7 +5139,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                         '還沒有訊息',
                                         style:
                                             AppTypography.titleMedium.copyWith(
-                                          color: AppColors.onBackgroundPrimary,
+                                          color: AppColors.glassTextPrimary,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -5135,8 +5150,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             : '先在下方輸入一句，再選「這句是她說」或「這句是我說」。',
                                         textAlign: TextAlign.center,
                                         style: AppTypography.bodySmall.copyWith(
-                                          color:
-                                              AppColors.onBackgroundSecondary,
+                                          color: AppColors.glassTextSecondary,
                                           height: 1.35,
                                         ),
                                       ),

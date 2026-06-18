@@ -31,105 +31,99 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final quotedReplyLabel = _quotedReplyLabel();
-
-    final hasActions =
-        onSwapSide != null || onDelete != null || onEdit != null;
+    final hasActions = onSwapSide != null || onDelete != null || onEdit != null;
+    final isMe = message.isFromMe;
+    final fillColor = isMe
+        ? AppColors.ctaStart.withValues(alpha: 0.14)
+        : AppColors.primaryLight.withValues(alpha: 0.18);
+    final borderColor = isMe
+        ? AppColors.ctaEnd.withValues(alpha: 0.46)
+        : AppColors.primaryLight.withValues(alpha: 0.52);
+    final speakerColor = isMe ? AppColors.ctaEnd : AppColors.primaryDark;
 
     return GestureDetector(
       // opaque：整個 bubble（含 padding / border 邊框 dead zone）都接收
       // long-press。預設 deferToChild 只認 Text 渲染區，user 必須按到「字」
       // 才觸發 — Bruce/Eric 2026-05-23 dogfood 點出這個跟視覺直覺落差。
       behavior: HitTestBehavior.opaque,
-      onLongPress: hasActions
-          ? () => _showActionMenu(context)
-          : null,
+      onLongPress: hasActions ? () => _showActionMenu(context) : null,
       child: Align(
-        alignment:
-            message.isFromMe ? Alignment.centerRight : Alignment.centerLeft,
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          gradient: message.isFromMe
-              ? const LinearGradient(
-                  colors: [AppColors.avatarMeStart, AppColors.avatarMeEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
-          color: message.isFromMe ? null : Colors.white.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(16).copyWith(
-            bottomRight: message.isFromMe ? const Radius.circular(4) : null,
-            bottomLeft: !message.isFromMe ? const Radius.circular(4) : null,
+          margin: const EdgeInsets.symmetric(vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
           ),
-          border: message.isFromMe
-              ? null
-              : Border.all(color: AppColors.glassBorder),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (message.quotedReplyPreview != null &&
-                message.quotedReplyPreview!.trim().isNotEmpty) ...[
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: message.isFromMe
-                      ? Colors.white.withValues(alpha: 0.18)
-                      : Colors.black.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: message.isFromMe
-                        ? Colors.white.withValues(alpha: 0.18)
-                        : AppColors.glassBorder.withValues(alpha: 0.7),
-                  ),
+          decoration: BoxDecoration(
+            color: fillColor,
+            borderRadius: BorderRadius.circular(14).copyWith(
+              bottomRight: isMe ? const Radius.circular(5) : null,
+              bottomLeft: !isMe ? const Radius.circular(5) : null,
+            ),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment:
+                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isMe ? '我說' : '她說',
+                style: AppTypography.bodySmall.copyWith(
+                  color: speakerColor,
+                  fontWeight: FontWeight.w700,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (quotedReplyLabel != null) ...[
+              ),
+              if (message.quotedReplyPreview != null &&
+                  message.quotedReplyPreview!.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.58),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: AppColors.glassBorder.withValues(alpha: 0.90),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (quotedReplyLabel != null) ...[
+                        Text(
+                          quotedReplyLabel,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.glassTextSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
                       Text(
-                        quotedReplyLabel,
+                        message.quotedReplyPreview!,
                         style: AppTypography.bodySmall.copyWith(
-                          color: message.isFromMe
-                              ? Colors.white.withValues(alpha: 0.72)
-                              : AppColors.glassTextHint,
-                          fontWeight: FontWeight.w600,
+                          color: AppColors.glassTextSecondary,
+                          height: 1.35,
                         ),
                       ),
-                      const SizedBox(height: 4),
                     ],
-                    Text(
-                      message.quotedReplyPreview!,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: message.isFromMe
-                            ? Colors.white.withValues(alpha: 0.85)
-                            : AppColors.glassTextHint,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 4),
+              Text(
+                message.content,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  height: 1.4,
                 ),
               ),
             ],
-            Text(
-              message.content,
-              style: AppTypography.bodyMedium.copyWith(
-                color: message.isFromMe
-                    ? Colors.white
-                    : AppColors.glassTextPrimary,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
