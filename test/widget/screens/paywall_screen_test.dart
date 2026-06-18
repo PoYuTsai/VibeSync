@@ -43,7 +43,7 @@ void main() {
       await pumpPaywall(tester);
 
       expect(find.text('方案與額度'), findsOneWidget);
-      expect(find.text('解鎖完整分析，回得更有把握'), findsOneWidget);
+      expect(find.text('完整分析\n回覆更有把握'), findsOneWidget);
       expect(find.textContaining('升級會立即生效'), findsAtLeastNWidgets(1));
       expect(find.textContaining('降級則會在下次續訂時生效'), findsOneWidget);
     });

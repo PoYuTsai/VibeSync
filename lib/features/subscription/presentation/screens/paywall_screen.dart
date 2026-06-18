@@ -245,9 +245,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '解鎖完整分析，回得更有把握',
+                  '完整分析\n回覆更有把握',
                   style: AppTypography.headlineLarge.copyWith(
                     color: AppColors.onBackgroundPrimary,
+                    height: 1.12,
                   ),
                   textAlign: TextAlign.center,
                 ),

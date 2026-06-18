@@ -7451,11 +7451,21 @@ class _EditMessageCoachMark extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppColors.brandSurface2.withValues(alpha: 0.96),
+                        AppColors.brandSurface.withValues(alpha: 0.98),
+                      ],
+                    ),
                     borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.10),
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
+                        color: Colors.black.withValues(alpha: 0.32),
                         blurRadius: 24,
                         offset: const Offset(0, 8),
                       ),
@@ -7472,14 +7482,16 @@ class _EditMessageCoachMark extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         '💡 你知道嗎？',
-                        style: AppTypography.titleLarge,
+                        style: AppTypography.titleLarge.copyWith(
+                          color: AppColors.onBackgroundPrimary,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
                         '長按上方的訊息泡泡可以\n編輯內容、切換角色、或刪除整則',
                         textAlign: TextAlign.center,
                         style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
+                          color: AppColors.onBackgroundSecondary,
                           height: 1.5,
                         ),
                       ),

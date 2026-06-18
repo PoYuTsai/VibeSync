@@ -364,18 +364,21 @@ class _ScreenshotRecognitionDialogState
   Widget _buildBubble(_EditableRecognizedMessage message) {
     final isMe = message.isFromMe;
     final quoted = message.quotedReplyController?.text.trim() ?? '';
+    final fillColor = isMe
+        ? AppColors.ctaStart.withValues(alpha: 0.24)
+        : AppColors.primaryLight.withValues(alpha: 0.16);
+    final borderColor = isMe
+        ? AppColors.ctaStart.withValues(alpha: 0.38)
+        : AppColors.primaryLight.withValues(alpha: 0.34);
+    final labelColor = isMe ? Colors.white : AppColors.primaryLight;
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       constraints: const BoxConstraints(maxWidth: 280),
       decoration: BoxDecoration(
-        color: isMe
-            ? AppColors.ctaStart.withValues(alpha: 0.16)
-            : Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppColors.ctaStart.withValues(alpha: 0.12),
-        ),
+        color: fillColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment:
@@ -384,21 +387,33 @@ class _ScreenshotRecognitionDialogState
           Text(
             isMe ? '我說' : '她說',
             style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
+              color: labelColor,
               fontWeight: FontWeight.w600,
             ),
           ),
           if (quoted.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              '引用：$quoted',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6),
-                fontStyle: FontStyle.italic,
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.brandInk.withValues(alpha: 0.42),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Text(
+                '引用：$quoted',
+                style: AppTypography.bodySmall.copyWith(
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
+                  fontStyle: FontStyle.italic,
+                  height: 1.35,
+                ),
               ),
             ),
           ],
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             message.controller.text,
             style: AppTypography.bodySmall.copyWith(
@@ -501,10 +516,13 @@ class _ScreenshotRecognitionDialogState
             // 滑動校正器：只留一句能幫使用者完成動作的提示，不放系統狀態說明。
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(8),
+                color: AppColors.brandInk.withValues(alpha: 0.34),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.09),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -849,6 +867,7 @@ class _ScreenshotRecognitionDialogState
           onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.ctaStart,
+            foregroundColor: Colors.white,
           ),
           child: const Text('確認加入對話'),
         ),
