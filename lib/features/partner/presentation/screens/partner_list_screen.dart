@@ -29,7 +29,12 @@ import '../widgets/partner_list_card.dart';
 import '../widgets/same_name_dedupe_banner.dart';
 
 class PartnerListScreen extends ConsumerWidget {
-  const PartnerListScreen({super.key});
+  const PartnerListScreen({
+    super.key,
+    this.bottomPadding = 32,
+  });
+
+  final double bottomPadding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -82,7 +87,7 @@ class PartnerListScreen extends ConsumerWidget {
     final showBanner = dupPair != null && dismissedAsync.value == false;
 
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      padding: EdgeInsets.fromLTRB(16, 8, 16, bottomPadding),
       // +1 for the banner slot when shown.
       itemCount: partners.length + (showBanner ? 1 : 0),
       itemBuilder: (context, i) {

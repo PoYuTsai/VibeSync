@@ -98,20 +98,13 @@ class _MainShellState extends State<MainShell> {
             ),
           ],
         ),
-        body: AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(
-            bottom: _currentIndex == 0 ? homeFabReservedHeight : 0,
-          ),
-          child: IndexedStack(
-            index: _currentIndex,
-            children: const [
-              PartnerListScreen(),
-              MyReportScreen(),
-              LearningScreen(),
-            ],
-          ),
+        body: IndexedStack(
+          index: _currentIndex,
+          children: const [
+            PartnerListScreen(bottomPadding: 32.0 + homeFabReservedHeight),
+            MyReportScreen(),
+            LearningScreen(),
+          ],
         ),
         floatingActionButton: _currentIndex == 0 ? const HomeFab() : null,
         bottomNavigationBar: _buildBottomNav(),

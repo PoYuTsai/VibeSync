@@ -74,9 +74,8 @@ class _PartnerHomeProof extends StatelessWidget {
             ),
           ],
         ),
-        body: const Padding(
-          padding: EdgeInsets.only(bottom: homeFabReservedHeight),
-          child: PartnerListScreen(),
+        body: const PartnerListScreen(
+          bottomPadding: 32.0 + homeFabReservedHeight,
         ),
         floatingActionButton: const HomeFab(),
         bottomNavigationBar: _ProofBottomNav(),
