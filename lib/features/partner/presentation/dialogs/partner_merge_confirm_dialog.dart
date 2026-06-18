@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../shared/widgets/brand/brand_dialog.dart';
+
 /// D-variant confirm dialog per Phase 3 design doc §3:
 /// - N 對話搬遷 + M traits 聯集（具象 metric，避免抽象 wording）
 /// - 紅字「⚠️ 此操作不可復原」（destructive 心理安全感）
@@ -24,7 +26,7 @@ class PartnerMergeConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return BrandAlertDialog(
       title: Text('將 $fromName 合併到 $toName？'),
       content: Column(
         mainAxisSize: MainAxisSize.min,

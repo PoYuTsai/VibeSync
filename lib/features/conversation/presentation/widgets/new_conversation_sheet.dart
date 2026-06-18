@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../data/providers/conversation_write_controller.dart';
 
 class NewConversationSheet extends ConsumerWidget {
@@ -123,7 +124,11 @@ class NewConversationSheet extends ConsumerWidget {
                   router.push('/conversation/${conversation.id}');
                 } catch (_) {
                   messenger.showSnackBar(
-                    const SnackBar(content: Text('建立對話失敗，請再試一次')),
+                    buildBrandFeedbackSnackBar(
+                      title: '建立對話失敗，請再試一次',
+                      icon: Icons.error_outline_rounded,
+                      accentColor: AppColors.error,
+                    ),
                   );
                 }
               },

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../partner/presentation/widgets/partner_picker_sheet.dart';
 import '../../data/providers/conversation_write_controller.dart';
 import '../../domain/entities/conversation.dart';
@@ -30,7 +33,7 @@ Future<void> showConversationReassignPicker(
           final previousPartnerId = conversation.partnerId;
           final confirmed = await showDialog<bool>(
             context: sheetCtx,
-            builder: (dialogCtx) => AlertDialog(
+            builder: (dialogCtx) => BrandAlertDialog(
               title: Text('把這段移到「${target.name}」？'),
               content: Text(
                 '請確認這段聊天真的屬於「${target.name}」\n\n'
@@ -61,7 +64,11 @@ Future<void> showConversationReassignPicker(
             conversation.partnerId = previousPartnerId;
             if (!sheetCtx.mounted) return;
             ScaffoldMessenger.of(sheetCtx).showSnackBar(
-              const SnackBar(content: Text('移動失敗，請稍後再試')),
+              buildBrandFeedbackSnackBar(
+                title: '移動失敗，請稍後再試',
+                icon: Icons.error_outline_rounded,
+                accentColor: AppColors.error,
+              ),
             );
           }
         },

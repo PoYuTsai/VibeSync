@@ -49,6 +49,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../domain/entities/partner.dart';
@@ -106,8 +107,11 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       GoRouter.of(context).pushReplacement('/partner/${partner.id}');
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('建立對象失敗，請再試一次')),
+      showBrandFeedbackSnackBar(
+        context,
+        title: '建立對象失敗，請再試一次',
+        icon: Icons.error_outline_rounded,
+        accentColor: AppColors.error,
       );
     } finally {
       if (mounted) {

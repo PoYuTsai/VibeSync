@@ -28,6 +28,8 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
@@ -410,11 +412,17 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
             matchedConversationIds: matchedIds,
           );
       messenger.showSnackBar(
-        SnackBar(content: Text('已把「${splitTarget.movingDisplayName}」拆成新對象')),
+        buildBrandFeedbackSnackBar(
+          title: '已把「${splitTarget.movingDisplayName}」拆成新對象',
+        ),
       );
     } catch (_) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('拆卡失敗，稍後再試')),
+        buildBrandFeedbackSnackBar(
+          title: '拆卡失敗，稍後再試',
+          icon: Icons.error_outline_rounded,
+          accentColor: AppColors.error,
+        ),
       );
     }
   }
@@ -509,7 +517,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   ) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => BrandAlertDialog(
         title: const Text('拆成新對象？'),
         content: Text(
           '「${splitTarget.keptDisplayName}」會留在這張卡；含「${splitTarget.movingDisplayName}」的對話會搬到新的對象卡。',
@@ -1323,12 +1331,18 @@ Future<void> _onEditPartnerSettings(
       await controller.updateCustomNote(partner, result.note);
     }
     if (!context.mounted) return;
-    messenger.showSnackBar(const SnackBar(content: Text('已更新對象設定')));
+    messenger.showSnackBar(
+      buildBrandFeedbackSnackBar(title: '已更新對象設定'),
+    );
   } catch (e, st) {
     debugPrint('PartnerDetailScreen settings edit failed: $e\n$st');
     if (!context.mounted) return;
     messenger.showSnackBar(
-      const SnackBar(content: Text('更新失敗，請稍後再試')),
+      buildBrandFeedbackSnackBar(
+        title: '更新失敗，請稍後再試',
+        icon: Icons.error_outline_rounded,
+        accentColor: AppColors.error,
+      ),
     );
   }
 }
@@ -1353,13 +1367,20 @@ Future<void> _confirmDeleteConversation(
     await controller.delete(c);
     if (!context.mounted) return;
     messenger.showSnackBar(
-      const SnackBar(content: Text('已刪除這段互動紀錄')),
+      buildBrandFeedbackSnackBar(
+        title: '已刪除這段互動紀錄',
+        icon: Icons.delete_outline_rounded,
+      ),
     );
   } catch (e, st) {
     debugPrint('PartnerDetailScreen conversation delete failed: $e\n$st');
     if (!context.mounted) return;
     messenger.showSnackBar(
-      const SnackBar(content: Text('刪除失敗，請稍後再試')),
+      buildBrandFeedbackSnackBar(
+        title: '刪除失敗，請稍後再試',
+        icon: Icons.error_outline_rounded,
+        accentColor: AppColors.error,
+      ),
     );
   }
 }

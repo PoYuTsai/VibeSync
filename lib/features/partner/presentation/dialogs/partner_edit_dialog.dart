@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
+
 /// Single-field rename dialog for a Partner. Pure UI — pops via
 /// `Navigator.pop`:
 ///   - cancel / barrier dismiss → null
@@ -48,9 +51,10 @@ class _PartnerEditDialogState extends State<PartnerEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return BrandAlertDialog(
       title: const Text('編輯對象'),
       content: TextField(
+        style: const TextStyle(color: AppColors.glassTextPrimary),
         controller: _controller,
         autofocus: true,
         decoration: const InputDecoration(labelText: '名稱'),

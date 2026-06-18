@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../data/providers/partner_banner_providers.dart';
 import '../../data/providers/partner_write_controller.dart';
@@ -173,12 +174,18 @@ class PartnerListScreen extends ConsumerWidget {
         );
       }
       messenger.showSnackBar(
-        SnackBar(content: Text('已合併「${dupPair.older.name}」')),
+        buildBrandFeedbackSnackBar(
+          title: '已合併「${dupPair.older.name}」',
+        ),
       );
     } catch (e, st) {
       debugPrint('PartnerListScreen direct merge failed: $e\n$st');
       messenger.showSnackBar(
-        const SnackBar(content: Text('合併失敗，請稍後再試')),
+        buildBrandFeedbackSnackBar(
+          title: '合併失敗，請稍後再試',
+          icon: Icons.error_outline_rounded,
+          accentColor: AppColors.error,
+        ),
       );
     }
   }
@@ -266,20 +273,29 @@ class PartnerListScreen extends ConsumerWidget {
     try {
       await ref.read(partnerWriteControllerProvider.notifier).delete(partner);
       messenger.showSnackBar(
-        SnackBar(content: Text('已刪除「${partner.name}」')),
+        buildBrandFeedbackSnackBar(
+          title: '已刪除「${partner.name}」',
+          icon: Icons.delete_outline_rounded,
+        ),
       );
     } on PartnerHasConversationsException catch (e) {
       // Defensive — a conversation may have been created between the
       // dialog open and the repo call. Surface the live count.
       messenger.showSnackBar(
-        SnackBar(
-          content: Text('刪除失敗：仍有 ${e.conversationCount} 個對話'),
+        buildBrandFeedbackSnackBar(
+          title: '刪除失敗：仍有 ${e.conversationCount} 個對話',
+          icon: Icons.error_outline_rounded,
+          accentColor: AppColors.error,
         ),
       );
     } catch (e, st) {
       debugPrint('PartnerListScreen delete failed: $e\n$st');
       messenger.showSnackBar(
-        const SnackBar(content: Text('刪除失敗，請稍後再試')),
+        buildBrandFeedbackSnackBar(
+          title: '刪除失敗，請稍後再試',
+          icon: Icons.error_outline_rounded,
+          accentColor: AppColors.error,
+        ),
       );
     }
   }

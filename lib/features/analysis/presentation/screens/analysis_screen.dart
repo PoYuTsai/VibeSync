@@ -19,6 +19,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
@@ -1178,17 +1179,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     messenger.clearSnackBars();
     messenger.showSnackBar(
-      SnackBar(
-        content: const Text('已儲存，點重新分析更新結果。'),
-        behavior: SnackBarBehavior.floating,
+      buildBrandFeedbackSnackBar(
+        title: '已儲存，點重新分析更新結果。',
+        icon: Icons.edit_note_rounded,
         duration: const Duration(seconds: 8),
-        action: SnackBarAction(
-          label: '重新分析',
-          onPressed: () {
-            if (_isAnalyzing) return;
-            unawaited(_runAnalysis());
-          },
-        ),
+        actionLabel: '重新分析',
+        onAction: () {
+          messenger.hideCurrentSnackBar();
+          if (_isAnalyzing) return;
+          unawaited(_runAnalysis());
+        },
       ),
     );
   }
@@ -2241,10 +2241,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     if (dialogResult == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('已保留這次辨識結果，你可以稍後再繼續加入。'),
-        ),
+      showBrandFeedbackSnackBar(
+        context,
+        title: '已保留這次辨識結果，你可以稍後再繼續加入。',
+        icon: Icons.info_outline_rounded,
       );
       return;
     }
@@ -2532,11 +2532,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void _showFloatingSnackBar(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+    showBrandFeedbackSnackBar(
+      context,
+      title: message,
+      icon: Icons.info_outline_rounded,
     );
   }
 
@@ -3424,10 +3423,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             warningMessage: warningMessage,
           );
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('已保留這次辨識結果，你可以稍後再繼續加入。'),
-            ),
+          showBrandFeedbackSnackBar(
+            context,
+            title: '已保留這次辨識結果，你可以稍後再繼續加入。',
+            icon: Icons.info_outline_rounded,
           );
           return;
         }

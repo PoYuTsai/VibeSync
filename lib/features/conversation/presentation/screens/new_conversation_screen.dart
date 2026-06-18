@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../opener/data/services/opener_result_cache_service.dart';
@@ -234,22 +235,28 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         : (typedName.isEmpty && _hasOpenerSeed ? '開場草稿' : typedName);
 
     if (widget.partnerId == null && name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('請先輸入對方名稱。')),
+      showBrandFeedbackSnackBar(
+        context,
+        title: '請先輸入對方名稱。',
+        icon: Icons.info_outline_rounded,
       );
       return;
     }
 
     if (_messages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('請先加入至少一則訊息。')),
+      showBrandFeedbackSnackBar(
+        context,
+        title: '請先加入至少一則訊息。',
+        icon: Icons.info_outline_rounded,
       );
       return;
     }
 
     if (!_hasIncomingMessage) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('請先加入她的回覆，再建立對話。')),
+      showBrandFeedbackSnackBar(
+        context,
+        title: '請先加入她的回覆，再建立對話。',
+        icon: Icons.info_outline_rounded,
       );
       return;
     }
@@ -292,8 +299,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       context.pushReplacement('/conversation/${conversation.id}');
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('建立對話失敗，請再試一次')),
+      showBrandFeedbackSnackBar(
+        context,
+        title: '建立對話失敗，請再試一次',
+        icon: Icons.error_outline_rounded,
+        accentColor: AppColors.error,
       );
     } finally {
       if (mounted) {
@@ -658,8 +668,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
               child: Text(
                 _conversationHint,
                 style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary
-                      .withValues(alpha: 0.70),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
                 ),
               ),
             ),

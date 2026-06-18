@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
+
 class PartnerSettingsResult {
   final String name;
   final String note;
@@ -72,10 +75,11 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final fieldLabelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: AppColors.glassTextPrimary,
           fontWeight: FontWeight.w600,
         );
 
-    return AlertDialog(
+    return BrandAlertDialog(
       title: const Text('對象設定'),
       content: SingleChildScrollView(
         child: Column(
@@ -85,6 +89,7 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
             Text('名稱', style: fieldLabelStyle),
             const SizedBox(height: 6),
             TextField(
+              style: const TextStyle(color: AppColors.glassTextPrimary),
               controller: _nameController,
               autofocus: true,
               decoration: const InputDecoration(
@@ -98,6 +103,7 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
             Text('一次性資訊 / 目前目標 / 備註', style: fieldLabelStyle),
             const SizedBox(height: 6),
             TextField(
+              style: const TextStyle(color: AppColors.glassTextPrimary),
               controller: _noteController,
               minLines: 4,
               maxLines: 7,
@@ -109,7 +115,9 @@ class _PartnerSettingsDialogState extends State<PartnerSettingsDialog> {
             const SizedBox(height: 6),
             Text(
               '這裡會成為教練理解這個人的長期背景，不需要每次補聊天時重填。',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.glassTextSecondary,
+                  ),
             ),
           ],
         ),

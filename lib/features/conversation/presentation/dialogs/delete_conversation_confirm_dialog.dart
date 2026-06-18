@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../shared/widgets/brand/brand_dialog.dart';
+
 /// Destructive confirm dialog for deleting a single conversation under a Partner.
 ///
 /// Pure UI — returns `bool` via `Navigator.pop`. Caller awaits and decides
@@ -17,7 +19,7 @@ class DeleteConversationConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return BrandAlertDialog(
       title: const Text('刪除這段互動紀錄？'),
       content: Column(
         mainAxisSize: MainAxisSize.min,

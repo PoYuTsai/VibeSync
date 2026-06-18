@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/brand/brand_dialog.dart';
+
 /// Pure UI dialog for editing Partner.customNote.
 ///
 /// Returns:
@@ -43,9 +46,10 @@ class _PartnerNoteEditDialogState extends State<PartnerNoteEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return BrandAlertDialog(
       title: const Text('設定對方資訊'),
       content: TextField(
+        style: const TextStyle(color: AppColors.glassTextPrimary),
         controller: _controller,
         autofocus: true,
         minLines: 3,

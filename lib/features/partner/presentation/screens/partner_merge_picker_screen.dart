@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../dialogs/partner_merge_confirm_dialog.dart';
@@ -131,8 +133,11 @@ class _PartnerMergePickerScreenState
     } catch (e, st) {
       if (!mounted) return;
       debugPrint('PartnerMergePickerScreen merge failed: $e\n$st');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('合併失敗，請稍後再試')),
+      showBrandFeedbackSnackBar(
+        context,
+        title: '合併失敗，請稍後再試',
+        icon: Icons.error_outline_rounded,
+        accentColor: AppColors.error,
       );
     }
   }
