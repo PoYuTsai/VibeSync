@@ -50,6 +50,7 @@ import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
 import '../../domain/mindmap/mind_map_builder.dart';
+import '../../domain/mindmap/partner_insight_presentation.dart';
 import '../dialogs/partner_settings_dialog.dart';
 import '../providers/partner_providers.dart';
 import '../widgets/partner_conversation_tile.dart';
@@ -170,7 +171,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
               // SafeArea already keeps the content out of the transparent
               // toolbar zone on device. Do not add another top inset here, or
               // the hero card leaves a visible dead shelf under the title.
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+              // Bottom inset clears the extended FAB (pill ~48 + 16 margin) so
+              // the last card / banner is never hidden behind it.
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
               children: [
                 _PartnerCommandSummaryCard(
                   partner: partner,
@@ -800,9 +803,14 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final insight = _PartnerLatestInsight.fromConversations(conversations);
     final state = PartnerHeatMessaging.labelFor(aggregate.latestHeat);
-    final suggestion = insight.nextStep ?? _emptySuggestion(conversations);
+    // 總覽卡只放「短抓手」，不再重貼完整下一步（資訊架構去重：完整建議只在
+    // 下方主卡出現一次）。抓手由特質/興趣衍生，與 nextStep 解耦。
+    final hook = PartnerInsightPresentation.derive(
+          interests: aggregate.unionInterests,
+          traits: aggregate.unionTraits,
+        ).tacticalHook ??
+        _emptyHook(conversations);
     final tags = _highValueTags(aggregate, state);
 
     return _PartnerDetailSection(
@@ -848,9 +856,9 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _SummaryLine(
-            icon: Icons.flag_outlined,
-            label: '最近建議',
-            value: suggestion,
+            icon: Icons.tips_and_updates_outlined,
+            label: '接法',
+            value: hook,
           ),
           if (tags.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -865,11 +873,11 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
     );
   }
 
-  static String _emptySuggestion(List<Conversation> conversations) {
+  static String _emptyHook(List<Conversation> conversations) {
     if (conversations.isEmpty) {
-      return '先新增第一段互動，VibeSync 會把這裡整理成下一步。';
+      return '先新增第一段互動，這裡會整理出聊天抓手。';
     }
-    return '先分析最近一段互動，這裡會顯示下一步。';
+    return '先分析最近一段互動，這裡會冒出可接的話題抓手。';
   }
 
   static List<String> _highValueTags(
@@ -930,7 +938,7 @@ class _PartnerNextStepCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '下一步',
+                  '下一步行動',
                   style: AppTypography.titleSmall.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     fontWeight: FontWeight.w800,

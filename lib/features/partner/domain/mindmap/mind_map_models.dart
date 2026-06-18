@@ -28,9 +28,22 @@ class PartnerMindMap {
   /// （僅 currentGameStage fallback）時為 null → 節點不可點。
   final String? nextStepSourceConversationId;
 
+  /// 作戰板詳情用拆解欄位（決策：圖節點放短標籤，整句/拆解進詳情 panel，
+  /// 避免「圖節點 = 詳情頁外層同一句」的重貼感）。
+  ///
+  /// [relationshipSignal] 關係信號（階段描述衍生）；hasAnalysisData 時必有。
+  /// [topics] 可接話題（= 聚合興趣）；無興趣時為空。
+  /// [fullNextStep] 下一步行動全文；無可解析快照或無 nextStep 時為 null。
+  final String? relationshipSignal;
+  final List<String> topics;
+  final String? fullNextStep;
+
   const PartnerMindMap({
     required this.root,
     required this.hasAnalysisData,
     this.nextStepSourceConversationId,
+    this.relationshipSignal,
+    this.topics = const [],
+    this.fullNextStep,
   });
 }

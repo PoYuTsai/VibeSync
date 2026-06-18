@@ -29,6 +29,7 @@ import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.d
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_detail_screen.dart';
 import 'package:vibesync/features/partner/presentation/screens/partner_mind_map_screen.dart';
+import 'package:vibesync/features/partner/presentation/widgets/partner_mind_map_view.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
@@ -196,7 +197,12 @@ void main() {
     await t.pumpAndSettle();
 
     // Tap the nextStep leaf node (single tap settles via the gesture arena).
-    await t.tap(find.text('約她週末喝咖啡'));
+    // 圖節點短標籤現在是「下一步行動」，全文「約她週末喝咖啡」改在底部 panel，
+    // 所以 tap 要鎖定圖內節點。
+    await t.tap(find.descendant(
+      of: find.byType(PartnerMindMapView),
+      matching: find.text('下一步行動'),
+    ));
     await t.pump(const Duration(milliseconds: 400));
     await t.pumpAndSettle();
 

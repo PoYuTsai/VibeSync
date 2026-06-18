@@ -111,6 +111,30 @@ void main() {
     expect(find.text('完成一次對話分析，解鎖她的作戰板'), findsNothing);
   });
 
+  testWidgets('內頁底部拆解 panel：關係信號 + 下一步行動全文 + 問教練', (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 900));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [_analyzedConv()]),
+      ],
+      child: const MaterialApp(home: PartnerMindMapScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.text('作戰重點'), findsOneWidget);
+    expect(find.text('關係信號'), findsOneWidget);
+    // 圖節點只放短標籤；全文在 panel 的「下一步行動」列。
+    expect(find.text('下一步行動'), findsWidgets);
+    expect(find.text('約她週末喝咖啡'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '問教練'), findsOneWidget);
+  });
+
   testWidgets('單擊 nextStep 葉節點 → 導航到對象頁教練跟進區（目的地改自 Coach 1:1）', (t) async {
     final captured = <Uri>[];
     final router = GoRouter(
@@ -146,7 +170,11 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    await t.tap(find.text('約她週末喝咖啡'));
+    // 圖節點短標籤 '下一步行動' 也出現在底部 panel 列，tap 要鎖定圖內節點。
+    await t.tap(find.descendant(
+      of: find.byType(PartnerMindMapView),
+      matching: find.text('下一步行動'),
+    ));
     // 單擊與背景雙擊重置並存 → 等競技場 timeout 裁決。
     await t.pump(const Duration(milliseconds: 400));
     await t.pumpAndSettle();

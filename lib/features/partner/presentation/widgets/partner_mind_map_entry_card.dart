@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/mindmap/mind_map_models.dart';
+import '../../domain/mindmap/partner_insight_presentation.dart';
 
 /// 詳情頁的作戰板入口卡（入口 1）。摘要 = 階段 + 下一步，點擊進全螢幕圖。
 ///
@@ -29,10 +30,29 @@ class PartnerMindMapEntryCard extends StatelessWidget {
     return null;
   }
 
+  List<String> _leavesOf(MindMapBranch branch) {
+    for (final b in map.root.children) {
+      if (b.branch == branch) {
+        return b.children.map((c) => c.label).toList();
+      }
+    }
+    return const [];
+  }
+
   @override
   Widget build(BuildContext context) {
     final stage = _leafOf(MindMapBranch.stage);
-    final nextStep = _leafOf(MindMapBranch.nextStep);
+    // 入口卡只放短 preview（抓手/可接話題），完整下一步留給作戰板詳情與
+    // 詳情頁下方主卡，避免「外層卡 = 內頁同一句」的重貼感。
+    final presentation = PartnerInsightPresentation.derive(
+      interests: _leavesOf(MindMapBranch.interests),
+      traits: _leavesOf(MindMapBranch.traits),
+    );
+    final preview = presentation.topicsLine != null
+        ? '可接話題：${presentation.topicsLine}'
+        : (presentation.tacticalHook != null
+            ? '抓手：${presentation.tacticalHook}'
+            : null);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -91,10 +111,10 @@ class PartnerMindMapEntryCard extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (nextStep != null) ...[
+              if (preview != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  '下一步：$nextStep',
+                  preview,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.bodySmall.copyWith(

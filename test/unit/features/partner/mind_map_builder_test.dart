@@ -87,7 +87,12 @@ void main() {
       expect(interests.children.map((n) => n.label), ['爬山', '咖啡']);
       final next = map.root.children
           .firstWhere((n) => n.branch == MindMapBranch.nextStep);
-      expect(next.children.single.label, '約她週末喝咖啡');
+      // 節點本身改短（IA 去重：不在圖節點塞整句），全文移到 map 詳情欄位。
+      expect(next.children.single.label, '下一步行動');
+      expect(map.fullNextStep, '約她週末喝咖啡');
+      // 關係信號 = 階段描述（premise）；可接話題 = 聚合興趣。
+      expect(map.relationshipSignal, contains('男女'));
+      expect(map.topics, ['爬山', '咖啡']);
     });
 
     test('取最新一筆可解析快照（依 updatedAt 降冪）', () {
@@ -123,7 +128,8 @@ void main() {
       );
       final next = map.root.children
           .firstWhere((n) => n.branch == MindMapBranch.nextStep);
-      expect(next.children.single.label, '維持神秘感');
+      expect(next.children.single.label, '下一步行動');
+      expect(map.fullNextStep, '維持神秘感');
     });
 
     test('興趣/特質空 → 該枝整枝省略，不產生空枝', () {
@@ -159,6 +165,9 @@ void main() {
       expect(stage.children.single.label, contains('互相評估'));
       expect(map.root.children.map((n) => n.branch),
           isNot(contains(MindMapBranch.nextStep)));
+      // 僅 fallback 階段 → 仍有關係信號（階段描述），但無下一步全文。
+      expect(map.relationshipSignal, isNotNull);
+      expect(map.fullNextStep, isNull);
     });
 
     test('完全沒分析過 → hasAnalysisData false、不 crash', () {

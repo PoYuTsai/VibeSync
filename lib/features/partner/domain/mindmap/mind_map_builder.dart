@@ -61,12 +61,16 @@ PartnerMindMap buildPartnerMindMap({
 
   final hasAnalysisData = stageInfo != null || fallbackStageRaw != null;
   final branches = <MindMapNode>[];
+  String? relationshipSignal;
+  String? fullNextStep;
 
   if (hasAnalysisData) {
     // 階段枝（hasAnalysisData 成立時必有，全圖至少一條邊）
     final stage = stageInfo != null
         ? stageInfo.current
         : GameStage.fromString(fallbackStageRaw!);
+    // 關係信號 = 階段描述（詳情 panel 用；hasAnalysisData 時必有）。
+    relationshipSignal = stage.description;
     branches.add(MindMapNode(
       id: 'stage',
       label: '關係階段',
@@ -133,14 +137,17 @@ PartnerMindMap buildPartnerMindMap({
           ? stageInfo.nextStep.trim()
           : snapshotStrategy;
       if (nextStep.isNotEmpty) {
+        fullNextStep = nextStep;
         branches.add(MindMapNode(
           id: 'next',
           label: '下一步',
           branch: MindMapBranch.nextStep,
           children: [
+            // 圖節點放短標籤；整句教練建議改由 [PartnerMindMap.fullNextStep]
+            // 在詳情 panel 呈現（避免圖節點重貼整句）。
             MindMapNode(
               id: 'next-step',
-              label: nextStep,
+              label: '下一步行動',
               branch: MindMapBranch.nextStep,
             ),
           ],
@@ -158,5 +165,8 @@ PartnerMindMap buildPartnerMindMap({
     ),
     hasAnalysisData: hasAnalysisData,
     nextStepSourceConversationId: snapshotConversationId,
+    relationshipSignal: relationshipSignal,
+    topics: aggregate.unionInterests,
+    fullNextStep: fullNextStep,
   );
 }

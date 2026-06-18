@@ -2,6 +2,8 @@
 //
 // Hermetic widget tests for PartnerDetailScreen.
 // Overrides the three narrow providers; no Hive required.
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,6 +59,39 @@ Conversation _conv(String id) => Conversation(
       messages: const [],
       createdAt: DateTime(2026, 4, 20),
       updatedAt: DateTime(2026, 4, 20),
+    );
+
+/// 最近一段已分析互動：帶可解析快照（gameStage.nextStep + 興趣/特質），
+/// 用於 IA 去重鎖測試。
+String _analysisSnapshot({required String nextStep}) => jsonEncode({
+      'gameStage': {'current': 'premise', 'status': 'normal', 'nextStep': nextStep},
+      'topicDepth': {'current': 'personal', 'suggestion': ''},
+      'strategy': '維持神祕感',
+      'targetProfile': {
+        'interests': ['爬山', '咖啡'],
+        'traits': ['幽默'],
+        'notes': <String>[],
+      },
+    });
+
+Conversation _analyzedConv({required String nextStep}) => Conversation(
+      id: 'c-analyzed',
+      name: '第一段',
+      messages: const [],
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 21),
+      partnerId: 'p1',
+      lastAnalysisSnapshotJson: _analysisSnapshot(nextStep: nextStep),
+    );
+
+PartnerAggregateView _aggregateWithTags() => PartnerAggregateView(
+      unionInterests: const ['爬山', '咖啡'],
+      unionTraits: const ['幽默'],
+      unionNotes: null,
+      latestHeat: 70,
+      totalRounds: 1,
+      totalMessages: 0,
+      lastInteraction: DateTime(2026, 4, 21),
     );
 
 /// Spec 5 C24 — minimal in-memory CoachFollowUpRepository for hermetic
@@ -130,6 +165,35 @@ Future<void> _expandDetailedTraits(WidgetTester t) async {
 }
 
 void main() {
+  // IA 去重鎖：同一段完整 nextStep 在整個詳情頁只能出現一次（下方主卡）。
+  // 上方總覽卡改短摘要、作戰板入口卡改 preview 後，這裡才會收斂到 1。
+  testWidgets('完整 nextStep 在詳情頁只出現一次（資訊架構去重鎖）', (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 2400));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    const fullNextStep = '約她這週末一起去看她提過的那個攝影展，順勢帶到展後找間咖啡店坐坐';
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachFollowUpRepositoryProvider
+            .overrideWithValue(_FakeCoachFollowUpRepo()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1').overrideWith((_) => _aggregateWithTags()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [_analyzedConv(nextStep: fullNextStep)]),
+        partnerListProvider.overrideWith((_) => [_p()]),
+      ],
+      child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.textContaining(fullNextStep), findsOneWidget,
+        reason: '完整下一步只應出現在下方主卡；總覽卡與入口卡改成短摘要/preview');
+  });
+
   testWidgets('tile delete confirm calls ConversationWriteController.delete',
       (t) async {
     // Tile lives below the new PartnerStyleEntryCard — give the surface
@@ -489,8 +553,8 @@ void main() {
     // 作戰板入口卡 sits between hero and records; the next-step card now
     // starts below the lazy ListView's first viewport, so bring it on
     // screen before asserting (off-screen children aren't built).
-    await _scrollUntilVisible(t, find.text('下一步'));
-    expect(find.text('下一步'), findsOneWidget);
+    await _scrollUntilVisible(t, find.text('下一步行動'));
+    expect(find.text('下一步行動'), findsOneWidget);
 
     await _scrollUntilVisible(t, find.text('詳細特質與趨勢'));
     expect(find.text('詳細特質與趨勢'), findsOneWidget);
@@ -692,7 +756,7 @@ void main() {
 
     final heatTop = t.getTopLeft(find.byType(PartnerHeatHeroCard)).dy;
     final recordTop = t.getTopLeft(find.byType(PartnerConversationTile)).dy;
-    final nextStepTop = t.getTopLeft(find.text('下一步')).dy;
+    final nextStepTop = t.getTopLeft(find.text('下一步行動')).dy;
 
     expect(recordTop, greaterThan(heatTop));
     expect(recordTop, lessThan(nextStepTop));
