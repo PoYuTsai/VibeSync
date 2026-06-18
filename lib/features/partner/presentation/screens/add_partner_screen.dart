@@ -38,8 +38,8 @@
 // - Explanatory text moved into a GlassmorphicContainer card (heavy,
 //   deliberate center of gravity); text tokens switch to glassText* because
 //   they now sit on a glass surface, not the bare gradient.
-// - Content capped at 340 width, biased to optical centre (Spacer 3:4);
-//   field + CTA stay directly on the gradient under the card, 18px rhythm.
+// - Content capped at 358 width, biased to optical centre (Spacer 3:4);
+//   field + CTA stay directly on the gradient under the card, 20px rhythm.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -141,9 +141,9 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
               // `extendBodyBehindAppBar` lets the gradient sit under the
               // transparent AppBar; content still needs to clear the toolbar.
               padding: const EdgeInsets.fromLTRB(
-                24,
+                16,
                 kToolbarHeight + 16,
-                24,
+                16,
                 24,
               ),
               child: Column(
@@ -151,13 +151,13 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                   const Spacer(flex: 3),
                   Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 340),
+                      constraints: const BoxConstraints(maxWidth: 358),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           BrandSurfaceCard(
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+                            padding: const EdgeInsets.fromLTRB(24, 24, 24, 26),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -165,7 +165,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                                   title: '先建立一張對象卡',
                                   icon: Icons.person_add_alt_1_rounded,
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 16),
                                 Text(
                                   '這張卡代表一個人，之後與同一個人在不同日期、IG、Line 或交友軟體的聊天，都整理在這裡',
                                   style: AppTypography.bodySmall.copyWith(
@@ -177,7 +177,7 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 20),
                           TextField(
                             controller: _name,
                             cursorColor: AppColors.ctaStart,
@@ -188,11 +188,13 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
                               hintText: '例：Alice / Tinder 上的空姐',
                             ),
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 20),
                           BrandPrimaryButton(
                             label: '建立',
-                            onPressed: canSubmit ? () => _submit(ownerId) : null,
+                            onPressed:
+                                canSubmit ? () => _submit(ownerId) : null,
                             isLoading: _busy,
+                            verticalPadding: 18,
                           ),
                           if (!authReady)
                             Padding(
