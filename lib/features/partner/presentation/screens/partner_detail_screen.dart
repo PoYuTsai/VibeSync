@@ -731,11 +731,13 @@ class _CoachFocusOrchestratorState
 class _PartnerLatestInsight {
   final String? nextStep;
   final String? recentInsight;
+  final String? interactionAction;
   final DateTime? analyzedAt;
 
   const _PartnerLatestInsight({
     this.nextStep,
     this.recentInsight,
+    this.interactionAction,
     this.analyzedAt,
   });
 
@@ -758,6 +760,14 @@ class _PartnerLatestInsight {
         final hintInsight = (hint != null && hint.isUsable)
             ? '她丟出的球：${hint.catchablePoint}。${hint.read}'
             : null;
+        final hintAction =
+            (hint != null && hint.isUsable) ? hint.microMove : null;
+        final segmentAction = _replySegmentAction(
+          result.recommendation.replySegments,
+        );
+        final segmentCue = _replySegmentCue(
+          result.recommendation.replySegments,
+        );
         return _PartnerLatestInsight(
           nextStep: _firstNonEmpty([
             result.gameStage.nextStep,
@@ -766,8 +776,17 @@ class _PartnerLatestInsight {
           ]),
           recentInsight: _firstNonEmpty([
             hintInsight,
-            result.strategy,
+            segmentCue,
             result.psychology.subtext,
+            result.recommendation.psychology,
+            result.strategy,
+          ]),
+          interactionAction: _firstNonEmpty([
+            segmentAction,
+            result.recommendation.content,
+            hintAction,
+            result.topicDepth.suggestion,
+            result.recommendation.reason,
           ]),
           analyzedAt: conversation.updatedAt,
         );
@@ -778,6 +797,29 @@ class _PartnerLatestInsight {
 
     return const _PartnerLatestInsight();
   }
+}
+
+String? _replySegmentAction(List<ReplySegment> segments) {
+  for (final segment in segments) {
+    final reply = segment.reply.trim();
+    if (reply.isEmpty) continue;
+    final source = segment.sourceMessage.trim();
+    if (source.isNotEmpty) {
+      return '接「$source」：$reply';
+    }
+    return '${segment.displayLabel}：$reply';
+  }
+  return null;
+}
+
+String? _replySegmentCue(List<ReplySegment> segments) {
+  for (final segment in segments) {
+    final source = segment.sourceMessage.trim();
+    if (source.isNotEmpty) {
+      return '她剛提到：$source';
+    }
+  }
+  return null;
 }
 
 String? _firstNonEmpty(List<String?> values) {
@@ -912,9 +954,12 @@ class _PartnerNextStepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final nextStep = latestInsight.nextStep ??
+    final fallback = latestInsight.nextStep ??
         (hasConversations ? '先分析最近一段互動，讓這裡變成關係下一步。' : '先新增第一段互動紀錄，再回來看下一步。');
+    final action = latestInsight.interactionAction ?? fallback;
     final insight = latestInsight.recentInsight;
+    final actionLabel =
+        latestInsight.interactionAction == null ? '關係下一步' : '建議接法';
 
     return _PartnerDetailSection(
       child: Row(
@@ -945,23 +990,39 @@ class _PartnerNextStepCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  nextStep,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    height: 1.42,
-                  ),
-                ),
-                if (insight != null && insight != nextStep) ...[
-                  const SizedBox(height: 8),
+                if (insight != null) ...[
                   Text(
-                    '本回合怎麼接：$insight',
+                    '互動摘錄',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.ctaStart,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    insight,
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.onBackgroundSecondary,
                       height: 1.35,
                     ),
                   ),
+                  const SizedBox(height: 10),
                 ],
+                Text(
+                  actionLabel,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.ctaStart,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  action,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    height: 1.42,
+                  ),
+                ),
               ],
             ),
           ),

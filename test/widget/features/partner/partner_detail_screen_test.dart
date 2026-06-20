@@ -61,12 +61,39 @@ Conversation _conv(String id) => Conversation(
       updatedAt: DateTime(2026, 4, 20),
     );
 
-/// 最近一段已分析互動：帶可解析快照（gameStage.nextStep + 興趣/特質），
-/// 用於 IA 去重鎖測試。
-String _analysisSnapshot({required String nextStep}) => jsonEncode({
-      'gameStage': {'current': 'premise', 'status': 'normal', 'nextStep': nextStep},
+/// 最近一段已分析互動：帶可解析快照（gameStage.nextStep + 互動摘錄 +
+/// 興趣/特質），用於 IA 去重鎖測試。
+String _analysisSnapshot({
+  required String nextStep,
+  String? sourceMessage,
+  String? recommendedReply,
+}) =>
+    jsonEncode({
+      'gameStage': {
+        'current': 'premise',
+        'status': 'normal',
+        'nextStep': nextStep,
+      },
       'topicDepth': {'current': 'personal', 'suggestion': ''},
       'strategy': '維持神祕感',
+      'psychology': {
+        'subtext': sourceMessage == null ? '' : '她在丟「$sourceMessage」這顆球',
+      },
+      'finalRecommendation': {
+        'pick': 'extend',
+        'content': recommendedReply ?? '',
+        'reason': '先接互動紀錄裡最有畫面的球',
+        'psychology': '她願意把生活片段丟出來，適合先延伸那段故事',
+        'replySegments': [
+          if (sourceMessage != null && recommendedReply != null)
+            {
+              'label': '接她的生活故事',
+              'sourceMessage': sourceMessage,
+              'reply': recommendedReply,
+              'reason': '直接承接最近互動紀錄',
+            },
+        ],
+      },
       'targetProfile': {
         'interests': ['爬山', '咖啡'],
         'traits': ['幽默'],
@@ -74,14 +101,23 @@ String _analysisSnapshot({required String nextStep}) => jsonEncode({
       },
     });
 
-Conversation _analyzedConv({required String nextStep}) => Conversation(
+Conversation _analyzedConv({
+  required String nextStep,
+  String? sourceMessage,
+  String? recommendedReply,
+}) =>
+    Conversation(
       id: 'c-analyzed',
       name: '第一段',
       messages: const [],
       createdAt: DateTime(2026, 4, 20),
       updatedAt: DateTime(2026, 4, 21),
       partnerId: 'p1',
-      lastAnalysisSnapshotJson: _analysisSnapshot(nextStep: nextStep),
+      lastAnalysisSnapshotJson: _analysisSnapshot(
+        nextStep: nextStep,
+        sourceMessage: sourceMessage,
+        recommendedReply: recommendedReply,
+      ),
     );
 
 PartnerAggregateView _aggregateWithTags() => PartnerAggregateView(
@@ -165,13 +201,15 @@ Future<void> _expandDetailedTraits(WidgetTester t) async {
 }
 
 void main() {
-  // IA 去重鎖：同一段完整 nextStep 在整個詳情頁只能出現一次（下方主卡）。
-  // 上方總覽卡改短摘要、作戰板入口卡改 preview 後，這裡才會收斂到 1。
-  testWidgets('完整 nextStep 在詳情頁只出現一次（資訊架構去重鎖）', (t) async {
+  // IA 去重鎖：詳情頁第一頁的下一步卡改吃互動摘錄，不再重貼作戰板完整
+  // nextStep；作戰板內頁仍保留完整 nextStep。
+  testWidgets('下一步行動使用互動摘錄，不重貼作戰板 nextStep', (t) async {
     await t.binding.setSurfaceSize(const Size(400, 2400));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
     const fullNextStep = '約她這週末一起去看她提過的那個攝影展，順勢帶到展後找間咖啡店坐坐';
+    const sourceMessage = '台南車被拖的故事';
+    const recommendedReply = '台南那段太有畫面了，後來怎麼收場？';
 
     await t.pumpWidget(ProviderScope(
       overrides: [
@@ -179,19 +217,29 @@ void main() {
         coachFollowUpRepositoryProvider
             .overrideWithValue(_FakeCoachFollowUpRepo()),
         partnerByIdProvider('p1').overrideWith((_) => _p()),
-        partnerAggregateProvider('p1').overrideWith((_) => _aggregateWithTags()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => _aggregateWithTags()),
         dataQualityFlagProvider('p1')
             .overrideWith((_) => const DataQualityFlag.unflagged()),
-        conversationsByPartnerProvider('p1')
-            .overrideWith((_) => [_analyzedConv(nextStep: fullNextStep)]),
+        conversationsByPartnerProvider('p1').overrideWith(
+          (_) => [
+            _analyzedConv(
+              nextStep: fullNextStep,
+              sourceMessage: sourceMessage,
+              recommendedReply: recommendedReply,
+            ),
+          ],
+        ),
         partnerListProvider.overrideWith((_) => [_p()]),
       ],
       child: const MaterialApp(home: PartnerDetailScreen(partnerId: 'p1')),
     ));
     await t.pumpAndSettle();
 
-    expect(find.textContaining(fullNextStep), findsOneWidget,
-        reason: '完整下一步只應出現在下方主卡；總覽卡與入口卡改成短摘要/preview');
+    expect(find.textContaining(sourceMessage), findsWidgets);
+    expect(find.textContaining(recommendedReply), findsWidgets);
+    expect(find.textContaining(fullNextStep), findsNothing,
+        reason: '詳情頁主卡應改用互動摘錄；作戰板 nextStep 留在作戰板內頁');
   });
 
   testWidgets('tile delete confirm calls ConversationWriteController.delete',

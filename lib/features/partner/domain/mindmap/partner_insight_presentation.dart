@@ -3,7 +3,7 @@
 ///
 /// - [tacticalHook]：短抓手（主特質 ＋ 主興趣），給總覽卡與作戰板入口卡 preview。
 /// - [topicsLine]：可接話題（興趣前幾項），給入口卡 preview 與作戰板詳情。
-/// - [fullNextStep]：完整下一步整句，只給詳情頁下方主卡與作戰板詳情 panel。
+/// - [fullNextStep]：完整下一步整句，只給作戰板詳情 panel。
 class PartnerInsightPresentation {
   final String? tacticalHook;
   final String? topicsLine;
@@ -29,7 +29,8 @@ class PartnerInsightPresentation {
     // 抓手 = 主特質 ＋ 主興趣（各取首項、去重）。只有一邊有就用一邊。
     final hookParts = <String>[];
     if (cleanTraits.isNotEmpty) hookParts.add(cleanTraits.first);
-    if (cleanInterests.isNotEmpty && !hookParts.contains(cleanInterests.first)) {
+    if (cleanInterests.isNotEmpty &&
+        !hookParts.contains(cleanInterests.first)) {
       hookParts.add(cleanInterests.first);
     }
 
