@@ -23,6 +23,14 @@
 
 ## Live Queue
 
+## [2026-06-24] practice-chat server-side session ledger（Codex BLOCKER 修復）
+Status: IN_REVIEW — 修復全部 land local（range `aa702f8..HEAD`，6 commits，**未 push／未部署**）；Codex 兩輪各 1 個 P2 皆已修、無 P0/P1，但**尚未取得最終 APPROVED**（已達 2 輪 Claude-fix 上限）；待 Eric 拍板：直接部署，或要不要最後一輪確認 review。**未宣稱 dogfood-safe。**
+**原 BLOCKER**：practice-chat 完全信任 client 送的 turns 算扣費與 10 則上限，5 漏洞（①偽造首則 ai→整場免費 ②重送 sessionId→重複扣點 ③偽造 turns 狂打 debrief→無限免費 DeepSeek ④少報 ai turns→繞過上限 ⑤塞假 assistant 訊息越獄）。
+**修法（Eric 拍板 Option A：純計數 ledger + prompt 硬化，對話維持 Hive local-only）**：新表 `practice_chat_sessions`（PK user_id+session_id，只存 ai_count/charged/debrief_count，不存對話）+ `commit_practice_chat_turn`/`claim_practice_debrief` 兩 SECURITY DEFINER RPC（FOR UPDATE 原子結算/上限，RLS service_role only）；`index.ts` 改 server 權威 preflight + 成功後才 commit/claim，turns 只當 prompt 資料；`validate.ts` 移除 client-count 上限把關；prompt 硬化堵越獄；deepseek log 不洩 body；chat reply 非空驗證；delete-account 清表；practice 專屬 DeepSeek consent（key/文案與 Claude 功能分離）。
+**Codex 證據（gpt-5.5，read-only）**：r1（base `aa702f8`）= 1 P2「debrief claim-after-generate 並發成本放大」→ 修 `3d6e9ac`（claim-before-generate，原子預約名額才生成）。r2（base `ca40e6f`）= 1 P2「consent 用途文案仍列 Claude 功能、對 DeepSeek 路徑不實」→ 修 `f3a8081`（用途/資料文案參數化、預設值不變）。兩輪皆無 P0/P1。測試：Deno 40 + Flutter（practice 22 + consent 7）全綠。
+**⚠️ 部署序（DB Migration Deploy Rule）**：push 即 auto-deploy Edge，會呼叫 prod 尚不存在的 RPC → **必先** Supabase MCP `apply_migration` 套 `20260624120000_practice_chat_sessions.sql`（claimed/replay/cap 三態驗證 + 帳本 version 對齊檔名）→ **才** push。新碼對「RPC 不存在」fail-closed（不扣、不放行）。
+**下一步**：Eric 拍板 → 套 migration（MCP）→ push → 真機 smoke（入口/聊天/首則扣費/滿10/拆解卡/consent/歷史 5 場）。
+
 ## [2026-06-15] OCR side：nested-screenshot guard + single-side fallback gate（Eric 拍板方向，待 TDD）
 Status: OPEN — **自動 side detector 全線停（Eric 拍板 2026-06-15，見下「detector 第二輪結案」）**；短期靠 client confirm UI 兜底、承認暗色單側殘差。Track 2 step-2＝Path A client-only SHIPPED `5a54ae1`（push origin/main，無 Edge deploy，待新 TF build＋Eric/Bruce 目檢）；server only_right default 已實作+TDD 後依 Eric 撤回；Track 1 nested-screenshot guard 仍 OPEN（另案）。
 **🛑 detector 第二輪＝結案，自動 side 修法全線停（Eric 拍板 2026-06-15）**：
