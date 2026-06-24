@@ -5,6 +5,7 @@ import 'package:vibesync/features/practice_chat/data/providers/practice_chat_pro
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 
 class _FakeApi extends PracticeChatApiService {
@@ -141,6 +142,20 @@ void main() {
     final saved = repo.getById(c.currentState.sessionId)!;
     expect(saved.personaId, c.currentState.personaId);
     expect(saved.difficulty, c.currentState.difficulty);
+  });
+
+  test('換一位（隨機難度）只換角色、不重抽難度', () {
+    final c = makeController();
+    c.setDifficultyPreference(PracticeDifficultyPreference.random);
+    final lockedDifficulty = c.currentState.difficulty;
+    final lockedLabel = c.currentState.difficultyLabel;
+
+    // 連按多次「換一位」：難度必須穩定（即使偏好是隨機）。
+    for (var i = 0; i < 30; i++) {
+      c.regeneratePersona();
+      expect(c.currentState.difficulty, lockedDifficulty);
+      expect(c.currentState.difficultyLabel, lockedLabel);
+    }
   });
 
   test('costDeducted=0（同場後續）不觸發額度同步', () async {

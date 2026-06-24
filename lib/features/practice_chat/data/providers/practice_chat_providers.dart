@@ -329,14 +329,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     state = state.copyWith(errorMessage: null, quotaExceeded: false);
   }
 
-  /// 開場前「換一位」：沿用目前難度偏好重抽一位模擬對象。
+  /// 開場前「換一位」：只重抽角色，難度維持目前已解析的值。
+  /// 即使偏好是「隨機」也不重抽難度——換人與調難度兩個控制各自獨立。
   /// 送出第一則後鎖定（messages 非空即 no-op）。
   void regeneratePersona() {
     if (state.messages.isNotEmpty) return;
-    final profile = createPracticeProfile(
-      difficultyPreference: state.difficultyPreference,
+    final profile = createPracticeProfile();
+    state = state.copyWith(
+      personaId: profile.personaId,
+      personaLabel: profile.personaLabel,
     );
-    state = state.copyWithProfile(profile);
   }
 
   /// 開場前調整難度偏好：只換難度、保留目前這位對象（兩個控制各自獨立）。
