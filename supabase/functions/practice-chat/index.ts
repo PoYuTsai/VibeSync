@@ -233,7 +233,7 @@ async function handleRequest(req: Request): Promise<Response> {
     try {
       const rawCard = await callDeepSeek({
         apiKey,
-        messages: buildDebriefMessages(request.turns),
+        messages: buildDebriefMessages(request.turns, request.profile),
         maxTokens: DEBRIEF_MAX_TOKENS,
         temperature: DEBRIEF_TEMPERATURE,
         jsonMode: true,
@@ -245,6 +245,8 @@ async function handleRequest(req: Request): Promise<Response> {
       logWarn("practice_chat_generation_failed", {
         user: summarizeUser(user.id),
         mode: "debrief",
+        personaId: request.profile.personaId,
+        difficulty: request.profile.difficulty,
         error: getErrorMessage(e),
       });
       return jsonResponse({ error: "practice_generation_failed" }, 500);
@@ -253,6 +255,8 @@ async function handleRequest(req: Request): Promise<Response> {
     logInfo("practice_chat_succeeded", {
       user: summarizeUser(user.id),
       mode: "debrief",
+      personaId: request.profile.personaId,
+      difficulty: request.profile.difficulty,
       costDeducted: 0,
     });
     return jsonResponse({
@@ -307,7 +311,7 @@ async function handleRequest(req: Request): Promise<Response> {
   try {
     reply = await callDeepSeek({
       apiKey,
-      messages: buildChatMessages(request.turns),
+      messages: buildChatMessages(request.turns, request.profile),
       maxTokens: CHAT_MAX_TOKENS,
       temperature: CHAT_TEMPERATURE,
       timeoutMs: DEEPSEEK_TIMEOUT_MS,
@@ -317,6 +321,8 @@ async function handleRequest(req: Request): Promise<Response> {
     logWarn("practice_chat_generation_failed", {
       user: summarizeUser(user.id),
       mode: "chat",
+      personaId: request.profile.personaId,
+      difficulty: request.profile.difficulty,
       error: getErrorMessage(e),
     });
     return jsonResponse({ error: "practice_generation_failed" }, 500);
@@ -349,6 +355,8 @@ async function handleRequest(req: Request): Promise<Response> {
     user: summarizeUser(user.id),
     mode: "chat",
     aiTurnCount: newAiCount,
+    personaId: request.profile.personaId,
+    difficulty: request.profile.difficulty,
     costDeducted: deducted,
   });
   return jsonResponse({
