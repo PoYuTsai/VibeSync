@@ -9,11 +9,20 @@ class AiDataSharingConsent {
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
   static const _defaultDestinationLabel = 'Anthropic Claude API';
+  static const _defaultDataDescription =
+      '可能包含：聊天文字、上傳的聊天或個人檔案截圖、對方名稱、你填寫的情境或草稿，以及本次結果所需的對話脈絡。';
+  static const _defaultPurposeText =
+      '用途：只用來產生你按下的分析、截圖辨識、開場建議或 Coach 1:1 回覆。';
 
-  /// AI 實戰練習室走 DeepSeek（非 Claude），須與 Claude 功能各自獨立同意。
+  /// AI 實戰練習室走 DeepSeek（非 Claude），須與 Claude 功能各自獨立同意，
+  /// 文案也須準確描述「模擬對象練習對話」而非 Claude 功能用途。
   static const practiceConsentKey =
       'ai_data_sharing_consent_practice_20260624_v1';
   static const practiceDestinationLabel = 'DeepSeek API';
+  static const practiceDataDescription =
+      '可能包含：你在練習室輸入的訊息，以及本次練習的對話脈絡。';
+  static const practicePurposeText =
+      '用途：只用來在 AI 實戰練習室產生模擬對象的回覆，以及練習結束後的一張拆解卡。';
 
   static Future<bool> hasAccepted({String consentKey = _acceptedKey}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -25,6 +34,8 @@ class AiDataSharingConsent {
     required String featureLabel,
     String consentKey = _acceptedKey,
     String destinationLabel = _defaultDestinationLabel,
+    String dataDescription = _defaultDataDescription,
+    String purposeText = _defaultPurposeText,
   }) async {
     if (await hasAccepted(consentKey: consentKey)) return true;
     if (!context.mounted) return false;
@@ -37,6 +48,8 @@ class AiDataSharingConsent {
         privacyUrl: _privacyUrl,
         termsUrl: _termsUrl,
         destinationLabel: destinationLabel,
+        dataDescription: dataDescription,
+        purposeText: purposeText,
       ),
     );
 
@@ -56,12 +69,16 @@ class _AiDataSharingConsentDialog extends StatefulWidget {
     required this.privacyUrl,
     required this.termsUrl,
     required this.destinationLabel,
+    required this.dataDescription,
+    required this.purposeText,
   });
 
   final String featureLabel;
   final String privacyUrl;
   final String termsUrl;
   final String destinationLabel;
+  final String dataDescription;
+  final String purposeText;
 
   @override
   State<_AiDataSharingConsentDialog> createState() =>
@@ -89,12 +106,8 @@ class _AiDataSharingConsentDialogState
               '你主動送出的資料會經由 VibeSync 後端服務（Supabase Edge Functions）傳送至 ${widget.destinationLabel}，用來產生本次 AI 結果。',
             ),
             const SizedBox(height: 12),
-            const _ConsentBullet(
-              text: '可能包含：聊天文字、上傳的聊天或個人檔案截圖、對方名稱、你填寫的情境或草稿，以及本次結果所需的對話脈絡。',
-            ),
-            const _ConsentBullet(
-              text: '用途：只用來產生你按下的分析、截圖辨識、開場建議或 Coach 1:1 回覆。',
-            ),
+            _ConsentBullet(text: widget.dataDescription),
+            _ConsentBullet(text: widget.purposeText),
             const _ConsentBullet(
               text: '如果不同意，本次 AI 請求不會送出，也不會扣除本次 AI 額度。',
             ),

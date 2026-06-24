@@ -42,6 +42,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       featureLabel: 'AI 實戰練習室',
       consentKey: AiDataSharingConsent.practiceConsentKey,
       destinationLabel: AiDataSharingConsent.practiceDestinationLabel,
+      dataDescription: AiDataSharingConsent.practiceDataDescription,
+      purposeText: AiDataSharingConsent.practicePurposeText,
     );
     if (!consented || !mounted) return;
     _controller.clear();

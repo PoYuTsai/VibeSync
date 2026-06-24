@@ -126,6 +126,35 @@ void main() {
     expect(find.textContaining('Anthropic Claude API'), findsNothing);
   });
 
+  testWidgets('practice 用途文案準確（不混入 Claude 功能用途）', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 實戰練習室',
+                  consentKey: 'practice_consent_test_key2',
+                  destinationLabel: AiDataSharingConsent.practiceDestinationLabel,
+                  purposeText: AiDataSharingConsent.practicePurposeText,
+                  dataDescription: AiDataSharingConsent.practiceDataDescription,
+                );
+              },
+              child: const Text('start'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('模擬對象'), findsAtLeastNWidgets(1));
+    expect(find.textContaining('截圖辨識'), findsNothing);
+  });
+
   test('不同 consentKey 各自獨立（同意 Claude 不代表同意 DeepSeek 練習室）',
       () async {
     SharedPreferences.setMockInitialValues({
