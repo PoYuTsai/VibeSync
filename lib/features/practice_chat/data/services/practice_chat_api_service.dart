@@ -9,6 +9,22 @@ class PracticeTurnDto {
   Map<String, dynamic> toJson() => {'role': role, 'text': text};
 }
 
+/// 本場角色＋難度的請求 metadata。client 只送 id，prompt 內文由 server 解析。
+class PracticeProfileDto {
+  final String personaId;
+  final String difficulty;
+
+  const PracticeProfileDto({
+    required this.personaId,
+    required this.difficulty,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'personaId': personaId,
+        'difficulty': difficulty,
+      };
+}
+
 /// chat 模式成功回應。
 class PracticeChatReply {
   final String reply;
@@ -109,6 +125,7 @@ class PracticeChatApiService {
 
   Future<PracticeChatReply> sendMessage({
     required String sessionId,
+    required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
   }) async {
     final response = await _invoke(
@@ -116,6 +133,7 @@ class PracticeChatApiService {
       body: {
         'mode': 'chat',
         'sessionId': sessionId,
+        ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
       },
     );
@@ -137,6 +155,7 @@ class PracticeChatApiService {
 
   Future<PracticeDebrief> requestDebrief({
     required String sessionId,
+    required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
   }) async {
     final response = await _invoke(
@@ -144,6 +163,7 @@ class PracticeChatApiService {
       body: {
         'mode': 'debrief',
         'sessionId': sessionId,
+        ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
       },
     );

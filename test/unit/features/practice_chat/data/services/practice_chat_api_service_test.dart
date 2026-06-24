@@ -8,8 +8,48 @@ PracticeChatApiService serviceReturning(int status, dynamic data) {
   );
 }
 
+/// 攔截送出的 functionName 與 body，用來驗證有把 persona/difficulty 帶進請求。
+class _CapturedInvoke {
+  String? functionName;
+  Map<String, dynamic>? body;
+
+  Future<PracticeInvokeResponse> call(
+    String fn, {
+    required Map<String, dynamic> body,
+  }) async {
+    functionName = fn;
+    this.body = body;
+    if (body['mode'] == 'debrief') {
+      return const PracticeInvokeResponse(
+        status: 200,
+        data: {
+          'card': {
+            'summary': '有來有回，但可以少一點查戶口。',
+            'strengths': ['有接到她的情緒'],
+            'watchouts': ['問題略連續'],
+            'suggestedLine': '哈哈你今天感覺真的很滿，我先不吵你。',
+            'vibe': '自然',
+          },
+          'costDeducted': 0,
+        },
+      );
+    }
+    return const PracticeInvokeResponse(
+      status: 200,
+      data: {
+        'reply': '嗯？',
+        'aiTurnCount': 1,
+        'sessionComplete': false,
+        'costDeducted': 1,
+      },
+    );
+  }
+}
+
 void main() {
   final turns = [const PracticeTurnDto(role: 'user', text: '嗨')];
+  const profile =
+      PracticeProfileDto(personaId: 'slow_worker', difficulty: 'normal');
 
   group('sendMessage', () {
     test('200 → 解析 reply / 計數 / 額度', () async {
@@ -21,7 +61,8 @@ void main() {
         'monthlyRemaining': 29,
         'dailyRemaining': 14,
       });
-      final r = await svc.sendMessage(sessionId: 's', turns: turns);
+      final r =
+          await svc.sendMessage(sessionId: 's', profile: profile, turns: turns);
       expect(r.reply, '嗯？幹嘛');
       expect(r.aiTurnCount, 1);
       expect(r.sessionComplete, false);
@@ -39,7 +80,7 @@ void main() {
         'dailyRemaining': 0,
       });
       expect(
-        () => svc.sendMessage(sessionId: 's', turns: turns),
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeQuotaExceededException>()
             .having((e) => e.monthlyRemaining, 'monthlyRemaining', 0)),
       );
@@ -48,7 +89,7 @@ void main() {
     test('409 → PracticeSessionCompleteException', () async {
       final svc = serviceReturning(409, {'error': 'practice_session_complete'});
       expect(
-        () => svc.sendMessage(sessionId: 's', turns: turns),
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeSessionCompleteException>()),
       );
     });
@@ -56,7 +97,7 @@ void main() {
     test('500 → PracticeGenerationFailedException（不扣額度語意）', () async {
       final svc = serviceReturning(500, {'error': 'practice_generation_failed'});
       expect(
-        () => svc.sendMessage(sessionId: 's', turns: turns),
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeGenerationFailedException>()),
       );
     });
@@ -64,7 +105,7 @@ void main() {
     test('400 → PracticeApiException', () async {
       final svc = serviceReturning(400, {'error': 'invalid_mode'});
       expect(
-        () => svc.sendMessage(sessionId: 's', turns: turns),
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeApiException>()),
       );
     });
@@ -72,7 +113,7 @@ void main() {
     test('200 但 data 非 map → generation failed', () async {
       final svc = serviceReturning(200, 'oops');
       expect(
-        () => svc.sendMessage(sessionId: 's', turns: turns),
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeGenerationFailedException>()),
       );
     });
@@ -85,7 +126,7 @@ void main() {
         'costDeducted': 1,
       });
       expect(
-        () => svc.sendMessage(sessionId: 's', turns: turns),
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeGenerationFailedException>()),
       );
     });
@@ -93,7 +134,7 @@ void main() {
     test('200 但 reply 非字串 → generation failed', () async {
       final svc = serviceReturning(200, {'reply': 42, 'aiTurnCount': 1});
       expect(
-        () => svc.sendMessage(sessionId: 's', turns: turns),
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeGenerationFailedException>()),
       );
     });
@@ -113,7 +154,8 @@ void main() {
         'monthlyRemaining': 29,
         'dailyRemaining': 14,
       });
-      final d = await svc.requestDebrief(sessionId: 's', turns: turns);
+      final d = await svc.requestDebrief(
+          sessionId: 's', profile: profile, turns: turns);
       expect(d.summary, '整體有來有往');
       expect(d.strengths, ['開場自然']);
       expect(d.watchouts, ['問句太密']);
@@ -124,9 +166,49 @@ void main() {
     test('200 但缺 card → generation failed', () async {
       final svc = serviceReturning(200, {'costDeducted': 0});
       expect(
-        () => svc.requestDebrief(sessionId: 's', turns: turns),
+        () => svc.requestDebrief(
+            sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeGenerationFailedException>()),
       );
+    });
+  });
+
+  group('profile metadata', () {
+    test('sendMessage body includes personaId and difficulty', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: const PracticeProfileDto(
+          personaId: 'teasing_humor',
+          difficulty: 'challenge',
+        ),
+        turns: turns,
+      );
+
+      expect(captured.functionName, 'practice-chat');
+      expect(captured.body?['personaId'], 'teasing_humor');
+      expect(captured.body?['difficulty'], 'challenge');
+    });
+
+    test('requestDebrief body includes personaId and difficulty', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: const PracticeProfileDto(
+          personaId: 'cool_rational',
+          difficulty: 'normal',
+        ),
+        turns: turns,
+      );
+
+      expect(captured.functionName, 'practice-chat');
+      expect(captured.body?['mode'], 'debrief');
+      expect(captured.body?['personaId'], 'cool_rational');
+      expect(captured.body?['difficulty'], 'normal');
     });
   });
 }
