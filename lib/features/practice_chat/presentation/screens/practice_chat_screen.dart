@@ -93,34 +93,37 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: state.messages.isEmpty
-                ? const _EmptyState()
-                : ListView(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                    children: [
-                      for (final m in state.messages) _Bubble(message: m),
-                      if (state.isSending) const _ThinkingBubble(),
-                      if (state.debrief != null) ...[
-                        const SizedBox(height: 8),
-                        PracticeDebriefCard(
-                          summary: state.debrief!.summary,
-                          strengths: state.debrief!.strengths,
-                          watchouts: state.debrief!.watchouts,
-                          suggestedLine: state.debrief!.suggestedLine,
-                          vibe: state.debrief!.vibe,
-                        ),
+            child: _PracticeChatWorkspaceFrame(
+              child: state.messages.isEmpty
+                  ? const _EmptyState()
+                  : ListView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+                      children: [
+                        for (final m in state.messages) _Bubble(message: m),
+                        if (state.isSending) const _ThinkingBubble(),
+                        if (state.debrief != null) ...[
+                          const SizedBox(height: 8),
+                          PracticeDebriefCard(
+                            summary: state.debrief!.summary,
+                            strengths: state.debrief!.strengths,
+                            watchouts: state.debrief!.watchouts,
+                            suggestedLine: state.debrief!.suggestedLine,
+                            vibe: state.debrief!.vibe,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+            ),
           ),
           if (state.errorMessage != null)
             _ErrorBanner(
               message: state.errorMessage!,
               quotaExceeded: state.quotaExceeded,
               onUpgrade: () => context.push('/paywall'),
-              onDismiss: () =>
-                  ref.read(practiceChatControllerProvider.notifier).clearError(),
+              onDismiss: () => ref
+                  .read(practiceChatControllerProvider.notifier)
+                  .clearError(),
             ),
           _BottomBar(
             state: state,
@@ -148,6 +151,71 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   }
 }
 
+// ── 淺色聊天工作區：沿用 analyze-chat 的對話視窗底色 ─────────────────────
+class _PracticeChatWorkspaceFrame extends StatelessWidget {
+  const _PracticeChatWorkspaceFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth > 600 ? 600.0 : constraints.maxWidth;
+        final frame = Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: _PracticeChatWorkspace(child: child),
+        );
+
+        return Center(
+          child: constraints.hasBoundedHeight
+              ? SizedBox(
+                  width: width,
+                  height: constraints.maxHeight,
+                  child: frame,
+                )
+              : SizedBox(width: width, child: frame),
+        );
+      },
+    );
+  }
+}
+
+class _PracticeChatWorkspace extends StatelessWidget {
+  const _PracticeChatWorkspace({required this.child});
+
+  static const _radius = BorderRadius.all(Radius.circular(18));
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('practice-chat-workspace'),
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: _radius,
+        border: Border.all(
+          color: AppColors.ctaStart.withValues(alpha: 0.24),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(color: AppColors.glassTextPrimary),
+        child: child,
+      ),
+    );
+  }
+}
+
 // ── 空狀態：引導使用者先發第一句 ───────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
@@ -169,7 +237,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               '直接開聊吧',
               style: AppTypography.titleLarge.copyWith(
-                color: AppColors.onBackgroundPrimary,
+                color: AppColors.glassTextPrimary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -178,7 +246,7 @@ class _EmptyState extends StatelessWidget {
               '對方是個有自己個性的模擬對象，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
               textAlign: TextAlign.center,
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundSecondary,
+                color: AppColors.glassTextSecondary,
                 height: 1.5,
               ),
             ),
@@ -627,8 +695,7 @@ class _SessionRow extends StatelessWidget {
             ),
             if (session.hasDebrief)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: AppColors.success.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(6),
@@ -662,21 +729,23 @@ class _SessionReviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BrandScaffold(
       title: '練習回顧',
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          for (final m in session.messages) _Bubble(message: m),
-          if (session.hasDebrief) ...[
-            const SizedBox(height: 12),
-            PracticeDebriefCard(
-              summary: session.debriefSummary ?? '',
-              strengths: session.debriefStrengths,
-              watchouts: session.debriefWatchouts,
-              suggestedLine: session.debriefSuggestedLine ?? '',
-              vibe: session.debriefVibe ?? '中性',
-            ),
+      body: _PracticeChatWorkspaceFrame(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+          children: [
+            for (final m in session.messages) _Bubble(message: m),
+            if (session.hasDebrief) ...[
+              const SizedBox(height: 12),
+              PracticeDebriefCard(
+                summary: session.debriefSummary ?? '',
+                strengths: session.debriefStrengths,
+                watchouts: session.debriefWatchouts,
+                suggestedLine: session.debriefSuggestedLine ?? '',
+                vibe: session.debriefVibe ?? '中性',
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
