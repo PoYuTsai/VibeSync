@@ -98,6 +98,7 @@ serve(async (req) => {
       { table: "rate_limits", column: "user_id", value: user.id, required: false },
       { table: "ai_logs", column: "user_id", value: user.id, required: false },
       { table: "subscriptions", column: "user_id", value: user.id, required: false },
+      { table: "practice_chat_sessions", column: "user_id", value: user.id, required: false },
       { table: "users", column: "id", value: user.id, required: false },
       { table: "feedback", column: "user_id", value: user.id, required: false },
       { table: "webhook_logs", column: "user_id", value: user.id, required: false },
