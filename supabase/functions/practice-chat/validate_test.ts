@@ -1,0 +1,159 @@
+// practice-chat 請求驗證測試。
+// 跑法：deno test supabase/functions/practice-chat/validate_test.ts
+
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { countAiTurns, validateRequest } from "./validate.ts";
+
+function chatReq(turns: Array<{ role: string; text: string }>) {
+  return { mode: "chat", sessionId: "s1", turns };
+}
+
+// ── happy path ───────────────────────────────────────────────────────
+
+Deno.test("chat：合法第一則請求通過", () => {
+  const r = validateRequest(chatReq([{ role: "user", text: "嗨" }]));
+  assertEquals(r.mode, "chat");
+  assertEquals(r.turns.length, 1);
+});
+
+Deno.test("chat：多輪一來一回、最後一則是 user → 通過", () => {
+  const r = validateRequest(
+    chatReq([
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "嗯？" },
+      { role: "user", text: "在幹嘛" },
+    ]),
+  );
+  assertEquals(countAiTurns(r.turns), 1);
+});
+
+Deno.test("debrief：有一來一回 → 通過", () => {
+  const r = validateRequest({
+    mode: "debrief",
+    sessionId: "s1",
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "嗯？" },
+    ],
+  });
+  assertEquals(r.mode, "debrief");
+});
+
+// ── mode / sessionId ─────────────────────────────────────────────────
+
+Deno.test("非物件 body → invalid_request_body", () => {
+  assertThrows(() => validateRequest(null), Error, "invalid_request_body");
+  assertThrows(() => validateRequest("x"), Error, "invalid_request_body");
+});
+
+Deno.test("未知 mode → invalid_mode", () => {
+  assertThrows(
+    () => validateRequest({ mode: "coach", sessionId: "s", turns: [] }),
+    Error,
+    "invalid_mode",
+  );
+});
+
+Deno.test("缺 / 空 sessionId → invalid_sessionId", () => {
+  assertThrows(
+    () => validateRequest({ mode: "chat", sessionId: "", turns: [] }),
+    Error,
+    "invalid_sessionId",
+  );
+});
+
+// ── turns 形狀 ───────────────────────────────────────────────────────
+
+Deno.test("turns 非陣列 → invalid_turns", () => {
+  assertThrows(
+    () => validateRequest({ mode: "chat", sessionId: "s", turns: {} }),
+    Error,
+    "invalid_turns",
+  );
+});
+
+Deno.test("turns 空陣列 → invalid_turns_empty", () => {
+  assertThrows(() => validateRequest(chatReq([])), Error, "invalid_turns_empty");
+});
+
+Deno.test("turns 過多 → invalid_turns_too_many", () => {
+  const many = Array.from({ length: 41 }, () => ({ role: "user", text: "x" }));
+  assertThrows(
+    () => validateRequest(chatReq(many)),
+    Error,
+    "invalid_turns_too_many",
+  );
+});
+
+Deno.test("turn role 非法 → invalid_turn_role", () => {
+  assertThrows(
+    () => validateRequest(chatReq([{ role: "system", text: "x" }])),
+    Error,
+    "invalid_turn_role_0",
+  );
+});
+
+Deno.test("turn text 空白 → invalid_turn_text", () => {
+  assertThrows(
+    () => validateRequest(chatReq([{ role: "user", text: "   " }])),
+    Error,
+    "invalid_turn_text_0",
+  );
+});
+
+Deno.test("turn text 過長 → invalid_turn_text_len", () => {
+  const long = "x".repeat(501);
+  assertThrows(
+    () => validateRequest(chatReq([{ role: "user", text: long }])),
+    Error,
+    "invalid_turn_text_len_0",
+  );
+});
+
+// ── chat 專屬規則 ────────────────────────────────────────────────────
+
+Deno.test("chat 最後一則是 ai → invalid_chat_last_turn_must_be_user", () => {
+  assertThrows(
+    () =>
+      validateRequest(
+        chatReq([
+          { role: "user", text: "嗨" },
+          { role: "ai", text: "嗯" },
+        ]),
+      ),
+    Error,
+    "invalid_chat_last_turn_must_be_user",
+  );
+});
+
+Deno.test("chat 已有 10 則 AI 回覆 → practice_session_complete（不可生成第 11 則）", () => {
+  const turns: Array<{ role: string; text: string }> = [];
+  for (let i = 0; i < 10; i++) {
+    turns.push({ role: "user", text: `u${i}` });
+    turns.push({ role: "ai", text: `a${i}` });
+  }
+  turns.push({ role: "user", text: "再一句" }); // 第 11 次想要 AI 回覆
+  assertThrows(
+    () => validateRequest(chatReq(turns)),
+    Error,
+    "practice_session_complete",
+  );
+});
+
+// ── debrief 專屬規則 ─────────────────────────────────────────────────
+
+Deno.test("debrief 沒有任何 AI 回覆 → invalid_debrief_no_ai_turns", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "debrief",
+        sessionId: "s",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_debrief_no_ai_turns",
+  );
+});

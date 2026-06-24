@@ -1,0 +1,78 @@
+// 教練拆解卡解析測試。
+// 跑法：deno test supabase/functions/practice-chat/debrief_card_test.ts
+
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { parseDebriefCard } from "./debrief_card.ts";
+
+const valid = JSON.stringify({
+  summary: "整體有來有往，後段她有點冷掉",
+  strengths: ["開場自然不油", "有接住她的話題"],
+  watchouts: ["問句太密像查戶口", "可以多分享自己"],
+  suggestedLine: "那家店我也想去，週末有空一起？",
+  vibe: "中性",
+});
+
+Deno.test("合法 JSON → 完整解析", () => {
+  const c = parseDebriefCard(valid);
+  assertEquals(c.summary, "整體有來有往，後段她有點冷掉");
+  assertEquals(c.strengths.length, 2);
+  assertEquals(c.watchouts.length, 2);
+  assertEquals(c.vibe, "中性");
+});
+
+Deno.test("帶 markdown 圍欄也能解析", () => {
+  const c = parseDebriefCard("```json\n" + valid + "\n```");
+  assertEquals(c.summary, "整體有來有往，後段她有點冷掉");
+});
+
+Deno.test("strengths/watchouts 超過 2 點 → clamp 到 2", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "x",
+      suggestedLine: "y",
+      strengths: ["a", "b", "c", "d"],
+      watchouts: ["e", "f", "g"],
+      vibe: "暖",
+    }),
+  );
+  assertEquals(c.strengths.length, 2);
+  assertEquals(c.watchouts.length, 2);
+});
+
+Deno.test("vibe 非法 → 回退『中性』", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({ summary: "x", suggestedLine: "y", vibe: "超熱" }),
+  );
+  assertEquals(c.vibe, "中性");
+});
+
+Deno.test("strengths 缺省 → 空陣列（不爆）", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({ summary: "x", suggestedLine: "y" }),
+  );
+  assertEquals(c.strengths, []);
+  assertEquals(c.watchouts, []);
+});
+
+Deno.test("非 JSON → 丟出", () => {
+  assertThrows(() => parseDebriefCard("這不是 json"));
+});
+
+Deno.test("缺 summary / suggestedLine → debrief_missing_fields", () => {
+  assertThrows(
+    () => parseDebriefCard(JSON.stringify({ strengths: ["a"] })),
+    Error,
+    "debrief_missing_fields",
+  );
+});
+
+Deno.test("JSON 是陣列而非物件 → debrief_not_object", () => {
+  assertThrows(
+    () => parseDebriefCard(JSON.stringify(["a", "b"])),
+    Error,
+    "debrief_not_object",
+  );
+});
