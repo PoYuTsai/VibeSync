@@ -493,6 +493,10 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
+        coachChatRepositoryProvider.overrideWithValue(
+          _EmptyCoachChatRepository(),
+        ),
+        coachChatHistoryProvider(_conversationId).overrideWithValue(const []),
         streamingAnalyzeProvider
             .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
       ],
@@ -525,6 +529,10 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
         conversationRepositoryProvider.overrideWithValue(repo),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analysisServiceProvider.overrideWithValue(recorder),
+        coachChatRepositoryProvider.overrideWithValue(
+          _EmptyCoachChatRepository(),
+        ),
+        coachChatHistoryProvider(_conversationId).overrideWithValue(const []),
         streamingAnalyzeProvider.overrideWith(() {
           notifier = _MutableStreamingAnalyzeNotifier(seed);
           return notifier;

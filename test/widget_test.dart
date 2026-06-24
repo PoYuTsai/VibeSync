@@ -1,4 +1,5 @@
 // This is a basic Flutter widget test.
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vibesync/app/app.dart';
@@ -18,5 +19,12 @@ void main() {
 
     // Verify that our app shows VibeSync text.
     expect(find.text('VibeSync'), findsOneWidget);
+
+    // Dispose the app before the splash completes. The splash checks `mounted`
+    // after its first delayed callback, so advancing that first timer is enough
+    // to let the async sequence exit without entering the Supabase-backed router.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
   });
 }
