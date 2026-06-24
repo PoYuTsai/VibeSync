@@ -47,8 +47,10 @@ export async function callDeepSeek(args: DeepSeekArgs): Promise<string> {
     });
 
     if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
-      throw new Error(`deepseek_http_${res.status}: ${errBody.slice(0, 200)}`);
+      // 只保留 status：response body 可能含 provider 端細節，不寫進錯誤訊息
+      // （handler 會 log 此訊息）。body 讀掉避免連線懸置。
+      await res.text().catch(() => "");
+      throw new Error(`deepseek_http_${res.status}`);
     }
 
     const json = await res.json();

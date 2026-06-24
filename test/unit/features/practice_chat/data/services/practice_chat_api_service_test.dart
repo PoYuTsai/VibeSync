@@ -76,6 +76,27 @@ void main() {
         throwsA(isA<PracticeGenerationFailedException>()),
       );
     });
+
+    test('200 但 reply 空白字串 → generation failed（不渲染空泡泡）', () async {
+      final svc = serviceReturning(200, {
+        'reply': '   ',
+        'aiTurnCount': 1,
+        'sessionComplete': false,
+        'costDeducted': 1,
+      });
+      expect(
+        () => svc.sendMessage(sessionId: 's', turns: turns),
+        throwsA(isA<PracticeGenerationFailedException>()),
+      );
+    });
+
+    test('200 但 reply 非字串 → generation failed', () async {
+      final svc = serviceReturning(200, {'reply': 42, 'aiTurnCount': 1});
+      expect(
+        () => svc.sendMessage(sessionId: 's', turns: turns),
+        throwsA(isA<PracticeGenerationFailedException>()),
+      );
+    });
   });
 
   group('requestDebrief', () {

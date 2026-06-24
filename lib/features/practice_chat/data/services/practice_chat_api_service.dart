@@ -120,8 +120,13 @@ class PracticeChatApiService {
       },
     );
     final data = _guardStatus(response);
+    // 防半渲染：reply 必須是非空字串，否則會 append 一顆空白 AI 泡並持久化。
+    final rawReply = data['reply'];
+    if (rawReply is! String || rawReply.trim().isEmpty) {
+      throw PracticeGenerationFailedException('empty_reply');
+    }
     return PracticeChatReply(
-      reply: _asString(data['reply']),
+      reply: rawReply.trim(),
       aiTurnCount: _asInt(data['aiTurnCount']) ?? 0,
       sessionComplete: data['sessionComplete'] == true,
       costDeducted: _asInt(data['costDeducted']) ?? 0,
