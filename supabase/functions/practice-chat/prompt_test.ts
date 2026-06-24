@@ -9,6 +9,10 @@ import {
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
 import type { PracticeTurn } from "./validate.ts";
+import { resolvePracticeProfile } from "./practice_persona.ts";
+
+// 預設 profile（slow_worker + normal），供既有不指定角色難度的測試沿用。
+const defaultProfile = resolvePracticeProfile({});
 
 // ── chat 人設鎖死：不是 AI、不是教練、短句繁中 ───────────────────────
 
@@ -48,10 +52,11 @@ Deno.test("buildChatMessages：system 開頭 + user→user / ai→assistant 映�
     { role: "ai", text: "嗯？" },
     { role: "user", text: "在幹嘛" },
   ];
-  const msgs = buildChatMessages(turns);
+  const msgs = buildChatMessages(turns, defaultProfile);
 
   assertEquals(msgs[0].role, "system");
-  assertEquals(msgs[0].content, CHAT_SYSTEM_PROMPT);
+  // 角色難度 snippet 接在基底 prompt 之後，故只驗開頭仍是完整人設基底。
+  assertEquals(msgs[0].content.startsWith(CHAT_SYSTEM_PROMPT), true);
   assertEquals(msgs[1], { role: "user", content: "嗨" });
   assertEquals(msgs[2], { role: "assistant", content: "嗯？" });
   assertEquals(msgs[3], { role: "user", content: "在幹嘛" });
@@ -74,12 +79,50 @@ Deno.test("buildDebriefMessages：system + 含『你/她』逐字稿的 user 指
     { role: "user", text: "嗨" },
     { role: "ai", text: "嗯？" },
   ];
-  const msgs = buildDebriefMessages(turns);
+  const msgs = buildDebriefMessages(turns, defaultProfile);
 
   assertEquals(msgs.length, 2);
   assertEquals(msgs[0].role, "system");
   assertEquals(msgs[0].content, DEBRIEF_SYSTEM_PROMPT);
   assertEquals(msgs[1].role, "user");
+  assertEquals(msgs[1].content.includes("你：嗨"), true);
+  assertEquals(msgs[1].content.includes("她：嗯？"), true);
+});
+
+// ── 角色難度注入 ─────────────────────────────────────────────────────
+
+Deno.test("buildChatMessages：system prompt 帶入 persona 與 difficulty", () => {
+  const profile = resolvePracticeProfile({
+    personaId: "teasing_humor",
+    difficulty: "challenge",
+  });
+  const msgs = buildChatMessages(
+    [{ role: "user", text: "今天好無聊" }],
+    profile,
+  );
+
+  assertEquals(msgs[0].role, "system");
+  assertEquals(msgs[0].content.includes("幽默吐槽型"), true);
+  assertEquals(msgs[0].content.includes("本場難度是挑戰"), true);
+  assertEquals(msgs[0].content.includes("絕不承認自己是 AI"), true);
+  assertEquals(msgs[1], { role: "user", content: "今天好無聊" });
+});
+
+Deno.test("buildDebriefMessages：user 指令帶入本場 persona 與 difficulty", () => {
+  const profile = resolvePracticeProfile({
+    personaId: "slow_worker",
+    difficulty: "normal",
+  });
+  const msgs = buildDebriefMessages(
+    [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "嗯？" },
+    ],
+    profile,
+  );
+
+  assertEquals(msgs[1].content.includes("本場模擬對象：慢熱上班族"), true);
+  assertEquals(msgs[1].content.includes("本場難度：一般"), true);
   assertEquals(msgs[1].content.includes("你：嗨"), true);
   assertEquals(msgs[1].content.includes("她：嗯？"), true);
 });
