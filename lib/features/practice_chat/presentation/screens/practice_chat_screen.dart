@@ -146,7 +146,18 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       backgroundColor: AppColors.brandInk,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _RecentSessionsSheet(sessions: sessions),
+      builder: (_) => _RecentSessionsSheet(
+        sessions: sessions,
+        onResume: (session) {
+          ref.read(practiceChatControllerProvider.notifier).resumeSession(
+                session,
+              );
+        },
+        onDelete: (session) async {
+          await ref.read(practiceSessionRepositoryProvider).delete(session.id);
+          ref.invalidate(recentPracticeSessionsProvider);
+        },
+      ),
     );
   }
 }
@@ -248,6 +259,15 @@ class _EmptyState extends StatelessWidget {
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextSecondary,
                 height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 10 則 AI 回覆，教練拆解不另扣。',
+              textAlign: TextAlign.center,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextHint,
+                height: 1.45,
               ),
             ),
           ],
@@ -467,6 +487,9 @@ class _BottomBar extends StatelessWidget {
 
     // 一般聊天輸入。
     final canSend = state.canSend;
+    final quotaLabel = state.aiReplyCount == 0
+        ? '首次 AI 回覆成功才扣 1 則'
+        : '本場已扣 1 則，還能聊 ${state.remainingReplies} 則';
     return _BarContainer(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -474,13 +497,17 @@ class _BottomBar extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                '還能聊 ${state.remainingReplies} 則',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary,
+              Expanded(
+                child: Text(
+                  quotaLabel,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               if (state.canDebrief)
                 TextButton.icon(
                   onPressed: onEndPractice,
@@ -587,10 +614,38 @@ class _SendButton extends StatelessWidget {
   }
 }
 
-// ── 最近練習（read-only 歷史） ─────────────────────────────────────────
-class _RecentSessionsSheet extends StatelessWidget {
-  const _RecentSessionsSheet({required this.sessions});
+// ── 最近練習：未拆解可續聊，已拆解可回顧 ─────────────────────────────
+class _RecentSessionsSheet extends StatefulWidget {
+  const _RecentSessionsSheet({
+    required this.sessions,
+    required this.onResume,
+    required this.onDelete,
+  });
+
   final List<PracticeSession> sessions;
+  final ValueChanged<PracticeSession> onResume;
+  final Future<void> Function(PracticeSession session) onDelete;
+
+  @override
+  State<_RecentSessionsSheet> createState() => _RecentSessionsSheetState();
+}
+
+class _RecentSessionsSheetState extends State<_RecentSessionsSheet> {
+  late List<PracticeSession> _sessions;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessions = [...widget.sessions];
+  }
+
+  Future<void> _delete(PracticeSession session) async {
+    await widget.onDelete(session);
+    if (!mounted) return;
+    setState(() {
+      _sessions.removeWhere((s) => s.id == session.id);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -615,7 +670,7 @@ class _RecentSessionsSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          if (sessions.isEmpty)
+          if (_sessions.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
@@ -628,7 +683,13 @@ class _RecentSessionsSheet extends StatelessWidget {
               ),
             )
           else
-            ...sessions.map((s) => _SessionRow(session: s)),
+            ..._sessions.map(
+              (s) => _SessionRow(
+                session: s,
+                onResume: widget.onResume,
+                onDelete: _delete,
+              ),
+            ),
         ],
       ),
     );
@@ -636,8 +697,15 @@ class _RecentSessionsSheet extends StatelessWidget {
 }
 
 class _SessionRow extends StatelessWidget {
-  const _SessionRow({required this.session});
+  const _SessionRow({
+    required this.session,
+    required this.onResume,
+    required this.onDelete,
+  });
+
   final PracticeSession session;
+  final ValueChanged<PracticeSession> onResume;
+  final Future<void> Function(PracticeSession session) onDelete;
 
   String get _preview {
     final firstUser = session.messages
@@ -654,6 +722,56 @@ class _SessionRow extends StatelessWidget {
     return '${d.month}/${d.day} ${two(d.hour)}:${two(d.minute)}';
   }
 
+  bool get _canResume => !session.hasDebrief;
+
+  String get _statusLabel {
+    if (session.hasDebrief) return '已拆解';
+    if (session.aiReplyCount >= kMaxPracticeAiReplies) return '待拆解';
+    return '可續聊';
+  }
+
+  Color get _statusColor {
+    if (session.hasDebrief) return AppColors.success;
+    if (session.aiReplyCount >= kMaxPracticeAiReplies) return AppColors.warning;
+    return AppColors.info;
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.glassWhite,
+        title: Text(
+          '刪除這場練習？',
+          style: AppTypography.titleMedium.copyWith(
+            color: AppColors.glassTextPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: Text(
+          '只會刪除這支手機上的練習紀錄，不會退回已扣額度。',
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.glassTextSecondary,
+            height: 1.45,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await onDelete(session);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -663,6 +781,10 @@ class _SessionRow extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         onTap: () {
           Navigator.of(context).pop();
+          if (_canResume) {
+            onResume(session);
+            return;
+          }
           Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => _SessionReviewScreen(session: session),
@@ -693,25 +815,32 @@ class _SessionRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (session.hasDebrief)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '已拆解',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.success,
-                    fontWeight: FontWeight.w700,
-                  ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _statusColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                _statusLabel,
+                style: AppTypography.caption.copyWith(
+                  color: _statusColor,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+            ),
             const SizedBox(width: 4),
+            IconButton(
+              key: ValueKey('delete-practice-${session.id}'),
+              tooltip: '刪除練習',
+              icon: const Icon(Icons.delete_outline, size: 18),
+              color: AppColors.onBackgroundSecondary,
+              onPressed: () => _confirmDelete(context),
+            ),
             const Icon(
               Icons.chevron_right,
               color: AppColors.onBackgroundSecondary,
+              size: 20,
             ),
           ],
         ),

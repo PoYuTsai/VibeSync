@@ -46,8 +46,7 @@ class PracticeChatState {
   int get remainingReplies =>
       (kMaxPracticeAiReplies - aiReplyCount).clamp(0, kMaxPracticeAiReplies);
 
-  bool get canSend =>
-      !isSending && !isDebriefing && !ended && !sessionComplete;
+  bool get canSend => !isSending && !isDebriefing && !ended && !sessionComplete;
 
   /// 至少有一則 AI 回覆、尚未拆解，才能結束練習看拆解卡。
   bool get canDebrief =>
@@ -94,24 +93,54 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required PracticeSessionRepository repository,
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
+    PracticeSession? initialSession,
     String? sessionId,
     DateTime? createdAt,
   })  : _api = api,
         _repo = repository,
         _onUsageSynced = onUsageSynced,
-        super(PracticeChatState(
-          sessionId: sessionId ?? const Uuid().v4(),
-          createdAt: createdAt ?? DateTime.now(),
-        ));
+        super(initialSession != null
+            ? _stateFromSession(initialSession)
+            : PracticeChatState(
+                sessionId: sessionId ?? const Uuid().v4(),
+                createdAt: createdAt ?? DateTime.now(),
+              ));
 
   final PracticeChatApiService _api;
   final PracticeSessionRepository _repo;
-  final void Function({required int monthlyRemaining, required int dailyRemaining})?
-      _onUsageSynced;
+  final void Function(
+      {required int monthlyRemaining,
+      required int dailyRemaining})? _onUsageSynced;
 
   /// 測試用：對外讀取目前狀態（`state` 為 protected，避免測試用已 deprecated 的 debugState）。
   @visibleForTesting
   PracticeChatState get currentState => state;
+
+  static PracticeChatState _stateFromSession(PracticeSession session) {
+    final debrief = session.hasDebrief
+        ? PracticeDebrief(
+            summary: session.debriefSummary ?? '',
+            strengths: session.debriefStrengths,
+            watchouts: session.debriefWatchouts,
+            suggestedLine: session.debriefSuggestedLine ?? '',
+            vibe: session.debriefVibe ?? '中性',
+          )
+        : null;
+    return PracticeChatState(
+      sessionId: session.id,
+      createdAt: session.createdAt,
+      messages: session.messages,
+      aiReplyCount: session.aiReplyCount,
+      sessionComplete:
+          debrief != null || session.aiReplyCount >= kMaxPracticeAiReplies,
+      ended: debrief != null,
+      debrief: debrief,
+    );
+  }
+
+  void resumeSession(PracticeSession session) {
+    state = _stateFromSession(session);
+  }
 
   /// 送出一則使用者訊息並取得 AI（模擬對象）回覆。
   /// 樂觀顯示使用者泡泡；任何失敗都回滾，不留半截、不扣額度。
@@ -250,9 +279,11 @@ final practiceSessionRepositoryProvider =
 /// autoDispose：離開畫面即重置，下次進來是全新一場練習。
 final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     PracticeChatController, PracticeChatState>((ref) {
+  final repository = ref.read(practiceSessionRepositoryProvider);
   return PracticeChatController(
     api: ref.read(practiceChatApiServiceProvider),
-    repository: ref.read(practiceSessionRepositoryProvider),
+    repository: repository,
+    initialSession: _latestOpenPracticeSession(repository.recentSessions()),
     onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
       ref.read(subscriptionProvider.notifier).syncUsageFromServer(
             monthlyRemaining: monthlyRemaining,
@@ -267,3 +298,12 @@ final recentPracticeSessionsProvider =
     Provider.autoDispose<List<PracticeSession>>((ref) {
   return ref.read(practiceSessionRepositoryProvider).recentSessions();
 });
+
+PracticeSession? _latestOpenPracticeSession(List<PracticeSession> sessions) {
+  for (final session in sessions) {
+    if (!session.hasDebrief && session.messages.isNotEmpty) {
+      return session;
+    }
+  }
+  return null;
+}

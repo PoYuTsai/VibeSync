@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hive_ce/hive_ce.dart';
+import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
@@ -9,6 +9,39 @@ import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
+
+class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
+
+class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
+  _MemoryPracticeSessionRepository([Iterable<PracticeSession> seed = const []])
+      : super(_UnusedPracticeSessionBox()) {
+    for (final session in seed) {
+      _sessions[session.id] = session;
+    }
+  }
+
+  final Map<String, PracticeSession> _sessions = {};
+
+  @override
+  Future<void> save(PracticeSession session) async {
+    _sessions[session.id] = session;
+  }
+
+  @override
+  List<PracticeSession> recentSessions() {
+    final all = _sessions.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return all.take(PracticeSessionRepository.maxSessions).toList();
+  }
+
+  @override
+  PracticeSession? getById(String id) => _sessions[id];
+
+  @override
+  Future<void> delete(String id) async {
+    _sessions.remove(id);
+  }
+}
 
 class _NoopPracticeChatApi extends PracticeChatApiService {
   @override
@@ -42,24 +75,10 @@ class _SeededPracticeChatController extends PracticeChatController {
 }
 
 void main() {
-  late Box<PracticeSession> box;
   late PracticeSessionRepository repo;
 
-  setUp(() async {
-    Hive.init('./.dart_tool/test_hive_practice_chat_ui');
-    if (!Hive.isAdapterRegistered(22)) {
-      Hive.registerAdapter(PracticeMessageAdapter());
-    }
-    if (!Hive.isAdapterRegistered(23)) {
-      Hive.registerAdapter(PracticeSessionAdapter());
-    }
-    final ts = DateTime.now().microsecondsSinceEpoch;
-    box = await Hive.openBox<PracticeSession>('practice_ui_$ts');
-    repo = PracticeSessionRepository(box);
-  });
-
-  tearDown(() async {
-    await box.deleteFromDisk();
+  setUp(() {
+    repo = _MemoryPracticeSessionRepository();
   });
 
   testWidgets('renders practice bubbles on the light conversation workspace',
@@ -103,5 +122,85 @@ void main() {
 
     final userText = tester.widget<Text>(find.text('今天好無聊'));
     expect(userText.style?.color, AppColors.glassTextPrimary);
+  });
+
+  testWidgets('empty room explains when quota is charged', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(
+      find.textContaining('首次 AI 回覆成功才扣 1 則'),
+      findsAtLeastNWidgets(1),
+    );
+    expect(find.textContaining('進來或送出失敗不扣'), findsOneWidget);
+  });
+
+  testWidgets('opens unfinished local session for continuation',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await repo.save(PracticeSession(
+      id: 'resume-widget',
+      createdAt: DateTime(2026, 6, 24, 15, 58),
+      aiReplyCount: 1,
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗨～你今天怎麼樣？'),
+      ],
+    ));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.text('嗨'), findsOneWidget);
+    expect(find.text('嗨～你今天怎麼樣？'), findsOneWidget);
+    expect(find.textContaining('本場已扣 1 則'), findsOneWidget);
+  });
+
+  testWidgets('recent sessions can be deleted from the history sheet',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await repo.save(PracticeSession(
+      id: 'delete-me',
+      createdAt: DateTime(2026, 6, 24, 15, 58),
+      aiReplyCount: 1,
+      messages: const [PracticeMessage(role: 'user', text: '嗨')],
+      debriefSummary: '已拆解',
+    ));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.history));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('delete-practice-delete-me')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刪除'));
+    await tester.pumpAndSettle();
+
+    expect(repo.getById('delete-me'), isNull);
+    expect(find.text('還沒有練習紀錄'), findsOneWidget);
   });
 }

@@ -25,6 +25,8 @@ class PracticeSessionRepository {
 
   PracticeSession? getById(String id) => _box.get(id);
 
+  Future<void> delete(String id) => _box.delete(id);
+
   Future<void> _trim() async {
     if (_box.length <= maxSessions) return;
     final sorted = _box.values.toList()

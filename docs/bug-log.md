@@ -10,6 +10,19 @@
 
 ## 2026-06
 
+### [2026-06-24] AI 實戰練習室本地紀錄缺少續聊、刪除與扣費提示
+
+**Symptom**: 使用者進 AI 實戰練習室後，看不到首次扣費時機；未完成練習離開再回來會開新場；最近練習只能看回顧，不能刪除。
+
+**Root Cause**: Practice chat local repository 只有 save/recent/get，沒有 delete；畫面每次進場都建立新 controller，未從 local-only Hive session seed 狀態；歷史 sheet 原本是 read-only review list，且扣費語意只顯示剩餘回覆數。
+
+**Fix**: controller 支援從未拆解 session 恢復，provider 進場自動載入最近未拆解場次；最近練習列可續聊/待拆解/已拆解並支援本機刪除；空狀態與底部列明確寫「首次 AI 回覆成功才扣 1 則，進來或送出失敗不扣，教練拆解不另扣」。
+
+**Validation**:
+
+- `flutter test test/unit/features/practice_chat test/widget/features/practice_chat/practice_chat_screen_style_test.dart`
+- `flutter analyze`
+
 ### [2026-06-15] 升級後「重新分析完整回覆」仍被 pending 我說擋住
 
 **Symptom**: Free 分析後升級到 paid，點「重新分析完整回覆」仍顯示「已記錄你剛剛說的內容，先不預測她可能怎麼回」，看起來像夥伴升級後還不能用完整回覆。

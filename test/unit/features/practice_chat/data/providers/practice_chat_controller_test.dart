@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
@@ -64,6 +65,19 @@ void main() {
     return c;
   }
 
+  PracticeChatController makeControllerFrom(PracticeSession session) {
+    final c = PracticeChatController(
+      api: api,
+      repository: repo,
+      onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
+        synced.add([monthlyRemaining, dailyRemaining]);
+      },
+      initialSession: session,
+    );
+    addTearDown(c.dispose);
+    return c;
+  }
+
   PracticeChatReply reply({
     String text = '嗯？',
     int aiTurnCount = 1,
@@ -107,8 +121,8 @@ void main() {
   });
 
   test('生成失敗：回滾使用者泡泡、設錯誤與還原文字、不持久化、不同步', () async {
-    api.sendHandler = (_) async =>
-        throw PracticeGenerationFailedException('boom');
+    api.sendHandler =
+        (_) async => throw PracticeGenerationFailedException('boom');
     final c = makeController();
 
     await c.sendMessage('嗨');
@@ -194,13 +208,85 @@ void main() {
     final c = makeController();
     await c.sendMessage('嗨');
 
-    api.debriefHandler = (_) async =>
-        throw PracticeGenerationFailedException('boom');
+    api.debriefHandler =
+        (_) async => throw PracticeGenerationFailedException('boom');
     await c.endPractice();
     final s = c.currentState;
 
     expect(s.debrief, isNull);
     expect(s.errorMessage, isNotNull);
     expect(s.ended, false); // 解鎖讓使用者可再按
+  });
+
+  test('從未拆解場次續聊：沿用 sessionId、舊訊息與 ai 計數', () async {
+    final c = makeControllerFrom(PracticeSession(
+      id: 'resume-1',
+      createdAt: DateTime(2026, 6, 24, 9, 30),
+      aiReplyCount: 1,
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+    ));
+    expect(c.currentState.sessionId, 'resume-1');
+    expect(c.currentState.aiReplyCount, 1);
+    expect(c.currentState.messages.map((m) => m.text).toList(), ['嗨', '嗯？']);
+
+    late List<PracticeTurnDto> sentTurns;
+    api.sendHandler = (turns) async {
+      sentTurns = turns;
+      return reply(text: '好啊', aiTurnCount: 2, cost: 0);
+    };
+
+    await c.sendMessage('那你今天忙嗎');
+
+    expect(sentTurns.map((t) => t.text).toList(), [
+      '嗨',
+      '嗯？',
+      '那你今天忙嗎',
+    ]);
+    expect(c.currentState.sessionId, 'resume-1');
+    expect(c.currentState.aiReplyCount, 2);
+    expect(repo.getById('resume-1')!.messages.length, 4);
+    expect(synced, isEmpty);
+  });
+
+  test('provider 進房自動載入最近未拆解場次，略過已拆解紀錄', () async {
+    await repo.save(PracticeSession(
+      id: 'reviewed-newer',
+      createdAt: DateTime(2026, 6, 24, 16),
+      aiReplyCount: 1,
+      messages: const [PracticeMessage(role: 'user', text: '已拆解')],
+      debriefSummary: '已完成',
+    ));
+    await repo.save(PracticeSession(
+      id: 'open-latest',
+      createdAt: DateTime(2026, 6, 24, 15, 58),
+      aiReplyCount: 1,
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+    ));
+    await repo.save(PracticeSession(
+      id: 'open-older',
+      createdAt: DateTime(2026, 6, 24, 15, 50),
+      aiReplyCount: 1,
+      messages: const [PracticeMessage(role: 'user', text: '舊場')],
+    ));
+
+    final container = ProviderContainer(
+      overrides: [
+        practiceSessionRepositoryProvider.overrideWithValue(repo),
+        practiceChatApiServiceProvider.overrideWithValue(api),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final state = container.read(practiceChatControllerProvider);
+
+    expect(state.sessionId, 'open-latest');
+    expect(state.aiReplyCount, 1);
+    expect(state.messages.map((m) => m.text).toList(), ['嗨', '嗯？']);
   });
 }

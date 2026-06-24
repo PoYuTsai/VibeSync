@@ -73,4 +73,15 @@ void main() {
     expect(loaded.debriefSummary, '整體不錯');
     expect(loaded.debriefVibe, '暖');
   });
+
+  test('delete 移除指定練習紀錄，不影響其他場', () async {
+    await repo.save(session('keep', 10));
+    await repo.save(session('drop', 11));
+
+    await repo.delete('drop');
+
+    expect(repo.getById('drop'), isNull);
+    expect(repo.getById('keep'), isNotNull);
+    expect(repo.recentSessions().map((s) => s.id).toList(), ['keep']);
+  });
 }
