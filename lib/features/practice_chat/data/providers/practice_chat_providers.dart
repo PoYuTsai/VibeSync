@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/entities/practice_message.dart';
+import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../repositories/practice_session_repository.dart';
 import '../services/practice_chat_api_service.dart';
@@ -28,9 +29,21 @@ class PracticeChatState {
   final bool quotaExceeded;
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
 
+  // ── 本場角色＋難度（開場前可改；送出第一則後鎖定）──
+  final PracticeDifficultyPreference difficultyPreference;
+  final String personaId;
+  final String personaLabel;
+  final String difficulty;
+  final String difficultyLabel;
+
   const PracticeChatState({
     required this.sessionId,
     required this.createdAt,
+    required this.personaId,
+    required this.personaLabel,
+    required this.difficulty,
+    required this.difficultyLabel,
+    this.difficultyPreference = PracticeDifficultyPreference.normal,
     this.messages = const [],
     this.isSending = false,
     this.isDebriefing = false,
@@ -60,6 +73,11 @@ class PracticeChatState {
     bool? sessionComplete,
     bool? ended,
     bool? quotaExceeded,
+    PracticeDifficultyPreference? difficultyPreference,
+    String? personaId,
+    String? personaLabel,
+    String? difficulty,
+    String? difficultyLabel,
     Object? debrief = _sentinel,
     Object? errorMessage = _sentinel,
     Object? restoreText = _sentinel,
@@ -74,6 +92,11 @@ class PracticeChatState {
       sessionComplete: sessionComplete ?? this.sessionComplete,
       ended: ended ?? this.ended,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
+      difficultyPreference: difficultyPreference ?? this.difficultyPreference,
+      personaId: personaId ?? this.personaId,
+      personaLabel: personaLabel ?? this.personaLabel,
+      difficulty: difficulty ?? this.difficulty,
+      difficultyLabel: difficultyLabel ?? this.difficultyLabel,
       debrief: identical(debrief, _sentinel)
           ? this.debrief
           : debrief as PracticeDebrief?,
@@ -85,6 +108,20 @@ class PracticeChatState {
           : restoreText as String?,
     );
   }
+
+  /// 換角色 / 改難度時，把已解析的 profile 套進 state（開場前才會被呼叫）。
+  PracticeChatState copyWithProfile(
+    PracticeProfile profile, {
+    PracticeDifficultyPreference? difficultyPreference,
+  }) {
+    return copyWith(
+      difficultyPreference: difficultyPreference ?? this.difficultyPreference,
+      personaId: profile.personaId,
+      personaLabel: profile.personaLabel,
+      difficulty: profile.difficulty,
+      difficultyLabel: profile.difficultyLabel,
+    );
+  }
 }
 
 class PracticeChatController extends StateNotifier<PracticeChatState> {
@@ -94,17 +131,18 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
     PracticeSession? initialSession,
+    PracticeProfile? initialProfile,
     String? sessionId,
     DateTime? createdAt,
   })  : _api = api,
         _repo = repository,
         _onUsageSynced = onUsageSynced,
-        super(initialSession != null
-            ? _stateFromSession(initialSession)
-            : PracticeChatState(
-                sessionId: sessionId ?? const Uuid().v4(),
-                createdAt: createdAt ?? DateTime.now(),
-              ));
+        super(_initialState(
+          initialSession: initialSession,
+          initialProfile: initialProfile,
+          sessionId: sessionId,
+          createdAt: createdAt,
+        ));
 
   final PracticeChatApiService _api;
   final PracticeSessionRepository _repo;
@@ -116,6 +154,26 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   @visibleForTesting
   PracticeChatState get currentState => state;
 
+  /// 進場初始 state：續聊既有 session 用其 profile；全新一場用 [initialProfile]
+  /// 或現抽一組（隨機角色 + 一般難度）。
+  static PracticeChatState _initialState({
+    required PracticeSession? initialSession,
+    required PracticeProfile? initialProfile,
+    required String? sessionId,
+    required DateTime? createdAt,
+  }) {
+    if (initialSession != null) return _stateFromSession(initialSession);
+    final profile = initialProfile ?? createPracticeProfile();
+    return PracticeChatState(
+      sessionId: sessionId ?? const Uuid().v4(),
+      createdAt: createdAt ?? DateTime.now(),
+      personaId: profile.personaId,
+      personaLabel: profile.personaLabel,
+      difficulty: profile.difficulty,
+      difficultyLabel: profile.difficultyLabel,
+    );
+  }
+
   static PracticeChatState _stateFromSession(PracticeSession session) {
     final debrief = session.hasDebrief
         ? PracticeDebrief(
@@ -126,6 +184,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             vibe: session.debriefVibe ?? '中性',
           )
         : null;
+    // 舊場（personaId == null）兜底成 slow_worker + normal，與 Edge fallback 一致。
+    final fallback = fallbackPracticeProfile();
+    final profile = session.personaId == null
+        ? fallback
+        : PracticeProfile(
+            personaId: session.personaId!,
+            personaLabel: session.personaLabel ?? fallback.personaLabel,
+            difficulty: session.difficulty ?? 'normal',
+            difficultyLabel: session.difficultyLabel ?? '一般',
+          );
     return PracticeChatState(
       sessionId: session.id,
       createdAt: session.createdAt,
@@ -135,6 +203,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           debrief != null || session.aiReplyCount >= kMaxPracticeAiReplies,
       ended: debrief != null,
       debrief: debrief,
+      personaId: profile.personaId,
+      personaLabel: profile.personaLabel,
+      difficulty: profile.difficulty,
+      difficultyLabel: profile.difficultyLabel,
     );
   }
 
@@ -164,6 +236,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     try {
       final reply = await _api.sendMessage(
         sessionId: state.sessionId,
+        profile: PracticeProfileDto(
+          personaId: state.personaId,
+          difficulty: state.difficulty,
+        ),
         turns: optimistic
             .map((m) => PracticeTurnDto(role: m.role, text: m.text))
             .toList(),
@@ -225,6 +301,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     try {
       final debrief = await _api.requestDebrief(
         sessionId: state.sessionId,
+        profile: PracticeProfileDto(
+          personaId: state.personaId,
+          difficulty: state.difficulty,
+        ),
         turns: state.messages
             .map((m) => PracticeTurnDto(role: m.role, text: m.text))
             .toList(),
@@ -261,6 +341,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       debriefWatchouts: s.debrief?.watchouts ?? const [],
       debriefSuggestedLine: s.debrief?.suggestedLine,
       debriefVibe: s.debrief?.vibe,
+      personaId: s.personaId,
+      personaLabel: s.personaLabel,
+      difficulty: s.difficulty,
+      difficultyLabel: s.difficultyLabel,
     ));
   }
 }

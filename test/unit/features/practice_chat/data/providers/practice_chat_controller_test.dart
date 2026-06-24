@@ -8,22 +8,30 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_message
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 
 class _FakeApi extends PracticeChatApiService {
-  Future<PracticeChatReply> Function(List<PracticeTurnDto> turns)? sendHandler;
-  Future<PracticeDebrief> Function(List<PracticeTurnDto> turns)? debriefHandler;
+  Future<PracticeChatReply> Function(
+    List<PracticeTurnDto> turns, {
+    PracticeProfileDto? profile,
+  })? sendHandler;
+  Future<PracticeDebrief> Function(
+    List<PracticeTurnDto> turns, {
+    PracticeProfileDto? profile,
+  })? debriefHandler;
 
   @override
   Future<PracticeChatReply> sendMessage({
     required String sessionId,
+    required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
   }) =>
-      sendHandler!(turns);
+      sendHandler!(turns, profile: profile);
 
   @override
   Future<PracticeDebrief> requestDebrief({
     required String sessionId,
+    required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
   }) =>
-      debriefHandler!(turns);
+      debriefHandler!(turns, profile: profile);
 }
 
 void main() {
@@ -96,7 +104,7 @@ void main() {
       );
 
   test('送訊息成功：附上 user+ai 泡泡、更新計數、扣點同步、持久化', () async {
-    api.sendHandler = (_) async => reply();
+    api.sendHandler = (_, {profile}) async => reply();
     final c = makeController();
 
     await c.sendMessage('嗨');
@@ -112,8 +120,32 @@ void main() {
     expect(repo.getById('sess-1'), isNotNull);
   });
 
+  test('新場次會帶固定 profile，送訊息與拆解都沿用同一組', () async {
+    final c = makeController();
+
+    expect(c.currentState.personaId, isNotEmpty);
+    expect(c.currentState.personaLabel, isNotEmpty);
+    expect(c.currentState.difficulty, 'normal');
+    expect(c.currentState.difficultyLabel, '一般');
+
+    PracticeProfileDto? sentProfile;
+    api.sendHandler = (turns, {profile}) async {
+      sentProfile = profile;
+      return reply();
+    };
+
+    await c.sendMessage('嗨');
+
+    expect(sentProfile!.personaId, c.currentState.personaId);
+    expect(sentProfile!.difficulty, c.currentState.difficulty);
+    final saved = repo.getById(c.currentState.sessionId)!;
+    expect(saved.personaId, c.currentState.personaId);
+    expect(saved.difficulty, c.currentState.difficulty);
+  });
+
   test('costDeducted=0（同場後續）不觸發額度同步', () async {
-    api.sendHandler = (_) async => reply(cost: 0, monthly: null, daily: null);
+    api.sendHandler =
+        (_, {profile}) async => reply(cost: 0, monthly: null, daily: null);
     final c = makeController();
 
     await c.sendMessage('嗨');
@@ -122,7 +154,7 @@ void main() {
 
   test('生成失敗：回滾使用者泡泡、設錯誤與還原文字、不持久化、不同步', () async {
     api.sendHandler =
-        (_) async => throw PracticeGenerationFailedException('boom');
+        (_, {profile}) async => throw PracticeGenerationFailedException('boom');
     final c = makeController();
 
     await c.sendMessage('嗨');
@@ -137,7 +169,7 @@ void main() {
   });
 
   test('額度用罄：quotaExceeded 旗標 + 回滾', () async {
-    api.sendHandler = (_) async => throw PracticeQuotaExceededException(
+    api.sendHandler = (_, {profile}) async => throw PracticeQuotaExceededException(
           '本月額度已用完',
           monthlyRemaining: 0,
           dailyRemaining: 0,
@@ -153,7 +185,7 @@ void main() {
   });
 
   test('滿 10 則：sessionComplete 後鎖定輸入、再送被忽略', () async {
-    api.sendHandler = (_) async =>
+    api.sendHandler = (_, {profile}) async =>
         reply(text: '最後一句', aiTurnCount: 10, complete: true, cost: 0);
     final c = makeController();
 
@@ -166,11 +198,11 @@ void main() {
   });
 
   test('結束練習：產拆解卡、鎖定、持久化拆解欄位', () async {
-    api.sendHandler = (_) async => reply();
+    api.sendHandler = (_, {profile}) async => reply();
     final c = makeController();
     await c.sendMessage('嗨');
 
-    api.debriefHandler = (_) async => const PracticeDebrief(
+    api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
           summary: '整體不錯',
           strengths: ['開場自然'],
           watchouts: [],
@@ -189,7 +221,7 @@ void main() {
   });
 
   test('沒有任何 AI 回覆時 endPractice 為 no-op', () async {
-    api.debriefHandler = (_) async => const PracticeDebrief(
+    api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
           summary: 'x',
           strengths: [],
           watchouts: [],
@@ -204,12 +236,12 @@ void main() {
   });
 
   test('拆解失敗：設錯誤、解鎖 ended 供重試', () async {
-    api.sendHandler = (_) async => reply();
+    api.sendHandler = (_, {profile}) async => reply();
     final c = makeController();
     await c.sendMessage('嗨');
 
     api.debriefHandler =
-        (_) async => throw PracticeGenerationFailedException('boom');
+        (_, {profile}) async => throw PracticeGenerationFailedException('boom');
     await c.endPractice();
     final s = c.currentState;
 
@@ -233,7 +265,7 @@ void main() {
     expect(c.currentState.messages.map((m) => m.text).toList(), ['嗨', '嗯？']);
 
     late List<PracticeTurnDto> sentTurns;
-    api.sendHandler = (turns) async {
+    api.sendHandler = (turns, {profile}) async {
       sentTurns = turns;
       return reply(text: '好啊', aiTurnCount: 2, cost: 0);
     };

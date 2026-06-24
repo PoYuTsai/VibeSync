@@ -30,13 +30,17 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
           fields[6] == null ? const [] : (fields[6] as List).cast<String>(),
       debriefSuggestedLine: fields[7] as String?,
       debriefVibe: fields[8] as String?,
+      personaId: fields[9] as String?,
+      personaLabel: fields[10] as String?,
+      difficulty: fields[11] as String?,
+      difficultyLabel: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PracticeSession obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -54,7 +58,15 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
       ..writeByte(7)
       ..write(obj.debriefSuggestedLine)
       ..writeByte(8)
-      ..write(obj.debriefVibe);
+      ..write(obj.debriefVibe)
+      ..writeByte(9)
+      ..write(obj.personaId)
+      ..writeByte(10)
+      ..write(obj.personaLabel)
+      ..writeByte(11)
+      ..write(obj.difficulty)
+      ..writeByte(12)
+      ..write(obj.difficultyLabel);
   }
 
   @override

@@ -36,6 +36,19 @@ class PracticeSession {
   @HiveField(8)
   final String? debriefVibe;
 
+  // ── 本場角色＋難度（Batch 2 起新增；舊場為 null → 兜底 slow_worker + normal）──
+  @HiveField(9)
+  final String? personaId;
+
+  @HiveField(10)
+  final String? personaLabel;
+
+  @HiveField(11)
+  final String? difficulty;
+
+  @HiveField(12)
+  final String? difficultyLabel;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -46,6 +59,10 @@ class PracticeSession {
     this.debriefWatchouts = const [],
     this.debriefSuggestedLine,
     this.debriefVibe,
+    this.personaId,
+    this.personaLabel,
+    this.difficulty,
+    this.difficultyLabel,
   });
 
   bool get hasDebrief => debriefSummary != null;
@@ -58,6 +75,10 @@ class PracticeSession {
     List<String>? debriefWatchouts,
     String? debriefSuggestedLine,
     String? debriefVibe,
+    String? personaId,
+    String? personaLabel,
+    String? difficulty,
+    String? difficultyLabel,
   }) {
     return PracticeSession(
       id: id,
@@ -69,6 +90,10 @@ class PracticeSession {
       debriefWatchouts: debriefWatchouts ?? this.debriefWatchouts,
       debriefSuggestedLine: debriefSuggestedLine ?? this.debriefSuggestedLine,
       debriefVibe: debriefVibe ?? this.debriefVibe,
+      personaId: personaId ?? this.personaId,
+      personaLabel: personaLabel ?? this.personaLabel,
+      difficulty: difficulty ?? this.difficulty,
+      difficultyLabel: difficultyLabel ?? this.difficultyLabel,
     );
   }
 }

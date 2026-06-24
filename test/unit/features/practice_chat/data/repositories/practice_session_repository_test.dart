@@ -74,6 +74,23 @@ void main() {
     expect(loaded.debriefVibe, '暖');
   });
 
+  test('save 後可持久化 persona 與 difficulty', () async {
+    await repo.save(PracticeSession(
+      id: 'p',
+      createdAt: DateTime(2026, 6, 24, 18),
+      personaId: 'teasing_humor',
+      personaLabel: '幽默吐槽型',
+      difficulty: 'challenge',
+      difficultyLabel: '挑戰',
+    ));
+
+    final loaded = repo.getById('p')!;
+    expect(loaded.personaId, 'teasing_humor');
+    expect(loaded.personaLabel, '幽默吐槽型');
+    expect(loaded.difficulty, 'challenge');
+    expect(loaded.difficultyLabel, '挑戰');
+  });
+
   test('delete 移除指定練習紀錄，不影響其他場', () async {
     await repo.save(session('keep', 10));
     await repo.save(session('drop', 11));

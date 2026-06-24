@@ -39,7 +39,7 @@ const practicePersonas = <PracticePersona>[
   PracticePersona(id: 'clear_boundaries', label: '邊界感強型'),
 ];
 
-const defaultPracticePersona = practicePersonas[0];
+final defaultPracticePersona = practicePersonas.first;
 
 String practiceDifficultyId(PracticeDifficultyPreference preference) {
   return switch (preference) {
