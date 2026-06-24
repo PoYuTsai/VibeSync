@@ -51,6 +51,7 @@ jobs:
         run: |
           supabase functions deploy analyze-chat --no-verify-jwt
           supabase functions deploy delete-account
+          supabase functions deploy practice-chat
           supabase functions deploy sync-subscription
           supabase functions deploy submit-feedback
           supabase functions deploy revenuecat-webhook --no-verify-jwt
