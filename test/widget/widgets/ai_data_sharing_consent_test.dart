@@ -95,4 +95,48 @@ void main() {
 
     expect(result, isFalse);
   });
+
+  // ── 參數化：practice-chat 走 DeepSeek，文案與 key 須與 Claude 路徑分離 ──
+
+  testWidgets('custom destinationLabel 顯示於揭露文案（DeepSeek 路徑）',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 實戰練習室',
+                  consentKey: 'practice_consent_test_key',
+                  destinationLabel: 'DeepSeek API',
+                );
+              },
+              child: const Text('start'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('DeepSeek API'), findsAtLeastNWidgets(1));
+    expect(find.textContaining('Anthropic Claude API'), findsNothing);
+  });
+
+  test('不同 consentKey 各自獨立（同意 Claude 不代表同意 DeepSeek 練習室）',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.acceptedKeyForTesting: true,
+    });
+    expect(await AiDataSharingConsent.hasAccepted(), isTrue);
+    expect(
+      await AiDataSharingConsent.hasAccepted(
+        consentKey: 'practice_consent_test_key',
+      ),
+      isFalse,
+    );
+  });
 }

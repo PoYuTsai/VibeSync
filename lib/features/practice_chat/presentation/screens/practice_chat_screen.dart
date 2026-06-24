@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_message.dart';
@@ -31,9 +32,18 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    // 練習對話會送到 DeepSeek 生成模擬對象回覆，首次須取得第三方 AI 資料使用同意
+    // （走 DeepSeek，與 Claude 功能各自獨立）。不同意則保留輸入、不送出、不扣額度。
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'AI 實戰練習室',
+      consentKey: AiDataSharingConsent.practiceConsentKey,
+      destinationLabel: AiDataSharingConsent.practiceDestinationLabel,
+    );
+    if (!consented || !mounted) return;
     _controller.clear();
     ref.read(practiceChatControllerProvider.notifier).sendMessage(text);
   }

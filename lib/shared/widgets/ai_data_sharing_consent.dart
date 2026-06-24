@@ -8,17 +8,25 @@ class AiDataSharingConsent {
   static const acceptedKeyForTesting = _acceptedKey;
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
+  static const _defaultDestinationLabel = 'Anthropic Claude API';
 
-  static Future<bool> hasAccepted() async {
+  /// AI 實戰練習室走 DeepSeek（非 Claude），須與 Claude 功能各自獨立同意。
+  static const practiceConsentKey =
+      'ai_data_sharing_consent_practice_20260624_v1';
+  static const practiceDestinationLabel = 'DeepSeek API';
+
+  static Future<bool> hasAccepted({String consentKey = _acceptedKey}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_acceptedKey) == true;
+    return prefs.getBool(consentKey) == true;
   }
 
   static Future<bool> ensure(
     BuildContext context, {
     required String featureLabel,
+    String consentKey = _acceptedKey,
+    String destinationLabel = _defaultDestinationLabel,
   }) async {
-    if (await hasAccepted()) return true;
+    if (await hasAccepted(consentKey: consentKey)) return true;
     if (!context.mounted) return false;
 
     final accepted = await showDialog<bool>(
@@ -28,6 +36,7 @@ class AiDataSharingConsent {
         featureLabel: featureLabel,
         privacyUrl: _privacyUrl,
         termsUrl: _termsUrl,
+        destinationLabel: destinationLabel,
       ),
     );
 
@@ -36,7 +45,7 @@ class AiDataSharingConsent {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_acceptedKey, true);
+    await prefs.setBool(consentKey, true);
     return true;
   }
 }
@@ -46,11 +55,13 @@ class _AiDataSharingConsentDialog extends StatefulWidget {
     required this.featureLabel,
     required this.privacyUrl,
     required this.termsUrl,
+    required this.destinationLabel,
   });
 
   final String featureLabel;
   final String privacyUrl;
   final String termsUrl;
+  final String destinationLabel;
 
   @override
   State<_AiDataSharingConsentDialog> createState() =>
@@ -74,8 +85,8 @@ class _AiDataSharingConsentDialogState
               '使用「${widget.featureLabel}」前，VibeSync 需要先取得你的同意。',
             ),
             const SizedBox(height: 12),
-            const Text(
-              '你主動送出的資料會經由 VibeSync 後端服務（Supabase Edge Functions）傳送至 Anthropic Claude API，用來產生本次 AI 結果。',
+            Text(
+              '你主動送出的資料會經由 VibeSync 後端服務（Supabase Edge Functions）傳送至 ${widget.destinationLabel}，用來產生本次 AI 結果。',
             ),
             const SizedBox(height: 12),
             const _ConsentBullet(
@@ -109,8 +120,8 @@ class _AiDataSharingConsentDialogState
               onChanged: (value) {
                 setState(() => _hasReviewedAndAgreed = value ?? false);
               },
-              title: const Text(
-                '我已閱讀並同意服務條款與隱私權政策，並同意 VibeSync 將上述資料傳送至 Supabase Edge Functions 與 Anthropic Claude API 以產生本次 AI 結果。',
+              title: Text(
+                '我已閱讀並同意服務條款與隱私權政策，並同意 VibeSync 將上述資料傳送至 Supabase Edge Functions 與 ${widget.destinationLabel} 以產生本次 AI 結果。',
               ),
             ),
             const Text(
