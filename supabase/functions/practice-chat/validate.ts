@@ -3,6 +3,10 @@
 // 失敗一律 throw Error("invalid_*")，由 handler 轉 400。
 
 import { type PracticeMode } from "./quota_decision.ts";
+import {
+  type PracticeProfile,
+  resolvePracticeProfile,
+} from "./practice_persona.ts";
 
 export const MAX_TURNS = 40; // 10 則 AI 回覆上限 → 一來一回頂多 ~20，留緩衝
 export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
@@ -19,6 +23,7 @@ export interface PracticeChatRequest {
   mode: PracticeMode;
   sessionId: string;
   turns: PracticeTurn[];
+  profile: PracticeProfile;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -80,5 +85,10 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     if (aiCount === 0) throw new Error("invalid_debrief_no_ai_turns");
   }
 
-  return { mode, sessionId, turns };
+  const profile = resolvePracticeProfile({
+    personaId: raw.personaId,
+    difficulty: raw.difficulty,
+  });
+
+  return { mode, sessionId, turns, profile };
 }

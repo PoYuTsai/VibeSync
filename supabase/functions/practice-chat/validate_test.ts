@@ -157,3 +157,58 @@ Deno.test("debrief 沒有任何 AI 回覆 → invalid_debrief_no_ai_turns", () =
     "invalid_debrief_no_ai_turns",
   );
 });
+
+// ── persona / difficulty profile ─────────────────────────────────────
+
+Deno.test("profile：缺 persona/difficulty → fallback slow_worker + normal", () => {
+  const r = validateRequest(chatReq([{ role: "user", text: "嗨" }]));
+  assertEquals(r.profile.personaId, "slow_worker");
+  assertEquals(r.profile.personaLabel, "慢熱上班族");
+  assertEquals(r.profile.difficulty, "normal");
+  assertEquals(r.profile.difficultyLabel, "一般");
+});
+
+Deno.test("profile：合法 persona/difficulty 通過並解析 label", () => {
+  const r = validateRequest({
+    mode: "chat",
+    sessionId: "s1",
+    personaId: "teasing_humor",
+    difficulty: "challenge",
+    turns: [{ role: "user", text: "今天好無聊" }],
+  });
+
+  assertEquals(r.profile.personaId, "teasing_humor");
+  assertEquals(r.profile.personaLabel, "幽默吐槽型");
+  assertEquals(r.profile.difficulty, "challenge");
+  assertEquals(r.profile.difficultyLabel, "挑戰");
+});
+
+Deno.test("profile：非法 personaId → invalid_personaId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        personaId: "write_your_own_prompt",
+        difficulty: "normal",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_personaId",
+  );
+});
+
+Deno.test("profile：非法 difficulty → invalid_difficulty", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        personaId: "slow_worker",
+        difficulty: "nightmare",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_difficulty",
+  );
+});
