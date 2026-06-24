@@ -8,6 +8,7 @@ import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_message.dart';
+import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../widgets/practice_debrief_card.dart';
 
@@ -92,6 +93,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       resizeToAvoidBottomInset: true,
       body: Column(
         children: [
+          _PracticeProfileBar(state: state),
           Expanded(
             child: _PracticeChatWorkspaceFrame(
               child: state.messages.isEmpty
@@ -157,6 +159,127 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
           await ref.read(practiceSessionRepositoryProvider).delete(session.id);
           ref.invalidate(recentPracticeSessionsProvider);
         },
+      ),
+    );
+  }
+}
+
+// ── 本場對象列：顯示角色＋難度；開場前可換一位 / 調難度，送出第一則後鎖定 ──
+class _PracticeProfileBar extends ConsumerWidget {
+  const _PracticeProfileBar({required this.state});
+
+  final PracticeChatState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = state.messages.isEmpty && !state.isSending;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '本場對象：${state.personaLabel} · ${state.difficultyLabel}',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (canEdit)
+                TextButton(
+                  onPressed: () => ref
+                      .read(practiceChatControllerProvider.notifier)
+                      .regeneratePersona(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.ctaStart,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('換一位'),
+                ),
+            ],
+          ),
+          if (canEdit) const SizedBox(height: 6),
+          if (canEdit) _DifficultyChips(state: state),
+        ],
+      ),
+    );
+  }
+}
+
+class _DifficultyChips extends ConsumerWidget {
+  const _DifficultyChips({required this.state});
+
+  final PracticeChatState state;
+
+  static const _options = <(PracticeDifficultyPreference, String)>[
+    (PracticeDifficultyPreference.easy, '輕鬆'),
+    (PracticeDifficultyPreference.normal, '一般'),
+    (PracticeDifficultyPreference.challenge, '挑戰'),
+    (PracticeDifficultyPreference.random, '隨機'),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final (pref, label) in _options)
+          _DifficultyChip(
+            label: label,
+            selected: state.difficultyPreference == pref,
+            onTap: () => ref
+                .read(practiceChatControllerProvider.notifier)
+                .setDifficultyPreference(pref),
+          ),
+      ],
+    );
+  }
+}
+
+class _DifficultyChip extends StatelessWidget {
+  const _DifficultyChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.ctaStart.withValues(alpha: 0.18)
+              : AppColors.brandSurface2.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? AppColors.ctaStart.withValues(alpha: 0.7)
+                : AppColors.onBackgroundSecondary.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.caption.copyWith(
+            color:
+                selected ? AppColors.ctaStart : AppColors.onBackgroundSecondary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
       ),
     );
   }

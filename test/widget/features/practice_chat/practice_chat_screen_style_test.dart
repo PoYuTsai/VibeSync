@@ -47,6 +47,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
   @override
   Future<PracticeChatReply> sendMessage({
     required String sessionId,
+    required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
   }) {
     throw UnimplementedError();
@@ -55,6 +56,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
   @override
   Future<PracticeDebrief> requestDebrief({
     required String sessionId,
+    required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
   }) {
     throw UnimplementedError();
@@ -90,6 +92,10 @@ void main() {
       sessionId: 'practice-style-test',
       createdAt: DateTime(2026, 6, 24, 15, 30),
       aiReplyCount: 1,
+      personaId: 'slow_worker',
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
       messages: const [
         PracticeMessage(role: 'user', text: '今天好無聊'),
         PracticeMessage(role: 'ai', text: '認真的嗎？我今天事情多到爆炸，超想喊假的。'),
@@ -202,5 +208,60 @@ void main() {
 
     expect(repo.getById('delete-me'), isNull);
     expect(find.text('還沒有練習紀錄'), findsOneWidget);
+  });
+
+  testWidgets(
+      'new room shows persona and difficulty controls before first message',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.textContaining('本場對象：'), findsOneWidget);
+    expect(find.text('換一位'), findsOneWidget);
+    expect(find.text('輕鬆'), findsOneWidget);
+    expect(find.text('一般'), findsOneWidget);
+    expect(find.text('挑戰'), findsOneWidget);
+    expect(find.text('隨機'), findsOneWidget);
+  });
+
+  testWidgets('started room hides persona changer and keeps profile visible',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await repo.save(PracticeSession(
+      id: 'started',
+      createdAt: DateTime(2026, 6, 24, 18),
+      aiReplyCount: 1,
+      personaId: 'cool_rational',
+      personaLabel: '高冷理性型',
+      difficulty: 'challenge',
+      difficultyLabel: '挑戰',
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+    ));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.textContaining('高冷理性型 · 挑戰'), findsOneWidget);
+    expect(find.text('換一位'), findsNothing);
+    expect(find.text('輕鬆'), findsNothing);
   });
 }

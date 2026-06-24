@@ -329,6 +329,28 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     state = state.copyWith(errorMessage: null, quotaExceeded: false);
   }
 
+  /// 開場前「換一位」：沿用目前難度偏好重抽一位模擬對象。
+  /// 送出第一則後鎖定（messages 非空即 no-op）。
+  void regeneratePersona() {
+    if (state.messages.isNotEmpty) return;
+    final profile = createPracticeProfile(
+      difficultyPreference: state.difficultyPreference,
+    );
+    state = state.copyWithProfile(profile);
+  }
+
+  /// 開場前調整難度偏好：只換難度、保留目前這位對象（兩個控制各自獨立）。
+  /// `隨機` 會立刻解析成 easy/normal/challenge 其一。送出第一則後鎖定。
+  void setDifficultyPreference(PracticeDifficultyPreference preference) {
+    if (state.messages.isNotEmpty) return;
+    final resolved = createPracticeProfile(difficultyPreference: preference);
+    state = state.copyWith(
+      difficultyPreference: preference,
+      difficulty: resolved.difficulty,
+      difficultyLabel: resolved.difficultyLabel,
+    );
+  }
+
   Future<void> _persist() async {
     final s = state;
     await _repo.save(PracticeSession(
