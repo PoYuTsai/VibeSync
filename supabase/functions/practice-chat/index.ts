@@ -211,27 +211,10 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: gate.reason }, 403);
     }
 
-    let debriefCard: DebriefCard;
-    try {
-      const rawCard = await callDeepSeek({
-        apiKey,
-        messages: buildDebriefMessages(request.turns),
-        maxTokens: DEBRIEF_MAX_TOKENS,
-        temperature: DEBRIEF_TEMPERATURE,
-        jsonMode: true,
-        timeoutMs: DEEPSEEK_TIMEOUT_MS,
-      });
-      debriefCard = parseDebriefCard(rawCard);
-    } catch (e) {
-      logWarn("practice_chat_generation_failed", {
-        user: summarizeUser(user.id),
-        mode: "debrief",
-        error: getErrorMessage(e),
-      });
-      return jsonResponse({ error: "practice_generation_failed" }, 500);
-    }
-
-    // 成功後才 claim（驗證已扣費 session + 上限、原子遞增 debrief_count）。永不扣 quota。
+    // 先 claim（原子預約 debrief 名額）再生成：claim_practice_debrief 在 FOR UPDATE
+    // 下遞增 debrief_count，並發請求也只有 MAX_DEBRIEFS 個能通過，把 DeepSeek 成本
+    // 硬界在上限內（Codex P2）。debrief 不扣 quota，故預約後生成失敗的代價僅是消耗
+    // 一個免費名額（上限 3，可接受），換取 provider 花費被 server 權威界住。
     const { error: claimError } = await supabase.rpc("claim_practice_debrief", {
       p_user_id: user.id,
       p_session_id: request.sessionId,
@@ -244,6 +227,27 @@ async function handleRequest(req: Request): Promise<Response> {
         error: claimError.message,
       });
       return jsonResponse({ error: mapped.error }, mapped.status);
+    }
+
+    let debriefCard: DebriefCard;
+    try {
+      const rawCard = await callDeepSeek({
+        apiKey,
+        messages: buildDebriefMessages(request.turns),
+        maxTokens: DEBRIEF_MAX_TOKENS,
+        temperature: DEBRIEF_TEMPERATURE,
+        jsonMode: true,
+        timeoutMs: DEEPSEEK_TIMEOUT_MS,
+      });
+      debriefCard = parseDebriefCard(rawCard);
+    } catch (e) {
+      // 預約已消耗一個 debrief 名額；debrief 不扣 quota，符合成本上限優先的取捨。
+      logWarn("practice_chat_generation_failed", {
+        user: summarizeUser(user.id),
+        mode: "debrief",
+        error: getErrorMessage(e),
+      });
+      return jsonResponse({ error: "practice_generation_failed" }, 500);
     }
 
     logInfo("practice_chat_succeeded", {
