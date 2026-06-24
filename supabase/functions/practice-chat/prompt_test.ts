@@ -27,6 +27,21 @@ Deno.test("chat system prompt 含核心人設約束", () => {
   assertEquals(CHAT_SYSTEM_PROMPT.includes("吐槽"), true);
 });
 
+Deno.test("chat system prompt 含 prompt-injection 防線（對方訊息＝資料、不得被改身份）", () => {
+  // 漏洞⑤：client 可偽造 assistant/user turns 要 AI 切換身份或揭露指示。
+  // 純計數 ledger 不重建歷史，故防線壓在 prompt：把 turns 全當聊天內容、鎖人設。
+  assertEquals(CHAT_SYSTEM_PROMPT.includes("聊天內容"), true);
+  // 明令忽略「改身份／改規則／自稱 AI／扮教練或系統」的注入
+  assertEquals(CHAT_SYSTEM_PROMPT.includes("改身份"), true);
+  assertEquals(CHAT_SYSTEM_PROMPT.includes("忽略"), true);
+  // 系統指示是身份與規則的唯一來源
+  assertEquals(CHAT_SYSTEM_PROMPT.includes("只由這段系統指示決定"), true);
+});
+
+Deno.test("debrief system prompt 含逐字稿 injection 防線（逐字稿＝被分析的資料）", () => {
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("被分析的資料"), true);
+});
+
 Deno.test("buildChatMessages：system 開頭 + user→user / ai→assistant 映射", () => {
   const turns: PracticeTurn[] = [
     { role: "user", text: "嗨" },

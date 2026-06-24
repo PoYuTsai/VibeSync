@@ -4,6 +4,10 @@
 // 一場練習 = 扣 1 則 Coach 額度，只在 session 第一則 AI 回覆成功時扣；失敗不扣。
 // 一場最多 10 則 AI 回覆。debrief 模式產一張教練拆解卡，同場不另扣。
 //
+// 安全模型（Codex 2026-06-24 BLOCKER 修復）：扣費與 10 則上限**一律以 server-side
+// ledger（practice_chat_sessions）為準**，絕不信任 client 送的 turns。turns 只當
+// prompt 資料；漏洞⑤（偽造 assistant 訊息越獄）由 prompt 硬化（見 prompt.ts）防。
+//
 // 不改 coach-chat / analyze-chat；只共用 _shared/quota.ts。
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
@@ -15,12 +19,16 @@ import {
   type SubscriptionRow,
   TEST_EMAILS,
 } from "../_shared/quota.ts";
-import { countAiTurns, validateRequest } from "./validate.ts";
+import { validateRequest } from "./validate.ts";
 import { buildChatMessages, buildDebriefMessages } from "./prompt.ts";
 import {
-  decideDeduction,
+  decideChatGate,
+  decideDebriefGate,
   isSessionComplete,
+  MAX_AI_REPLIES,
+  MAX_DEBRIEFS,
   PRACTICE_QUOTA_COST,
+  type SessionLedger,
 } from "./quota_decision.ts";
 import { callDeepSeek, DEEPSEEK_MODEL } from "./deepseek.ts";
 import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
@@ -52,6 +60,20 @@ export function jsonResponse(data: unknown, status = 200): Response {
 
 function getErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** 把 ledger RPC 的 RAISE 訊息映射成 client 狀態碼。 */
+function mapLedgerError(message: string): { error: string; status: number } {
+  if (message.includes("PRACTICE_SESSION_COMPLETE")) {
+    return { error: "practice_session_complete", status: 409 };
+  }
+  if (message.includes("PRACTICE_SESSION_NOT_STARTED")) {
+    return { error: "practice_session_not_started", status: 403 };
+  }
+  if (message.includes("PRACTICE_DEBRIEF_LIMIT")) {
+    return { error: "practice_debrief_limit", status: 403 };
+  }
+  return { error: "session_state_failed", status: 500 };
 }
 
 function remainingFrom(
@@ -111,12 +133,7 @@ async function handleRequest(req: Request): Promise<Response> {
   try {
     request = validateRequest(rawBody);
   } catch (e) {
-    const msg = getErrorMessage(e);
-    // 已達 10 則上限是預期狀態，回 409 讓前端引導去拆解卡。
-    if (msg === "practice_session_complete") {
-      return jsonResponse({ error: msg }, 409);
-    }
-    return jsonResponse({ error: msg }, 400);
+    return jsonResponse({ error: getErrorMessage(e) }, 400);
   }
 
   const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
@@ -161,32 +178,118 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const accountIsTest = TEST_EMAILS.includes(user.email || "");
   const limits = resolveLimits(sub.tier);
-  const aiTurnCount = countAiTurns(request.turns);
-  const { shouldDeduct } = decideDeduction({
-    mode: request.mode,
-    aiTurnCount,
+
+  // ── server-side ledger preflight（權威狀態，不信任 client turns）──
+  const { data: ledgerRow, error: ledgerError } = await supabase
+    .from("practice_chat_sessions")
+    .select("ai_count, charged, debrief_count")
+    .eq("user_id", user.id)
+    .eq("session_id", request.sessionId)
+    .maybeSingle();
+  if (ledgerError) {
+    logWarn("practice_chat_ledger_fetch_error", {
+      user: summarizeUser(user.id),
+      error: ledgerError.message,
+    });
+    return jsonResponse({ error: "session_state_failed" }, 500);
+  }
+  const ledger: SessionLedger = {
+    exists: !!ledgerRow,
+    aiCount: (ledgerRow?.ai_count as number | undefined) ?? 0,
+    charged: (ledgerRow?.charged as boolean | undefined) ?? false,
+    debriefCount: (ledgerRow?.debrief_count as number | undefined) ?? 0,
+  };
+
+  // ── debrief 分支 ─────────────────────────────────────────────────
+  if (request.mode === "debrief") {
+    const gate = decideDebriefGate({ ledger });
+    if (!gate.allowed) {
+      logWarn("practice_chat_debrief_rejected", {
+        user: summarizeUser(user.id),
+        reason: gate.reason,
+      });
+      return jsonResponse({ error: gate.reason }, 403);
+    }
+
+    let debriefCard: DebriefCard;
+    try {
+      const rawCard = await callDeepSeek({
+        apiKey,
+        messages: buildDebriefMessages(request.turns),
+        maxTokens: DEBRIEF_MAX_TOKENS,
+        temperature: DEBRIEF_TEMPERATURE,
+        jsonMode: true,
+        timeoutMs: DEEPSEEK_TIMEOUT_MS,
+      });
+      debriefCard = parseDebriefCard(rawCard);
+    } catch (e) {
+      logWarn("practice_chat_generation_failed", {
+        user: summarizeUser(user.id),
+        mode: "debrief",
+        error: getErrorMessage(e),
+      });
+      return jsonResponse({ error: "practice_generation_failed" }, 500);
+    }
+
+    // 成功後才 claim（驗證已扣費 session + 上限、原子遞增 debrief_count）。永不扣 quota。
+    const { error: claimError } = await supabase.rpc("claim_practice_debrief", {
+      p_user_id: user.id,
+      p_session_id: request.sessionId,
+      p_max_debriefs: MAX_DEBRIEFS,
+    });
+    if (claimError) {
+      const mapped = mapLedgerError(claimError.message);
+      logWarn("practice_chat_debrief_claim_failed", {
+        user: summarizeUser(user.id),
+        error: claimError.message,
+      });
+      return jsonResponse({ error: mapped.error }, mapped.status);
+    }
+
+    logInfo("practice_chat_succeeded", {
+      user: summarizeUser(user.id),
+      mode: "debrief",
+      costDeducted: 0,
+    });
+    return jsonResponse({
+      card: debriefCard,
+      costDeducted: 0,
+      provider: "deepseek",
+      model: DEEPSEEK_MODEL,
+      generatedAt: new Date().toISOString(),
+      ...remainingFrom(sub, limits, 0),
+    });
+  }
+
+  // ── chat 分支 ────────────────────────────────────────────────────
+  const { atCap, shouldChargePreview } = decideChatGate({
+    ledger,
     isTestAccount: accountIsTest,
   });
+  if (atCap) {
+    // 已達 10 則上限：引導前端去拆解卡。
+    return jsonResponse({ error: "practice_session_complete" }, 409);
+  }
 
-  // ── quota preflight（只有要扣點時才擋）──
-  if (shouldDeduct) {
-    const gate = checkQuota({
+  // 只有「本場尚未扣費且非測試帳號」才做 quota 429 preflight。
+  if (shouldChargePreview) {
+    const quotaGate = checkQuota({
       sub,
       cost: PRACTICE_QUOTA_COST,
       isTestAccount: accountIsTest,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
     });
-    if (!gate.ok) {
+    if (!quotaGate.ok) {
       logWarn("practice_chat_quota_exceeded", {
         user: summarizeUser(user.id),
-        reason: gate.reason,
+        reason: quotaGate.reason,
       });
       return jsonResponse(
         buildQuotaExceededPayload({
           sub,
           cost: PRACTICE_QUOTA_COST,
-          reason: gate.reason,
+          reason: quotaGate.reason,
           monthlyLimit: limits.monthly,
           dailyLimit: limits.daily,
         }),
@@ -197,86 +300,62 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // ── DeepSeek 生成 ──
   let reply: string;
-  let debriefCard: DebriefCard | null = null;
   try {
-    if (request.mode === "chat") {
-      reply = await callDeepSeek({
-        apiKey,
-        messages: buildChatMessages(request.turns),
-        maxTokens: CHAT_MAX_TOKENS,
-        temperature: CHAT_TEMPERATURE,
-        timeoutMs: DEEPSEEK_TIMEOUT_MS,
-      });
-    } else {
-      const rawCard = await callDeepSeek({
-        apiKey,
-        messages: buildDebriefMessages(request.turns),
-        maxTokens: DEBRIEF_MAX_TOKENS,
-        temperature: DEBRIEF_TEMPERATURE,
-        jsonMode: true,
-        timeoutMs: DEEPSEEK_TIMEOUT_MS,
-      });
-      debriefCard = parseDebriefCard(rawCard);
-      reply = "";
-    }
+    reply = await callDeepSeek({
+      apiKey,
+      messages: buildChatMessages(request.turns),
+      maxTokens: CHAT_MAX_TOKENS,
+      temperature: CHAT_TEMPERATURE,
+      timeoutMs: DEEPSEEK_TIMEOUT_MS,
+    });
   } catch (e) {
-    // API / format 失敗 → 未扣額度。
+    // API / format 失敗 → 未 commit、未扣額度。
     logWarn("practice_chat_generation_failed", {
       user: summarizeUser(user.id),
-      mode: request.mode,
+      mode: "chat",
       error: getErrorMessage(e),
     });
     return jsonResponse({ error: "practice_generation_failed" }, 500);
   }
 
-  // ── 扣點（只在生成成功後）──
-  let deducted = 0;
-  if (shouldDeduct) {
-    const { error: rpcError } = await supabase.rpc("increment_usage", {
+  // ── 生成成功後才原子 commit（結算扣費 + ai_count 遞增，FOR UPDATE 重判上限）──
+  const { data: commitData, error: commitError } = await supabase.rpc(
+    "commit_practice_chat_turn",
+    {
       p_user_id: user.id,
-      p_messages: PRACTICE_QUOTA_COST,
+      p_session_id: request.sessionId,
+      p_charge_quota: !accountIsTest,
+      p_max_replies: MAX_AI_REPLIES,
+    },
+  );
+  if (commitError) {
+    const mapped = mapLedgerError(commitError.message);
+    logWarn("practice_chat_commit_failed", {
+      user: summarizeUser(user.id),
+      error: commitError.message,
     });
-    if (rpcError) {
-      logWarn("practice_chat_deduct_db_error", {
-        user: summarizeUser(user.id),
-        error: rpcError.message,
-      });
-      return jsonResponse({ error: "credit_deduct_failed" }, 500);
-    }
-    deducted = PRACTICE_QUOTA_COST;
+    return jsonResponse({ error: mapped.error }, mapped.status);
   }
-
-  const remaining = remainingFrom(sub, limits, deducted);
-  const generatedAt = new Date().toISOString();
+  const commitRow = Array.isArray(commitData) ? commitData[0] : commitData;
+  const newAiCount = (commitRow?.new_ai_count as number | undefined) ?? 0;
+  const didCharge = (commitRow?.did_charge as boolean | undefined) ?? false;
+  const deducted = didCharge ? PRACTICE_QUOTA_COST : 0;
 
   logInfo("practice_chat_succeeded", {
     user: summarizeUser(user.id),
-    mode: request.mode,
-    aiTurnCount,
+    mode: "chat",
+    aiTurnCount: newAiCount,
     costDeducted: deducted,
   });
-
-  if (request.mode === "debrief") {
-    return jsonResponse({
-      card: debriefCard,
-      costDeducted: 0,
-      provider: "deepseek",
-      model: DEEPSEEK_MODEL,
-      generatedAt,
-      ...remaining,
-    });
-  }
-
-  const nextAiTurnCount = aiTurnCount + 1;
   return jsonResponse({
     reply,
-    aiTurnCount: nextAiTurnCount,
-    sessionComplete: isSessionComplete(nextAiTurnCount),
+    aiTurnCount: newAiCount,
+    sessionComplete: isSessionComplete(newAiCount),
     costDeducted: deducted,
     provider: "deepseek",
     model: DEEPSEEK_MODEL,
-    generatedAt,
-    ...remaining,
+    generatedAt: new Date().toISOString(),
+    ...remainingFrom(sub, limits, deducted),
   });
 }
 

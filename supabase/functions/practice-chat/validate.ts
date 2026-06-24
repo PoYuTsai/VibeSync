@@ -2,7 +2,7 @@
 // 手寫驗證：schema 很小（mode + turns），不引第三方以保持測試零依賴。
 // 失敗一律 throw Error("invalid_*")，由 handler 轉 400。
 
-import { MAX_AI_REPLIES, type PracticeMode } from "./quota_decision.ts";
+import { type PracticeMode } from "./quota_decision.ts";
 
 export const MAX_TURNS = 40; // 10 則 AI 回覆上限 → 一來一回頂多 ~20，留緩衝
 export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
@@ -71,12 +71,12 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     if (turns[turns.length - 1].role !== "user") {
       throw new Error("invalid_chat_last_turn_must_be_user");
     }
-    // 已達上限不能再生成（第 11 則）。
-    if (aiCount >= MAX_AI_REPLIES) {
-      throw new Error("practice_session_complete");
-    }
+    // 注意：10 則上限「不」在此用 client count 把關——client 可少報 ai turns
+    // 繞過。上限改由 server ledger（practice_chat_sessions.ai_count）在 handler
+    // preflight 與 commit RPC 內以權威狀態強制。
   } else {
-    // debrief：要有真實的一來一回才拆解。
+    // debrief：client payload 至少要有一來一回才有逐字稿可拆解（形狀檢查）；
+    // 「是否真為已扣費 session」由 server ledger 在 handler 內把關。
     if (aiCount === 0) throw new Error("invalid_debrief_no_ai_turns");
   }
 

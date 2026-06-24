@@ -129,18 +129,18 @@ Deno.test("chat 最後一則是 ai → invalid_chat_last_turn_must_be_user", () 
   );
 });
 
-Deno.test("chat 已有 10 則 AI 回覆 → practice_session_complete（不可生成第 11 則）", () => {
+Deno.test("chat 10 則上限不再由 client count 把關（改 server ledger 權威）", () => {
+  // client 可少報 ai turns 繞過上限，故 validate 不得再用 client count 當閘。
+  // 形狀合法即通過；真正的 10 則上限由 server preflight（ledger.ai_count）強制。
   const turns: Array<{ role: string; text: string }> = [];
   for (let i = 0; i < 10; i++) {
     turns.push({ role: "user", text: `u${i}` });
     turns.push({ role: "ai", text: `a${i}` });
   }
-  turns.push({ role: "user", text: "再一句" }); // 第 11 次想要 AI 回覆
-  assertThrows(
-    () => validateRequest(chatReq(turns)),
-    Error,
-    "practice_session_complete",
-  );
+  turns.push({ role: "user", text: "再一句" });
+  const r = validateRequest(chatReq(turns));
+  assertEquals(r.mode, "chat");
+  assertEquals(countAiTurns(r.turns), 10);
 });
 
 // ── debrief 專屬規則 ─────────────────────────────────────────────────

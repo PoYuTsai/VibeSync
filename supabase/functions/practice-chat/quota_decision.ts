@@ -1,16 +1,31 @@
 // practice-chat 額度決策（純函式、零副作用、可 deno test）。
 //
-// 規則（見 docs/plans/2026-06-24-practice-chat-mvp-design.md）：
-//   一場練習 = 扣 1 則 Coach 額度，且只在「session 第一則 AI 回覆成功」時扣。
-//   - chat 模式：aiTurnCount === 0（這次是本場第一則 AI 回覆）才扣。
-//   - debrief 模式：永不扣（同一場已付過）。
-//   - 測試帳號：永不扣。
-//   - 任何失敗（API/format）由 handler 在扣點前 return，故失敗一律不扣。
+// 安全模型（見 docs/plans/2026-06-24-practice-chat-ledger-design.md）：
+//   一律以 server-side ledger（practice_chat_sessions）為準，**絕不**信任 client
+//   送來的 turns 來決定扣費或上限。client turns 只當 prompt 資料。
+//
+// 規則：
+//   一場練習 = 扣 1 則 Coach 額度，且一場一生只扣一次（charged 單調 false→true）。
+//   - chat 扣費條件：server `charged === false` 且非測試帳號（與 client aiTurnCount 無關）。
+//   - 10 則上限：以 server `ai_count` 為準。
+//   - debrief：永不扣，但須附著於已扣費 session 且有次數上限。
+//   - 任何 DeepSeek 失敗由 handler 在 commit 前 return，故失敗一律不扣。
+//   - 原子扣費 + 計數遞增由 RPC（commit_practice_chat_turn / claim_practice_debrief）
+//     在同一交易內完成；本檔僅做 preflight 預判。
 
 export const MAX_AI_REPLIES = 10;
+export const MAX_DEBRIEFS = 3;
 export const PRACTICE_QUOTA_COST = 1;
 
 export type PracticeMode = "chat" | "debrief";
+
+/** 某場練習的 server 端權威狀態快照（preflight 讀取後傳入）。 */
+export interface SessionLedger {
+  exists: boolean;
+  aiCount: number;
+  charged: boolean;
+  debriefCount: number;
+}
 
 /** 一場已產生 aiTurnCount 則 AI 回覆後，是否已達上限（不能再聊）。 */
 export function isSessionComplete(aiTurnCount: number): boolean {
@@ -18,18 +33,37 @@ export function isSessionComplete(aiTurnCount: number): boolean {
 }
 
 /**
- * 本次請求是否應扣 1 則額度。
- * @param mode          chat | debrief
- * @param aiTurnCount   本場「已存在」的 AI 回覆數（不含這次待生成的）
- * @param isTestAccount 測試帳號跳過扣點
+ * chat preflight（DeepSeek 前）：用 server ledger 判斷上限與是否需要走額度閘。
+ * 權威扣費仍在 commit RPC 內以 FOR UPDATE 重判；此處只為「未達上限才打 DeepSeek」
+ * 與「要扣費的人才做 quota 429 preflight」。
+ * @returns atCap 是否已達 10 則上限；shouldChargePreview 預判本次是否要扣 1。
  */
-export function decideDeduction(opts: {
-  mode: PracticeMode;
-  aiTurnCount: number;
+export function decideChatGate(opts: {
+  ledger: SessionLedger;
   isTestAccount: boolean;
-}): { shouldDeduct: boolean } {
-  if (opts.isTestAccount) return { shouldDeduct: false };
-  if (opts.mode !== "chat") return { shouldDeduct: false };
-  // 只有本場第一則 AI 回覆扣點；之後（含 debrief）免費。
-  return { shouldDeduct: opts.aiTurnCount === 0 };
+  maxReplies?: number;
+}): { atCap: boolean; shouldChargePreview: boolean } {
+  const max = opts.maxReplies ?? MAX_AI_REPLIES;
+  const atCap = opts.ledger.aiCount >= max;
+  const shouldChargePreview = !opts.ledger.charged && !opts.isTestAccount;
+  return { atCap, shouldChargePreview };
+}
+
+/**
+ * debrief preflight：只有「已正式扣費（已建立）且有 AI 回覆、且未達 debrief 上限」
+ * 的 session 才能拆解。堵偽造 turns 免費打 debrief、與單一付費 session 無限拆解。
+ */
+export function decideDebriefGate(opts: {
+  ledger: SessionLedger;
+  maxDebriefs?: number;
+}): { allowed: boolean; reason?: string } {
+  const max = opts.maxDebriefs ?? MAX_DEBRIEFS;
+  const { exists, charged, aiCount, debriefCount } = opts.ledger;
+  if (!exists || !charged || aiCount < 1) {
+    return { allowed: false, reason: "practice_session_not_started" };
+  }
+  if (debriefCount >= max) {
+    return { allowed: false, reason: "practice_debrief_limit" };
+  }
+  return { allowed: true };
 }
