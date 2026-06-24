@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../practice_chat/presentation/widgets/practice_room_entry_card.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
 import '../../data/providers/learning_providers.dart';
@@ -34,6 +35,9 @@ class LearningScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // AI 實戰練習室入口（學習 tab 最上方）。
+                const PracticeRoomEntryCard(),
+                const SizedBox(height: 24),
                 Text(
                   '練習專區',
                   style: AppTypography.bodySmall.copyWith(

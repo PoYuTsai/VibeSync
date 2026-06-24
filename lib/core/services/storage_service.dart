@@ -9,6 +9,8 @@ import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';
 import '../../features/conversation/domain/entities/session_context.dart';
+import '../../features/practice_chat/domain/entities/practice_message.dart';
+import '../../features/practice_chat/domain/entities/practice_session.dart';
 import '../../features/partner/data/repositories/partner_repository.dart';
 import '../../features/partner/data/services/partner_migration_service.dart';
 import '../../features/partner/domain/entities/partner.dart';
@@ -48,6 +50,8 @@ class StorageService {
     Hive.registerAdapter(CoachingOutcomeSourceAdapter()); // typeId=19
     Hive.registerAdapter(CoachingUserActionAdapter()); // typeId=20
     Hive.registerAdapter(CoachingOutcomeSignalAdapter()); // typeId=21
+    Hive.registerAdapter(PracticeMessageAdapter()); // typeId=22, AI 實戰練習室
+    Hive.registerAdapter(PracticeSessionAdapter()); // typeId=23, AI 實戰練習室
 
     // Get or create encryption key
     final encryptionKey = await _getEncryptionKey();
@@ -90,6 +94,11 @@ class StorageService {
 
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
+      encryptionCipher: HiveAesCipher(encryptionKey),
+    );
+
+    await Hive.openBox<PracticeSession>(
+      'practice_sessions',
       encryptionCipher: HiveAesCipher(encryptionKey),
     );
 
@@ -169,6 +178,9 @@ class StorageService {
   static Box<CoachingOutcomeEvent> get coachingOutcomeEventsBox =>
       Hive.box<CoachingOutcomeEvent>(AppConstants.coachingOutcomeEventsBox);
 
+  static Box<PracticeSession> get practiceSessionsBox =>
+      Hive.box<PracticeSession>('practice_sessions');
+
   static Box get settingsBox => Hive.box(AppConstants.settingsBox);
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
@@ -185,6 +197,7 @@ class StorageService {
     await coachFollowUpResultsBox.clear();
     await coachChatResultsBox.clear();
     await coachingOutcomeEventsBox.clear();
+    await practiceSessionsBox.clear();
     await settingsBox.clear();
     await usageBox.clear();
   }

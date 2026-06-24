@@ -1,0 +1,69 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'practice_session.dart';
+
+// **************************************************************************
+// TypeAdapterGenerator
+// **************************************************************************
+
+class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
+  @override
+  final typeId = 23;
+
+  @override
+  PracticeSession read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return PracticeSession(
+      id: fields[0] as String,
+      createdAt: fields[1] as DateTime,
+      messages: fields[2] == null
+          ? const []
+          : (fields[2] as List).cast<PracticeMessage>(),
+      aiReplyCount: fields[3] == null ? 0 : (fields[3] as num).toInt(),
+      debriefSummary: fields[4] as String?,
+      debriefStrengths:
+          fields[5] == null ? const [] : (fields[5] as List).cast<String>(),
+      debriefWatchouts:
+          fields[6] == null ? const [] : (fields[6] as List).cast<String>(),
+      debriefSuggestedLine: fields[7] as String?,
+      debriefVibe: fields[8] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, PracticeSession obj) {
+    writer
+      ..writeByte(9)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.createdAt)
+      ..writeByte(2)
+      ..write(obj.messages)
+      ..writeByte(3)
+      ..write(obj.aiReplyCount)
+      ..writeByte(4)
+      ..write(obj.debriefSummary)
+      ..writeByte(5)
+      ..write(obj.debriefStrengths)
+      ..writeByte(6)
+      ..write(obj.debriefWatchouts)
+      ..writeByte(7)
+      ..write(obj.debriefSuggestedLine)
+      ..writeByte(8)
+      ..write(obj.debriefVibe);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PracticeSessionAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}

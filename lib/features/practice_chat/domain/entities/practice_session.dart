@@ -1,0 +1,74 @@
+import 'package:hive_ce/hive_ce.dart';
+
+import 'practice_message.dart';
+
+part 'practice_session.g.dart';
+
+/// 一場 AI 實戰練習。最近 5 場 local-only 加密保存。
+@HiveType(typeId: 23)
+class PracticeSession {
+  @HiveField(0)
+  final String id;
+
+  @HiveField(1)
+  final DateTime createdAt;
+
+  @HiveField(2)
+  final List<PracticeMessage> messages;
+
+  /// 本場已收到的 AI 回覆數（上限 10）。
+  @HiveField(3)
+  final int aiReplyCount;
+
+  // ── 教練拆解卡（練完才有；同場不另扣額度）──
+  @HiveField(4)
+  final String? debriefSummary;
+
+  @HiveField(5)
+  final List<String> debriefStrengths;
+
+  @HiveField(6)
+  final List<String> debriefWatchouts;
+
+  @HiveField(7)
+  final String? debriefSuggestedLine;
+
+  @HiveField(8)
+  final String? debriefVibe;
+
+  const PracticeSession({
+    required this.id,
+    required this.createdAt,
+    this.messages = const [],
+    this.aiReplyCount = 0,
+    this.debriefSummary,
+    this.debriefStrengths = const [],
+    this.debriefWatchouts = const [],
+    this.debriefSuggestedLine,
+    this.debriefVibe,
+  });
+
+  bool get hasDebrief => debriefSummary != null;
+
+  PracticeSession copyWith({
+    List<PracticeMessage>? messages,
+    int? aiReplyCount,
+    String? debriefSummary,
+    List<String>? debriefStrengths,
+    List<String>? debriefWatchouts,
+    String? debriefSuggestedLine,
+    String? debriefVibe,
+  }) {
+    return PracticeSession(
+      id: id,
+      createdAt: createdAt,
+      messages: messages ?? this.messages,
+      aiReplyCount: aiReplyCount ?? this.aiReplyCount,
+      debriefSummary: debriefSummary ?? this.debriefSummary,
+      debriefStrengths: debriefStrengths ?? this.debriefStrengths,
+      debriefWatchouts: debriefWatchouts ?? this.debriefWatchouts,
+      debriefSuggestedLine: debriefSuggestedLine ?? this.debriefSuggestedLine,
+      debriefVibe: debriefVibe ?? this.debriefVibe,
+    );
+  }
+}
