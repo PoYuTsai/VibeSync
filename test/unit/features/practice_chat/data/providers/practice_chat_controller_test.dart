@@ -23,6 +23,8 @@ class _FakeApi extends PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
   }) =>
       sendHandler!(turns, profile: profile);
 
@@ -31,6 +33,8 @@ class _FakeApi extends PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
   }) =>
       debriefHandler!(turns, profile: profile);
 }
@@ -197,6 +201,36 @@ void main() {
     expect(s.quotaExceeded, true);
     expect(s.errorMessage, '本月額度已用完');
     expect(s.messages, isEmpty);
+  });
+
+  test('Free 續玩需升級：upgradeRequired 旗標 + 回滾 + 還原文字、不持久化', () async {
+    api.sendHandler =
+        (_, {profile}) async => throw PracticeUpgradeRequiredException();
+    final c = makeController();
+
+    await c.sendMessage('嗨');
+    final s = c.currentState;
+
+    expect(s.upgradeRequired, true);
+    expect(s.quotaExceeded, false); // 與額度用罄是不同訊號
+    expect(s.errorMessage, isNotNull);
+    expect(s.messages, isEmpty); // 回滾，不留半截
+    expect(s.restoreText, '嗨');
+    expect(s.isSending, false);
+    expect(repo.getById('sess-1'), isNull); // 未持久化
+    expect(synced, isEmpty); // 未扣額度
+  });
+
+  test('clearError 會一併清掉 upgradeRequired', () async {
+    api.sendHandler =
+        (_, {profile}) async => throw PracticeUpgradeRequiredException();
+    final c = makeController();
+    await c.sendMessage('嗨');
+    expect(c.currentState.upgradeRequired, true);
+
+    c.clearError();
+    expect(c.currentState.upgradeRequired, false);
+    expect(c.currentState.errorMessage, isNull);
   });
 
   test('滿 10 則：sessionComplete 後鎖定輸入、再送被忽略', () async {

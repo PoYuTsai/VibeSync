@@ -94,6 +94,15 @@ void main() {
       );
     });
 
+    test('402 upgrade_required → PracticeUpgradeRequiredException（導向付費牆）',
+        () async {
+      final svc = serviceReturning(402, {'error': 'upgrade_required'});
+      expect(
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
+        throwsA(isA<PracticeUpgradeRequiredException>()),
+      );
+    });
+
     test('500 → PracticeGenerationFailedException（不扣額度語意）', () async {
       final svc = serviceReturning(500, {'error': 'practice_generation_failed'});
       expect(
@@ -209,6 +218,53 @@ void main() {
       expect(captured.body?['mode'], 'debrief');
       expect(captured.body?['personaId'], 'cool_rational');
       expect(captured.body?['difficulty'], 'normal');
+    });
+  });
+
+  group('continuation metadata (roundIndex / visiblePracticeThreadId)', () {
+    test('sendMessage body includes roundIndex and visiblePracticeThreadId',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        roundIndex: 2,
+        visiblePracticeThreadId: 'thread-abc',
+      );
+
+      expect(captured.body?['roundIndex'], 2);
+      expect(captured.body?['visiblePracticeThreadId'], 'thread-abc');
+    });
+
+    test('requestDebrief body includes roundIndex and visiblePracticeThreadId',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.requestDebrief(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        roundIndex: 3,
+        visiblePracticeThreadId: 'thread-xyz',
+      );
+
+      expect(captured.body?['roundIndex'], 3);
+      expect(captured.body?['visiblePracticeThreadId'], 'thread-xyz');
+    });
+
+    test('roundIndex 缺值 → 預設 1；visiblePracticeThreadId 為 null 時不放進 body',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(sessionId: 's', profile: profile, turns: turns);
+
+      expect(captured.body?['roundIndex'], 1);
+      expect(captured.body?.containsKey('visiblePracticeThreadId'), false);
     });
   });
 }

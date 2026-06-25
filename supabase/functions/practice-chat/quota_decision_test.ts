@@ -4,6 +4,7 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   decideChatGate,
+  decideContinuationGate,
   decideDebriefGate,
   isSessionComplete,
   MAX_AI_REPLIES,
@@ -112,6 +113,58 @@ Deno.test("debrief：已達次數上限 → 拒絕（堵免費成本放大）", 
       ledger: ledger({ charged: true, aiCount: 4, debriefCount: MAX_DEBRIEFS }),
     }),
     { allowed: false, reason: "practice_debrief_limit" },
+  );
+});
+
+// ── Free 續玩閘（roundIndex>1 的 tier gate）──────────────────────────
+
+Deno.test("續玩：Free + roundIndex 2 → 擋下，reason=upgrade_required", () => {
+  assertEquals(
+    decideContinuationGate({ tier: "free", roundIndex: 2 }),
+    { allowed: false, reason: "upgrade_required" },
+  );
+});
+
+Deno.test("續玩：Free + roundIndex 1 → 放行（可開新陪練女孩）", () => {
+  assertEquals(
+    decideContinuationGate({ tier: "free", roundIndex: 1 }),
+    { allowed: true },
+  );
+});
+
+Deno.test("續玩：Free + roundIndex 3 → 擋下", () => {
+  assertEquals(
+    decideContinuationGate({ tier: "free", roundIndex: 3 }).allowed,
+    false,
+  );
+});
+
+Deno.test("續玩：Starter + roundIndex 2 → 放行", () => {
+  assertEquals(
+    decideContinuationGate({ tier: "starter", roundIndex: 2 }),
+    { allowed: true },
+  );
+});
+
+Deno.test("續玩：Essential + roundIndex 2 → 放行", () => {
+  assertEquals(
+    decideContinuationGate({ tier: "essential", roundIndex: 2 }),
+    { allowed: true },
+  );
+});
+
+Deno.test("續玩：未知/缺 tier 視為 free → roundIndex 2 擋下（保守 fail-closed）", () => {
+  assertEquals(
+    decideContinuationGate({ tier: null, roundIndex: 2 }).allowed,
+    false,
+  );
+  assertEquals(
+    decideContinuationGate({ tier: undefined, roundIndex: 2 }).allowed,
+    false,
+  );
+  assertEquals(
+    decideContinuationGate({ tier: "garbage", roundIndex: 2 }).allowed,
+    false,
   );
 });
 

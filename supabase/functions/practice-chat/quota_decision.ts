@@ -16,6 +16,8 @@
 //   注意：上限值由 handler 以 p_max_replies 傳入 RPC，故改這裡即生效，毋須改已部署
 //   的 RPC（其 DEFAULT 10 不被使用）。
 
+import { normalizeTier } from "../_shared/quota.ts";
+
 export const MAX_AI_REPLIES = 20;
 export const MAX_DEBRIEFS = 3;
 export const PRACTICE_QUOTA_COST = 1;
@@ -52,6 +54,26 @@ export function decideChatGate(opts: {
   const atCap = opts.ledger.aiCount >= max;
   const shouldChargePreview = !opts.ledger.charged && !opts.isTestAccount;
   return { atCap, shouldChargePreview };
+}
+
+/**
+ * Free 續玩閘（MVP，無新 migration）：Free 帳號只能玩第 1 輪；要續「同一位」（roundIndex>1）
+ * 須升級。付費（starter/essential）不限。roundIndex 缺值已由 validate fallback 1，故 Free
+ * 開全新一位（新 session、roundIndex 1）仍放行，只擋同一位續玩。
+ *
+ * 這是 server 正常路徑的硬閘：未知/缺 tier 一律 normalizeTier→free 而 fail-closed。
+ * 但**不**宣稱 abuse-proof——沒有 per-thread ledger，惡意 client 可送 roundIndex=1 規避；
+ * 此閘只保證 app 正常路徑擋住 Free 續同一位。
+ * @returns allowed=false 時 reason 一律 'upgrade_required'，由 handler 轉 402。
+ */
+export function decideContinuationGate(opts: {
+  tier: string | null | undefined;
+  roundIndex: number;
+}): { allowed: boolean; reason?: string } {
+  if (normalizeTier(opts.tier) === "free" && opts.roundIndex > 1) {
+    return { allowed: false, reason: "upgrade_required" };
+  }
+  return { allowed: true };
 }
 
 /**

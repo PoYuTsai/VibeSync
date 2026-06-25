@@ -23,6 +23,7 @@ import { validateRequest } from "./validate.ts";
 import { buildChatMessages, buildDebriefMessages } from "./prompt.ts";
 import {
   decideChatGate,
+  decideContinuationGate,
   decideDebriefGate,
   isSessionComplete,
   MAX_AI_REPLIES,
@@ -272,6 +273,23 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // ── chat 分支 ────────────────────────────────────────────────────
+  // Free 續玩閘：Free 帳號續「同一位」（roundIndex>1）須升級。一律在 DeepSeek 生成、
+  // commit_practice_chat_turn、quota 扣費之前；擋下時不產生 reply、不扣 quota、不寫
+  // ledger（純 return 402）。visiblePracticeThreadId 僅作 log correlation，不當授權身份。
+  const continuation = decideContinuationGate({
+    tier: sub.tier,
+    roundIndex: request.roundIndex,
+  });
+  if (!continuation.allowed) {
+    logInfo("practice_chat_upgrade_required", {
+      user: summarizeUser(user.id),
+      roundIndex: request.roundIndex,
+      sessionId: request.sessionId,
+      visiblePracticeThreadId: request.visiblePracticeThreadId,
+    });
+    return jsonResponse({ error: continuation.reason }, 402);
+  }
+
   const { atCap, shouldChargePreview } = decideChatGate({
     ledger,
     isTestAccount: accountIsTest,

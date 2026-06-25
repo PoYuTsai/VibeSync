@@ -121,7 +121,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
           if (state.errorMessage != null)
             _ErrorBanner(
               message: state.errorMessage!,
-              quotaExceeded: state.quotaExceeded,
+              showUpgrade: state.quotaExceeded || state.upgradeRequired,
               onUpgrade: () => context.push('/paywall'),
               onDismiss: () => ref
                   .read(practiceChatControllerProvider.notifier)
@@ -496,13 +496,13 @@ class _ThinkingBubble extends StatelessWidget {
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({
     required this.message,
-    required this.quotaExceeded,
+    required this.showUpgrade,
     required this.onUpgrade,
     required this.onDismiss,
   });
 
   final String message;
-  final bool quotaExceeded;
+  final bool showUpgrade;
   final VoidCallback onUpgrade;
   final VoidCallback onDismiss;
 
@@ -528,7 +528,7 @@ class _ErrorBanner extends StatelessWidget {
               ),
             ),
           ),
-          if (quotaExceeded)
+          if (showUpgrade)
             TextButton(
               onPressed: onUpgrade,
               child: Text(

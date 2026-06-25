@@ -49,6 +49,8 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
   }) {
     throw UnimplementedError();
   }
@@ -58,6 +60,8 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
   }) {
     throw UnimplementedError();
   }

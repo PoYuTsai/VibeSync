@@ -115,6 +115,14 @@ class PracticeSessionCompleteException implements Exception {
   String toString() => 'PracticeSessionCompleteException';
 }
 
+/// Free 帳號續「同一位」需升級（伺服器回 402 `upgrade_required`）。
+/// 前端必須明確導向付費牆／升級 CTA，不可落入 generic 失敗訊息。
+class PracticeUpgradeRequiredException implements Exception {
+  PracticeUpgradeRequiredException();
+  @override
+  String toString() => 'PracticeUpgradeRequiredException';
+}
+
 class PracticeChatApiService {
   PracticeChatApiService({PracticeChatInvoker? invoker})
       : _invoke = invoker ?? _defaultInvoker;
@@ -127,6 +135,8 @@ class PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
   }) async {
     final response = await _invoke(
       _functionName,
@@ -135,6 +145,9 @@ class PracticeChatApiService {
         'sessionId': sessionId,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
+        'roundIndex': roundIndex,
+        if (visiblePracticeThreadId != null)
+          'visiblePracticeThreadId': visiblePracticeThreadId,
       },
     );
     final data = _guardStatus(response);
@@ -157,6 +170,8 @@ class PracticeChatApiService {
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
   }) async {
     final response = await _invoke(
       _functionName,
@@ -165,6 +180,9 @@ class PracticeChatApiService {
         'sessionId': sessionId,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
+        'roundIndex': roundIndex,
+        if (visiblePracticeThreadId != null)
+          'visiblePracticeThreadId': visiblePracticeThreadId,
       },
     );
     final data = _guardStatus(response);
@@ -201,6 +219,8 @@ class PracticeChatApiService {
         );
       case 409:
         throw PracticeSessionCompleteException();
+      case 402:
+        throw PracticeUpgradeRequiredException();
       default:
         if (response.status >= 500) {
           throw PracticeGenerationFailedException(

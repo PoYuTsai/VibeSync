@@ -27,6 +27,7 @@ class PracticeChatState {
   final PracticeDebrief? debrief;
   final String? errorMessage;
   final bool quotaExceeded;
+  final bool upgradeRequired; // Free 續同一位被擋（402）：導向付費牆，與額度用罄分開
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
 
   // ── 本場角色＋難度（開場前可改；送出第一則後鎖定）──
@@ -53,6 +54,7 @@ class PracticeChatState {
     this.debrief,
     this.errorMessage,
     this.quotaExceeded = false,
+    this.upgradeRequired = false,
     this.restoreText,
   });
 
@@ -73,6 +75,7 @@ class PracticeChatState {
     bool? sessionComplete,
     bool? ended,
     bool? quotaExceeded,
+    bool? upgradeRequired,
     PracticeDifficultyPreference? difficultyPreference,
     String? personaId,
     String? personaLabel,
@@ -92,6 +95,7 @@ class PracticeChatState {
       sessionComplete: sessionComplete ?? this.sessionComplete,
       ended: ended ?? this.ended,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
+      upgradeRequired: upgradeRequired ?? this.upgradeRequired,
       difficultyPreference: difficultyPreference ?? this.difficultyPreference,
       personaId: personaId ?? this.personaId,
       personaLabel: personaLabel ?? this.personaLabel,
@@ -230,6 +234,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       isSending: true,
       errorMessage: null,
       quotaExceeded: false,
+      upgradeRequired: false,
       restoreText: null,
     );
 
@@ -279,6 +284,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '這場練習已達上限，看看教練拆解吧。',
         restoreText: trimmed,
       );
+    } on PracticeUpgradeRequiredException {
+      // Free 帳號續同一位被擋：導向付費牆，回滾樂觀泡泡並還原文字。
+      state = state.copyWith(
+        messages: priorMessages,
+        isSending: false,
+        upgradeRequired: true,
+        errorMessage: '想和同一位繼續練習，升級後就能解鎖。',
+        restoreText: trimmed,
+      );
     } catch (_) {
       state = state.copyWith(
         messages: priorMessages,
@@ -326,7 +340,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   void clearError() {
-    state = state.copyWith(errorMessage: null, quotaExceeded: false);
+    state = state.copyWith(
+      errorMessage: null,
+      quotaExceeded: false,
+      upgradeRequired: false,
+    );
   }
 
   /// 開場前「換一位」：只重抽角色，難度維持目前已解析的值。
