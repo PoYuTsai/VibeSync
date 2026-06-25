@@ -35,7 +35,7 @@ Eric 與夥伴的新方向：
 - 不改全站 subscription plan 額度。
 - 不讓 client 傳 free-form name/persona/profession/photo/prompt。
 - 不使用真實公司品牌名、logo、制服標誌或名人臉。
-- 不把圖片 binary/base64 存進 Postgres，也不把 50 張全塞進 app bundle。
+- 不把圖片 binary/base64 存進 Postgres，也不把 60 張全塞進 app bundle。
 - 不做 runtime 生成照片；MVP 用已審過的生成圖資產。
 
 ## Core Rules
@@ -412,26 +412,26 @@ Difficulty 與 profile reaction model 的關係：
 
 ### Photo Asset Pack
 
-MVP 做 50 張 GPT Image 生成的 fictional adult female profile photos。
+MVP 做 60 張 GPT Image 生成的 fictional adult female profile photos，對齊已採用的 5 個 set，每個 set 12 張。
 
 Asset owner：
 
 - 由 Codex 使用 GPT Image 生成候選圖。
-- 先產 preview contact sheet 給 Eric 看整體方向，再批量生成完整 50 張。
+- 先產 preview contact sheet 給 Eric 看整體方向，再批量生成完整 60 張。
 - Eric approve 風格後，才進入壓圖、命名、metadata、上傳流程。
 
 Storage rule：
 
 - 圖片本體放 Supabase Storage 或 CDN，不存 DB binary/base64。
 - DB 或 app metadata 只存 `photoId`、`imageUrl`、`professionId`、`styleTags`。
-- 不把 50 張全部塞進 app bundle。
+- 不把 60 張全部塞進 app bundle。
 - App 端只載目前這一張，可預抓下一 1-2 張；使用快取避免每次重載。
 
 Recommended format：
 
 - `512x512 WebP`。
-- 每張約 40-90 KB，50 張約 2-5 MB，載入成本可控。
-- 先做 50 張，品質穩後再擴到 100 張。
+- 每張約 40-90 KB，60 張約 2.5-5.5 MB，載入成本可控。
+- 先做 60 張，品質穩後再擴到 100 張。
 
 Photo safety rules：
 
@@ -443,10 +443,10 @@ Photo safety rules：
 
 ### Image Generation Workflow
 
-不要一次悶頭生成 50 張。建議流程：
+不要一次悶頭生成 60 張。建議流程：
 
 1. 先生成 8-12 張 preview，做成一張 contact sheet 或逐張 preview，讓 Eric 看整體年齡感、自然度、照片風格與職業感。
-2. Eric 確認方向後，再分批生成完整 50 張，每批 10 張。
+2. Eric 確認方向後，再分批生成完整 60 張，每批 12 張，對齊 5 個 set。
 3. 每張都要人工審圖；淘汰看起來太年輕、像名人、有 logo/制服標誌、手臉怪異、過度性感、過度 AI 感的圖。
 4. 合格圖統一裁成 `512x512 WebP`，命名成穩定 id，例如 `practice_girl_001.webp`。
 5. 同步建立 metadata，例如：
