@@ -178,9 +178,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
         },
         onDelete: (session) async {
           // 刪整段對話（含同一位的所有續玩輪次），不能只刪最新一輪讓舊輪浮回。
-          await ref
-              .read(practiceSessionRepositoryProvider)
-              .deleteVisibleThread(
+          await ref.read(practiceSessionRepositoryProvider).deleteVisibleThread(
                 PracticeSessionRepository.threadKeyOf(session),
               );
           ref.invalidate(recentPracticeSessionsProvider);
@@ -456,7 +454,8 @@ class _PracticeProfileHero extends StatelessWidget {
       child: Column(
         children: [
           GestureDetector(
-            onTap: () => showPracticeProfileSheet(context, girl),
+            key: const ValueKey('practice-profile-hero-photo'),
+            onTap: () => showPracticeGirlFullPhoto(context, girl),
             child: PracticeGirlPhoto(
               profile: girl,
               width: 232,
@@ -729,6 +728,13 @@ class _BottomBar extends StatelessWidget {
       );
     }
 
+    if (state.debriefFailed) {
+      return _DebriefFailedActionsBar(
+        onRetry: onEndPractice,
+        onFinish: onFinish,
+      );
+    }
+
     // 拆解中。
     if (isDebriefing) {
       return _BarContainer(
@@ -831,6 +837,54 @@ class _BottomBar extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _SendButton(enabled: canSend, onTap: onSend),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DebriefFailedActionsBar extends StatelessWidget {
+  const _DebriefFailedActionsBar({
+    required this.onRetry,
+    required this.onFinish,
+  });
+
+  final VoidCallback onRetry;
+  final VoidCallback onFinish;
+
+  @override
+  Widget build(BuildContext context) {
+    return _BarContainer(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '拆解卡暫時沒有產生',
+            textAlign: TextAlign.center,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: BrandPrimaryButton(
+                  label: '再試一次',
+                  onPressed: onRetry,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: BrandSecondaryButton(
+                  label: '完成',
+                  onPressed: onFinish,
+                ),
+              ),
             ],
           ),
         ],

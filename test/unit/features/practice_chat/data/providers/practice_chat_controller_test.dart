@@ -217,11 +217,12 @@ void main() {
   });
 
   test('額度用罄：quotaExceeded 旗標 + 回滾', () async {
-    api.sendHandler = (_, {profile}) async => throw PracticeQuotaExceededException(
-          '本月額度已用完',
-          monthlyRemaining: 0,
-          dailyRemaining: 0,
-        );
+    api.sendHandler =
+        (_, {profile}) async => throw PracticeQuotaExceededException(
+              '本月額度已用完',
+              monthlyRemaining: 0,
+              dailyRemaining: 0,
+            );
     final c = makeController();
 
     await c.sendMessage('嗨');
@@ -313,7 +314,7 @@ void main() {
     expect(c.currentState.isDebriefing, false);
   });
 
-  test('拆解失敗：設錯誤、解鎖 ended 供重試', () async {
+  test('拆解失敗：標示失敗並鎖住輸入，讓 UI 提供重試或完成', () async {
     api.sendHandler = (_, {profile}) async => reply();
     final c = makeController();
     await c.sendMessage('嗨');
@@ -325,7 +326,10 @@ void main() {
 
     expect(s.debrief, isNull);
     expect(s.errorMessage, isNotNull);
-    expect(s.ended, false); // 解鎖讓使用者可再按
+    expect(s.debriefFailed, true);
+    expect(s.ended, true);
+    expect(s.canSend, false);
+    expect(s.canDebrief, true); // 仍可按「再試一次」重跑拆解
   });
 
   test('從未拆解場次續聊：沿用 sessionId、舊訊息與 ai 計數', () async {
@@ -420,7 +424,8 @@ void main() {
       expect(c.currentState.visiblePracticeThreadId, 'sess-1');
     });
 
-    test('舊場（無 roundIndex/threadId）續聊：roundIndex 兜底 1、threadId 兜底用 session.id', () {
+    test('舊場（無 roundIndex/threadId）續聊：roundIndex 兜底 1、threadId 兜底用 session.id',
+        () {
       final c = makeControllerFrom(PracticeSession(
         id: 'old-sess',
         createdAt: DateTime(2026, 6, 24, 9),
@@ -437,7 +442,8 @@ void main() {
       expect(c.currentState.visiblePracticeThreadId, 'thread-x');
     });
 
-    test('sendMessage 帶上 state 的 roundIndex 與 visiblePracticeThreadId', () async {
+    test('sendMessage 帶上 state 的 roundIndex 與 visiblePracticeThreadId',
+        () async {
       api.sendHandler = (_, {profile}) async => reply(cost: 0);
       final c = resumeR2();
 
@@ -458,7 +464,8 @@ void main() {
       expect(saved.visiblePracticeThreadId, 'thread-x');
     });
 
-    test('endPractice 帶上 state 的 roundIndex 與 visiblePracticeThreadId', () async {
+    test('endPractice 帶上 state 的 roundIndex 與 visiblePracticeThreadId',
+        () async {
       api.sendHandler = (_, {profile}) async => reply(cost: 0);
       final c = resumeR2();
       api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
@@ -478,7 +485,6 @@ void main() {
 
   // ── 續玩同一位（continueWithSamePartner）──────────────────────────────
   group('續玩同一位', () {
-
     test('付費續玩：新 sessionId、roundIndex+1、threadId 不變、訊息保留、aiReplyCount 歸 0', () {
       final c = makeControllerFrom(round1Done());
       final oldSessionId = c.currentState.sessionId;
@@ -512,7 +518,9 @@ void main() {
       expect(s.canSend, true);
     });
 
-    test('Free 續玩：只設 upgradeRequired，不動 sessionId/messages/roundIndex/aiReplyCount', () {
+    test(
+        'Free 續玩：只設 upgradeRequired，不動 sessionId/messages/roundIndex/aiReplyCount',
+        () {
       final c = makeControllerFrom(round1Done());
       final before = c.currentState;
 
@@ -599,8 +607,8 @@ void main() {
       };
       await c.endPractice();
 
-      expect(debriefTurns.map((t) => t.text).toList(),
-          ['嗨', '嗯？', '我們再聊聊', '嗯？']);
+      expect(
+          debriefTurns.map((t) => t.text).toList(), ['嗨', '嗯？', '我們再聊聊', '嗯？']);
     });
 
     test('換一位開新陪練：新 sessionId、roundIndex 歸 1、threadId 錨定自身、清空訊息與旗標、可立即送', () {

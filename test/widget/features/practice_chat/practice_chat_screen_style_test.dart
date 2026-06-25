@@ -425,8 +425,8 @@ void main() {
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
           if (subscription != null)
-            subscriptionProvider
-                .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
+            subscriptionProvider.overrideWith(
+                (ref) => _SeededSubscriptionNotifier(subscription)),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -467,7 +467,8 @@ void main() {
     await pumpDebrief(
       tester,
       controller: controller,
-      subscription: const SubscriptionState(tier: SubscriptionTierHelper.starter),
+      subscription:
+          const SubscriptionState(tier: SubscriptionTierHelper.starter),
     );
 
     await tester.tap(find.text('續聊同一位'));
@@ -535,7 +536,8 @@ void main() {
       difficultyLabel: '一般',
       messages: const [],
     );
-    final controller = _SeededPracticeChatController(seed: seed, repository: repo);
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -571,7 +573,8 @@ void main() {
         PracticeMessage(role: 'ai', text: '嗯？'),
       ],
     );
-    final controller = _SeededPracticeChatController(seed: seed, repository: repo);
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -595,5 +598,80 @@ void main() {
       findsOneWidget,
     );
     expect(find.text(zoe.selfIntro), findsOneWidget);
+  });
+
+  testWidgets('拆解失敗後顯示重試與完成，不把使用者卡在輸入列', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final girl = practiceGirlProfiles.first;
+    final seed = PracticeChatState(
+      sessionId: 'debrief-failed-test',
+      createdAt: DateTime(2026, 6, 25, 18),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      aiReplyCount: 1,
+      ended: true,
+      debriefFailed: true,
+      errorMessage: '拆解卡生成失敗，可以再按一次。',
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.text('拆解卡暫時沒有產生'), findsOneWidget);
+    expect(find.text('再試一次'), findsOneWidget);
+    expect(find.text('完成'), findsOneWidget);
+    expect(find.text('輸入訊息…'), findsNothing);
+  });
+
+  testWidgets('首屏點大照可看未裁切全圖', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final girl = practiceGirlProfiles[4];
+    final seed = PracticeChatState(
+      sessionId: 'full-photo-test',
+      createdAt: DateTime(2026, 6, 25, 18, 10),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: '自然生活型',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-profile-hero-photo')));
+    await tester.pumpAndSettle();
+
+    final fullPhoto =
+        find.byKey(const ValueKey('practice-girl-full-photo-viewer'));
+    expect(fullPhoto, findsOneWidget);
+    final image = tester.widget<Image>(
+      find.descendant(of: fullPhoto, matching: find.byType(Image)).first,
+    );
+    expect((image.image as AssetImage).assetName, girl.photoAssetPath);
+    expect(image.fit, BoxFit.contain);
   });
 }

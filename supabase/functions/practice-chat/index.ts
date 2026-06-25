@@ -2,9 +2,9 @@
 //
 // 模擬對象女生（DeepSeek deepseek-v4-flash），真人手機聊天口吻。
 // 一場練習 = 扣 1 則 Coach 額度，只在 session 第一則 AI 回覆成功時扣；失敗不扣。
-// 一場最多 10 則 AI 回覆。debrief 模式產一張教練拆解卡，同場不另扣。
+// 一輪最多 20 則 AI 回覆。debrief 模式產一張教練拆解卡，同輪不另扣。
 //
-// 安全模型（Codex 2026-06-24 BLOCKER 修復）：扣費與 10 則上限**一律以 server-side
+// 安全模型（Codex 2026-06-24 BLOCKER 修復）：扣費與 20 則上限**一律以 server-side
 // ledger（practice_chat_sessions）為準**，絕不信任 client 送的 turns。turns 只當
 // prompt 資料；漏洞⑤（偽造 assistant 訊息越獄）由 prompt 硬化（見 prompt.ts）防。
 //

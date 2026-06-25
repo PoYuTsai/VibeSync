@@ -18,6 +18,8 @@ class PracticeGirlPhoto extends StatelessWidget {
     required this.height,
     this.circle = false,
     this.borderRadius,
+    this.fit = BoxFit.cover,
+    this.alignment = Alignment.topCenter,
   });
 
   final PracticeGirlProfile profile;
@@ -25,6 +27,8 @@ class PracticeGirlPhoto extends StatelessWidget {
   final double height;
   final bool circle;
   final BorderRadius? borderRadius;
+  final BoxFit fit;
+  final AlignmentGeometry alignment;
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +36,8 @@ class PracticeGirlPhoto extends StatelessWidget {
       profile.photoAssetPath,
       width: width,
       height: height,
-      fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
+      fit: fit,
+      alignment: alignment,
       filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stack) => _PhotoFallback(
         profile: profile,
@@ -55,6 +59,63 @@ class PracticeGirlPhoto extends StatelessWidget {
   }
 }
 
+Future<void> showPracticeGirlFullPhoto(
+  BuildContext context,
+  PracticeGirlProfile profile,
+) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.92),
+    builder: (_) => _PracticeGirlFullPhotoViewer(profile: profile),
+  );
+}
+
+class _PracticeGirlFullPhotoViewer extends StatelessWidget {
+  const _PracticeGirlFullPhotoViewer({required this.profile});
+
+  final PracticeGirlProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      key: const ValueKey('practice-girl-full-photo-viewer'),
+      backgroundColor: Colors.black,
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 3,
+                child: Image.asset(
+                  profile.photoAssetPath,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (context, error, stack) => _PhotoFallback(
+                    profile: profile,
+                    width: 220,
+                    height: 220,
+                    fontSize: 72,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                tooltip: '關閉',
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PhotoFallback extends StatelessWidget {
   const _PhotoFallback({
     required this.profile,
@@ -72,8 +133,9 @@ class _PhotoFallback extends StatelessWidget {
   Widget build(BuildContext context) {
     final hue = (profile.profileId.hashCode % 360).abs().toDouble();
     final bg = HSLColor.fromAHSL(1, hue, 0.42, 0.52).toColor();
-    final initial =
-        profile.displayName.isNotEmpty ? profile.displayName.substring(0, 1) : '?';
+    final initial = profile.displayName.isNotEmpty
+        ? profile.displayName.substring(0, 1)
+        : '?';
     return Container(
       width: width,
       height: height,

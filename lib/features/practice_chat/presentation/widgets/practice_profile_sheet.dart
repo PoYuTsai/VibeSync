@@ -42,11 +42,15 @@ class _PracticeProfileSheet extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
           child: Column(
             children: [
-              PracticeGirlPhoto(
-                profile: girl,
-                width: 248,
-                height: 310,
-                borderRadius: BorderRadius.circular(20),
+              GestureDetector(
+                key: const ValueKey('practice-profile-sheet-photo'),
+                onTap: () => showPracticeGirlFullPhoto(context, girl),
+                child: PracticeGirlPhoto(
+                  profile: girl,
+                  width: 248,
+                  height: 310,
+                  borderRadius: BorderRadius.circular(20),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
@@ -69,7 +73,8 @@ class _PracticeProfileSheet extends StatelessWidget {
               Text(
                 '想找：${girl.relationshipGoal}',
                 style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
                 ),
               ),
               const SizedBox(height: 16),

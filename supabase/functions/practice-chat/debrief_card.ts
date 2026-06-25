@@ -20,7 +20,11 @@ export function clampStr(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
-export function clampList(v: unknown, maxItems: number, maxLen: number): string[] {
+export function clampList(
+  v: unknown,
+  maxItems: number,
+  maxLen: number,
+): string[] {
   if (!Array.isArray(v)) return [];
   return v
     .map((x) => clampStr(x, maxLen))
@@ -28,11 +32,23 @@ export function clampList(v: unknown, maxItems: number, maxLen: number): string[
     .slice(0, maxItems);
 }
 
-export function parseDebriefCard(raw: string): DebriefCard {
-  const cleaned = raw
-    .replace(/^```(?:json)?/i, "")
-    .replace(/```$/i, "")
+function extractJsonObject(raw: string): string {
+  const fenced = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
     .trim();
+
+  const start = fenced.indexOf("{");
+  const end = fenced.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return fenced.slice(start, end + 1).trim();
+  }
+  return fenced;
+}
+
+export function parseDebriefCard(raw: string): DebriefCard {
+  const cleaned = extractJsonObject(raw);
   const parsed = JSON.parse(cleaned);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("debrief_not_object");

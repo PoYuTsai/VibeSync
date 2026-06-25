@@ -28,6 +28,18 @@ Deno.test("帶 markdown 圍欄也能解析", () => {
   assertEquals(c.summary, "整體有來有往，後段她有點冷掉");
 });
 
+Deno.test("前後有說明文字或空白時，仍抽出第一個 JSON 物件解析", () => {
+  const c = parseDebriefCard(
+    "\n好的，以下是 JSON：\n```json\n" + valid + "\n```\n請參考",
+  );
+  assertEquals(c.summary, "整體有來有往，後段她有點冷掉");
+});
+
+Deno.test("fenced JSON 後方仍有說明文字時，也只解析 JSON 物件", () => {
+  const c = parseDebriefCard("```json\n" + valid + "\n```\n請參考");
+  assertEquals(c.summary, "整體有來有往，後段她有點冷掉");
+});
+
 Deno.test("strengths/watchouts 超過 2 點 → clamp 到 2", () => {
   const c = parseDebriefCard(
     JSON.stringify({

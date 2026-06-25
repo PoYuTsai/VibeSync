@@ -28,6 +28,7 @@ class PracticeChatState {
   final bool sessionComplete; // 已達 20 則
   final bool ended; // 使用者已結束練習，輸入鎖定
   final PracticeDebrief? debrief;
+  final bool debriefFailed; // 拆解失敗但仍可重試／完成，不回到普通輸入列
   final String? errorMessage;
   final bool quotaExceeded;
   final bool upgradeRequired; // Free 續同一位被擋（402）：導向付費牆，與額度用罄分開
@@ -63,6 +64,7 @@ class PracticeChatState {
     this.sessionComplete = false,
     this.ended = false,
     this.debrief,
+    this.debriefFailed = false,
     this.errorMessage,
     this.quotaExceeded = false,
     this.upgradeRequired = false,
@@ -87,6 +89,7 @@ class PracticeChatState {
     int? aiReplyCount,
     bool? sessionComplete,
     bool? ended,
+    bool? debriefFailed,
     bool? quotaExceeded,
     bool? upgradeRequired,
     PracticeGirlProfile? girl,
@@ -111,6 +114,7 @@ class PracticeChatState {
       aiReplyCount: aiReplyCount ?? this.aiReplyCount,
       sessionComplete: sessionComplete ?? this.sessionComplete,
       ended: ended ?? this.ended,
+      debriefFailed: debriefFailed ?? this.debriefFailed,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
       upgradeRequired: upgradeRequired ?? this.upgradeRequired,
       difficultyPreference: difficultyPreference ?? this.difficultyPreference,
@@ -214,8 +218,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           )
         : null;
     // 對象身份：依 profileId 從 catalog 解析；舊場（無 profileId）兜底預設位。
-    final girl = girlProfileById(session.profileId) ??
-        fallbackPracticeProfile().girl;
+    final girl =
+        girlProfileById(session.profileId) ?? fallbackPracticeProfile().girl;
     // persona 綁定該位（與 Edge 帶 profileId 時一致）；舊場用存的 personaId，缺則用 girl 的。
     final personaId = session.personaId ?? girl.personaId;
     final difficulty = session.difficulty ?? 'normal';
@@ -228,6 +232,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           debrief != null || session.aiReplyCount >= kMaxPracticeAiReplies,
       ended: debrief != null,
       debrief: debrief,
+      debriefFailed: false,
       girl: girl,
       personaId: personaId,
       personaLabel: session.personaLabel ?? practicePersonaLabel(personaId),
@@ -256,6 +261,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     if (!isPaid) {
       state = state.copyWith(
         upgradeRequired: true,
+        debriefFailed: false,
         errorMessage: '想和同一位繼續練習，升級後就能解鎖。',
       );
       return;
@@ -323,6 +329,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       errorMessage: null,
       quotaExceeded: false,
       upgradeRequired: false,
+      debriefFailed: false,
       restoreText: null,
     );
 
@@ -396,6 +403,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     state = state.copyWith(
       isDebriefing: true,
       ended: true,
+      debriefFailed: false,
       errorMessage: null,
       quotaExceeded: false,
     );
@@ -416,10 +424,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       );
       await _persist();
     } catch (_) {
-      // 拆解失敗不鎖死：解開 ended 讓使用者可重試或繼續。
+      // 拆解失敗不回到普通輸入列：保留「再試一次／完成」出口，避免卡死。
       state = state.copyWith(
         isDebriefing: false,
-        ended: false,
+        ended: true,
+        debriefFailed: true,
         errorMessage: '拆解卡生成失敗，可以再按一次。',
       );
     }
