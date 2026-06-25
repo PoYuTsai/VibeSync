@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
@@ -49,6 +50,14 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     if (!consented || !mounted) return;
     _controller.clear();
     ref.read(practiceChatControllerProvider.notifier).sendMessage(text);
+  }
+
+  /// 續聊同一位：付費才放行；Free 由 controller 觸發付費牆（不動 transcript）。
+  void _continueSamePartner() {
+    final isPaid = ref.read(subscriptionProvider).isPremium;
+    ref
+        .read(practiceChatControllerProvider.notifier)
+        .continueWithSamePartner(isPaid: isPaid);
   }
 
   void _scrollToBottom() {
@@ -135,6 +144,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
             onEndPractice: () =>
                 ref.read(practiceChatControllerProvider.notifier).endPractice(),
             onFinish: () => context.pop(),
+            onContinueSamePartner: _continueSamePartner,
+            onNewPartner: () => ref
+                .read(practiceChatControllerProvider.notifier)
+                .startNewPartner(),
           ),
         ],
       ),
@@ -560,6 +573,8 @@ class _BottomBar extends StatelessWidget {
     required this.onSend,
     required this.onEndPractice,
     required this.onFinish,
+    required this.onContinueSamePartner,
+    required this.onNewPartner,
   });
 
   final PracticeChatState state;
@@ -568,13 +583,18 @@ class _BottomBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onEndPractice;
   final VoidCallback onFinish;
+  final VoidCallback onContinueSamePartner;
+  final VoidCallback onNewPartner;
 
   @override
   Widget build(BuildContext context) {
-    // 已看到拆解卡 → 收尾。
+    // 已看到拆解卡 → 收尾或續玩同一位（Eric 決策：續玩當主鈕）。
     if (state.debrief != null) {
-      return _BarContainer(
-        child: BrandPrimaryButton(label: '完成', onPressed: onFinish),
+      return _DebriefActionsBar(
+        state: state,
+        onContinueSamePartner: onContinueSamePartner,
+        onNewPartner: onNewPartner,
+        onFinish: onFinish,
       );
     }
 
@@ -680,6 +700,67 @@ class _BottomBar extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _SendButton(enabled: canSend, onTap: onSend),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 拆解後動作列：續玩同一位（主）＋ 換一位／完成（次）─────────────────
+// roundIndex 已達上限（kMaxPracticeRounds）時隱藏續玩，只留換一位／完成。
+class _DebriefActionsBar extends StatelessWidget {
+  const _DebriefActionsBar({
+    required this.state,
+    required this.onContinueSamePartner,
+    required this.onNewPartner,
+    required this.onFinish,
+  });
+
+  final PracticeChatState state;
+  final VoidCallback onContinueSamePartner;
+  final VoidCallback onNewPartner;
+  final VoidCallback onFinish;
+
+  @override
+  Widget build(BuildContext context) {
+    final canContinue = state.roundIndex < kMaxPracticeRounds;
+    return _BarContainer(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (canContinue) ...[
+            BrandPrimaryButton(
+              label: '和${state.personaLabel}續聊一輪',
+              onPressed: onContinueSamePartner,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '再扣 1 則，最多 20 則 AI 回覆（她會記得前面的對話）',
+              textAlign: TextAlign.center,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: BrandSecondaryButton(
+                  label: '換一位',
+                  onPressed: onNewPartner,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: BrandSecondaryButton(
+                  label: '完成',
+                  onPressed: onFinish,
+                ),
+              ),
             ],
           ),
         ],

@@ -9,8 +9,18 @@ import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
+
+/// 同其他 widget test 的 seeded-notifier idiom：constructor 在 super 同步初始化後
+/// 直接覆寫 state；無 Supabase user 時後續 async 初始化全 no-op。
+class _SeededSubscriptionNotifier extends SubscriptionNotifier {
+  _SeededSubscriptionNotifier(SubscriptionState seed) {
+    state = seed;
+  }
+}
 
 class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
   _MemoryPracticeSessionRepository([Iterable<PracticeSession> seed = const []])
@@ -267,5 +277,143 @@ void main() {
     expect(find.textContaining('高冷理性型 · 挑戰'), findsOneWidget);
     expect(find.text('換一位'), findsNothing);
     expect(find.text('輕鬆'), findsNothing);
+  });
+
+  // ── 拆解後續玩 CTA（Eric 決策：續玩當主鈕）─────────────────────────────
+  PracticeChatState debriefSeed({
+    int roundIndex = 1,
+    String persona = '慢熱上班族',
+  }) {
+    return PracticeChatState(
+      sessionId: 'debrief-sess',
+      createdAt: DateTime(2026, 6, 24, 16),
+      personaId: 'slow_worker',
+      personaLabel: persona,
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      roundIndex: roundIndex,
+      visiblePracticeThreadId: 'debrief-sess',
+      aiReplyCount: 3,
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+      sessionComplete: true,
+      ended: true,
+      debrief: const PracticeDebrief(
+        summary: '整體不錯',
+        strengths: ['開場好'],
+        watchouts: [],
+        suggestedLine: '約她',
+        vibe: '暖',
+      ),
+    );
+  }
+
+  Future<void> pumpDebrief(
+    WidgetTester tester, {
+    required PracticeChatController controller,
+    SubscriptionState? subscription,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          if (subscription != null)
+            subscriptionProvider
+                .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+  }
+
+  testWidgets('拆解後：續玩當主鈕、附扣費說明、加換一位與完成', (tester) async {
+    final controller = _SeededPracticeChatController(
+      seed: debriefSeed(),
+      repository: repo,
+    );
+    await pumpDebrief(tester, controller: controller);
+
+    expect(find.text('和慢熱上班族續聊一輪'), findsOneWidget);
+    expect(find.textContaining('再扣 1 則'), findsOneWidget);
+    expect(find.text('換一位'), findsOneWidget);
+    expect(find.text('完成'), findsOneWidget);
+  });
+
+  testWidgets('第 3 輪拆解後：隱藏續玩，只留換一位與完成', (tester) async {
+    final controller = _SeededPracticeChatController(
+      seed: debriefSeed(roundIndex: 3),
+      repository: repo,
+    );
+    await pumpDebrief(tester, controller: controller);
+
+    expect(find.textContaining('續聊一輪'), findsNothing);
+    expect(find.textContaining('再扣 1 則'), findsNothing);
+    expect(find.text('換一位'), findsOneWidget);
+    expect(find.text('完成'), findsOneWidget);
+  });
+
+  testWidgets('付費點續聊同一位 → 進新一輪（roundIndex 2、清拆解、可送）', (tester) async {
+    final controller = _SeededPracticeChatController(
+      seed: debriefSeed(),
+      repository: repo,
+    );
+    await pumpDebrief(
+      tester,
+      controller: controller,
+      subscription: const SubscriptionState(tier: SubscriptionTierHelper.starter),
+    );
+
+    await tester.tap(find.text('和慢熱上班族續聊一輪'));
+    await tester.pump();
+
+    final s = controller.currentState;
+    expect(s.roundIndex, 2);
+    expect(s.debrief, isNull);
+    expect(s.messages.map((m) => m.text).toList(), ['嗨', '嗯？']);
+    expect(s.canSend, true);
+    expect(s.upgradeRequired, false);
+  });
+
+  testWidgets('Free 點續聊同一位 → 付費牆提示，拆解與訊息不動', (tester) async {
+    final controller = _SeededPracticeChatController(
+      seed: debriefSeed(),
+      repository: repo,
+    );
+    await pumpDebrief(
+      tester,
+      controller: controller,
+      subscription: const SubscriptionState(tier: SubscriptionTierHelper.free),
+    );
+
+    await tester.tap(find.text('和慢熱上班族續聊一輪'));
+    await tester.pump();
+
+    final s = controller.currentState;
+    expect(s.upgradeRequired, true);
+    expect(s.debrief, isNotNull); // 不清拆解
+    expect(s.messages.length, 2); // 不動 transcript
+    expect(find.text('升級'), findsOneWidget); // 錯誤橫幅導付費牆
+  });
+
+  testWidgets('點換一位 → 重置成開場前狀態（訊息清空、角色控制重現）', (tester) async {
+    final controller = _SeededPracticeChatController(
+      seed: debriefSeed(),
+      repository: repo,
+    );
+    await pumpDebrief(tester, controller: controller);
+
+    await tester.tap(find.text('換一位'));
+    await tester.pump();
+
+    final s = controller.currentState;
+    expect(s.messages, isEmpty);
+    expect(s.roundIndex, 1);
+    expect(s.debrief, isNull);
+    // 開場前控制重現：難度 chips 與 profile bar 換一位鈕回來。
+    expect(find.text('輕鬆'), findsOneWidget);
   });
 }

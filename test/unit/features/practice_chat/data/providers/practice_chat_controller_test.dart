@@ -561,5 +561,64 @@ void main() {
       expect(repo.getById(newSessionId), isNotNull);
       expect(repo.getById('round1'), isNotNull); // 開新 sessionId，不覆蓋舊一輪
     });
+
+    test('續玩後送訊息：送出完整累積 thread（舊訊息＋新訊息），不只送新一輪', () async {
+      final c = makeControllerFrom(round1Done());
+      c.continueWithSamePartner(isPaid: true);
+
+      late List<PracticeTurnDto> sentTurns;
+      api.sendHandler = (turns, {profile}) async {
+        sentTurns = turns;
+        return reply();
+      };
+      await c.sendMessage('我們再聊聊');
+
+      // 女生要能接續前面內容反應：完整 visible thread 累積送出。
+      expect(sentTurns.map((t) => t.text).toList(), ['嗨', '嗯？', '我們再聊聊']);
+      expect(c.currentState.aiReplyCount, 1); // 新一輪從 0 起算、重扣 1
+    });
+
+    test('續玩後拆解：debrief 送出完整累積 thread', () async {
+      final c = makeControllerFrom(round1Done());
+      c.continueWithSamePartner(isPaid: true);
+      api.sendHandler = (_, {profile}) async => reply();
+      await c.sendMessage('我們再聊聊');
+
+      late List<PracticeTurnDto> debriefTurns;
+      api.debriefHandler = (turns, {profile}) async {
+        debriefTurns = turns;
+        return const PracticeDebrief(
+          summary: 'x',
+          strengths: [],
+          watchouts: [],
+          suggestedLine: 'y',
+          vibe: '中性',
+        );
+      };
+      await c.endPractice();
+
+      expect(debriefTurns.map((t) => t.text).toList(),
+          ['嗨', '嗯？', '我們再聊聊', '嗯？']);
+    });
+
+    test('換一位開新陪練：新 sessionId、roundIndex 歸 1、threadId 錨定自身、清空訊息與旗標、可立即送', () {
+      final c = makeControllerFrom(round1Done());
+      final oldId = c.currentState.sessionId;
+
+      c.startNewPartner();
+      final s = c.currentState;
+
+      expect(s.sessionId, isNot(oldId));
+      expect(s.sessionId, isNotEmpty);
+      expect(s.visiblePracticeThreadId, s.sessionId); // 全新 thread 錨定自身
+      expect(s.roundIndex, 1); // 新對象從第 1 輪起（Free 也免費）
+      expect(s.messages, isEmpty);
+      expect(s.aiReplyCount, 0);
+      expect(s.debrief, isNull);
+      expect(s.ended, false);
+      expect(s.sessionComplete, false);
+      expect(s.upgradeRequired, false);
+      expect(s.canSend, true);
+    });
   });
 }

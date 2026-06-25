@@ -271,6 +271,25 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
   }
 
+  /// 換一位：放棄目前 thread，重抽一位全新對象開新一場（roundIndex 歸 1＝Free 也免費）。
+  /// 清空訊息與所有旗標，回到「開場前」可調角色／難度的狀態；首則成功才落地持久化。
+  void startNewPartner() {
+    final sessionId = const Uuid().v4();
+    final profile = createPracticeProfile(
+      difficultyPreference: state.difficultyPreference,
+    );
+    state = PracticeChatState(
+      sessionId: sessionId,
+      createdAt: DateTime.now(),
+      personaId: profile.personaId,
+      personaLabel: profile.personaLabel,
+      difficulty: profile.difficulty,
+      difficultyLabel: profile.difficultyLabel,
+      difficultyPreference: state.difficultyPreference,
+      visiblePracticeThreadId: sessionId,
+    );
+  }
+
   /// 送出一則使用者訊息並取得 AI（模擬對象）回覆。
   /// 樂觀顯示使用者泡泡；任何失敗都回滾，不留半截、不扣額度。
   Future<void> sendMessage(String text) async {
