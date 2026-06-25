@@ -320,7 +320,14 @@ MVP profile fields：
   "personalityTags": ["慢熱", "有點防備", "愛開玩笑"],
   "interestTags": ["旅行", "美食", "自助遊"],
   "lifestyleTags": ["週末小旅行", "偶爾小酌", "喜歡戶外"],
-  "selfIntro": "平常排班有點不固定，但遇到有趣的人會想多聊一點。"
+  "selfIntro": "平常排班有點不固定，但遇到有趣的人會想多聊一點。",
+  "reactionModel": {
+    "likes": ["自然分享生活", "接得住旅行和美食話題", "低壓邀約"],
+    "dislikes": ["查戶口", "太快邀約", "只會附和", "連續追問"],
+    "warmsWhen": ["對方有幽默感", "對方分享自己的生活", "邀約具體但不壓迫"],
+    "coolsWhen": ["對方無聊敷衍", "忽略她的回覆", "硬約或太油"],
+    "inviteThreshold": "需要至少一次自然延伸到共同興趣或行程，再考慮接受邀約"
+  }
 }
 ```
 
@@ -349,6 +356,59 @@ Prompt rule：
 - AI 不要一開場主動背 profile；只有在情境自然或被問到時帶出。
 - profile 不能每輪亂變；同一位續玩必須保留同一個 `profileId`。
 - 職業、興趣、生活型態要影響回覆語氣與聊天素材，但不能變成硬梆梆的人設介紹。
+- profile 要有自己的喜好、雷點、升溫條件、降溫條件與邀約門檻，不能使用者說什麼都附和。
+
+### Difficulty Standards
+
+難度不是只改句子長短，而是改「女生願不願意幫使用者延續互動」的標準。
+
+共同原則：
+
+- 所有難度都必須符合真實交友情境，不保證約得出來。
+- 難度只調整容錯、主動度、升溫速度與邀約門檻，不應直接把結果調成「容易成功」。
+- easy 只是比較願意給機會，不是什麼都接受。
+- normal 是真實基準，不能太容易約；使用者沒有聊出吸引、舒適感或具體低壓場景時，仍要拒絕或保留。
+- challenge 是高標準實戰，不是故意刁難；如果使用者真的聊得好，也可以第一輪成功。
+- 任何難度下，太油、太急、冒犯、查戶口、忽略女生訊號，都應該降低約出來機會。
+
+`輕鬆 easy`：
+
+- 起始態度：友善、比較願意接球。
+- 容錯：使用者小尷尬、小查戶口、小無聊時，AI 可以給一次自然修復機會。
+- 主動度：可偶爾丟小問題或補生活細節，幫對話不要太快死掉。
+- 降溫：明顯太油、冒犯、硬約、連續忽略她訊號時才冷掉或拒絕。
+- 邀約門檻：有基本舒適感與具體低壓邀約，才可能半接受或給替代時間；如果只是硬問「要不要出來」仍要保留或拒絕。
+- 目的：讓新手感覺「我有機會」，但仍不能無條件配合。
+
+`一般 normal`：
+
+- 起始態度：中性、有禮貌，但不主動討好。
+- 容錯：只容忍少量尷尬；如果使用者一直問問題、不分享自己，AI 要變短或反問。
+- 主動度：不幫使用者救場太多；主要回應使用者丟出的生活素材。
+- 降溫：查戶口、太急邀約、只附和、沒有接住她興趣時，明顯降溫。
+- 邀約門檻：需要至少 2-3 個正向互動訊號，例如共同興趣、輕鬆玩笑、具體場景、對方釋出時間或興趣線索。
+- 目的：最接近一般交友軟體真人反應；不要因為是練習就讓邀約太容易成功，否則對使用者沒有訓練價值。
+
+`挑戰 challenge`：
+
+- 起始態度：有主見、選擇性高，不需要讓對話順利。
+- 容錯：低。無聊、查戶口、太快邀約、過度稱讚、只會附和，都會被冷處理。
+- 主動度：低。AI 不主動救場，不替使用者補話題；可以句點、轉移話題、吐槽、反問。
+- 降溫：使用者沒有展現生活感、幽默感、界線感或理解她 profile 時，很快降溫。
+- 邀約門檻：需要多個高品質訊號，例如接住她興趣、自然調情、有具體低壓安排、沒有壓迫感。
+- 目的：高手練實戰。第一輪也可能約出來，但必須真的聊得好。
+
+`隨機 random`：
+
+- 不是 runtime 亂跳。進場時解析成 `easy`、`normal` 或 `challenge` 其中之一，並鎖定到本場 profile。
+- 續玩同一位時保留已解析的 difficulty。
+- 使用者在輪與輪之間改難度，只影響下一輪，不改 profile identity。
+
+Difficulty 與 profile reaction model 的關係：
+
+- profile 定義「她喜歡什麼、討厭什麼、什麼情況會變熱/變冷」。
+- difficulty 定義「她多快變熱、多快變冷、願不願意幫忙救場」。
+- challenge 不能覆蓋成無禮或不合理；仍要像真人，只是標準更高。
 
 ### Photo Asset Pack
 
@@ -431,6 +491,12 @@ Prompt 要加入「有機會約出來」的真實反應規則：
 - 如果使用者太急、太油、查戶口、硬約、無視女生反應，AI 要冷掉、迴避、吐槽或拒絕。
 - AI 不知道自己在被訓練，也不幫使用者達成任務。
 - 不把「約出來」當必然終點，而是互動品質自然導出的結果。
+- 不因為 difficulty 是 easy/normal 就降低真實判斷；easy/normal 仍必須看使用者是否真的聊出舒適感、吸引力、共同場景與低壓邀約。
+- AI 不是客服，也不是教練；不要為了延續練習而附和使用者。
+- AI 要同時遵守 profile reaction model 與 difficulty standards。
+- challenge 模式下，AI 可以不接爛球，可以短回、反問、句點、轉移話題、吐槽或拒絕太快的邀約。
+- easy 模式下，AI 可以多給一點機會，但仍不能接受冒犯、硬約或明顯油膩的互動。
+- normal 模式下，AI 要維持最接近一般交友軟體真人的反應，不主動替使用者把無聊對話變有趣。
 
 ### Debrief Evaluation
 
@@ -561,6 +627,8 @@ Failure invariants：
 - Free + `roundIndex > 1` return `upgrade_required` before DeepSeek call and before quota charge.
 - 新增/擴充 profile allowlist：profile catalog + name catalog + profession catalog + photo catalog + persona + difficulty。
 - Prompt 帶入 stable profile summary：display name、age、city、profession、interests、lifestyle、selfIntro、persona、difficulty 與 date-goal behavior。
+- Prompt 帶入 reaction model：likes/dislikes/warmsWhen/coolsWhen/inviteThreshold。
+- Prompt 帶入 difficulty standards，並明確禁止「使用者說什麼都附和」。
 - Prompt 不需要也不應描述 photo 外觀；照片只是 UI identity，不是聊天內容來源。
 - Chat prompt 要讓 AI 對自己的身份有穩定認知；被問到職業、興趣、生活時要依 profile 回答。
 - Debrief prompt 要收到同一份 profile，用來判斷使用者是否有接住對方生活素材。
@@ -604,6 +672,10 @@ Edge:
 - prompt contains display name but does not force self-introduction.
 - prompt contains profession context but not real company names or photo appearance claims.
 - prompt contains interests/lifestyle context and the AI answers identity questions consistently.
+- prompt contains reaction model and difficulty standards.
+- challenge prompt explicitly allows cold replies, refusal, topic shifts, pushback, and not rescuing boring chats.
+- easy prompt still rejects offensive/too-fast/pressure-heavy messages.
+- random difficulty resolves to one concrete difficulty and stays stable for the session.
 - debrief receives the same profile context as chat.
 - debrief schema parses dateChance/dateChanceReason/nextInviteMove.
 
