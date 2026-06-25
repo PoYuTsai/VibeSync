@@ -2,6 +2,7 @@
 // 防御性：去 markdown 圍欄、缺核心欄位丟出、vibe 非法則回退「中性」、長度 clamp。
 
 export const VIBES = ["暖", "中性", "冷"];
+export const DATE_CHANCES = ["low", "medium", "high"];
 
 export interface DebriefCard {
   summary: string;
@@ -9,6 +10,10 @@ export interface DebriefCard {
   watchouts: string[];
   suggestedLine: string;
   vibe: string;
+  /** 約出來機會：low｜medium｜high。 */
+  dateChance: string;
+  dateChanceReason: string;
+  nextInviteMove: string;
 }
 
 export function clampStr(v: unknown, max: number): string {
@@ -40,11 +45,24 @@ export function parseDebriefCard(raw: string): DebriefCard {
   }
   const vibeRaw = clampStr(p.vibe, 4);
   const vibe = VIBES.includes(vibeRaw) ? vibeRaw : "中性";
+
+  // 約出來機會：合法值直接採用；非法/缺值時，有理由文字才 fallback medium，否則 low
+  // （沒理由還說 medium 會誤導，往保守方向）。向後相容：舊卡缺這些欄位 → low + 空字串。
+  const dateChanceRaw = clampStr(p.dateChance, 8).toLowerCase();
+  const dateChanceReason = clampStr(p.dateChanceReason, 60);
+  const nextInviteMove = clampStr(p.nextInviteMove, 60);
+  const dateChance = DATE_CHANCES.includes(dateChanceRaw)
+    ? dateChanceRaw
+    : (dateChanceReason.length > 0 ? "medium" : "low");
+
   return {
     summary,
     strengths: clampList(p.strengths, 2, 40),
     watchouts: clampList(p.watchouts, 2, 40),
     suggestedLine,
     vibe,
+    dateChance,
+    dateChanceReason,
+    nextInviteMove,
   };
 }

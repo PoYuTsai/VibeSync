@@ -126,3 +126,103 @@ Deno.test("buildDebriefMessages：user 指令帶入本場 persona 與 difficulty
   assertEquals(msgs[1].content.includes("你：嗨"), true);
   assertEquals(msgs[1].content.includes("她：嗯？"), true);
 });
+
+// ── Batch 2：陪練女孩身份 + reaction model + signal + 約出來反應 ────────
+
+Deno.test("chat system prompt 帶入 girl profile identity（名字/年齡/職業/興趣）", () => {
+  // practice_girl_001 = Alice / 27 / 航空業空服員 / slow_worker。
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("Alice"), true);
+  assertEquals(sys.includes("27 歲"), true);
+  assertEquals(sys.includes("航空業空服員"), true);
+  // 身份穩定認知 + 不主動自我介紹
+  assertEquals(sys.includes("穩定一致的認知"), true);
+  assertEquals(sys.includes("不要主動自我介紹"), true);
+});
+
+Deno.test("chat system prompt 帶入 reaction model（喜好/雷點/升溫/降溫/門檻）", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("你喜歡："), true);
+  assertEquals(sys.includes("你不喜歡："), true);
+  assertEquals(sys.includes("會讓你想多聊、變熱的："), true);
+  assertEquals(sys.includes("會讓你冷掉、變短的："), true);
+  assertEquals(sys.includes("你願意答應見面的門檻："), true);
+  // 不要無腦附和
+  assertEquals(sys.includes("不會為了延續對話而附和對方"), true);
+});
+
+Deno.test("chat system prompt 帶入 signal/misread model 且不解釋給使用者", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  // signalStyle 注入 + 「不是每個友善回覆都代表想被約」的誤判教育（給 AI，不對使用者明示）
+  assertEquals(sys.includes("不要解釋"), true);
+  assertEquals(sys.includes("不是每個友善回覆都代表你想被約"), true);
+});
+
+Deno.test("chat system prompt：challenge 允許冷回/拒絕/推回/句點", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "challenge",
+  });
+  const sys = buildChatMessages([{ role: "user", text: "在嗎" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("本場難度是挑戰"), true);
+  assertEquals(sys.includes("句點"), true);
+  assertEquals(sys.includes("拒絕太快的邀約"), true);
+});
+
+Deno.test("chat system prompt：normal 明令不能太容易約", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_001",
+    difficulty: "normal",
+  });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("不要因為是練習就讓邀約太容易成功"), true);
+});
+
+Deno.test("chat system prompt：不洩漏 hidden labels（persona/難度/reaction/假窗口）", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("絕不說出"), true);
+  assertEquals(sys.includes("假窗口"), true);
+  assertEquals(sys.includes("reaction model"), true);
+});
+
+Deno.test("chat system prompt：含約出來真實反應（可半接受 / 太急則冷掉）", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], profile)[0]
+    .content;
+  assertEquals(sys.includes("半接受邀約"), true);
+  assertEquals(sys.includes("不是必然終點"), true);
+});
+
+Deno.test("debrief 收到與 chat 同一份 profile/signal 脈絡", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    profile,
+  )[1].content;
+  assertEquals(msg.includes("Alice"), true);
+  assertEquals(msg.includes("航空業空服員"), true);
+  assertEquals(msg.includes("她喜歡："), true);
+  assertEquals(msg.includes("她願意被約的門檻："), true);
+  assertEquals(msg.includes("她可能用的訊號類型"), true);
+});
+
+Deno.test("debrief system prompt：含 dateChance 三欄與誤判評估準則", () => {
+  for (const k of ["dateChance", "dateChanceReason", "nextInviteMove"]) {
+    assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(k), true);
+  }
+  // 能指出 missed vulnerability / false-window / goal-fixated / 冷處理攻擊控制
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("假窗口"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("脆弱性"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("goal-fixated"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("內容下切"), true);
+});

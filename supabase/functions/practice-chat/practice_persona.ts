@@ -56,6 +56,8 @@ export interface PracticeGirlProfile {
   relationshipGoal: string;
   professionId: ProfessionId;
   professionLabel: string;
+  /** 注入 chat/debrief prompt 的職業生活素材（server-only，不進 client 模型）。 */
+  professionPrompt: string;
   photoId: string;
   personaId: PersonaId;
   personalityTags: string[];
@@ -473,6 +475,7 @@ function buildGirlProfile(seed: GirlSeed, index: number): PracticeGirlProfile {
     relationshipGoal: seed.goal,
     professionId: seed.professionId,
     professionLabel: prof.label,
+    professionPrompt: prof.prompt,
     photoId: id,
     personaId: seed.personaId,
     personalityTags: [...seed.personality],

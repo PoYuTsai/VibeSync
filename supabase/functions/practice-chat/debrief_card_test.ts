@@ -76,3 +76,53 @@ Deno.test("JSON 是陣列而非物件 → debrief_not_object", () => {
     "debrief_not_object",
   );
 });
+
+// ── Batch 2：約出來機會欄位 ───────────────────────────────────────────
+
+Deno.test("解析 dateChance / dateChanceReason / nextInviteMove", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "x",
+      suggestedLine: "y",
+      dateChance: "high",
+      dateChanceReason: "她主動釋出週末時間",
+      nextInviteMove: "提一個她有興趣的具體低壓行程",
+    }),
+  );
+  assertEquals(c.dateChance, "high");
+  assertEquals(c.dateChanceReason, "她主動釋出週末時間");
+  assertEquals(c.nextInviteMove, "提一個她有興趣的具體低壓行程");
+});
+
+Deno.test("dateChance 大小寫不敏感（HIGH → high）", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({ summary: "x", suggestedLine: "y", dateChance: "HIGH" }),
+  );
+  assertEquals(c.dateChance, "high");
+});
+
+Deno.test("非法 dateChance + 有理由文字 → fallback medium", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({
+      summary: "x",
+      suggestedLine: "y",
+      dateChance: "很高",
+      dateChanceReason: "聊得不錯但邀約鋪墊不足",
+    }),
+  );
+  assertEquals(c.dateChance, "medium");
+});
+
+Deno.test("非法 dateChance + 無理由 → fallback low（保守）", () => {
+  const c = parseDebriefCard(
+    JSON.stringify({ summary: "x", suggestedLine: "y", dateChance: "爆表" }),
+  );
+  assertEquals(c.dateChance, "low");
+});
+
+Deno.test("舊卡缺 dateChance 欄位 → 向後相容 low + 空字串", () => {
+  const c = parseDebriefCard(valid);
+  assertEquals(c.dateChance, "low");
+  assertEquals(c.dateChanceReason, "");
+  assertEquals(c.nextInviteMove, "");
+});
