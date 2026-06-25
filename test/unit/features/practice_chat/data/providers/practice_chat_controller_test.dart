@@ -18,6 +18,12 @@ class _FakeApi extends PracticeChatApiService {
     PracticeProfileDto? profile,
   })? debriefHandler;
 
+  // 續玩 metadata 捕捉：驗 controller 是否把 state 的 roundIndex/threadId 帶進 API。
+  int? lastRoundIndex;
+  String? lastVisibleThreadId;
+  int? lastDebriefRoundIndex;
+  String? lastDebriefThreadId;
+
   @override
   Future<PracticeChatReply> sendMessage({
     required String sessionId,
@@ -25,8 +31,11 @@ class _FakeApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
-  }) =>
-      sendHandler!(turns, profile: profile);
+  }) {
+    lastRoundIndex = roundIndex;
+    lastVisibleThreadId = visiblePracticeThreadId;
+    return sendHandler!(turns, profile: profile);
+  }
 
   @override
   Future<PracticeDebrief> requestDebrief({
@@ -35,8 +44,11 @@ class _FakeApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
-  }) =>
-      debriefHandler!(turns, profile: profile);
+  }) {
+    lastDebriefRoundIndex = roundIndex;
+    lastDebriefThreadId = visiblePracticeThreadId;
+    return debriefHandler!(turns, profile: profile);
+  }
 }
 
 void main() {
@@ -369,5 +381,81 @@ void main() {
     expect(state.sessionId, 'open-latest');
     expect(state.aiReplyCount, 1);
     expect(state.messages.map((m) => m.text).toList(), ['嗨', '嗯？']);
+  });
+
+  // ── 續玩 metadata（roundIndex / visiblePracticeThreadId）流穿 ──────────
+  group('續玩 metadata 流穿', () {
+    PracticeChatController resumeR2() => makeControllerFrom(PracticeSession(
+          id: 'sess-r2',
+          createdAt: DateTime(2026, 6, 24, 9, 30),
+          aiReplyCount: 1,
+          messages: const [
+            PracticeMessage(role: 'user', text: '嗨'),
+            PracticeMessage(role: 'ai', text: '嗯？'),
+          ],
+          roundIndex: 2,
+          visiblePracticeThreadId: 'thread-x',
+        ));
+
+    test('新場次：roundIndex 預設 1、visiblePracticeThreadId 等於 sessionId', () {
+      final c = makeController();
+      expect(c.currentState.roundIndex, 1);
+      expect(c.currentState.visiblePracticeThreadId, 'sess-1');
+    });
+
+    test('舊場（無 roundIndex/threadId）續聊：roundIndex 兜底 1、threadId 兜底用 session.id', () {
+      final c = makeControllerFrom(PracticeSession(
+        id: 'old-sess',
+        createdAt: DateTime(2026, 6, 24, 9),
+        aiReplyCount: 1,
+        messages: const [PracticeMessage(role: 'user', text: '嗨')],
+      ));
+      expect(c.currentState.roundIndex, 1);
+      expect(c.currentState.visiblePracticeThreadId, 'old-sess');
+    });
+
+    test('既存 roundIndex/threadId 的場次續聊：照原值還原', () {
+      final c = resumeR2();
+      expect(c.currentState.roundIndex, 2);
+      expect(c.currentState.visiblePracticeThreadId, 'thread-x');
+    });
+
+    test('sendMessage 帶上 state 的 roundIndex 與 visiblePracticeThreadId', () async {
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      final c = resumeR2();
+
+      await c.sendMessage('在嗎');
+
+      expect(api.lastRoundIndex, 2);
+      expect(api.lastVisibleThreadId, 'thread-x');
+    });
+
+    test('_persist 寫入 roundIndex 與 visiblePracticeThreadId', () async {
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      final c = resumeR2();
+
+      await c.sendMessage('在嗎');
+      final saved = repo.getById('sess-r2')!;
+
+      expect(saved.roundIndex, 2);
+      expect(saved.visiblePracticeThreadId, 'thread-x');
+    });
+
+    test('endPractice 帶上 state 的 roundIndex 與 visiblePracticeThreadId', () async {
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+      final c = resumeR2();
+      api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
+            summary: 'x',
+            strengths: [],
+            watchouts: [],
+            suggestedLine: 'y',
+            vibe: '中性',
+          );
+
+      await c.endPractice();
+
+      expect(api.lastDebriefRoundIndex, 2);
+      expect(api.lastDebriefThreadId, 'thread-x');
+    });
   });
 }

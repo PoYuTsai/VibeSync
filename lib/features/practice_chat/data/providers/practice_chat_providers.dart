@@ -37,6 +37,10 @@ class PracticeChatState {
   final String difficulty;
   final String difficultyLabel;
 
+  // ── 續玩同一位：roundIndex 第幾輪（1..3）；threadId 跨輪穩定識別（log 用）──
+  final int roundIndex;
+  final String? visiblePracticeThreadId;
+
   const PracticeChatState({
     required this.sessionId,
     required this.createdAt,
@@ -56,6 +60,8 @@ class PracticeChatState {
     this.quotaExceeded = false,
     this.upgradeRequired = false,
     this.restoreText,
+    this.roundIndex = 1,
+    this.visiblePracticeThreadId,
   });
 
   int get remainingReplies =>
@@ -81,6 +87,8 @@ class PracticeChatState {
     String? personaLabel,
     String? difficulty,
     String? difficultyLabel,
+    int? roundIndex,
+    String? visiblePracticeThreadId,
     Object? debrief = _sentinel,
     Object? errorMessage = _sentinel,
     Object? restoreText = _sentinel,
@@ -101,6 +109,9 @@ class PracticeChatState {
       personaLabel: personaLabel ?? this.personaLabel,
       difficulty: difficulty ?? this.difficulty,
       difficultyLabel: difficultyLabel ?? this.difficultyLabel,
+      roundIndex: roundIndex ?? this.roundIndex,
+      visiblePracticeThreadId:
+          visiblePracticeThreadId ?? this.visiblePracticeThreadId,
       debrief: identical(debrief, _sentinel)
           ? this.debrief
           : debrief as PracticeDebrief?,
@@ -168,13 +179,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }) {
     if (initialSession != null) return _stateFromSession(initialSession);
     final profile = initialProfile ?? createPracticeProfile();
+    final resolvedSessionId = sessionId ?? const Uuid().v4();
     return PracticeChatState(
-      sessionId: sessionId ?? const Uuid().v4(),
+      sessionId: resolvedSessionId,
       createdAt: createdAt ?? DateTime.now(),
       personaId: profile.personaId,
       personaLabel: profile.personaLabel,
       difficulty: profile.difficulty,
       difficultyLabel: profile.difficultyLabel,
+      // 第 1 輪：thread 即本 session，threadId 直接錨定此 id，續玩時沿用。
+      visiblePracticeThreadId: resolvedSessionId,
     );
   }
 
@@ -211,6 +225,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       personaLabel: profile.personaLabel,
       difficulty: profile.difficulty,
       difficultyLabel: profile.difficultyLabel,
+      // 舊場無欄位：roundIndex 兜底 1、threadId 兜底用 session.id（與 Edge fallback 一致）。
+      roundIndex: session.roundIndex ?? 1,
+      visiblePracticeThreadId: session.visiblePracticeThreadId ?? session.id,
     );
   }
 
@@ -248,6 +265,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         turns: optimistic
             .map((m) => PracticeTurnDto(role: m.role, text: m.text))
             .toList(),
+        roundIndex: state.roundIndex,
+        visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
       final withAi = [
         ...optimistic,
@@ -322,6 +341,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         turns: state.messages
             .map((m) => PracticeTurnDto(role: m.role, text: m.text))
             .toList(),
+        roundIndex: state.roundIndex,
+        visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
       state = state.copyWith(
         isDebriefing: false,
@@ -387,6 +408,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       personaLabel: s.personaLabel,
       difficulty: s.difficulty,
       difficultyLabel: s.difficultyLabel,
+      visiblePracticeThreadId: s.visiblePracticeThreadId,
+      roundIndex: s.roundIndex,
     ));
   }
 }
