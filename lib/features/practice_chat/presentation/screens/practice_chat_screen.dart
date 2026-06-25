@@ -13,7 +13,7 @@ import '../../domain/entities/practice_session.dart';
 import '../widgets/practice_debrief_card.dart';
 
 /// AI 實戰練習室主畫面：點入直接進聊天（不選目標）。
-/// 使用者先發訊息，AI 扮演模擬對象回覆；最多 10 則 AI 回覆；
+/// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
 /// 結束練習產一張教練拆解卡。
 class PracticeChatScreen extends ConsumerStatefulWidget {
   const PracticeChatScreen({super.key});
@@ -386,7 +386,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 10 則 AI 回覆，教練拆解不另扣。',
+              '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
               textAlign: TextAlign.center,
               style: AppTypography.caption.copyWith(
                 color: AppColors.glassTextHint,
@@ -589,14 +589,14 @@ class _BottomBar extends StatelessWidget {
       );
     }
 
-    // 已達 10 則上限 → 引導看拆解。
+    // 已達 20 則上限 → 引導看拆解。
     if (state.sessionComplete) {
       return _BarContainer(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '這場練習已達 10 則回覆',
+              '這場練習已達 20 則回覆',
               style: AppTypography.caption.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),

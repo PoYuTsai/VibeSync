@@ -108,7 +108,7 @@ class PracticeGenerationFailedException implements Exception {
   String toString() => 'PracticeGenerationFailedException: $message';
 }
 
-/// 練習已滿 10 則 AI 回覆（伺服器回 409）。前端應引導去拆解卡。
+/// 練習已滿 20 則 AI 回覆（伺服器回 409）。前端應引導去拆解卡。
 class PracticeSessionCompleteException implements Exception {
   PracticeSessionCompleteException();
   @override

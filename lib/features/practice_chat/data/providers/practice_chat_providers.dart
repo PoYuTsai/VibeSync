@@ -10,8 +10,8 @@ import '../../domain/entities/practice_session.dart';
 import '../repositories/practice_session_repository.dart';
 import '../services/practice_chat_api_service.dart';
 
-/// 一場練習最多 10 則 AI 回覆（與伺服器 MAX_AI_REPLIES 同步）。
-const int kMaxPracticeAiReplies = 10;
+/// 一場練習最多 20 則 AI 回覆（與伺服器 MAX_AI_REPLIES 同步）。
+const int kMaxPracticeAiReplies = 20;
 
 const _sentinel = Object();
 
@@ -22,7 +22,7 @@ class PracticeChatState {
   final bool isSending;
   final bool isDebriefing;
   final int aiReplyCount;
-  final bool sessionComplete; // 已達 10 則
+  final bool sessionComplete; // 已達 20 則
   final bool ended; // 使用者已結束練習，輸入鎖定
   final PracticeDebrief? debrief;
   final String? errorMessage;
