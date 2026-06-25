@@ -297,6 +297,59 @@ Rules：
 - 職業不應變成性化暗示、刻板印象或保證某種人格。
 - `大學生` 必須視為成年 fictional adult college student；照片與文案都要避免未成年感。
 
+### Profile Metadata Model
+
+每位陪練女孩要有一份固定 profile metadata。這份資料同時服務 UI 與 prompt，讓 chatbot 對自己的身份有穩定認知。
+
+MVP profile fields：
+
+```json
+{
+  "profileId": "practice_girl_001",
+  "nameId": "alice",
+  "displayName": "Alice",
+  "age": 27,
+  "heightCm": 162,
+  "city": "台北",
+  "professionId": "flight_attendant",
+  "professionLabel": "航空業空服員",
+  "photoId": "practice_girl_001",
+  "zodiac": "水瓶座",
+  "languages": ["中文"],
+  "relationshipGoal": "慢慢認識",
+  "personalityTags": ["慢熱", "有點防備", "愛開玩笑"],
+  "interestTags": ["旅行", "美食", "自助遊"],
+  "lifestyleTags": ["週末小旅行", "偶爾小酌", "喜歡戶外"],
+  "selfIntro": "平常排班有點不固定，但遇到有趣的人會想多聊一點。"
+}
+```
+
+Profile examples：
+
+- `航空業空服員`：可以聊旅行、排班、機場、時差、自由行、美食地圖；不能提真實航空公司。
+- `醫院護理師`：可以聊輪班、累但有成就感、下班想放空、美食補能量；不能提真實醫院。
+- `診所護理人員 / 牙助`：可以聊診所節奏、病人互動、下班生活、咖啡與小旅行；不能提真實診所名。
+- `大學生 / 研究生`：可以聊課業、打工、社團、看書、展覽、自助旅行；必須明確是成年。
+
+UI 不需要一次露出所有欄位。開場卡片顯示：
+
+```text
+Alice, 27
+航空業空服員 · 台北
+162 cm · 水瓶座 · 慢慢認識
+旅行 / 美食 / 自助遊
+```
+
+完整 profile 可放在 `查看她的個人檔案` bottom sheet，呈現像交友軟體的基本資訊與興趣標籤。
+
+Prompt rule：
+
+- Edge 要用 `profileId` 解析完整 profile，再把穩定摘要注入 chat/debrief prompt。
+- AI 要知道自己是這個 profile 的女生，能自然回答「你做什麼工作」「週末喜歡幹嘛」「你是不是常旅行」「你住哪」這類問題。
+- AI 不要一開場主動背 profile；只有在情境自然或被問到時帶出。
+- profile 不能每輪亂變；同一位續玩必須保留同一個 `profileId`。
+- 職業、興趣、生活型態要影響回覆語氣與聊天素材，但不能變成硬梆梆的人設介紹。
+
 ### Photo Asset Pack
 
 MVP 做 50 張 GPT Image 生成的 fictional adult female profile photos。
@@ -355,7 +408,7 @@ Preview 給 Eric 的目標不是最終素材包，而是先校準「像交友 ap
 `換一位` 要一起換：
 
 ```text
-nameId + photoId + professionId + personaId
+profileId + nameId + photoId + professionId + personaId
 ```
 
 並保留目前 difficulty。
@@ -363,7 +416,7 @@ nameId + photoId + professionId + personaId
 直接 `續玩 20 則` 要保留：
 
 ```text
-nameId + photoId + professionId + personaId + difficulty
+profileId + nameId + photoId + professionId + personaId + difficulty
 ```
 
 避免「同一位女生」續玩時照片或職業突然變掉。
@@ -413,8 +466,18 @@ Debrief 要新增：
 
 `PracticeSession` 建議新增 optional fields：
 
+- `profileId`
 - `displayName`
 - `nameId`
+- `age`
+- `heightCm`
+- `city`
+- `zodiac`
+- `relationshipGoal`
+- `personalityTags`
+- `interestTags`
+- `lifestyleTags`
+- `selfIntro`
 - `professionId`
 - `professionLabel`
 - `photoId`
@@ -440,6 +503,7 @@ Chat / debrief request 加：
 
 ```json
 {
+  "profileId": "practice_girl_001",
   "nameId": "ivy",
   "professionId": "flight_attendant",
   "photoId": "p001",
@@ -492,22 +556,25 @@ Failure invariants：
 ### Edge
 
 - `MAX_AI_REPLIES` 從 10 改 20。
-- `validate.ts` accept optional `nameId` / `professionId` / `photoId`。
+- `validate.ts` accept optional `profileId` / `nameId` / `professionId` / `photoId`。
 - `validate.ts` accept optional `roundIndex` / `visiblePracticeThreadId`。
 - Free + `roundIndex > 1` return `upgrade_required` before DeepSeek call and before quota charge.
-- 新增/擴充 profile allowlist：name catalog + profession catalog + photo catalog + persona + difficulty。
-- Prompt 帶入 display name、profession snippet 與 date-goal behavior。
+- 新增/擴充 profile allowlist：profile catalog + name catalog + profession catalog + photo catalog + persona + difficulty。
+- Prompt 帶入 stable profile summary：display name、age、city、profession、interests、lifestyle、selfIntro、persona、difficulty 與 date-goal behavior。
 - Prompt 不需要也不應描述 photo 外觀；照片只是 UI identity，不是聊天內容來源。
+- Chat prompt 要讓 AI 對自己的身份有穩定認知；被問到職業、興趣、生活時要依 profile 回答。
+- Debrief prompt 要收到同一份 profile，用來判斷使用者是否有接住對方生活素材。
 - Debrief JSON schema 增加 date chance fields。
-- Existing old clients fallback `ivy + marketing_planner + default photo + slow_worker + normal`。
+- Existing old clients fallback `default profile + slow_worker + normal`。
 
 ### Flutter
 
 - `kMaxPracticeAiReplies` 從 10 改 20。
 - UI copy 改成本輪 20 則。
-- `換一位` 同時換 name/profession/photo/persona，難度不變。
-- state/Hive 持久化 name/profession/photo 與 round fields。
-- 新增 photo metadata provider 或 remote catalog loader；首屏只載目前照片，可預抓下一 1-2 張。
+- `換一位` 同時換 profile/name/profession/photo/persona，難度不變。
+- state/Hive 持久化 profile metadata 與 round fields。
+- 新增 profile/photo metadata provider 或 remote catalog loader；首屏只載目前照片，可預抓下一 1-2 張。
+- 開場卡片顯示精簡 profile；完整資訊放 `查看她的個人檔案` bottom sheet。
 - 到 20 則後顯示續玩/拆解，而不是直接只剩拆解。
 - 讀取 subscription tier：Free 顯示 `升級續玩 20 則`，Starter/Essential 顯示 `續玩 20 則（扣 1 則）`。
 - Free 點升級 CTA 進 paywall；Starter/Essential 才呼叫 `continuePracticeRound()`。
@@ -529,24 +596,28 @@ Failure invariants：
 Edge:
 
 - 20 則 cap tests。
-- old client fallback name/profession/photo/persona/difficulty。
+- old client fallback profile/persona/difficulty。
+- invalid profileId rejects.
 - invalid nameId rejects.
 - invalid professionId rejects.
 - invalid photoId rejects.
 - prompt contains display name but does not force self-introduction.
 - prompt contains profession context but not real company names or photo appearance claims.
+- prompt contains interests/lifestyle context and the AI answers identity questions consistently.
+- debrief receives the same profile context as chat.
 - debrief schema parses dateChance/dateChanceReason/nextInviteMove.
 
 Flutter:
 
 - new room shows `Name · profession · persona · difficulty` and the profile photo.
-- 換一位 changes name/profession/photo/persona, keeps difficulty.
+- profile bottom sheet shows age/city/height/zodiac/relationship goal/interests/lifestyle.
+- 換一位 changes profile/name/profession/photo/persona, keeps difficulty.
 - 20 replies reaches roundComplete.
 - roundComplete shows `續玩 20 則` and `看教練拆解`。
 - Free roundComplete shows `升級續玩 20 則` and opens paywall instead of continuing same girl.
 - Starter/Essential roundComplete can continue same girl and sends `roundIndex: 2`.
-- direct continue starts next billingSessionId, resets round count, keeps same name/profession/photo/persona/difficulty.
-- changing difficulty before continue affects only the next round and keeps the same name/profession/photo/persona.
+- direct continue starts next billingSessionId, resets round count, keeps same profile/name/profession/photo/persona/difficulty.
+- changing difficulty before continue affects only the next round and keeps the same profile/name/profession/photo/persona.
 - changing girl identity before continue starts a new visible thread or otherwise prevents previous girl's transcript from being treated as the new girl's memory.
 - profile photo lazy-load/cache path does not block sending the first message.
 - quota failure on continue does not clear messages.
@@ -571,7 +642,7 @@ Required closeout before dogfood-safe:
 8. Real-device smoke:
    - first round 20 cap
    - continue charges again
-   - same girl identity continues: name/profession/photo/persona
+   - same girl identity continues: profileId/name/profession/photo/persona
    - 換一位 changes girl identity without changing difficulty
    - debrief date chance appears
    - quota failure path does not lose chat
