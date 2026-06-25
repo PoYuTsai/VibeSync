@@ -2,15 +2,18 @@
 // 手寫驗證：schema 很小（mode + turns），不引第三方以保持測試零依賴。
 // 失敗一律 throw Error("invalid_*")，由 handler 轉 400。
 
-import { type PracticeMode } from "./quota_decision.ts";
+import { MAX_PRACTICE_ROUNDS, type PracticeMode } from "./quota_decision.ts";
 import {
   type PracticeProfile,
   resolvePracticeProfile,
 } from "./practice_persona.ts";
 
-export const MAX_TURNS = 40; // 10 則 AI 回覆上限 → 一來一回頂多 ~20，留緩衝
+// 一個 visible thread 最多 3 輪、每輪 20 則 AI 回覆。debrief 會把整個 visible thread
+// 的逐字稿一起送，故 turns 上界要涵蓋 3 輪：3×(20 AI + 20 user)=120，留緩衝到 130。
+export const MAX_TURNS = 130;
 export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
 export const MAX_SESSION_ID_LEN = 64;
+export const MAX_VISIBLE_THREAD_ID_LEN = 128;
 
 export type TurnRole = "user" | "ai";
 
@@ -24,6 +27,10 @@ export interface PracticeChatRequest {
   sessionId: string;
   turns: PracticeTurn[];
   profile: PracticeProfile;
+  /** 本輪是第幾輪（1..3）；舊 client 缺值 fallback 1。 */
+  roundIndex: number;
+  /** local 顯示用 thread id；僅供 log，絕不當作授權身份。 */
+  visiblePracticeThreadId?: string;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -88,7 +95,38 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   const profile = resolvePracticeProfile({
     personaId: raw.personaId,
     difficulty: raw.difficulty,
+    profileId: raw.profileId,
+    nameId: raw.nameId,
+    professionId: raw.professionId,
+    photoId: raw.photoId,
   });
 
-  return { mode, sessionId, turns, profile };
+  // roundIndex：缺值 fallback 1；只收整數 1..MAX_PRACTICE_ROUNDS。
+  let roundIndex = 1;
+  if (raw.roundIndex !== undefined) {
+    if (
+      typeof raw.roundIndex !== "number" ||
+      !Number.isInteger(raw.roundIndex) ||
+      raw.roundIndex < 1 ||
+      raw.roundIndex > MAX_PRACTICE_ROUNDS
+    ) {
+      throw new Error("invalid_roundIndex");
+    }
+    roundIndex = raw.roundIndex;
+  }
+
+  // visiblePracticeThreadId：選填字串，長度上限；僅供 log，不當授權身份。
+  let visiblePracticeThreadId: string | undefined;
+  if (raw.visiblePracticeThreadId !== undefined) {
+    if (
+      typeof raw.visiblePracticeThreadId !== "string" ||
+      raw.visiblePracticeThreadId.length === 0 ||
+      raw.visiblePracticeThreadId.length > MAX_VISIBLE_THREAD_ID_LEN
+    ) {
+      throw new Error("invalid_visiblePracticeThreadId");
+    }
+    visiblePracticeThreadId = raw.visiblePracticeThreadId;
+  }
+
+  return { mode, sessionId, turns, profile, roundIndex, visiblePracticeThreadId };
 }

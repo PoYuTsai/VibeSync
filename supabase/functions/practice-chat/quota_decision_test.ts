@@ -64,17 +64,17 @@ Deno.test("chat：偽造 client ai turns 不影響扣費判定（只看 server c
   );
 });
 
-Deno.test("chat：server aiCount 達上限 → atCap=true（堵少報 turns 繞過 10）", () => {
+Deno.test("chat：server aiCount 達上限 → atCap=true（堵少報 turns 繞過 20）", () => {
   assertEquals(
     decideChatGate({
-      ledger: ledger({ aiCount: 10, charged: true }),
+      ledger: ledger({ aiCount: 20, charged: true }),
       isTestAccount: false,
     }).atCap,
     true,
   );
   assertEquals(
     decideChatGate({
-      ledger: ledger({ aiCount: 9, charged: true }),
+      ledger: ledger({ aiCount: 19, charged: true }),
       isTestAccount: false,
     }).atCap,
     false,
@@ -115,12 +115,12 @@ Deno.test("debrief：已達次數上限 → 拒絕（堵免費成本放大）", 
   );
 });
 
-// ── 10 則上限常數 ────────────────────────────────────────────────────
+// ── 20 則上限常數 ────────────────────────────────────────────────────
 
-Deno.test("isSessionComplete：< 10 未滿、>= 10 已滿", () => {
+Deno.test("isSessionComplete：< 20 未滿、>= 20 已滿", () => {
   assertEquals(isSessionComplete(0), false);
-  assertEquals(isSessionComplete(9), false);
-  assertEquals(isSessionComplete(10), true);
-  assertEquals(isSessionComplete(11), true);
-  assertEquals(MAX_AI_REPLIES, 10);
+  assertEquals(isSessionComplete(19), false);
+  assertEquals(isSessionComplete(20), true);
+  assertEquals(isSessionComplete(21), true);
+  assertEquals(MAX_AI_REPLIES, 20);
 });

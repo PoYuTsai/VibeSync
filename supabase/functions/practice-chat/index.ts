@@ -37,7 +37,9 @@ import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-const MAX_BODY_BYTES = 16 * 1024;
+// 一個 visible thread 最多 3 輪、每輪 20 則 AI 回覆；debrief 會送整個 thread 的逐字
+// 稿，故 body 上限需涵蓋 ~120 則短訊息（原 16KB 只夠 10 則）。
+const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
 const DEBRIEF_MAX_TOKENS = 500;

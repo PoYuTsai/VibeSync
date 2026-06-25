@@ -80,12 +80,24 @@ Deno.test("turns 空陣列 → invalid_turns_empty", () => {
 });
 
 Deno.test("turns 過多 → invalid_turns_too_many", () => {
-  const many = Array.from({ length: 41 }, () => ({ role: "user", text: "x" }));
+  // MAX_TURNS=130（涵蓋 3 輪 visible thread）；131 才超量。
+  const many = Array.from({ length: 131 }, () => ({ role: "user", text: "x" }));
   assertThrows(
     () => validateRequest(chatReq(many)),
     Error,
     "invalid_turns_too_many",
   );
+});
+
+Deno.test("turns 120（3 輪 visible thread）→ 通過", () => {
+  const turns: Array<{ role: string; text: string }> = [];
+  for (let i = 0; i < 60; i++) {
+    turns.push({ role: "user", text: `u${i}` });
+    turns.push({ role: "ai", text: `a${i}` });
+  }
+  turns.push({ role: "user", text: "再一句" });
+  const r = validateRequest(chatReq(turns.slice(0, 119)));
+  assertEquals(r.mode, "chat");
 });
 
 Deno.test("turn role 非法 → invalid_turn_role", () => {
@@ -210,5 +222,217 @@ Deno.test("profile：非法 difficulty → invalid_difficulty", () => {
       }),
     Error,
     "invalid_difficulty",
+  );
+});
+
+// ── 陪練女孩 profile / profession / photo / name metadata ──────────────
+
+Deno.test("profile：缺 profileId → fallback 預設陪練女孩 practice_girl_001", () => {
+  const r = validateRequest(chatReq([{ role: "user", text: "嗨" }]));
+  assertEquals(r.profile.girl.profileId, "practice_girl_001");
+  assertEquals(r.profile.girl.displayName, "Alice");
+  assertEquals(r.profile.girl.professionId, "flight_attendant");
+  // 帶 profileId 時 persona 綁定該 profile（alice = slow_worker）。
+  assertEquals(r.profile.personaId, "slow_worker");
+});
+
+Deno.test("profile：合法 profileId → 解析出對應 girl，persona 綁定 profile", () => {
+  const r = validateRequest({
+    mode: "chat",
+    sessionId: "s1",
+    profileId: "practice_girl_004",
+    turns: [{ role: "user", text: "嗨" }],
+  });
+  assertEquals(r.profile.girl.profileId, "practice_girl_004");
+  assertEquals(r.profile.girl.displayName, "Mia");
+  assertEquals(r.profile.girl.professionId, "barista");
+  assertEquals(r.profile.personaId, "teasing_humor");
+  // reaction model 與 signal style 有被組出來。
+  assertEquals(r.profile.girl.reactionModel.likes.length > 0, true);
+  assertEquals(r.profile.girl.signalStyle.length > 0, true);
+});
+
+Deno.test("profile：非法 profileId → invalid_profileId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        profileId: "practice_girl_999",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_profileId",
+  );
+});
+
+Deno.test("profile：非法 professionId → invalid_professionId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        professionId: "ceo_billionaire",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_professionId",
+  );
+});
+
+Deno.test("profile：非法 photoId → invalid_photoId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        photoId: "totally_made_up_photo",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_photoId",
+  );
+});
+
+Deno.test("profile：非法 nameId → invalid_nameId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        nameId: "definitely_not_a_name",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_nameId",
+  );
+});
+
+Deno.test("profile：profileId 與 professionId 不符 → invalid_profile_metadata", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        profileId: "practice_girl_004", // barista
+        professionId: "flight_attendant",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_profile_metadata",
+  );
+});
+
+Deno.test("profile：profileId 與 photoId 不符 → invalid_profile_metadata", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        profileId: "practice_girl_004",
+        photoId: "practice_girl_001",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_profile_metadata",
+  );
+});
+
+Deno.test("profile：profileId 與 nameId 不符 → invalid_profile_metadata", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        profileId: "practice_girl_004", // mia
+        nameId: "alice",
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_profile_metadata",
+  );
+});
+
+Deno.test("profile：profileId + 相符的 profession/photo/name → 通過", () => {
+  const r = validateRequest({
+    mode: "chat",
+    sessionId: "s1",
+    profileId: "practice_girl_001",
+    professionId: "flight_attendant",
+    photoId: "practice_girl_001",
+    nameId: "alice",
+    turns: [{ role: "user", text: "嗨" }],
+  });
+  assertEquals(r.profile.girl.profileId, "practice_girl_001");
+});
+
+// ── roundIndex / visiblePracticeThreadId ──────────────────────────────
+
+Deno.test("roundIndex：缺值 → fallback 1", () => {
+  const r = validateRequest(chatReq([{ role: "user", text: "嗨" }]));
+  assertEquals(r.roundIndex, 1);
+});
+
+Deno.test("roundIndex：合法 1..3 → 通過", () => {
+  for (const idx of [1, 2, 3]) {
+    const r = validateRequest({
+      mode: "chat",
+      sessionId: "s1",
+      roundIndex: idx,
+      turns: [{ role: "user", text: "嗨" }],
+    });
+    assertEquals(r.roundIndex, idx);
+  }
+});
+
+Deno.test("roundIndex：4（超過 3 輪上限）→ invalid_roundIndex", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        roundIndex: 4,
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_roundIndex",
+  );
+});
+
+Deno.test("roundIndex：非整數 → invalid_roundIndex", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        roundIndex: 1.5,
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_roundIndex",
+  );
+});
+
+Deno.test("visiblePracticeThreadId：合法字串 → 通過並保留", () => {
+  const r = validateRequest({
+    mode: "chat",
+    sessionId: "s1",
+    visiblePracticeThreadId: "local-thread-abc",
+    turns: [{ role: "user", text: "嗨" }],
+  });
+  assertEquals(r.visiblePracticeThreadId, "local-thread-abc");
+});
+
+Deno.test("visiblePracticeThreadId：過長 → invalid_visiblePracticeThreadId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        mode: "chat",
+        sessionId: "s1",
+        visiblePracticeThreadId: "x".repeat(129),
+        turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_visiblePracticeThreadId",
   );
 });

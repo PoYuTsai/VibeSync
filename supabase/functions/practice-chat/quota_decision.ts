@@ -5,17 +5,22 @@
 //   送來的 turns 來決定扣費或上限。client turns 只當 prompt 資料。
 //
 // 規則：
-//   一場練習 = 扣 1 則 Coach 額度，且一場一生只扣一次（charged 單調 false→true）。
+//   一輪練習 = 扣 1 則 Coach 額度，且一輪一生只扣一次（charged 單調 false→true）。
+//   - 「一輪」= 一個 billing session_id；續玩開新的 session_id（新一列、新一次扣費）。
 //   - chat 扣費條件：server `charged === false` 且非測試帳號（與 client aiTurnCount 無關）。
-//   - 10 則上限：以 server `ai_count` 為準。
+//   - 20 則上限：以 server `ai_count` 為準（本輪 session_id 的計數）。
 //   - debrief：永不扣，但須附著於已扣費 session 且有次數上限。
 //   - 任何 DeepSeek 失敗由 handler 在 commit 前 return，故失敗一律不扣。
 //   - 原子扣費 + 計數遞增由 RPC（commit_practice_chat_turn / claim_practice_debrief）
 //     在同一交易內完成；本檔僅做 preflight 預判。
+//   注意：上限值由 handler 以 p_max_replies 傳入 RPC，故改這裡即生效，毋須改已部署
+//   的 RPC（其 DEFAULT 10 不被使用）。
 
-export const MAX_AI_REPLIES = 10;
+export const MAX_AI_REPLIES = 20;
 export const MAX_DEBRIEFS = 3;
 export const PRACTICE_QUOTA_COST = 1;
+/** MVP：一個 visible thread 最多 3 輪（60 則 AI 回覆）。roundIndex 的合法上界。 */
+export const MAX_PRACTICE_ROUNDS = 3;
 
 export type PracticeMode = "chat" | "debrief";
 
