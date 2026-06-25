@@ -456,11 +456,20 @@ class _PracticeProfileHero extends StatelessWidget {
           GestureDetector(
             key: const ValueKey('practice-profile-hero-photo'),
             onTap: () => showPracticeGirlFullPhoto(context, girl),
-            child: PracticeGirlPhoto(
-              profile: girl,
-              width: 232,
-              height: 290,
-              borderRadius: BorderRadius.circular(22),
+            child: Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                PracticeGirlPhoto(
+                  profile: girl,
+                  width: 232,
+                  height: 290,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                const Positioned(
+                  bottom: 10,
+                  child: PracticeGirlPhotoExpandHint(),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),

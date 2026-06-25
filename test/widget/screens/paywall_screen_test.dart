@@ -79,6 +79,20 @@ void main() {
       expect(find.text('800 則'), findsOneWidget);
     });
 
+    testWidgets('comparison table includes practice girl and model copy',
+        (tester) async {
+      await pumpPaywall(tester);
+
+      expect(find.text('AI 陪練女孩'), findsOneWidget);
+      expect(find.text('限量'), findsOneWidget);
+      expect(find.text('開放'), findsNWidgets(2));
+      expect(find.text('AI 模型'), findsOneWidget);
+      expect(find.text('經濟型'), findsOneWidget);
+      expect(find.text('高階型'), findsNWidgets(2));
+      expect(find.textContaining('Haiku'), findsNothing);
+      expect(find.textContaining('Sonnet'), findsNothing);
+    });
+
     testWidgets('shows four product options while prices are syncing',
         (tester) async {
       await pumpPaywall(tester);

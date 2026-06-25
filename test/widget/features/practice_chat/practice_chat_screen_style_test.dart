@@ -662,16 +662,26 @@ void main() {
       ),
     );
 
+    expect(find.text('點照片看全圖'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('practice-profile-hero-photo')));
     await tester.pumpAndSettle();
 
     final fullPhoto =
         find.byKey(const ValueKey('practice-girl-full-photo-viewer'));
     expect(fullPhoto, findsOneWidget);
+    expect(find.text('點一下關閉'), findsOneWidget);
     final image = tester.widget<Image>(
       find.descendant(of: fullPhoto, matching: find.byType(Image)).first,
     );
     expect((image.image as AssetImage).assetName, girl.photoAssetPath);
     expect(image.fit, BoxFit.contain);
+
+    await tester.tap(fullPhoto);
+    await tester.pumpAndSettle();
+
+    expect(fullPhoto, findsNothing);
+    expect(find.byKey(const ValueKey('practice-profile-hero-photo')),
+        findsOneWidget);
   });
 }

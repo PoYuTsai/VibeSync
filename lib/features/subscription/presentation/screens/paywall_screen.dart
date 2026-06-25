@@ -69,7 +69,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterMonthlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '五種風格全開 + Sonnet AI',
+          '五種風格全開 + 高階型 AI',
           '雷達圖五維度剖析',
         ],
       ),
@@ -84,7 +84,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterQuarterlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '五種風格全開 + Sonnet AI',
+          '五種風格全開 + 高階型 AI',
           '雷達圖五維度剖析',
         ],
       ),
@@ -99,7 +99,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialMonthlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '五種風格全開 + Sonnet AI',
+          '五種風格全開 + 高階型 AI',
           '雷達圖 + 對話健檢 + 訊息優化',
         ],
       ),
@@ -114,7 +114,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialQuarterlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '五種風格全開 + Sonnet AI',
+          '五種風格全開 + 高階型 AI',
           '雷達圖 + 對話健檢 + 訊息優化',
         ],
       ),
@@ -528,7 +528,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           _buildComparisonHeader(),
           _buildComparisonRow('適合誰', '先試手感', '穩定練習', '深度打磨'),
           _buildComparisonRow('回覆風格', '延展', '全部 5 種', '全部 5 種'),
-          _buildComparisonRow('AI 模型', 'Haiku', 'Sonnet', 'Sonnet'),
+          _buildComparisonRow('AI 陪練女孩', '限量', '開放', '開放'),
+          _buildComparisonRow('AI 模型', '經濟型', '高階型', '高階型'),
           _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
           _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
           _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),

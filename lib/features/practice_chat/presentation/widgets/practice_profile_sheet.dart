@@ -45,11 +45,20 @@ class _PracticeProfileSheet extends StatelessWidget {
               GestureDetector(
                 key: const ValueKey('practice-profile-sheet-photo'),
                 onTap: () => showPracticeGirlFullPhoto(context, girl),
-                child: PracticeGirlPhoto(
-                  profile: girl,
-                  width: 248,
-                  height: 310,
-                  borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    PracticeGirlPhoto(
+                      profile: girl,
+                      width: 248,
+                      height: 310,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    const Positioned(
+                      bottom: 10,
+                      child: PracticeGirlPhotoExpandHint(),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),

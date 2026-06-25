@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 
@@ -59,6 +60,38 @@ class PracticeGirlPhoto extends StatelessWidget {
   }
 }
 
+class PracticeGirlPhotoExpandHint extends StatelessWidget {
+  const PracticeGirlPhotoExpandHint({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.open_in_full, size: 14, color: Colors.white),
+            const SizedBox(width: 5),
+            Text(
+              '點照片看全圖',
+              style: AppTypography.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> showPracticeGirlFullPhoto(
   BuildContext context,
   PracticeGirlProfile profile,
@@ -77,39 +110,72 @@ class _PracticeGirlFullPhotoViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog.fullscreen(
+    return GestureDetector(
       key: const ValueKey('practice-girl-full-photo-viewer'),
-      backgroundColor: Colors.black,
-      child: SafeArea(
-        child: Stack(
-          children: [
-            Center(
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 3,
-                child: Image.asset(
-                  profile.photoAssetPath,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.medium,
-                  errorBuilder: (context, error, stack) => _PhotoFallback(
-                    profile: profile,
-                    width: 220,
-                    height: 220,
-                    fontSize: 72,
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(),
+      child: Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 3,
+                  child: Image.asset(
+                    profile.photoAssetPath,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                    errorBuilder: (context, error, stack) => _PhotoFallback(
+                      profile: profile,
+                      width: 220,
+                      height: 220,
+                      fontSize: 72,
+                    ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: IconButton(
-                tooltip: '關閉',
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 18,
+                child: Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.brandInk.withValues(alpha: 0.62),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        '點一下關閉',
+                        style: AppTypography.caption.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ],
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  tooltip: '關閉',
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
