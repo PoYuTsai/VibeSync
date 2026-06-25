@@ -16,6 +16,8 @@ Eric 與夥伴的新方向：
 - 只有使用者在輪與輪之間明確換人或改難度，下一輪才改變對象感。
 - 換一位時，除了 persona 變化，也要有女生英文名，增加「真的換對象」的感覺。
 - Debrief 要加入「約出來機會」與下一步邀約建議。
+- Paywall 要把陪練女孩變成清楚的升級點：Free 是限量體驗，Starter/Essential 開放續玩。
+- Free 可以在 quota 內開新的陪練女孩，但不能續第 2 輪同一位女生。
 
 ## Product Goal
 
@@ -43,6 +45,18 @@ Eric 與夥伴的新方向：
 - DeepSeek 失敗不扣。
 - 一輪內重送或續聊不重複扣。
 - 到 20 則後，使用者可以看拆解或續玩下一輪。
+
+### Plan Access Rules
+
+Free 的限制不是封鎖 AI 陪練入口，而是限制「同一位女生的長線推進」：
+
+- Free 可以在 quota 內開新的 AI 陪練女孩。
+- Free 可以完成第一輪 20 則。
+- Free 中途離開再回來，可以繼續同一輪，只要還沒滿 20 則。
+- Free 跑滿 20 則後，不能續第 2 輪同一位女生。
+- Starter/Essential 可以續玩下一輪，同一位女生、同一難度、同一段互動脈絡，再扣 1 則額度。
+
+這個設計讓 Free 使用者能感受到核心價值，但把「繼續推進到約出來」放在付費方案。
 
 ### Continue Play
 
@@ -158,9 +172,45 @@ MVP 不需要無限玩。建議先限制最多 3 輪：
 
 若 quota 不足，點 `續玩 20 則` 顯示既有 quota/paywall path，不丟失聊天。
 
+Free 使用者跑滿第一輪後：
+
+```text
+升級續玩 20 則
+```
+
+次按鈕仍保留：
+
+```text
+看教練拆解
+```
+
+Free 若要繼續用陪練，可以回到入口開新的陪練女孩；不能在同一位女生上直接進第 2 輪。
+
 ### Debrief
 
 Debrief 可在任一輪後手動進入，也可在最後一輪滿後進入。Debrief 分析整個 visible thread，不只最後一輪。
+
+## Paywall Copy
+
+方案功能比較表新增一列，建議放在 `AI 模型` 上方：
+
+```text
+AI 陪練女孩 | 限量 | 開放 | 開放
+```
+
+`AI 模型` row 改成不露出模型品牌名：
+
+```text
+AI 模型 | 經濟型 | 高階型 | 高階型
+```
+
+方案卡片內所有 `Sonnet AI` 文案也要一起改，避免比較表已抽象化但卡片仍露出模型名。建議：
+
+```text
+五種風格全開 + 高階 AI
+```
+
+`AI 陪練女孩：限量` 的精確意思是：Free 可體驗第一輪與開新陪練女孩，但不能續第 2 輪同一位女生。
 
 ## English Name Model
 
@@ -262,6 +312,23 @@ Chat / debrief request 加：
 
 Chat request 的 `sessionId` 使用 current billing session id，不是 visible thread id。Debrief 若沿用現有 server gate，需要用已扣費且有 AI 的 billing session id；但 debrief prompt 的 transcript 仍傳整個 visible thread。
 
+Chat request 建議再加：
+
+```json
+{
+  "visiblePracticeThreadId": "local-thread-id",
+  "roundIndex": 1
+}
+```
+
+用途：
+
+- Flutter 用 `roundIndex` 判斷 CTA：Free 第 1 輪可用，第 2 輪導向升級。
+- Edge 可在 `roundIndex > 1` 且目前 subscription tier 是 Free 時回 `upgrade_required`，避免 app 端 UI 以外完全沒有後端保護。
+- 舊 client missing `roundIndex` 時 fallback `1`。
+
+MVP 不做強反作弊。若未來要嚴格防止惡意 client 偽造 `roundIndex` 或換 thread 逃避限制，需要新增 server-side thread ledger 或 DB migration，這不在本輪 scope。
+
 ## Cost And Quota
 
 目前 practice 一輪仍視為 Coach 額度 1 則。
@@ -270,6 +337,7 @@ Chat request 的 `sessionId` 使用 current billing session id，不是 visible 
 
 - 開始前：首次 AI 回覆成功才扣 1 則。
 - 續玩前：續玩會再扣 1 則，給 20 則。
+- Free 跑滿第一輪：不能續同一位，CTA 導向升級。
 - quota 不足：不新增 billing session、不清聊天、不改 local state。
 
 Failure invariants：
@@ -279,6 +347,7 @@ Failure invariants：
 - 續玩成功後才進入下一輪可輸入狀態。
 - 不能讓使用者用 client 少報 turns 繞過 20 則。
 - 不能讓使用者用同一 billing session 重複取得多輪 20 則。
+- 不能讓 Free 使用者在正常 app flow 直接續第 2 輪同一位女生。
 
 ## Implementation Shape
 
@@ -286,6 +355,8 @@ Failure invariants：
 
 - `MAX_AI_REPLIES` 從 10 改 20。
 - `validate.ts` accept optional `nameId`。
+- `validate.ts` accept optional `roundIndex` / `visiblePracticeThreadId`。
+- Free + `roundIndex > 1` return `upgrade_required` before DeepSeek call and before quota charge.
 - 新增/擴充 profile allowlist：name catalog + persona + difficulty。
 - Prompt 帶入 display name 與 date-goal behavior。
 - Debrief JSON schema 增加 date chance fields。
@@ -298,6 +369,9 @@ Failure invariants：
 - `換一位` 同時換 name/persona，難度不變。
 - state/Hive 持久化 name 與 round fields。
 - 到 20 則後顯示續玩/拆解，而不是直接只剩拆解。
+- 讀取 subscription tier：Free 顯示 `升級續玩 20 則`，Starter/Essential 顯示 `續玩 20 則（扣 1 則）`。
+- Free 點升級 CTA 進 paywall；Starter/Essential 才呼叫 `continuePracticeRound()`。
+- Paywall 比較表新增 `AI 陪練女孩` row，並把模型文案抽象化成經濟型/高階型。
 - `continuePracticeRound()`：
   - quota preflight 仍由 Edge 實際決定。
   - client 先建立新 currentBillingSessionId。
@@ -326,12 +400,16 @@ Flutter:
 - 換一位 changes name and persona, keeps difficulty.
 - 20 replies reaches roundComplete.
 - roundComplete shows `續玩 20 則` and `看教練拆解`。
+- Free roundComplete shows `升級續玩 20 則` and opens paywall instead of continuing same girl.
+- Starter/Essential roundComplete can continue same girl and sends `roundIndex: 2`.
 - direct continue starts next billingSessionId, resets round count, keeps same name/persona/difficulty.
 - changing difficulty before continue affects only the next round and keeps the same name/persona.
 - changing persona before continue starts a new visible thread or otherwise prevents previous girl's transcript from being treated as the new girl's memory.
 - quota failure on continue does not clear messages.
 - debrief includes full visible transcript.
 - old Hive sessions fallback safely.
+- paywall comparison includes `AI 陪練女孩 | 限量 | 開放 | 開放`.
+- paywall model row uses `經濟型 / 高階型 / 高階型`, no Haiku/Sonnet public copy.
 
 ## Rollout
 
