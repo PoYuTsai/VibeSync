@@ -13,6 +13,9 @@ import '../services/practice_chat_api_service.dart';
 /// 一場練習最多 20 則 AI 回覆（與伺服器 MAX_AI_REPLIES 同步）。
 const int kMaxPracticeAiReplies = 20;
 
+/// 同一位對象最多 3 輪（與伺服器 MAX_PRACTICE_ROUNDS 同步）；到頂不再顯示續玩。
+const int kMaxPracticeRounds = 3;
+
 const _sentinel = Object();
 
 class PracticeChatState {
@@ -233,6 +236,39 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   void resumeSession(PracticeSession session) {
     state = _stateFromSession(session);
+  }
+
+  /// 續玩「同一位」：開新 billing session（server ledger 歸零＝新一輪會重扣 1 則），
+  /// roundIndex+1（封頂 [kMaxPracticeRounds]），threadId 不變、訊息／角色／難度保留，
+  /// 清掉拆解與完成旗標讓使用者能再聊。不在此持久化——新一輪首則成功才落地，避免
+  /// 留下 0 回覆的幽靈紀錄。
+  ///
+  /// [isPaid] 由 UI 依訂閱層級帶入：Free 續同一位需升級，只觸發付費牆、**不**動
+  /// transcript／session／計數、**不**扣費（與 server roundIndex>1 的 402 閘同義，但
+  /// 提早在 client 擋住以免白白清掉畫面）。
+  void continueWithSamePartner({required bool isPaid}) {
+    if (!isPaid) {
+      state = state.copyWith(
+        upgradeRequired: true,
+        errorMessage: '想和同一位繼續練習，升級後就能解鎖。',
+      );
+      return;
+    }
+    // 已達輪數上限：no-op（UI 此時不顯示續玩，改引導換一位）。
+    if (state.roundIndex >= kMaxPracticeRounds) return;
+    state = PracticeChatState(
+      sessionId: const Uuid().v4(),
+      createdAt: DateTime.now(),
+      personaId: state.personaId,
+      personaLabel: state.personaLabel,
+      difficulty: state.difficulty,
+      difficultyLabel: state.difficultyLabel,
+      difficultyPreference: state.difficultyPreference,
+      messages: state.messages,
+      aiReplyCount: 0,
+      roundIndex: state.roundIndex + 1,
+      visiblePracticeThreadId: state.visiblePracticeThreadId,
+    );
   }
 
   /// 送出一則使用者訊息並取得 AI（模擬對象）回覆。

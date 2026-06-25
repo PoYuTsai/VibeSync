@@ -458,4 +458,108 @@ void main() {
       expect(api.lastDebriefThreadId, 'thread-x');
     });
   });
+
+  // ── 續玩同一位（continueWithSamePartner）──────────────────────────────
+  group('續玩同一位', () {
+    PracticeSession round1Done() => PracticeSession(
+          id: 'round1',
+          createdAt: DateTime(2026, 6, 24, 9),
+          aiReplyCount: 3,
+          messages: const [
+            PracticeMessage(role: 'user', text: '嗨'),
+            PracticeMessage(role: 'ai', text: '嗯？'),
+          ],
+          roundIndex: 1,
+          visiblePracticeThreadId: 'round1',
+          debriefSummary: '不錯',
+          debriefStrengths: const ['開場好'],
+          debriefSuggestedLine: '約她',
+          debriefVibe: '暖',
+        );
+
+    test('付費續玩：新 sessionId、roundIndex+1、threadId 不變、訊息保留、aiReplyCount 歸 0', () {
+      final c = makeControllerFrom(round1Done());
+      final oldSessionId = c.currentState.sessionId;
+      final persona = c.currentState.personaId;
+      final difficulty = c.currentState.difficulty;
+
+      c.continueWithSamePartner(isPaid: true);
+      final s = c.currentState;
+
+      expect(s.sessionId, isNot(oldSessionId));
+      expect(s.sessionId, isNotEmpty);
+      expect(s.roundIndex, 2);
+      expect(s.visiblePracticeThreadId, 'round1');
+      expect(s.messages.map((m) => m.text).toList(), ['嗨', '嗯？']);
+      expect(s.aiReplyCount, 0);
+      expect(s.personaId, persona);
+      expect(s.difficulty, difficulty);
+    });
+
+    test('付費續玩：清掉 debrief/ended/sessionComplete，可再聊', () {
+      final c = makeControllerFrom(round1Done());
+      expect(c.currentState.debrief, isNotNull);
+      expect(c.currentState.canSend, false);
+
+      c.continueWithSamePartner(isPaid: true);
+      final s = c.currentState;
+
+      expect(s.debrief, isNull);
+      expect(s.ended, false);
+      expect(s.sessionComplete, false);
+      expect(s.canSend, true);
+    });
+
+    test('Free 續玩：只設 upgradeRequired，不動 sessionId/messages/roundIndex/aiReplyCount', () {
+      final c = makeControllerFrom(round1Done());
+      final before = c.currentState;
+
+      c.continueWithSamePartner(isPaid: false);
+      final s = c.currentState;
+
+      expect(s.upgradeRequired, true);
+      expect(s.errorMessage, isNotNull);
+      expect(s.quotaExceeded, false); // 與額度用罄是不同訊號
+      expect(s.sessionId, before.sessionId);
+      expect(s.roundIndex, before.roundIndex);
+      expect(s.aiReplyCount, before.aiReplyCount);
+      expect(s.messages, before.messages); // 不清 transcript
+      expect(s.debrief, isNotNull); // 仍是已拆解狀態
+    });
+
+    test('roundIndex 已達上限 3：付費續玩為 no-op（不開新 session、不 +1）', () {
+      final c = makeControllerFrom(PracticeSession(
+        id: 'round3',
+        createdAt: DateTime(2026, 6, 24, 9),
+        aiReplyCount: 5,
+        messages: const [PracticeMessage(role: 'user', text: '嗨')],
+        roundIndex: 3,
+        visiblePracticeThreadId: 'thread-orig',
+        debriefSummary: '結束',
+      ));
+      final before = c.currentState;
+
+      c.continueWithSamePartner(isPaid: true);
+      final s = c.currentState;
+
+      expect(s.sessionId, before.sessionId);
+      expect(s.roundIndex, 3);
+    });
+
+    test('付費續玩後送訊息：API 收到 roundIndex+1 與原 threadId，並持久化到新 sessionId', () async {
+      final r1 = round1Done();
+      await repo.save(r1); // 模擬第一輪已落地歷史
+      final c = makeControllerFrom(r1);
+      c.continueWithSamePartner(isPaid: true);
+      final newSessionId = c.currentState.sessionId;
+
+      api.sendHandler = (_, {profile}) async => reply(); // cost 1 = 新一輪重扣
+      await c.sendMessage('我們再聊聊');
+
+      expect(api.lastRoundIndex, 2);
+      expect(api.lastVisibleThreadId, 'round1');
+      expect(repo.getById(newSessionId), isNotNull);
+      expect(repo.getById('round1'), isNotNull); // 開新 sessionId，不覆蓋舊一輪
+    });
+  });
 }
