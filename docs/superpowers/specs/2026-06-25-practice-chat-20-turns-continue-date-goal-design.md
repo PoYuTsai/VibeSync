@@ -498,6 +498,39 @@ Prompt 要加入「有機會約出來」的真實反應規則：
 - easy 模式下，AI 可以多給一點機會，但仍不能接受冒犯、硬約或明顯油膩的互動。
 - normal 模式下，AI 要維持最接近一般交友軟體真人的反應，不主動替使用者把無聊對話變有趣。
 
+### Signal And Misread Model
+
+真實互動裡，女生常用委婉、試探、混合訊號來篩選對方。這不等於惡意，也不等於每個訊號都是邀約綠燈。練習室要讓使用者學會讀懂窗口背後的淺溝通，而不是把每個友善回覆都當成成功。
+
+AI 可自然丟出的 signal 類型：
+
+- `主動窗口`：主動開話題、問使用者狀態、延伸前一個話題。
+- `報備行程`：提到晚上要看表演、回家、跟朋友吃飯、找實習、排班等，提供用戶下切話題的入口。
+- `脆弱性暴露`：提到累、壓力、實習/工作不順、最近有點煩，測試對方是否能看到她的情緒。
+- `語氣試探`：使用嘿嘿、呀、嘛、貼圖、半開玩笑、反問，讓對方有機會接住但不明講。
+- `混合訊號`：嘴上吐槽、冷一點、說很忙，但仍回覆或補充生活細節；這可能是防衛、篩選、測試，也可能只是禮貌。
+- `假窗口`：表面有回覆，但其實沒有投入，例如只回應禮貌句、沒有新資訊、回覆變短或不接用戶邀約。
+
+使用者需要練的不是立刻邀約，而是識別窗口後做 `內容下切` 與 `關係連結`：
+
+- 內容下切：對方提到脫口秀，就問她看哪種、喜歡誰、現場好不好笑；對方提到回家，就聊家鄉、美食、通勤、家人。
+- 關係連結：對方提到找實習辛苦，要短暫但真實地接住壓力，而不是只問哪天有空。
+- 在場感：讓對方感覺使用者真的進入她的生活情境，而不是只把聊天當成邀約任務。
+
+AI 對錯誤讀訊號的反應：
+
+- 如果使用者把任何友善回覆都當成可約，AI 要保留、轉移、吐槽或拒絕。
+- 如果使用者只停留在事實回覆，例如「好玩的愉快」「辛苦了」但不下切，AI 可以降溫或不再補話題。
+- 如果使用者為了達成邀約而忽略她的壓力、行程或興趣，AI 要覺得被工具化。
+- 如果使用者進入冷模、攻擊性、控制性，例如冷處理威脅、酸言酸語、逼問、情緒勒索、催回覆，AI 要明顯防衛或結束互動。
+- 如果使用者能讀到委婉訊號、接住脆弱性、延伸生活細節，再提出具體低壓邀約，AI 才逐步升溫。
+
+Prompt 寫法上，不要把這些變成教練旁白。AI 只需要像真人一樣反應：
+
+- 好的接球會讓她多分享。
+- 壞的接球會讓她變短、冷、轉移、拒絕或吐槽。
+- 有些訊號是讓使用者判斷的，不要每次都明示答案。
+
 ### Debrief Evaluation
 
 Debrief 要新增：
@@ -523,6 +556,8 @@ Debrief 要新增：
 - 高：女生明顯接梗、願意延伸、接受具體場景或釋出時間/興趣訊號。
 - 中：聊天有舒適感，但邀約鋪墊不足，或女生還在觀察。
 - 低：冷、敷衍、查戶口感、太急、太油、沒有共同場景。
+- 若使用者錯讀假窗口、忽略脆弱性、只顧邀約、或表現出冷模/攻擊性/控制性，debrief 要明確指出。
+- Debrief 要指出使用者有沒有做到內容下切、關係連結與在場感。
 
 重要：高手第一輪可以高；中手第一輪中、第二輪高；新手可能低。模型必須看逐字稿，不用固定輪數推斷。
 
@@ -544,6 +579,8 @@ Debrief 要新增：
 - `interestTags`
 - `lifestyleTags`
 - `selfIntro`
+- `signalStyle`
+- `signalExamples`
 - `professionId`
 - `professionLabel`
 - `photoId`
@@ -629,9 +666,11 @@ Failure invariants：
 - Prompt 帶入 stable profile summary：display name、age、city、profession、interests、lifestyle、selfIntro、persona、difficulty 與 date-goal behavior。
 - Prompt 帶入 reaction model：likes/dislikes/warmsWhen/coolsWhen/inviteThreshold。
 - Prompt 帶入 difficulty standards，並明確禁止「使用者說什麼都附和」。
+- Prompt 帶入 signal model：主動窗口、報備行程、脆弱性暴露、語氣試探、混合訊號、假窗口。
+- Prompt 明確要求 AI 不要把所有 signal 都變成正向；有些訊號只是禮貌、防衛、篩選或測試。
 - Prompt 不需要也不應描述 photo 外觀；照片只是 UI identity，不是聊天內容來源。
 - Chat prompt 要讓 AI 對自己的身份有穩定認知；被問到職業、興趣、生活時要依 profile 回答。
-- Debrief prompt 要收到同一份 profile，用來判斷使用者是否有接住對方生活素材。
+- Debrief prompt 要收到同一份 profile 和 signal model，用來判斷使用者是否有接住對方生活素材、窗口、脆弱性與淺溝通。
 - Debrief JSON schema 增加 date chance fields。
 - Existing old clients fallback `default profile + slow_worker + normal`。
 
@@ -673,10 +712,12 @@ Edge:
 - prompt contains profession context but not real company names or photo appearance claims.
 - prompt contains interests/lifestyle context and the AI answers identity questions consistently.
 - prompt contains reaction model and difficulty standards.
+- prompt contains signal/misread model without explaining it to the user in-character.
 - challenge prompt explicitly allows cold replies, refusal, topic shifts, pushback, and not rescuing boring chats.
 - easy prompt still rejects offensive/too-fast/pressure-heavy messages.
 - random difficulty resolves to one concrete difficulty and stays stable for the session.
-- debrief receives the same profile context as chat.
+- debrief receives the same profile/signal context as chat.
+- debrief can flag: missed down-cutting, missed vulnerability, goal-fixated invite, false-window misread, cold/aggressive/controlling user behavior.
 - debrief schema parses dateChance/dateChanceReason/nextInviteMove.
 
 Flutter:
