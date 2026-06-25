@@ -733,7 +733,9 @@ class _DebriefActionsBar extends StatelessWidget {
         children: [
           if (canContinue) ...[
             BrandPrimaryButton(
-              label: '和${state.personaLabel}續聊一輪',
+              // 目前 client 只有 persona 型別標籤、無女孩名字（name batch 未接），
+              // 用「續聊同一位」避免「和慢熱上班族續聊」這種怪句；name 接上再改。
+              label: '續聊同一位',
               onPressed: onContinueSamePartner,
             ),
             const SizedBox(height: 6),

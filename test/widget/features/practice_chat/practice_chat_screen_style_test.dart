@@ -337,7 +337,7 @@ void main() {
     );
     await pumpDebrief(tester, controller: controller);
 
-    expect(find.text('和慢熱上班族續聊一輪'), findsOneWidget);
+    expect(find.text('續聊同一位'), findsOneWidget);
     expect(find.textContaining('再扣 1 則'), findsOneWidget);
     expect(find.text('換一位'), findsOneWidget);
     expect(find.text('完成'), findsOneWidget);
@@ -350,7 +350,7 @@ void main() {
     );
     await pumpDebrief(tester, controller: controller);
 
-    expect(find.textContaining('續聊一輪'), findsNothing);
+    expect(find.text('續聊同一位'), findsNothing);
     expect(find.textContaining('再扣 1 則'), findsNothing);
     expect(find.text('換一位'), findsOneWidget);
     expect(find.text('完成'), findsOneWidget);
@@ -367,7 +367,7 @@ void main() {
       subscription: const SubscriptionState(tier: SubscriptionTierHelper.starter),
     );
 
-    await tester.tap(find.text('和慢熱上班族續聊一輪'));
+    await tester.tap(find.text('續聊同一位'));
     await tester.pump();
 
     final s = controller.currentState;
@@ -389,7 +389,7 @@ void main() {
       subscription: const SubscriptionState(tier: SubscriptionTierHelper.free),
     );
 
-    await tester.tap(find.text('和慢熱上班族續聊一輪'));
+    await tester.tap(find.text('續聊同一位'));
     await tester.pump();
 
     final s = controller.currentState;
