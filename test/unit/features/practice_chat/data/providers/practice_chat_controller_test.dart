@@ -696,5 +696,20 @@ void main() {
       final c = makeControllerFrom(round1Done());
       expect(c.currentState.girl.profileId, 'practice_girl_001');
     });
+
+    test('顯示照片 photoAssetPath 跟著 profileId：續玩/切難度不漂移、換一位才換', () {
+      final c = makeControllerFrom(round1Done());
+      final asset0 = c.currentState.girl.photoAssetPath;
+      expect(asset0, endsWith('${c.currentState.girl.profileId}.jpg'));
+
+      c.continueWithSamePartner(isPaid: true);
+      expect(c.currentState.girl.photoAssetPath, asset0); // 續玩不換照片
+
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+      expect(c.currentState.girl.photoAssetPath, asset0); // 切難度不換照片
+
+      c.startNewPartner();
+      expect(c.currentState.girl.photoAssetPath, isNot(asset0)); // 換一位才換照片
+    });
   });
 }
