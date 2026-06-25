@@ -23,6 +23,12 @@
 
 ## Live Queue
 
+## [2026-06-25] practice-chat 續玩 tier gate — fail-closed 誤降風險（Codex review focus）
+Status: OPEN — Eric 指定 Batch 3/4 review 重點，**先不擴大修**，列為 Codex 審查焦點。
+**疑慮**：`decideContinuationGate`（`supabase/functions/practice-chat/quota_decision.ts`）對 unknown/缺 tier 一律 `normalizeTier→free` 而 **fail-closed**（roundIndex>1 擋下）。全站規則是**付費 tier 不得因 RevenueCat/DB 短暫空值被誤降 Free**。`index.ts` 目前餵給 gate 的是 `sub.tier`，來源為 `subscriptions` 表（DB 權威讀取，非即時 RevenueCat）。
+**Review 要確認**：`sub.tier` 是否可能在正常路徑出現 transient/missing（webhook 尚未回填、reset race 等），導致付費用戶續玩被誤擋 402。若可能 transient → Batch 4/Review 要改成「只有確定 free 才擋」或加 grace，不能讓付費被誤降。
+**證據**：gate 為純函式、未知 tier→free 已有單元測試覆蓋（quota_decision_test.ts「未知/缺 tier」）；但「sub.tier 是否權威」屬資料層問題，需 review subscriptions 寫入路徑。Batch 3 commit `fb238e4`。
+
 ## [2026-06-24] practice-chat server-side session ledger（Codex BLOCKER 修復）
 Status: IN_REVIEW — 修復全部 land local（range `aa702f8..HEAD`，6 commits，**未 push／未部署**）；Codex 兩輪各 1 個 P2 皆已修、無 P0/P1，但**尚未取得最終 APPROVED**（已達 2 輪 Claude-fix 上限）；待 Eric 拍板：直接部署，或要不要最後一輪確認 review。**未宣稱 dogfood-safe。**
 **原 BLOCKER**：practice-chat 完全信任 client 送的 turns 算扣費與 10 則上限，5 漏洞（①偽造首則 ai→整場免費 ②重送 sessionId→重複扣點 ③偽造 turns 狂打 debrief→無限免費 DeepSeek ④少報 ai turns→繞過上限 ⑤塞假 assistant 訊息越獄）。
