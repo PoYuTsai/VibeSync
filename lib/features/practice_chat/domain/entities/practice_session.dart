@@ -59,6 +59,12 @@ class PracticeSession {
   @HiveField(14)
   final int? roundIndex;
 
+  /// 本場對象在 60 位 catalog 的 profileId（practice_girl_NNN）。display/persona
+  /// 等其餘欄位由 client catalog 依此 id 解析，故只持久化這一個 id。舊場為 null
+  /// → 消費端兜底成預設對象。
+  @HiveField(15)
+  final String? profileId;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -75,6 +81,7 @@ class PracticeSession {
     this.difficultyLabel,
     this.visiblePracticeThreadId,
     this.roundIndex,
+    this.profileId,
   });
 
   bool get hasDebrief => debriefSummary != null;
@@ -93,6 +100,7 @@ class PracticeSession {
     String? difficultyLabel,
     String? visiblePracticeThreadId,
     int? roundIndex,
+    String? profileId,
   }) {
     return PracticeSession(
       id: id,
@@ -111,6 +119,7 @@ class PracticeSession {
       visiblePracticeThreadId:
           visiblePracticeThreadId ?? this.visiblePracticeThreadId,
       roundIndex: roundIndex ?? this.roundIndex,
+      profileId: profileId ?? this.profileId,
     );
   }
 }

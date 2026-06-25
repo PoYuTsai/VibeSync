@@ -1,5 +1,10 @@
 import 'dart:math';
 
+import 'practice_girl_catalog.dart';
+import 'practice_girl_profile.dart';
+
+export 'practice_girl_profile.dart';
+
 /// 練習室難度的「使用者偏好」。`random` 只是進場前的選擇，
 /// 一旦開場就會被解析成 easy / normal / challenge 其中之一。
 enum PracticeDifficultyPreference { easy, normal, challenge, random }
@@ -16,19 +21,43 @@ class PracticePersona {
   final String label;
 }
 
-/// 本場已解析的角色＋難度（送出與持久化都用這組）。
+/// 本場已解析的「對象＋難度」（送出與持久化都用這組）。
+/// persona 綁定 [girl]（與 server resolvePracticeProfile 帶 profileId 時一致）。
 class PracticeProfile {
   const PracticeProfile({
+    required this.girl,
     required this.personaId,
     required this.personaLabel,
     required this.difficulty,
     required this.difficultyLabel,
   });
 
+  final PracticeGirlProfile girl;
   final String personaId;
   final String personaLabel;
   final String difficulty;
   final String difficultyLabel;
+
+  /// 只換難度、保留同一位對象（送出第一則前的難度控制）。
+  PracticeProfile withDifficulty(
+    PracticeDifficultyPreference preference, {
+    Random? random,
+  }) {
+    return _profileFromGirl(
+      girl,
+      _resolveDifficulty(preference, random ?? Random()),
+    );
+  }
+
+  /// 換一位：整包對象換掉、保留目前難度（兩個控制各自獨立）。
+  PracticeProfile withNewGirl({Random? random}) {
+    final rng = random ?? Random();
+    PracticeGirlProfile next;
+    do {
+      next = practiceGirlProfiles[rng.nextInt(practiceGirlProfiles.length)];
+    } while (next.profileId == girl.profileId && practiceGirlProfiles.length > 1);
+    return _profileFromGirl(next, difficulty);
+  }
 }
 
 const practicePersonas = <PracticePersona>[
@@ -58,33 +87,57 @@ String practiceDifficultyLabel(String difficulty) {
   };
 }
 
-/// 產生一場新的 profile：隨機抽角色；難度依偏好（`random` 時才在此抽 3 選 1）。
+const _randomDifficulties = ['easy', 'normal', 'challenge'];
+
+String _resolveDifficulty(PracticeDifficultyPreference preference, Random rng) {
+  return preference == PracticeDifficultyPreference.random
+      ? _randomDifficulties[rng.nextInt(_randomDifficulties.length)]
+      : practiceDifficultyId(preference);
+}
+
+/// personaId → 顯示 label（找不到回預設 persona 的 label）。
+String practicePersonaLabel(String personaId) {
+  return practicePersonas
+      .firstWhere(
+        (p) => p.id == personaId,
+        orElse: () => defaultPracticePersona,
+      )
+      .label;
+}
+
+/// 由一位 girl + 已解析難度組出 PracticeProfile；persona 一律綁定該位。
+PracticeProfile _profileFromGirl(PracticeGirlProfile girl, String difficulty) {
+  return PracticeProfile(
+    girl: girl,
+    personaId: girl.personaId,
+    personaLabel: practicePersonaLabel(girl.personaId),
+    difficulty: difficulty,
+    difficultyLabel: practiceDifficultyLabel(difficulty),
+  );
+}
+
+/// 產生一場新的 profile：從 60 位 catalog 隨機抽一位；難度依偏好
+/// （`random` 時才在此抽 3 選 1）。persona 綁定該位。
 PracticeProfile createPracticeProfile({
   PracticeDifficultyPreference difficultyPreference =
       PracticeDifficultyPreference.normal,
   Random? random,
 }) {
   final rng = random ?? Random();
-  final persona = practicePersonas[rng.nextInt(practicePersonas.length)];
-  const randomDifficulties = ['easy', 'normal', 'challenge'];
-  final difficulty = difficultyPreference == PracticeDifficultyPreference.random
-      ? randomDifficulties[rng.nextInt(randomDifficulties.length)]
-      : practiceDifficultyId(difficultyPreference);
-
-  return PracticeProfile(
-    personaId: persona.id,
-    personaLabel: persona.label,
-    difficulty: difficulty,
-    difficultyLabel: practiceDifficultyLabel(difficulty),
-  );
+  final girl = practiceGirlProfiles[rng.nextInt(practiceGirlProfiles.length)];
+  return _profileFromGirl(girl, _resolveDifficulty(difficultyPreference, rng));
 }
 
-/// 舊 local session 沒有 persona 時的兜底（與 Edge fallback 一致）。
+/// 舊 local session 沒有 profileId 時的兜底（與 Edge DEFAULT_PROFILE_ID 一致）。
 PracticeProfile fallbackPracticeProfile() {
-  return PracticeProfile(
-    personaId: defaultPracticePersona.id,
-    personaLabel: defaultPracticePersona.label,
-    difficulty: 'normal',
-    difficultyLabel: practiceDifficultyLabel('normal'),
-  );
+  return _profileFromGirl(practiceGirlProfiles.first, 'normal');
+}
+
+/// 依 profileId 取回 catalog 中那位；找不到（舊場／未知 id）回 null。
+PracticeGirlProfile? girlProfileById(String? profileId) {
+  if (profileId == null) return null;
+  for (final g in practiceGirlProfiles) {
+    if (g.profileId == profileId) return g;
+  }
+  return null;
 }

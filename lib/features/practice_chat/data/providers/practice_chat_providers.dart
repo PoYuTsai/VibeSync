@@ -33,6 +33,9 @@ class PracticeChatState {
   final bool upgradeRequired; // Free 續同一位被擋（402）：導向付費牆，與額度用罄分開
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
 
+  // ── 本場對象（60-profile）：girl 是 display-only 身份，persona 綁定該位 ──
+  final PracticeGirlProfile girl;
+
   // ── 本場角色＋難度（開場前可改；送出第一則後鎖定）──
   final PracticeDifficultyPreference difficultyPreference;
   final String personaId;
@@ -47,6 +50,7 @@ class PracticeChatState {
   const PracticeChatState({
     required this.sessionId,
     required this.createdAt,
+    required this.girl,
     required this.personaId,
     required this.personaLabel,
     required this.difficulty,
@@ -85,6 +89,7 @@ class PracticeChatState {
     bool? ended,
     bool? quotaExceeded,
     bool? upgradeRequired,
+    PracticeGirlProfile? girl,
     PracticeDifficultyPreference? difficultyPreference,
     String? personaId,
     String? personaLabel,
@@ -99,6 +104,7 @@ class PracticeChatState {
     return PracticeChatState(
       sessionId: sessionId,
       createdAt: createdAt,
+      girl: girl ?? this.girl,
       messages: messages ?? this.messages,
       isSending: isSending ?? this.isSending,
       isDebriefing: isDebriefing ?? this.isDebriefing,
@@ -134,6 +140,7 @@ class PracticeChatState {
   }) {
     return copyWith(
       difficultyPreference: difficultyPreference ?? this.difficultyPreference,
+      girl: profile.girl,
       personaId: profile.personaId,
       personaLabel: profile.personaLabel,
       difficulty: profile.difficulty,
@@ -186,6 +193,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     return PracticeChatState(
       sessionId: resolvedSessionId,
       createdAt: createdAt ?? DateTime.now(),
+      girl: profile.girl,
       personaId: profile.personaId,
       personaLabel: profile.personaLabel,
       difficulty: profile.difficulty,
@@ -205,16 +213,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             vibe: session.debriefVibe ?? '中性',
           )
         : null;
-    // 舊場（personaId == null）兜底成 slow_worker + normal，與 Edge fallback 一致。
-    final fallback = fallbackPracticeProfile();
-    final profile = session.personaId == null
-        ? fallback
-        : PracticeProfile(
-            personaId: session.personaId!,
-            personaLabel: session.personaLabel ?? fallback.personaLabel,
-            difficulty: session.difficulty ?? 'normal',
-            difficultyLabel: session.difficultyLabel ?? '一般',
-          );
+    // 對象身份：依 profileId 從 catalog 解析；舊場（無 profileId）兜底預設位。
+    final girl = girlProfileById(session.profileId) ??
+        fallbackPracticeProfile().girl;
+    // persona 綁定該位（與 Edge 帶 profileId 時一致）；舊場用存的 personaId，缺則用 girl 的。
+    final personaId = session.personaId ?? girl.personaId;
+    final difficulty = session.difficulty ?? 'normal';
     return PracticeChatState(
       sessionId: session.id,
       createdAt: session.createdAt,
@@ -224,10 +228,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           debrief != null || session.aiReplyCount >= kMaxPracticeAiReplies,
       ended: debrief != null,
       debrief: debrief,
-      personaId: profile.personaId,
-      personaLabel: profile.personaLabel,
-      difficulty: profile.difficulty,
-      difficultyLabel: profile.difficultyLabel,
+      girl: girl,
+      personaId: personaId,
+      personaLabel: session.personaLabel ?? practicePersonaLabel(personaId),
+      difficulty: difficulty,
+      difficultyLabel:
+          session.difficultyLabel ?? practiceDifficultyLabel(difficulty),
       // 舊場無欄位：roundIndex 兜底 1、threadId 兜底用 session.id（與 Edge fallback 一致）。
       roundIndex: session.roundIndex ?? 1,
       visiblePracticeThreadId: session.visiblePracticeThreadId ?? session.id,
@@ -259,6 +265,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     state = PracticeChatState(
       sessionId: const Uuid().v4(),
       createdAt: DateTime.now(),
+      girl: state.girl, // 續同一位：身份不漂移
       personaId: state.personaId,
       personaLabel: state.personaLabel,
       difficulty: state.difficulty,
@@ -271,16 +278,25 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
   }
 
+  /// 由目前 state 組出 PracticeProfile（換一位／調難度的衍生用）。
+  PracticeProfile _stateProfile() => PracticeProfile(
+        girl: state.girl,
+        personaId: state.personaId,
+        personaLabel: state.personaLabel,
+        difficulty: state.difficulty,
+        difficultyLabel: state.difficultyLabel,
+      );
+
   /// 換一位：放棄目前 thread，重抽一位全新對象開新一場（roundIndex 歸 1＝Free 也免費）。
   /// 清空訊息與所有旗標，回到「開場前」可調角色／難度的狀態；首則成功才落地持久化。
   void startNewPartner() {
     final sessionId = const Uuid().v4();
-    final profile = createPracticeProfile(
-      difficultyPreference: state.difficultyPreference,
-    );
+    // 換一位：保證換成不同的一位，保留目前難度（與開場前換一位語意一致）。
+    final profile = _stateProfile().withNewGirl();
     state = PracticeChatState(
       sessionId: sessionId,
       createdAt: DateTime.now(),
+      girl: profile.girl,
       personaId: profile.personaId,
       personaLabel: profile.personaLabel,
       difficulty: profile.difficulty,
@@ -313,10 +329,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     try {
       final reply = await _api.sendMessage(
         sessionId: state.sessionId,
-        profile: PracticeProfileDto(
-          personaId: state.personaId,
-          difficulty: state.difficulty,
-        ),
+        profile: _profileDto(),
         turns: optimistic
             .map((m) => PracticeTurnDto(role: m.role, text: m.text))
             .toList(),
@@ -389,10 +402,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     try {
       final debrief = await _api.requestDebrief(
         sessionId: state.sessionId,
-        profile: PracticeProfileDto(
-          personaId: state.personaId,
-          difficulty: state.difficulty,
-        ),
+        profile: _profileDto(),
         turns: state.messages
             .map((m) => PracticeTurnDto(role: m.role, text: m.text))
             .toList(),
@@ -428,8 +438,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 送出第一則後鎖定（messages 非空即 no-op）。
   void regeneratePersona() {
     if (state.messages.isNotEmpty) return;
-    final profile = createPracticeProfile();
+    // 換一位：整包對象換成不同的一位，難度維持目前已解析的值。
+    final profile = _stateProfile().withNewGirl();
     state = state.copyWith(
+      girl: profile.girl,
       personaId: profile.personaId,
       personaLabel: profile.personaLabel,
     );
@@ -439,13 +451,24 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// `隨機` 會立刻解析成 easy/normal/challenge 其一。送出第一則後鎖定。
   void setDifficultyPreference(PracticeDifficultyPreference preference) {
     if (state.messages.isNotEmpty) return;
-    final resolved = createPracticeProfile(difficultyPreference: preference);
+    // 只換難度、保留目前這位對象（不重抽 girl）。
+    final resolved = _stateProfile().withDifficulty(preference);
     state = state.copyWith(
       difficultyPreference: preference,
       difficulty: resolved.difficulty,
       difficultyLabel: resolved.difficultyLabel,
     );
   }
+
+  /// 本場送往 Edge 的對象 metadata：只送 allowlisted id（含 60-profile 身份）。
+  PracticeProfileDto _profileDto() => PracticeProfileDto(
+        personaId: state.personaId,
+        difficulty: state.difficulty,
+        profileId: state.girl.profileId,
+        nameId: state.girl.nameId,
+        professionId: state.girl.professionId,
+        photoId: state.girl.photoId,
+      );
 
   Future<void> _persist() async {
     final s = state;
@@ -465,6 +488,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       difficultyLabel: s.difficultyLabel,
       visiblePracticeThreadId: s.visiblePracticeThreadId,
       roundIndex: s.roundIndex,
+      profileId: s.girl.profileId,
     ));
   }
 }

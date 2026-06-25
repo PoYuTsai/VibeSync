@@ -219,6 +219,41 @@ void main() {
       expect(captured.body?['personaId'], 'cool_rational');
       expect(captured.body?['difficulty'], 'normal');
     });
+
+    test('帶身份時 body 含 profileId/nameId/professionId/photoId', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: const PracticeProfileDto(
+          personaId: 'slow_worker',
+          difficulty: 'normal',
+          profileId: 'practice_girl_001',
+          nameId: 'alice',
+          professionId: 'flight_attendant',
+          photoId: 'practice_girl_001',
+        ),
+        turns: turns,
+      );
+
+      expect(captured.body?['profileId'], 'practice_girl_001');
+      expect(captured.body?['nameId'], 'alice');
+      expect(captured.body?['professionId'], 'flight_attendant');
+      expect(captured.body?['photoId'], 'practice_girl_001');
+    });
+
+    test('未帶身份（舊路徑）→ body 不含 profileId 等鍵', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(sessionId: 's', profile: profile, turns: turns);
+
+      expect(captured.body?.containsKey('profileId'), false);
+      expect(captured.body?.containsKey('nameId'), false);
+      expect(captured.body?.containsKey('professionId'), false);
+      expect(captured.body?.containsKey('photoId'), false);
+    });
   });
 
   group('continuation metadata (roundIndex / visiblePracticeThreadId)', () {

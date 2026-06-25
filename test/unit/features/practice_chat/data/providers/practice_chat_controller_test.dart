@@ -120,6 +120,23 @@ void main() {
         dailyRemaining: daily,
       );
 
+  // 第一輪已完成並拆解的場次（多個 group 共用）。
+  PracticeSession round1Done() => PracticeSession(
+        id: 'round1',
+        createdAt: DateTime(2026, 6, 24, 9),
+        aiReplyCount: 3,
+        messages: const [
+          PracticeMessage(role: 'user', text: '嗨'),
+          PracticeMessage(role: 'ai', text: '嗯？'),
+        ],
+        roundIndex: 1,
+        visiblePracticeThreadId: 'round1',
+        debriefSummary: '不錯',
+        debriefStrengths: const ['開場好'],
+        debriefSuggestedLine: '約她',
+        debriefVibe: '暖',
+      );
+
   test('送訊息成功：附上 user+ai 泡泡、更新計數、扣點同步、持久化', () async {
     api.sendHandler = (_, {profile}) async => reply();
     final c = makeController();
@@ -461,21 +478,6 @@ void main() {
 
   // ── 續玩同一位（continueWithSamePartner）──────────────────────────────
   group('續玩同一位', () {
-    PracticeSession round1Done() => PracticeSession(
-          id: 'round1',
-          createdAt: DateTime(2026, 6, 24, 9),
-          aiReplyCount: 3,
-          messages: const [
-            PracticeMessage(role: 'user', text: '嗨'),
-            PracticeMessage(role: 'ai', text: '嗯？'),
-          ],
-          roundIndex: 1,
-          visiblePracticeThreadId: 'round1',
-          debriefSummary: '不錯',
-          debriefStrengths: const ['開場好'],
-          debriefSuggestedLine: '約她',
-          debriefVibe: '暖',
-        );
 
     test('付費續玩：新 sessionId、roundIndex+1、threadId 不變、訊息保留、aiReplyCount 歸 0', () {
       final c = makeControllerFrom(round1Done());
@@ -619,6 +621,80 @@ void main() {
       expect(s.sessionComplete, false);
       expect(s.upgradeRequired, false);
       expect(s.canSend, true);
+    });
+  });
+
+  // ── 60-profile 身份接線 ───────────────────────────────────────────────
+  group('60-profile 身份接線', () {
+    test('新場次帶 girl，DTO 與持久化都送 profileId/nameId/professionId/photoId',
+        () async {
+      final c = makeController();
+      final girl = c.currentState.girl;
+      expect(girl.profileId, isNotEmpty);
+
+      PracticeProfileDto? sent;
+      api.sendHandler = (turns, {profile}) async {
+        sent = profile;
+        return reply();
+      };
+      await c.sendMessage('嗨');
+
+      expect(sent!.profileId, girl.profileId);
+      expect(sent!.nameId, girl.nameId);
+      expect(sent!.professionId, girl.professionId);
+      expect(sent!.photoId, girl.photoId);
+      expect(repo.getById(c.currentState.sessionId)!.profileId, girl.profileId);
+    });
+
+    test('續玩同一位：girl 不漂移', () {
+      final c = makeControllerFrom(round1Done());
+      final before = c.currentState.girl.profileId;
+      c.continueWithSamePartner(isPaid: true);
+      expect(c.currentState.girl.profileId, before);
+    });
+
+    test('切難度：girl 不漂移、只換難度', () {
+      final c = makeController();
+      final before = c.currentState.girl.profileId;
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+      expect(c.currentState.girl.profileId, before);
+      expect(c.currentState.difficulty, 'challenge');
+    });
+
+    test('開場前換一位（regeneratePersona）：girl 換掉、難度保留、persona 跟新 girl', () {
+      final c = makeController();
+      c.setDifficultyPreference(PracticeDifficultyPreference.challenge);
+      final before = c.currentState.girl.profileId;
+      final lockedDifficulty = c.currentState.difficulty;
+      c.regeneratePersona();
+      final s = c.currentState;
+      expect(s.girl.profileId, isNot(before));
+      expect(s.difficulty, lockedDifficulty);
+      expect(s.personaId, s.girl.personaId);
+    });
+
+    test('續玩後換一位（startNewPartner）：girl 換掉、roundIndex 歸 1', () {
+      final c = makeControllerFrom(round1Done());
+      final before = c.currentState.girl.profileId;
+      c.startNewPartner();
+      expect(c.currentState.girl.profileId, isNot(before));
+      expect(c.currentState.roundIndex, 1);
+    });
+
+    test('帶 profileId 的場次 restore：girl 解析回該位', () {
+      final c = makeControllerFrom(PracticeSession(
+        id: 'with-id',
+        createdAt: DateTime(2026, 6, 24, 9),
+        aiReplyCount: 2,
+        messages: const [PracticeMessage(role: 'user', text: '嗨')],
+        profileId: 'practice_girl_005',
+      ));
+      expect(c.currentState.girl.profileId, 'practice_girl_005');
+    });
+
+    test('舊場（無 profileId）restore：girl 兜底為預設位 practice_girl_001', () {
+      final c = makeControllerFrom(round1Done());
+      expect(c.currentState.girl.profileId, 'practice_girl_001');
     });
   });
 }

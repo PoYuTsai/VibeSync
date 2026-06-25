@@ -192,6 +192,7 @@ class _PracticeProfileBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = state.messages.isEmpty && !state.isSending;
+    final girl = state.girl;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
@@ -199,13 +200,29 @@ class _PracticeProfileBar extends ConsumerWidget {
         children: [
           Row(
             children: [
+              _PracticeAvatar(girl: girl),
+              const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  '本場對象：${state.personaLabel} · ${state.difficultyLabel}',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '本場對象：${girl.displayName} · ${girl.professionLabel}',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${girl.age} · ${girl.city} · '
+                      '${state.personaLabel} · ${state.difficultyLabel}',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (canEdit)
@@ -226,6 +243,36 @@ class _PracticeProfileBar extends ConsumerWidget {
           if (canEdit) const SizedBox(height: 6),
           if (canEdit) _DifficultyChips(state: state),
         ],
+      ),
+    );
+  }
+}
+
+/// 對象頭像佔位：真人照片尚未上線，用 profileId 決定的穩定底色 + 名字首字母。
+/// 之後 photoUrl 就緒時，把這顆換成快取網路圖、key 不變。
+class _PracticeAvatar extends StatelessWidget {
+  const _PracticeAvatar({required this.girl});
+
+  final PracticeGirlProfile girl;
+
+  @override
+  Widget build(BuildContext context) {
+    final hue = (girl.profileId.hashCode % 360).abs().toDouble();
+    final bg = HSLColor.fromAHSL(1, hue, 0.42, 0.52).toColor();
+    final initial =
+        girl.displayName.isNotEmpty ? girl.displayName.substring(0, 1) : '?';
+    return Container(
+      key: const ValueKey('practice-profile-avatar'),
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Text(
+        initial,
+        style: AppTypography.bodyMedium.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

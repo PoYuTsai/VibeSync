@@ -9,19 +9,33 @@ class PracticeTurnDto {
   Map<String, dynamic> toJson() => {'role': role, 'text': text};
 }
 
-/// 本場角色＋難度的請求 metadata。client 只送 id，prompt 內文由 server 解析。
+/// 本場「對象＋難度」的請求 metadata。client 只送 allowlisted id（絕不送 prompt
+/// 文字）；server 帶 profileId 時會綁定該位的 persona，並要求 nameId/professionId/
+/// photoId 與該位相符。身份欄位可空：舊路徑（無 catalog）只送 personaId+difficulty。
 class PracticeProfileDto {
   final String personaId;
   final String difficulty;
+  final String? profileId;
+  final String? nameId;
+  final String? professionId;
+  final String? photoId;
 
   const PracticeProfileDto({
     required this.personaId,
     required this.difficulty,
+    this.profileId,
+    this.nameId,
+    this.professionId,
+    this.photoId,
   });
 
   Map<String, dynamic> toJson() => {
         'personaId': personaId,
         'difficulty': difficulty,
+        if (profileId != null) 'profileId': profileId,
+        if (nameId != null) 'nameId': nameId,
+        if (professionId != null) 'professionId': professionId,
+        if (photoId != null) 'photoId': photoId,
       };
 }
 

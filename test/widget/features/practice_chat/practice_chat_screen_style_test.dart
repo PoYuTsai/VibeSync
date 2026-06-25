@@ -6,6 +6,7 @@ import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
@@ -118,6 +119,7 @@ void main() {
       sessionId: 'practice-style-test',
       createdAt: DateTime(2026, 6, 24, 15, 30),
       aiReplyCount: 1,
+      girl: practiceGirlProfiles.first,
       personaId: 'slow_worker',
       personaLabel: '慢熱上班族',
       difficulty: 'normal',
@@ -344,6 +346,38 @@ void main() {
     expect(find.text('輕鬆'), findsNothing);
   });
 
+  testWidgets('profile bar 顯示對象 name/profession 與頭像（對齊 profileId）',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await repo.save(PracticeSession(
+      id: 'with-girl',
+      createdAt: DateTime(2026, 6, 24, 18),
+      aiReplyCount: 1,
+      profileId: 'practice_girl_003', // Zoe · 醫院護理師
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+    ));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.textContaining('Zoe'), findsWidgets);
+    expect(find.textContaining('醫院護理師'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('practice-profile-avatar')),
+      findsOneWidget,
+    );
+  });
+
   // ── 拆解後續玩 CTA（Eric 決策：續玩當主鈕）─────────────────────────────
   PracticeChatState debriefSeed({
     int roundIndex = 1,
@@ -352,6 +386,7 @@ void main() {
     return PracticeChatState(
       sessionId: 'debrief-sess',
       createdAt: DateTime(2026, 6, 24, 16),
+      girl: practiceGirlProfiles.first,
       personaId: 'slow_worker',
       personaLabel: persona,
       difficulty: 'normal',

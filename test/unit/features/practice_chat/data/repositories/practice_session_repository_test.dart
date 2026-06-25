@@ -101,6 +101,23 @@ void main() {
     expect(loaded.difficultyLabel, '挑戰');
   });
 
+  test('save 後可持久化 profileId（續玩同一位的身份識別）', () async {
+    await repo.save(PracticeSession(
+      id: 'g',
+      createdAt: DateTime(2026, 6, 25, 9),
+      profileId: 'practice_girl_007',
+    ));
+    expect(repo.getById('g')!.profileId, 'practice_girl_007');
+  });
+
+  test('舊場（無 profileId）讀回為 null，不 crash', () async {
+    await repo.save(PracticeSession(
+      id: 'legacy',
+      createdAt: DateTime(2026, 6, 25, 9),
+    ));
+    expect(repo.getById('legacy')!.profileId, isNull);
+  });
+
   test('delete 移除指定練習紀錄，不影響其他場', () async {
     await repo.save(session('keep', 10));
     await repo.save(session('drop', 11));
