@@ -34,13 +34,15 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
       personaLabel: fields[10] as String?,
       difficulty: fields[11] as String?,
       difficultyLabel: fields[12] as String?,
+      visiblePracticeThreadId: fields[13] as String?,
+      roundIndex: (fields[14] as num?)?.toInt(),
     );
   }
 
   @override
   void write(BinaryWriter writer, PracticeSession obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -66,7 +68,11 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
       ..writeByte(11)
       ..write(obj.difficulty)
       ..writeByte(12)
-      ..write(obj.difficultyLabel);
+      ..write(obj.difficultyLabel)
+      ..writeByte(13)
+      ..write(obj.visiblePracticeThreadId)
+      ..writeByte(14)
+      ..write(obj.roundIndex);
   }
 
   @override

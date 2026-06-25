@@ -16,7 +16,7 @@ class PracticeSession {
   @HiveField(2)
   final List<PracticeMessage> messages;
 
-  /// 本場已收到的 AI 回覆數（上限 10）。
+  /// 本場已收到的 AI 回覆數（上限 20）。
   @HiveField(3)
   final int aiReplyCount;
 
@@ -49,6 +49,16 @@ class PracticeSession {
   @HiveField(12)
   final String? difficultyLabel;
 
+  // ── 續玩同一位（Batch 4 起新增）──
+  /// 跨輪穩定的「同一位對象」識別。舊場為 null → 消費端兜底用 [id] 當 thread。
+  @HiveField(13)
+  final String? visiblePracticeThreadId;
+
+  /// 同一位的第幾輪（1 起算，上限 3）。舊場為 null → 消費端兜底 1。
+  /// 必須可空：舊 adapter 無 field 14，反序列化得 null，`as int` 會 crash。
+  @HiveField(14)
+  final int? roundIndex;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -63,6 +73,8 @@ class PracticeSession {
     this.personaLabel,
     this.difficulty,
     this.difficultyLabel,
+    this.visiblePracticeThreadId,
+    this.roundIndex,
   });
 
   bool get hasDebrief => debriefSummary != null;
@@ -79,6 +91,8 @@ class PracticeSession {
     String? personaLabel,
     String? difficulty,
     String? difficultyLabel,
+    String? visiblePracticeThreadId,
+    int? roundIndex,
   }) {
     return PracticeSession(
       id: id,
@@ -94,6 +108,9 @@ class PracticeSession {
       personaLabel: personaLabel ?? this.personaLabel,
       difficulty: difficulty ?? this.difficulty,
       difficultyLabel: difficultyLabel ?? this.difficultyLabel,
+      visiblePracticeThreadId:
+          visiblePracticeThreadId ?? this.visiblePracticeThreadId,
+      roundIndex: roundIndex ?? this.roundIndex,
     );
   }
 }
