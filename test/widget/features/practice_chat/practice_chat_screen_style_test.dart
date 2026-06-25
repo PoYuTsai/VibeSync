@@ -306,7 +306,8 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('本場對象：'), findsOneWidget);
+    // 開場前：首屏 hero 大卡 + 換一位 + 難度 chips（控制列在深色 scaffold 底）。
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
     expect(find.text('換一位'), findsOneWidget);
     expect(find.text('輕鬆'), findsOneWidget);
     expect(find.text('一般'), findsOneWidget);
@@ -341,7 +342,9 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('高冷理性型 · 挑戰'), findsOneWidget);
+    // 開聊後：compact header 顯示名字/職業＋難度，隱藏換一位與難度 chips。
+    expect(find.textContaining('航空業空服員'), findsWidgets);
+    expect(find.textContaining('挑戰'), findsOneWidget);
     expect(find.text('換一位'), findsNothing);
     expect(find.text('輕鬆'), findsNothing);
   });
@@ -513,7 +516,84 @@ void main() {
     expect(s.messages, isEmpty);
     expect(s.roundIndex, 1);
     expect(s.debrief, isNull);
-    // 開場前控制重現：難度 chips 與 profile bar 換一位鈕回來。
+    // 開場前控制重現：難度 chips 與換一位鈕回來。
     expect(find.text('輕鬆'), findsOneWidget);
+  });
+
+  // ── 照片＋Profile 首屏體驗 ───────────────────────────────────────────
+  testWidgets('首屏 hero：大照片＋名字/年齡/職業/城市/標籤/自我介紹', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final zoe = practiceGirlProfiles[2];
+    final seed = PracticeChatState(
+      sessionId: 'hero-test',
+      createdAt: DateTime(2026, 6, 25, 10),
+      girl: zoe,
+      personaId: zoe.personaId,
+      personaLabel: '高冷理性型',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      messages: const [],
+    );
+    final controller = _SeededPracticeChatController(seed: seed, repository: repo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    expect(find.text('${zoe.displayName}，${zoe.age}'), findsOneWidget);
+    expect(find.textContaining(zoe.professionLabel), findsWidgets);
+    expect(find.textContaining(zoe.city), findsWidgets);
+    expect(find.text(zoe.selfIntro), findsOneWidget);
+  });
+
+  testWidgets('聊天 compact header：照片key＋名字/職業＋難度，點開 profile sheet',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final zoe = practiceGirlProfiles[2];
+    final seed = PracticeChatState(
+      sessionId: 'compact-test',
+      createdAt: DateTime(2026, 6, 25, 11),
+      girl: zoe,
+      personaId: zoe.personaId,
+      personaLabel: '高冷理性型',
+      difficulty: 'challenge',
+      difficultyLabel: '挑戰',
+      aiReplyCount: 1,
+      messages: const [
+        PracticeMessage(role: 'user', text: '嗨'),
+        PracticeMessage(role: 'ai', text: '嗯？'),
+      ],
+    );
+    final controller = _SeededPracticeChatController(seed: seed, repository: repo);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('practice-profile-avatar')),
+      findsOneWidget,
+    );
+    expect(find.textContaining(zoe.displayName), findsWidgets);
+    expect(find.textContaining('挑戰'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('practice-profile-avatar')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('practice-profile-sheet')),
+      findsOneWidget,
+    );
+    expect(find.text(zoe.selfIntro), findsOneWidget);
   });
 }

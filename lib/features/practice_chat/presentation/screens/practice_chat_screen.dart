@@ -13,6 +13,8 @@ import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../widgets/practice_debrief_card.dart';
+import '../widgets/practice_girl_photo.dart';
+import '../widgets/practice_profile_sheet.dart';
 
 /// AI 實戰練習室主畫面：點入直接進聊天（不選目標）。
 /// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
@@ -103,11 +105,16 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       resizeToAvoidBottomInset: true,
       body: Column(
         children: [
-          _PracticeProfileBar(state: state),
+          // 開場前：換一位＋難度控制（深色 scaffold 底，沿用原樣式）。
+          // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
+          if (state.messages.isEmpty)
+            _PracticeOpeningControls(state: state)
+          else
+            _PracticeProfileBar(state: state),
           Expanded(
             child: _PracticeChatWorkspaceFrame(
               child: state.messages.isEmpty
-                  ? const _EmptyState()
+                  ? _PracticeProfileHero(state: state)
                   : ListView(
                       controller: _scrollController,
                       padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
@@ -183,16 +190,14 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   }
 }
 
-// ── 本場對象列：顯示角色＋難度；開場前可換一位 / 調難度，送出第一則後鎖定 ──
-class _PracticeProfileBar extends ConsumerWidget {
-  const _PracticeProfileBar({required this.state});
+// ── 開場前控制列：換一位＋難度 chips（深色 scaffold 底，沿用原樣式）──
+class _PracticeOpeningControls extends ConsumerWidget {
+  const _PracticeOpeningControls({required this.state});
 
   final PracticeChatState state;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = state.messages.isEmpty && !state.isSending;
-    final girl = state.girl;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
@@ -200,14 +205,69 @@ class _PracticeProfileBar extends ConsumerWidget {
         children: [
           Row(
             children: [
-              _PracticeAvatar(girl: girl),
+              Expanded(
+                child: Text(
+                  '為你抽了一位，先看看再開練',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => ref
+                    .read(practiceChatControllerProvider.notifier)
+                    .regeneratePersona(),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.ctaStart,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('換一位'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _DifficultyChips(state: state),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 聊天中對象列：compact identity header（小圓照片＋名字/職業/難度），點開 profile sheet ──
+class _PracticeProfileBar extends StatelessWidget {
+  const _PracticeProfileBar({required this.state});
+
+  final PracticeChatState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final girl = state.girl;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showPracticeProfileSheet(context, girl),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              PracticeGirlPhoto(
+                key: const ValueKey('practice-profile-avatar'),
+                profile: girl,
+                width: 40,
+                height: 40,
+                circle: true,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '本場對象：${girl.displayName} · ${girl.professionLabel}',
+                      '${girl.displayName} · ${girl.professionLabel}',
                       style: AppTypography.caption.copyWith(
                         color: AppColors.onBackgroundSecondary,
                         fontWeight: FontWeight.w700,
@@ -215,8 +275,7 @@ class _PracticeProfileBar extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${girl.age} · ${girl.city} · '
-                      '${state.personaLabel} · ${state.difficultyLabel}',
+                      '${girl.age} · ${girl.city} · ${state.difficultyLabel}',
                       style: AppTypography.caption.copyWith(
                         color: AppColors.onBackgroundSecondary
                             .withValues(alpha: 0.8),
@@ -225,53 +284,13 @@ class _PracticeProfileBar extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (canEdit)
-                TextButton(
-                  onPressed: () => ref
-                      .read(practiceChatControllerProvider.notifier)
-                      .regeneratePersona(),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.ctaStart,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 32),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text('換一位'),
-                ),
+              Icon(
+                Icons.expand_more,
+                size: 18,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
+              ),
             ],
           ),
-          if (canEdit) const SizedBox(height: 6),
-          if (canEdit) _DifficultyChips(state: state),
-        ],
-      ),
-    );
-  }
-}
-
-/// 對象頭像佔位：真人照片尚未上線，用 profileId 決定的穩定底色 + 名字首字母。
-/// 之後 photoUrl 就緒時，把這顆換成快取網路圖、key 不變。
-class _PracticeAvatar extends StatelessWidget {
-  const _PracticeAvatar({required this.girl});
-
-  final PracticeGirlProfile girl;
-
-  @override
-  Widget build(BuildContext context) {
-    final hue = (girl.profileId.hashCode % 360).abs().toDouble();
-    final bg = HSLColor.fromAHSL(1, hue, 0.42, 0.52).toColor();
-    final initial =
-        girl.displayName.isNotEmpty ? girl.displayName.substring(0, 1) : '?';
-    return Container(
-      key: const ValueKey('practice-profile-avatar'),
-      width: 38,
-      height: 38,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Text(
-        initial,
-        style: AppTypography.bodyMedium.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -416,50 +435,109 @@ class _PracticeChatWorkspace extends StatelessWidget {
   }
 }
 
-// ── 空狀態：引導使用者先發第一句 ───────────────────────────────────────
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+// ── 首屏 hero：以對象大照片 profile card 作為第一視覺，引導先發第一句 ──
+class _PracticeProfileHero extends StatelessWidget {
+  const _PracticeProfileHero({required this.state});
+
+  final PracticeChatState state;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const BrandIconBadge(
-              icon: Icons.forum_outlined,
-              size: 56,
-              iconSize: 30,
+    final girl = state.girl;
+    // 難度已由下方控制列的 chips 呈現，這裡只放人格／興趣／生活風格，避免重複。
+    final tags = <String>[
+      if (state.personaLabel.isNotEmpty) state.personaLabel,
+      ...girl.interestTags.take(2),
+      ...girl.lifestyleTags.take(1),
+    ];
+    return SingleChildScrollView(
+      key: const ValueKey('practice-profile-hero'),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => showPracticeProfileSheet(context, girl),
+            child: PracticeGirlPhoto(
+              profile: girl,
+              width: 232,
+              height: 290,
+              borderRadius: BorderRadius.circular(22),
             ),
-            const SizedBox(height: 18),
-            Text(
-              '直接開聊吧',
-              style: AppTypography.titleLarge.copyWith(
-                color: AppColors.glassTextPrimary,
-                fontWeight: FontWeight.w800,
-              ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '${girl.displayName}，${girl.age}',
+            style: AppTypography.titleLarge.copyWith(
+              color: AppColors.glassTextPrimary,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 8),
-            Text(
-              '對方是個有自己個性的模擬對象，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
-              textAlign: TextAlign.center,
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.glassTextSecondary,
-                height: 1.5,
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${girl.professionLabel} · ${girl.city}',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextSecondary,
             ),
-            const SizedBox(height: 14),
-            Text(
-              '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
-              textAlign: TextAlign.center,
-              style: AppTypography.caption.copyWith(
-                color: AppColors.glassTextHint,
-                height: 1.45,
-              ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [for (final t in tags) _HeroTag(label: t)],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            girl.selfIntro,
+            textAlign: TextAlign.center,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.5,
             ),
-          ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            '對方是個有自己個性的模擬對象，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
+            textAlign: TextAlign.center,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '首次 AI 回覆成功才扣 1 則；進來或送出失敗不扣。\n扣完這 1 則，本場最多可聊 20 則 AI 回覆，教練拆解不另扣。',
+            textAlign: TextAlign.center,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.glassTextHint,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroTag extends StatelessWidget {
+  const _HeroTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.ctaStart.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.caption.copyWith(
+          color: AppColors.ctaStart,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
