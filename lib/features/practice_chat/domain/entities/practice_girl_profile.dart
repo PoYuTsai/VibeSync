@@ -37,4 +37,8 @@ class PracticeGirlProfile {
   final List<String> interestTags;
   final List<String> lifestyleTags;
   final String selfIntro;
+
+  /// bundled 照片 asset 路徑（photoId == profileId == practice_girl_NNN）。
+  /// 對應 `assets/images/practice_girls/`，由 tools/gen-practice-photos 產生。
+  String get photoAssetPath => 'assets/images/practice_girls/$photoId.jpg';
 }
