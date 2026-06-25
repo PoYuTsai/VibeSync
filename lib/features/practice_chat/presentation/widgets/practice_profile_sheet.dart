@@ -64,8 +64,10 @@ class _PracticeProfileSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
+              // 只顯示 AI 人設 prompt 真的知道的欄位（relationshipGoal 有注入 prompt）；
+              // zodiac/heightCm 沒進 prompt，故不顯示，避免 UI 說一套、AI 不知道。
               Text(
-                '想找：${girl.relationshipGoal} · ${girl.zodiac}',
+                '想找：${girl.relationshipGoal}',
                 style: AppTypography.caption.copyWith(
                   color: AppColors.onBackgroundSecondary.withValues(alpha: 0.75),
                 ),
