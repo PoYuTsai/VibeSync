@@ -8,6 +8,7 @@ import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
+import '../../data/repositories/practice_session_repository.dart';
 import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
@@ -169,7 +170,12 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
               );
         },
         onDelete: (session) async {
-          await ref.read(practiceSessionRepositoryProvider).delete(session.id);
+          // 刪整段對話（含同一位的所有續玩輪次），不能只刪最新一輪讓舊輪浮回。
+          await ref
+              .read(practiceSessionRepositoryProvider)
+              .deleteVisibleThread(
+                PracticeSessionRepository.threadKeyOf(session),
+              );
           ref.invalidate(recentPracticeSessionsProvider);
         },
       ),

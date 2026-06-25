@@ -39,9 +39,14 @@ class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
 
   @override
   List<PracticeSession> recentSessions() {
-    final all = _sessions.values.toList()
+    final sorted = _sessions.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return all.take(PracticeSessionRepository.maxSessions).toList();
+    final seen = <String>{};
+    final result = <PracticeSession>[];
+    for (final s in sorted) {
+      if (seen.add(PracticeSessionRepository.threadKeyOf(s))) result.add(s);
+    }
+    return result.take(PracticeSessionRepository.maxThreads).toList();
   }
 
   @override
@@ -50,6 +55,13 @@ class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
   @override
   Future<void> delete(String id) async {
     _sessions.remove(id);
+  }
+
+  @override
+  Future<void> deleteVisibleThread(String threadKey) async {
+    _sessions.removeWhere(
+      (_, s) => PracticeSessionRepository.threadKeyOf(s) == threadKey,
+    );
   }
 }
 
@@ -221,6 +233,59 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.getById('delete-me'), isNull);
+    expect(find.text('還沒有練習紀錄'), findsOneWidget);
+  });
+
+  testWidgets('deleting a continued conversation removes all its rounds',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    // 同一位續玩兩輪：共用 visiblePracticeThreadId，各自 billing session id。
+    await repo.save(PracticeSession(
+      id: 'thread-a-r1',
+      createdAt: DateTime(2026, 6, 24, 15, 50),
+      aiReplyCount: 20,
+      visiblePracticeThreadId: 'thread-a',
+      roundIndex: 1,
+      messages: const [PracticeMessage(role: 'user', text: '第一輪')],
+    ));
+    await repo.save(PracticeSession(
+      id: 'thread-a-r2',
+      createdAt: DateTime(2026, 6, 24, 15, 58),
+      aiReplyCount: 3,
+      visiblePracticeThreadId: 'thread-a',
+      roundIndex: 2,
+      messages: const [PracticeMessage(role: 'user', text: '第二輪')],
+    ));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.history));
+    await tester.pumpAndSettle();
+    // 去重後同一位只顯示一筆（最新一輪 r2）。
+    expect(
+      find.byKey(const ValueKey('delete-practice-thread-a-r2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('delete-practice-thread-a-r1')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('delete-practice-thread-a-r2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('刪除'));
+    await tester.pumpAndSettle();
+
+    // 刪掉整段對話：兩輪都要消失，不能只刪最新一輪讓舊輪浮回。
+    expect(repo.getById('thread-a-r1'), isNull);
+    expect(repo.getById('thread-a-r2'), isNull);
     expect(find.text('還沒有練習紀錄'), findsOneWidget);
   });
 

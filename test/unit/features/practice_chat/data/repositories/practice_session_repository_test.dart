@@ -31,6 +31,16 @@ void main() {
         messages: [PracticeMessage(role: 'user', text: '嗨 $id')],
       );
 
+  // 同一位續玩會產生多個 billing session（各自 id），但共用同一個
+  // visiblePracticeThreadId。clock 用 minute 表新舊。
+  PracticeSession round(String id, String threadId, int minute) =>
+      PracticeSession(
+        id: id,
+        createdAt: DateTime(2026, 6, 24, 10, minute),
+        messages: [PracticeMessage(role: 'user', text: '嗨 $id')],
+        visiblePracticeThreadId: threadId,
+      );
+
   test('只保留最近 5 場，舊的被修剪', () async {
     for (var i = 1; i <= 6; i++) {
       await repo.save(session('s$i', i)); // minute 越大越新
@@ -100,5 +110,74 @@ void main() {
     expect(repo.getById('drop'), isNull);
     expect(repo.getById('keep'), isNotNull);
     expect(repo.recentSessions().map((s) => s.id).toList(), ['keep']);
+  });
+
+  // ── visible thread 語意（同一位續玩多輪 = 一段對話）──────────────────────
+  test('recentSessions 同一位多輪只顯示最新一筆（依 visible thread 去重）', () async {
+    await repo.save(round('t1-r1', 't1', 10));
+    await repo.save(round('t1-r2', 't1', 20));
+    await repo.save(round('t1-r3', 't1', 30)); // t1 最新一輪
+    await repo.save(session('other', 5)); // 另一段對話
+
+    final recent = repo.recentSessions();
+    // 顯示成兩段對話，不是四筆 session。
+    expect(recent.length, 2);
+    // 每段對話取最新一輪；t1 取 r3。
+    expect(recent.map((s) => s.id).toList(), ['t1-r3', 'other']);
+  });
+
+  test('recentSessions 以 visible thread 計最近 5 段，同一位續玩不吃掉名額', () async {
+    // A 續到 3 輪、且是最新的對話（rounds 落在時間前段），加上 5 段各 1 輪 = 6 段。
+    // 未去重的 take(5) 會被 A 的 3 輪吃掉名額、漏掉其他段；去重後 A 只佔 1 名額。
+    await repo.save(round('A-r1', 'A', 8));
+    await repo.save(round('A-r2', 'A', 9));
+    await repo.save(round('A-r3', 'A', 10)); // A 最新
+    await repo.save(session('B', 7));
+    await repo.save(session('C', 6));
+    await repo.save(session('D', 5));
+    await repo.save(session('E', 4));
+    await repo.save(session('F', 3)); // 最舊一段
+
+    final recent = repo.recentSessions();
+    // 6 段對話 → 只留最近 5 段；A 只佔 1 個名額。
+    expect(recent.length, 5);
+    final keys = recent
+        .map((s) => s.visiblePracticeThreadId ?? s.id)
+        .toList();
+    expect(keys.where((k) => k == 'A').length, 1); // A 去重後只一筆
+    expect(keys.toSet().length, 5); // 5 段不重複
+    expect(keys.contains('A'), true); // A 最新，必留
+    expect(keys.contains('F'), false); // 最舊一段被擠掉
+  });
+
+  test('deleteVisibleThread 刪掉同一位的所有輪次，不影響其他段', () async {
+    await repo.save(round('t1-r1', 't1', 10));
+    await repo.save(round('t1-r2', 't1', 20));
+    await repo.save(round('t1-r3', 't1', 30));
+    await repo.save(session('keep', 5));
+
+    await repo.deleteVisibleThread('t1');
+
+    expect(repo.getById('t1-r1'), isNull);
+    expect(repo.getById('t1-r2'), isNull);
+    expect(repo.getById('t1-r3'), isNull);
+    expect(repo.getById('keep'), isNotNull);
+  });
+
+  test('trim 以 visible thread 計：同一位續 3 輪不會被當成 3 段而擠掉早輪', () async {
+    // 1 段對話 A（3 輪）+ 4 段各 1 輪 = 5 段對話、共 7 個 session。
+    await repo.save(round('A-r1', 'A', 1));
+    await repo.save(round('A-r2', 'A', 2));
+    await repo.save(round('A-r3', 'A', 3));
+    await repo.save(session('B', 4));
+    await repo.save(session('C', 5));
+    await repo.save(session('D', 6));
+    await repo.save(session('E', 7));
+
+    // 舊行為（保留 5 個 session）會刪掉 A-r1/A-r2；新行為保留 5 段對話 → 7 個全留。
+    expect(box.length, 7);
+    expect(box.get('A-r1'), isNotNull);
+    expect(box.get('A-r2'), isNotNull);
+    expect(box.get('A-r3'), isNotNull);
   });
 }
