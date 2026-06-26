@@ -9,6 +9,8 @@ import 'practice_draw_sfx.dart';
 const double _kWhooshVolume = 0.7; // 抽牌咻聲：建議 0.6–0.8。
 const double _kWaitingLoopVolume = 0.22; // 等待 loop：建議 0.18–0.28，務必小聲。
 const double _kRevealChimeVolume = 0.8; // 揭曉叮聲：建議 0.7–0.9。
+const double _kRiserVolume = 0.6; // 蓄力 riser：建議 0.5–0.7。
+const double _kSettleVolume = 0.7; // 落定 settle：建議 0.6–0.8。
 
 // ── 音檔路徑（相對 AudioCache 預設 prefix `assets/`）────────────────────────
 const String _kWhooshAsset = 'audio/practice_draw/practice_draw_whoosh.wav';
@@ -16,6 +18,8 @@ const String _kWaitingLoopAsset =
     'audio/practice_draw/practice_draw_waiting_loop.wav';
 const String _kRevealChimeAsset =
     'audio/practice_draw/practice_draw_reveal_chime.wav';
+const String _kRiserAsset = 'audio/practice_draw/practice_draw_riser.wav';
+const String _kSettleAsset = 'audio/practice_draw/practice_draw_settle.wav';
 
 /// 每日翻牌音效的真實實作（Batch 4.7B：把 4.7A 的 [NoopPracticeDrawSfx] 換成會真的
 /// 播放的版本）。背後用 `audioplayers`。
@@ -38,6 +42,8 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   AudioPlayer? _whooshPlayer;
   AudioPlayer? _loopPlayer;
   AudioPlayer? _chimePlayer;
+  AudioPlayer? _riserPlayer;
+  AudioPlayer? _settlePlayer;
 
   bool _loopActive = false;
   bool _contextConfigured = false;
@@ -125,12 +131,18 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
     }
   }
 
-  // Batch D：edge-detect 接線已就緒（呼叫時機由 `_reveal` 跨門檻觸發）；真 wav 於
-  // Task D4 接上（riser 蓄力／settle 落定，沿用上方 lazy/guarded one-shot 模式）。
-  // 接上前先 no-op，確保介面完整且 headless 安全。
+  // Batch D4：接上真 wav。riser（蓄力，跨 kPracticeRevealRechargeEnd 觸發）與 settle
+  // （落定，跨 kPracticeRevealGrandFlipEnd 觸發）皆為一次性 accent，沿用 whoosh／chime 的
+  // lazy/guarded one-shot 模式（各自獨立 player，避免互相截斷）。
   @override
-  void playRiser() {}
+  void playRiser() {
+    final player = _riserPlayer ??= _create(ReleaseMode.release);
+    _playOneShot(player, _kRiserAsset, _kRiserVolume);
+  }
 
   @override
-  void playSettle() {}
+  void playSettle() {
+    final player = _settlePlayer ??= _create(ReleaseMode.release);
+    _playOneShot(player, _kSettleAsset, _kSettleVolume);
+  }
 }
