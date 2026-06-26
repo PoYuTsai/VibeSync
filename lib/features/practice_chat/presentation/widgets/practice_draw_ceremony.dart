@@ -338,28 +338,82 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       );
     }
 
-    // 揭曉：rotateY 翻面（0→π），過半才換成正面並反鏡像修正。
+    // ── 兩段升階揭曉：白卡預覽 → 收回蓄力 → 盛大典藏卡 → 淡出 ──
     final f = _reveal.value;
-    final rot = (f / _kRotateEnd).clamp(0.0, 1.0); // 0..1 旋轉進度
-    final angle = rot * math.pi;
-    final showFront = angle > math.pi / 2;
+    double seg(double from, double to) =>
+        ((f - from) / (to - from)).clamp(0.0, 1.0);
 
-    // 停留 / 淡出兩段進度，給正面資訊「浮出 → 落位」。
-    final hold =
-        ((f - _kRotateEnd) / (_kHoldEnd - _kRotateEnd)).clamp(0.0, 1.0);
-    final depart = ((f - _kHoldEnd) / (1 - _kHoldEnd)).clamp(0.0, 1.0);
+    double angle; // rotateY 角度
+    bool showFront; // 過半才換正面
+    double frontAppear = 1; // 正面資訊浮出
+    double frontDepart = 0; // 落位下沉
+    double backGlow = 0.6; // 卡背金光
+    double sweepRot = 0; // 光環旋轉進度
+    double sweepIntensity = 0; // 光環強度
+    double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
 
-    // flash：在「換正面」那一刻（rot≈0.5）爆一下高斯峰，遮住翻面接縫＝揭曉感。
-    final flash = math.exp(-math.pow((rot - 0.5) / 0.16, 2).toDouble());
-    // 金色光環 sweep：旋轉期間環繞卡牌一圈，旋轉結束即收。
-    final sweep = math.sin(math.pi * rot);
+    if (f < _kFlip1End) {
+      // 第一段：卡背→白卡預覽（rotateY 0→π）。
+      final rot = seg(0, _kFlip1End);
+      angle = rot * math.pi;
+      showFront = angle > math.pi / 2;
+      frontAppear = 0;
+      flashCenter = rot;
+      sweepRot = rot;
+      sweepIntensity = math.sin(math.pi * rot) * 0.7;
+    } else if (f < _kPreviewEnd) {
+      // 白卡停留、資訊浮出（屏息）。
+      angle = math.pi;
+      showFront = true;
+      frontAppear = Curves.easeOut.transform(seg(_kFlip1End, _kPreviewEnd));
+    } else if (f < _kRechargeEnd) {
+      // 翻回卡背（蓄力重啟），rotateY π→0。
+      final rot = 1 - seg(_kPreviewEnd, _kRechargeEnd);
+      angle = rot * math.pi;
+      showFront = angle > math.pi / 2;
+      frontAppear = 1;
+      flashCenter = rot;
+    } else if (f < _kHaloClimax) {
+      // 卡背發亮、光環 sweep 衝高潮（Batch A 複用 _SweepGlowPainter）。
+      final climb = seg(_kRechargeEnd, _kHaloClimax);
+      angle = 0;
+      showFront = false;
+      backGlow = 0.6 + 0.4 * climb;
+      sweepRot = climb;
+      sweepIntensity = climb;
+    } else if (f < _kGrandFlipEnd) {
+      // 高潮翻面：卡背→典藏卡（Batch A 仍用現有正面，Batch C 換金框）。
+      final rot = seg(_kHaloClimax, _kGrandFlipEnd);
+      angle = rot * math.pi;
+      showFront = angle > math.pi / 2;
+      frontAppear = 0;
+      backGlow = 1;
+      flashCenter = rot;
+      sweepRot = rot;
+      sweepIntensity = 1 - rot;
+    } else if (f < _kHoldEnd) {
+      // 典藏卡停留、資訊落位、光環 settle。
+      angle = math.pi;
+      showFront = true;
+      frontAppear = Curves.easeOut.transform(seg(_kGrandFlipEnd, _kHoldEnd));
+    } else {
+      // 淡出，露出底下 hero。
+      angle = math.pi;
+      showFront = true;
+      frontAppear = 1;
+      frontDepart = seg(_kHoldEnd, 1);
+    }
+
+    final flash = flashCenter < 0
+        ? 0.0
+        : math.exp(-math.pow((flashCenter - 0.5) / 0.16, 2).toDouble());
 
     final Widget faceFront = _CeremonyCardFront(
       girl: _revealGirl,
       width: _cardW,
       height: _cardH,
-      appear: hold,
-      depart: depart,
+      appear: frontAppear,
+      depart: frontDepart,
     );
     final Widget face = showFront
         ? Transform(
@@ -367,11 +421,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             transform: Matrix4.identity()..rotateY(math.pi),
             child: faceFront,
           )
-        : _CeremonyCardBack(
-            width: _cardW,
-            height: _cardH,
-            glow: 0.6 + 0.4 * rot,
-          );
+        : _CeremonyCardBack(width: _cardW, height: _cardH, glow: backGlow);
 
     return SizedBox(
       width: _stageW,
@@ -379,35 +429,33 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // 翻面期間的環繞光軌＋外圈金光。
-          if (sweep > 0.01)
+          if (sweepIntensity > 0.01)
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
-                  painter: _SweepGlowPainter(progress: rot, intensity: sweep),
+                  painter: _SweepGlowPainter(
+                      progress: sweepRot, intensity: sweepIntensity),
                 ),
               ),
             ),
-          // 翻動中的卡片（rotateY）。
           Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001) // 透視，讓翻面有立體感
+              ..setEntry(3, 2, 0.001)
               ..rotateY(angle),
             child: face,
           ),
-          // 星光：翻面期間圍繞卡牌閃爍，正面定住後快速退場（不干擾照片）。
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
                 painter: _StarfieldPainter(
-                  twinkle: rot,
-                  intensity: (sweep * 0.7 + flash * 0.6) * (1 - depart),
+                  twinkle: f,
+                  intensity:
+                      (sweepIntensity * 0.7 + flash * 0.6) * (1 - frontDepart),
                 ),
               ),
             ),
           ),
-          // 中點揭曉 flash：白金徑向爆光，疊在最上層。
           if (flash > 0.02)
             Positioned.fill(
               child: IgnorePointer(
