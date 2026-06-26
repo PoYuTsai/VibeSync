@@ -59,7 +59,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   // 翻面 → flash 揭曉 → 停留落位 → 整片淡出，全部塞進這一條時間軸（無 Timer）。
   late final AnimationController _flip = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1150),
+    duration: const Duration(milliseconds: 2400),
   );
 
   // 抽牌「等待 server 回應」期間的持續蓄力微動（上下浮動＋金光呼吸＋星光閃爍）。
@@ -84,8 +84,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   //   0 → _kRotateEnd        rotateY 0→π 翻面（中點 _kRotateEnd/2 換正面＋flash 峰值）
   //   _kRotateEnd → _kHoldEnd 停留：正面金粉鑲邊發亮、資訊浮出落位
   //   _kHoldEnd → 1          整片淡出露出底下 hero（資訊往 hero 方向沉落）
-  static const double _kRotateEnd = 0.5;
-  static const double _kHoldEnd = 0.74;
+  static const double _kRotateEnd = 0.48;
+  static const double _kHoldEnd = 0.86;
 
   @override
   void initState() {

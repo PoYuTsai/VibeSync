@@ -1005,6 +1005,44 @@ void main() {
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
+  testWidgets('revealed 換一位等待 draw 時保留現有 hero，由翻牌 overlay 接管', (tester) async {
+    final seed = revealedPreMsgSeed();
+    final nextGirl = practiceGirlProfiles[3];
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo, api: api);
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+
+    await tester.tap(find.byType(TextButton).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(controller.currentState.drawStatus, PracticeDrawStatus.drawing);
+    expect(find.byKey(const ValueKey('practice-locked-entry')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsOneWidget,
+    );
+
+    completer.complete(_drawResultFor(nextGirl));
+    await tester.pumpAndSettle();
+    expect(controller.currentState.girl!.profileId, nextGirl.profileId);
+  });
+
   testWidgets('儀式：抽牌中浮現神秘卡背（不洩漏身份、無正面）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -1047,6 +1085,32 @@ void main() {
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
     // 名字只在 hero 出現一處（儀式正面不得用「名字，年齡」精確字串撞測試）。
     expect(find.text('${zoe.displayName}，${zoe.age}'), findsOneWidget);
+  });
+
+  testWidgets('儀式：reveal 成功後正面卡會暫留，讓使用者看清楚特效', (tester) async {
+    final zoe = practiceGirlProfiles[2];
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    completer.complete(_drawResultFor(zoe));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1500));
+
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsOneWidget,
+    );
+
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
   });
 
   testWidgets('儀式：reduce-motion 跳過 3D 翻面、reveal 直接露出 hero', (tester) async {

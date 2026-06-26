@@ -96,7 +96,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
 
     // 尚未翻牌（locked / drawing / error）：不顯示任何對象，只給翻牌入口。
     final Widget content;
-    if (!state.isRevealed) {
+    final shouldShowLockedEntry = !state.isRevealed && state.girl == null;
+    if (shouldShowLockedEntry) {
       content = BrandScaffold(
         title: 'AI 實戰練習室',
         actions: [
