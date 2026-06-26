@@ -1346,6 +1346,46 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('Batch C：grand 金框典藏資訊欄只在高潮典藏段出現（preview 段用白卡）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(
+        tester, completer: completer, girl: practiceGirlProfiles[2]);
+
+    // 白卡預覽段：正面卡在場，但 grand 金框 frosted 資訊欄尚未升階出現。
+    await tester.pump(previewAt);
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-grand-info')),
+      findsNothing,
+    );
+
+    // 高潮典藏段：升階成金框＋frosted 深色玻璃資訊欄。
+    await tester.pump(grandHoldAt - previewAt);
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-grand-info')),
+      findsOneWidget,
+    );
+
+    // 升階仍不得用 hero 的「名字，年齡」精確字串（仍只在 hero 一處）。
+    expect(
+      find.text(
+          '${practiceGirlProfiles[2].displayName}，${practiceGirlProfiles[2].age}'),
+      findsOneWidget,
+    );
+
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('兩段升階：整條 7.5s 時間軸 pumpAndSettle 收斂、最終露 hero',
       (tester) async {
     final zoe = practiceGirlProfiles[2];
