@@ -22,7 +22,7 @@ import 'practice_girl_photo.dart';
 /// - 只有「真的進過 drawing 又成功 reveal 一位新對象」才慶祝；換一位失敗會回到
 ///   `revealed` 但帶 `errorMessage`，這種情況只做兜底淡出、不翻面慶祝。
 /// - **零 `Timer`／零 `Future.delayed`**：揭曉時間軸（卡背浮現、星光、光環 sweep、
-///   flash、翻面、資訊落位、淡出）一律由 [_intro]／[_flip] 兩條**有限**
+///   flash、翻面、資訊落位、淡出）一律由 [_intro]／[_reveal] 兩條**有限**
 ///   `AnimationController` 的進度推導。唯一會 `repeat()` 的是 [_waiting]（抽牌等待
 ///   server 期間的持續微動），且嚴格 gate：只在 drawing 且非 reduce-motion 啟動，
 ///   reveal／error／hidden／dispose 一律明確 `stop()`。故 `pumpAndSettle` 仍必收斂、
@@ -56,10 +56,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     duration: const Duration(milliseconds: 520),
   );
 
-  // 翻面 → flash 揭曉 → 停留落位 → 整片淡出，全部塞進這一條時間軸（無 Timer）。
-  late final AnimationController _flip = AnimationController(
+  // 兩段升階揭曉時間軸（白卡預覽→收回蓄力→盛大典藏卡→淡出），全部塞進這一條
+  // forward-only controller（無 Timer/repeat）。退役舊 `_flip`（單段 2400ms）。
+  late final AnimationController _reveal = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2400),
+    duration: const Duration(milliseconds: 7500),
   );
 
   // 抽牌「等待 server 回應」期間的持續蓄力微動（上下浮動＋金光呼吸＋星光閃爍）。
@@ -80,21 +81,23 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
-  // 翻面時間軸切點（0..1）：
-  //   0 → _kRotateEnd        rotateY 0→π 翻面（中點 _kRotateEnd/2 換正面＋flash 峰值）
-  //   _kRotateEnd → _kHoldEnd 停留：正面金粉鑲邊發亮、資訊浮出落位
-  //   _kHoldEnd → 1          整片淡出露出底下 hero（資訊往 hero 方向沉落）
-  static const double _kRotateEnd = 0.48;
-  static const double _kHoldEnd = 0.86;
+  // _reveal 兩段升階切點（0..1，沿用具名 beat 手法；fraction = ms / 7500）：
+  static const double _kFlip1End = 0.0933; // ~700ms  卡背→白卡預覽 翻面
+  static const double _kPreviewEnd = 0.3333; // ~2500ms 白卡停留、資訊浮出（屏息）
+  static const double _kRechargeEnd = 0.4133; // ~3100ms 翻回卡背（蓄力重啟）
+  static const double _kHaloClimax = 0.5733; // ~4300ms 卡背發亮、光環衝高潮
+  static const double _kGrandFlipEnd = 0.6667; // ~5000ms 高潮翻面→典藏卡
+  static const double _kHoldEnd = 0.8667; // ~6500ms 典藏卡停留、落位、settle
+  // _kHoldEnd → 1.0 (~7500ms)：overlay 淡出露 hero
 
   @override
   void initState() {
     super.initState();
     _sfx = ref.read(practiceDrawSfxProvider);
     _intro.addListener(_onTick);
-    _flip.addListener(_onTick);
+    _reveal.addListener(_onTick);
     _waiting.addListener(_onTick);
-    _flip.addStatusListener((status) {
+    _reveal.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _toHidden();
       }
@@ -103,7 +106,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       // 失敗兜底淡出（reverse）走完 → 收掉 overlay。
       if (status == AnimationStatus.dismissed &&
           _phase != _CeremonyPhase.hidden &&
-          !_flip.isAnimating) {
+          !_reveal.isAnimating) {
         _toHidden();
       }
     });
@@ -121,7 +124,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     });
     _waiting.stop();
     _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
-    _flip.value = 0;
+    _reveal.value = 0;
   }
 
   bool get _reduceMotion =>
@@ -140,7 +143,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         _phase = _CeremonyPhase.drawing;
         _revealGirl = null;
       });
-      _flip
+      _reveal
         ..stop()
         ..value = 0;
       if (_reduceMotion) {
@@ -177,7 +180,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       });
       _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
       _intro.value = 1;
-      _flip.forward(from: 0);
+      _reveal.forward(from: 0);
       return;
     }
 
@@ -186,7 +189,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         _phase == _CeremonyPhase.revealing) {
       _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
       _sfx.stopWaitingLoop(); // 失敗兜底（error／402／429）：同步停等待 loop，不播叮聲。
-      _flip
+      _reveal
         ..stop()
         ..value = 0;
       if (_reduceMotion || _intro.value == 0) {
@@ -201,7 +204,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   void dispose() {
     _sfx.stopWaitingLoop(); // 卸載儀式：確保等待 loop 不在背景殘留。
     _intro.dispose();
-    _flip.dispose();
+    _reveal.dispose();
     _waiting.dispose();
     super.dispose();
   }
@@ -223,7 +226,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final base = _intro.value;
     double revealFade = 1;
     if (_phase == _CeremonyPhase.revealing) {
-      final t = ((_flip.value - _kHoldEnd) / (1 - _kHoldEnd)).clamp(0.0, 1.0);
+      final t = ((_reveal.value - _kHoldEnd) / (1 - _kHoldEnd)).clamp(0.0, 1.0);
       revealFade = 1 - Curves.easeIn.transform(t);
     }
     final overlayOpacity = (base * revealFade).clamp(0.0, 1.0);
@@ -262,7 +265,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   }
 
   Widget _buildCaption() {
-    final isReveal = _phase == _CeremonyPhase.revealing && _flip.value > 0.05;
+    final isReveal = _phase == _CeremonyPhase.revealing && _reveal.value > 0.05;
     final text = isReveal ? '今日對象登場' : '正在為你翻牌…';
     return Text(
       key: const ValueKey('practice-draw-ceremony-caption'),
@@ -336,7 +339,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     }
 
     // 揭曉：rotateY 翻面（0→π），過半才換成正面並反鏡像修正。
-    final f = _flip.value;
+    final f = _reveal.value;
     final rot = (f / _kRotateEnd).clamp(0.0, 1.0); // 0..1 旋轉進度
     final angle = rot * math.pi;
     final showFront = angle > math.pi / 2;
