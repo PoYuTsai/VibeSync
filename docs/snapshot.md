@@ -98,7 +98,8 @@ External/mobile mode:
 - Discord listener runs via tmux / `~/.claude/channels/discord-vibesync/start.sh`.
 - Use `!cc-rotate` to handoff and start a fresh CC session when context approaches the orange/red zone.
 - `!cc-rotate` must read this snapshot, shared rules, newest OPEN queue item, latest handoff, and recent commits before taking work.
-- `!codex review latest` is the read-only Codex review gate. Codex does not edit files in external mode.
+- Codex review is the read-only review gate. Codex does not edit files in external mode.
+- Default 2026-06-26 workflow: Claude/CC does not self-trigger Codex as part of its own fix/feature flow. Claude/CC prepares a review packet; Eric routes it to a separate Codex review thread for the double-check. Direct `!codex review ...` from CC is opt-in only when Eric explicitly asks for that run.
 
 Known setup note:
 

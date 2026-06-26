@@ -90,7 +90,8 @@ High-risk includes:
 Rule:
 
 - Claude may fix first.
-- Before telling Eric/Bruce the build is safe to test, run Codex read-only review.
+- Before telling Eric/Bruce the build is safe to test, get Codex read-only review evidence.
+- In Claude/CC external workflow, do not invoke Codex from inside the same workflow unless Eric explicitly asks for that specific run. Prepare a review packet instead: base ref, commit list, changed files, tests, high-risk focus areas, and any open concerns. Eric will route that packet to a separate Codex review thread for the double-check.
 - A valid Codex review must leave evidence: job id/result, review doc, queue update, or linked commit.
 - Do not claim "Codex approved" from memory or vibes.
 
@@ -220,6 +221,12 @@ Phase 1 commands:
 - `!codex status <job-id>`
 - `!codex result <job-id>`
 - `!codex cancel <job-id>`
+
+Default ownership:
+
+- Claude/CC should not self-trigger Codex as a background substep of a feature/fix workflow. It should stop after tests and provide the exact review packet.
+- Eric routes the packet to a separate Codex review thread. That separate review is the normal double-review path.
+- Only Eric can opt back into direct `!codex review ...` from Claude/CC for a specific task.
 
 Disabled in Discord Phase 1:
 
