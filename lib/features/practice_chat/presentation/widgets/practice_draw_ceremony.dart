@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_profile.dart';
+import 'practice_draw_sfx.dart';
 import 'practice_girl_photo.dart';
 
 /// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 commit 2）。
@@ -20,7 +22,9 @@ import 'practice_girl_photo.dart';
 /// - 只有「真的進過 drawing 又成功 reveal 一位新對象」才慶祝；換一位失敗會回到
 ///   `revealed` 但帶 `errorMessage`，這種情況只做兜底淡出、不翻面慶祝。
 /// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面，reveal 直接
-///   讓 overlay 收掉、露出 hero（haptic 留待 commit 3）。
+///   讓 overlay 收掉、露出 hero；但 haptic／音效掛勾仍照觸發（屬觸覺回饋非動畫）。
+/// - haptic 走 [HapticFeedback]（抽牌 light、翻開成功 medium）；音效走
+///   [PracticeDrawSfx]（目前 no-op stub，未打包音檔）。
 /// - 全程用 `AnimationController`（ticker）驅動，**不**用 `Timer`/`Future.delayed`，
 ///   避免測試殘留 pending timer；controller 在 dispose 先收。
 ///
@@ -98,8 +102,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   void _onStateChange(PracticeChatState? prev, PracticeChatState next) {
     final wasDrawing = prev?.isDrawing ?? false;
 
-    // 進入抽牌：浮現神秘卡背。
+    // 進入抽牌：浮現神秘卡背，輕觸覺＋咻聲掛勾。
     if (!wasDrawing && next.isDrawing) {
+      HapticFeedback.lightImpact();
+      PracticeDrawSfx.playWhoosh();
       setState(() {
         _phase = _CeremonyPhase.drawing;
         _revealGirl = null;
@@ -121,6 +127,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;
     if (drawSucceeded) {
+      // 中觸覺＋叮聲掛勾：放在 reduce-motion 早退前，兩條路徑都有回饋。
+      HapticFeedback.mediumImpact();
+      PracticeDrawSfx.playRevealChime();
       if (_reduceMotion) {
         // reduce-motion：跳過 3D 翻面，直接收掉 overlay 露出 hero。
         _toHidden();
