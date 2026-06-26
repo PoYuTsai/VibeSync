@@ -356,19 +356,16 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     double frontAppear = 1; // 正面資訊浮出
     double frontDepart = 0; // 落位下沉
     double backGlow = 0.6; // 卡背金光
-    double sweepRot = 0; // 光環旋轉進度
-    double sweepIntensity = 0; // 光環強度
+    double haloIntensity = 0; // 軌道彗星 halo 強度（只在蓄力→高潮亮）
     double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
 
     if (f < kPracticeRevealFlip1End) {
-      // 第一段：卡背→白卡預覽（rotateY 0→π）。
+      // 第一段：卡背→白卡預覽（rotateY 0→π）。halo 尚未啟動（留給高潮）。
       final rot = seg(0, kPracticeRevealFlip1End);
       angle = rot * math.pi;
       showFront = angle > math.pi / 2;
       frontAppear = 0;
       flashCenter = rot;
-      sweepRot = rot;
-      sweepIntensity = math.sin(math.pi * rot) * 0.7;
     } else if (f < kPracticeRevealPreviewEnd) {
       // 白卡停留、資訊浮出（屏息）。
       angle = math.pi;
@@ -382,23 +379,22 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       frontAppear = 1;
       flashCenter = rot;
     } else if (f < kPracticeRevealHaloClimax) {
-      // 卡背發亮、光環 sweep 衝高潮（Batch A 複用 _SweepGlowPainter）。
+      // 卡背發亮、軌道彗星 halo 衝高潮（Batch B：兩夾層 _OrbitalHaloPainter）。
       final climb = seg(kPracticeRevealRechargeEnd, kPracticeRevealHaloClimax);
       angle = 0;
       showFront = false;
       backGlow = 0.6 + 0.4 * climb;
-      sweepRot = climb;
-      sweepIntensity = climb;
+      haloIntensity = climb;
     } else if (f < kPracticeRevealGrandFlipEnd) {
-      // 高潮翻面：卡背→典藏卡（Batch A 仍用現有正面，Batch C 換金框）。
+      // 高潮翻面：卡背→典藏卡（Batch A 仍用現有正面，Batch C 換金框）。halo 隨翻面
+      // 淡出。
       final rot = seg(kPracticeRevealHaloClimax, kPracticeRevealGrandFlipEnd);
       angle = rot * math.pi;
       showFront = angle > math.pi / 2;
       frontAppear = 0;
       backGlow = 1;
       flashCenter = rot;
-      sweepRot = rot;
-      sweepIntensity = 1 - rot;
+      haloIntensity = 1 - rot;
     } else if (f < kPracticeRevealHoldEnd) {
       // 典藏卡停留、資訊落位、光環 settle。
       angle = math.pi;
@@ -411,6 +407,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       frontAppear = 1;
       frontDepart = seg(kPracticeRevealHoldEnd, 1);
     }
+
+    // 軌道彗星繞行進度：蓄力→高潮窗內掃一圈（halo 亮時才用）。
+    final haloProgress = ((f - kPracticeRevealRechargeEnd) /
+            (kPracticeRevealGrandFlipEnd - kPracticeRevealRechargeEnd))
+        .clamp(0.0, 1.0);
 
     final flash = flashCenter < 0
         ? 0.0
@@ -436,12 +437,17 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          if (sweepIntensity > 0.01)
+          // 後半弧 halo（投影 z<0）：畫在卡片**下方**，做繞到卡背的景深。
+          if (haloIntensity > 0.01)
             Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-halo-back'),
               child: IgnorePointer(
                 child: CustomPaint(
-                  painter: _SweepGlowPainter(
-                      progress: sweepRot, intensity: sweepIntensity),
+                  painter: _OrbitalHaloPainter(
+                    progress: haloProgress,
+                    intensity: haloIntensity,
+                    half: PracticeHaloHalf.back,
+                  ),
                 ),
               ),
             ),
@@ -452,13 +458,27 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               ..rotateY(angle),
             child: face,
           ),
+          // 前半弧 halo（投影 z>0）：畫在卡片**上方**，與後半夾出彗星繞行卡片。
+          if (haloIntensity > 0.01)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-halo-front'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _OrbitalHaloPainter(
+                    progress: haloProgress,
+                    intensity: haloIntensity,
+                    half: PracticeHaloHalf.front,
+                  ),
+                ),
+              ),
+            ),
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
                 painter: _StarfieldPainter(
                   twinkle: f,
                   intensity:
-                      (sweepIntensity * 0.7 + flash * 0.6) * (1 - frontDepart),
+                      (haloIntensity * 0.7 + flash * 0.6) * (1 - frontDepart),
                 ),
               ),
             ),
@@ -818,67 +838,6 @@ class _MysticBackPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MysticBackPainter old) => old.glow != glow;
-}
-
-/// 翻面期間環繞卡牌的金色光環 sweep：一段旋轉的發光弧線 ＋ 外圈柔光環。
-/// `progress` 0..1 為旋轉進度（決定弧線起點），`intensity` 控制整體亮度。
-class _SweepGlowPainter extends CustomPainter {
-  _SweepGlowPainter({required this.progress, required this.intensity});
-
-  final double progress;
-  final double intensity;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0) return;
-    final center = Offset(size.width / 2, size.height / 2);
-    final r = size.shortestSide * 0.46;
-    final rect = Rect.fromCircle(center: center, radius: r);
-
-    // 外圈柔光環（金）。
-    final halo = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10
-      ..color = _kGold.withValues(alpha: 0.18 * intensity)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-    canvas.drawCircle(center, r, halo);
-
-    // 旋轉的亮弧（120° 長，跟著 progress 轉一圈）。
-    final start = progress * 2 * math.pi - math.pi / 2;
-    const sweepAngle = 2.0; // ~115°
-    final arc = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..strokeCap = StrokeCap.round
-      ..shader = SweepGradient(
-        startAngle: start,
-        endAngle: start + sweepAngle,
-        colors: [
-          _kGold.withValues(alpha: 0.0),
-          _kGold.withValues(alpha: 0.9 * intensity),
-          Colors.white.withValues(alpha: 0.95 * intensity),
-        ],
-        stops: const [0.0, 0.7, 1.0],
-        transform: GradientRotation(start),
-      ).createShader(rect)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    canvas.drawArc(rect, start, sweepAngle, false, arc);
-
-    // 弧線前緣亮點（領頭的光珠）。
-    final headA = start + sweepAngle;
-    final head = center + Offset(math.cos(headA), math.sin(headA)) * r;
-    canvas.drawCircle(
-      head,
-      4,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.95 * intensity)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_SweepGlowPainter old) =>
-      old.progress != progress || old.intensity != intensity;
 }
 
 /// 軌道彗星 halo 的夾層：`back` = 投影深度 z<0 的後半弧（畫在卡片**下方**）；
