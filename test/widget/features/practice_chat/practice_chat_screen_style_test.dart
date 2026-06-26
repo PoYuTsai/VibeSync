@@ -174,8 +174,9 @@ class _SeededPracticeChatController extends PracticeChatController {
   _SeededPracticeChatController({
     required PracticeChatState seed,
     required super.repository,
+    PracticeChatApiService? api,
   }) : super(
-          api: _NoopPracticeChatApi(),
+          api: api ?? _NoopPracticeChatApi(),
           sessionId: seed.sessionId,
           createdAt: seed.createdAt,
         ) {
@@ -857,5 +858,86 @@ void main() {
 
     expect(find.byKey(const ValueKey('practice-draw-quota')), findsOneWidget);
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
+  });
+
+  // ── revealed 狀態下換一位失敗：error banner 要帶升級入口（P2 修補）──────────
+  PracticeChatState revealedPreMsgSeed() {
+    final girl = practiceGirlProfiles.first;
+    return PracticeChatState(
+      sessionId: 'revealed-pre',
+      createdAt: DateTime(2026, 6, 26, 13),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      messages: const [],
+    );
+  }
+
+  testWidgets('revealed 換一位 draw 402 → 保留原對象＋error banner 顯升級 CTA',
+      (tester) async {
+    final api = _DrawApi(
+      () async => throw PracticeDrawUpgradeRequiredException(
+        extraCostMessages: 5,
+        nextResetAt: '2026-06-27T04:00:00.000Z',
+      ),
+    );
+    final seed = revealedPreMsgSeed();
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo, api: api);
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.text('換一位'));
+    await tester.pump(); // drawing
+    await tester.pump(); // 402 回來
+
+    // 保留原對象（仍 revealed、girl 不漂移）。
+    expect(controller.currentState.drawStatus, PracticeDrawStatus.revealed);
+    expect(controller.currentState.girl!.profileId, seed.girl!.profileId);
+    expect(controller.currentState.drawUpgradeRequired, true);
+    // revealed banner 有升級入口。
+    expect(find.text('升級'), findsOneWidget);
+  });
+
+  testWidgets('revealed 換一位 draw 429 → 保留原對象＋error banner 顯升級 CTA',
+      (tester) async {
+    final api = _DrawApi(
+      () async => throw PracticeQuotaExceededException('本月額度已用完',
+          monthlyRemaining: 0, dailyRemaining: 0),
+    );
+    final seed = revealedPreMsgSeed();
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo, api: api);
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.text('換一位'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(controller.currentState.drawStatus, PracticeDrawStatus.revealed);
+    expect(controller.currentState.girl!.profileId, seed.girl!.profileId);
+    expect(controller.currentState.drawQuotaExceeded, true);
+    expect(find.text('升級'), findsOneWidget);
   });
 }

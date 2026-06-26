@@ -154,7 +154,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
           if (state.errorMessage != null)
             _ErrorBanner(
               message: state.errorMessage!,
-              showUpgrade: state.quotaExceeded || state.upgradeRequired,
+              showUpgrade: state.quotaExceeded ||
+                  state.upgradeRequired ||
+                  state.drawUpgradeRequired ||
+                  state.drawQuotaExceeded,
               onUpgrade: () => context.push('/paywall'),
               onDismiss: () => ref
                   .read(practiceChatControllerProvider.notifier)
