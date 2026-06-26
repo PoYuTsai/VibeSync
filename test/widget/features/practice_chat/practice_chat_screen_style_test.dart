@@ -1049,4 +1049,122 @@ void main() {
     );
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
+
+  // ── 抽牌等待期間卡背持續微動（Batch 4.6）────────────────────────────────
+  double waitMotionDy(WidgetTester tester) {
+    return tester
+        .widget<Transform>(
+          find.byKey(const ValueKey('practice-draw-ceremony-waiting-motion')),
+        )
+        .transform
+        .getTranslation()
+        .y;
+  }
+
+  testWidgets('儀式：抽牌等待期間卡背持續微動（float 隨時間變化、不洩漏正面）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // 進入 drawing：啟動入場＋等待微動
+    await tester.pump(const Duration(milliseconds: 600)); // intro 收斂、等待持續
+    final y1 = waitMotionDy(tester);
+    await tester.pump(const Duration(milliseconds: 650)); // 等待相位再推進
+    final y2 = waitMotionDy(tester);
+
+    // 等待期間卡背確實在浮動（兩個取樣時間的 float 位移明顯不同）。
+    expect((y1 - y2).abs(), greaterThan(0.5));
+    // 等待期間只顯卡背、絕不洩漏正面身份。
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+
+    // 收尾：成功揭曉、settle 收掉 overlay（等待微動須已停，pumpAndSettle 才收斂）。
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+  });
+
+  testWidgets('儀式：等待中 402 回來 → 停止微動、不誤觸成功揭曉（pumpAndSettle 收斂）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing：等待微動啟動
+    await tester.pump(const Duration(milliseconds: 600)); // 微動進行中
+
+    // 等待途中 402：停止微動、走兜底淡出，不得翻面慶祝。
+    completer.completeError(
+      PracticeDrawUpgradeRequiredException(
+        extraCostMessages: 5,
+        nextResetAt: '2026-06-27T04:00:00.000Z',
+      ),
+    );
+    // 若等待微動沒被停掉，這個 pumpAndSettle 會因 repeat 永不收斂而 timeout。
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-draw-upgrade')), findsOneWidget);
+  });
+
+  testWidgets('儀式：reduce-motion 等待期間卡背靜止（不啟動持續微動）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practiceChatApiServiceProvider.overrideWithValue(api),
+        ],
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: const PracticeChatScreen(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing（reduce-motion：卡背直接定住）
+    final y1 = waitMotionDy(tester);
+    await tester.pump(const Duration(milliseconds: 220));
+    final y2 = waitMotionDy(tester);
+
+    // reduce-motion：不啟動持續微動，float 位移恆定（靜止）。
+    expect(y1, equals(y2));
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
+  });
 }

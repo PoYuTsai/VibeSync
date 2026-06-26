@@ -11,20 +11,22 @@ import '../../domain/entities/practice_girl_profile.dart';
 import 'practice_draw_sfx.dart';
 import 'practice_girl_photo.dart';
 
-/// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 → Batch 4.5 高還原 polish）。
+/// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 → 4.5 高還原 → 4.6 等待微動）。
 ///
 /// 純原生實作（無 lottie/rive/音檔）：抽牌中浮現一張**神秘卡背**（深紫＋金框＋圖騰
 /// ＋星光，不顯名字／照片），server 抽中後以 `Transform`(rotateY) 做 3D 翻面，中點
 /// 配 flash／金色光環 sweep 揭曉今日對象，短暫停留後整片淡出露出底下 hero。
 ///
-/// 設計鐵則（Batch 4.5 仍嚴守）：
+/// 設計鐵則（Batch 4.6 仍嚴守）：
 /// - 只靠單一 `drawStatus` 狀態機驅動，**不**新增任何計費／網路行為。
 /// - 只有「真的進過 drawing 又成功 reveal 一位新對象」才慶祝；換一位失敗會回到
 ///   `revealed` 但帶 `errorMessage`，這種情況只做兜底淡出、不翻面慶祝。
-/// - **全程零 `repeat()`／零 `Timer`／零 `Future.delayed`**：所有動效（卡背浮現、
-///   星光、光環 sweep、flash、翻面、資訊落位、淡出）一律由 [_intro]／[_flip] 兩條
-///   **有限** `AnimationController` 的進度推導。這保證 `pumpAndSettle` 必收斂、
-///   widget test 不 hang；controller 在 dispose 先收。
+/// - **零 `Timer`／零 `Future.delayed`**：揭曉時間軸（卡背浮現、星光、光環 sweep、
+///   flash、翻面、資訊落位、淡出）一律由 [_intro]／[_flip] 兩條**有限**
+///   `AnimationController` 的進度推導。唯一會 `repeat()` 的是 [_waiting]（抽牌等待
+///   server 期間的持續微動），且嚴格 gate：只在 drawing 且非 reduce-motion 啟動，
+///   reveal／error／hidden／dispose 一律明確 `stop()`。故 `pumpAndSettle` 仍必收斂、
+///   widget test 不 hang；三條 controller 都在 dispose 先收。
 /// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面與強動畫，抽牌中
 ///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／音效掛勾仍照觸發。
 /// - haptic 走 [HapticFeedback]（抽牌 light、翻開成功 medium）；音效走
@@ -56,6 +58,15 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     duration: const Duration(milliseconds: 1150),
   );
 
+  // 抽牌「等待 server 回應」期間的持續蓄力微動（上下浮動＋金光呼吸＋星光閃爍）。
+  // 這是**唯一**會 `repeat()` 的 controller，故嚴格 gate：只在真實 drawing 階段且
+  // 非 reduce-motion 才啟動，reveal／error／hidden／dispose 一律明確 `stop()`，確保
+  // `pumpAndSettle` 不會因無限重播而 hang。一個迴圈 = 一次 sin 週期（首尾相接無跳變）。
+  late final AnimationController _waiting = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2600),
+  );
+
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
@@ -71,6 +82,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     super.initState();
     _intro.addListener(_onTick);
     _flip.addListener(_onTick);
+    _waiting.addListener(_onTick);
     _flip.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _toHidden();
@@ -96,6 +108,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       _phase = _CeremonyPhase.hidden;
       _revealGirl = null;
     });
+    _waiting.stop();
     _flip.value = 0;
   }
 
@@ -120,8 +133,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         ..value = 0;
       if (_reduceMotion) {
         _intro.value = 1; // 不做淡入動畫，直接定住卡背。
+        _waiting.stop(); // reduce-motion：等待期間靜止，不啟動持續微動。
       } else {
         _intro.forward(from: 0);
+        _waiting.repeat(); // 等待 server 期間持續蓄力微動。
       }
       return;
     }
@@ -144,6 +159,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         _phase = _CeremonyPhase.revealing;
         _revealGirl = next.girl;
       });
+      _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
       _intro.value = 1;
       _flip.forward(from: 0);
       return;
@@ -152,6 +168,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     // 失敗兜底（error / locked / 換一位失敗回 revealed 帶錯誤）：淡出，不慶祝。
     if (_phase == _CeremonyPhase.drawing ||
         _phase == _CeremonyPhase.revealing) {
+      _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
       _flip
         ..stop()
         ..value = 0;
@@ -167,6 +184,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   void dispose() {
     _intro.dispose();
     _flip.dispose();
+    _waiting.dispose();
     super.dispose();
   }
 
@@ -249,33 +267,49 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   static const double _stageH = _cardH + 132;
 
   Widget _buildStage() {
-    // 抽牌中：靜態神秘卡背（reduce-motion 則 intro 已定在 1）＋微放大入場＋入場星光。
+    // 抽牌中：神秘卡背＋微放大入場＋（等待 server 期間）持續蓄力微動。
     if (_phase == _CeremonyPhase.drawing) {
       final intro = Curves.easeOutBack.transform(_intro.value.clamp(0.0, 1.0));
-      final scale = (0.84 + 0.16 * intro).clamp(0.0, 1.06);
+      final introScale = (0.84 + 0.16 * intro).clamp(0.0, 1.06);
+
+      // 等待蓄力微動：全由 [_waiting] 的單一 sin 週期推導。reduce-motion／已停時
+      // `_waiting.value` 不前進＝靜止（floatDy 恆 0、scale/glow 恆定）。入場未完成
+      // 時用 `settle` 壓低幅度，避免和 easeOutBack 的入場彈跳互相打架。
+      final w = _waiting.value;
+      final wphase = w * 2 * math.pi;
+      final settle = Curves.easeIn.transform(_intro.value.clamp(0.0, 1.0));
+      final breath = 0.5 + 0.5 * math.sin(wphase); // 0..1 呼吸相位
+      final floatDy = math.sin(wphase) * 3.6 * settle; // 上下浮動 ±3.6px
+      final breathScale = 1 + 0.013 * breath * settle; // 極克制的呼吸縮放
+      final breathGlow = (0.52 + 0.26 * breath).clamp(0.0, 1.0); // 金光呼吸
+
       return SizedBox(
         width: _stageW,
         height: _stageH,
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // 入場星光（隨 intro 浮現，停在靜態，不無限重播）。
+            // 星光：入場由 intro 浮現，之後改由等待相位持續閃爍（reduce-motion 靜止）。
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
                   painter: _StarfieldPainter(
-                    twinkle: _intro.value,
+                    twinkle: _intro.value + w,
                     intensity: 0.55 + 0.45 * _intro.value,
                   ),
                 ),
               ),
             ),
-            Transform.scale(
-              scale: scale,
-              child: const _CeremonyCardBack(
-                width: _cardW,
-                height: _cardH,
-                glow: 0.6,
+            Transform.translate(
+              key: const ValueKey('practice-draw-ceremony-waiting-motion'),
+              offset: Offset(0, floatDy),
+              child: Transform.scale(
+                scale: introScale * breathScale,
+                child: _CeremonyCardBack(
+                  width: _cardW,
+                  height: _cardH,
+                  glow: breathGlow,
+                ),
               ),
             ),
           ],
