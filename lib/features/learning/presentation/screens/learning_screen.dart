@@ -28,16 +28,34 @@ class LearningScreen extends ConsumerWidget {
 
     return CustomScrollView(
       slivers: [
-        // Header + free user notice as a non-scrollable top section
+        // 第一屏主視覺：AI 實戰練習室 Hero，依 scroll viewport 高度填滿主要可
+        // 視區，讓文章卡落到折線下方（往下滑才看到）。
+        SliverLayoutBuilder(
+          builder: (context, constraints) {
+            final double viewport = constraints.viewportMainAxisExtent;
+            // 首屏由 Hero 主導；留約 48px 讓下方「練習專區」標題露頭當下滑提
+            // 示。clamp 下限刻意不取大值，避免小機種 Hero 高過 viewport 把底部
+            // CTA 推出可視區。
+            final double heroHeight = (viewport - 64).clamp(360.0, 760.0);
+            return SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: SizedBox(
+                  height: heroHeight,
+                  child: const PracticeRoomEntryCard(),
+                ),
+              ),
+            );
+          },
+        ),
+
+        // Hero 下方：練習專區 header + 免費閱讀提示（首屏外，往下滑才看到）。
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // AI 實戰練習室入口（學習 tab 最上方）。
-                const PracticeRoomEntryCard(),
-                const SizedBox(height: 24),
                 Text(
                   '練習專區',
                   style: AppTypography.bodySmall.copyWith(
