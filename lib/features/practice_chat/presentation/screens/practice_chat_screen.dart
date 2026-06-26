@@ -93,6 +93,22 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       }
     });
 
+    // 尚未翻牌（locked / drawing / error）：不顯示任何對象，只給翻牌入口。
+    if (!state.isRevealed) {
+      return BrandScaffold(
+        title: 'AI 實戰練習室',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: '最近練習',
+            onPressed: () => _openHistory(context),
+          ),
+        ],
+        resizeToAvoidBottomInset: true,
+        body: _PracticeLockedEntry(state: state),
+      );
+    }
+
     return BrandScaffold(
       title: 'AI 實戰練習室',
       actions: [
@@ -188,6 +204,114 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   }
 }
 
+// ── 未翻牌入口：每日翻牌 CTA（Batch 3 最小可用層；卡背/3D/光圈 等視覺留 Batch 4）──
+class _PracticeLockedEntry extends ConsumerWidget {
+  const _PracticeLockedEntry({required this.state});
+
+  final PracticeChatState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final drawing = state.isDrawing;
+    return Center(
+      child: SingleChildScrollView(
+        key: const ValueKey('practice-locked-entry'),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.auto_awesome,
+              size: 52,
+              color: AppColors.ctaStart,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '每日登入就送新女孩',
+              textAlign: TextAlign.center,
+              style: AppTypography.titleLarge.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '翻開今日對象，開始一場真實聊天練習。',
+              textAlign: TextAlign.center,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                key: const ValueKey('practice-draw-cta'),
+                onPressed: drawing
+                    ? null
+                    : () => ref
+                        .read(practiceChatControllerProvider.notifier)
+                        .drawNewPracticeGirl(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.ctaStart,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: drawing
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('翻開今日對象'),
+              ),
+            ),
+            if (state.drawUpgradeRequired) ...[
+              const SizedBox(height: 16),
+              Text(
+                state.errorMessage ?? '升級後每天可以翻更多陪練女孩。',
+                textAlign: TextAlign.center,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                key: const ValueKey('practice-draw-upgrade'),
+                onPressed: () => context.push('/paywall'),
+                child: const Text('升級解鎖'),
+              ),
+            ] else if (state.drawQuotaExceeded) ...[
+              const SizedBox(height: 16),
+              Text(
+                state.errorMessage ?? '額度已用完，明天中午會重置。',
+                key: const ValueKey('practice-draw-quota'),
+                textAlign: TextAlign.center,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.error,
+                ),
+              ),
+            ] else if (state.errorMessage != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                state.errorMessage!,
+                textAlign: TextAlign.center,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.error,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── 開場前控制列：換一位＋難度 chips（深色 scaffold 底，沿用原樣式）──
 class _PracticeOpeningControls extends ConsumerWidget {
   const _PracticeOpeningControls({required this.state});
@@ -242,7 +366,7 @@ class _PracticeProfileBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final girl = state.girl;
+    final girl = state.girl!;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: InkWell(
@@ -441,7 +565,7 @@ class _PracticeProfileHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final girl = state.girl;
+    final girl = state.girl!;
     // 難度已由下方控制列的 chips 呈現，這裡只放人格／興趣／生活風格，避免重複。
     final tags = <String>[
       if (state.personaLabel.isNotEmpty) state.personaLabel,

@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
@@ -66,6 +68,32 @@ class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
   }
 }
 
+PracticeDrawResult _drawResultFor(PracticeGirlProfile g) {
+  return PracticeDrawResult(
+    profile: PracticeDrawnProfile(
+      profileId: g.profileId,
+      nameId: g.nameId,
+      professionId: g.professionId,
+      photoId: g.photoId,
+      personaId: g.personaId,
+    ),
+    draw: const PracticeDrawReceipt(
+      costMessages: 0,
+      freeAllowance: 1,
+      freeUsed: 1,
+      freeRemaining: 0,
+      extraCostMessages: 5,
+      nextResetAt: '2999-01-01T04:00:00.000Z',
+    ),
+    usage: const PracticeDrawUsage(
+      monthlyUsed: 0,
+      monthlyLimit: 30,
+      dailyUsed: 0,
+      dailyLimit: 30,
+    ),
+  );
+}
+
 class _NoopPracticeChatApi extends PracticeChatApiService {
   @override
   Future<PracticeChatReply> sendMessage({
@@ -88,6 +116,58 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
   }) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<PracticeDrawResult> drawProfile({
+    required String requestId,
+    String? currentProfileId,
+    String? visiblePracticeThreadId,
+  }) async {
+    // 換一位／翻牌：回固定一位（與目前不同），給 seeded 控制器的 draw 路徑用。
+    final next = practiceGirlProfiles.firstWhere(
+      (g) => g.profileId != currentProfileId,
+      orElse: () => practiceGirlProfiles.first,
+    );
+    return _drawResultFor(next);
+  }
+}
+
+/// 翻牌入口測試用：drawProfile 可設定成功回某位或拋指定例外。
+class _DrawApi extends PracticeChatApiService {
+  _DrawApi(this._handler);
+
+  final Future<PracticeDrawResult> Function()? _handler;
+  int drawCalls = 0;
+
+  @override
+  Future<PracticeDrawResult> drawProfile({
+    required String requestId,
+    String? currentProfileId,
+    String? visiblePracticeThreadId,
+  }) {
+    drawCalls++;
+    return _handler!();
+  }
+
+  @override
+  Future<PracticeChatReply> sendMessage({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<PracticeDebrief> requestDebrief({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+  }) =>
+      throw UnimplementedError();
 }
 
 class _SeededPracticeChatController extends PracticeChatController {
@@ -105,9 +185,11 @@ class _SeededPracticeChatController extends PracticeChatController {
 
 void main() {
   late PracticeSessionRepository repo;
+  late InMemoryPracticeDrawDraftStore draftStore;
 
   setUp(() {
     repo = _MemoryPracticeSessionRepository();
+    draftStore = InMemoryPracticeDrawDraftStore();
   });
 
   testWidgets('renders practice bubbles on the light conversation workspace',
@@ -158,7 +240,7 @@ void main() {
     expect(userText.style?.color, AppColors.glassTextPrimary);
   });
 
-  testWidgets('empty room explains when quota is charged', (tester) async {
+  testWidgets('進房沒有 session/draft → locked 翻牌入口，不顯示任何對象', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -166,16 +248,22 @@ void main() {
       ProviderScope(
         overrides: [
           practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
     );
 
+    // 翻牌入口：標題＋CTA。
+    expect(find.text('每日登入就送新女孩'), findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-draw-cta')), findsOneWidget);
+    // 不顯示任何對象（無 hero、無頭像、無開場前控制）。
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
     expect(
-      find.textContaining('首次 AI 回覆成功才扣 1 則'),
-      findsAtLeastNWidgets(1),
+      find.byKey(const ValueKey('practice-profile-avatar')),
+      findsNothing,
     );
-    expect(find.textContaining('進來或送出失敗不扣'), findsOneWidget);
+    expect(find.text('換一位'), findsNothing);
   });
 
   testWidgets('opens unfinished local session for continuation',
@@ -196,6 +284,7 @@ void main() {
       ProviderScope(
         overrides: [
           practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -222,6 +311,7 @@ void main() {
       ProviderScope(
         overrides: [
           practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -264,6 +354,7 @@ void main() {
       ProviderScope(
         overrides: [
           practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -291,22 +382,34 @@ void main() {
     expect(find.text('還沒有練習紀錄'), findsOneWidget);
   });
 
-  testWidgets(
-      'new room shows persona and difficulty controls before first message',
-      (tester) async {
+  testWidgets('翻牌後（revealed、未送出）顯示 hero + 換一位 + 難度 chips', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final girl = practiceGirlProfiles.first;
+    final seed = PracticeChatState(
+      sessionId: 'revealed-pre-msg',
+      createdAt: DateTime(2026, 6, 26, 13),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+      messages: const [],
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceChatControllerProvider.overrideWith((ref) => controller),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
     );
 
-    // 開場前：首屏 hero 大卡 + 換一位 + 難度 chips（控制列在深色 scaffold 底）。
+    // 揭曉後（開場前）：首屏 hero 大卡 + 換一位 + 難度 chips。
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
     expect(find.text('換一位'), findsOneWidget);
     expect(find.text('輕鬆'), findsOneWidget);
@@ -337,6 +440,7 @@ void main() {
       ProviderScope(
         overrides: [
           practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -368,6 +472,7 @@ void main() {
       ProviderScope(
         overrides: [
           practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -503,7 +608,7 @@ void main() {
     expect(find.text('升級'), findsOneWidget); // 錯誤橫幅導付費牆
   });
 
-  testWidgets('點換一位 → 重置成開場前狀態（訊息清空、角色控制重現）', (tester) async {
+  testWidgets('點換一位 → 走 draw、重置成開場前狀態（訊息清空、角色控制重現）', (tester) async {
     final controller = _SeededPracticeChatController(
       seed: debriefSeed(),
       repository: repo,
@@ -511,12 +616,14 @@ void main() {
     await pumpDebrief(tester, controller: controller);
 
     await tester.tap(find.text('換一位'));
-    await tester.pump();
+    await tester.pump(); // drawing（locked 入口、spinner）
+    await tester.pump(); // draw 完成 → revealed 新對象
 
     final s = controller.currentState;
     expect(s.messages, isEmpty);
     expect(s.roundIndex, 1);
     expect(s.debrief, isNull);
+    expect(s.drawStatus, PracticeDrawStatus.revealed);
     // 開場前控制重現：難度 chips 與換一位鈕回來。
     expect(find.text('輕鬆'), findsOneWidget);
   });
@@ -683,5 +790,72 @@ void main() {
     expect(fullPhoto, findsNothing);
     expect(find.byKey(const ValueKey('practice-profile-hero-photo')),
         findsOneWidget);
+  });
+
+  // ── 每日翻牌入口（locked → draw）─────────────────────────────────────────
+  Future<void> pumpLocked(
+    WidgetTester tester, {
+    required PracticeChatApiService api,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practiceChatApiServiceProvider.overrideWithValue(api),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+  }
+
+  testWidgets('點翻牌 CTA → 呼叫 draw、成功後顯示 server 給的對象', (tester) async {
+    final zoe = practiceGirlProfiles[2];
+    final api = _DrawApi(() async => _drawResultFor(zoe));
+    await pumpLocked(tester, api: api);
+
+    expect(find.byKey(const ValueKey('practice-draw-cta')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(); // revealed
+
+    expect(api.drawCalls, 1);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    expect(find.text('${zoe.displayName}，${zoe.age}'), findsOneWidget);
+  });
+
+  testWidgets('翻牌 402 → 顯示升級 CTA、不顯示任何對象、仍可重抽', (tester) async {
+    final api = _DrawApi(
+      () async => throw PracticeDrawUpgradeRequiredException(
+        extraCostMessages: 5,
+        nextResetAt: '2026-06-27T04:00:00.000Z',
+      ),
+    );
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('practice-draw-upgrade')), findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-draw-cta')), findsOneWidget);
+  });
+
+  testWidgets('翻牌 429 → 顯示額度錯誤、不顯示任何對象', (tester) async {
+    final api = _DrawApi(
+      () async => throw PracticeQuotaExceededException('本月額度已用完',
+          monthlyRemaining: 0, dailyRemaining: 0),
+    );
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('practice-draw-quota')), findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
   });
 }

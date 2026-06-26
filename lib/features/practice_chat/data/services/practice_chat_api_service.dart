@@ -79,6 +79,74 @@ class PracticeDebrief {
   });
 }
 
+/// 翻牌成功回應：server 選定的對象身份（display-only id）。
+class PracticeDrawnProfile {
+  final String profileId;
+  final String nameId;
+  final String professionId;
+  final String photoId;
+  final String personaId;
+
+  const PracticeDrawnProfile({
+    required this.profileId,
+    required this.nameId,
+    required this.professionId,
+    required this.photoId,
+    required this.personaId,
+  });
+}
+
+/// 翻牌收據：本次扣費與免費額度狀態（server 為單一真實來源）。
+class PracticeDrawReceipt {
+  final int costMessages;
+  final int freeAllowance;
+  final int freeUsed;
+  final int freeRemaining;
+  final int extraCostMessages;
+  final String nextResetAt;
+
+  const PracticeDrawReceipt({
+    required this.costMessages,
+    required this.freeAllowance,
+    required this.freeUsed,
+    required this.freeRemaining,
+    required this.extraCostMessages,
+    required this.nextResetAt,
+  });
+}
+
+/// 翻牌後的 quota 用量快照（付費額外翻牌會扣一般 quota，用來同步訂閱計數）。
+class PracticeDrawUsage {
+  final int monthlyUsed;
+  final int monthlyLimit;
+  final int dailyUsed;
+  final int dailyLimit;
+
+  const PracticeDrawUsage({
+    required this.monthlyUsed,
+    required this.monthlyLimit,
+    required this.dailyUsed,
+    required this.dailyLimit,
+  });
+
+  int get monthlyRemaining =>
+      (monthlyLimit - monthlyUsed).clamp(0, monthlyLimit);
+  int get dailyRemaining => (dailyLimit - dailyUsed).clamp(0, dailyLimit);
+}
+
+/// `mode: draw_profile` 成功回應（200）。
+class PracticeDrawResult {
+  final PracticeDrawnProfile profile;
+  final PracticeDrawReceipt draw;
+  final PracticeDrawUsage usage;
+
+  const PracticeDrawResult({
+    required this.profile,
+    required this.draw,
+    required this.usage,
+  });
+}
+
 typedef PracticeChatInvoker = Future<PracticeInvokeResponse> Function(
   String functionName, {
   required Map<String, dynamic> body,
@@ -135,6 +203,24 @@ class PracticeUpgradeRequiredException implements Exception {
   PracticeUpgradeRequiredException();
   @override
   String toString() => 'PracticeUpgradeRequiredException';
+}
+
+/// Free 帳號每日免費翻牌用完、且該層級不開放付費額外翻牌（伺服器回 402
+/// `practice_draw_upgrade_required`）。前端必須導向付費牆，並可用 [extraCostMessages]
+/// / [nextResetAt] 組出文案。與續同一位的 [PracticeUpgradeRequiredException] 分開。
+class PracticeDrawUpgradeRequiredException implements Exception {
+  final String message;
+  final int? freeAllowance;
+  final int? extraCostMessages;
+  final String? nextResetAt;
+  PracticeDrawUpgradeRequiredException({
+    this.message = '',
+    this.freeAllowance,
+    this.extraCostMessages,
+    this.nextResetAt,
+  });
+  @override
+  String toString() => 'PracticeDrawUpgradeRequiredException: $message';
 }
 
 class PracticeChatApiService {
@@ -212,6 +298,100 @@ class PracticeChatApiService {
       vibe: _asString(card['vibe']).isEmpty ? '中性' : _asString(card['vibe']),
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
+    );
+  }
+
+  /// 每日翻牌：server 選一位新對象並原子扣費（免費額度／付費額外）。
+  /// [requestId] 是 client 產的冪等 key；[currentProfileId] 帶上目前這位以便排除
+  /// （換一位不換回自己）。402 → upgrade required；429 → quota exceeded。
+  Future<PracticeDrawResult> drawProfile({
+    required String requestId,
+    String? currentProfileId,
+    String? visiblePracticeThreadId,
+  }) async {
+    final response = await _invoke(
+      _functionName,
+      body: {
+        'mode': 'draw_profile',
+        'requestId': requestId,
+        if (currentProfileId != null) 'currentProfileId': currentProfileId,
+        if (visiblePracticeThreadId != null)
+          'visiblePracticeThreadId': visiblePracticeThreadId,
+      },
+    );
+
+    switch (response.status) {
+      case 200:
+        final data = response.data;
+        if (data is! Map) {
+          throw PracticeGenerationFailedException('malformed_response');
+        }
+        return _parseDrawResult(Map<String, dynamic>.from(data));
+      case 402:
+        final data = response.data is Map ? response.data as Map : const {};
+        final draw = data['draw'] is Map ? data['draw'] as Map : const {};
+        throw PracticeDrawUpgradeRequiredException(
+          message: (data['message'] as String?) ?? '',
+          freeAllowance: _asInt(draw['freeAllowance']),
+          extraCostMessages: _asInt(draw['extraCostMessages']),
+          nextResetAt: draw['nextResetAt'] as String?,
+        );
+      case 429:
+        final data = response.data is Map ? response.data as Map : const {};
+        throw PracticeQuotaExceededException(
+          (data['message'] as String?) ?? '額度已用完',
+          used: _asInt(data['used']),
+          limit: _asInt(data['limit']),
+          monthlyRemaining: _asInt(data['monthlyRemaining']),
+          dailyRemaining: _asInt(data['dailyRemaining']),
+        );
+      default:
+        if (response.status >= 500) {
+          throw PracticeGenerationFailedException(
+            'practice_draw_failed_${response.status}',
+          );
+        }
+        final data = response.data is Map ? response.data as Map : const {};
+        throw PracticeApiException(
+          (data['error'] as String?) ?? 'practice_draw_error',
+          status: response.status,
+        );
+    }
+  }
+
+  PracticeDrawResult _parseDrawResult(Map<String, dynamic> data) {
+    final profile = data['profile'];
+    final draw = data['draw'];
+    final usage = data['usage'];
+    if (profile is! Map || draw is! Map || usage is! Map) {
+      throw PracticeGenerationFailedException('malformed_draw');
+    }
+    final profileId = profile['profileId'];
+    if (profileId is! String || profileId.isEmpty) {
+      throw PracticeGenerationFailedException('malformed_draw_profile');
+    }
+    return PracticeDrawResult(
+      profile: PracticeDrawnProfile(
+        profileId: profileId,
+        nameId: _asString(profile['nameId']),
+        professionId: _asString(profile['professionId']),
+        photoId: _asString(profile['photoId']),
+        personaId: _asString(profile['personaId']),
+      ),
+      draw: PracticeDrawReceipt(
+        costMessages: _asInt(draw['costMessages']) ?? 0,
+        freeAllowance: _asInt(draw['freeAllowance']) ?? 0,
+        freeUsed: _asInt(draw['freeUsed']) ?? 0,
+        freeRemaining: _asInt(draw['freeRemaining']) ?? 0,
+        extraCostMessages: _asInt(draw['extraCostMessages']) ?? 0,
+        nextResetAt: _asString(draw['nextResetAt']),
+      ),
+      usage: PracticeDrawUsage(
+        monthlyUsed: _asInt(usage['monthlyUsed']) ?? 0,
+        monthlyLimit: _asInt(usage['monthlyLimit']) ?? 0,
+        dailyUsed: _asInt(usage['dailyUsed']) ?? 0,
+        dailyLimit: _asInt(usage['dailyLimit']) ?? 0,
+      ),
     );
   }
 

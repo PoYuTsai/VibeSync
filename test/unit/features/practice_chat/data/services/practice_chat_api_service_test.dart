@@ -13,12 +13,18 @@ class _CapturedInvoke {
   String? functionName;
   Map<String, dynamic>? body;
 
+  /// 翻牌成功回應（draw 測試設定後由 mode==draw_profile 分支回傳）。
+  Map<String, dynamic>? drawBody;
+
   Future<PracticeInvokeResponse> call(
     String fn, {
     required Map<String, dynamic> body,
   }) async {
     functionName = fn;
     this.body = body;
+    if (body['mode'] == 'draw_profile') {
+      return PracticeInvokeResponse(status: 200, data: drawBody ?? const {});
+    }
     if (body['mode'] == 'debrief') {
       return const PracticeInvokeResponse(
         status: 200,
@@ -253,6 +259,146 @@ void main() {
       expect(captured.body?.containsKey('nameId'), false);
       expect(captured.body?.containsKey('professionId'), false);
       expect(captured.body?.containsKey('photoId'), false);
+    });
+  });
+
+  group('drawProfile', () {
+    Map<String, dynamic> okBody() => {
+          'profile': {
+            'profileId': 'practice_girl_007',
+            'nameId': 'mia',
+            'professionId': 'nurse',
+            'photoId': 'practice_girl_007',
+            'personaId': 'cool_rational',
+          },
+          'draw': {
+            'costMessages': 0,
+            'freeAllowance': 3,
+            'freeUsed': 1,
+            'freeRemaining': 2,
+            'extraCostMessages': 5,
+            'nextResetAt': '2026-06-27T04:00:00.000Z',
+          },
+          'usage': {
+            'monthlyUsed': 12,
+            'monthlyLimit': 500,
+            'dailyUsed': 3,
+            'dailyLimit': 30,
+          },
+        };
+
+    test('body 帶 mode/requestId/currentProfileId/visiblePracticeThreadId', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.drawBody = okBody();
+
+      await svc.drawProfile(
+        requestId: 'req-1',
+        currentProfileId: 'practice_girl_001',
+        visiblePracticeThreadId: 'thread-9',
+      );
+
+      expect(captured.functionName, 'practice-chat');
+      expect(captured.body?['mode'], 'draw_profile');
+      expect(captured.body?['requestId'], 'req-1');
+      expect(captured.body?['currentProfileId'], 'practice_girl_001');
+      expect(captured.body?['visiblePracticeThreadId'], 'thread-9');
+    });
+
+    test('currentProfileId / visiblePracticeThreadId 為 null 時不放進 body', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.drawBody = okBody();
+
+      await svc.drawProfile(requestId: 'req-2');
+
+      expect(captured.body?['requestId'], 'req-2');
+      expect(captured.body?.containsKey('currentProfileId'), false);
+      expect(captured.body?.containsKey('visiblePracticeThreadId'), false);
+    });
+
+    test('200 → 解析 profile / draw / usage', () async {
+      final svc = serviceReturning(200, okBody());
+      final r = await svc.drawProfile(requestId: 'req-3');
+
+      expect(r.profile.profileId, 'practice_girl_007');
+      expect(r.profile.nameId, 'mia');
+      expect(r.profile.professionId, 'nurse');
+      expect(r.profile.photoId, 'practice_girl_007');
+      expect(r.profile.personaId, 'cool_rational');
+
+      expect(r.draw.costMessages, 0);
+      expect(r.draw.freeAllowance, 3);
+      expect(r.draw.freeUsed, 1);
+      expect(r.draw.freeRemaining, 2);
+      expect(r.draw.extraCostMessages, 5);
+      expect(r.draw.nextResetAt, '2026-06-27T04:00:00.000Z');
+
+      expect(r.usage.monthlyUsed, 12);
+      expect(r.usage.monthlyLimit, 500);
+      expect(r.usage.dailyUsed, 3);
+      expect(r.usage.dailyLimit, 30);
+    });
+
+    test('200 但缺 profile → generation failed', () async {
+      final svc = serviceReturning(200, {'draw': {}, 'usage': {}});
+      expect(
+        () => svc.drawProfile(requestId: 'req-4'),
+        throwsA(isA<PracticeGenerationFailedException>()),
+      );
+    });
+
+    test('402 → PracticeDrawUpgradeRequiredException 帶 allowance/成本/重置時間', () async {
+      final svc = serviceReturning(402, {
+        'error': 'practice_draw_upgrade_required',
+        'message': '升級後每天可以翻更多陪練女孩。',
+        'draw': {
+          'freeAllowance': 1,
+          'freeUsed': 1,
+          'freeRemaining': 0,
+          'extraCostMessages': 5,
+          'nextResetAt': '2026-06-27T04:00:00.000Z',
+        },
+      });
+      expect(
+        () => svc.drawProfile(requestId: 'req-5'),
+        throwsA(isA<PracticeDrawUpgradeRequiredException>()
+            .having((e) => e.freeAllowance, 'freeAllowance', 1)
+            .having((e) => e.extraCostMessages, 'extraCostMessages', 5)
+            .having((e) => e.nextResetAt, 'nextResetAt',
+                '2026-06-27T04:00:00.000Z')),
+      );
+    });
+
+    test('429 → PracticeQuotaExceededException 帶剩餘額度', () async {
+      final svc = serviceReturning(429, {
+        'message': '本月額度已用完',
+        'used': 500,
+        'limit': 500,
+        'monthlyRemaining': 0,
+        'dailyRemaining': 0,
+      });
+      expect(
+        () => svc.drawProfile(requestId: 'req-6'),
+        throwsA(isA<PracticeQuotaExceededException>()
+            .having((e) => e.monthlyRemaining, 'monthlyRemaining', 0)),
+      );
+    });
+
+    test('500 → PracticeGenerationFailedException', () async {
+      final svc = serviceReturning(500, {'error': 'draw_failed'});
+      expect(
+        () => svc.drawProfile(requestId: 'req-7'),
+        throwsA(isA<PracticeGenerationFailedException>()),
+      );
+    });
+
+    test('403 無訂閱 → PracticeApiException', () async {
+      final svc = serviceReturning(403, {'error': 'No subscription found'});
+      expect(
+        () => svc.drawProfile(requestId: 'req-8'),
+        throwsA(isA<PracticeApiException>()),
+      );
     });
   });
 

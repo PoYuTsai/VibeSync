@@ -4,9 +4,11 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/services/storage_service.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../domain/entities/practice_draw_draft.dart';
 import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
+import '../repositories/practice_draw_draft_store.dart';
 import '../repositories/practice_session_repository.dart';
 import '../services/practice_chat_api_service.dart';
 
@@ -17,6 +19,10 @@ const int kMaxPracticeAiReplies = 20;
 const int kMaxPracticeRounds = 3;
 
 const _sentinel = Object();
+
+/// 每日翻牌的揭曉狀態。locked＝今天還沒翻牌（不顯示任何對象）；drawing＝抽牌中；
+/// revealed＝已有今日對象可開聊；error＝抽牌失敗（locked 情境下用，仍可重抽）。
+enum PracticeDrawStatus { locked, drawing, revealed, error }
 
 class PracticeChatState {
   final String sessionId;
@@ -34,8 +40,21 @@ class PracticeChatState {
   final bool upgradeRequired; // Free 續同一位被擋（402）：導向付費牆，與額度用罄分開
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
 
-  // ── 本場對象（60-profile）：girl 是 display-only 身份，persona 綁定該位 ──
-  final PracticeGirlProfile girl;
+  // ── 每日翻牌：揭曉狀態與免費額度狀態 ──
+  /// 翻牌揭曉狀態。locked / drawing 時 [girl] 為 null，畫面不得顯示任何對象。
+  final PracticeDrawStatus drawStatus;
+
+  /// 本場對象（60-profile）：display-only 身份；尚未翻牌（locked/drawing）時為 null。
+  final PracticeGirlProfile? girl;
+
+  /// 翻牌免費額度狀態（server 為單一真實來源；給付費牆／提示文案用）。
+  final int? drawFreeAllowance;
+  final int? drawFreeUsed;
+  final int? drawFreeRemaining;
+  final int? drawExtraCost; // 免費用完後每次額外翻牌的成本（一般 quota）
+  final String? drawNextResetAt; // 下一次免費翻牌重置點（ISO；Asia/Taipei 中午）
+  final bool drawUpgradeRequired; // Free 翻牌用完且不可付費額外（402）→ 導升級
+  final bool drawQuotaExceeded; // 付費額外翻牌但 quota 不足（429）
 
   // ── 本場角色＋難度（開場前可改；送出第一則後鎖定）──
   final PracticeDifficultyPreference difficultyPreference;
@@ -56,6 +75,14 @@ class PracticeChatState {
     required this.personaLabel,
     required this.difficulty,
     required this.difficultyLabel,
+    this.drawStatus = PracticeDrawStatus.revealed,
+    this.drawFreeAllowance,
+    this.drawFreeUsed,
+    this.drawFreeRemaining,
+    this.drawExtraCost,
+    this.drawNextResetAt,
+    this.drawUpgradeRequired = false,
+    this.drawQuotaExceeded = false,
     this.difficultyPreference = PracticeDifficultyPreference.normal,
     this.messages = const [],
     this.isSending = false,
@@ -73,10 +100,20 @@ class PracticeChatState {
     this.visiblePracticeThreadId,
   });
 
+  bool get isRevealed => drawStatus == PracticeDrawStatus.revealed;
+  bool get isDrawing => drawStatus == PracticeDrawStatus.drawing;
+  bool get isLocked => drawStatus != PracticeDrawStatus.revealed;
+
   int get remainingReplies =>
       (kMaxPracticeAiReplies - aiReplyCount).clamp(0, kMaxPracticeAiReplies);
 
-  bool get canSend => !isSending && !isDebriefing && !ended && !sessionComplete;
+  /// 必須先翻好牌（revealed）才能送訊息。
+  bool get canSend =>
+      isRevealed &&
+      !isSending &&
+      !isDebriefing &&
+      !ended &&
+      !sessionComplete;
 
   /// 至少有一則 AI 回覆、尚未拆解，才能結束練習看拆解卡。
   bool get canDebrief =>
@@ -92,7 +129,15 @@ class PracticeChatState {
     bool? debriefFailed,
     bool? quotaExceeded,
     bool? upgradeRequired,
+    PracticeDrawStatus? drawStatus,
     PracticeGirlProfile? girl,
+    int? drawFreeAllowance,
+    int? drawFreeUsed,
+    int? drawFreeRemaining,
+    int? drawExtraCost,
+    String? drawNextResetAt,
+    bool? drawUpgradeRequired,
+    bool? drawQuotaExceeded,
     PracticeDifficultyPreference? difficultyPreference,
     String? personaId,
     String? personaLabel,
@@ -108,6 +153,14 @@ class PracticeChatState {
       sessionId: sessionId,
       createdAt: createdAt,
       girl: girl ?? this.girl,
+      drawStatus: drawStatus ?? this.drawStatus,
+      drawFreeAllowance: drawFreeAllowance ?? this.drawFreeAllowance,
+      drawFreeUsed: drawFreeUsed ?? this.drawFreeUsed,
+      drawFreeRemaining: drawFreeRemaining ?? this.drawFreeRemaining,
+      drawExtraCost: drawExtraCost ?? this.drawExtraCost,
+      drawNextResetAt: drawNextResetAt ?? this.drawNextResetAt,
+      drawUpgradeRequired: drawUpgradeRequired ?? this.drawUpgradeRequired,
+      drawQuotaExceeded: drawQuotaExceeded ?? this.drawQuotaExceeded,
       messages: messages ?? this.messages,
       isSending: isSending ?? this.isSending,
       isDebriefing: isDebriefing ?? this.isDebriefing,
@@ -136,74 +189,132 @@ class PracticeChatState {
           : restoreText as String?,
     );
   }
-
-  /// 換角色 / 改難度時，把已解析的 profile 套進 state（開場前才會被呼叫）。
-  PracticeChatState copyWithProfile(
-    PracticeProfile profile, {
-    PracticeDifficultyPreference? difficultyPreference,
-  }) {
-    return copyWith(
-      difficultyPreference: difficultyPreference ?? this.difficultyPreference,
-      girl: profile.girl,
-      personaId: profile.personaId,
-      personaLabel: profile.personaLabel,
-      difficulty: profile.difficulty,
-      difficultyLabel: profile.difficultyLabel,
-    );
-  }
 }
 
 class PracticeChatController extends StateNotifier<PracticeChatState> {
   PracticeChatController({
     required PracticeChatApiService api,
     required PracticeSessionRepository repository,
+    PracticeDrawDraftStore? draftStore,
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
     PracticeSession? initialSession,
-    PracticeProfile? initialProfile,
     String? sessionId,
     DateTime? createdAt,
+    DateTime? now,
+  }) : this._(
+          api: api,
+          repository: repository,
+          draftStore: draftStore ?? InMemoryPracticeDrawDraftStore(),
+          onUsageSynced: onUsageSynced,
+          initialSession: initialSession,
+          sessionId: sessionId,
+          createdAt: createdAt,
+          now: now ?? DateTime.now(),
+        );
+
+  PracticeChatController._({
+    required PracticeChatApiService api,
+    required PracticeSessionRepository repository,
+    required PracticeDrawDraftStore draftStore,
+    required void Function(
+            {required int monthlyRemaining, required int dailyRemaining})?
+        onUsageSynced,
+    required PracticeSession? initialSession,
+    required String? sessionId,
+    required DateTime? createdAt,
+    required DateTime now,
   })  : _api = api,
         _repo = repository,
+        _draftStore = draftStore,
         _onUsageSynced = onUsageSynced,
         super(_initialState(
           initialSession: initialSession,
-          initialProfile: initialProfile,
+          draft: _validDraft(draftStore, now),
           sessionId: sessionId,
-          createdAt: createdAt,
+          createdAt: createdAt ?? now,
         ));
 
   final PracticeChatApiService _api;
   final PracticeSessionRepository _repo;
+  final PracticeDrawDraftStore _draftStore;
   final void Function(
       {required int monthlyRemaining,
       required int dailyRemaining})? _onUsageSynced;
 
-  /// 測試用：對外讀取目前狀態（`state` 為 protected，避免測試用已 deprecated 的 debugState）。
+  /// 測試用：對外讀取目前狀態。
   @visibleForTesting
   PracticeChatState get currentState => state;
 
-  /// 進場初始 state：續聊既有 session 用其 profile；全新一場用 [initialProfile]
-  /// 或現抽一組（隨機角色 + 一般難度）。
+  /// 取回未過期的 draft；無／過期回 null。過期＝now 已到或超過 draft 的 nextResetAt
+  /// （該草稿屬上一個重置視窗）。
+  static PracticeDrawDraft? _validDraft(
+    PracticeDrawDraftStore store,
+    DateTime now,
+  ) {
+    final d = store.load();
+    if (d == null) return null;
+    if (!now.isBefore(d.nextResetAt)) return null; // now >= nextResetAt → 過期
+    return d;
+  }
+
+  /// 進場初始 state：
+  ///   1. 有未拆解 session → 還原該場（revealed）。
+  ///   2. 否則有有效 draft → 還原同一位（revealed），不重抽。
+  ///   3. 否則 → locked（不顯示任何對象，等使用者翻牌）。
   static PracticeChatState _initialState({
     required PracticeSession? initialSession,
-    required PracticeProfile? initialProfile,
+    required PracticeDrawDraft? draft,
     required String? sessionId,
-    required DateTime? createdAt,
+    required DateTime createdAt,
   }) {
     if (initialSession != null) return _stateFromSession(initialSession);
-    final profile = initialProfile ?? createPracticeProfile();
-    final resolvedSessionId = sessionId ?? const Uuid().v4();
+    if (draft != null) {
+      final fromDraft = _stateFromDraft(draft);
+      if (fromDraft != null) return fromDraft;
+    }
+    return _lockedState(sessionId: sessionId, createdAt: createdAt);
+  }
+
+  static PracticeChatState _lockedState({
+    required String? sessionId,
+    required DateTime createdAt,
+  }) {
+    final id = sessionId ?? const Uuid().v4();
     return PracticeChatState(
-      sessionId: resolvedSessionId,
-      createdAt: createdAt ?? DateTime.now(),
-      girl: profile.girl,
-      personaId: profile.personaId,
-      personaLabel: profile.personaLabel,
-      difficulty: profile.difficulty,
-      difficultyLabel: profile.difficultyLabel,
-      // 第 1 輪：thread 即本 session，threadId 直接錨定此 id，續玩時沿用。
-      visiblePracticeThreadId: resolvedSessionId,
+      sessionId: id,
+      createdAt: createdAt,
+      girl: null,
+      personaId: '',
+      personaLabel: '',
+      difficulty: 'normal',
+      difficultyLabel: practiceDifficultyLabel('normal'),
+      drawStatus: PracticeDrawStatus.locked,
+      visiblePracticeThreadId: id,
+    );
+  }
+
+  /// 從 draft 還原「翻好但還沒開聊」的 revealed 狀態；profileId 無法解析回 null。
+  static PracticeChatState? _stateFromDraft(PracticeDrawDraft draft) {
+    final girl = girlProfileById(draft.profileId);
+    if (girl == null) return null;
+    return PracticeChatState(
+      sessionId: draft.sessionId,
+      createdAt: draft.createdAt,
+      girl: girl,
+      personaId: draft.personaId,
+      personaLabel: practicePersonaLabel(draft.personaId),
+      difficulty: draft.difficulty,
+      difficultyLabel: practiceDifficultyLabel(draft.difficulty),
+      difficultyPreference: draft.difficultyPreference,
+      drawStatus: PracticeDrawStatus.revealed,
+      roundIndex: draft.roundIndex,
+      visiblePracticeThreadId: draft.visiblePracticeThreadId,
+      drawFreeAllowance: draft.freeAllowance,
+      drawFreeUsed: draft.freeUsed,
+      drawFreeRemaining: draft.freeRemaining,
+      drawExtraCost: draft.extraCostMessages,
+      drawNextResetAt: draft.nextResetAt.toIso8601String(),
     );
   }
 
@@ -220,7 +331,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     // 對象身份：依 profileId 從 catalog 解析；舊場（無 profileId）兜底預設位。
     final girl =
         girlProfileById(session.profileId) ?? fallbackPracticeProfile().girl;
-    // persona 綁定該位（與 Edge 帶 profileId 時一致）；舊場用存的 personaId，缺則用 girl 的。
     final personaId = session.personaId ?? girl.personaId;
     final difficulty = session.difficulty ?? 'normal';
     return PracticeChatState(
@@ -228,6 +338,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       createdAt: session.createdAt,
       messages: session.messages,
       aiReplyCount: session.aiReplyCount,
+      drawStatus: PracticeDrawStatus.revealed, // 既有場一定已有對象
       sessionComplete:
           debrief != null || session.aiReplyCount >= kMaxPracticeAiReplies,
       ended: debrief != null,
@@ -239,7 +350,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       difficulty: difficulty,
       difficultyLabel:
           session.difficultyLabel ?? practiceDifficultyLabel(difficulty),
-      // 舊場無欄位：roundIndex 兜底 1、threadId 兜底用 session.id（與 Edge fallback 一致）。
       roundIndex: session.roundIndex ?? 1,
       visiblePracticeThreadId: session.visiblePracticeThreadId ?? session.id,
     );
@@ -249,14 +359,96 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     state = _stateFromSession(session);
   }
 
-  /// 續玩「同一位」：開新 billing session（server ledger 歸零＝新一輪會重扣 1 則），
-  /// roundIndex+1（封頂 [kMaxPracticeRounds]），threadId 不變、訊息／角色／難度保留，
-  /// 清掉拆解與完成旗標讓使用者能再聊。不在此持久化——新一輪首則成功才落地，避免
-  /// 留下 0 回覆的幽靈紀錄。
+  /// 每日翻牌：呼叫 server 抽一位新對象並原子扣費。換一位（已 revealed 再抽）會帶上
+  /// 目前這位以排除自己。成功 → 進 revealed、開全新一場（roundIndex 1）、存 draft。
+  /// 任何失敗都**不**污染目前 profile／transcript（保留原狀態），只設對應旗標／訊息。
+  Future<void> drawNewPracticeGirl() async {
+    if (state.isDrawing) return; // 防連點
+    final prior = state;
+    state = state.copyWith(
+      drawStatus: PracticeDrawStatus.drawing,
+      errorMessage: null,
+      drawUpgradeRequired: false,
+      drawQuotaExceeded: false,
+      upgradeRequired: false,
+      quotaExceeded: false,
+    );
+
+    try {
+      final result = await _api.drawProfile(
+        requestId: const Uuid().v4(),
+        currentProfileId: prior.girl?.profileId, // 換一位排除自己
+        visiblePracticeThreadId: prior.visiblePracticeThreadId,
+      );
+      final girl = girlProfileById(result.profile.profileId) ??
+          fallbackPracticeProfile().girl;
+      final sessionId = const Uuid().v4();
+      // 難度沿用目前已解析值（換一位不重抽難度）；locked 首抽時為預設 normal。
+      final difficulty = prior.difficulty.isNotEmpty
+          ? prior.difficulty
+          : practiceDifficultyId(prior.difficultyPreference);
+
+      state = PracticeChatState(
+        sessionId: sessionId,
+        createdAt: DateTime.now(),
+        girl: girl,
+        personaId: girl.personaId,
+        personaLabel: practicePersonaLabel(girl.personaId),
+        difficulty: difficulty,
+        difficultyLabel: practiceDifficultyLabel(difficulty),
+        difficultyPreference: prior.difficultyPreference,
+        drawStatus: PracticeDrawStatus.revealed,
+        roundIndex: 1,
+        visiblePracticeThreadId: sessionId,
+        drawFreeAllowance: result.draw.freeAllowance,
+        drawFreeUsed: result.draw.freeUsed,
+        drawFreeRemaining: result.draw.freeRemaining,
+        drawExtraCost: result.draw.extraCostMessages,
+        drawNextResetAt: result.draw.nextResetAt,
+      );
+      await _saveDraftFromState(result.draw.nextResetAt);
+      // 付費額外翻牌會扣一般 quota → 同步訂閱剩餘額度。
+      if (result.draw.costMessages > 0) {
+        _onUsageSynced?.call(
+          monthlyRemaining: result.usage.monthlyRemaining,
+          dailyRemaining: result.usage.dailyRemaining,
+        );
+      }
+    } on PracticeDrawUpgradeRequiredException catch (e) {
+      // Free 免費翻牌用完且不可付費額外：導升級。保留原狀態（不揭曉/不漂移）。
+      state = prior.copyWith(
+        drawUpgradeRequired: true,
+        drawFreeAllowance: e.freeAllowance,
+        drawExtraCost: e.extraCostMessages,
+        drawNextResetAt: e.nextResetAt,
+        errorMessage: '升級後每天可以翻更多陪練女孩。',
+      );
+    } on PracticeQuotaExceededException catch (e) {
+      state = prior.copyWith(
+        drawQuotaExceeded: true,
+        errorMessage: e.message,
+      );
+    } catch (_) {
+      // 一般失敗：revealed 時保留目前對象（只報錯）；locked 時標 error 讓 UI 可重抽。
+      state = prior.copyWith(
+        drawStatus: prior.isRevealed
+            ? PracticeDrawStatus.revealed
+            : PracticeDrawStatus.error,
+        errorMessage: '翻牌失敗了，再試一次。',
+      );
+    }
+  }
+
+  /// 換一位開新陪練（== 翻一張新牌）。
+  Future<void> startNewPartner() => drawNewPracticeGirl();
+
+  /// 開場前換一位（== 翻一張新牌；server 會排除目前這位）。
+  Future<void> regeneratePersona() => drawNewPracticeGirl();
+
+  /// 續玩「同一位」：開新 billing session，roundIndex+1（封頂 [kMaxPracticeRounds]），
+  /// threadId 不變、訊息／角色／難度保留。不走 draw、不換對象、不消耗翻牌次數。
   ///
-  /// [isPaid] 由 UI 依訂閱層級帶入：Free 續同一位需升級，只觸發付費牆、**不**動
-  /// transcript／session／計數、**不**扣費（與 server roundIndex>1 的 402 閘同義，但
-  /// 提早在 client 擋住以免白白清掉畫面）。
+  /// [isPaid]：Free 續同一位需升級，只觸發付費牆、不動 transcript／不扣費。
   void continueWithSamePartner({required bool isPaid}) {
     if (!isPaid) {
       state = state.copyWith(
@@ -266,7 +458,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       );
       return;
     }
-    // 已達輪數上限：no-op（UI 此時不顯示續玩，改引導換一位）。
     if (state.roundIndex >= kMaxPracticeRounds) return;
     state = PracticeChatState(
       sessionId: const Uuid().v4(),
@@ -277,6 +468,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       difficulty: state.difficulty,
       difficultyLabel: state.difficultyLabel,
       difficultyPreference: state.difficultyPreference,
+      drawStatus: PracticeDrawStatus.revealed,
       messages: state.messages,
       aiReplyCount: 0,
       roundIndex: state.roundIndex + 1,
@@ -284,39 +476,25 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
   }
 
-  /// 由目前 state 組出 PracticeProfile（換一位／調難度的衍生用）。
+  /// 由目前 state 組出 PracticeProfile（調難度的衍生用）。
   PracticeProfile _stateProfile() => PracticeProfile(
-        girl: state.girl,
+        girl: state.girl!,
         personaId: state.personaId,
         personaLabel: state.personaLabel,
         difficulty: state.difficulty,
         difficultyLabel: state.difficultyLabel,
       );
 
-  /// 換一位：放棄目前 thread，重抽一位全新對象開新一場（roundIndex 歸 1＝Free 也免費）。
-  /// 清空訊息與所有旗標，回到「開場前」可調角色／難度的狀態；首則成功才落地持久化。
-  void startNewPartner() {
-    final sessionId = const Uuid().v4();
-    // 換一位：保證換成不同的一位，保留目前難度（與開場前換一位語意一致）。
-    final profile = _stateProfile().withNewGirl();
-    state = PracticeChatState(
-      sessionId: sessionId,
-      createdAt: DateTime.now(),
-      girl: profile.girl,
-      personaId: profile.personaId,
-      personaLabel: profile.personaLabel,
-      difficulty: profile.difficulty,
-      difficultyLabel: profile.difficultyLabel,
-      difficultyPreference: state.difficultyPreference,
-      visiblePracticeThreadId: sessionId,
-    );
-  }
-
-  /// 送出一則使用者訊息並取得 AI（模擬對象）回覆。
-  /// 樂觀顯示使用者泡泡；任何失敗都回滾，不留半截、不扣額度。
+  /// 送出一則使用者訊息並取得 AI 回覆。樂觀顯示使用者泡泡；任何失敗都回滾。
+  /// 還沒翻牌（非 revealed）一律擋下並提示先翻開今日對象。
   Future<void> sendMessage(String text) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || !state.canSend) return;
+    if (trimmed.isEmpty) return;
+    if (!state.isRevealed || state.girl == null) {
+      state = state.copyWith(errorMessage: '先翻開今日的練習對象，再開始聊天。');
+      return;
+    }
+    if (!state.canSend) return;
 
     final priorMessages = state.messages;
     final optimistic = [
@@ -354,6 +532,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         sessionComplete: reply.sessionComplete,
       );
       await _persist();
+      // 第一則成功 → 草稿交棒給正式 session（之後靠 recentSessions 還原）。
+      await _draftStore.clear();
       if (reply.costDeducted > 0 &&
           reply.monthlyRemaining != null &&
           reply.dailyRemaining != null) {
@@ -379,7 +559,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         restoreText: trimmed,
       );
     } on PracticeUpgradeRequiredException {
-      // Free 帳號續同一位被擋：導向付費牆，回滾樂觀泡泡並還原文字。
       state = state.copyWith(
         messages: priorMessages,
         isSending: false,
@@ -424,7 +603,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       );
       await _persist();
     } catch (_) {
-      // 拆解失敗不回到普通輸入列：保留「再試一次／完成」出口，避免卡死。
       state = state.copyWith(
         isDebriefing: false,
         ended: true,
@@ -439,48 +617,71 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       errorMessage: null,
       quotaExceeded: false,
       upgradeRequired: false,
-    );
-  }
-
-  /// 開場前「換一位」：只重抽角色，難度維持目前已解析的值。
-  /// 即使偏好是「隨機」也不重抽難度——換人與調難度兩個控制各自獨立。
-  /// 送出第一則後鎖定（messages 非空即 no-op）。
-  void regeneratePersona() {
-    if (state.messages.isNotEmpty) return;
-    // 換一位：整包對象換成不同的一位，難度維持目前已解析的值。
-    final profile = _stateProfile().withNewGirl();
-    state = state.copyWith(
-      girl: profile.girl,
-      personaId: profile.personaId,
-      personaLabel: profile.personaLabel,
+      drawUpgradeRequired: false,
+      drawQuotaExceeded: false,
     );
   }
 
   /// 開場前調整難度偏好：只換難度、保留目前這位對象（兩個控制各自獨立）。
-  /// `隨機` 會立刻解析成 easy/normal/challenge 其一。送出第一則後鎖定。
+  /// 送出第一則後鎖定（messages 非空即 no-op）；尚未翻牌（girl null）亦 no-op。
+  /// 若目前是「翻好但未送出」的 draft 狀態，同步把難度寫回 draft。
   void setDifficultyPreference(PracticeDifficultyPreference preference) {
-    if (state.messages.isNotEmpty) return;
-    // 只換難度、保留目前這位對象（不重抽 girl）。
+    if (!state.isRevealed || state.messages.isNotEmpty || state.girl == null) {
+      return;
+    }
     final resolved = _stateProfile().withDifficulty(preference);
     state = state.copyWith(
       difficultyPreference: preference,
       difficulty: resolved.difficulty,
       difficultyLabel: resolved.difficultyLabel,
     );
+    final nextReset = state.drawNextResetAt;
+    if (nextReset != null) {
+      _saveDraftFromState(nextReset); // 草稿難度同步（pre-message）
+    }
   }
 
   /// 本場送往 Edge 的對象 metadata：只送 allowlisted id（含 60-profile 身份）。
-  PracticeProfileDto _profileDto() => PracticeProfileDto(
-        personaId: state.personaId,
-        difficulty: state.difficulty,
-        profileId: state.girl.profileId,
-        nameId: state.girl.nameId,
-        professionId: state.girl.professionId,
-        photoId: state.girl.photoId,
-      );
+  PracticeProfileDto _profileDto() {
+    final girl = state.girl!;
+    return PracticeProfileDto(
+      personaId: state.personaId,
+      difficulty: state.difficulty,
+      profileId: girl.profileId,
+      nameId: girl.nameId,
+      professionId: girl.professionId,
+      photoId: girl.photoId,
+    );
+  }
+
+  /// 把目前「翻好但未送出第一則」的狀態寫成 draft（不寫進 recent sessions）。
+  Future<void> _saveDraftFromState(String nextResetAtIso) async {
+    final s = state;
+    final girl = s.girl;
+    if (girl == null) return;
+    final nextReset = DateTime.tryParse(nextResetAtIso);
+    if (nextReset == null) return;
+    await _draftStore.save(PracticeDrawDraft(
+      sessionId: s.sessionId,
+      visiblePracticeThreadId: s.visiblePracticeThreadId ?? s.sessionId,
+      roundIndex: s.roundIndex,
+      profileId: girl.profileId,
+      personaId: s.personaId,
+      difficulty: s.difficulty,
+      difficultyPreference: s.difficultyPreference,
+      freeAllowance: s.drawFreeAllowance ?? 0,
+      freeUsed: s.drawFreeUsed ?? 0,
+      freeRemaining: s.drawFreeRemaining ?? 0,
+      extraCostMessages: s.drawExtraCost ?? 0,
+      nextResetAt: nextReset,
+      createdAt: s.createdAt,
+    ));
+  }
 
   Future<void> _persist() async {
     final s = state;
+    final girl = s.girl;
+    if (girl == null) return; // 防呆：未翻牌不持久化
     await _repo.save(PracticeSession(
       id: s.sessionId,
       createdAt: s.createdAt,
@@ -497,7 +698,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       difficultyLabel: s.difficultyLabel,
       visiblePracticeThreadId: s.visiblePracticeThreadId,
       roundIndex: s.roundIndex,
-      profileId: s.girl.profileId,
+      profileId: girl.profileId,
     ));
   }
 }
@@ -513,6 +714,12 @@ final practiceSessionRepositoryProvider =
   return PracticeSessionRepository(StorageService.practiceSessionsBox);
 });
 
+/// 翻牌草稿本地存取（JSON 存進加密 settings box，不新增 Hive typeId）。
+final practiceDrawDraftStoreProvider =
+    Provider<PracticeDrawDraftStore>((ref) {
+  return HivePracticeDrawDraftStore(StorageService.settingsBox);
+});
+
 /// autoDispose：離開畫面即重置，下次進來是全新一場練習。
 final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     PracticeChatController, PracticeChatState>((ref) {
@@ -520,6 +727,7 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
   return PracticeChatController(
     api: ref.read(practiceChatApiServiceProvider),
     repository: repository,
+    draftStore: ref.read(practiceDrawDraftStoreProvider),
     initialSession: _latestOpenPracticeSession(repository.recentSessions()),
     onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
       ref.read(subscriptionProvider.notifier).syncUsageFromServer(
