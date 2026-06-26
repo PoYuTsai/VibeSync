@@ -361,6 +361,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     double haloIntensity = 0; // 軌道彗星 halo 強度（只在蓄力→高潮亮）
     double energyIntensity = 0; // 能量邊框強度（只在蓄力 recharge→climax 亮）
     double energyProgress = 0; // 能量彗星沿卡框周長的位置（0..1）
+    double beamProgress = 0; // 橫掃光束位置（只在高潮翻面段 0→1 掃一道）
     double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
 
     if (f < kPracticeRevealFlip1End) {
@@ -401,6 +402,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       backGlow = 1;
       flashCenter = rot;
       haloIntensity = 1 - rot;
+      beamProgress = rot; // 翻面同時一道光束由上而下橫掃
     } else if (f < kPracticeRevealHoldEnd) {
       // 典藏卡停留、資訊落位、光環 settle。
       angle = math.pi;
@@ -505,6 +507,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                   twinkle: f,
                   intensity:
                       (haloIntensity * 0.7 + flash * 0.6) * (1 - frontDepart),
+                  beam: beamProgress,
                 ),
               ),
             ),
@@ -1173,13 +1176,27 @@ class _RevealFlashPainter extends CustomPainter {
 /// 星光粒子場：環繞卡牌一圈的金／白閃爍點（halo 佈點，避開中央照片區）。
 /// 位置以 golden-angle 決定（**確定性、零 Random**，重建穩定）；`twinkle` 驅動
 /// 閃爍相位、`intensity` 控制整體亮度（≤0 不畫）。
+/// 測試用 seam：建立 [_StarfieldPainter]（painter 本體 library-private）。
+@visibleForTesting
+CustomPainter debugStarfieldPainter({
+  required double twinkle,
+  required double intensity,
+  double beam = 0,
+}) =>
+    _StarfieldPainter(twinkle: twinkle, intensity: intensity, beam: beam);
+
 class _StarfieldPainter extends CustomPainter {
-  _StarfieldPainter({required this.twinkle, required this.intensity});
+  _StarfieldPainter({
+    required this.twinkle,
+    required this.intensity,
+    this.beam = 0,
+  });
 
   final double twinkle;
   final double intensity;
+  final double beam; // 0..1 橫掃光束位置（0＝不畫，由高潮翻面段驅動）
 
-  static const int _count = 22;
+  static const int _count = 34; // Batch C 加密（原 22）
   // golden angle，讓佈點均勻不打結。
   static const double _goldenAngle = 2.399963229728653;
 
@@ -1190,8 +1207,8 @@ class _StarfieldPainter extends CustomPainter {
     final maxR = size.shortestSide * 0.62;
 
     for (var i = 0; i < _count; i++) {
-      // 佈在 0.42~0.62 半徑的環帶 → 圍繞卡牌、不蓋住中央照片。
-      final ring = 0.42 + 0.20 * ((i * 7) % 11) / 11.0;
+      // 佈在 0.40~0.64 半徑的環帶 → 圍繞卡牌、不蓋住中央照片。
+      final ring = 0.40 + 0.24 * ((i * 7) % 11) / 11.0;
       final a = i * _goldenAngle;
       final pos = center + Offset(math.cos(a), math.sin(a)) * (maxR * ring);
 
@@ -1215,9 +1232,32 @@ class _StarfieldPainter extends CustomPainter {
       );
       canvas.drawCircle(pos, r, Paint()..color = color);
     }
+
+    // 橫掃光束：beam>0 時一道水平亮帶由上而下掃過（高潮翻面的揭曉感）。淡入淡出靠
+    // sin(beam·π)，beam 進出 0/1 時自然消失；確定性、零 Random。
+    final glow = beam <= 0 ? 0.0 : math.sin(beam.clamp(0.0, 1.0) * math.pi);
+    if (glow > 0.02) {
+      final by = beam.clamp(0.0, 1.0) * size.height;
+      final bandH = size.height * 0.18;
+      final rect = Rect.fromLTRB(0, by - bandH / 2, size.width, by + bandH / 2);
+      final shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          Color.lerp(_kTeal, _kGold, 0.5)!
+              .withValues(alpha: (0.5 * glow * intensity).clamp(0.0, 1.0)),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(rect);
+      canvas.drawRect(rect, Paint()..shader = shader);
+    }
   }
 
   @override
   bool shouldRepaint(_StarfieldPainter old) =>
-      old.twinkle != twinkle || old.intensity != intensity;
+      old.twinkle != twinkle ||
+      old.intensity != intensity ||
+      old.beam != beam;
 }
