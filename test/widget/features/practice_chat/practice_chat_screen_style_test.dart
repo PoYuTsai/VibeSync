@@ -1438,6 +1438,32 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('Batch C：能量邊框只在蓄力段（recharge→climax）描邊，preview／典藏停留不亮',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(
+        tester, completer: completer, girl: practiceGirlProfiles[2]);
+
+    // 白卡預覽段：能量邊框尚未啟動。
+    await tester.pump(previewAt);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-energy-border')),
+        findsNothing);
+
+    // 高潮蓄力段（卡背發亮）：能量邊框描邊掃動。
+    await tester.pump(backAt - previewAt);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-energy-border')),
+        findsOneWidget);
+
+    // 典藏卡停留段：能量邊框收掉（蓄力結束）。
+    await tester.pump(grandHoldAt - backAt);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-energy-border')),
+        findsNothing);
+
+    await tester.pumpAndSettle();
+  });
+
   // ── 翻牌音效掛勾（Batch 4.7）：plumbing-only，spy 驗證呼叫時機 ──────────────
   Future<void> pumpLockedWithSfx(
     WidgetTester tester, {
