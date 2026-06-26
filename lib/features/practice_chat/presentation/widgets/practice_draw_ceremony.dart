@@ -100,12 +100,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
+  // 揭曉音效 edge-detect：跨蓄力／高潮門檻各觸發一次的 idempotent 旗標。`_reveal`
+  // 是有限 forward-only controller，每幀 tick 比對門檻；旗標確保整條時間軸只各播一
+  // 次。`forward(from:0)`（重抽）與 `_toHidden`（收掉 overlay）一律重置。零 Timer。
+  bool _firedRiser = false;
+  bool _firedSettle = false;
+
   @override
   void initState() {
     super.initState();
     _sfx = ref.read(practiceDrawSfxProvider);
     _intro.addListener(_onTick);
     _reveal.addListener(_onTick);
+    _reveal.addListener(_onRevealEdge);
     _waiting.addListener(_onTick);
     _reveal.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
@@ -126,6 +133,21 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     if (mounted) setState(() {});
   }
 
+  /// 揭曉時間軸跨「蓄力 riser」「高潮 settle」門檻各觸發一次。只比對門檻、設旗標、
+  /// 播一聲——不 setState（`_onTick` 已負責重繪）。跨幅再大（測試一次 pump 跳過門檻）
+  /// 也用 `>=` 邊緣判定，故不漏觸發。
+  void _onRevealEdge() {
+    final v = _reveal.value;
+    if (!_firedRiser && v >= kPracticeRevealRechargeEnd) {
+      _firedRiser = true;
+      _sfx.playRiser();
+    }
+    if (!_firedSettle && v >= kPracticeRevealGrandFlipEnd) {
+      _firedSettle = true;
+      _sfx.playSettle();
+    }
+  }
+
   void _toHidden() {
     if (!mounted) return;
     setState(() {
@@ -134,6 +156,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     });
     _waiting.stop();
     _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
+    _firedRiser = false; // 下次揭曉重新 edge-detect。
+    _firedSettle = false;
     _reveal.value = 0;
   }
 
@@ -190,6 +214,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       });
       _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
       _intro.value = 1;
+      _firedRiser = false; // 重抽：edge bool 歸零，本輪揭曉重新各觸發一次。
+      _firedSettle = false;
       _reveal.forward(from: 0);
       return;
     }
