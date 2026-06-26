@@ -14,6 +14,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_pr
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
@@ -170,6 +171,30 @@ class _DrawApi extends PracticeChatApiService {
     String? visiblePracticeThreadId,
   }) =>
       throw UnimplementedError();
+}
+
+/// 翻牌音效 spy：記錄各呼叫點次數，`looping` 由 start/stop 差推導，用來斷言
+/// 「等待 loop 不殘留」。預設 no-op 行為（不真的播放）。
+class _SpyPracticeDrawSfx implements PracticeDrawSfx {
+  int whoosh = 0;
+  int waitingStart = 0;
+  int waitingStop = 0;
+  int chime = 0;
+
+  /// start 次數多於 stop ⇒ loop 仍在播（用來驗證離開 drawing 後必為 false）。
+  bool get looping => waitingStart > waitingStop;
+
+  @override
+  void playWhoosh() => whoosh++;
+
+  @override
+  void playWaitingLoop() => waitingStart++;
+
+  @override
+  void stopWaitingLoop() => waitingStop++;
+
+  @override
+  void playRevealChime() => chime++;
 }
 
 class _SeededPracticeChatController extends PracticeChatController {
@@ -1166,5 +1191,145 @@ void main() {
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await tester.pumpAndSettle();
+  });
+
+  // ── 翻牌音效掛勾（Batch 4.7）：plumbing-only，spy 驗證呼叫時機 ──────────────
+  Future<void> pumpLockedWithSfx(
+    WidgetTester tester, {
+    required PracticeChatApiService api,
+    required PracticeDrawSfx sfx,
+    bool reduceMotion = false,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practiceChatApiServiceProvider.overrideWithValue(api),
+          practiceDrawSfxProvider.overrideWithValue(sfx),
+        ],
+        child: MaterialApp(
+          builder: reduceMotion
+              ? (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(disableAnimations: true),
+                    child: child!,
+                  )
+              : null,
+          home: const PracticeChatScreen(),
+        ),
+      ),
+    );
+  }
+
+  testWidgets('音效：抽牌啟動 → playWhoosh ＋ playWaitingLoop', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // 進入 drawing
+
+    expect(spy.whoosh, 1);
+    expect(spy.waitingStart, 1); // 等待 loop 啟動
+    expect(spy.chime, 0); // 尚未揭曉
+    expect(spy.looping, isTrue);
+
+    // 收尾：成功揭曉、settle 收掉 overlay（避免殘留 ticker）。
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('音效：揭曉成功 → stopWaitingLoop ＋ playRevealChime（loop 不殘留）',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final zoe = practiceGirlProfiles[2];
+    final api = _DrawApi(() async => _drawResultFor(zoe));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+
+    expect(spy.whoosh, 1);
+    expect(spy.waitingStart, 1);
+    expect(spy.waitingStop, greaterThanOrEqualTo(1));
+    expect(spy.chime, 1); // 揭曉叮聲
+    expect(spy.looping, isFalse); // 等待 loop 已停、不殘留
+  });
+
+  testWidgets('音效：抽牌 402 → stopWaitingLoop、不播揭曉叮聲', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final api = _DrawApi(
+      () async => throw PracticeDrawUpgradeRequiredException(
+        extraCostMessages: 5,
+        nextResetAt: '2026-06-27T04:00:00.000Z',
+      ),
+    );
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+
+    expect(spy.waitingStart, 1); // 曾進 drawing 啟動 loop
+    expect(spy.waitingStop, greaterThanOrEqualTo(1)); // 失敗兜底停 loop
+    expect(spy.chime, 0); // 402 不慶祝
+    expect(spy.looping, isFalse);
+  });
+
+  testWidgets('音效：抽牌 429 → stopWaitingLoop、不播揭曉叮聲', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final api = _DrawApi(
+      () async => throw PracticeQuotaExceededException('本月額度已用完',
+          monthlyRemaining: 0, dailyRemaining: 0),
+    );
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+
+    expect(spy.waitingStart, 1);
+    expect(spy.waitingStop, greaterThanOrEqualTo(1));
+    expect(spy.chime, 0); // 429 不慶祝
+    expect(spy.looping, isFalse);
+  });
+
+  testWidgets('音效：reduce-motion → 不啟動 waiting loop（咻聲仍觸發）',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy, reduceMotion: true);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing（reduce-motion：卡背定住）
+
+    expect(spy.whoosh, 1); // 一次性咻聲仍觸發
+    expect(spy.waitingStart, 0); // reduce-motion：不啟動等待 loop
+    expect(spy.looping, isFalse);
+
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('音效：drawing 中卸載儀式 → dispose stopWaitingLoop，loop 不殘留',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing：等待 loop 啟動
+    expect(spy.looping, isTrue);
+
+    // 整個 PracticeChatScreen 子樹卸載 → 儀式 dispose 必停 loop。
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump();
+
+    expect(spy.waitingStop, greaterThanOrEqualTo(1));
+    expect(spy.looping, isFalse);
   });
 }

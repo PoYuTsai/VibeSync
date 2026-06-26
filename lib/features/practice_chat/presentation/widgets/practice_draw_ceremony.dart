@@ -28,9 +28,13 @@ import 'practice_girl_photo.dart';
 ///   reveal／error／hidden／dispose 一律明確 `stop()`。故 `pumpAndSettle` 仍必收斂、
 ///   widget test 不 hang；三條 controller 都在 dispose 先收。
 /// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面與強動畫，抽牌中
-///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／音效掛勾仍照觸發。
+///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／一次性音效（咻聲、揭曉
+///   叮聲）仍照觸發，但**不**啟動等待 shimmer loop（與 `_waiting` 微動同步靜止）。
 /// - haptic 走 [HapticFeedback]（抽牌 light、翻開成功 medium）；音效走
-///   [PracticeDrawSfx]（目前 no-op stub，未打包音檔）。
+///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入，目前 no-op、未打包音檔）。
+///   等待 loop 的播放／停止與 [_waiting] controller 的 repeat／stop 點一一對應：每個
+///   離開 drawing 的出口（reveal／error／402／429／hidden／dispose）都 `stopWaitingLoop`，
+///   絕不殘留背景音。
 ///
 /// 由 [PracticeChatScreen] 以 `Positioned.fill` 疊在內容最上層；idle 時整片透明且
 /// `IgnorePointer`，不攔截底下的點擊。
@@ -67,6 +71,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     duration: const Duration(milliseconds: 2600),
   );
 
+  // 翻牌音效（咻／等待 loop／揭曉叮）。預設 no-op（未打包音檔），測試以
+  // [practiceDrawSfxProvider] override 注入 spy。於 initState 以 `ref.read` 鎖定實例
+  // （Provider 無 async／context 依賴，initState read 安全），故 dispose 取用時純欄位
+  // 讀取、不再碰 ref。
+  late final PracticeDrawSfx _sfx;
+
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
@@ -80,6 +90,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   @override
   void initState() {
     super.initState();
+    _sfx = ref.read(practiceDrawSfxProvider);
     _intro.addListener(_onTick);
     _flip.addListener(_onTick);
     _waiting.addListener(_onTick);
@@ -109,6 +120,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       _revealGirl = null;
     });
     _waiting.stop();
+    _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
     _flip.value = 0;
   }
 
@@ -123,7 +135,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     // 進入抽牌：浮現神秘卡背，輕觸覺＋咻聲掛勾。
     if (!wasDrawing && next.isDrawing) {
       HapticFeedback.lightImpact();
-      PracticeDrawSfx.playWhoosh();
+      _sfx.playWhoosh();
       setState(() {
         _phase = _CeremonyPhase.drawing;
         _revealGirl = null;
@@ -134,9 +146,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       if (_reduceMotion) {
         _intro.value = 1; // 不做淡入動畫，直接定住卡背。
         _waiting.stop(); // reduce-motion：等待期間靜止，不啟動持續微動。
+        _sfx.stopWaitingLoop(); // reduce-motion：不啟動等待 loop（防殘留）。
       } else {
         _intro.forward(from: 0);
         _waiting.repeat(); // 等待 server 期間持續蓄力微動。
+        _sfx.playWaitingLoop(); // 與微動同步：等待 server 期間的 shimmer loop。
       }
       return;
     }
@@ -147,9 +161,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;
     if (drawSucceeded) {
-      // 中觸覺＋叮聲掛勾：放在 reduce-motion 早退前，兩條路徑都有回饋。
+      // 中觸覺＋停等待 loop＋叮聲：放在 reduce-motion 早退前，兩條路徑都即時停 loop、
+      // 都有揭曉回饋（不等翻面跑完，shimmer loop 在揭曉當下就收）。
       HapticFeedback.mediumImpact();
-      PracticeDrawSfx.playRevealChime();
+      _sfx.stopWaitingLoop();
+      _sfx.playRevealChime();
       if (_reduceMotion) {
         // reduce-motion：跳過 3D 翻面，直接收掉 overlay 露出 hero。
         _toHidden();
@@ -169,6 +185,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     if (_phase == _CeremonyPhase.drawing ||
         _phase == _CeremonyPhase.revealing) {
       _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
+      _sfx.stopWaitingLoop(); // 失敗兜底（error／402／429）：同步停等待 loop，不播叮聲。
       _flip
         ..stop()
         ..value = 0;
@@ -182,6 +199,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
   @override
   void dispose() {
+    _sfx.stopWaitingLoop(); // 卸載儀式：確保等待 loop 不在背景殘留。
     _intro.dispose();
     _flip.dispose();
     _waiting.dispose();
