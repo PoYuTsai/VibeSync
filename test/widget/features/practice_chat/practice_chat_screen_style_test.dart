@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1502,5 +1503,49 @@ void main() {
 
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.looping, isFalse);
+  });
+
+  // ── 軌道彗星 halo painter（Batch B）：純 painter smoke，免 widget harness ──
+  void paintHaloOnce(CustomPainter painter) {
+    final recorder = ui.PictureRecorder();
+    painter.paint(ui.Canvas(recorder), const Size(360, 480));
+    recorder.endRecording().dispose();
+  }
+
+  group('軌道彗星 halo painter（Batch B）', () {
+    test('建構＋paint：front/back 兩夾層都不丟例外', () {
+      for (final half in PracticeHaloHalf.values) {
+        final painter = debugOrbitalHaloPainter(
+          progress: 0.4,
+          intensity: 0.85,
+          half: half,
+        );
+        expect(() => paintHaloOnce(painter), returnsNormally);
+      }
+    });
+
+    test('intensity<=0 早退、paint 不丟', () {
+      final painter = debugOrbitalHaloPainter(
+        progress: 0.4,
+        intensity: 0,
+        half: PracticeHaloHalf.back,
+      );
+      expect(() => paintHaloOnce(painter), returnsNormally);
+    });
+
+    test('shouldRepaint 對 progress／intensity 敏感、同值不重畫', () {
+      final base = debugOrbitalHaloPainter(
+          progress: 0.3, intensity: 0.8, half: PracticeHaloHalf.back);
+      final same = debugOrbitalHaloPainter(
+          progress: 0.3, intensity: 0.8, half: PracticeHaloHalf.back);
+      final diffProgress = debugOrbitalHaloPainter(
+          progress: 0.55, intensity: 0.8, half: PracticeHaloHalf.back);
+      final diffIntensity = debugOrbitalHaloPainter(
+          progress: 0.3, intensity: 0.4, half: PracticeHaloHalf.back);
+
+      expect(base.shouldRepaint(same), isFalse);
+      expect(base.shouldRepaint(diffProgress), isTrue);
+      expect(base.shouldRepaint(diffIntensity), isTrue);
+    });
   });
 }
