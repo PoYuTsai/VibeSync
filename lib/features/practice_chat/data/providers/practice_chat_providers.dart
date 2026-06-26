@@ -109,11 +109,7 @@ class PracticeChatState {
 
   /// 必須先翻好牌（revealed）才能送訊息。
   bool get canSend =>
-      isRevealed &&
-      !isSending &&
-      !isDebriefing &&
-      !ended &&
-      !sessionComplete;
+      isRevealed && !isSending && !isDebriefing && !ended && !sessionComplete;
 
   /// 至少有一則 AI 回覆、尚未拆解，才能結束練習看拆解卡。
   bool get canDebrief =>
@@ -440,6 +436,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   /// 換一位開新陪練（== 翻一張新牌）。
+  void lockDrawQuotaExceeded({
+    String message = '今日額度已用完，明天再來或升級方案繼續練習。',
+  }) {
+    state = state.copyWith(
+      drawQuotaExceeded: true,
+      drawUpgradeRequired: false,
+      errorMessage: message,
+    );
+  }
+
   Future<void> startNewPartner() => drawNewPracticeGirl();
 
   /// 開場前換一位（== 翻一張新牌；server 會排除目前這位）。
@@ -715,8 +721,7 @@ final practiceSessionRepositoryProvider =
 });
 
 /// 翻牌草稿本地存取（JSON 存進加密 settings box，不新增 Hive typeId）。
-final practiceDrawDraftStoreProvider =
-    Provider<PracticeDrawDraftStore>((ref) {
+final practiceDrawDraftStoreProvider = Provider<PracticeDrawDraftStore>((ref) {
   return HivePracticeDrawDraftStore(StorageService.settingsBox);
 });
 

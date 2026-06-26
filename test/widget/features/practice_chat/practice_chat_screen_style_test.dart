@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
@@ -272,6 +273,15 @@ void main() {
       ProviderScope(
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -456,6 +466,15 @@ void main() {
       ProviderScope(
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -595,7 +614,15 @@ void main() {
       seed: debriefSeed(),
       repository: repo,
     );
-    await pumpDebrief(tester, controller: controller);
+    await pumpDebrief(
+      tester,
+      controller: controller,
+      subscription: const SubscriptionState(
+        tier: SubscriptionTierHelper.starter,
+        monthlyLimit: 100,
+        dailyLimit: 30,
+      ),
+    );
 
     expect(find.text('續聊同一位'), findsOneWidget);
     expect(find.textContaining('再扣 1 則'), findsOneWidget);
@@ -608,7 +635,15 @@ void main() {
       seed: debriefSeed(roundIndex: 3),
       repository: repo,
     );
-    await pumpDebrief(tester, controller: controller);
+    await pumpDebrief(
+      tester,
+      controller: controller,
+      subscription: const SubscriptionState(
+        tier: SubscriptionTierHelper.starter,
+        monthlyLimit: 100,
+        dailyLimit: 30,
+      ),
+    );
 
     expect(find.text('續聊同一位'), findsNothing);
     expect(find.textContaining('再扣 1 則'), findsNothing);
@@ -665,7 +700,15 @@ void main() {
       seed: debriefSeed(),
       repository: repo,
     );
-    await pumpDebrief(tester, controller: controller);
+    await pumpDebrief(
+      tester,
+      controller: controller,
+      subscription: const SubscriptionState(
+        tier: SubscriptionTierHelper.starter,
+        monthlyLimit: 100,
+        dailyLimit: 30,
+      ),
+    );
 
     await tester.tap(find.text('換一位'));
     await tester.pump(); // drawing（locked 入口、spinner）
@@ -701,6 +744,15 @@ void main() {
       ProviderScope(
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -935,6 +987,146 @@ void main() {
     );
   }
 
+  testWidgets('Free 換一位直接導 paywall，不打 draw API', (tester) async {
+    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[3]));
+    final seed = revealedPreMsgSeed().copyWith(
+      drawFreeAllowance: 1,
+      drawFreeUsed: 1,
+      drawFreeRemaining: 0,
+      drawExtraCost: 5,
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo, api: api);
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => const PracticeChatScreen(),
+        ),
+        GoRoute(
+          path: '/paywall',
+          builder: (context, state) => const Scaffold(
+            body: SizedBox(key: ValueKey('practice-test-paywall')),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(tier: SubscriptionTierHelper.free),
+            ),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+
+    await tester.tap(find.text('換一位'));
+    await tester.pumpAndSettle();
+
+    expect(api.drawCalls, 0);
+    expect(find.byKey(const ValueKey('practice-test-paywall')), findsOneWidget);
+  });
+
+  testWidgets('Starter 免費換一位用完後，第一次提示扣 5 則，第二次才 draw', (tester) async {
+    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[3]));
+    final seed = revealedPreMsgSeed().copyWith(
+      drawFreeAllowance: 3,
+      drawFreeUsed: 3,
+      drawFreeRemaining: 0,
+      drawExtraCost: 5,
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo, api: api);
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.text('換一位'));
+    await tester.pump();
+
+    expect(api.drawCalls, 0);
+    expect(
+      find.byKey(const ValueKey('practice-new-partner-quota-notice')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('再按一次會扣 5 則額度'), findsOneWidget);
+
+    await tester.tap(find.text('換一位'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(api.drawCalls, 1);
+    expect(controller.currentState.girl!.profileId,
+        practiceGirlProfiles[3].profileId);
+  });
+
+  testWidgets('付費用戶今日額度不足時，換一位鎖死且不顯示翻牌失敗', (tester) async {
+    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[3]));
+    final seed = revealedPreMsgSeed().copyWith(
+      drawFreeAllowance: 3,
+      drawFreeUsed: 3,
+      drawFreeRemaining: 0,
+      drawExtraCost: 5,
+    );
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo, api: api);
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+                dailyMessagesUsed: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.text('換一位'));
+    await tester.pump();
+
+    expect(api.drawCalls, 0);
+    expect(controller.currentState.drawQuotaExceeded, true);
+    expect(find.textContaining('今日額度已用完'), findsOneWidget);
+    expect(find.textContaining('翻牌失敗'), findsNothing);
+  });
+
   testWidgets('revealed 換一位 draw 402 → 保留原對象＋error banner 顯升級 CTA',
       (tester) async {
     final api = _DrawApi(
@@ -953,6 +1145,15 @@ void main() {
       ProviderScope(
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -986,6 +1187,15 @@ void main() {
       ProviderScope(
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -1043,6 +1253,15 @@ void main() {
       ProviderScope(
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: PracticeChatScreen()),
       ),
@@ -1300,13 +1519,12 @@ void main() {
     await tester.pump(); // 進入 revealing：_reveal.forward(from:0)
   }
 
-  testWidgets('兩段升階：第一段翻出白卡預覽（~1.5s 顯正面卡、不顯卡背）',
-      (tester) async {
+  testWidgets('兩段升階：第一段翻出白卡預覽（~1.5s 顯正面卡、不顯卡背）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await drawToReveal(
-        tester, completer: completer, girl: practiceGirlProfiles[2]);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
     await tester.pump(previewAt); // 白卡預覽段
     expect(
@@ -1324,8 +1542,8 @@ void main() {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await drawToReveal(
-        tester, completer: completer, girl: practiceGirlProfiles[2]);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
     await tester.pump(backAt); // 高潮蓄力段
     expect(
@@ -1343,8 +1561,8 @@ void main() {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await drawToReveal(
-        tester, completer: completer, girl: practiceGirlProfiles[2]);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
     await tester.pump(grandHoldAt); // 典藏卡停留段
     expect(
@@ -1354,13 +1572,12 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('Batch C：grand 金框典藏資訊欄只在高潮典藏段出現（preview 段用白卡）',
-      (tester) async {
+  testWidgets('Batch C：grand 金框典藏資訊欄只在高潮典藏段出現（preview 段用白卡）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await drawToReveal(
-        tester, completer: completer, girl: practiceGirlProfiles[2]);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
     // 白卡預覽段：正面卡在場，但 grand 金框 frosted 資訊欄尚未升階出現。
     await tester.pump(previewAt);
@@ -1394,8 +1611,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('兩段升階：整條 7.5s 時間軸 pumpAndSettle 收斂、最終露 hero',
-      (tester) async {
+  testWidgets('兩段升階：整條 7.5s 時間軸 pumpAndSettle 收斂、最終露 hero', (tester) async {
     final zoe = practiceGirlProfiles[2];
     final api = _DrawApi(() async => _drawResultFor(zoe));
     await pumpLocked(tester, api: api);
@@ -1414,13 +1630,12 @@ void main() {
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
-  testWidgets('兩段升階：軌道彗星 halo 只在蓄力→高潮段亮（preview／hold 不亮）',
-      (tester) async {
+  testWidgets('兩段升階：軌道彗星 halo 只在蓄力→高潮段亮（preview／hold 不亮）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await drawToReveal(
-        tester, completer: completer, girl: practiceGirlProfiles[2]);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
     // 白卡預覽段：halo 尚未啟動。
     await tester.pump(previewAt);
@@ -1451,8 +1666,8 @@ void main() {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await drawToReveal(
-        tester, completer: completer, girl: practiceGirlProfiles[2]);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
     // 白卡預覽段：能量邊框尚未啟動。
     await tester.pump(previewAt);
@@ -1488,6 +1703,15 @@ void main() {
           practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
           practiceChatApiServiceProvider.overrideWithValue(api),
           practiceDrawSfxProvider.overrideWithValue(sfx),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
         ],
         child: MaterialApp(
           builder: reduceMotion
@@ -1612,8 +1836,7 @@ void main() {
   });
 
   // ── 揭曉音效 riser/settle edge-detect（Batch D）：跨 beat 各觸發一次 ──────────
-  testWidgets('音效：reveal 跨蓄力門檻觸發 riser、跨高潮門檻觸發 settle（各一次）',
-      (tester) async {
+  testWidgets('音效：reveal 跨蓄力門檻觸發 riser、跨高潮門檻觸發 settle（各一次）', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -1660,13 +1883,18 @@ void main() {
 
     // 換一位（再抽）→ forward(from:0) 重置 edge bool → 再次跨門檻各觸發一次。
     await tester.tap(find.text('換一位'));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('practice-new-partner-quota-notice')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('換一位'));
     await tester.pumpAndSettle();
     expect(spy.riser, 2);
     expect(spy.settle, 2);
   });
 
-  testWidgets('音效（D3）：normal-motion 叮聲配白卡預覽翻面、非 server 回應即播',
-      (tester) async {
+  testWidgets('音效（D3）：normal-motion 叮聲配白卡預覽翻面、非 server 回應即播', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);

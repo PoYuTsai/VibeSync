@@ -30,6 +30,7 @@ class PracticeChatScreen extends ConsumerStatefulWidget {
 class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  bool _confirmPaidNewPartnerSpend = false;
 
   @override
   void dispose() {
@@ -62,6 +63,78 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     ref
         .read(practiceChatControllerProvider.notifier)
         .continueWithSamePartner(isPaid: isPaid);
+  }
+
+  void _regeneratePersona() {
+    _requestNewPartner(
+      () =>
+          ref.read(practiceChatControllerProvider.notifier).regeneratePersona(),
+    );
+  }
+
+  void _startNewPartner() {
+    _requestNewPartner(
+      () => ref.read(practiceChatControllerProvider.notifier).startNewPartner(),
+    );
+  }
+
+  void _requestNewPartner(Future<void> Function() draw) {
+    final state = ref.read(practiceChatControllerProvider);
+    if (state.isDrawing) return;
+
+    final subscription = ref.read(subscriptionProvider);
+    if (subscription.isFreeUser || state.drawUpgradeRequired) {
+      context.push('/paywall');
+      return;
+    }
+
+    if (state.drawQuotaExceeded) {
+      ref.read(practiceChatControllerProvider.notifier).lockDrawQuotaExceeded();
+      return;
+    }
+
+    if (_hasInsufficientPaidDrawQuota(subscription, state)) {
+      if (_confirmPaidNewPartnerSpend) {
+        setState(() => _confirmPaidNewPartnerSpend = false);
+      }
+      ref.read(practiceChatControllerProvider.notifier).lockDrawQuotaExceeded();
+      return;
+    }
+
+    if (_needsPaidDrawConfirmation(state) && !_confirmPaidNewPartnerSpend) {
+      setState(() => _confirmPaidNewPartnerSpend = true);
+      return;
+    }
+
+    if (_confirmPaidNewPartnerSpend) {
+      setState(() => _confirmPaidNewPartnerSpend = false);
+    }
+    draw();
+  }
+
+  bool _needsPaidDrawConfirmation(PracticeChatState state) {
+    final remaining = state.drawFreeRemaining;
+    final cost = state.drawExtraCost ?? 0;
+    return remaining != null && remaining <= 0 && cost > 0;
+  }
+
+  bool _hasInsufficientPaidDrawQuota(
+    SubscriptionState subscription,
+    PracticeChatState state,
+  ) {
+    final cost = state.drawExtraCost ?? 0;
+    if (cost <= 0 || !_needsPaidDrawConfirmation(state)) return false;
+    return subscription.dailyRemaining < cost ||
+        subscription.monthlyRemaining < cost;
+  }
+
+  String _paidDrawSpendMessage(PracticeChatState state) {
+    final allowance = state.drawFreeAllowance;
+    final cost = state.drawExtraCost ?? 5;
+    if (allowance != null && allowance > 0) {
+      return '今日 $allowance 次免費換一位已用完，再按一次會扣 $cost 則額度。';
+    }
+    return '再按一次會扣 $cost 則額度。';
   }
 
   void _scrollToBottom() {
@@ -126,7 +199,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
             // 開場前：換一位＋難度控制（深色 scaffold 底，沿用原樣式）。
             // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
             if (state.messages.isEmpty)
-              _PracticeOpeningControls(state: state)
+              _PracticeOpeningControls(
+                state: state,
+                onNewPartner: _regeneratePersona,
+              )
             else
               _PracticeProfileBar(state: state),
             Expanded(
@@ -165,6 +241,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                     .read(practiceChatControllerProvider.notifier)
                     .clearError(),
               ),
+            if (_confirmPaidNewPartnerSpend &&
+                _needsPaidDrawConfirmation(state) &&
+                !state.isDrawing)
+              _NewPartnerQuotaNotice(message: _paidDrawSpendMessage(state)),
             _BottomBar(
               state: state,
               inputController: _controller,
@@ -175,9 +255,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                   .endPractice(),
               onFinish: () => context.pop(),
               onContinueSamePartner: _continueSamePartner,
-              onNewPartner: () => ref
-                  .read(practiceChatControllerProvider.notifier)
-                  .startNewPartner(),
+              onNewPartner: _startNewPartner,
             ),
           ],
         ),
@@ -345,13 +423,17 @@ class _PracticeLockedEntry extends ConsumerWidget {
 }
 
 // ── 開場前控制列：換一位＋難度 chips（深色 scaffold 底，沿用原樣式）──
-class _PracticeOpeningControls extends ConsumerWidget {
-  const _PracticeOpeningControls({required this.state});
+class _PracticeOpeningControls extends StatelessWidget {
+  const _PracticeOpeningControls({
+    required this.state,
+    required this.onNewPartner,
+  });
 
   final PracticeChatState state;
+  final VoidCallback onNewPartner;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
@@ -369,9 +451,7 @@ class _PracticeOpeningControls extends ConsumerWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => ref
-                    .read(practiceChatControllerProvider.notifier)
-                    .regeneratePersona(),
+                onPressed: onNewPartner,
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.ctaStart,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -801,6 +881,49 @@ class _ThinkingBubble extends StatelessWidget {
 }
 
 // ── 錯誤 / 額度橫幅 ───────────────────────────────────────────────────
+class _NewPartnerQuotaNotice extends StatelessWidget {
+  const _NewPartnerQuotaNotice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('practice-new-partner-quota-notice'),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.ctaStart.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.ctaStart.withValues(alpha: 0.34),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.info_outline,
+            size: 18,
+            color: AppColors.ctaStart,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({
     required this.message,
