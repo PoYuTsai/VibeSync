@@ -36,6 +36,8 @@ Flutter:
 - `lib/features/practice_chat/presentation/screens/practice_chat_screen.dart`
 - `lib/features/practice_chat/presentation/widgets/practice_girl_photo.dart`
 - `lib/features/practice_chat/presentation/widgets/practice_profile_sheet.dart`
+- `lib/features/practice_chat/presentation/widgets/practice_room_entry_card.dart`
+- `lib/features/learning/presentation/screens/learning_screen.dart`
 - `lib/features/subscription/presentation/screens/paywall_screen.dart`
 
 Tests:
@@ -539,11 +541,68 @@ git commit -m "feat(practice-chat): 接上每日翻牌狀態與草稿保存"
 
 Do not push.
 
-## Batch 4: Flip UI And Animation
+## Batch 4: Learning Hero Entry, Flip UI, And Animation
 
-**Concern:** High-fidelity visual reveal, still performant and testable.
+**Concern:** Make AI 實戰練習室 the primary learning-tab entry, then implement high-fidelity visual reveal inside the practice room. The current small horizontal entry card is not acceptable for this product direction.
 
-### 4.1 Add widgets
+### 4.1 Replace learning tab small entry with hero
+
+Suggested files:
+
+```text
+lib/features/practice_chat/presentation/widgets/practice_room_entry_card.dart
+lib/features/learning/presentation/screens/learning_screen.dart
+```
+
+Current problem:
+
+- `AI 實戰練習室` appears as a small top banner.
+- `練習專區` article grid dominates the learning page.
+- Product direction is the opposite: learning tab should make chat practice the first visual priority.
+
+New behavior:
+
+- Learning tab first viewport shows a large `AI 實戰練習室` hero.
+- Article `練習專區` appears below the hero and requires scrolling to fully see.
+- Whole hero navigates to `/practice-chat`.
+- Do not make this a marketing landing page. It is a functional entry to the practice room.
+
+Hero visual:
+
+```text
+large blurred practice-girl background
+dark translucent rounded capsule centered over background
+VibeSync/practice accent mark
+AI 實戰練習室  NEW
+跟模擬對象直接聊天，
+練你的真實反應。
+```
+
+Sizing:
+
+```text
+mobile height: 58-68vh
+leave only a hint of the next section visible
+stable aspect ratio, no layout jump while image loads
+```
+
+Implementation notes:
+
+- Use bundled `practice_girls` assets for the blurred background.
+- Background must be blurred/dimmed so it reads as mood/context, not as the actual drawn girl.
+- Avoid the tiny row-card layout shown in the current screenshot.
+- Keep top app title/settings intact if the existing learning screen requires them, but hero should still dominate below the header.
+- Reuse BrandKit/practice colors and current dark purple/orange visual language.
+- Provide a fallback gradient or placeholder if the asset fails, but tests should prove normal asset path exists.
+
+Widget tests:
+
+- Learning screen shows `AI 實戰練習室` hero before `練習專區`.
+- Hero contains `跟模擬對象直接聊天，練你的真實反應。`.
+- Tapping hero routes to `/practice-chat`.
+- The old small-entry-only layout is not the primary visible surface.
+
+### 4.2 Add flip widgets
 
 Suggested files:
 
@@ -587,7 +646,7 @@ Accessibility:
 
 - If `MediaQuery.disableAnimations` or `MediaQuery.accessibleNavigation` is true, skip animation and reveal immediately.
 
-### 4.2 Integrate screen
+### 4.3 Integrate practice room screen
 
 Modify `practice_chat_screen.dart`.
 
@@ -613,19 +672,21 @@ Copy:
 
 Paywall CTA should only appear when `drawUpgradeRequired`.
 
-### 4.3 Visual rules
+### 4.4 Visual rules
 
 - Preserve the current practice-chat dark style.
+- Learning tab entry must be a first-screen hero, not a small banner.
 - Card back should feel like a romantic playing card, not casino gambling.
 - Gold glow and orbit are decorative, not blocking.
 - Do not use purple/blue-only one-note palette; use current dark purple plus warm orange/gold accents.
 - Avoid putting card inside another card if the existing hero already frames it. The reveal stage can be a single central component.
 - Text must not overlap on small iPhones.
 
-### 4.4 Tests
+### 4.5 Tests
 
 Widget tests:
 
+- Learning screen hero is first-priority entry and article grid follows below.
 - Locked state shows teaser copy and no profile hero.
 - Successful draw transitions to revealed hero.
 - Reduce motion renders revealed hero without waiting animation.
@@ -647,14 +708,16 @@ Commands:
 
 ```powershell
 flutter test test/widget/features/practice_chat
+flutter test test/widget/features/learning
 flutter analyze lib/features/practice_chat
+flutter analyze lib/features/learning
 ```
 
-### 4.5 Commit
+### 4.6 Commit
 
 ```powershell
-git add lib/features/practice_chat/presentation test/widget/features/practice_chat
-git commit -m "feat(practice-chat): 加入每日翻牌首屏與翻牌動畫"
+git add lib/features/practice_chat/presentation lib/features/learning test/widget/features/practice_chat test/widget/features/learning
+git commit -m "feat(practice-chat): 放大學習頁入口並加入每日翻牌動畫"
 ```
 
 Do not push.
@@ -755,6 +818,8 @@ Before asking Codex review:
 - [ ] Existing chat first-reply charge still deducts 1.
 - [ ] Continue same girl still does not call draw.
 - [ ] Recent practice history still groups by visible thread.
+- [ ] Learning tab shows the large AI 實戰練習室 hero as the first-priority entry.
+- [ ] Article `練習專區` appears below the hero and is not the first visual priority.
 - [ ] Paywall rows render and text fits.
 - [ ] Reduce motion path works.
 
@@ -771,8 +836,9 @@ Review focus:
 5. Client only sends allowlisted ids.
 6. Draft persistence does not create fake recent sessions.
 7. Continue same girl and difficulty switch do not accidentally consume draw.
-8. Paywall source and rows are correct.
-9. Animation widgets are not layout-fragile or inaccessible.
+8. Learning tab IA makes chat practice the primary entry, not a small banner.
+9. Paywall source and rows are correct.
+10. Animation widgets are not layout-fragile or inaccessible.
 
 Do not push on `CONCERNS` if any finding touches quota, paywall, or Edge behavior.
 
