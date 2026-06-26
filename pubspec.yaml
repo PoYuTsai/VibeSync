@@ -68,6 +68,7 @@ dependencies:
   package_info_plus: ^8.0.0
   http: ^1.6.0
   shared_preferences: ^2.5.4
+  audioplayers: ^6.7.1
 
 dev_dependencies:
   flutter_test:
@@ -93,3 +94,4 @@ flutter:
     - assets/images/practice/
     - assets/images/practice_girls/
     - assets/articles/
+    - assets/audio/practice_draw/

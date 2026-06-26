@@ -1,16 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// 每日翻牌音效掛勾（Batch 4 種呼叫點 → Batch 4.7 補滿 API 與 waiting loop）。
+import 'practice_draw_audio_sfx.dart';
+
+/// 每日翻牌音效掛勾（Batch 4 種呼叫點 → 4.7 補滿 API／waiting loop → 4.7B 接真音檔）。
 ///
-/// **目前刻意仍是 no-op**：把「抽牌咻聲」「等待 shimmer loop」「揭曉叮聲」三組呼叫點
-/// 種進揭曉儀式（[PracticeDrawCeremony]）的狀態機，之後要接真音檔時只需換一個會真的
-/// 播放的 [PracticeDrawSfx] 實作（透過 [practiceDrawSfxProvider] 注入），呼叫端完全
-/// 不必再改。
+/// 把「抽牌咻聲」「等待 shimmer loop」「揭曉叮聲」三組呼叫點種進揭曉儀式
+/// （[PracticeDrawCeremony]）的狀態機；實際發聲由 [practiceDrawSfxProvider] 注入的
+/// [PracticeDrawSfx] 實作決定，呼叫端完全不必管是 no-op 還是真音檔。
 ///
-/// 設計鐵則（Batch 4.7 仍嚴守）：
-/// - **不**引入 audioplayers / just_audio，也**不**打包任何音檔 → 不增依賴、不增包體。
-///   真音檔（CC0／自製／買斷／明確可商用打包）尚未取得；授權確認前一律不 bundle，
-///   素材清單與授權見 `assets/audio/practice_draw/licenses/practice_draw_audio.md`。
+/// **Batch 4.7B**：預設已從 [NoopPracticeDrawSfx] 換成會真的播放的
+/// [AudioPlayersPracticeDrawSfx]（audioplayers）。音檔與授權／來源見
+/// `assets/audio/practice_draw/licenses/practice_draw_audio.md`。
+///
+/// 設計鐵則：
+/// - 真實 impl **lazy + guarded**：headless／widget-test 環境（無 audio platform channel）
+///   一律靜默、不丟例外；測試以 [practiceDrawSfxProvider] override 注入 spy，不真的播放。
 /// - 方法一律靜默、不丟例外；reduce-motion 與 widget test 環境呼叫都安全。
 /// - **lifecycle 安全**：等待 loop 必須能被明確 [stopWaitingLoop]（reveal／error／402／
 ///   429／hidden／dispose 一律呼叫），絕不在背景殘留。呼叫端負責「每個離開 drawing
@@ -51,9 +55,9 @@ class NoopPracticeDrawSfx implements PracticeDrawSfx {
   void playRevealChime() {}
 }
 
-/// 翻牌音效服務 provider。預設 [NoopPracticeDrawSfx]；測試以
-/// `practiceDrawSfxProvider.overrideWithValue(spy)` 注入 spy 驗證呼叫時機，
-/// 之後接真音檔只需在這裡換成會播放的實作。
+/// 翻牌音效服務 provider。預設 [AudioPlayersPracticeDrawSfx]（真音效，Batch 4.7B）；
+/// 測試以 `practiceDrawSfxProvider.overrideWithValue(spy)` 注入 spy 驗證呼叫時機
+/// （不真的播放）。[NoopPracticeDrawSfx] 保留作為「明確靜音」的可注入實作。
 final practiceDrawSfxProvider = Provider<PracticeDrawSfx>(
-  (ref) => const NoopPracticeDrawSfx(),
+  (ref) => AudioPlayersPracticeDrawSfx(),
 );
