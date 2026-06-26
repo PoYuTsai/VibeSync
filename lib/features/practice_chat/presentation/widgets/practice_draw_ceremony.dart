@@ -881,6 +881,112 @@ class _SweepGlowPainter extends CustomPainter {
       old.progress != progress || old.intensity != intensity;
 }
 
+/// 軌道彗星 halo 的夾層：`back` = 投影深度 z<0 的後半弧（畫在卡片**下方**）；
+/// `front` = z>0 的前半弧（畫在卡片**上方**）。兩層夾出彗星繞行卡片的 3D 景深。
+@visibleForTesting
+enum PracticeHaloHalf { back, front }
+
+/// 測試用 seam：建立 [_OrbitalHaloPainter]（painter 本體 library-private，與其他
+/// painter 一致；僅此 seam 對 widget test 暴露具名建構）。
+@visibleForTesting
+CustomPainter debugOrbitalHaloPainter({
+  required double progress,
+  required double intensity,
+  required PracticeHaloHalf half,
+}) =>
+    _OrbitalHaloPainter(progress: progress, intensity: intensity, half: half);
+
+/// 高潮段「軌道彗星」halo：[_ringCount] 條繞 X 軸傾斜不同角度 θ 的 3D 圓軌，各帶
+/// 一顆彗星 head＋遞減拖尾，沿 φ 繞行（[progress] 0..1 → φ 掃一圈）。3D 取樣點
+/// (r·cosφ, r·sinφ·cosθ, r·sinφ·sinθ) 投影成 2D 橢圓，深度 z=r·sinφ·sinθ 決定該點
+/// 屬於前半（卡上）或後半（卡下）夾層，並做近大遠小／近亮遠暗的景深縮放。
+///
+/// **確定性、零 Random**：軌道傾角／半徑／相位偏移全由環 index 查表決定，重建穩定
+/// （`shouldRepaint` 只認 progress/intensity/half）。[intensity]<=0 早退不畫。
+class _OrbitalHaloPainter extends CustomPainter {
+  _OrbitalHaloPainter({
+    required this.progress,
+    required this.intensity,
+    required this.half,
+  });
+
+  /// 彗星沿軌道繞行進度（0..1 → φ 掃一圈）。
+  final double progress;
+
+  /// 整體強度（0..1；≤0 不畫）。
+  final double intensity;
+
+  /// 夾層：後半弧（z<0、卡下）或前半弧（z>0、卡上）。
+  final PracticeHaloHalf half;
+
+  static const int _ringCount = 3;
+  static const int _trailSteps = 16; // 拖尾取樣點數
+  static const double _trailArc = 1.5; // 拖尾掃過的弧長（rad）
+
+  // 各軌參數（確定性查表，index 對應一條軌道）：
+  static const List<double> _tilt = [1.12, 0.74, 1.36]; // 繞 X 軸傾角 θ
+  static const List<double> _radiusRatio = [0.52, 0.46, 0.58]; // 相對 shortestSide
+  static const List<double> _phaseOffset = [0.0, 2.3, 4.1]; // 彗星起始相位錯開
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final center = Offset(size.width / 2, size.height / 2);
+    final base = size.shortestSide;
+    final wantFront = half == PracticeHaloHalf.front;
+
+    for (var ring = 0; ring < _ringCount; ring++) {
+      final theta = _tilt[ring];
+      final cosT = math.cos(theta);
+      final sinT = math.sin(theta);
+      final r = base * _radiusRatio[ring];
+      final headPhi = progress * 2 * math.pi + _phaseOffset[ring];
+
+      for (var s = 0; s < _trailSteps; s++) {
+        final frac = s / _trailSteps; // 0=head → 1=尾端
+        final phi = headPhi - frac * _trailArc;
+
+        // 3D → 2D 橢圓投影；z 為朝向觀者的深度。
+        final z = r * math.sin(phi) * sinT;
+        final isFrontPoint = z >= 0;
+        if (isFrontPoint != wantFront) continue; // 只畫本夾層的弧段
+
+        final px = center.dx + r * math.cos(phi);
+        final py = center.dy + r * math.sin(phi) * cosT;
+
+        // 景深：近（z 大）→ 大且亮；遠（z 小／負）→ 小且暗。
+        final depth = sinT == 0 ? 0.0 : (z / (r * sinT)).clamp(-1.0, 1.0);
+        final depthScale = 0.6 + 0.4 * ((depth + 1) / 2); // 0.6..1.0
+        final taper = 1 - frac; // 拖尾遞減
+
+        final dotR = (1.3 + 2.9 * taper) * depthScale;
+        final alpha = taper * taper * 0.92 * depthScale * intensity;
+        if (alpha <= 0.02) continue;
+
+        // head 白熱、拖尾轉金，隨 frac 漸層。
+        final color = Color.lerp(Colors.white, _kGold, frac)!
+            .withValues(alpha: alpha.clamp(0.0, 1.0));
+
+        // 柔光暈 + 亮核。
+        canvas.drawCircle(
+          Offset(px, py),
+          dotR * 2.0,
+          Paint()
+            ..color = color.withValues(alpha: (alpha * 0.35).clamp(0.0, 1.0))
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        );
+        canvas.drawCircle(Offset(px, py), dotR, Paint()..color = color);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_OrbitalHaloPainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.half != half;
+}
+
 /// 中點揭曉 flash：白金徑向爆光，遮住翻面接縫，給「眼睛一亮」的揭曉瞬間。
 class _RevealFlashPainter extends CustomPainter {
   _RevealFlashPainter({required this.intensity});
