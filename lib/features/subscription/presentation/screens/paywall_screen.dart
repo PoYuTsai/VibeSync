@@ -535,6 +535,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),
           _buildComparisonRow('每日額度', '15 則', '50 則', '120 則'),
           _buildComparisonRow('每月額度', '30 則', '300 則', '800 則'),
+          const SizedBox(height: 12),
+          Text(
+            'Free 每天仍可翻出新的陪練女孩，但同一位只能練一輪；'
+            '升級後可續聊同一位，把對話練得更完整。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary,
+            ),
+          ),
         ],
       ),
     );

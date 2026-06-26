@@ -93,6 +93,16 @@ void main() {
       expect(find.textContaining('Sonnet'), findsNothing);
     });
 
+    testWidgets('explains the Free vs paid practice-girl continuation rule',
+        (tester) async {
+      await pumpPaywall(tester);
+
+      // Free can still draw new practice girls daily, but only one round each;
+      // upgrading unlocks continuing the same girl for a fuller practice.
+      expect(find.textContaining('同一位只能練一輪'), findsOneWidget);
+      expect(find.textContaining('續聊同一位'), findsOneWidget);
+    });
+
     testWidgets('shows four product options while prices are syncing',
         (tester) async {
       await pumpPaywall(tester);
