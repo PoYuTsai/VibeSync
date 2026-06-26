@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_audio_sfx.dart';
@@ -9,18 +11,36 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  group('riser／settle 真 wav 素材（Batch D4）', () {
+    test('riser／settle 音檔實際 bundle 在 assets（避免 runtime 找不到 asset）', () {
+      final riser =
+          File('assets/audio/practice_draw/practice_draw_riser.wav');
+      final settle =
+          File('assets/audio/practice_draw/practice_draw_settle.wav');
+      expect(riser.existsSync(), isTrue,
+          reason: 'riser wav 必須存在於 assets/audio/practice_draw/');
+      expect(settle.existsSync(), isTrue,
+          reason: 'settle wav 必須存在於 assets/audio/practice_draw/');
+      // 非空（真音檔，不是 0-byte 佔位）。
+      expect(riser.lengthSync(), greaterThan(1000));
+      expect(settle.lengthSync(), greaterThan(1000));
+    });
+  });
+
   group('AudioPlayersPracticeDrawSfx（headless 安全）', () {
     test('可建立，不丟例外', () {
       expect(AudioPlayersPracticeDrawSfx.new, returnsNormally);
     });
 
-    test('四個呼叫點在無 platform 下皆靜默不丟', () async {
+    test('六個呼叫點在無 platform 下皆靜默不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
       expect(() {
         sfx.playWhoosh();
         sfx.playWaitingLoop();
         sfx.playRevealChime();
+        sfx.playRiser();
+        sfx.playSettle();
         sfx.stopWaitingLoop();
       }, returnsNormally);
 
@@ -63,6 +83,8 @@ void main() {
         sfx.playWaitingLoop();
         sfx.stopWaitingLoop();
         sfx.playRevealChime();
+        sfx.playRiser();
+        sfx.playSettle();
       }, returnsNormally);
 
       await Future<void>.delayed(const Duration(milliseconds: 50));
