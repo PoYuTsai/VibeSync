@@ -1620,4 +1620,42 @@ void main() {
       expect(base.shouldRepaint(diffIntensity), isTrue);
     });
   });
+
+  group('能量邊框 painter（Batch C）', () {
+    test('建構＋paint：各 progress 都不丟例外', () {
+      for (final p in [0.0, 0.3, 0.7, 1.0]) {
+        final painter = debugEnergyBorderPainter(
+          progress: p,
+          intensity: 0.8,
+          cardSize: const Size(220, 320),
+        );
+        expect(() => paintHaloOnce(painter), returnsNormally);
+      }
+    });
+
+    test('intensity<=0 早退、paint 不丟', () {
+      final painter = debugEnergyBorderPainter(
+        progress: 0.4,
+        intensity: 0,
+        cardSize: const Size(220, 320),
+      );
+      expect(() => paintHaloOnce(painter), returnsNormally);
+    });
+
+    test('shouldRepaint 對 progress／intensity 敏感、同值不重畫', () {
+      const cardSize = Size(220, 320);
+      final base = debugEnergyBorderPainter(
+          progress: 0.3, intensity: 0.8, cardSize: cardSize);
+      final same = debugEnergyBorderPainter(
+          progress: 0.3, intensity: 0.8, cardSize: cardSize);
+      final diffProgress = debugEnergyBorderPainter(
+          progress: 0.6, intensity: 0.8, cardSize: cardSize);
+      final diffIntensity = debugEnergyBorderPainter(
+          progress: 0.3, intensity: 0.5, cardSize: cardSize);
+
+      expect(base.shouldRepaint(same), isFalse);
+      expect(base.shouldRepaint(diffProgress), isTrue);
+      expect(base.shouldRepaint(diffIntensity), isTrue);
+    });
+  });
 }
