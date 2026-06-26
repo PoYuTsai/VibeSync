@@ -124,4 +124,13 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
       // 停止失敗也不丟。
     }
   }
+
+  // Batch D：edge-detect 接線已就緒（呼叫時機由 `_reveal` 跨門檻觸發）；真 wav 於
+  // Task D4 接上（riser 蓄力／settle 落定，沿用上方 lazy/guarded one-shot 模式）。
+  // 接上前先 no-op，確保介面完整且 headless 安全。
+  @override
+  void playRiser() {}
+
+  @override
+  void playSettle() {}
 }

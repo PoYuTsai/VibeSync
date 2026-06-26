@@ -182,6 +182,8 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   int waitingStart = 0;
   int waitingStop = 0;
   int chime = 0;
+  int riser = 0;
+  int settle = 0;
 
   /// start 次數多於 stop ⇒ loop 仍在播（用來驗證離開 drawing 後必為 false）。
   bool get looping => waitingStart > waitingStop;
@@ -197,6 +199,12 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playRevealChime() => chime++;
+
+  @override
+  void playRiser() => riser++;
+
+  @override
+  void playSettle() => settle++;
 }
 
 class _SeededPracticeChatController extends PracticeChatController {
@@ -1601,6 +1609,60 @@ void main() {
 
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.looping, isFalse);
+  });
+
+  // ── 揭曉音效 riser/settle edge-detect（Batch D）：跨 beat 各觸發一次 ──────────
+  testWidgets('音效：reveal 跨蓄力門檻觸發 riser、跨高潮門檻觸發 settle（各一次）',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 600)); // 等待微動
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pump(); // revealing：_reveal.forward(from:0)
+
+    // 白卡預覽段：尚未跨蓄力門檻，riser／settle 都未觸發。
+    await tester.pump(previewAt);
+    expect(spy.riser, 0);
+    expect(spy.settle, 0);
+
+    // 跨入高潮蓄力段（recharge）：riser 觸發一次、settle 仍未。
+    await tester.pump(backAt - previewAt);
+    expect(spy.riser, 1);
+    expect(spy.settle, 0);
+
+    // 跨入典藏卡停留段（grand flip 後）：settle 觸發一次。
+    await tester.pump(grandHoldAt - backAt);
+    expect(spy.riser, 1);
+    expect(spy.settle, 1);
+
+    // 走完整條：edge bool 防重觸發，各維持一次。
+    await tester.pumpAndSettle();
+    expect(spy.riser, 1);
+    expect(spy.settle, 1);
+  });
+
+  testWidgets('音效：再抽一次（forward from 0 重置 edge bool）→ riser／settle 可重觸發',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    // 第一次翻牌走完整條時間軸：riser／settle 各一次。
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+    expect(spy.riser, 1);
+    expect(spy.settle, 1);
+
+    // 換一位（再抽）→ forward(from:0) 重置 edge bool → 再次跨門檻各觸發一次。
+    await tester.tap(find.text('換一位'));
+    await tester.pumpAndSettle();
+    expect(spy.riser, 2);
+    expect(spy.settle, 2);
   });
 
   // ── 軌道彗星 halo painter（Batch B）：純 painter smoke，免 widget harness ──

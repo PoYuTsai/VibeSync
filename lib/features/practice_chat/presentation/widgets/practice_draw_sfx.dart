@@ -35,6 +35,14 @@ abstract class PracticeDrawSfx {
 
   /// 揭曉成功：卡片翻正的 chime/sparkle（約 0.6–1 秒，與 medium haptic 同步）。
   void playRevealChime();
+
+  /// 兩段升階揭曉的「蓄力 riser」：高潮蓄力段起手時播一次（卡背翻回、能量邊框點亮
+  /// 那一刻）。由揭曉時間軸 `_reveal` 跨蓄力門檻 edge-detect 觸發，一次揭曉只播一次。
+  void playRiser();
+
+  /// 兩段升階揭曉的「落定 settle」：高潮翻面、典藏卡定位那一刻播一次。由 `_reveal`
+  /// 跨高潮門檻 edge-detect 觸發，一次揭曉只播一次。
+  void playSettle();
 }
 
 /// 預設實作：完全 no-op、不打包音檔、不發聲，所有方法安全靜默。
@@ -53,6 +61,12 @@ class NoopPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playRevealChime() {}
+
+  @override
+  void playRiser() {}
+
+  @override
+  void playSettle() {}
 }
 
 /// 翻牌音效服務 provider。預設 [AudioPlayersPracticeDrawSfx]（真音效，Batch 4.7B）；
