@@ -6,19 +6,17 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 
+const String kPracticeRoomEntryHeroAsset =
+    'assets/images/practice_girls/practice_girl_038.jpg';
+const double kPracticeRoomEntryHeroBlurSigma = 4.2;
+
 /// 學習 tab 第一屏主視覺：AI 實戰練習室 Hero。
 ///
-/// responsive 滿版 hero——填滿父層給的高度（learning_screen 依 scroll viewport
-/// 抓主要可視區），整塊可點進 practice-chat。柔焦情境照背景 + blur/dim overlay
-/// + 玻璃膠囊 CTA。背景刻意模糊＝這是第一屏入口主視覺而非抽牌結果，不洩漏候選
-/// 對象，保留 locked → 翻牌 → reveal 的儀式感。背景圖載入失敗退回品牌漸層。
+/// 填滿 learning_screen 給定的首屏高度；整張卡都可點入 practice-chat。
 class PracticeRoomEntryCard extends StatelessWidget {
   const PracticeRoomEntryCard({super.key});
 
   static const double _radius = 24;
-
-  /// 被放進無界高度容器時的保底（約 0.72 螢幕高 ≈ 72vh）。一般情況由
-  /// learning_screen 依 viewport 給定 bounded 高度，不會走到這。
   static const double _unboundedFallbackFraction = 0.72;
 
   @override
@@ -29,6 +27,7 @@ class PracticeRoomEntryCard extends StatelessWidget {
         final double height = constraints.hasBoundedHeight
             ? constraints.maxHeight
             : MediaQuery.sizeOf(context).height * _unboundedFallbackFraction;
+
         return Material(
           color: Colors.transparent,
           borderRadius: radius,
@@ -42,96 +41,16 @@ class PracticeRoomEntryCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // 柔焦情境照背景；載入失敗退回品牌漸層。
-                    Image.asset(
-                      'assets/images/practice/practice_hero_bg.jpg',
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              AppColors.brandSurface2,
-                              AppColors.brandSurface,
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // blur + 暗化：上方留柔焦情境、下方加深確保白字與 CTA 可讀。
-                    BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            stops: const [0.0, 0.45, 1.0],
-                            colors: [
-                              Colors.black.withValues(alpha: 0.12),
-                              Colors.black.withValues(alpha: 0.32),
-                              Colors.black.withValues(alpha: 0.82),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // 內容靠底排版：標題 + NEW、副標、玻璃膠囊 CTA。
+                    const _HeroBackground(),
+                    const _WarmReadabilityScrim(),
                     Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.symmetric(horizontal: 22),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          // 價值主張 eyebrow：層級高於 CTA（橘漸層發光 pill）。
-                          const _DailyRewardEyebrow(),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  'AI 實戰練習室',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTypography.headlineLarge.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.45),
-                                        blurRadius: 10,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              const _NewBadge(),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            '跟模擬對象直接聊天，練你的真實反應。',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: Colors.white.withValues(alpha: 0.90),
-                              height: 1.45,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black.withValues(alpha: 0.40),
-                                  blurRadius: 6,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const _GlassCapsuleCta(label: '開始練習'),
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          _DailyRewardEyebrow(),
+                          SizedBox(height: 18),
+                          _PracticeRoomGlassPanel(),
                         ],
                       ),
                     ),
@@ -146,40 +65,223 @@ class PracticeRoomEntryCard extends StatelessWidget {
   }
 }
 
-/// 橘色 NEW 標籤。
-class _NewBadge extends StatelessWidget {
-  const _NewBadge();
+class _HeroBackground extends StatelessWidget {
+  const _HeroBackground();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.ctaStart.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(6),
+    return ImageFiltered(
+      key: const ValueKey('practice-room-entry-bg-blur'),
+      imageFilter: ImageFilter.blur(
+        sigmaX: kPracticeRoomEntryHeroBlurSigma,
+        sigmaY: kPracticeRoomEntryHeroBlurSigma,
       ),
-      child: Text(
-        'NEW',
-        style: AppTypography.caption.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: 10,
-          letterSpacing: 0.5,
+      child: Transform.scale(
+        scale: 1.035,
+        child: Image.asset(
+          kPracticeRoomEntryHeroAsset,
+          key: const ValueKey('practice-room-entry-bg-image'),
+          fit: BoxFit.cover,
+          alignment: const Alignment(0, -0.06),
+          errorBuilder: (context, error, stackTrace) => const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.brandSurface2,
+                  AppColors.brandSurface,
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// 價值主張 eyebrow：「每日登入就送新女孩」。橘漸層發光 pill，是 Hero 內
-/// 視覺層級最高的元素（高於白色玻璃 CTA），把每日翻牌的核心誘因放到第一眼。
+class _WarmReadabilityScrim extends StatelessWidget {
+  const _WarmReadabilityScrim();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: const [0.0, 0.42, 1.0],
+          colors: [
+            const Color(0xFFFFE6C7).withValues(alpha: 0.14),
+            Colors.black.withValues(alpha: 0.05),
+            Colors.black.withValues(alpha: 0.22),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PracticeRoomGlassPanel extends StatelessWidget {
+  const _PracticeRoomGlassPanel();
+
+  static const _panelRadius = BorderRadius.all(Radius.circular(78));
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 348),
+      child: ClipRRect(
+        borderRadius: _panelRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            key: const ValueKey('practice-room-entry-glass-panel'),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(28, 26, 28, 30),
+            decoration: BoxDecoration(
+              color: const Color(0xFF17112F).withValues(alpha: 0.78),
+              borderRadius: _panelRadius,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.28),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.28),
+                  blurRadius: 30,
+                  offset: const Offset(0, 16),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const _PracticeRoomMark(),
+                const SizedBox(height: 20),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text(
+                        'AI 實戰練習室',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 36,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0,
+                          height: 1.08,
+                          shadows: [
+                            Shadow(
+                              color: Color(0xB0000000),
+                              blurRadius: 8,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      _NewBadge(),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Text(
+                  '跟模擬對象直接聊天，\n練你的真實反應。',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.titleMedium.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    height: 1.34,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.62),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PracticeRoomMark extends StatelessWidget {
+  const _PracticeRoomMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ctaStart.withValues(alpha: 0.52),
+            blurRadius: 22,
+            spreadRadius: 4,
+          ),
+        ],
+      ),
+      child: Icon(
+        Icons.auto_awesome_rounded,
+        size: 46,
+        color: AppColors.ctaStart,
+        shadows: [
+          Shadow(
+            color: AppColors.ctaStart.withValues(alpha: 0.9),
+            blurRadius: 18,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NewBadge extends StatelessWidget {
+  const _NewBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.ctaStart,
+        borderRadius: BorderRadius.circular(7),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ctaStart.withValues(alpha: 0.48),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Text(
+        'NEW',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: 20,
+          letterSpacing: 0,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
 class _DailyRewardEyebrow extends StatelessWidget {
   const _DailyRewardEyebrow();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [AppColors.ctaStart, AppColors.ctaEnd],
@@ -188,60 +290,29 @@ class _DailyRewardEyebrow extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: AppColors.ctaStart.withValues(alpha: 0.38),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.card_giftcard_rounded, size: 15, color: Colors.white),
-          const SizedBox(width: 7),
-          Text(
-            '每日登入就送新女孩',
-            style: AppTypography.bodySmall.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.card_giftcard_rounded,
+                size: 15, color: Colors.white),
+            const SizedBox(width: 7),
+            Text(
+              '每日登入就送新女孩',
+              style: AppTypography.bodySmall.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 玻璃膠囊 CTA（白色半透明 pill），疊在模糊背景上呈現玻璃感。第一屏主功能，
-/// 視覺層級放大（較大 padding + 字級）。
-class _GlassCapsuleCta extends StatelessWidget {
-  const _GlassCapsuleCta({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.34)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.auto_awesome, size: 18, color: Colors.white),
-          const SizedBox(width: 9),
-          Text(
-            label,
-            style: AppTypography.titleSmall.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Icon(Icons.arrow_forward_rounded, size: 18, color: Colors.white),
-        ],
+          ],
+        ),
       ),
     );
   }
