@@ -1027,6 +1027,104 @@ class _OrbitalHaloPainter extends CustomPainter {
       old.half != half;
 }
 
+/// 測試用 seam：建立 [_EnergyBorderPainter]（painter 本體 library-private）。
+/// 與 [debugOrbitalHaloPainter] 同手法，讓 widget test 免 harness 純驗 painter。
+@visibleForTesting
+CustomPainter debugEnergyBorderPainter({
+  required double progress,
+  required double intensity,
+  required Size cardSize,
+}) =>
+    _EnergyBorderPainter(
+        progress: progress, intensity: intensity, cardSize: cardSize);
+
+/// 能量邊框（Batch C）：沿典藏卡矩形描邊掃動的 teal→gold 彗星光 ＋ 底邊
+/// golden-angle 確定性火花。只在蓄力段（recharge→halo climax）由 [_buildStage]
+/// 點亮，給「能量灌進卡牌」的蓄勢感。確定性：零 Random，火花靠 golden-angle 佈點＋
+/// progress 推升相位。
+class _EnergyBorderPainter extends CustomPainter {
+  _EnergyBorderPainter({
+    required this.progress,
+    required this.intensity,
+    required this.cardSize,
+  });
+
+  final double progress; // 0..1 彗星 head 沿周長的位置
+  final double intensity; // 0..1 整體強度（蓄力 climb）
+  final Size cardSize; // 卡牌尺寸（在 canvas 置中描邊）
+
+  static const double _goldenAngle = 2.399963229728653; // 黃金角（弧度）
+  static const int _sparkCount = 14;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final i = intensity.clamp(0.0, 1.0);
+
+    final rect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: cardSize.width,
+      height: cardSize.height,
+    );
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(24)));
+
+    // 整圈 teal 底光描邊。
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = _kTeal.withValues(alpha: 0.16 * i)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+
+    // 彗星掃動：沿周長取一段亮弧，head 在 progress 處、teal→gold 漸亮（單一 blur
+    // Paint 重用，只變色與半徑，控制低階機繪製成本）。
+    final comet = Paint()
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    for (final metric in path.computeMetrics()) {
+      final len = metric.length;
+      final head = (progress % 1.0) * len;
+      final tailLen = len * 0.26; // 拖尾占周長比例
+      const steps = 16;
+      for (var s = 0; s < steps; s++) {
+        final frac = s / (steps - 1); // 0=拖尾末端 .. 1=head
+        final tan =
+            metric.getTangentForOffset((head - tailLen * (1 - frac)) % len);
+        if (tan == null) continue;
+        comet.color = Color.lerp(_kTeal, _kGold, frac)!
+            .withValues(alpha: ((0.10 + 0.55 * frac) * i).clamp(0.0, 1.0));
+        canvas.drawCircle(tan.position, 1.6 + 2.6 * frac, comet);
+      }
+    }
+
+    // 底邊火花：golden-angle 確定性佈點，沿底邊噴起後淡出。
+    final spark = Paint()..style = PaintingStyle.fill;
+    for (var k = 0; k < _sparkCount; k++) {
+      final a = (k * _goldenAngle) % (2 * math.pi);
+      final along = math.sin(a) * 0.5 + 0.5; // 0..1 沿底邊位置（確定）
+      final phase = ((progress * 1.3) + a / (2 * math.pi)) % 1.0; // 上升相位
+      final rise = phase * 26; // 噴起高度
+      final fade = 1 - phase; // 越高越淡
+      spark.color = Color.lerp(_kGold, _kTeal, along)!
+          .withValues(alpha: (0.6 * fade * i).clamp(0.0, 1.0));
+      canvas.drawCircle(
+        Offset(rect.left + 12 + along * (rect.width - 24), rect.bottom - 2 - rise),
+        1.2 + 1.4 * fade,
+        spark,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_EnergyBorderPainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.cardSize != cardSize;
+}
+
 /// 中點揭曉 flash：白金徑向爆光，遮住翻面接縫，給「眼睛一亮」的揭曉瞬間。
 class _RevealFlashPainter extends CustomPainter {
   _RevealFlashPainter({required this.intensity});
