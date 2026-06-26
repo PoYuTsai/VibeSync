@@ -15,11 +15,16 @@ import {
   applyResetsIfNeeded,
   buildQuotaExceededPayload,
   checkQuota,
+  isPlainObject,
   resolveLimits,
   type SubscriptionRow,
   TEST_EMAILS,
 } from "../_shared/quota.ts";
-import { validateRequest } from "./validate.ts";
+import { validateDrawRequest, validateRequest } from "./validate.ts";
+import {
+  type DrawSupabaseClient,
+  handleDrawProfile,
+} from "./draw_handler.ts";
 import { buildChatMessages, buildDebriefMessages } from "./prompt.ts";
 import {
   decideChatGate,
@@ -130,6 +135,26 @@ async function handleRequest(req: Request): Promise<Response> {
     rawBody = JSON.parse(rawText);
   } catch {
     return jsonResponse({ error: "invalid_request_body" }, 400);
+  }
+
+  // ── draw_profile 分支 ────────────────────────────────────────────────
+  // 獨立 request shape；在 DEEPSEEK_API_KEY 檢查前 early-return，故翻牌永遠不需要
+  // DeepSeek key、不碰 practice_chat_sessions ledger。chat/debrief 路徑完全不受影響。
+  if (isPlainObject(rawBody) && rawBody.mode === "draw_profile") {
+    let drawRequest;
+    try {
+      drawRequest = validateDrawRequest(rawBody);
+    } catch (e) {
+      return jsonResponse({ error: getErrorMessage(e) }, 400);
+    }
+    const drawResult = await handleDrawProfile({
+      supabase: supabase as unknown as DrawSupabaseClient,
+      userId: user.id,
+      userEmail: user.email ?? null,
+      request: drawRequest,
+      now: new Date(),
+    });
+    return jsonResponse(drawResult.body, drawResult.status);
   }
 
   let request;

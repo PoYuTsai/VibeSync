@@ -5,7 +5,11 @@ import {
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { countAiTurns, validateRequest } from "./validate.ts";
+import {
+  countAiTurns,
+  validateDrawRequest,
+  validateRequest,
+} from "./validate.ts";
 
 function chatReq(turns: Array<{ role: string; text: string }>) {
   return { mode: "chat", sessionId: "s1", turns };
@@ -431,6 +435,108 @@ Deno.test("visiblePracticeThreadId：過長 → invalid_visiblePracticeThreadId"
         sessionId: "s1",
         visiblePracticeThreadId: "x".repeat(129),
         turns: [{ role: "user", text: "嗨" }],
+      }),
+    Error,
+    "invalid_visiblePracticeThreadId",
+  );
+});
+
+// ── draw_profile 驗證 ──────────────────────────────────────────────────
+
+Deno.test("draw：合法請求（只有 requestId）→ 通過，不需要 turns", () => {
+  const r = validateDrawRequest({
+    mode: "draw_profile",
+    requestId: "11111111-2222-3333-4444-555555555555",
+  });
+  assertEquals(r.mode, "draw_profile");
+  assertEquals(r.requestId, "11111111-2222-3333-4444-555555555555");
+  assertEquals(r.currentProfileId, undefined);
+});
+
+Deno.test("draw：帶合法 currentProfileId / visiblePracticeThreadId → 保留", () => {
+  const r = validateDrawRequest({
+    mode: "draw_profile",
+    requestId: "req_abc-123",
+    currentProfileId: "practice_girl_001",
+    visiblePracticeThreadId: "local-thread-9",
+  });
+  assertEquals(r.currentProfileId, "practice_girl_001");
+  assertEquals(r.visiblePracticeThreadId, "local-thread-9");
+});
+
+Deno.test("draw：缺 requestId → invalid_requestId", () => {
+  assertThrows(
+    () => validateDrawRequest({ mode: "draw_profile" }),
+    Error,
+    "invalid_requestId",
+  );
+});
+
+Deno.test("draw：requestId 含非法字元 → invalid_requestId", () => {
+  assertThrows(
+    () =>
+      validateDrawRequest({
+        mode: "draw_profile",
+        requestId: "bad id with space",
+      }),
+    Error,
+    "invalid_requestId",
+  );
+});
+
+Deno.test("draw：requestId 過長（>64）→ invalid_requestId", () => {
+  assertThrows(
+    () =>
+      validateDrawRequest({
+        mode: "draw_profile",
+        requestId: "a".repeat(65),
+      }),
+    Error,
+    "invalid_requestId",
+  );
+});
+
+Deno.test("draw：currentProfileId 非 allowlist → invalid_currentProfileId", () => {
+  assertThrows(
+    () =>
+      validateDrawRequest({
+        mode: "draw_profile",
+        requestId: "req-1",
+        currentProfileId: "practice_girl_999",
+      }),
+    Error,
+    "invalid_currentProfileId",
+  );
+});
+
+Deno.test("draw：currentProfileId 自由文字 → invalid_currentProfileId（堵拼裝人設）", () => {
+  assertThrows(
+    () =>
+      validateDrawRequest({
+        mode: "draw_profile",
+        requestId: "req-1",
+        currentProfileId: "; drop table",
+      }),
+    Error,
+    "invalid_currentProfileId",
+  );
+});
+
+Deno.test("draw：錯 mode → invalid_mode", () => {
+  assertThrows(
+    () => validateDrawRequest({ mode: "chat", requestId: "req-1" }),
+    Error,
+    "invalid_mode",
+  );
+});
+
+Deno.test("draw：visiblePracticeThreadId 過長 → invalid_visiblePracticeThreadId", () => {
+  assertThrows(
+    () =>
+      validateDrawRequest({
+        mode: "draw_profile",
+        requestId: "req-1",
+        visiblePracticeThreadId: "x".repeat(129),
       }),
     Error,
     "invalid_visiblePracticeThreadId",

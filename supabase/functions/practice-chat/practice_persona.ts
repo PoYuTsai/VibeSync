@@ -595,3 +595,46 @@ export function resolvePracticeProfile(args: {
     girl,
   };
 }
+
+// ── 每日翻牌：server 端 deterministic 選牌 ─────────────────────────────────
+// client 不再 random；「換一位」一律走 server 選牌。selectPracticeDrawProfile 回完整
+// PracticeGirlProfile，handler 只取 allowlisted ids 回 client。getPracticeGirlProfile
+// 供 handler 在 idempotent replay 時以 RPC 回傳的 profile_id 反查同一位（不可用本地重
+// 選的候選，否則 replay 會回到別人）。
+
+export function getPracticeGirlProfile(
+  profileId: string,
+): PracticeGirlProfile | undefined {
+  return PROFILE_BY_ID.get(profileId);
+}
+
+/** FNV-1a：純 deterministic 雜湊（同 seed → 同 index），供 server 選牌穩定可重現。 */
+function hashSeed(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * 從 60 位 catalog 選一位：排除 currentProfileId 與本 reset window 已抽過的 profile，
+ * 以 seed 做 deterministic 選擇（同 seed 同結果，故 retry 穩定）。若全被排除（理論上不
+ * 會發生——每窗抽數 << 60），退而只避開 current。
+ */
+export function selectPracticeDrawProfile(args: {
+  currentProfileId?: string;
+  excludedProfileIds: Set<string>;
+  seed: string;
+}): PracticeGirlProfile {
+  const exclude = new Set(args.excludedProfileIds);
+  if (args.currentProfileId) exclude.add(args.currentProfileId);
+
+  let pool = GIRL_PROFILES.filter((g) => !exclude.has(g.profileId));
+  if (pool.length === 0) {
+    pool = GIRL_PROFILES.filter((g) => g.profileId !== args.currentProfileId);
+    if (pool.length === 0) pool = [...GIRL_PROFILES];
+  }
+  return pool[hashSeed(args.seed) % pool.length];
+}

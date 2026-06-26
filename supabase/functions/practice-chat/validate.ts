@@ -4,6 +4,7 @@
 
 import { MAX_PRACTICE_ROUNDS, type PracticeMode } from "./quota_decision.ts";
 import {
+  isProfileId,
   type PracticeProfile,
   resolvePracticeProfile,
 } from "./practice_persona.ts";
@@ -129,4 +130,57 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   }
 
   return { mode, sessionId, turns, profile, roundIndex, visiblePracticeThreadId };
+}
+
+// ── draw_profile：獨立 request shape ───────────────────────────────────────
+// 翻牌不需要 turns / sessionId / profile（server 選牌）。client 只送 requestId（冪等
+// key）、選填 currentProfileId（要排除的當前 profile）與選填 visiblePracticeThreadId。
+export interface PracticeDrawRequest {
+  mode: "draw_profile";
+  requestId: string;
+  currentProfileId?: string;
+  visiblePracticeThreadId?: string;
+}
+
+// requestId：UUID 或安全 id 字串（client 產，server idempotency key）。長度 1..64
+// 與 ledger request_id CHECK 一致；字元集限制避免奇異輸入。
+const DRAW_REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
+
+export function validateDrawRequest(raw: unknown): PracticeDrawRequest {
+  if (!isRecord(raw)) throw new Error("invalid_request_body");
+  if (raw.mode !== "draw_profile") throw new Error("invalid_mode");
+
+  const requestId = raw.requestId;
+  if (typeof requestId !== "string" || !DRAW_REQUEST_ID_RE.test(requestId)) {
+    throw new Error("invalid_requestId");
+  }
+
+  // currentProfileId：選填，但若送必須是 allowlisted profileId（堵自由文字人設）。
+  let currentProfileId: string | undefined;
+  if (raw.currentProfileId !== undefined) {
+    if (!isProfileId(raw.currentProfileId)) {
+      throw new Error("invalid_currentProfileId");
+    }
+    currentProfileId = raw.currentProfileId as string;
+  }
+
+  // visiblePracticeThreadId：選填字串，長度上限；僅供 log，不當授權身份。
+  let visiblePracticeThreadId: string | undefined;
+  if (raw.visiblePracticeThreadId !== undefined) {
+    if (
+      typeof raw.visiblePracticeThreadId !== "string" ||
+      raw.visiblePracticeThreadId.length === 0 ||
+      raw.visiblePracticeThreadId.length > MAX_VISIBLE_THREAD_ID_LEN
+    ) {
+      throw new Error("invalid_visiblePracticeThreadId");
+    }
+    visiblePracticeThreadId = raw.visiblePracticeThreadId;
+  }
+
+  return {
+    mode: "draw_profile",
+    requestId,
+    currentProfileId,
+    visiblePracticeThreadId,
+  };
 }
