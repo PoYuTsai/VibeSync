@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -418,6 +419,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         ? 0.0
         : math.exp(-math.pow((flashCenter - 0.5) / 0.16, 2).toDouble());
 
+    // 正面卡升階：高潮翻面前的白卡用 preview，高潮起換金框典藏卡 grand。
+    final cardVariant = f < kPracticeRevealHaloClimax
+        ? _CeremonyCardVariant.preview
+        : _CeremonyCardVariant.grand;
+
     final Widget face = showFront
         ? Transform(
             alignment: Alignment.center,
@@ -426,6 +432,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               girl: _revealGirl,
               width: _cardW,
               height: _cardH,
+              variant: cardVariant,
               appear: frontAppear,
               depart: frontDepart,
             ),
@@ -505,6 +512,8 @@ const Color _kPurpleHi = Color(0xFF3A1E63);
 const Color _kPurpleLo = Color(0xFF130A24);
 const Color _kStageGlow = Color(0xFF2A1248);
 const Color _kCardMatte = Color(0xFFFDF2F6); // 正面卡白／粉系鑲邊
+const Color _kTeal = Color(0xFF4FE0C8); // grand 典藏卡 teal accent（Batch C 目檢可退純金）
+const Color _kGrandGlass = Color(0xCC0E0A1C); // grand frosted 深色玻璃資訊欄底
 
 /// 神秘卡背：深紫漸層 ＋ 金色雙鑲邊 ＋ 中央發光圖騰 ＋ 角落金飾，刻意不顯任何
 /// 身份線索。`glow` 控制外圈金光強度（抽牌中柔光、翻面前漸亮）。
@@ -609,14 +618,20 @@ class _CeremonyCardBack extends StatelessWidget {
   }
 }
 
-/// 翻開後的正面：今日對象照片 ＋ 白／粉系卡框 ＋ 名字 ＋（年齡·城市·職業）。
+/// 正面卡兩態（Batch C）：[preview] 第一段白／粉預覽卡（近原樣）、[grand] 第二段
+/// 高潮金框典藏卡（金漸層厚框＋frosted 深色玻璃資訊欄＋teal accent）。同照片同欄位。
+enum _CeremonyCardVariant { preview, grand }
+
+/// 翻開後的正面：今日對象照片 ＋ 卡框 ＋ 名字 ＋（年齡·城市·職業）。
 /// 名字單獨成行、meta 用 `·` 串接，**刻意避開** hero 的「名字，年齡」精確字串，
 /// 完整資訊仍由底下 hero 呈現。`appear` 讓資訊浮出、`depart` 讓卡片往 hero 落位。
+/// `variant` 控制白卡預覽 vs 金框典藏卡兩態（見 [_CeremonyCardVariant]）。
 class _CeremonyCardFront extends StatelessWidget {
   const _CeremonyCardFront({
     required this.girl,
     required this.width,
     required this.height,
+    this.variant = _CeremonyCardVariant.preview,
     this.appear = 1,
     this.depart = 0,
   });
@@ -624,41 +639,71 @@ class _CeremonyCardFront extends StatelessWidget {
   final PracticeGirlProfile? girl;
   final double width;
   final double height;
+  final _CeremonyCardVariant variant;
   final double appear;
   final double depart;
 
   @override
   Widget build(BuildContext context) {
+    final isGrand = variant == _CeremonyCardVariant.grand;
     final radius = BorderRadius.circular(24);
     // 揭曉後資訊「浮出」：自下方 14px 上升到定位。
     final infoRise = (1 - Curves.easeOutCubic.transform(appear)) * 14;
     // 淡出時整張卡微縮＋下沉，像把資訊交棒給底下 hero。
     final departE = Curves.easeIn.transform(depart);
+    final infoOpacity = Curves.easeOut.transform(appear).clamp(0.0, 1.0);
+    final innerRadius = BorderRadius.circular(isGrand ? 20 : 18);
+
+    // 卡框：preview = 白／粉 matte＋金粉外光；grand = 金漸層厚框＋teal 染光，讀起來
+    // 像一張盛大的典藏角色牌。
+    final BoxDecoration frame = isGrand
+        ? BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [_kGold, _kGoldDeep, _kGold],
+              stops: [0.0, 0.5, 1.0],
+            ),
+            borderRadius: radius,
+            boxShadow: [
+              BoxShadow(
+                color: _kGold.withValues(alpha: 0.46 + 0.32 * appear),
+                blurRadius: 46,
+                spreadRadius: 2,
+              ),
+              BoxShadow(
+                color: _kTeal.withValues(alpha: 0.20),
+                blurRadius: 34,
+                spreadRadius: 1,
+              ),
+            ],
+          )
+        : BoxDecoration(
+            color: _kCardMatte,
+            borderRadius: radius,
+            boxShadow: [
+              BoxShadow(
+                color: _kGold.withValues(alpha: 0.4 + 0.25 * appear),
+                blurRadius: 36,
+                spreadRadius: 1,
+              ),
+              BoxShadow(
+                color: AppColors.brandBlush.withValues(alpha: 0.22),
+                blurRadius: 30,
+                spreadRadius: 1,
+              ),
+            ],
+          );
 
     final card = Container(
       key: const ValueKey('practice-draw-ceremony-front'),
       width: width,
       height: height,
-      // 白／粉系卡框（matte）＋金粉外光，讀起來像一張角色牌。
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: _kCardMatte,
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: _kGold.withValues(alpha: 0.4 + 0.25 * appear),
-            blurRadius: 36,
-            spreadRadius: 1,
-          ),
-          BoxShadow(
-            color: AppColors.brandBlush.withValues(alpha: 0.22),
-            blurRadius: 30,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
+      // padding 即卡框厚度：grand 金框稍薄讓金邊銳利、preview matte 維持原樣。
+      padding: EdgeInsets.all(isGrand ? 4 : 6),
+      decoration: frame,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: innerRadius,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -667,7 +712,7 @@ class _CeremonyCardFront extends StatelessWidget {
                 profile: girl!,
                 width: width,
                 height: height,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: innerRadius,
               )
             else
               const ColoredBox(color: AppColors.brandSurface2),
@@ -682,26 +727,28 @@ class _CeremonyCardFront extends StatelessWidget {
                 ),
               ),
             ),
-            // 細金內框，呼應卡背的鑲邊語彙。
+            // 細金內框，呼應卡背的鑲邊語彙（grand 略強）。
             DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: innerRadius,
                 border: Border.all(
-                  color: _kGold.withValues(alpha: 0.55),
-                  width: 1,
+                  color: _kGold.withValues(alpha: isGrand ? 0.72 : 0.55),
+                  width: isGrand ? 1.4 : 1,
                 ),
               ),
             ),
             if (girl != null)
               Positioned(
-                left: 14,
-                right: 14,
-                bottom: 14,
+                left: isGrand ? 12 : 14,
+                right: isGrand ? 12 : 14,
+                bottom: isGrand ? 12 : 14,
                 child: Transform.translate(
                   offset: Offset(0, infoRise),
                   child: Opacity(
-                    opacity: Curves.easeOut.transform(appear).clamp(0.0, 1.0),
-                    child: _FrontInfo(girl: girl!),
+                    opacity: infoOpacity,
+                    child: isGrand
+                        ? _GrandInfoBar(girl: girl!)
+                        : _FrontInfo(girl: girl!),
                   ),
                 ),
               ),
@@ -720,11 +767,44 @@ class _CeremonyCardFront extends StatelessWidget {
   }
 }
 
-/// 正面卡的文字資訊塊：名字（大）＋ 年齡·城市·職業（meta 行）。
-class _FrontInfo extends StatelessWidget {
-  const _FrontInfo({required this.girl});
+/// grand 典藏卡專屬資訊欄：frosted 深色玻璃（背景模糊）＋ teal accent meta。
+/// 同 [_FrontInfo] 欄位、同避開 hero「名字，年齡」精確字串，只是升階成玻璃質感。
+class _GrandInfoBar extends StatelessWidget {
+  const _GrandInfoBar({required this.girl});
 
   final PracticeGirlProfile girl;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      key: const ValueKey('practice-draw-ceremony-grand-info'),
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: _kGrandGlass,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _kTeal.withValues(alpha: 0.42),
+              width: 1,
+            ),
+          ),
+          child: _FrontInfo(girl: girl, accent: _kTeal),
+        ),
+      ),
+    );
+  }
+}
+
+/// 正面卡的文字資訊塊：名字（大）＋ 年齡·城市·職業（meta 行）。
+class _FrontInfo extends StatelessWidget {
+  const _FrontInfo({required this.girl, this.accent = _kGold});
+
+  final PracticeGirlProfile girl;
+  // meta 行的 accent 色：preview 用金、grand 典藏卡用 teal。
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -756,7 +836,7 @@ class _FrontInfo extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppTypography.bodySmall.copyWith(
-            color: _kGold.withValues(alpha: 0.95),
+            color: accent.withValues(alpha: 0.95),
             fontWeight: FontWeight.w700,
             shadows: [
               Shadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 6),
