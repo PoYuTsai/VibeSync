@@ -100,9 +100,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
-  // 揭曉音效 edge-detect：跨蓄力／高潮門檻各觸發一次的 idempotent 旗標。`_reveal`
-  // 是有限 forward-only controller，每幀 tick 比對門檻；旗標確保整條時間軸只各播一
-  // 次。`forward(from:0)`（重抽）與 `_toHidden`（收掉 overlay）一律重置。零 Timer。
+  // 揭曉音效 edge-detect：跨白卡預覽翻面／蓄力／高潮門檻各觸發一次的 idempotent 旗標。
+  // `_reveal` 是有限 forward-only controller，每幀 tick 比對門檻；旗標確保整條時間軸
+  // 只各播一次。`forward(from:0)`（重抽）與 `_toHidden`（收掉 overlay）一律重置。零 Timer。
+  // 註：reduce-motion 不跑 `_reveal`，叮聲改在 `_onStateChange` 即時播（見該處）。
+  bool _firedChime = false;
   bool _firedRiser = false;
   bool _firedSettle = false;
 
@@ -138,6 +140,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   /// 也用 `>=` 邊緣判定，故不漏觸發。
   void _onRevealEdge() {
     final v = _reveal.value;
+    // 叮聲落在 Stage-1 白卡預覽翻面那一刻（卡面翻出 = 揭曉），而非 server 回應瞬間。
+    if (!_firedChime && v >= kPracticeRevealFlip1End) {
+      _firedChime = true;
+      _sfx.playRevealChime();
+    }
     if (!_firedRiser && v >= kPracticeRevealRechargeEnd) {
       _firedRiser = true;
       _sfx.playRiser();
@@ -156,7 +163,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     });
     _waiting.stop();
     _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
-    _firedRiser = false; // 下次揭曉重新 edge-detect。
+    _firedChime = false; // 下次揭曉重新 edge-detect。
+    _firedRiser = false;
     _firedSettle = false;
     _reveal.value = 0;
   }
@@ -198,13 +206,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;
     if (drawSucceeded) {
-      // 中觸覺＋停等待 loop＋叮聲：放在 reduce-motion 早退前，兩條路徑都即時停 loop、
-      // 都有揭曉回饋（不等翻面跑完，shimmer loop 在揭曉當下就收）。
+      // 中觸覺＋即時停等待 loop（兩條路徑都不等翻面跑完，shimmer loop 在揭曉當下就收）。
       HapticFeedback.mediumImpact();
       _sfx.stopWaitingLoop();
-      _sfx.playRevealChime();
       if (_reduceMotion) {
-        // reduce-motion：跳過 3D 翻面，直接收掉 overlay 露出 hero。
+        // reduce-motion：跳過 3D 翻面，沒有可對齊的揭曉幀 → 即時播叮聲後收掉 overlay。
+        _sfx.playRevealChime();
         _toHidden();
         return;
       }
@@ -214,7 +221,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       });
       _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
       _intro.value = 1;
-      _firedRiser = false; // 重抽：edge bool 歸零，本輪揭曉重新各觸發一次。
+      // 叮聲改由 `_onRevealEdge` 在白卡預覽翻面（kPracticeRevealFlip1End）觸發，
+      // 讓「叮」落在卡面翻出那一刻、而非 server 回應的瞬間。
+      _firedChime = false; // 重抽：edge bool 歸零，本輪揭曉重新各觸發一次。
+      _firedRiser = false;
       _firedSettle = false;
       _reveal.forward(from: 0);
       return;
