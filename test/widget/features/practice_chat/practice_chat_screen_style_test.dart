@@ -1665,6 +1665,51 @@ void main() {
     expect(spy.settle, 2);
   });
 
+  testWidgets('音效（D3）：normal-motion 叮聲配白卡預覽翻面、非 server 回應即播',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 600)); // 等待微動
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pump(); // 進入 revealing（_reveal.forward(from:0)，value≈0）
+
+    // server 剛回應、白卡尚未翻出（未跨 kFlip1End）：叮聲還沒響。
+    expect(spy.chime, 0);
+
+    // 跨白卡預覽翻面（kFlip1End 之後）：叮聲響一次、落在卡面翻出那一刻。
+    await tester.pump(previewAt);
+    expect(spy.chime, 1);
+
+    // 走完整條不重播。
+    await tester.pumpAndSettle();
+    expect(spy.chime, 1);
+  });
+
+  testWidgets('音效（D3）：reduce-motion 跳翻面 → server 回應即播叮聲（不靠 reveal edge）',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy, reduceMotion: true);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(); // draw 完成 → reduce-motion：直接收掉 overlay
+
+    // reduce-motion 沒有 reveal 動畫可跨門檻，叮聲必須即時播、不可被吞。
+    expect(spy.chime, 1);
+    // reduce-motion 跳整條時間軸：riser／settle 不觸發。
+    expect(spy.riser, 0);
+    expect(spy.settle, 0);
+
+    await tester.pumpAndSettle();
+    expect(spy.chime, 1);
+  });
+
   // ── 軌道彗星 halo painter（Batch B）：純 painter smoke，免 widget harness ──
   void paintHaloOnce(CustomPainter painter) {
     final recorder = ui.PictureRecorder();
