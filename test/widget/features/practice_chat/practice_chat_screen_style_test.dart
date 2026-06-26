@@ -1263,6 +1263,93 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // ── 兩段升階儀式骨架（Batch A）──────────────────────────────────────────
+  Future<void> _drawToReveal(
+    WidgetTester tester, {
+    required Completer<PracticeDrawResult> completer,
+    required PracticeGirlProfile girl,
+  }) async {
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 600)); // 等待微動
+    completer.complete(_drawResultFor(girl));
+    await tester.pump(); // 進入 revealing：_reveal.forward(from:0)
+  }
+
+  testWidgets('兩段升階：第一段翻出白卡預覽（~1.5s 顯正面卡、不顯卡背）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await _drawToReveal(
+        tester, completer: completer, girl: practiceGirlProfiles[2]);
+
+    await tester.pump(const Duration(milliseconds: 1500)); // 白卡預覽段
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsNothing,
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('兩段升階：蓄力段翻回卡背（~3.6s 顯卡背、不顯正面）', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await _drawToReveal(
+        tester, completer: completer, girl: practiceGirlProfiles[2]);
+
+    await tester.pump(const Duration(milliseconds: 3600)); // 蓄力段
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('兩段升階：高潮後典藏卡停留（~5.6s 顯正面卡）', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await _drawToReveal(
+        tester, completer: completer, girl: practiceGirlProfiles[2]);
+
+    await tester.pump(const Duration(milliseconds: 5600)); // 典藏卡停留段
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsOneWidget,
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('兩段升階：整條 7.5s 時間軸 pumpAndSettle 收斂、最終露 hero',
+      (tester) async {
+    final zoe = practiceGirlProfiles[2];
+    final api = _DrawApi(() async => _drawResultFor(zoe));
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle(); // 整條走完必收斂
+
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+  });
+
   // ── 翻牌音效掛勾（Batch 4.7）：plumbing-only，spy 驗證呼叫時機 ──────────────
   Future<void> pumpLockedWithSfx(
     WidgetTester tester, {
