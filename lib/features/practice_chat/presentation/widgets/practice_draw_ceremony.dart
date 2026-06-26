@@ -359,6 +359,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     double frontDepart = 0; // 落位下沉
     double backGlow = 0.6; // 卡背金光
     double haloIntensity = 0; // 軌道彗星 halo 強度（只在蓄力→高潮亮）
+    double energyIntensity = 0; // 能量邊框強度（只在蓄力 recharge→climax 亮）
+    double energyProgress = 0; // 能量彗星沿卡框周長的位置（0..1）
     double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
 
     if (f < kPracticeRevealFlip1End) {
@@ -387,6 +389,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       showFront = false;
       backGlow = 0.6 + 0.4 * climb;
       haloIntensity = climb;
+      energyIntensity = climb; // 能量邊框與 halo 同步在蓄力段灌入卡牌
+      energyProgress = climb;
     } else if (f < kPracticeRevealGrandFlipEnd) {
       // 高潮翻面：卡背→典藏卡（Batch A 仍用現有正面，Batch C 換金框）。halo 隨翻面
       // 淡出。
@@ -466,6 +470,20 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               ..rotateY(angle),
             child: face,
           ),
+          // 能量邊框：蓄力段沿卡框描邊掃動＋底邊噴火花，緊貼卡上方做「能量灌入」感。
+          if (energyIntensity > 0.01)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-energy-border'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _EnergyBorderPainter(
+                    progress: energyProgress,
+                    intensity: energyIntensity,
+                    cardSize: Size(_cardW, _cardH),
+                  ),
+                ),
+              ),
+            ),
           // 前半弧 halo（投影 z>0）：畫在卡片**上方**，與後半夾出彗星繞行卡片。
           if (haloIntensity > 0.01)
             Positioned.fill(
