@@ -31,14 +31,15 @@ const double kPracticeRevealHoldEnd = 0.8667; // 典藏卡停留、落位、sett
 /// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 → 4.5 高還原 → 4.6 等待微動）。
 ///
 /// 純原生實作（無 lottie/rive/音檔）：抽牌中浮現一張**神秘卡背**（深紫＋金框＋圖騰
-/// ＋星光，不顯名字／照片），server 抽中後以 `Transform`(rotateY) 做 3D 翻面，中點
-/// 配 flash／金色光環 sweep 揭曉今日對象，短暫停留後整片淡出露出底下 hero。
+/// ＋星光，不顯名字／照片），server 抽中後以兩段升階 `Transform`(rotateY) 做 3D 翻面
+/// （白卡預覽→收回蓄力→盛大典藏卡），高潮配 flash／**軌道彗星 halo** 揭曉今日對象，
+/// 短暫停留後整片淡出露出底下 hero。
 ///
 /// 設計鐵則（Batch 4.6 仍嚴守）：
 /// - 只靠單一 `drawStatus` 狀態機驅動，**不**新增任何計費／網路行為。
 /// - 只有「真的進過 drawing 又成功 reveal 一位新對象」才慶祝；換一位失敗會回到
 ///   `revealed` 但帶 `errorMessage`，這種情況只做兜底淡出、不翻面慶祝。
-/// - **零 `Timer`／零 `Future.delayed`**：揭曉時間軸（卡背浮現、星光、光環 sweep、
+/// - **零 `Timer`／零 `Future.delayed`**：揭曉時間軸（卡背浮現、星光、軌道彗星 halo、
 ///   flash、翻面、資訊落位、淡出）一律由 [_intro]／[_reveal] 兩條**有限**
 ///   `AnimationController` 的進度推導。唯一會 `repeat()` 的是 [_waiting]（抽牌等待
 ///   server 期間的持續微動），且嚴格 gate：只在 drawing 且非 reduce-motion 啟動，
