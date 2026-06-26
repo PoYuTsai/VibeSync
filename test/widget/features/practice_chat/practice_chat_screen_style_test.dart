@@ -1684,4 +1684,29 @@ void main() {
       expect(base.shouldRepaint(diffIntensity), isTrue);
     });
   });
+
+  group('星空＋橫掃光束 painter（Batch C）', () {
+    test('beam>0 建構＋paint 不丟例外', () {
+      final painter =
+          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.5);
+      expect(() => paintHaloOnce(painter), returnsNormally);
+    });
+
+    test('beam<=0（預設）建構＋paint 不丟（無光束）', () {
+      final painter = debugStarfieldPainter(twinkle: 0.3, intensity: 0.8);
+      expect(() => paintHaloOnce(painter), returnsNormally);
+    });
+
+    test('shouldRepaint 對 beam 敏感（twinkle／intensity 同、beam 不同要重畫）', () {
+      final base =
+          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.2);
+      final sameBeam =
+          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.2);
+      final diffBeam =
+          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.7);
+
+      expect(base.shouldRepaint(sameBeam), isFalse);
+      expect(base.shouldRepaint(diffBeam), isTrue);
+    });
+  });
 }
