@@ -13,6 +13,7 @@ import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../widgets/practice_debrief_card.dart';
+import '../widgets/practice_draw_ceremony.dart';
 import '../widgets/practice_girl_photo.dart';
 import '../widgets/practice_profile_sheet.dart';
 
@@ -94,8 +95,9 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     });
 
     // 尚未翻牌（locked / drawing / error）：不顯示任何對象，只給翻牌入口。
+    final Widget content;
     if (!state.isRevealed) {
-      return BrandScaffold(
+      content = BrandScaffold(
         title: 'AI 實戰練習室',
         actions: [
           IconButton(
@@ -107,77 +109,86 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
         resizeToAvoidBottomInset: true,
         body: _PracticeLockedEntry(state: state),
       );
-    }
-
-    return BrandScaffold(
-      title: 'AI 實戰練習室',
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.history),
-          tooltip: '最近練習',
-          onPressed: () => _openHistory(context),
-        ),
-      ],
-      resizeToAvoidBottomInset: true,
-      body: Column(
-        children: [
-          // 開場前：換一位＋難度控制（深色 scaffold 底，沿用原樣式）。
-          // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
-          if (state.messages.isEmpty)
-            _PracticeOpeningControls(state: state)
-          else
-            _PracticeProfileBar(state: state),
-          Expanded(
-            child: _PracticeChatWorkspaceFrame(
-              child: state.messages.isEmpty
-                  ? _PracticeProfileHero(state: state)
-                  : ListView(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
-                      children: [
-                        for (final m in state.messages) _Bubble(message: m),
-                        if (state.isSending) const _ThinkingBubble(),
-                        if (state.debrief != null) ...[
-                          const SizedBox(height: 8),
-                          PracticeDebriefCard(
-                            summary: state.debrief!.summary,
-                            strengths: state.debrief!.strengths,
-                            watchouts: state.debrief!.watchouts,
-                            suggestedLine: state.debrief!.suggestedLine,
-                            vibe: state.debrief!.vibe,
-                          ),
-                        ],
-                      ],
-                    ),
-            ),
-          ),
-          if (state.errorMessage != null)
-            _ErrorBanner(
-              message: state.errorMessage!,
-              showUpgrade: state.quotaExceeded ||
-                  state.upgradeRequired ||
-                  state.drawUpgradeRequired ||
-                  state.drawQuotaExceeded,
-              onUpgrade: () => context.push('/paywall'),
-              onDismiss: () => ref
-                  .read(practiceChatControllerProvider.notifier)
-                  .clearError(),
-            ),
-          _BottomBar(
-            state: state,
-            inputController: _controller,
-            isDebriefing: state.isDebriefing,
-            onSend: _send,
-            onEndPractice: () =>
-                ref.read(practiceChatControllerProvider.notifier).endPractice(),
-            onFinish: () => context.pop(),
-            onContinueSamePartner: _continueSamePartner,
-            onNewPartner: () => ref
-                .read(practiceChatControllerProvider.notifier)
-                .startNewPartner(),
+    } else {
+      content = BrandScaffold(
+        title: 'AI 實戰練習室',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: '最近練習',
+            onPressed: () => _openHistory(context),
           ),
         ],
-      ),
+        resizeToAvoidBottomInset: true,
+        body: Column(
+          children: [
+            // 開場前：換一位＋難度控制（深色 scaffold 底，沿用原樣式）。
+            // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
+            if (state.messages.isEmpty)
+              _PracticeOpeningControls(state: state)
+            else
+              _PracticeProfileBar(state: state),
+            Expanded(
+              child: _PracticeChatWorkspaceFrame(
+                child: state.messages.isEmpty
+                    ? _PracticeProfileHero(state: state)
+                    : ListView(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+                        children: [
+                          for (final m in state.messages) _Bubble(message: m),
+                          if (state.isSending) const _ThinkingBubble(),
+                          if (state.debrief != null) ...[
+                            const SizedBox(height: 8),
+                            PracticeDebriefCard(
+                              summary: state.debrief!.summary,
+                              strengths: state.debrief!.strengths,
+                              watchouts: state.debrief!.watchouts,
+                              suggestedLine: state.debrief!.suggestedLine,
+                              vibe: state.debrief!.vibe,
+                            ),
+                          ],
+                        ],
+                      ),
+              ),
+            ),
+            if (state.errorMessage != null)
+              _ErrorBanner(
+                message: state.errorMessage!,
+                showUpgrade: state.quotaExceeded ||
+                    state.upgradeRequired ||
+                    state.drawUpgradeRequired ||
+                    state.drawQuotaExceeded,
+                onUpgrade: () => context.push('/paywall'),
+                onDismiss: () => ref
+                    .read(practiceChatControllerProvider.notifier)
+                    .clearError(),
+              ),
+            _BottomBar(
+              state: state,
+              inputController: _controller,
+              isDebriefing: state.isDebriefing,
+              onSend: _send,
+              onEndPractice: () => ref
+                  .read(practiceChatControllerProvider.notifier)
+                  .endPractice(),
+              onFinish: () => context.pop(),
+              onContinueSamePartner: _continueSamePartner,
+              onNewPartner: () => ref
+                  .read(practiceChatControllerProvider.notifier)
+                  .startNewPartner(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 翻牌揭曉儀式 overlay：idle 時透明＋IgnorePointer，不影響底下互動。
+    return Stack(
+      children: [
+        content,
+        const Positioned.fill(child: PracticeDrawCeremony()),
+      ],
     );
   }
 

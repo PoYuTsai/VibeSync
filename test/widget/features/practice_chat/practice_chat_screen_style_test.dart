@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -939,5 +941,112 @@ void main() {
     expect(controller.currentState.girl!.profileId, seed.girl!.profileId);
     expect(controller.currentState.drawQuotaExceeded, true);
     expect(find.text('升級'), findsOneWidget);
+  });
+
+  // ── 翻牌揭曉儀式 overlay（Batch 4 commit 2）─────────────────────────────
+  testWidgets('儀式：seeded revealed（無抽牌轉場）→ overlay 休眠、不顯翻牌卡', (tester) async {
+    final seed = revealedPreMsgSeed();
+    final controller =
+        _SeededPracticeChatController(seed: seed, repository: repo);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    // 進房就是 revealed（草稿還原情境）：儀式不得誤觸發。
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+  });
+
+  testWidgets('儀式：抽牌中浮現神秘卡背（不洩漏身份、無正面）', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 60)); // intro 入場推進
+
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+
+    // 收尾：完成抽牌、settle 收掉 overlay，避免殘留 ticker。
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('儀式：reveal 動畫走完 → overlay 收掉、露出 hero（名字不重複）', (tester) async {
+    final zoe = practiceGirlProfiles[2];
+    final api = _DrawApi(() async => _drawResultFor(zoe));
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    // 名字只在 hero 出現一處（儀式正面不得用「名字，年齡」精確字串撞測試）。
+    expect(find.text('${zoe.displayName}，${zoe.age}'), findsOneWidget);
+  });
+
+  testWidgets('儀式：reduce-motion 跳過 3D 翻面、reveal 直接露出 hero', (tester) async {
+    final zoe = practiceGirlProfiles[2];
+    final api = _DrawApi(() async => _drawResultFor(zoe));
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practiceChatApiServiceProvider.overrideWithValue(api),
+        ],
+        child: MaterialApp(
+          // 把 disableAnimations 注入到 MaterialApp 自身 MediaQuery 之下，
+          // 讓底下的 PracticeChatScreen 讀得到。
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: const PracticeChatScreen(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+
+    // 跳過翻面：正面卡不出現，直接露出 hero。
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 }
