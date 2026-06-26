@@ -1366,6 +1366,38 @@ void main() {
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
+  testWidgets('兩段升階：軌道彗星 halo 只在蓄力→高潮段亮（preview／hold 不亮）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(
+        tester, completer: completer, girl: practiceGirlProfiles[2]);
+
+    // 白卡預覽段：halo 尚未啟動。
+    await tester.pump(previewAt);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-back')),
+        findsNothing);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-front')),
+        findsNothing);
+
+    // 高潮蓄力段：前後兩夾層 halo 都亮。
+    await tester.pump(backAt - previewAt);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-back')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-front')),
+        findsOneWidget);
+
+    // 典藏卡停留段：halo settle 收掉。
+    await tester.pump(grandHoldAt - backAt);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-back')),
+        findsNothing);
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-front')),
+        findsNothing);
+
+    await tester.pumpAndSettle();
+  });
+
   // ── 翻牌音效掛勾（Batch 4.7）：plumbing-only，spy 驗證呼叫時機 ──────────────
   Future<void> pumpLockedWithSfx(
     WidgetTester tester, {
