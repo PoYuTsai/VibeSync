@@ -11,6 +11,23 @@ import '../../domain/entities/practice_girl_profile.dart';
 import 'practice_draw_sfx.dart';
 import 'practice_girl_photo.dart';
 
+/// 翻牌揭曉時間軸（公開供 widget 與 widget test 共用單一真相）。
+/// fraction = ms / kPracticeRevealDuration。詳見 _buildStage 兩段升階分支。
+@visibleForTesting
+const Duration kPracticeRevealDuration = Duration(milliseconds: 7500);
+@visibleForTesting
+const double kPracticeRevealFlip1End = 0.0933; // 卡背→白卡預覽 翻面
+@visibleForTesting
+const double kPracticeRevealPreviewEnd = 0.3333; // 白卡停留、資訊浮出
+@visibleForTesting
+const double kPracticeRevealRechargeEnd = 0.4133; // 翻回卡背（蓄力重啟）
+@visibleForTesting
+const double kPracticeRevealHaloClimax = 0.5733; // 卡背發亮、光環衝高潮
+@visibleForTesting
+const double kPracticeRevealGrandFlipEnd = 0.6667; // 高潮翻面→典藏卡
+@visibleForTesting
+const double kPracticeRevealHoldEnd = 0.8667; // 典藏卡停留、落位、settle
+
 /// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 → 4.5 高還原 → 4.6 等待微動）。
 ///
 /// 純原生實作（無 lottie/rive/音檔）：抽牌中浮現一張**神秘卡背**（深紫＋金框＋圖騰
@@ -60,7 +77,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   // forward-only controller（無 Timer/repeat）。退役舊 `_flip`（單段 2400ms）。
   late final AnimationController _reveal = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 7500),
+    duration: kPracticeRevealDuration,
   );
 
   // 抽牌「等待 server 回應」期間的持續蓄力微動（上下浮動＋金光呼吸＋星光閃爍）。
@@ -80,15 +97,6 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
-
-  // _reveal 兩段升階切點（0..1，沿用具名 beat 手法；fraction = ms / 7500）：
-  static const double _kFlip1End = 0.0933; // ~700ms  卡背→白卡預覽 翻面
-  static const double _kPreviewEnd = 0.3333; // ~2500ms 白卡停留、資訊浮出（屏息）
-  static const double _kRechargeEnd = 0.4133; // ~3100ms 翻回卡背（蓄力重啟）
-  static const double _kHaloClimax = 0.5733; // ~4300ms 卡背發亮、光環衝高潮
-  static const double _kGrandFlipEnd = 0.6667; // ~5000ms 高潮翻面→典藏卡
-  static const double _kHoldEnd = 0.8667; // ~6500ms 典藏卡停留、落位、settle
-  // _kHoldEnd → 1.0 (~7500ms)：overlay 淡出露 hero
 
   @override
   void initState() {
@@ -226,7 +234,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final base = _intro.value;
     double revealFade = 1;
     if (_phase == _CeremonyPhase.revealing) {
-      final t = ((_reveal.value - _kHoldEnd) / (1 - _kHoldEnd)).clamp(0.0, 1.0);
+      final t = ((_reveal.value - kPracticeRevealHoldEnd) / (1 - kPracticeRevealHoldEnd)).clamp(0.0, 1.0);
       revealFade = 1 - Curves.easeIn.transform(t);
     }
     final overlayOpacity = (base * revealFade).clamp(0.0, 1.0);
@@ -352,38 +360,38 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     double sweepIntensity = 0; // 光環強度
     double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
 
-    if (f < _kFlip1End) {
+    if (f < kPracticeRevealFlip1End) {
       // 第一段：卡背→白卡預覽（rotateY 0→π）。
-      final rot = seg(0, _kFlip1End);
+      final rot = seg(0, kPracticeRevealFlip1End);
       angle = rot * math.pi;
       showFront = angle > math.pi / 2;
       frontAppear = 0;
       flashCenter = rot;
       sweepRot = rot;
       sweepIntensity = math.sin(math.pi * rot) * 0.7;
-    } else if (f < _kPreviewEnd) {
+    } else if (f < kPracticeRevealPreviewEnd) {
       // 白卡停留、資訊浮出（屏息）。
       angle = math.pi;
       showFront = true;
-      frontAppear = Curves.easeOut.transform(seg(_kFlip1End, _kPreviewEnd));
-    } else if (f < _kRechargeEnd) {
+      frontAppear = Curves.easeOut.transform(seg(kPracticeRevealFlip1End, kPracticeRevealPreviewEnd));
+    } else if (f < kPracticeRevealRechargeEnd) {
       // 翻回卡背（蓄力重啟），rotateY π→0。
-      final rot = 1 - seg(_kPreviewEnd, _kRechargeEnd);
+      final rot = 1 - seg(kPracticeRevealPreviewEnd, kPracticeRevealRechargeEnd);
       angle = rot * math.pi;
       showFront = angle > math.pi / 2;
       frontAppear = 1;
       flashCenter = rot;
-    } else if (f < _kHaloClimax) {
+    } else if (f < kPracticeRevealHaloClimax) {
       // 卡背發亮、光環 sweep 衝高潮（Batch A 複用 _SweepGlowPainter）。
-      final climb = seg(_kRechargeEnd, _kHaloClimax);
+      final climb = seg(kPracticeRevealRechargeEnd, kPracticeRevealHaloClimax);
       angle = 0;
       showFront = false;
       backGlow = 0.6 + 0.4 * climb;
       sweepRot = climb;
       sweepIntensity = climb;
-    } else if (f < _kGrandFlipEnd) {
+    } else if (f < kPracticeRevealGrandFlipEnd) {
       // 高潮翻面：卡背→典藏卡（Batch A 仍用現有正面，Batch C 換金框）。
-      final rot = seg(_kHaloClimax, _kGrandFlipEnd);
+      final rot = seg(kPracticeRevealHaloClimax, kPracticeRevealGrandFlipEnd);
       angle = rot * math.pi;
       showFront = angle > math.pi / 2;
       frontAppear = 0;
@@ -391,35 +399,34 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       flashCenter = rot;
       sweepRot = rot;
       sweepIntensity = 1 - rot;
-    } else if (f < _kHoldEnd) {
+    } else if (f < kPracticeRevealHoldEnd) {
       // 典藏卡停留、資訊落位、光環 settle。
       angle = math.pi;
       showFront = true;
-      frontAppear = Curves.easeOut.transform(seg(_kGrandFlipEnd, _kHoldEnd));
+      frontAppear = Curves.easeOut.transform(seg(kPracticeRevealGrandFlipEnd, kPracticeRevealHoldEnd));
     } else {
       // 淡出，露出底下 hero。
       angle = math.pi;
       showFront = true;
       frontAppear = 1;
-      frontDepart = seg(_kHoldEnd, 1);
+      frontDepart = seg(kPracticeRevealHoldEnd, 1);
     }
 
     final flash = flashCenter < 0
         ? 0.0
         : math.exp(-math.pow((flashCenter - 0.5) / 0.16, 2).toDouble());
 
-    final Widget faceFront = _CeremonyCardFront(
-      girl: _revealGirl,
-      width: _cardW,
-      height: _cardH,
-      appear: frontAppear,
-      depart: frontDepart,
-    );
     final Widget face = showFront
         ? Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()..rotateY(math.pi),
-            child: faceFront,
+            child: _CeremonyCardFront(
+              girl: _revealGirl,
+              width: _cardW,
+              height: _cardH,
+              appear: frontAppear,
+              depart: frontDepart,
+            ),
           )
         : _CeremonyCardBack(width: _cardW, height: _cardH, glow: backGlow);
 

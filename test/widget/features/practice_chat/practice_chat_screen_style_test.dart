@@ -14,6 +14,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_pr
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -212,6 +213,20 @@ class _SeededPracticeChatController extends PracticeChatController {
 }
 
 void main() {
+  // 兩段升階揭曉時間軸：測試的 pump 時間點全由 widget 公開的 beat 常數推導，
+  // 與 _PracticeDrawCeremonyState 共用單一真相（重新調 beat 不會讓測試落點失準）。
+  Duration atFraction(double f) => Duration(
+      milliseconds: (f * kPracticeRevealDuration.inMilliseconds).round());
+  // 白卡預覽段中點
+  final previewAt =
+      atFraction((kPracticeRevealFlip1End + kPracticeRevealPreviewEnd) / 2);
+  // 高潮蓄力段中點（卡背朝前、front 已收）
+  final backAt =
+      atFraction((kPracticeRevealRechargeEnd + kPracticeRevealHaloClimax) / 2);
+  // 典藏卡停留段中點
+  final grandHoldAt =
+      atFraction((kPracticeRevealGrandFlipEnd + kPracticeRevealHoldEnd) / 2);
+
   late PracticeSessionRepository repo;
   late InMemoryPracticeDrawDraftStore draftStore;
 
@@ -1264,7 +1279,7 @@ void main() {
   });
 
   // ── 兩段升階儀式骨架（Batch A）──────────────────────────────────────────
-  Future<void> _drawToReveal(
+  Future<void> drawToReveal(
     WidgetTester tester, {
     required Completer<PracticeDrawResult> completer,
     required PracticeGirlProfile girl,
@@ -1281,10 +1296,10 @@ void main() {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await _drawToReveal(
+    await drawToReveal(
         tester, completer: completer, girl: practiceGirlProfiles[2]);
 
-    await tester.pump(const Duration(milliseconds: 1500)); // 白卡預覽段
+    await tester.pump(previewAt); // 白卡預覽段
     expect(
       find.byKey(const ValueKey('practice-draw-ceremony-front')),
       findsOneWidget,
@@ -1296,14 +1311,14 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('兩段升階：蓄力段翻回卡背（~3.6s 顯卡背、不顯正面）', (tester) async {
+  testWidgets('兩段升階：高潮蓄力段顯卡背（不顯正面）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await _drawToReveal(
+    await drawToReveal(
         tester, completer: completer, girl: practiceGirlProfiles[2]);
 
-    await tester.pump(const Duration(milliseconds: 3600)); // 蓄力段
+    await tester.pump(backAt); // 高潮蓄力段
     expect(
       find.byKey(const ValueKey('practice-draw-ceremony-back')),
       findsOneWidget,
@@ -1319,10 +1334,10 @@ void main() {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
-    await _drawToReveal(
+    await drawToReveal(
         tester, completer: completer, girl: practiceGirlProfiles[2]);
 
-    await tester.pump(const Duration(milliseconds: 5600)); // 典藏卡停留段
+    await tester.pump(grandHoldAt); // 典藏卡停留段
     expect(
       find.byKey(const ValueKey('practice-draw-ceremony-front')),
       findsOneWidget,
