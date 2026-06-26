@@ -227,6 +227,8 @@ class _PracticeLockedEntry extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final drawing = state.isDrawing;
+    final upgradeLocked = state.drawUpgradeRequired;
+    final quotaLocked = state.drawQuotaExceeded;
     return Center(
       child: SingleChildScrollView(
         key: const ValueKey('practice-locked-entry'),
@@ -258,32 +260,47 @@ class _PracticeLockedEntry extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                key: const ValueKey('practice-draw-cta'),
-                onPressed: drawing
-                    ? null
-                    : () => ref
-                        .read(practiceChatControllerProvider.notifier)
-                        .drawNewPracticeGirl(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.ctaStart,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+            if (upgradeLocked || quotaLocked)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const ValueKey('practice-draw-upgrade-primary'),
+                  onPressed: () => context.push('/paywall'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.ctaStart,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(upgradeLocked ? '升級解鎖更多女孩' : '查看方案'),
                 ),
-                child: drawing
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('翻開今日對象'),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const ValueKey('practice-draw-cta'),
+                  onPressed: drawing
+                      ? null
+                      : () => ref
+                          .read(practiceChatControllerProvider.notifier)
+                          .drawNewPracticeGirl(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.ctaStart,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: drawing
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('翻開今日對象'),
+                ),
               ),
-            ),
             if (state.drawUpgradeRequired) ...[
               const SizedBox(height: 16),
               Text(

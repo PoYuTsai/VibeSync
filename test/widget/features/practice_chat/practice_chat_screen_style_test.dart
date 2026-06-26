@@ -854,7 +854,7 @@ void main() {
     expect(find.text('${zoe.displayName}，${zoe.age}'), findsOneWidget);
   });
 
-  testWidgets('翻牌 402 → 顯示升級 CTA、不顯示任何對象、仍可重抽', (tester) async {
+  testWidgets('翻牌 402 → 顯示升級 CTA、不顯示任何對象、不再重抽', (tester) async {
     final api = _DrawApi(
       () async => throw PracticeDrawUpgradeRequiredException(
         extraCostMessages: 5,
@@ -867,9 +867,13 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    expect(
+      find.byKey(const ValueKey('practice-draw-upgrade-primary')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('practice-draw-upgrade')), findsOneWidget);
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
-    expect(find.byKey(const ValueKey('practice-draw-cta')), findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-draw-cta')), findsNothing);
   });
 
   testWidgets('翻牌 429 → 顯示額度錯誤、不顯示任何對象', (tester) async {
@@ -884,7 +888,12 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('practice-draw-quota')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('practice-draw-upgrade-primary')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-draw-cta')), findsNothing);
   });
 
   // ── revealed 狀態下換一位失敗：error banner 要帶升級入口（P2 修補）──────────
@@ -1086,8 +1095,7 @@ void main() {
         .y;
   }
 
-  testWidgets('儀式：抽牌等待期間卡背持續微動（float 隨時間變化、不洩漏正面）',
-      (tester) async {
+  testWidgets('儀式：抽牌等待期間卡背持續微動（float 隨時間變化、不洩漏正面）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
@@ -1121,8 +1129,7 @@ void main() {
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
-  testWidgets('儀式：等待中 402 回來 → 停止微動、不誤觸成功揭曉（pumpAndSettle 收斂）',
-      (tester) async {
+  testWidgets('儀式：等待中 402 回來 → 停止微動、不誤觸成功揭曉（pumpAndSettle 收斂）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
@@ -1149,8 +1156,7 @@ void main() {
     expect(find.byKey(const ValueKey('practice-draw-upgrade')), findsOneWidget);
   });
 
-  testWidgets('儀式：reduce-motion 等待期間卡背靜止（不啟動持續微動）',
-      (tester) async {
+  testWidgets('儀式：reduce-motion 等待期間卡背靜止（不啟動持續微動）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -1296,8 +1302,7 @@ void main() {
     expect(spy.looping, isFalse);
   });
 
-  testWidgets('音效：reduce-motion → 不啟動 waiting loop（咻聲仍觸發）',
-      (tester) async {
+  testWidgets('音效：reduce-motion → 不啟動 waiting loop（咻聲仍觸發）', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
