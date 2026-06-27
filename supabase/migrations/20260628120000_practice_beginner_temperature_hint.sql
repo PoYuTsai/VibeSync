@@ -144,6 +144,65 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.commit_practice_chat_turn(
+  p_user_id      UUID,
+  p_session_id   TEXT,
+  p_charge_quota BOOLEAN DEFAULT TRUE,
+  p_max_replies  INTEGER DEFAULT 10
+)
+RETURNS TABLE(new_ai_count INTEGER, did_charge BOOLEAN)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row           public.practice_chat_sessions;
+  v_should_settle BOOLEAN;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'commit_practice_chat_turn: p_user_id is required';
+  END IF;
+  IF p_session_id IS NULL OR length(p_session_id) = 0 OR length(p_session_id) > 64 THEN
+    RAISE EXCEPTION 'commit_practice_chat_turn: invalid p_session_id';
+  END IF;
+  IF p_max_replies IS NULL OR p_max_replies <= 0 THEN
+    RAISE EXCEPTION 'commit_practice_chat_turn: invalid p_max_replies';
+  END IF;
+  IF p_charge_quota IS NULL THEN
+    RAISE EXCEPTION 'commit_practice_chat_turn: invalid p_charge_quota';
+  END IF;
+
+  INSERT INTO public.practice_chat_sessions (user_id, session_id)
+  VALUES (p_user_id, p_session_id)
+  ON CONFLICT (user_id, session_id) DO NOTHING;
+
+  SELECT * INTO v_row
+  FROM public.practice_chat_sessions
+  WHERE user_id = p_user_id AND session_id = p_session_id
+  FOR UPDATE;
+
+  IF v_row.ai_count >= p_max_replies THEN
+    RAISE EXCEPTION 'PRACTICE_SESSION_COMPLETE';
+  END IF;
+
+  v_should_settle := NOT v_row.charged;
+  did_charge := v_should_settle AND p_charge_quota IS TRUE;
+
+  IF did_charge THEN
+    PERFORM public.increment_usage(p_user_id, 1);
+  END IF;
+
+  UPDATE public.practice_chat_sessions
+  SET ai_count = ai_count + 1,
+      charged = charged OR v_should_settle,
+      updated_at = now()
+  WHERE user_id = p_user_id AND session_id = p_session_id
+  RETURNING ai_count INTO new_ai_count;
+
+  RETURN NEXT;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.record_practice_hint(
   p_user_id      UUID,
   p_session_id   TEXT,
@@ -254,6 +313,11 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER)
+  TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER)
   TO service_role;
 
 REVOKE EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER)

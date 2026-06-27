@@ -27,6 +27,29 @@ function functionBody(name: string): string {
     : migration.slice(start);
 }
 
+function functionBodyWithSignature(name: string, signatureSnippet: string): string {
+  const start = requiredIndex(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  let cursor = start;
+
+  while (cursor >= 0) {
+    const nextFunction = migration.indexOf(
+      "CREATE OR REPLACE FUNCTION public.",
+      cursor + 1,
+    );
+    const body = nextFunction >= 0
+      ? migration.slice(cursor, nextFunction)
+      : migration.slice(cursor);
+
+    if (body.includes(signatureSnippet)) {
+      return body;
+    }
+
+    cursor = nextFunction;
+  }
+
+  assert(false, `Migration must contain ${name} overload: ${signatureSnippet}`);
+}
+
 Deno.test("ledger RPCs reject null quota charge flags before computing did_charge", () => {
   for (const name of ["commit_practice_chat_turn", "record_practice_hint"]) {
     const body = functionBody(name);
@@ -47,6 +70,42 @@ Deno.test("ledger RPCs reject null quota charge flags before computing did_charg
       `${name} must not charge quota on null via COALESCE`,
     );
   }
+});
+
+Deno.test("legacy 4-arg chat ledger RPC rejects null quota before did_charge", () => {
+  const body = functionBodyWithSignature(
+    "commit_practice_chat_turn",
+    "p_max_replies  INTEGER DEFAULT 10",
+  );
+  const nullGuardIndex = body.indexOf("IF p_charge_quota IS NULL THEN");
+  const didChargeIndex = body.indexOf("did_charge :=");
+
+  assert(
+    body.includes("p_charge_quota BOOLEAN DEFAULT TRUE"),
+    "legacy commit_practice_chat_turn overload must preserve p_charge_quota default",
+  );
+  assert(
+    nullGuardIndex >= 0,
+    "legacy commit_practice_chat_turn overload must reject null p_charge_quota",
+  );
+  assert(
+    body.includes(
+      "RAISE EXCEPTION 'commit_practice_chat_turn: invalid p_charge_quota';",
+    ),
+    "legacy commit_practice_chat_turn overload must raise a clear invalid p_charge_quota exception",
+  );
+  assert(
+    nullGuardIndex < didChargeIndex,
+    "legacy commit_practice_chat_turn overload must validate p_charge_quota before did_charge",
+  );
+  assert(
+    body.includes("v_should_settle AND p_charge_quota IS TRUE"),
+    "legacy commit_practice_chat_turn overload must charge only on first settlement with an explicit true flag",
+  );
+  assert(
+    !body.includes("COALESCE(p_charge_quota, TRUE)"),
+    "legacy commit_practice_chat_turn overload must not charge quota on null via COALESCE",
+  );
 });
 
 Deno.test("practice mode normalization trims non-empty values", () => {
