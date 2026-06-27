@@ -1,4 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
 
 /// 一則送進 practice-chat 的對話 turn。
 class PracticeTurnDto {
@@ -47,6 +50,8 @@ class PracticeChatReply {
   final int costDeducted;
   final int? monthlyRemaining;
   final int? dailyRemaining;
+  final PracticeTemperature? temperature;
+  final int? hintUsedCount;
 
   const PracticeChatReply({
     required this.reply,
@@ -55,6 +60,8 @@ class PracticeChatReply {
     required this.costDeducted,
     this.monthlyRemaining,
     this.dailyRemaining,
+    this.temperature,
+    this.hintUsedCount,
   });
 }
 
@@ -190,6 +197,12 @@ class PracticeGenerationFailedException implements Exception {
   String toString() => 'PracticeGenerationFailedException: $message';
 }
 
+class PracticeHintLimitException implements Exception {
+  PracticeHintLimitException();
+  @override
+  String toString() => 'PracticeHintLimitException';
+}
+
 /// 練習已滿 20 則 AI 回覆（伺服器回 409）。前端應引導去拆解卡。
 class PracticeSessionCompleteException implements Exception {
   PracticeSessionCompleteException();
@@ -237,15 +250,19 @@ class PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
+    int? temperatureScore,
   }) async {
     final response = await _invoke(
       _functionName,
       body: {
         'mode': 'chat',
         'sessionId': sessionId,
+        'practiceMode': practiceMode.wireName,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
         'roundIndex': roundIndex,
+        if (temperatureScore != null) 'temperatureScore': temperatureScore,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
       },
@@ -263,7 +280,33 @@ class PracticeChatApiService {
       costDeducted: _asInt(data['costDeducted']) ?? 0,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
+      temperature: _parseTemperature(data['temperature']),
+      hintUsedCount: _asInt(data['hintUsedCount']),
     );
+  }
+
+  Future<PracticeHintResult> requestHint({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+  }) async {
+    final response = await _invoke(
+      _functionName,
+      body: {
+        'mode': 'hint',
+        'sessionId': sessionId,
+        'practiceMode': PracticeLearningMode.beginner.wireName,
+        ...profile.toJson(),
+        'turns': turns.map((t) => t.toJson()).toList(),
+        'roundIndex': roundIndex,
+        if (visiblePracticeThreadId != null)
+          'visiblePracticeThreadId': visiblePracticeThreadId,
+      },
+    );
+    final data = _guardHintStatus(response);
+    return _parseHintResult(data);
   }
 
   Future<PracticeDebrief> requestDebrief({
@@ -393,6 +436,89 @@ class PracticeChatApiService {
         dailyLimit: _asInt(usage['dailyLimit']) ?? 0,
       ),
     );
+  }
+
+  PracticeHintResult _parseHintResult(Map<String, dynamic> data) {
+    final rawReplies = data['replies'];
+    final coaching = data['coaching'];
+    if (rawReplies is! List ||
+        rawReplies.length != 2 ||
+        coaching is! String ||
+        coaching.trim().isEmpty) {
+      throw PracticeGenerationFailedException('malformed_hint');
+    }
+
+    final replies = rawReplies.map(_parseHintReply).toList();
+    return PracticeHintResult(
+      replies: replies,
+      coaching: coaching.trim(),
+      costDeducted: _asInt(data['costDeducted']) ?? 0,
+      hintUsedCount: _asInt(data['hintUsedCount']) ?? 0,
+      monthlyRemaining: _asInt(data['monthlyRemaining']),
+      dailyRemaining: _asInt(data['dailyRemaining']),
+    );
+  }
+
+  PracticeHintReply _parseHintReply(dynamic raw) {
+    if (raw is! Map) {
+      throw PracticeGenerationFailedException('malformed_hint');
+    }
+    final type = _parseHintReplyType(raw['type']);
+    final label = raw['label'];
+    final text = raw['text'];
+    if (type == null ||
+        label is! String ||
+        label.trim().isEmpty ||
+        text is! String ||
+        text.trim().isEmpty) {
+      throw PracticeGenerationFailedException('malformed_hint');
+    }
+    return PracticeHintReply(
+      type: type,
+      label: label.trim(),
+      text: text.trim(),
+    );
+  }
+
+  PracticeHintReplyType? _parseHintReplyType(dynamic value) {
+    return switch (value) {
+      'warmUp' => PracticeHintReplyType.warmUp,
+      'steady' => PracticeHintReplyType.steady,
+      _ => null,
+    };
+  }
+
+  PracticeTemperature? _parseTemperature(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is! Map) {
+      throw PracticeGenerationFailedException('malformed_temperature');
+    }
+    final score = _asInt(raw['score']);
+    final delta = _asInt(raw['delta']);
+    final band = raw['band'];
+    final reason = raw['reason'];
+    if (score == null ||
+        delta == null ||
+        band is! String ||
+        reason is! String) {
+      throw PracticeGenerationFailedException('malformed_temperature');
+    }
+    return PracticeTemperature(
+      score: score,
+      delta: delta,
+      band: band,
+      reason: reason,
+    );
+  }
+
+  Map<String, dynamic> _guardHintStatus(PracticeInvokeResponse response) {
+    if (response.status == 403) {
+      final data = response.data is Map ? response.data as Map : const {};
+      if (data['error'] == 'practice_hint_limit') {
+        throw PracticeHintLimitException();
+      }
+    }
+    return _guardStatus(response);
   }
 
   /// 把 HTTP 狀態映射成例外；200 回傳 data map。
