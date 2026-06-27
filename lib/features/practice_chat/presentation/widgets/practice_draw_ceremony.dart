@@ -600,6 +600,8 @@ const Color _kGold = Color(0xFFF4D58D);
 const Color _kGoldDeep = Color(0xFFCB962F);
 const Color _kPurpleHi = Color(0xFF3A1E63);
 const Color _kPurpleLo = Color(0xFF130A24);
+const Color _kCrystalLight = Color(0xFFB892FF); // E3 紫水晶 facet 高光（朝光面）
+const Color _kFrameDark = Color(0xFF1A1208); // E3 黑金浮雕厚框外圈近黑金
 const Color _kStageGlow = Color(0xFF2A1248);
 const Color _kCardMatte = Color(0xFFFDF2F6); // 正面卡白／粉系鑲邊
 const Color _kTeal = Color(0xFF4FE0C8); // grand 典藏卡 teal accent（Batch C 目檢可退純金）
@@ -648,57 +650,43 @@ class _CeremonyCardBack extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 金色圖騰／光環／角飾（CustomPaint，靜態、隨 glow 微亮）。
+          // E3：3D 紫六角水晶 logo＋密星空（CustomPaint，靜態、隨 glow 微亮）。
           ClipRRect(
             borderRadius: radius,
             child: CustomPaint(painter: _MysticBackPainter(glow: glow)),
           ),
-          // 金色雙鑲邊：外細框＋內細框，讓它讀起來是一張「牌」。
+          // 黑金浮雕厚框：外圈近黑金粗邊＋中圈亮金 bevel＋內圈深金細溝，三層讓邊框讀起
+          // 來像一道有厚度的浮雕框（取代舊版細金雙鑲邊）。
           DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: radius,
               border: Border.all(
-                color: _kGold.withValues(alpha: 0.85),
-                width: 1.6,
+                color: _kFrameDark.withValues(alpha: 0.9),
+                width: 3,
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(7),
+            padding: const EdgeInsets.all(3),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(21),
                 border: Border.all(
-                  color: _kGoldDeep.withValues(alpha: 0.55),
-                  width: 1,
+                  color: _kGold.withValues(alpha: 0.85),
+                  width: 1.6,
                 ),
               ),
             ),
           ),
-          // 中央發光圖騰核心。
-          Center(
-            child: Container(
-              width: 96,
-              height: 96,
+          Padding(
+            padding: const EdgeInsets.all(6),
+            child: DecoratedBox(
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [_kGold, _kGoldDeep],
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _kGoldDeep.withValues(alpha: 0.5),
+                  width: 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _kGold.withValues(alpha: 0.45 + 0.35 * glow),
-                    blurRadius: 26,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.auto_awesome,
-                size: 46,
-                color: Color(0xFF3A2406),
               ),
             ),
           ),
@@ -940,71 +928,152 @@ class _FrontInfo extends StatelessWidget {
 
 /// 卡背圖騰／光環／角飾畫筆：放射光芒、雙同心金環、四角金飾。靜態（隨 `glow`
 /// 微亮），不自體動畫。
+/// 測試用 seam：建立 [_MysticBackPainter]（painter 本體 library-private，與其他
+/// painter 一致；僅此 seam 對 widget test 暴露具名建構）。
+@visibleForTesting
+CustomPainter debugMysticBackPainter({required double glow}) =>
+    _MysticBackPainter(glow: glow);
+
+/// 神秘卡背（E3 復刻 `音檔.mp4`）：中央一顆 3D 紫六角水晶 logo＋鋪滿卡背的密星空。
+///
+/// **3D 水晶**：pointy-top 六邊形切成 6 個三角 facet，各 facet 依其外法線對「左上來光」
+/// 做 Lambert 點積上色（朝光面亮、背光面暗），金線描邊 facet 與外框成黑金浮雕，左上補一
+/// 抹 specular 高光與中央亮核 → 讀起來像一顆有體積的紫水晶寶石。
+/// **密星空**：golden-angle 螺旋把星點均勻鋪滿整面、白／金交錯。
+///
+/// **確定性、零 Random**：佈點／facet 明暗全由 index 與幾何決定，重建穩定
+/// （`shouldRepaint` 只認 [glow]）；[glow] 只調整整體亮度。
 class _MysticBackPainter extends CustomPainter {
   _MysticBackPainter({required this.glow});
 
   final double glow;
 
+  static const int _starCount = 46;
+  // golden angle，讓螺旋佈點均勻不打結。
+  static const double _goldenAngle = 2.399963229728653;
+  // 來光方向（左上、約 45°）。
+  static const Offset _light = Offset(-0.7071, -0.7071);
+
   @override
   void paint(Canvas canvas, Size size) {
+    _paintStarfield(canvas, size);
+    _paintCrystal(canvas, size);
+  }
+
+  // 密星空：golden-angle 螺旋（半徑隨 √index 成長 → 均勻密度）鋪滿整面，白／金交錯、
+  // 隨 glow 微亮。落在卡外的點略過。確定性、零 Random。
+  void _paintStarfield(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
+    final maxR = size.longestSide * 0.62;
+    for (var i = 0; i < _starCount; i++) {
+      final t = (i + 0.5) / _starCount;
+      final radius = maxR * math.sqrt(t);
+      final a = i * _goldenAngle;
+      final pos = center + Offset(math.cos(a), math.sin(a)) * radius;
+      if (!size.contains(pos)) continue;
 
-    // 中央放射光芒（12 道細金線），象徵「抽出」的能量。
-    final rayPaint = Paint()
-      ..color = _kGold.withValues(alpha: 0.10 + 0.06 * glow)
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-    const rays = 12;
-    final rayLen = size.height * 0.42;
-    for (var i = 0; i < rays; i++) {
-      final a = (i / rays) * 2 * math.pi;
-      final dir = Offset(math.cos(a), math.sin(a));
-      canvas.drawLine(
-        center + dir * 30,
-        center + dir * rayLen,
-        rayPaint,
+      final base = 0.16 + 0.5 * (((i * 5) % 7) / 7.0);
+      final alpha = (base * (0.6 + 0.4 * glow)).clamp(0.0, 0.85);
+      if (alpha <= 0.02) continue;
+      final r = 0.8 + 1.4 * (((i * 3) % 5) / 5.0);
+      final color =
+          (i % 3 == 0 ? _kGold : Colors.white).withValues(alpha: alpha);
+
+      canvas.drawCircle(
+        pos,
+        r * 2.0,
+        Paint()
+          ..color = color.withValues(alpha: alpha * 0.35)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
       );
+      canvas.drawCircle(pos, r, Paint()..color = color);
     }
+  }
 
-    // 雙同心金環。
-    final ringPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..color = _kGold.withValues(alpha: 0.32 + 0.18 * glow)
-      ..strokeWidth = 1.4;
-    canvas.drawCircle(center, 58, ringPaint);
+  // 3D 紫六角水晶：6 facet 依外法線對 _light 做 Lambert 上色，金線描邊＋外框＝黑金浮雕，
+  // 左上 specular 高光＋中央亮核。確定性、零 Random。
+  void _paintCrystal(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final gemR = size.shortestSide * 0.26;
+
+    // 寶石後方柔光暈，把水晶從卡背襯出來。
     canvas.drawCircle(
       center,
-      70,
-      ringPaint..color = _kGoldDeep.withValues(alpha: 0.28 + 0.16 * glow),
+      gemR * 1.7,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            _kCrystalLight.withValues(alpha: 0.26 + 0.22 * glow),
+            _kCrystalLight.withValues(alpha: 0.0),
+          ],
+        ).createShader(Rect.fromCircle(center: center, radius: gemR * 1.7)),
     );
 
-    // 環上 8 顆星點（rune 感）。
-    final dotPaint = Paint()..color = _kGold.withValues(alpha: 0.55);
-    for (var i = 0; i < 8; i++) {
-      final a = (i / 8) * 2 * math.pi - math.pi / 2;
-      final p = center + Offset(math.cos(a), math.sin(a)) * 70;
-      canvas.drawCircle(p, 1.8, dotPaint);
+    // pointy-top 六邊形頂點（-90° 起、每 60°）。
+    final verts = <Offset>[
+      for (var k = 0; k < 6; k++)
+        center +
+            Offset(
+                  math.cos(-math.pi / 2 + k * math.pi / 3),
+                  math.sin(-math.pi / 2 + k * math.pi / 3),
+                ) *
+                gemR,
+    ];
+
+    // 6 個三角 facet（center→vk→v(k+1)），外法線≈中點方向，對 _light 做 Lambert。
+    for (var k = 0; k < 6; k++) {
+      final v0 = verts[k];
+      final v1 = verts[(k + 1) % 6];
+      var normal = (v0 + v1) / 2 - center;
+      final len = normal.distance;
+      if (len > 0) normal = normal / len;
+      final lambert = ((normal.dx * _light.dx + normal.dy * _light.dy) + 1) / 2;
+      final facet = Color.lerp(_kPurpleLo, _kCrystalLight, lambert)!;
+      final path = Path()
+        ..moveTo(center.dx, center.dy)
+        ..lineTo(v0.dx, v0.dy)
+        ..lineTo(v1.dx, v1.dy)
+        ..close();
+      canvas.drawPath(path, Paint()..color = facet);
     }
 
-    // 四角金飾：小菱形（45°方塊）。
-    final cornerPaint = Paint()..color = _kGold.withValues(alpha: 0.7);
-    const inset = 20.0;
-    final corners = [
-      Offset(inset, inset),
-      Offset(size.width - inset, inset),
-      Offset(inset, size.height - inset),
-      Offset(size.width - inset, size.height - inset),
-    ];
-    for (final c in corners) {
-      canvas.save();
-      canvas.translate(c.dx, c.dy);
-      canvas.rotate(math.pi / 4);
-      canvas.drawRect(
-        Rect.fromCenter(center: Offset.zero, width: 6, height: 6),
-        cornerPaint,
-      );
-      canvas.restore();
+    // facet 放射邊（黑金浮雕的細金線）。
+    final edgePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = _kGoldDeep.withValues(alpha: 0.5 + 0.2 * glow);
+    for (final v in verts) {
+      canvas.drawLine(center, v, edgePaint);
     }
+
+    // 外框金線（浮雕厚邊）。
+    canvas.drawPath(
+      Path()..addPolygon(verts, true),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
+        ..strokeJoin = StrokeJoin.round
+        ..color = _kGold.withValues(alpha: 0.7 + 0.3 * glow),
+    );
+
+    // 左上朝光的兩 facet 補一抹 specular 高光。
+    canvas.drawPath(
+      Path()
+        ..moveTo(center.dx, center.dy)
+        ..lineTo(verts[5].dx, verts[5].dy)
+        ..lineTo(verts[0].dx, verts[0].dy)
+        ..close(),
+      Paint()..color = Colors.white.withValues(alpha: 0.12 + 0.12 * glow),
+    );
+
+    // 中央亮核。
+    canvas.drawCircle(
+      center,
+      gemR * 0.16,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.5 + 0.3 * glow)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
   }
 
   @override
