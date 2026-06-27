@@ -24,8 +24,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_session
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 
-const _outDir = '/tmp/claude-1000/-mnt-c-Users-eric1-OneDrive-Desktop-VibeSync/'
-    'a7e2e299-8914-4fff-807b-49dd540a6cf8/scratchpad/cardrep/frames';
+final _outDir = '${Directory.current.path}/build/card_draw_preview/frames';
 
 // 24fps × 10.0s = 240 frames，對齊參考片（音檔.mp4 720×1280 24fps 10.000s）。
 const int _fps = 24;
@@ -33,7 +32,15 @@ const int _frameCount = 240;
 const double _dpr = 2.0; // 390×844 → 780×1688（偶數，ffmpeg 友善）
 
 // Windows 內建繁中字型 → 預覽影片不出現 tofu（測試環境無 CJK 字型）。
-const _cjkFont = '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf';
+const _cjkFontCandidates = <String>[
+  'C:/Windows/Fonts/NotoSansTC-VF.ttf',
+  'C:/Windows/Fonts/msjh.ttc',
+  '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf',
+];
+const _materialIconsFontCandidates = <String>[
+  'build/unit_test_assets/fonts/MaterialIcons-Regular.otf',
+  'D:/tools/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+];
 
 class _UnusedBox extends Fake implements Box<PracticeSession> {}
 
@@ -104,20 +111,37 @@ PracticeDrawResult _drawResultFor(PracticeGirlProfile g) => PracticeDrawResult(
       ),
     );
 
+Future<void> _loadFirstAvailableFont(
+  String family,
+  List<String> candidates,
+) async {
+  for (final fontPath in candidates) {
+    final font = File(fontPath);
+    if (!font.existsSync()) continue;
+    final fontBytes = font.readAsBytesSync();
+    await (FontLoader(family)
+          ..addFont(Future.value(ByteData.view(fontBytes.buffer))))
+        .load();
+    return;
+  }
+}
+
 void main() {
   final record = Platform.environment['RECORD_CEREMONY'] == '1';
 
   testWidgets('record ceremony reveal → frames', (tester) async {
     final captureKey = GlobalKey();
-    final girl = practiceGirlProfiles[2];
+    final girl = practiceGirlProfiles.firstWhere(
+      (g) => g.nameId == 'emily',
+      orElse: () => practiceGirlProfiles[2],
+    );
 
     // 載入繁中字型，讓預覽影片文字正常顯示（否則 test 環境 CJK → tofu）。
-    if (File(_cjkFont).existsSync()) {
-      final fontBytes = File(_cjkFont).readAsBytesSync();
-      await (FontLoader('NotoTC')
-            ..addFont(Future.value(ByteData.view(fontBytes.buffer))))
-          .load();
-    }
+    await _loadFirstAvailableFont('NotoTC', _cjkFontCandidates);
+    await _loadFirstAvailableFont(
+      'MaterialIcons',
+      _materialIconsFontCandidates,
+    );
 
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -132,7 +156,8 @@ void main() {
               .overrideWithValue(InMemoryPracticeDrawDraftStore()),
           practiceChatApiServiceProvider.overrideWithValue(api),
           // 測試環境無 audio platform channel → 用 no-op 免 MissingPluginException。
-          practiceDrawSfxProvider.overrideWithValue(const NoopPracticeDrawSfx()),
+          practiceDrawSfxProvider
+              .overrideWithValue(const NoopPracticeDrawSfx()),
         ],
         child: MaterialApp(
           theme: ThemeData(fontFamily: 'NotoTC'),

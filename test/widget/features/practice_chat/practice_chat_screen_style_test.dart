@@ -1771,7 +1771,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('音效：揭曉成功 → stopWaitingLoop ＋ playRevealChime（loop 不殘留）',
+  testWidgets('音效：揭曉成功 → stopWaitingLoop ＋ playRevealBed（loop 不殘留）',
       (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final zoe = practiceGirlProfiles[2];
@@ -1784,7 +1784,8 @@ void main() {
     expect(spy.whoosh, 1);
     expect(spy.waitingStart, 1);
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
-    expect(spy.chime, 1); // 揭曉叮聲
+    expect(spy.chime, 0); // 舊 reveal chime 不再疊在 master audio 上
+    expect(spy.bedStart, 1); // 完整參考片主音軌接管揭曉音效
     expect(spy.looping, isFalse); // 等待 loop 已停、不殘留
   });
 
@@ -1860,7 +1861,8 @@ void main() {
     expect(spy.looping, isFalse);
   });
 
-  testWidgets('音效（D3）：normal-motion 叮聲配白卡預覽翻面、非 server 回應即播', (tester) async {
+  testWidgets('音效（reset）：normal-motion 不疊舊 chime、master bed 從 reveal 起播',
+      (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -1872,19 +1874,20 @@ void main() {
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await tester.pump(); // 進入 revealing（_reveal.forward(from:0)，value≈0）
 
-    // server 剛回應、白卡尚未翻出（未跨 kFlip1End）：叮聲還沒響。
+    // server 剛回應、白卡尚未翻出；音效由 master bed 起播，不再疊舊叮聲。
+    expect(spy.chime, 0);
+    expect(spy.bedStart, 1);
+
+    // 跨白卡預覽翻面（kFlip1End 之後）也不補舊 chime，避免兩套音效契約並存。
+    await tester.pump(previewAt);
     expect(spy.chime, 0);
 
-    // 跨白卡預覽翻面（kFlip1End 之後）：叮聲響一次、落在卡面翻出那一刻。
-    await tester.pump(previewAt);
-    expect(spy.chime, 1);
-
-    // 走完整條不重播。
+    // 走完整條也不觸發舊 chime。
     await tester.pumpAndSettle();
-    expect(spy.chime, 1);
+    expect(spy.chime, 0);
   });
 
-  testWidgets('音效（D3）：reduce-motion 跳翻面 → server 回應即播叮聲（不靠 reveal edge）',
+  testWidgets('音效（reset）：reduce-motion 跳翻面 → 不播舊 chime（不靠 reveal edge）',
       (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
@@ -1894,11 +1897,11 @@ void main() {
     await tester.pump(); // drawing
     await tester.pump(); // draw 完成 → reduce-motion：直接收掉 overlay
 
-    // reduce-motion 沒有 reveal 動畫可跨門檻，叮聲必須即時播、不可被吞。
-    expect(spy.chime, 1);
+    // reduce-motion 沒有 reveal 動畫；舊 chime 不再補播，避免和 master audio 分裂。
+    expect(spy.chime, 0);
 
     await tester.pumpAndSettle();
-    expect(spy.chime, 1);
+    expect(spy.chime, 0);
   });
 
   // ── E2：揭曉配樂 bed（復刻 音檔.mp4 音軌）取代離散 riser/settle ────────────────
@@ -1925,8 +1928,7 @@ void main() {
     expect(spy.bedPlaying, isFalse); // 配樂不殘留
   });
 
-  testWidgets('音效（E2）：再抽一次 → 配樂 bed 重起一次（每次揭曉各一條，不殘留）',
-      (tester) async {
+  testWidgets('音效（E2）：再抽一次 → 配樂 bed 重起一次（每次揭曉各一條，不殘留）', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
@@ -1963,8 +1965,7 @@ void main() {
     expect(spy.bedPlaying, isFalse);
   });
 
-  testWidgets('音效（E2）：揭曉中卸載儀式 → dispose 收掉配樂 bed（不殘留）',
-      (tester) async {
+  testWidgets('音效（E2）：揭曉中卸載儀式 → dispose 收掉配樂 bed（不殘留）', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -2056,11 +2057,15 @@ void main() {
 
     test('暗化在 beat0→beat1 單調遞增、settle 段單調遞減', () {
       // 開場淡入暗：0.02 < 0.13。
-      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.13),
-          greaterThan(practiceCeremonyDim(drawing: false, revealFraction: 0.02)));
+      expect(
+          practiceCeremonyDim(drawing: false, revealFraction: 0.13),
+          greaterThan(
+              practiceCeremonyDim(drawing: false, revealFraction: 0.02)));
       // 收場淡出暗：0.97 < 0.82。
-      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.82),
-          greaterThan(practiceCeremonyDim(drawing: false, revealFraction: 0.97)));
+      expect(
+          practiceCeremonyDim(drawing: false, revealFraction: 0.82),
+          greaterThan(
+              practiceCeremonyDim(drawing: false, revealFraction: 0.97)));
     });
 
     test('drawing 等待期：柔和聚焦暗化（非全暗、非全亮）', () {
@@ -2082,10 +2087,12 @@ void main() {
     });
 
     test('burst 對稱遞減：離 climax 越遠越小', () {
-      final near = practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax - 0.02);
+      final near =
+          practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax - 0.02);
       final far = practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax - 0.05);
       expect(near, greaterThan(far));
-      expect(practiceCeremonyClimaxBurst(0).clamp(0.0, 1.0), inInclusiveRange(0.0, 1.0));
+      expect(practiceCeremonyClimaxBurst(0).clamp(0.0, 1.0),
+          inInclusiveRange(0.0, 1.0));
     });
 
     testWidgets('PEAK#2 全螢幕爆裂 flash：6.5s 出現、開場 1.0s 不在', (tester) async {
@@ -2110,6 +2117,37 @@ void main() {
       );
 
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('PEAK#2 參考片爆點 overlay：只在 flip-explosion 窗內出現', (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      expect(
+        find.byKey(
+          const ValueKey('practice-draw-ceremony-reference-explosion'),
+        ),
+        findsNothing,
+      );
+
+      await tester.pump(atFraction(kPracticeRevealHaloClimax));
+      expect(
+        find.byKey(
+          const ValueKey('practice-draw-ceremony-reference-explosion'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.10));
+      expect(
+        find.byKey(
+          const ValueKey('practice-draw-ceremony-reference-explosion'),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('reduce-motion：不跑 reveal 時間軸 → 無爆裂 flash', (tester) async {
@@ -2141,8 +2179,7 @@ void main() {
     });
   });
 
-  testWidgets('E1：揭曉開場卡背先蓄力、不立即翻面（對齊第一爆點前的 build）',
-      (tester) async {
+  testWidgets('E1：揭曉開場卡背先蓄力、不立即翻面（對齊第一爆點前的 build）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
@@ -2184,8 +2221,7 @@ void main() {
     });
   });
 
-  testWidgets('E1：揭曉卡片在手機上明顯放大（卡背寬度 > 舊版 214、維持 2:3）',
-      (tester) async {
+  testWidgets('E1：揭曉卡片在手機上明顯放大（卡背寬度 > 舊版 214、維持 2:3）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);

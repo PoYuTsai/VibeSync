@@ -12,6 +12,13 @@ import '../../domain/entities/practice_girl_profile.dart';
 import 'practice_draw_sfx.dart';
 import 'practice_girl_photo.dart';
 
+const String _kReferenceCardBackBaseAsset =
+    'assets/images/practice/practice_draw_card_back_base.png';
+const String _kReferenceCardBackNeonAsset =
+    'assets/images/practice/practice_draw_card_back_neon.png';
+const String _kReferenceExplosionAsset =
+    'assets/images/practice/practice_draw_explosion_reference.webp';
+
 /// 翻牌揭曉時間軸（公開供 widget 與 widget test 共用單一真相）。
 /// fraction = ms / kPracticeRevealDuration。詳見 _buildStage 兩段升階分支。
 // 第4輪 storyboard 重定時：總長 = 參考片「音檔.mp4」實測 10.000s（720×1280 24fps
@@ -65,6 +72,22 @@ double practiceCeremonyDim({
 double practiceCeremonyClimaxBurst(double revealFraction) {
   final d = (revealFraction - kPracticeRevealHaloClimax) / 0.045;
   return math.exp(-d * d);
+}
+
+double _referenceExplosionOpacity(double revealFraction) {
+  if (revealFraction <= kPracticeRevealRechargeEnd ||
+      revealFraction >= kPracticeRevealGrandFlipEnd) {
+    return 0;
+  }
+  final fadeIn = ((revealFraction - kPracticeRevealRechargeEnd) /
+          (kPracticeRevealHaloClimax - kPracticeRevealRechargeEnd))
+      .clamp(0.0, 1.0);
+  final fadeOut = ((kPracticeRevealGrandFlipEnd - revealFraction) /
+          (kPracticeRevealGrandFlipEnd - kPracticeRevealHaloClimax))
+      .clamp(0.0, 1.0);
+  final envelope = math.min(fadeIn, fadeOut);
+  final pulse = 0.44 + 0.56 * practiceCeremonyClimaxBurst(revealFraction);
+  return (envelope * pulse).clamp(0.0, 1.0);
 }
 
 /// 揭曉卡片尺寸（G2 放大／復刻 音檔.mp4 的近滿版高卡）：寬 ≈ 0.84×螢幕寬、直式 2:3
@@ -166,10 +189,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
   // 揭曉叮聲 edge-detect：跨白卡預覽翻面門檻觸發一次的 idempotent 旗標。
   // `_reveal` 是有限 forward-only controller，每幀 tick 比對門檻；旗標確保整條時間軸
-  // 只播一次。`forward(from:0)`（重抽）與 `_toHidden`（收掉 overlay）一律重置。零 Timer。
-  // 註：reduce-motion 不跑 `_reveal`，叮聲改在 `_onStateChange` 即時播（見該處）。
-  // E2：整條配樂 bed（`playRevealBed`）在揭曉起始就起播，不靠 edge-detect。
-  bool _firedChime = false;
+  // E2/Eric reset：整條配樂 bed（`playRevealBed`）在揭曉起始就起播；舊 chime
+  // 不再疊在 master audio 上，避免真機聽感回到上一版。
 
   @override
   void initState() {
@@ -200,17 +221,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
   /// 揭曉時間軸跨白卡預覽翻面門檻觸發一次叮聲。只比對門檻、設旗標、播一聲——不
   /// setState（`_onTick` 已負責重繪）。跨幅再大（測試一次 pump 跳過門檻）也用 `>=`
-  /// 邊緣判定，故不漏觸發。
-  /// E2：舊的離散蓄力 riser／落定 settle accent 已退役，高潮段能量改由 `_reveal` 起始
-  /// 就同步播放的整條配樂 bed（`playRevealBed`，復刻 `音檔.mp4` 音軌）承載。
-  void _onRevealEdge() {
-    final v = _reveal.value;
-    // 叮聲落在 Stage-1 白卡預覽翻面那一刻（卡面翻出 = 揭曉），而非 server 回應瞬間。
-    if (!_firedChime && v >= kPracticeRevealFlip1End) {
-      _firedChime = true;
-      _sfx.playRevealChime();
-    }
-  }
+  /// Kept as a timeline edge hook, but intentionally does not play the old
+  /// reveal chime. The reference master audio owns all reveal accents.
+  void _onRevealEdge() {}
 
   void _toHidden() {
     if (!mounted) return;
@@ -221,7 +234,6 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _waiting.stop();
     _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
     _sfx.stopRevealBed(); // E2：揭曉結束／收掉 overlay → 配樂 bed 不殘留。
-    _firedChime = false; // 下次揭曉重新 edge-detect。
     _reveal.value = 0;
   }
 
@@ -266,8 +278,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       HapticFeedback.mediumImpact();
       _sfx.stopWaitingLoop();
       if (_reduceMotion) {
-        // reduce-motion：跳過 3D 翻面，沒有可對齊的揭曉幀 → 即時播叮聲後收掉 overlay。
-        _sfx.playRevealChime();
+        // reduce-motion：跳過 3D 翻面；不疊舊 chime，避免與 master audio 語意分裂。
         _toHidden();
         return;
       }
@@ -277,9 +288,6 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       });
       _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
       _intro.value = 1;
-      // 叮聲改由 `_onRevealEdge` 在白卡預覽翻面（kPracticeRevealFlip1End）觸發，
-      // 讓「叮」落在卡面翻出那一刻、而非 server 回應的瞬間。
-      _firedChime = false; // 重抽：edge bool 歸零，本輪揭曉重新觸發一次叮聲。
       _sfx.playRevealBed(); // E2：揭曉起始播一條與 `_reveal`（~9s）同長同步的配樂 bed。
       _reveal.forward(from: 0);
       return;
@@ -348,7 +356,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     // PEAK#2（6.5s）全螢幕爆裂 flash：在 stage-confined flash 之外再加一層**滿版**
     // 徑向爆光，做出參考片高潮「光束 climax」鋪滿螢幕的爆發感。reduce-motion 不跑
     // _reveal → burst≈0 → 不渲染（守鐵則）。
-    final climaxFlash = revealing ? practiceCeremonyClimaxBurst(_reveal.value) : 0.0;
+    final climaxFlash =
+        revealing ? practiceCeremonyClimaxBurst(_reveal.value) : 0.0;
+    final referenceExplosion =
+        revealing ? _referenceExplosionOpacity(_reveal.value) : 0.0;
 
     return IgnorePointer(
       ignoring: false,
@@ -391,6 +402,23 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               ),
             ),
           ),
+          if (referenceExplosion > 0.01)
+            Positioned.fill(
+              key: const ValueKey(
+                'practice-draw-ceremony-reference-explosion',
+              ),
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: contentOpacity * referenceExplosion * 0.82,
+                  child: Image.asset(
+                    _kReferenceExplosionAsset,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
+                  ),
+                ),
+              ),
+            ),
           // 滿版爆裂 flash（PEAK#2）：疊在最上，金白徑向爆光washes 過整個螢幕。
           if (climaxFlash > 0.02)
             Positioned.fill(
@@ -520,10 +548,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       // 白卡停留、資訊浮出（屏息）。
       angle = math.pi;
       showFront = true;
-      frontAppear = Curves.easeOut.transform(seg(kPracticeRevealFlip1End, kPracticeRevealPreviewEnd));
+      frontAppear = Curves.easeOut
+          .transform(seg(kPracticeRevealFlip1End, kPracticeRevealPreviewEnd));
     } else if (f < kPracticeRevealRechargeEnd) {
       // 翻回卡背（蓄力重啟），rotateY π→0。
-      final rot = 1 - seg(kPracticeRevealPreviewEnd, kPracticeRevealRechargeEnd);
+      final rot =
+          1 - seg(kPracticeRevealPreviewEnd, kPracticeRevealRechargeEnd);
       angle = rot * math.pi;
       showFront = angle > math.pi / 2;
       frontAppear = 1;
@@ -552,7 +582,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       // 典藏卡停留、資訊落位、光環 settle。
       angle = math.pi;
       showFront = true;
-      frontAppear = Curves.easeOut.transform(seg(kPracticeRevealGrandFlipEnd, kPracticeRevealHoldEnd));
+      frontAppear = Curves.easeOut
+          .transform(seg(kPracticeRevealGrandFlipEnd, kPracticeRevealHoldEnd));
     } else {
       // 淡出，露出底下 hero。
       angle = math.pi;
@@ -654,10 +685,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 painter: _StarfieldPainter(
                   twinkle: f,
                   // PEAK#2 burst 額外灌入星爆亮度，做出 6.5s 高潮的爆發。
-                  intensity: (haloIntensity * 0.7 +
-                          flash * 0.6 +
-                          climaxBurst * 0.7) *
-                      (1 - frontDepart),
+                  intensity:
+                      (haloIntensity * 0.7 + flash * 0.6 + climaxBurst * 0.7) *
+                          (1 - frontDepart),
                   beam: beamProgress,
                 ),
               ),
@@ -709,6 +739,7 @@ class _CeremonyCardBack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(22);
+    final neonOpacity = ((glow - 0.42) / 0.48).clamp(0.0, 1.0);
     return Container(
       key: const ValueKey('practice-draw-ceremony-back'),
       width: width,
@@ -733,10 +764,40 @@ class _CeremonyCardBack extends StatelessWidget {
       // 上覆賽博金框（chamfer 倒角＋上下 bracket＋segment ticks，_CyberFramePainter）。
       child: ClipRRect(
         borderRadius: radius,
-        child: CustomPaint(
-          painter: _MysticBackPainter(glow: glow),
-          foregroundPainter: _CyberFramePainter(glow: glow),
-          child: const SizedBox.expand(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              _kReferenceCardBackBaseAsset,
+              fit: BoxFit.fill,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
+            ),
+            Opacity(
+              opacity: neonOpacity,
+              child: Image.asset(
+                _kReferenceCardBackNeonAsset,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.high,
+                gaplessPlayback: true,
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.08 * glow),
+                    Colors.transparent,
+                    _kTeal.withValues(alpha: 0.06 * neonOpacity),
+                  ],
+                  stops: const [0.0, 0.46, 1.0],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1093,8 +1154,7 @@ class _MysticBackPainter extends CustomPainter {
       math.pi / 4,
       math.pi * 3 / 4,
     ]) {
-      canvas.drawLine(
-          c, c + Offset(math.cos(a), math.sin(a)) * s * 0.42, diag);
+      canvas.drawLine(c, c + Offset(math.cos(a), math.sin(a)) * s * 0.42, diag);
     }
 
     final rArc = s * 0.34;
@@ -1234,17 +1294,27 @@ class _MysticBackPainter extends CustomPainter {
     for (var i = 0; i < 3; i++) {
       final y = -0.78 + i * 0.18;
       final hw = 0.46 - i * 0.1;
-      _goldPolyline(canvas, c, rE, [
-        [-hw, y + 0.2],
-        [0, y],
-        [hw, y + 0.2],
-      ], w: 2.6);
+      _goldPolyline(
+          canvas,
+          c,
+          rE,
+          [
+            [-hw, y + 0.2],
+            [0, y],
+            [hw, y + 0.2],
+          ],
+          w: 2.6);
     }
     // 中央立柱（chevron 底→近底點），貫穿迷宮中軸。
-    _goldPolyline(canvas, c, rE, [
-      [0, -0.16],
-      [0, 0.78],
-    ], w: 2.4);
+    _goldPolyline(
+        canvas,
+        c,
+        rE,
+        [
+          [0, -0.16],
+          [0, 0.78],
+        ],
+        w: 2.4);
     // 左右鏡像方形螺旋鉤（Greek key），放大填滿下 2/3。
     const left = [
       [-0.06, 0.02],
@@ -1257,13 +1327,18 @@ class _MysticBackPainter extends CustomPainter {
     ];
     _goldPolyline(canvas, c, rE, left, w: 2.4);
     _goldPolyline(
-        canvas, c, rE, [for (final p in left) [-p[0], p[1]]], w: 2.4);
+        canvas,
+        c,
+        rE,
+        [
+          for (final p in left) [-p[0], p[1]]
+        ],
+        w: 2.4);
   }
 
   void _goldPolyline(Canvas canvas, Offset c, double rE, List<List<num>> pts,
       {double w = 2.4}) {
-    Offset map(List<num> ab) =>
-        Offset(c.dx + ab[0] * rE, c.dy + ab[1] * rE);
+    Offset map(List<num> ab) => Offset(c.dx + ab[0] * rE, c.dy + ab[1] * rE);
     final path = Path()..moveTo(map(pts.first).dx, map(pts.first).dy);
     for (final ab in pts.skip(1)) {
       final p = map(ab);
@@ -1349,7 +1424,8 @@ class _CyberFramePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = s * 0.03
           ..shader = glowShader
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, b * (0.7 + 0.5 * glow)),
+          ..maskFilter =
+              MaskFilter.blur(BlurStyle.normal, b * (0.7 + 0.5 * glow)),
       );
     }
     // 2) 亮核框。
@@ -1477,7 +1553,11 @@ class _OrbitalHaloPainter extends CustomPainter {
 
   // 各軌參數（確定性查表，index 對應一條軌道）：
   static const List<double> _tilt = [1.12, 0.74, 1.36]; // 繞 X 軸傾角 θ
-  static const List<double> _radiusRatio = [0.52, 0.46, 0.58]; // 相對 shortestSide
+  static const List<double> _radiusRatio = [
+    0.52,
+    0.46,
+    0.58
+  ]; // 相對 shortestSide
   static const List<double> _phaseOffset = [0.0, 2.3, 4.1]; // 彗星起始相位錯開
 
   @override
@@ -1623,7 +1703,8 @@ class _EnergyBorderPainter extends CustomPainter {
       spark.color = Color.lerp(_kGold, _kTeal, along)!
           .withValues(alpha: (0.6 * fade * i).clamp(0.0, 1.0));
       canvas.drawCircle(
-        Offset(rect.left + 12 + along * (rect.width - 24), rect.bottom - 2 - rise),
+        Offset(
+            rect.left + 12 + along * (rect.width - 24), rect.bottom - 2 - rise),
         1.2 + 1.4 * fade,
         spark,
       );
@@ -1748,7 +1829,5 @@ class _StarfieldPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StarfieldPainter old) =>
-      old.twinkle != twinkle ||
-      old.intensity != intensity ||
-      old.beam != beam;
+      old.twinkle != twinkle || old.intensity != intensity || old.beam != beam;
 }
