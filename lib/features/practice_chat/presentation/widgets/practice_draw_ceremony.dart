@@ -107,7 +107,7 @@ double practiceCeremonyRimIntensity(double revealFraction) {
 @visibleForTesting
 double practiceCeremonyTumbleSpin(double revealFraction) {
   const start = 0.045;
-  const end = 0.135;
+  const end = 0.155;
   if (revealFraction <= start || revealFraction >= end) return 0;
   final t = ((revealFraction - start) / (end - start)).clamp(0.0, 1.0);
   return math.sin(math.pi * t).clamp(0.0, 1.0);
@@ -635,7 +635,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
           ((f - tumbleStart) / (tumbleEnd - tumbleStart)).clamp(0.0, 1.0);
       final tumbleTurn = Curves.easeInOutCubic.transform(tumbleT);
       angle = introTilt + tumbleTurn * math.pi * 2;
-      introRoll = introTilt * 0.28 + tumble * 0.18;
+      introRoll = introTilt * 0.42 + tumble * 0.46;
       showFront = false;
       backGlow = math.max(0.6 + 0.25 * intro, practiceCeremonyRimIntensity(f));
     } else if (f < kPracticeRevealFlip1End) {

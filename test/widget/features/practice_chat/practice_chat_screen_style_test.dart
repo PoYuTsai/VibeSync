@@ -2222,6 +2222,7 @@ void main() {
         () {
       expect(practiceCeremonyTumbleSpin(0), closeTo(0, 0.001));
       expect(practiceCeremonyTumbleSpin(0.085), greaterThan(0.9));
+      expect(practiceCeremonyTumbleSpin(0.11), greaterThan(0.9));
       expect(practiceCeremonyTumbleSpin(0.16), closeTo(0, 0.001));
 
       expect(practiceCeremonyParticleBloom(0.20), greaterThan(0.8));
