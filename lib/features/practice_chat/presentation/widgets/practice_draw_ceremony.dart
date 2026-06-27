@@ -104,6 +104,34 @@ double practiceCeremonyRimIntensity(double revealFraction) {
   return math.max(intro, math.max(recharge, settle)).clamp(0.0, 1.0);
 }
 
+@visibleForTesting
+double practiceCeremonyTumbleSpin(double revealFraction) {
+  const start = 0.045;
+  const end = 0.135;
+  if (revealFraction <= start || revealFraction >= end) return 0;
+  final t = ((revealFraction - start) / (end - start)).clamp(0.0, 1.0);
+  return math.sin(math.pi * t).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
+double practiceCeremonyParticleBloom(double revealFraction) {
+  final d = (revealFraction - 0.20) / 0.075;
+  return math.exp(-d * d).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
+double practiceCeremonyPreviewRecede(double revealFraction) {
+  if (revealFraction <= 0.40 || revealFraction >= 0.54) return 0;
+  final d = (revealFraction - 0.48) / 0.045;
+  return math.exp(-d * d).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
+double practiceCeremonyGlassWipe(double revealFraction) {
+  final d = (revealFraction - 0.865) / 0.045;
+  return math.exp(-d * d).clamp(0.0, 1.0);
+}
+
 double _referenceExplosionOpacity(double revealFraction) {
   if (revealFraction <= kPracticeRevealRechargeEnd ||
       revealFraction >= kPracticeRevealGrandFlipEnd) {
@@ -564,12 +592,22 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     double beamProgress = 0; // 橫掃光束位置（只在高潮翻面段 0→1 掃一道）
     double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
     double introRoll = 0;
+    double cardRoll = 0;
+    double cardScale = 1;
+    double cardDy = 0;
 
     if (f < kPracticeRevealFlip1Start) {
       // 卡背蓄力：對齊音樂第一爆點前的 build。卡背持續、金光漸亮，先不翻面。
       final intro = seg(0, kPracticeRevealFlip1Start);
-      angle = practiceCeremonyIntroTilt(f);
-      introRoll = angle * 0.28;
+      final introTilt = practiceCeremonyIntroTilt(f);
+      final tumble = practiceCeremonyTumbleSpin(f);
+      const tumbleStart = 0.045;
+      const tumbleEnd = 0.135;
+      final tumbleT =
+          ((f - tumbleStart) / (tumbleEnd - tumbleStart)).clamp(0.0, 1.0);
+      final tumbleTurn = Curves.easeInOutCubic.transform(tumbleT);
+      angle = introTilt + tumbleTurn * math.pi * 2;
+      introRoll = introTilt * 0.28 + tumble * 0.18;
       showFront = false;
       backGlow = math.max(0.6 + 0.25 * intro, practiceCeremonyRimIntensity(f));
     } else if (f < kPracticeRevealFlip1End) {
@@ -585,6 +623,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       showFront = true;
       frontAppear = Curves.easeOut
           .transform(seg(kPracticeRevealFlip1End, kPracticeRevealPreviewEnd));
+      final previewT = seg(kPracticeRevealFlip1End, kPracticeRevealPreviewEnd);
+      final recede = practiceCeremonyPreviewRecede(f);
+      cardScale = 1 - 0.09 * recede;
+      cardDy = -18 * recede;
+      cardRoll = (-0.04 + 0.07 * previewT) * (0.45 + 0.55 * recede);
     } else if (f < kPracticeRevealRechargeEnd) {
       // 翻回卡背（蓄力重啟），rotateY π→0。
       final rot =
@@ -593,6 +636,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       showFront = angle > math.pi / 2;
       frontAppear = 1;
       flashCenter = rot;
+      final recede = practiceCeremonyPreviewRecede(f);
+      cardScale = 1 - 0.08 * recede;
+      cardDy = -16 * recede;
     } else if (f < kPracticeRevealHaloClimax) {
       // 卡背發亮、軌道彗星 halo 衝高潮（Batch B：兩夾層 _OrbitalHaloPainter）。
       final climb = seg(kPracticeRevealRechargeEnd, kPracticeRevealHaloClimax);
@@ -639,6 +685,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final climaxBurst = practiceCeremonyClimaxBurst(f);
     final flash = math.max(flipFlash, climaxBurst);
     final settlePulse = practiceCeremonySettlePulse(f) * (1 - frontDepart);
+    final particleBloom = practiceCeremonyParticleBloom(f) * (1 - frontDepart);
+    final glassWipe = practiceCeremonyGlassWipe(f) * (1 - frontDepart);
 
     // 正面卡升階：高潮翻面前的白卡用 preview，高潮起換金框典藏卡 grand。
     final cardVariant = f < kPracticeRevealHaloClimax
@@ -686,14 +734,33 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 ),
               ),
             ),
-          Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateZ(introRoll)
-              ..rotateY(angle),
-            child: face,
+          Transform.translate(
+            offset: Offset(0, cardDy),
+            child: Transform.scale(
+              scale: cardScale,
+              child: Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001)
+                  ..rotateZ(introRoll + cardRoll)
+                  ..rotateY(angle),
+                child: face,
+              ),
+            ),
           ),
+          if (particleBloom > 0.02)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-particle-bloom'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _ParticleBloomPainter(
+                    progress: f,
+                    intensity: particleBloom,
+                    cardSize: Size(cardW, cardH),
+                  ),
+                ),
+              ),
+            ),
           // 能量邊框：蓄力段沿卡框描邊掃動＋底邊噴火花，緊貼卡上方做「能量灌入」感。
           if (energyIntensity > 0.01)
             Positioned.fill(
@@ -728,9 +795,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 painter: _StarfieldPainter(
                   twinkle: f,
                   // PEAK#2 burst 額外灌入星爆亮度，做出 6.5s 高潮的爆發。
-                  intensity:
-                      (haloIntensity * 0.7 + flash * 0.6 + climaxBurst * 0.7) *
-                          (1 - frontDepart),
+                  intensity: (particleBloom * 0.55 +
+                          haloIntensity * 0.7 +
+                          flash * 0.6 +
+                          climaxBurst * 0.7) *
+                      (1 - frontDepart),
                   beam: beamProgress,
                 ),
               ),
@@ -744,6 +813,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                   painter: _SettlePulsePainter(
                     progress: f,
                     intensity: settlePulse,
+                    cardSize: Size(cardW, cardH),
+                  ),
+                ),
+              ),
+            ),
+          if (glassWipe > 0.02)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-glass-wipe'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _GlassWipePainter(
+                    progress: f,
+                    intensity: glassWipe,
                     cardSize: Size(cardW, cardH),
                   ),
                 ),
@@ -1895,6 +1977,226 @@ class _RevealFlashPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RevealFlashPainter old) => old.intensity != intensity;
+}
+
+class _ParticleBloomPainter extends CustomPainter {
+  _ParticleBloomPainter({
+    required this.progress,
+    required this.intensity,
+    required this.cardSize,
+  });
+
+  final double progress;
+  final double intensity;
+  final Size cardSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final center = size.center(Offset.zero);
+    final cardRect = Rect.fromCenter(
+      center: center,
+      width: cardSize.width,
+      height: cardSize.height,
+    );
+    final field = cardRect.inflate(cardSize.width * 0.16);
+    final glow = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    final dot = Paint()..blendMode = BlendMode.plus;
+
+    void spark(Offset p, Color color, double radius, double alpha) {
+      final a = alpha.clamp(0.0, 1.0);
+      if (a <= 0.01) return;
+      glow.color = color.withValues(alpha: a * 0.34);
+      dot.color = color.withValues(alpha: a);
+      canvas.drawCircle(p, radius * 2.4, glow);
+      canvas.drawCircle(p, radius, dot);
+    }
+
+    for (var i = 0; i < 72; i++) {
+      final side = i % 4;
+      final phase = (i * 0.61803398875 + progress * 0.22) % 1.0;
+      final shimmer = 0.56 + 0.44 * math.sin(i * 1.73 + progress * 36);
+      final color = Color.lerp(_kNeonCyan, _kGold, (i % 9) / 8)!;
+      final radius = 1.1 + (i % 5) * 0.32;
+      final jitter =
+          math.sin(i * 2.31 + progress * 18) * cardSize.width * 0.035;
+      late final Offset p;
+      var sideWeight = 1.0;
+      switch (side) {
+        case 0:
+          p = Offset(
+              field.left - jitter.abs(), field.top + field.height * phase);
+          break;
+        case 1:
+          p = Offset(
+              field.right + jitter.abs(), field.top + field.height * phase);
+          break;
+        case 2:
+          sideWeight = 0.56;
+          p = Offset(
+              field.left + field.width * phase, field.top - jitter.abs());
+          break;
+        default:
+          sideWeight = 0.42;
+          p = Offset(
+              field.left + field.width * phase, field.bottom + jitter.abs());
+          break;
+      }
+      spark(p, color, radius, intensity * shimmer * sideWeight);
+    }
+
+    for (var i = 0; i < 30; i++) {
+      final angle = i * 2.399963229728653 + progress * 5.2;
+      final orbit = 0.58 + (i % 7) * 0.035;
+      final p = center +
+          Offset(
+            math.cos(angle) * cardSize.width * orbit,
+            math.sin(angle) * cardSize.height * orbit * 0.56,
+          );
+      final twinkle = 0.45 + 0.55 * math.sin(angle * 1.4 + progress * 40);
+      spark(
+        p,
+        Color.lerp(Colors.white, _kNeonCyan, (i % 4) / 3)!,
+        0.8 + 1.2 * twinkle,
+        intensity * twinkle * 0.58,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ParticleBloomPainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.cardSize != cardSize;
+}
+
+class _GlassWipePainter extends CustomPainter {
+  _GlassWipePainter({
+    required this.progress,
+    required this.intensity,
+    required this.cardSize,
+  });
+
+  final double progress;
+  final double intensity;
+  final Size cardSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final center = size.center(Offset.zero);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: cardSize.width,
+      height: cardSize.height,
+    );
+    final rrect = RRect.fromRectAndRadius(
+      rect,
+      Radius.circular(cardSize.width * 0.075),
+    );
+    final sweepT = ((progress - 0.81) / 0.13).clamp(0.0, 1.0);
+
+    canvas.save();
+    canvas.clipRRect(rrect);
+
+    final veil = Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.00),
+          Colors.white.withValues(alpha: 0.10 * intensity),
+          _kTeal.withValues(alpha: 0.04 * intensity),
+          Colors.white.withValues(alpha: 0.00),
+        ],
+        stops: const [0.0, 0.42, 0.58, 1.0],
+      ).createShader(rect);
+    canvas.drawRect(rect, veil);
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-0.42);
+    final sweepX = -cardSize.width * 0.94 + cardSize.width * 1.88 * sweepT;
+    final bandRect = Rect.fromCenter(
+      center: Offset(sweepX, 0),
+      width: cardSize.width * 0.48,
+      height: cardSize.height * 1.72,
+    );
+    final band = Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Colors.transparent,
+          Color(0x66FFFFFF),
+          Color(0xF2FFFFFF),
+          Color(0x66FFFFFF),
+          Colors.transparent,
+        ],
+        stops: [0.0, 0.32, 0.50, 0.68, 1.0],
+      ).createShader(bandRect);
+    canvas.drawRect(bandRect, band);
+
+    final edge = Paint()
+      ..blendMode = BlendMode.plus
+      ..color = Colors.white.withValues(alpha: 0.55 * intensity)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: Offset(sweepX - cardSize.width * 0.13, 0),
+        width: 2.2,
+        height: cardSize.height * 1.55,
+      ),
+      edge,
+    );
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: Offset(sweepX + cardSize.width * 0.15, 0),
+        width: 1.4,
+        height: cardSize.height * 1.38,
+      ),
+      edge..color = _kGold.withValues(alpha: 0.36 * intensity),
+    );
+
+    final bead = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+    for (var i = 0; i < 18; i++) {
+      final y = -cardSize.height * 0.68 +
+          cardSize.height * 1.36 * ((i * 0.61803398875 + sweepT) % 1.0);
+      final x =
+          sweepX + math.sin(i * 1.91 + progress * 26) * cardSize.width * 0.20;
+      final shimmer = 0.42 + 0.58 * math.sin(i * 2.2 + progress * 38);
+      bead.color = Color.lerp(Colors.white, _kGold, (i % 3) / 2)!
+          .withValues(alpha: intensity * shimmer * 0.72);
+      canvas.drawCircle(Offset(x, y), 1.2 + shimmer * 1.8, bead);
+    }
+    canvas.restore();
+
+    final bottomGloss = Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          Colors.white.withValues(alpha: 0.08 * intensity),
+          _kGold.withValues(alpha: 0.05 * intensity),
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, bottomGloss);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_GlassWipePainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.cardSize != cardSize;
 }
 
 class _SettlePulsePainter extends CustomPainter {

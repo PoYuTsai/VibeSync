@@ -2216,6 +2216,73 @@ void main() {
     });
   });
 
+  group('F1 reference-timed motion accents', () {
+    test('intro tumble, side particles, preview recede, glass wipe are timed',
+        () {
+      expect(practiceCeremonyTumbleSpin(0), closeTo(0, 0.001));
+      expect(practiceCeremonyTumbleSpin(0.085), greaterThan(0.9));
+      expect(practiceCeremonyTumbleSpin(0.16), closeTo(0, 0.001));
+
+      expect(practiceCeremonyParticleBloom(0.20), greaterThan(0.8));
+      expect(practiceCeremonyParticleBloom(0.04), lessThan(0.2));
+      expect(practiceCeremonyParticleBloom(0.40), lessThan(0.2));
+
+      expect(practiceCeremonyPreviewRecede(0.48), greaterThan(0.65));
+      expect(practiceCeremonyPreviewRecede(0.36), closeTo(0, 0.001));
+      expect(practiceCeremonyPreviewRecede(0.58), lessThan(0.1));
+
+      expect(practiceCeremonyGlassWipe(0.865), greaterThan(0.8));
+      expect(practiceCeremonyGlassWipe(0.76), lessThan(0.1));
+      expect(practiceCeremonyGlassWipe(0.96), lessThan(0.1));
+    });
+
+    testWidgets('2s particle bloom appears around the card, then clears',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.20));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-particle-bloom')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.20));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-particle-bloom')),
+        findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('8-9s glass wipe appears over the grand card, then clears',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.865));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-glass-wipe')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.10));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-glass-wipe')),
+        findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+  });
+
   testWidgets('E1：揭曉開場卡背先蓄力、不立即翻面（對齊第一爆點前的 build）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
