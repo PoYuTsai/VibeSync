@@ -8,11 +8,51 @@ import {
   CHAT_SYSTEM_PROMPT,
   DEBRIEF_SYSTEM_PROMPT,
 } from "./prompt.ts";
+import { temperatureBandInstruction } from "./temperature.ts";
 import type { PracticeTurn } from "./validate.ts";
 import { resolvePracticeProfile } from "./practice_persona.ts";
 
 // 預設 profile（slow_worker + normal），供既有不指定角色難度的測試沿用。
 const defaultProfile = resolvePracticeProfile({});
+
+Deno.test("standard buildChatMessages does not include temperature score", () => {
+  const sys = buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile)[0]
+    .content;
+
+  assertEquals(sys.includes("升溫指數"), false);
+});
+
+Deno.test("beginner buildChatMessages includes temperature score", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "beginner", temperatureScore: 30 },
+  )[0].content;
+
+  assertEquals(sys.includes("升溫指數 30/100"), true);
+});
+
+Deno.test("beginner buildChatMessages includes exactly one cold band instruction", () => {
+  const expected = temperatureBandInstruction(30);
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "beginner", temperatureScore: 30 },
+  )[0].content;
+
+  assertEquals(sys.split(expected).length - 1, 1);
+});
+
+Deno.test("beginner buildChatMessages does not mention hints", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "beginner", temperatureScore: 30 },
+  )[0].content;
+
+  assertEquals(sys.includes("hint"), false);
+  assertEquals(sys.includes("提示"), false);
+});
 
 // ── chat 人設鎖死：不是 AI、不是教練、短句繁中 ───────────────────────
 

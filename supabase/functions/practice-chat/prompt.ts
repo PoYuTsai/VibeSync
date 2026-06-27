@@ -4,6 +4,8 @@
 
 import type { PracticeTurn } from "./validate.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
+import type { PracticeLearningMode } from "./quota_decision.ts";
+import { temperatureBandInstruction } from "./temperature.ts";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -110,15 +112,22 @@ function buildProfilePrompt(profile: PracticeProfile): string {
 export function buildChatMessages(
   turns: PracticeTurn[],
   profile: PracticeProfile,
+  options: {
+    practiceMode?: PracticeLearningMode;
+    temperatureScore?: number;
+  } = {},
 ): ChatMessage[] {
   const history: ChatMessage[] = turns.map((t) => ({
     role: t.role === "user" ? "user" : "assistant",
     content: t.text,
   }));
+  const temperaturePrompt = options.practiceMode === "beginner"
+    ? `\n\n${temperatureBandInstruction(options.temperatureScore ?? 30)}`
+    : "";
   return [
     {
       role: "system",
-      content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}`,
+      content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}${temperaturePrompt}`,
     },
     ...history,
   ];
