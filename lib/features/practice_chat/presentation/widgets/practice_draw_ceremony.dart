@@ -134,7 +134,7 @@ double practiceCeremonyGlassWipe(double revealFraction) {
 
 @visibleForTesting
 double practiceCeremonyAfterglow(double revealFraction) {
-  final d = (revealFraction - 0.90) / 0.045;
+  final d = (revealFraction - 0.86) / 0.035;
   return math.exp(-d * d).clamp(0.0, 1.0);
 }
 
@@ -159,9 +159,9 @@ double _referenceExplosionOpacity(double revealFraction) {
 /// [kPracticeCardMaxWidth]；矮螢幕再被可用高度夾住，確保 stage＋caption 不溢出。
 /// widget 與 widget test 共用單一真相。
 @visibleForTesting
-const double kPracticeCardWidthFactor = 0.84;
+const double kPracticeCardWidthFactor = 0.90;
 @visibleForTesting
-const double kPracticeCardMaxWidth = 360;
+const double kPracticeCardMaxWidth = 390;
 @visibleForTesting
 const double kPracticeCardHeightRatio = 1.5; // 直式 2:3 → 高 = 寬 × 1.5（塔羅卡比例）
 @visibleForTesting
@@ -2022,38 +2022,41 @@ class _ParticleBloomPainter extends CustomPainter {
     final field = cardRect.inflate(cardSize.width * 0.32);
     final glow = Paint()
       ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
     final dot = Paint()..blendMode = BlendMode.plus;
 
     void spark(Offset p, Color color, double radius, double alpha) {
       final a = alpha.clamp(0.0, 1.0);
       if (a <= 0.01) return;
-      glow.color = color.withValues(alpha: a * 0.66);
-      dot.color = color.withValues(alpha: a);
-      canvas.drawCircle(p, radius * 3.9, glow);
+      glow.color = color.withValues(alpha: a * 0.72);
+      dot.color = color.withValues(alpha: a * 0.92);
+      canvas.drawCircle(p, radius * 3.2, glow);
       canvas.drawCircle(p, radius, dot);
     }
 
-    for (var i = 0; i < 168; i++) {
+    for (var i = 0; i < 280; i++) {
       final side = i % 4;
       final phase = (i * 0.61803398875 + progress * 0.22) % 1.0;
       final shimmer = 0.56 + 0.44 * math.sin(i * 1.73 + progress * 36);
-      final color = Color.lerp(_kNeonCyan, _kGold, (i % 9) / 8)!;
-      final radius = 1.15 + (i % 7) * 0.36;
+      final radius = 0.58 + (i % 6) * 0.14;
       final jitter =
           math.sin(i * 2.31 + progress * 18) * cardSize.width * 0.075;
       late final Offset p;
+      late final Color color;
       var sideWeight = 1.95;
       switch (side) {
         case 0:
+          color = Color.lerp(_kGold, Colors.white, (i % 5) / 9)!;
           p = Offset(
               field.left - jitter.abs(), field.top + field.height * phase);
           break;
         case 1:
+          color = Color.lerp(_kNeonCyan, Colors.white, (i % 5) / 10)!;
           p = Offset(
               field.right + jitter.abs(), field.top + field.height * phase);
           break;
         case 2:
+          color = Color.lerp(_kGold, _kNeonCyan, phase)!;
           sideWeight = 1.42;
           p = Offset(
             field.left +
@@ -2064,6 +2067,7 @@ class _ParticleBloomPainter extends CustomPainter {
           );
           break;
         default:
+          color = Color.lerp(_kGold, _kNeonCyan, 1 - phase)!;
           sideWeight = 1.18;
           p = Offset(
             field.left +
@@ -2077,7 +2081,7 @@ class _ParticleBloomPainter extends CustomPainter {
       spark(p, color, radius, intensity * shimmer * sideWeight);
     }
 
-    for (var i = 0; i < 72; i++) {
+    for (var i = 0; i < 96; i++) {
       final angle = i * 2.399963229728653 + progress * 5.2;
       final orbit = 0.60 + (i % 9) * 0.04;
       final p = center +
@@ -2089,12 +2093,12 @@ class _ParticleBloomPainter extends CustomPainter {
       spark(
         p,
         Color.lerp(Colors.white, _kNeonCyan, (i % 4) / 3)!,
-        1.0 + 1.7 * twinkle,
-        intensity * twinkle * 0.92,
+        0.54 + 1.0 * twinkle,
+        intensity * twinkle * 0.88,
       );
     }
 
-    for (var i = 0; i < 130; i++) {
+    for (var i = 0; i < 240; i++) {
       final angle = i * 2.399963229728653 + progress * 2.8;
       final side = math.cos(angle).abs();
       final haloBand = 0.58 + 0.36 * ((i * 7) % 13) / 12;
@@ -2105,14 +2109,16 @@ class _ParticleBloomPainter extends CustomPainter {
           math.sin(angle) * cardSize.height * (0.42 + 0.22 * side) +
           math.cos(i * 1.73 + progress * 13) * cardSize.height * 0.04;
       final shimmer = 0.45 + 0.55 * math.sin(i * 1.67 + progress * 44);
-      final color = i % 3 == 0
-          ? _kGold
-          : Color.lerp(_kNeonCyan, Colors.white, (i % 5) / 4)!;
+      final color = i % 11 == 0
+          ? Colors.white
+          : (math.cos(angle) < 0
+              ? Color.lerp(_kGold, Colors.white, (i % 5) / 12)!
+              : Color.lerp(_kNeonCyan, Colors.white, (i % 5) / 12)!);
       spark(
         Offset(x, y),
         color,
-        0.72 + shimmer * 1.35,
-        intensity * shimmer * (0.28 + 0.58 * side),
+        0.42 + shimmer * 0.86,
+        intensity * shimmer * (0.20 + 0.66 * side),
       );
     }
   }
@@ -2275,7 +2281,7 @@ class _AfterglowPainter extends CustomPainter {
       rect.inflate(cardSize.width * 0.035),
       Radius.circular(cardSize.width * 0.09),
     );
-    final phase = ((progress - 0.84) / 0.13).clamp(0.0, 1.0);
+    final phase = ((progress - 0.80) / 0.12).clamp(0.0, 1.0);
 
     final rim = Paint()
       ..style = PaintingStyle.stroke

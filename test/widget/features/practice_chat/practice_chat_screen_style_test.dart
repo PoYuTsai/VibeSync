@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -2237,9 +2238,10 @@ void main() {
       expect(practiceCeremonyGlassWipe(0.76), lessThan(0.1));
       expect(practiceCeremonyGlassWipe(0.96), lessThan(0.1));
 
-      expect(practiceCeremonyAfterglow(0.90), greaterThan(0.75));
+      expect(practiceCeremonyAfterglow(0.86), greaterThan(0.75));
       expect(practiceCeremonyAfterglow(0.78), lessThan(0.1));
-      expect(practiceCeremonyAfterglow(0.99), lessThan(0.1));
+      expect(practiceCeremonyAfterglow(0.94), lessThan(0.2));
+      expect(practiceCeremonyAfterglow(0.99), lessThan(0.05));
     });
 
     testWidgets('2s particle bloom appears around the card, then clears',
@@ -2296,7 +2298,7 @@ void main() {
       await drawToReveal(tester,
           completer: completer, girl: practiceGirlProfiles[2]);
 
-      await tester.pump(atFraction(0.90));
+      await tester.pump(atFraction(0.86));
       expect(
         find.byKey(const ValueKey('practice-draw-ceremony-afterglow')),
         findsOneWidget,
@@ -2307,6 +2309,33 @@ void main() {
         find.byKey(const ValueKey('practice-draw-ceremony-afterglow')),
         findsNothing,
       );
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets(
+        '0-3s card stays hero-sized instead of shrinking during preview',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.20));
+
+      final cardScale = tester
+          .widgetList<Transform>(
+            find.ancestor(
+              of: find.byKey(const ValueKey('practice-draw-ceremony-back')),
+              matching: find.byType(Transform),
+            ),
+          )
+          .map((t) => t.transform.storage[0])
+          .where((x) => x > 0.0 && x <= 1.0)
+          .reduce(math.min);
+
+      expect(cardScale, greaterThanOrEqualTo(0.97));
 
       await tester.pumpAndSettle();
     });
@@ -2334,9 +2363,11 @@ void main() {
   });
 
   group('E1 卡尺寸 responsive', () {
-    test('卡寬≈0.84×螢幕寬、維持直式 2:3，且比舊版固定 214 大', () {
+    test('卡寬≈0.90×螢幕寬、維持直式 2:3，且比舊版固定 214 大', () {
+      expect(kPracticeCardWidthFactor, greaterThanOrEqualTo(0.90));
+      expect(kPracticeCardMaxWidth, greaterThanOrEqualTo(390));
       final s = practiceCeremonyCardSize(const Size(390, 844));
-      expect(s.width, closeTo(390 * 0.84, 0.5));
+      expect(s.width, closeTo(390 * 0.90, 0.5));
       expect(s.height, closeTo(s.width * 1.5, 0.5));
       expect(s.width, greaterThan(214));
     });
