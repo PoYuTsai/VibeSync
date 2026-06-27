@@ -1999,18 +1999,42 @@ void main() {
   });
 
   // ── E1：揭曉時間軸對齊參考音軌「音檔.mp4」＋放大卡（復刻）──────────────────────
+  // 第4輪 storyboard 重定時：總長 10.0s，錨定三爆點（3.0/6.5/8.5）＋屏息（5.0）。
   group('E1 時間軸對齊音軌', () {
-    test('揭曉總長延長到約 9 秒（對齊參考音軌長度）', () {
-      expect(kPracticeRevealDuration, const Duration(milliseconds: 9000));
+    test('揭曉總長 = 10 秒（對齊參考片 音檔.mp4 720×1280 24fps 10.000s）', () {
+      expect(kPracticeRevealDuration, const Duration(milliseconds: 10000));
     });
 
-    test('beat 對齊音軌三爆點：預覽~1/3、低谷~0.55、高潮落定~0.94', () {
-      // 第一爆點 ~3.0s/9s → 白卡預覽翻出。
-      expect(kPracticeRevealFlip1End, inInclusiveRange(0.30, 0.40));
-      // 近靜音低谷 ~5.0s/9s → 翻回卡背蓄力（屏息）。
-      expect(kPracticeRevealRechargeEnd, inInclusiveRange(0.50, 0.60));
-      // 第二爆點 ~8.5s/9s → 高潮典藏卡落定。
-      expect(kPracticeRevealHoldEnd, inInclusiveRange(0.90, 0.97));
+    test('beat 錨定音軌三爆點＋屏息（10s）：peak#1 3.0／屏息 5.0／peak#2 6.5／落定 8.5', () {
+      // peak#1 ~3.0s/10 → 卡背立直、白卡預覽翻出。
+      expect(kPracticeRevealFlip1Start, inInclusiveRange(0.28, 0.33));
+      expect(kPracticeRevealFlip1End, inInclusiveRange(0.33, 0.40));
+      // 屏息低谷 ~5.0s/10 → 預覽卡收到最靜點，之後翻回卡背蓄力。
+      expect(kPracticeRevealPreviewEnd, inInclusiveRange(0.48, 0.55));
+      expect(kPracticeRevealRechargeEnd, inInclusiveRange(0.57, 0.63));
+      // peak#2 ~6.5s/10 → 翻面爆裂高潮（halo climax）。
+      expect(kPracticeRevealHaloClimax, inInclusiveRange(0.62, 0.68));
+      // 典藏卡落定 ~7.25s/10、peak#3 ~8.5s/10 settle 收尾。
+      expect(kPracticeRevealGrandFlipEnd, inInclusiveRange(0.70, 0.76));
+      expect(kPracticeRevealHoldEnd, inInclusiveRange(0.79, 0.87));
+    });
+
+    test('beat 常數嚴格單調遞增（時間軸不交錯）', () {
+      final beats = <double>[
+        kPracticeRevealFlip1Start,
+        kPracticeRevealFlip1End,
+        kPracticeRevealPreviewEnd,
+        kPracticeRevealRechargeEnd,
+        kPracticeRevealHaloClimax,
+        kPracticeRevealGrandFlipEnd,
+        kPracticeRevealHoldEnd,
+      ];
+      for (var i = 1; i < beats.length; i++) {
+        expect(beats[i], greaterThan(beats[i - 1]),
+            reason: 'beat[$i] 必須大於 beat[${i - 1}]');
+      }
+      expect(beats.first, greaterThan(0));
+      expect(beats.last, lessThan(1));
     });
   });
 

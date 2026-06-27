@@ -14,25 +14,29 @@ import 'practice_girl_photo.dart';
 
 /// 翻牌揭曉時間軸（公開供 widget 與 widget test 共用單一真相）。
 /// fraction = ms / kPracticeRevealDuration。詳見 _buildStage 兩段升階分支。
-// 時間軸對齊參考音軌「音檔.mp4」（E1）：0–0.5s 靜默→卡背登場；~3.0s 第一爆點→預覽
-// 卡翻出；~5.0s 近靜音低谷→翻回卡背屏息；~6.5→8.5s 第二段 build＋第二爆點→高潮翻面
-// 典藏卡落定。fraction = 絕對秒 / 9.0。
+// 第4輪 storyboard 重定時：總長 = 參考片「音檔.mp4」實測 10.000s（720×1280 24fps
+// 240 幀）。錨定音軌實測三爆點＋屏息低谷（fraction = 絕對秒 / 10.0）：
+//   0.0–0.5s 亮 UI 靜置卡背 → 0.5–1.0 轉暗星空升起 → 1.0–3.0 蓄力 neon 循環
+//   → 3.0s **PEAK#1** 卡背立直→白卡預覽翻出 → 3.5–4.75 預覽懸停
+//   → 5.0s **屏息**（−77dB 最深谷）預覽收最小 → 5.25–6.0 翻回卡背再蓄力
+//   → 6.0–7.25 flip-explosion（6.5s **PEAK#2** 高潮）→ 7.25–8.0 grand 典藏卡
+//   → 8.25–8.75 grand 縮、UI 淡回（8.5s **PEAK#3** 落定）→ 8.75–10.0 settle 亮 UI。
 @visibleForTesting
-const Duration kPracticeRevealDuration = Duration(milliseconds: 9000);
+const Duration kPracticeRevealDuration = Duration(milliseconds: 10000);
 @visibleForTesting
-const double kPracticeRevealFlip1Start = 0.28; // 卡背蓄力（音樂 build）→ 翻面起手（≈2.5s）
+const double kPracticeRevealFlip1Start = 0.30; // 3.0s PEAK#1：卡背立直→翻面起手
 @visibleForTesting
-const double kPracticeRevealFlip1End = 0.34; // 卡背→白卡預覽翻面落定（≈3.06s 第一爆點）
+const double kPracticeRevealFlip1End = 0.36; // 3.6s：卡背→白卡預覽翻面落定
 @visibleForTesting
-const double kPracticeRevealPreviewEnd = 0.45; // 白卡停留、資訊浮出（屏息，≈4.05s）
+const double kPracticeRevealPreviewEnd = 0.50; // 5.0s 屏息：預覽收最小、之後翻回卡背
 @visibleForTesting
-const double kPracticeRevealRechargeEnd = 0.56; // 翻回卡背（蓄力重啟，≈5.04s 低谷）
+const double kPracticeRevealRechargeEnd = 0.60; // 6.0s：翻回卡背蓄力完成（爆裂起手）
 @visibleForTesting
-const double kPracticeRevealHaloClimax = 0.82; // 卡背發亮、光環衝高潮（≈7.38s）
+const double kPracticeRevealHaloClimax = 0.65; // 6.5s PEAK#2：軌道光環爆裂高潮
 @visibleForTesting
-const double kPracticeRevealGrandFlipEnd = 0.90; // 高潮翻面→典藏卡（≈8.1s）
+const double kPracticeRevealGrandFlipEnd = 0.725; // 7.25s：高潮翻面→金框典藏卡落定
 @visibleForTesting
-const double kPracticeRevealHoldEnd = 0.94; // 典藏卡落定、settle（≈8.46s 第二爆點）
+const double kPracticeRevealHoldEnd = 0.82; // 8.2s：典藏卡停留結束→settle（8.5 落定）
 
 /// 揭曉卡片尺寸（E1 放大／復刻 音檔.mp4 的近滿版大卡）：寬 ≈ 0.84×螢幕寬、直式 3:4
 /// （高 = 寬 × 4/3）。大螢幕（平板）寬封頂 [kPracticeCardMaxWidth]；矮螢幕再被可用
