@@ -14,15 +14,18 @@ import {
   decideChatGate,
   decideContinuationGate,
   decideDebriefGate,
+  decideHintGate,
   isSessionComplete,
   MAX_AI_REPLIES,
   MAX_DEBRIEFS,
+  MAX_HINTS_PER_ROUND,
   PRACTICE_QUOTA_COST,
   type PracticeLearningMode,
   type SessionLedger,
 } from "./quota_decision.ts";
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
 import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
+import { buildHintMessages, parseHintResult } from "./hint.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
   applyTemperatureDelta,
@@ -36,6 +39,8 @@ const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
 const DEBRIEF_MAX_TOKENS = 500;
 const DEBRIEF_TEMPERATURE = 0.5;
+const HINT_MAX_TOKENS = 450;
+const HINT_TEMPERATURE = 0.45;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 80;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -88,6 +93,12 @@ function mapLedgerError(message: string): { error: string; status: number } {
   }
   if (message.includes("PRACTICE_SESSION_NOT_STARTED")) {
     return { error: "practice_session_not_started", status: 403 };
+  }
+  if (message.includes("PRACTICE_HINT_LIMIT")) {
+    return { error: "practice_hint_limit", status: 403 };
+  }
+  if (message.includes("PRACTICE_HINT_BEGINNER_ONLY")) {
+    return { error: "practice_hint_beginner_only", status: 403 };
   }
   if (message.includes("PRACTICE_DEBRIEF_LIMIT")) {
     return { error: "practice_debrief_limit", status: 403 };
@@ -255,10 +266,6 @@ export function createPracticeChatHandler(
       return jsonResponse({ error: getErrorMessage(e) }, 400);
     }
 
-    if (request.mode === "hint") {
-      return jsonResponse({ error: "practice_hint_not_available" }, 403);
-    }
-
     const apiKey = deps.getEnv("DEEPSEEK_API_KEY");
     if (!apiKey) {
       logError("practice_chat_config_missing", {
@@ -327,6 +334,114 @@ export function createPracticeChatHandler(
       temperatureScore: temperatureFromLedger(ledgerRow?.temperature_score),
       hintCount: hintCountFromLedger(ledgerRow?.hint_count),
     };
+
+    if (request.mode === "hint") {
+      if (request.practiceMode !== "beginner") {
+        return jsonResponse({ error: "practice_hint_beginner_only" }, 403);
+      }
+
+      const gate = decideHintGate({ ledger, maxHints: MAX_HINTS_PER_ROUND });
+      if (!gate.allowed) {
+        logWarn("practice_chat_hint_rejected", {
+          user: summarizeUser(user.id),
+          reason: gate.reason,
+        });
+        return jsonResponse(
+          { error: gate.reason ?? "practice_session_not_started" },
+          403,
+        );
+      }
+
+      const quotaGate = checkQuota({
+        sub,
+        cost: PRACTICE_QUOTA_COST,
+        isTestAccount: accountIsTest,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
+      });
+      if (!quotaGate.ok) {
+        logWarn("practice_chat_quota_exceeded", {
+          user: summarizeUser(user.id),
+          reason: quotaGate.reason,
+        });
+        return jsonResponse(
+          buildQuotaExceededPayload({
+            sub,
+            cost: PRACTICE_QUOTA_COST,
+            reason: quotaGate.reason,
+            monthlyLimit: limits.monthly,
+            dailyLimit: limits.daily,
+          }),
+          429,
+        );
+      }
+
+      let hintResult: ReturnType<typeof parseHintResult>;
+      try {
+        const rawHint = await deps.callDeepSeek({
+          apiKey,
+          messages: buildHintMessages({
+            turns: request.turns,
+            profile: request.profile,
+            temperatureScore: ledger.temperatureScore ?? 30,
+          }),
+          maxTokens: HINT_MAX_TOKENS,
+          temperature: HINT_TEMPERATURE,
+          jsonMode: true,
+          timeoutMs: DEEPSEEK_TIMEOUT_MS,
+        });
+        hintResult = parseHintResult(rawHint);
+      } catch (e) {
+        logWarn("practice_chat_generation_failed", {
+          user: summarizeUser(user.id),
+          mode: "hint",
+          personaId: request.profile.personaId,
+          difficulty: request.profile.difficulty,
+          error: getErrorMessage(e),
+        });
+        return jsonResponse({ error: "practice_generation_failed" }, 500);
+      }
+
+      const { data: recordData, error: recordError } = await supabase.rpc(
+        "record_practice_hint",
+        {
+          p_user_id: user.id,
+          p_session_id: request.sessionId,
+          p_charge_quota: !accountIsTest,
+          p_max_hints: MAX_HINTS_PER_ROUND,
+        },
+      );
+      if (recordError) {
+        const mapped = mapLedgerError(recordError.message);
+        logWarn("practice_chat_hint_record_failed", {
+          user: summarizeUser(user.id),
+          error: recordError.message,
+        });
+        return jsonResponse({ error: mapped.error }, mapped.status);
+      }
+      const recordRow = Array.isArray(recordData) ? recordData[0] : recordData;
+      const didCharge = (recordRow?.did_charge as boolean | undefined) ?? false;
+      const deducted = didCharge ? PRACTICE_QUOTA_COST : 0;
+      const hintUsedCount = (recordRow?.new_hint_count as number | undefined) ??
+        ((ledger.hintCount ?? 0) + 1);
+
+      logInfo("practice_chat_succeeded", {
+        user: summarizeUser(user.id),
+        mode: "hint",
+        personaId: request.profile.personaId,
+        difficulty: request.profile.difficulty,
+        costDeducted: deducted,
+      });
+      return jsonResponse({
+        ...hintResult,
+        costDeducted: deducted,
+        hintUsedCount,
+        provider: "deepseek",
+        model: DEEPSEEK_MODEL,
+        generatedAt: (deps.now?.() ?? new Date()).toISOString(),
+        ...remainingFrom(sub, limits, deducted),
+      });
+    }
 
     const lockedPracticeMode = explicitPracticeModeFromLedger(
       ledgerRow?.practice_mode,
