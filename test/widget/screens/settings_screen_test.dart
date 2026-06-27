@@ -4,15 +4,53 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
+import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/presentation/screens/settings_screen.dart';
 
+class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
+
+class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
+  _MemoryPracticeSessionRepository() : super(_UnusedPracticeSessionBox());
+
+  @override
+  List<PracticeSession> recentSessions() => const [];
+}
+
+class _NoopPracticeChatApi extends PracticeChatApiService {}
+
+class _DisposablePracticeChatController extends PracticeChatController {
+  _DisposablePracticeChatController({
+    required this.onDispose,
+    required super.api,
+    required super.repository,
+    required super.sessionId,
+    required super.createdAt,
+  });
+
+  final VoidCallback onDispose;
+
+  @override
+  void dispose() {
+    onDispose();
+    super.dispose();
+  }
+}
+
 class _FakeAccountDeletionActions extends AccountDeletionActions {
   _FakeAccountDeletionActions({
+    this.deleteError,
+    this.clearLocalStorageError,
     this.onClearLocalSessionAfterDeletion,
   });
 
+  final Object? deleteError;
+  final Object? clearLocalStorageError;
   final Future<void> Function()? onClearLocalSessionAfterDeletion;
   final confirmations = <String>[];
   var clearLocalStorageCalls = 0;
@@ -21,11 +59,15 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   @override
   Future<void> deleteAccount({required String confirmation}) async {
     confirmations.add(confirmation);
+    final error = deleteError;
+    if (error != null) throw error;
   }
 
   @override
   Future<void> clearLocalStorage() async {
     clearLocalStorageCalls++;
+    final error = clearLocalStorageError;
+    if (error != null) throw error;
   }
 
   @override
@@ -35,12 +77,54 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   }
 }
 
+class _FakeAccountLogoutActions extends AccountLogoutActions {
+  _FakeAccountLogoutActions({
+    this.signOutError,
+    this.clearUsageSnapshotError,
+    this.authenticated = false,
+  });
+
+  final Object? signOutError;
+  final Object? clearUsageSnapshotError;
+  bool authenticated;
+  var signOutCalls = 0;
+  var clearUsageSnapshotCalls = 0;
+  var clearPracticeRoomStateCalls = 0;
+
+  @override
+  bool get isAuthenticated => authenticated;
+
+  @override
+  Future<void> signOut() async {
+    signOutCalls++;
+    final error = signOutError;
+    if (error != null) throw error;
+    authenticated = false;
+  }
+
+  @override
+  Future<void> clearUsageSnapshot() async {
+    clearUsageSnapshotCalls++;
+    final error = clearUsageSnapshotError;
+    if (error != null) throw error;
+  }
+
+  @override
+  Future<void> clearPracticeRoomState() async {
+    clearPracticeRoomStateCalls++;
+  }
+}
+
 void main() {
   late GoRouter testRouter;
   late AccountDeletionActions accountDeletionActions;
+  late AccountLogoutActions accountLogoutActions;
+  Widget? settingsOverlay;
 
   setUp(() {
     accountDeletionActions = const DefaultAccountDeletionActions();
+    accountLogoutActions = const DefaultAccountLogoutActions();
+    settingsOverlay = null;
     PackageInfo.setMockInitialValues(
       appName: 'VibeSync',
       packageName: 'com.poyutsai.vibesync',
@@ -54,9 +138,15 @@ void main() {
       routes: [
         GoRoute(
           path: '/settings',
-          builder: (context, state) => SettingsScreen(
-            accountDeletionActions: accountDeletionActions,
-          ),
+          builder: (context, state) {
+            final screen = SettingsScreen(
+              accountDeletionActions: accountDeletionActions,
+              accountLogoutActions: accountLogoutActions,
+            );
+            final overlay = settingsOverlay;
+            if (overlay == null) return screen;
+            return Stack(children: [screen, overlay]);
+          },
         ),
         GoRoute(
           path: '/login',
@@ -78,10 +168,17 @@ void main() {
     WidgetTester tester, {
     Future<void> Function()? refreshUsage,
     AccountDeletionActions? deletionActions,
+    AccountLogoutActions? logoutActions,
+    List<Override> extraOverrides = const [],
+    Widget? overlay,
   }) async {
     if (deletionActions != null) {
       accountDeletionActions = deletionActions;
     }
+    if (logoutActions != null) {
+      accountLogoutActions = logoutActions;
+    }
+    settingsOverlay = overlay;
 
     await tester.binding.setSurfaceSize(const Size(430, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -92,6 +189,7 @@ void main() {
           subscriptionScreenRefreshProvider.overrideWithValue(
             refreshUsage ?? () async {},
           ),
+          ...extraOverrides,
         ],
         child: MaterialApp.router(routerConfig: testRouter),
       ),
@@ -182,6 +280,89 @@ void main() {
       expect(find.text('Paywall'), findsOneWidget);
     });
 
+    testWidgets('logout success clears practice room state before login',
+        (tester) async {
+      final actions = _FakeAccountLogoutActions(authenticated: true);
+
+      await pumpSettings(tester, logoutActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.signOutCalls, 1);
+      expect(actions.clearUsageSnapshotCalls, 1);
+      expect(actions.clearPracticeRoomStateCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+    });
+
+    testWidgets('logout failure while still authenticated keeps practice state',
+        (tester) async {
+      final actions = _FakeAccountLogoutActions(
+        signOutError: Exception('network down'),
+        authenticated: true,
+      );
+
+      await pumpSettings(tester, logoutActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.signOutCalls, 1);
+      expect(actions.clearUsageSnapshotCalls, 0);
+      expect(actions.clearPracticeRoomStateCalls, 0);
+      expect(find.text('Login'), findsNothing);
+    });
+
+    testWidgets('logout auth-gone fallback still clears practice state',
+        (tester) async {
+      final actions = _FakeAccountLogoutActions(
+        signOutError: Exception('cleanup failed after auth signout'),
+        authenticated: false,
+      );
+
+      await pumpSettings(tester, logoutActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.signOutCalls, 1);
+      expect(actions.clearUsageSnapshotCalls, 1);
+      expect(actions.clearPracticeRoomStateCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+    });
+
+    testWidgets(
+        'logout auth-gone fallback runs practice cleanup if usage fails',
+        (tester) async {
+      final actions = _FakeAccountLogoutActions(
+        signOutError: Exception('cleanup failed after auth signout'),
+        clearUsageSnapshotError: Exception('usage cleanup failed'),
+        authenticated: false,
+      );
+
+      await pumpSettings(tester, logoutActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.signOutCalls, 1);
+      expect(actions.clearUsageSnapshotCalls, 1);
+      expect(actions.clearPracticeRoomStateCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+    });
+
     testWidgets('delete account dialog requires explicit DELETE confirmation',
         (tester) async {
       await pumpSettings(tester);
@@ -240,6 +421,99 @@ void main() {
 
       expect(find.text('Login'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('delete account failure keeps local cleanup untouched',
+        (tester) async {
+      final actions = _FakeAccountDeletionActions(
+        deleteError: Exception('remote delete failed'),
+      );
+
+      await pumpSettings(tester, deletionActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.confirmations, ['DELETE']);
+      expect(actions.clearLocalStorageCalls, 0);
+      expect(actions.clearLocalSessionCalls, 0);
+      expect(find.text('Login'), findsNothing);
+    });
+
+    testWidgets('delete account local cleanup failure does not finish deletion',
+        (tester) async {
+      final actions = _FakeAccountDeletionActions(
+        clearLocalStorageError: Exception('local clear failed'),
+      );
+
+      await pumpSettings(tester, deletionActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.confirmations, ['DELETE']);
+      expect(actions.clearLocalStorageCalls, 1);
+      expect(actions.clearLocalSessionCalls, 0);
+      expect(find.text('Login'), findsNothing);
+    });
+
+    testWidgets('delete account invalidates live practice room state',
+        (tester) async {
+      final actions = _FakeAccountDeletionActions();
+      final repo = _MemoryPracticeSessionRepository();
+      final api = _NoopPracticeChatApi();
+      var createdControllers = 0;
+      var disposedControllers = 0;
+
+      PracticeChatController makeController() {
+        createdControllers++;
+        return _DisposablePracticeChatController(
+          onDispose: () => disposedControllers++,
+          api: api,
+          repository: repo,
+          sessionId: 'practice-$createdControllers',
+          createdAt: DateTime(2026, 6, 28, 10),
+        );
+      }
+
+      await pumpSettings(
+        tester,
+        deletionActions: actions,
+        extraOverrides: [
+          practiceChatControllerProvider.overrideWith(
+            (ref) => makeController(),
+          ),
+        ],
+        overlay: Consumer(
+          builder: (context, ref, child) {
+            ref.watch(practiceChatControllerProvider);
+            return const SizedBox.shrink();
+          },
+        ),
+      );
+      expect(createdControllers, 1);
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.clearLocalStorageCalls, 1);
+      expect(disposedControllers, greaterThanOrEqualTo(1));
+      expect(createdControllers, greaterThanOrEqualTo(2));
     });
   });
 }

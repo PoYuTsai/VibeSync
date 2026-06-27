@@ -9,6 +9,7 @@ import '../../features/conversation/domain/entities/conversation.dart';
 import '../../features/conversation/domain/entities/conversation_summary.dart';
 import '../../features/conversation/domain/entities/message.dart';
 import '../../features/conversation/domain/entities/session_context.dart';
+import '../../features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import '../../features/practice_chat/domain/entities/practice_message.dart';
 import '../../features/practice_chat/domain/entities/practice_session.dart';
 import '../../features/partner/data/repositories/partner_repository.dart';
@@ -185,9 +186,15 @@ class StorageService {
 
   static Box get usageBox => Hive.box(AppConstants.usageBox);
 
+  /// Clear practice-room state without touching unrelated settings.
+  static Future<void> clearPracticeRoomState() async {
+    await practiceSessionsBox.clear();
+    await settingsBox.delete(HivePracticeDrawDraftStore.storageKey);
+  }
+
   /// Clear all stored data (conversations, partners, user profile,
   /// partner style overrides, partner data quality states, coach follow-up /
-  /// coach chat results, settings, usage).
+  /// coach chat results, practice sessions, settings, usage).
   static Future<void> clearAll() async {
     await conversationsBox.clear();
     await partnersBox.clear();
@@ -197,7 +204,7 @@ class StorageService {
     await coachFollowUpResultsBox.clear();
     await coachChatResultsBox.clear();
     await coachingOutcomeEventsBox.clear();
-    await practiceSessionsBox.clear();
+    await clearPracticeRoomState();
     await settingsBox.clear();
     await usageBox.clear();
   }

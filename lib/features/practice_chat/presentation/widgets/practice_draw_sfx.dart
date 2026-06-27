@@ -36,13 +36,14 @@ abstract class PracticeDrawSfx {
   /// 揭曉成功：卡片翻正的 chime/sparkle（約 0.6–1 秒，與 medium haptic 同步）。
   void playRevealChime();
 
-  /// 兩段升階揭曉的「蓄力 riser」：高潮蓄力段起手時播一次（卡背翻回、能量邊框點亮
-  /// 那一刻）。由揭曉時間軸 `_reveal` 跨蓄力門檻 edge-detect 觸發，一次揭曉只播一次。
-  void playRiser();
+  /// 揭曉配樂 bed（E2 復刻）：一條與 `_reveal`（~9s）同長同步的連續配樂，直接取自參考片
+  /// `音檔.mp4` 的音軌。在揭曉時間軸起始（`_reveal.forward(from:0)`）播一次，取代舊的
+  /// 離散 riser/settle accent。可重複呼叫＝重起（內部先 stop 再 play，同時只一條、不重疊）。
+  void playRevealBed();
 
-  /// 兩段升階揭曉的「落定 settle」：高潮翻面、典藏卡定位那一刻播一次。由 `_reveal`
-  /// 跨高潮門檻 edge-detect 觸發，一次揭曉只播一次。
-  void playSettle();
+  /// 停止揭曉配樂 bed。reveal 完成／hidden／失敗兜底／dispose 一律呼叫；idempotent
+  /// （未播放／重複呼叫皆 no-op）。與 [stopWaitingLoop] 的離開出口一一對應。
+  void stopRevealBed();
 }
 
 /// 預設實作：完全 no-op、不打包音檔、不發聲，所有方法安全靜默。
@@ -63,10 +64,10 @@ class NoopPracticeDrawSfx implements PracticeDrawSfx {
   void playRevealChime() {}
 
   @override
-  void playRiser() {}
+  void playRevealBed() {}
 
   @override
-  void playSettle() {}
+  void stopRevealBed() {}
 }
 
 /// 翻牌音效服務 provider。預設 [AudioPlayersPracticeDrawSfx]（真音效，Batch 4.7B）；

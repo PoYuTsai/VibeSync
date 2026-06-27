@@ -9,8 +9,7 @@ import 'practice_draw_sfx.dart';
 const double _kWhooshVolume = 0.7; // 抽牌咻聲：建議 0.6–0.8。
 const double _kWaitingLoopVolume = 0.22; // 等待 loop：建議 0.18–0.28，務必小聲。
 const double _kRevealChimeVolume = 0.8; // 揭曉叮聲：建議 0.7–0.9。
-const double _kRiserVolume = 0.6; // 蓄力 riser：建議 0.5–0.7。
-const double _kSettleVolume = 0.7; // 落定 settle：建議 0.6–0.8。
+const double _kRevealBedVolume = 0.75; // 揭曉配樂 bed（主配樂）：建議 0.6–0.85。
 
 // ── 音檔路徑（相對 AudioCache 預設 prefix `assets/`）────────────────────────
 const String _kWhooshAsset = 'audio/practice_draw/practice_draw_whoosh.wav';
@@ -18,8 +17,9 @@ const String _kWaitingLoopAsset =
     'audio/practice_draw/practice_draw_waiting_loop.wav';
 const String _kRevealChimeAsset =
     'audio/practice_draw/practice_draw_reveal_chime.wav';
-const String _kRiserAsset = 'audio/practice_draw/practice_draw_riser.wav';
-const String _kSettleAsset = 'audio/practice_draw/practice_draw_settle.wav';
+// E2：揭曉配樂 bed（復刻 音檔.mp4 音軌）。mp3 以控資產體積（~9s wav 會爆 <500KB 預算）。
+const String _kRevealBedAsset =
+    'audio/practice_draw/practice_draw_reveal_bed.mp3';
 
 /// 每日翻牌音效的真實實作（Batch 4.7B：把 4.7A 的 [NoopPracticeDrawSfx] 換成會真的
 /// 播放的版本）。背後用 `audioplayers`。
@@ -29,8 +29,9 @@ const String _kSettleAsset = 'audio/practice_draw/practice_draw_settle.wav';
 ///   播放時才建立。所有 play／stop／context 設定都吞掉同步與 async 例外，因此在 headless
 ///   ／widget-test 環境（無 audio platform channel）一律靜默、絕不丟例外、絕不留未監聽的
 ///   create 失敗。真機才會真的發聲。
-/// - **三個獨立 player**：whoosh／reveal chime 為一次性（`ReleaseMode.release`）、各自一個
+/// - **獨立 player**：whoosh／reveal chime／揭曉配樂 bed 各自一個一次性（`ReleaseMode.release`）
 ///   player 避免互相截斷；waiting loop 用 `ReleaseMode.loop` 的獨立 player，方便獨立 stop。
+///   bed 與 loop 都可被明確 stop（[stopRevealBed]／[stopWaitingLoop]），離開出口一律收掉。
 /// - **stopWaitingLoop idempotent**：未啟動或重複呼叫皆 no-op，呼叫端（揭曉儀式）在每個
 ///   離開 drawing 的出口（reveal／error／402／429／hidden／dispose／reduce-motion）呼叫，
 ///   loop 一律不殘留。
@@ -42,10 +43,10 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   AudioPlayer? _whooshPlayer;
   AudioPlayer? _loopPlayer;
   AudioPlayer? _chimePlayer;
-  AudioPlayer? _riserPlayer;
-  AudioPlayer? _settlePlayer;
+  AudioPlayer? _bedPlayer;
 
   bool _loopActive = false;
+  bool _bedActive = false;
   bool _contextConfigured = false;
 
   /// 首次播放時設定一次全域 AudioContext（尊重靜音鍵＋與他人音樂混音不中斷）。
@@ -131,18 +132,42 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
     }
   }
 
-  // Batch D4：接上真 wav。riser（蓄力，跨 kPracticeRevealRechargeEnd 觸發）與 settle
-  // （落定，跨 kPracticeRevealGrandFlipEnd 觸發）皆為一次性 accent，沿用 whoosh／chime 的
-  // lazy/guarded one-shot 模式（各自獨立 player，避免互相截斷）。
+  // E2：揭曉配樂 bed（復刻 音檔.mp4 音軌）。一條與 `_reveal`（~9s）同長的連續配樂，揭曉
+  // 起始播一次，取代舊的離散 riser/settle accent。專屬 player（`ReleaseMode.release`，
+  // 一次性、播完不留）；重抽時先 stop 再 play，確保同時只有一條 bed、不重疊。
   @override
-  void playRiser() {
-    final player = _riserPlayer ??= _create(ReleaseMode.release);
-    _playOneShot(player, _kRiserAsset, _kRiserVolume);
+  void playRevealBed() {
+    try {
+      _ensureContext();
+      final player = _bedPlayer ??= _create(ReleaseMode.release);
+      _bedActive = true;
+      // 先 stop 再 play：保證每次揭曉只一條 bed（換一位若在前一條未播完時觸發也不疊）。
+      unawaited(
+        player
+            .stop()
+            .then(
+              (_) => player.play(
+                AssetSource(_kRevealBedAsset),
+                volume: _kRevealBedVolume,
+              ),
+            )
+            .catchError((Object _) {}),
+      );
+    } catch (_) {
+      // 啟動失敗也不丟；bed 視為未啟動。
+      _bedActive = false;
+    }
   }
 
   @override
-  void playSettle() {
-    final player = _settlePlayer ??= _create(ReleaseMode.release);
-    _playOneShot(player, _kSettleAsset, _kSettleVolume);
+  void stopRevealBed() {
+    final player = _bedPlayer;
+    if (player == null || !_bedActive) return; // 未建立／未播放 → idempotent no-op。
+    _bedActive = false;
+    try {
+      unawaited(player.stop().catchError((Object _) {}));
+    } catch (_) {
+      // 停止失敗也不丟。
+    }
   }
 }

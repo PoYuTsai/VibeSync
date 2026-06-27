@@ -10,6 +10,9 @@ import 'package:vibesync/features/conversation/domain/entities/conversation_summ
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
@@ -73,6 +76,12 @@ void main() {
     if (!Hive.isAdapterRegistered(21)) {
       Hive.registerAdapter(CoachingOutcomeSignalAdapter());
     }
+    if (!Hive.isAdapterRegistered(22)) {
+      Hive.registerAdapter(PracticeMessageAdapter());
+    }
+    if (!Hive.isAdapterRegistered(23)) {
+      Hive.registerAdapter(PracticeSessionAdapter());
+    }
   });
 
   tearDown(() async {
@@ -84,6 +93,7 @@ void main() {
     await Hive.deleteBoxFromDisk('coach_follow_up_results');
     await Hive.deleteBoxFromDisk('coach_chat_results');
     await Hive.deleteBoxFromDisk(AppConstants.coachingOutcomeEventsBox);
+    await Hive.deleteBoxFromDisk('practice_sessions');
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await Hive.deleteBoxFromDisk(AppConstants.usageBox);
   });
@@ -105,6 +115,7 @@ void main() {
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
+    await Hive.openBox<PracticeSession>('practice_sessions');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -141,6 +152,7 @@ void main() {
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
+    await Hive.openBox<PracticeSession>('practice_sessions');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -172,6 +184,7 @@ void main() {
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
+    await Hive.openBox<PracticeSession>('practice_sessions');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -202,6 +215,7 @@ void main() {
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
+    await Hive.openBox<PracticeSession>('practice_sessions');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -238,6 +252,7 @@ void main() {
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
+    await Hive.openBox<PracticeSession>('practice_sessions');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -281,6 +296,7 @@ void main() {
     await Hive.openBox<CoachingOutcomeEvent>(
       AppConstants.coachingOutcomeEventsBox,
     );
+    await Hive.openBox<PracticeSession>('practice_sessions');
     await Hive.openBox(AppConstants.settingsBox);
     await Hive.openBox(AppConstants.usageBox);
 
@@ -301,5 +317,73 @@ void main() {
     await StorageService.clearAll();
 
     expect(StorageService.coachingOutcomeEventsBox.isEmpty, isTrue);
+  });
+
+  test('clearPracticeRoomState() purges practice sessions and draw draft only',
+      () async {
+    await Hive.openBox<PracticeSession>('practice_sessions');
+    await Hive.openBox(AppConstants.settingsBox);
+
+    await StorageService.practiceSessionsBox.put(
+      'practice-1',
+      PracticeSession(
+        id: 'practice-1',
+        createdAt: DateTime.utc(2026, 6, 28, 10),
+        messages: const [PracticeMessage(role: 'user', text: 'hi')],
+      ),
+    );
+    await StorageService.settingsBox.put(
+      HivePracticeDrawDraftStore.storageKey,
+      '{"sessionId":"draft-1"}',
+    );
+    await StorageService.settingsBox.put('seen_onboarding', true);
+
+    await StorageService.clearPracticeRoomState();
+
+    expect(StorageService.practiceSessionsBox.isEmpty, isTrue);
+    expect(
+      StorageService.settingsBox.get(HivePracticeDrawDraftStore.storageKey),
+      isNull,
+    );
+    expect(StorageService.settingsBox.get('seen_onboarding'), isTrue);
+  });
+
+  test('clearAll() purges practice sessions and draw draft', () async {
+    await Hive.openBox<Conversation>(AppConstants.conversationsBox);
+    await Hive.openBox<Partner>(AppConstants.partnersBox);
+    await Hive.openBox<UserProfile>('user_profile');
+    await Hive.openBox<PartnerStyleOverride>('partner_style_overrides');
+    await Hive.openBox<PartnerDataQualityState>(
+      'partner_data_quality_states',
+    );
+    await Hive.openBox<CoachFollowUpResult>('coach_follow_up_results');
+    await Hive.openBox<CoachChatResult>('coach_chat_results');
+    await Hive.openBox<CoachingOutcomeEvent>(
+      AppConstants.coachingOutcomeEventsBox,
+    );
+    await Hive.openBox<PracticeSession>('practice_sessions');
+    await Hive.openBox(AppConstants.settingsBox);
+    await Hive.openBox(AppConstants.usageBox);
+
+    await StorageService.practiceSessionsBox.put(
+      'practice-1',
+      PracticeSession(
+        id: 'practice-1',
+        createdAt: DateTime.utc(2026, 6, 28, 10),
+        messages: const [PracticeMessage(role: 'user', text: 'hi')],
+      ),
+    );
+    await StorageService.settingsBox.put(
+      HivePracticeDrawDraftStore.storageKey,
+      '{"sessionId":"draft-1"}',
+    );
+
+    await StorageService.clearAll();
+
+    expect(StorageService.practiceSessionsBox.isEmpty, isTrue);
+    expect(
+      StorageService.settingsBox.get(HivePracticeDrawDraftStore.storageKey),
+      isNull,
+    );
   });
 }

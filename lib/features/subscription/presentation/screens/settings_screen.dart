@@ -18,6 +18,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 
@@ -43,9 +44,11 @@ class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({
     super.key,
     this.accountDeletionActions = const DefaultAccountDeletionActions(),
+    this.accountLogoutActions = const DefaultAccountLogoutActions(),
   });
 
   final AccountDeletionActions accountDeletionActions;
+  final AccountLogoutActions accountLogoutActions;
 
   @override
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
@@ -78,6 +81,41 @@ class DefaultAccountDeletionActions extends AccountDeletionActions {
   @override
   Future<void> clearLocalSessionAfterDeletion() {
     return SupabaseService.clearLocalSessionAfterDeletion();
+  }
+}
+
+@visibleForTesting
+abstract class AccountLogoutActions {
+  const AccountLogoutActions();
+
+  bool get isAuthenticated;
+
+  Future<void> signOut();
+
+  Future<void> clearUsageSnapshot();
+
+  Future<void> clearPracticeRoomState();
+}
+
+class DefaultAccountLogoutActions extends AccountLogoutActions {
+  const DefaultAccountLogoutActions();
+
+  @override
+  bool get isAuthenticated => SupabaseService.isAuthenticated;
+
+  @override
+  Future<void> signOut() {
+    return SupabaseService.signOut();
+  }
+
+  @override
+  Future<void> clearUsageSnapshot() {
+    return UsageService.clearSnapshot();
+  }
+
+  @override
+  Future<void> clearPracticeRoomState() {
+    return StorageService.clearPracticeRoomState();
   }
 }
 
@@ -546,6 +584,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return '登出失敗，請稍後再試。';
   }
 
+  void _invalidateAccountScopedProviders(WidgetRef ref) {
+    ref.invalidate(subscriptionProvider);
+    ref.invalidate(conversationsProvider);
+    ref.invalidate(usageDataProvider);
+    ref.invalidate(practiceChatControllerProvider);
+    ref.invalidate(recentPracticeSessionsProvider);
+  }
+
+  Future<void> _clearLocalLogoutState() async {
+    Object? cleanupError;
+
+    try {
+      await widget.accountLogoutActions.clearUsageSnapshot();
+    } catch (error) {
+      cleanupError = error;
+    }
+
+    try {
+      await widget.accountLogoutActions.clearPracticeRoomState();
+    } catch (error) {
+      cleanupError ??= error;
+    }
+
+    if (cleanupError == null) return;
+    if (cleanupError is Exception) throw cleanupError;
+    throw Exception(cleanupError.toString());
+  }
+
   Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
           context: context,
@@ -640,17 +706,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await SupabaseService.signOut();
-      await UsageService.clearSnapshot();
+      await widget.accountLogoutActions.signOut();
+      await _clearLocalLogoutState();
     } catch (error) {
       if (!context.mounted) return;
 
-      if (!SupabaseService.isAuthenticated) {
-        await UsageService.clearSnapshot();
+      if (!widget.accountLogoutActions.isAuthenticated) {
+        try {
+          await _clearLocalLogoutState();
+        } catch (cleanupError) {
+          debugPrint('Logout local cleanup after sign-out: $cleanupError');
+        }
         if (!context.mounted) return;
-        ref.invalidate(subscriptionProvider);
-        ref.invalidate(conversationsProvider);
-        ref.invalidate(usageDataProvider);
+        _invalidateAccountScopedProviders(ref);
         context.go('/login');
         messenger.showSnackBar(
           const SnackBar(
@@ -664,9 +732,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    ref.invalidate(subscriptionProvider);
-    ref.invalidate(conversationsProvider);
-    ref.invalidate(usageDataProvider);
+    _invalidateAccountScopedProviders(ref);
     if (context.mounted) {
       context.go('/login');
     }
@@ -775,9 +841,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
       await widget.accountDeletionActions.clearLocalStorage();
       await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
-      ref.invalidate(subscriptionProvider);
-      ref.invalidate(conversationsProvider);
-      ref.invalidate(usageDataProvider);
+      _invalidateAccountScopedProviders(ref);
 
       _dismissBlockingDialog(rootNavigator);
       router.go('/login');
