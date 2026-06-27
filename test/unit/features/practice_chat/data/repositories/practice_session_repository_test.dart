@@ -118,6 +118,41 @@ void main() {
     expect(repo.getById('legacy')!.profileId, isNull);
   });
 
+  test('save persists beginner learning metadata', () async {
+    await repo.save(PracticeSession(
+      id: 'beginner',
+      createdAt: DateTime(2026, 6, 28, 10),
+      practiceMode: 'beginner',
+      temperatureScore: 42,
+      hintUsedCount: 3,
+    ));
+
+    final loaded = repo.getById('beginner')!;
+    expect(loaded.practiceMode, 'beginner');
+    expect(loaded.temperatureScore, 42);
+    expect(loaded.hintUsedCount, 3);
+  });
+
+  test('copyWith updates beginner learning metadata', () {
+    final original = PracticeSession(
+      id: 'copy',
+      createdAt: DateTime(2026, 6, 28, 11),
+      practiceMode: 'standard',
+      temperatureScore: 30,
+      hintUsedCount: 0,
+    );
+
+    final updated = original.copyWith(
+      practiceMode: 'beginner',
+      temperatureScore: 55,
+      hintUsedCount: 2,
+    );
+
+    expect(updated.practiceMode, 'beginner');
+    expect(updated.temperatureScore, 55);
+    expect(updated.hintUsedCount, 2);
+  });
+
   test('delete 移除指定練習紀錄，不影響其他場', () async {
     await repo.save(session('keep', 10));
     await repo.save(session('drop', 11));
