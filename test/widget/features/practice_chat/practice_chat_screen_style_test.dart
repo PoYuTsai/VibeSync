@@ -2038,6 +2038,109 @@ void main() {
     });
   });
 
+  // ── E4：開場/收場亮 UI（暗化隨 reveal 進度起落，復刻參考片亮→暗→亮）──────────
+  group('E4 開場/收場亮 UI', () {
+    test('beat0 開場暗化低（亮 UI＋卡背）、中段全暗、settle 收場暗化退回', () {
+      // beat0（0–0.5s 亮 UI 靜置卡背）：暗化低，底下亮 UI 透出。
+      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.02),
+          lessThan(0.3));
+      // beat1 後（轉暗星空）→ 中段儀式：全暗聚焦。
+      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.40),
+          greaterThan(0.9));
+      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.65),
+          greaterThan(0.9));
+      // settle 收場（beat10 8.75–10s）：暗化退回、亮 UI 重現。
+      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.97),
+          lessThan(0.3));
+    });
+
+    test('暗化在 beat0→beat1 單調遞增、settle 段單調遞減', () {
+      // 開場淡入暗：0.02 < 0.13。
+      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.13),
+          greaterThan(practiceCeremonyDim(drawing: false, revealFraction: 0.02)));
+      // 收場淡出暗：0.97 < 0.82。
+      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.82),
+          greaterThan(practiceCeremonyDim(drawing: false, revealFraction: 0.97)));
+    });
+
+    test('drawing 等待期：柔和聚焦暗化（非全暗、非全亮）', () {
+      final d = practiceCeremonyDim(drawing: true, revealFraction: 0);
+      expect(d, inExclusiveRange(0.1, 0.8));
+    });
+  });
+
+  // ── E4：爆裂高潮 burst（PEAK#2 6.5s 達峰的脈衝，灌進 flash／星爆／光束）──────────
+  group('E4 爆裂高潮 burst', () {
+    test('burst 在 PEAK#2（HaloClimax 6.5s/0.65）達峰', () {
+      final atClimax = practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax);
+      expect(atClimax, greaterThan(0.95));
+    });
+
+    test('burst 在蓄力前（屏息 5.0s）與落定後（grand 8s）幾乎為 0', () {
+      expect(practiceCeremonyClimaxBurst(0.50), lessThan(0.1));
+      expect(practiceCeremonyClimaxBurst(0.80), lessThan(0.1));
+    });
+
+    test('burst 對稱遞減：離 climax 越遠越小', () {
+      final near = practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax - 0.02);
+      final far = practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax - 0.05);
+      expect(near, greaterThan(far));
+      expect(practiceCeremonyClimaxBurst(0).clamp(0.0, 1.0), inInclusiveRange(0.0, 1.0));
+    });
+
+    testWidgets('PEAK#2 全螢幕爆裂 flash：6.5s 出現、開場 1.0s 不在', (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      // 開場（f≈0.1，1.0s）：尚無爆裂 flash。
+      await tester.pump(atFraction(0.1));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-climax-flash')),
+        findsNothing,
+      );
+
+      // 推進到 PEAK#2（累積 f≈0.65，6.5s）：全螢幕爆裂 flash 出現。
+      await tester.pump(atFraction(0.55));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-climax-flash')),
+        findsOneWidget,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('reduce-motion：不跑 reveal 時間軸 → 無爆裂 flash', (tester) async {
+      final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            practiceSessionRepositoryProvider.overrideWithValue(repo),
+            practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+            practiceChatApiServiceProvider.overrideWithValue(api),
+          ],
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeChatScreen(),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-climax-flash')),
+        findsNothing,
+      );
+    });
+  });
+
   testWidgets('E1：揭曉開場卡背先蓄力、不立即翻面（對齊第一爆點前的 build）',
       (tester) async {
     final completer = Completer<PracticeDrawResult>();
