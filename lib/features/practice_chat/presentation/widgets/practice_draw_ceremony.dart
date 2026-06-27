@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' show ImageFilter, PathMetric;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -72,6 +72,36 @@ double practiceCeremonyDim({
 double practiceCeremonyClimaxBurst(double revealFraction) {
   final d = (revealFraction - kPracticeRevealHaloClimax) / 0.045;
   return math.exp(-d * d);
+}
+
+@visibleForTesting
+double practiceCeremonyIntroTilt(double revealFraction) {
+  final t = (revealFraction / kPracticeRevealFlip1Start).clamp(0.0, 1.0);
+  if (t <= 0 || t >= 1) return 0;
+  return -0.18 * math.sin(math.pi * t);
+}
+
+@visibleForTesting
+double practiceCeremonySettlePulse(double revealFraction) {
+  final d = (revealFraction - 0.85) / 0.045;
+  return math.exp(-d * d).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
+double practiceCeremonyRimIntensity(double revealFraction) {
+  final introT = (revealFraction / kPracticeRevealFlip1Start).clamp(0.0, 1.0);
+  final intro = revealFraction < kPracticeRevealFlip1Start
+      ? Curves.easeOutCubic.transform(introT)
+      : 0.0;
+  final rechargeT = ((revealFraction - kPracticeRevealRechargeEnd) /
+          (kPracticeRevealHaloClimax - kPracticeRevealRechargeEnd))
+      .clamp(0.0, 1.0);
+  final recharge = revealFraction >= kPracticeRevealRechargeEnd &&
+          revealFraction < kPracticeRevealGrandFlipEnd
+      ? rechargeT
+      : 0.0;
+  final settle = practiceCeremonySettlePulse(revealFraction) * 0.85;
+  return math.max(intro, math.max(recharge, settle)).clamp(0.0, 1.0);
 }
 
 double _referenceExplosionOpacity(double revealFraction) {
@@ -508,6 +538,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                   width: cardW,
                   height: cardH,
                   glow: breathGlow,
+                  rimIntensity: breathGlow,
+                  rimProgress: w,
                 ),
               ),
             ),
@@ -531,12 +563,15 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     double energyProgress = 0; // 能量彗星沿卡框周長的位置（0..1）
     double beamProgress = 0; // 橫掃光束位置（只在高潮翻面段 0→1 掃一道）
     double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
+    double introRoll = 0;
 
     if (f < kPracticeRevealFlip1Start) {
       // 卡背蓄力：對齊音樂第一爆點前的 build。卡背持續、金光漸亮，先不翻面。
-      angle = 0;
+      final intro = seg(0, kPracticeRevealFlip1Start);
+      angle = practiceCeremonyIntroTilt(f);
+      introRoll = angle * 0.28;
       showFront = false;
-      backGlow = 0.6 + 0.25 * seg(0, kPracticeRevealFlip1Start);
+      backGlow = math.max(0.6 + 0.25 * intro, practiceCeremonyRimIntensity(f));
     } else if (f < kPracticeRevealFlip1End) {
       // 第一段：卡背→白卡預覽（rotateY 0→π），落在第一爆點。halo 尚未啟動（留給高潮）。
       final rot = seg(kPracticeRevealFlip1Start, kPracticeRevealFlip1End);
@@ -603,6 +638,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     // 翻面中點的柔 flash 與 PEAK#2 爆裂 burst 取大者：6.5s 高潮一道強閃。
     final climaxBurst = practiceCeremonyClimaxBurst(f);
     final flash = math.max(flipFlash, climaxBurst);
+    final settlePulse = practiceCeremonySettlePulse(f) * (1 - frontDepart);
 
     // 正面卡升階：高潮翻面前的白卡用 preview，高潮起換金框典藏卡 grand。
     final cardVariant = f < kPracticeRevealHaloClimax
@@ -622,7 +658,13 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               depart: frontDepart,
             ),
           )
-        : _CeremonyCardBack(width: cardW, height: cardH, glow: backGlow);
+        : _CeremonyCardBack(
+            width: cardW,
+            height: cardH,
+            glow: backGlow,
+            rimIntensity: practiceCeremonyRimIntensity(f),
+            rimProgress: f,
+          );
 
     return SizedBox(
       width: stageW,
@@ -648,6 +690,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             alignment: Alignment.center,
             transform: Matrix4.identity()
               ..setEntry(3, 2, 0.001)
+              ..rotateZ(introRoll)
               ..rotateY(angle),
             child: face,
           ),
@@ -693,6 +736,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               ),
             ),
           ),
+          if (settlePulse > 0.02)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-settle-pulse'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _SettlePulsePainter(
+                    progress: f,
+                    intensity: settlePulse,
+                    cardSize: Size(cardW, cardH),
+                  ),
+                ),
+              ),
+            ),
           if (flash > 0.02)
             Positioned.fill(
               child: IgnorePointer(
@@ -730,16 +786,21 @@ class _CeremonyCardBack extends StatelessWidget {
     required this.width,
     required this.height,
     this.glow = 0.6,
+    this.rimIntensity,
+    this.rimProgress = 0,
   });
 
   final double width;
   final double height;
   final double glow;
+  final double? rimIntensity;
+  final double rimProgress;
 
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(22);
     final neonOpacity = ((glow - 0.42) / 0.48).clamp(0.0, 1.0);
+    final rim = (rimIntensity ?? neonOpacity).clamp(0.0, 1.0);
     return Container(
       key: const ValueKey('practice-draw-ceremony-back'),
       width: width,
@@ -782,6 +843,14 @@ class _CeremonyCardBack extends StatelessWidget {
                 gaplessPlayback: true,
               ),
             ),
+            if (rim > 0.01)
+              CustomPaint(
+                key: const ValueKey('practice-draw-ceremony-reference-rim'),
+                painter: _ReferenceRimGlowPainter(
+                  progress: rimProgress,
+                  intensity: rim,
+                ),
+              ),
             DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: radius,
@@ -802,6 +871,89 @@ class _CeremonyCardBack extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReferenceRimGlowPainter extends CustomPainter {
+  _ReferenceRimGlowPainter({
+    required this.progress,
+    required this.intensity,
+  });
+
+  final double progress;
+  final double intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final shortest = size.shortestSide;
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(shortest * 0.018),
+      Radius.circular(shortest * 0.068),
+    );
+    final baseShader = LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [
+        _kTeal.withValues(alpha: 0.62 * intensity),
+        _kGold.withValues(alpha: 0.72 * intensity),
+      ],
+    ).createShader(rect);
+
+    final bloom = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = shortest * 0.035
+      ..shader = baseShader
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, shortest * 0.028);
+    canvas.drawRRect(rrect, bloom);
+
+    final core = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = shortest * 0.010
+      ..shader = baseShader
+      ..strokeCap = StrokeCap.round;
+    canvas.drawRRect(rrect.deflate(shortest * 0.006), core);
+
+    final path = Path()..addRRect(rrect.deflate(shortest * 0.012));
+    final metric = path.computeMetrics().first;
+    final sweep = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = shortest * 0.018
+      ..strokeCap = StrokeCap.round
+      ..color = Colors.white.withValues(alpha: 0.86 * intensity)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, shortest * 0.010);
+    _drawMovingSegment(canvas, metric, progress, 0.16, sweep);
+
+    final hot = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = shortest * 0.006
+      ..strokeCap = StrokeCap.round
+      ..color = Colors.white.withValues(alpha: 0.92 * intensity);
+    _drawMovingSegment(canvas, metric, progress + 0.04, 0.08, hot);
+  }
+
+  void _drawMovingSegment(
+    Canvas canvas,
+    PathMetric metric,
+    double p,
+    double lenRatio,
+    Paint paint,
+  ) {
+    final length = metric.length;
+    final start = ((p % 1.0) * length).clamp(0.0, length);
+    final segment = lenRatio * length;
+    final end = start + segment;
+    if (end <= length) {
+      canvas.drawPath(metric.extractPath(start, end), paint);
+      return;
+    }
+    canvas.drawPath(metric.extractPath(start, length), paint);
+    canvas.drawPath(metric.extractPath(0, end - length), paint);
+  }
+
+  @override
+  bool shouldRepaint(_ReferenceRimGlowPainter old) =>
+      old.progress != progress || old.intensity != intensity;
 }
 
 /// 正面卡兩態（Batch C）：[preview] 第一段白／粉預覽卡（近原樣）、[grand] 第二段
@@ -1743,6 +1895,81 @@ class _RevealFlashPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RevealFlashPainter old) => old.intensity != intensity;
+}
+
+class _SettlePulsePainter extends CustomPainter {
+  _SettlePulsePainter({
+    required this.progress,
+    required this.intensity,
+    required this.cardSize,
+  });
+
+  final double progress;
+  final double intensity;
+  final Size cardSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final center = size.center(Offset.zero);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: cardSize.width,
+      height: cardSize.height,
+    );
+    final phase =
+        ((progress - kPracticeRevealHoldEnd) / (1 - kPracticeRevealHoldEnd))
+            .clamp(0.0, 1.0);
+    final inflate = 8 + 18 * Curves.easeOutCubic.transform(phase);
+    final rrect = RRect.fromRectAndRadius(
+      rect.inflate(inflate),
+      Radius.circular(cardSize.width * 0.09),
+    );
+
+    final halo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = cardSize.width * (0.018 + 0.008 * phase)
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          _kGold.withValues(alpha: 0.0),
+          Colors.white.withValues(alpha: 0.52 * intensity),
+          _kTeal.withValues(alpha: 0.46 * intensity),
+          _kGold.withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.42, 0.68, 1.0],
+      ).createShader(rect.inflate(36))
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.035);
+    canvas.drawRRect(rrect, halo);
+
+    final core = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = cardSize.width * 0.006
+      ..color = Colors.white.withValues(alpha: 0.42 * intensity)
+      ..strokeCap = StrokeCap.round;
+    canvas.drawRRect(rrect.deflate(cardSize.width * 0.012), core);
+
+    final spark = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < 24; i++) {
+      final a = i * 2.399963229728653 + phase * math.pi * 1.7;
+      final side = i.isEven ? 1.0 : -1.0;
+      final rx = cardSize.width * (0.52 + 0.10 * phase);
+      final ry = cardSize.height * (0.52 + 0.06 * phase);
+      final pos = center +
+          Offset(math.cos(a) * rx, math.sin(a) * ry * 0.58 + side * 10);
+      final twinkle = 0.55 + 0.45 * math.sin(a * 1.7 + progress * 24);
+      spark.color = Color.lerp(_kGold, _kTeal, i / 24)!
+          .withValues(alpha: intensity * twinkle * 0.76);
+      canvas.drawCircle(pos, 1.2 + 1.8 * twinkle * intensity, spark);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SettlePulsePainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.cardSize != cardSize;
 }
 
 /// 星光粒子場：環繞卡牌一圈的金／白閃爍點（halo 佈點，避開中央照片區）。

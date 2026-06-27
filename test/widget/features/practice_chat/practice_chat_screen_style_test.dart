@@ -2179,6 +2179,43 @@ void main() {
     });
   });
 
+  group('E5 精修：前奏翻轉／框光／settle 尾韻', () {
+    test('0–3s 前奏有小幅 rotateY，3.0s 前回正準備第一段翻面', () {
+      expect(practiceCeremonyIntroTilt(0), closeTo(0, 0.001));
+      expect(practiceCeremonyIntroTilt(0.16).abs(), greaterThan(0.08));
+      expect(practiceCeremonyIntroTilt(kPracticeRevealFlip1Start),
+          closeTo(0, 0.001));
+    });
+
+    test('框光前奏逐步點亮，8.5s settle 再打一個尾韻 pulse', () {
+      expect(practiceCeremonyRimIntensity(0.20),
+          greaterThan(practiceCeremonyRimIntensity(0.02)));
+      expect(practiceCeremonySettlePulse(0.85), greaterThan(0.85));
+      expect(practiceCeremonySettlePulse(0.75), lessThan(0.2));
+      expect(practiceCeremonySettlePulse(0.95), lessThan(0.2));
+    });
+
+    testWidgets('8.5s settle pulse：典藏卡落定後出現、收尾後消失', (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.85));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-settle-pulse')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.10));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-settle-pulse')),
+        findsNothing,
+      );
+    });
+  });
+
   testWidgets('E1：揭曉開場卡背先蓄力、不立即翻面（對齊第一爆點前的 build）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
