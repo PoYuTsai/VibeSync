@@ -164,6 +164,11 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ error: getErrorMessage(e) }, 400);
   }
 
+  // Temporary safety guard until the hint handler is wired in this feature branch.
+  if (request.mode === "hint") {
+    return jsonResponse({ error: "practice_hint_not_available" }, 403);
+  }
+
   const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
   if (!apiKey) {
     logError("practice_chat_config_missing", { user: summarizeUser(user.id) });

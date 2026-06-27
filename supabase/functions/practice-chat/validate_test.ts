@@ -55,6 +55,12 @@ Deno.test("chat without practiceMode defaults to standard", () => {
   assertEquals(r.practiceMode, "standard");
 });
 
+Deno.test("chat without practiceMode defaults temperatureScore to 30", () => {
+  const r = validateRequest(chatReq([{ role: "user", text: "hi" }]));
+  assertEquals(r.practiceMode, "standard");
+  assertEquals(r.temperatureScore, 30);
+});
+
 Deno.test("practiceMode standard is accepted", () => {
   const r = validateRequest({
     ...chatReq([{ role: "user", text: "hi" }]),
