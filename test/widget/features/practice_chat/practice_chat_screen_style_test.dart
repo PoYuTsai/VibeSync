@@ -183,11 +183,14 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   int waitingStart = 0;
   int waitingStop = 0;
   int chime = 0;
-  int riser = 0;
-  int settle = 0;
+  int bedStart = 0;
+  int bedStop = 0;
 
   /// start 次數多於 stop ⇒ loop 仍在播（用來驗證離開 drawing 後必為 false）。
   bool get looping => waitingStart > waitingStop;
+
+  /// bed start 多於 stop ⇒ 配樂仍在播（驗證每個離開出口後必收掉）。
+  bool get bedPlaying => bedStart > bedStop;
 
   @override
   void playWhoosh() => whoosh++;
@@ -202,10 +205,10 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   void playRevealChime() => chime++;
 
   @override
-  void playRiser() => riser++;
+  void playRevealBed() => bedStart++;
 
   @override
-  void playSettle() => settle++;
+  void stopRevealBed() => bedStop++;
 }
 
 class _SeededPracticeChatController extends PracticeChatController {
@@ -1835,65 +1838,6 @@ void main() {
     expect(spy.looping, isFalse);
   });
 
-  // ── 揭曉音效 riser/settle edge-detect（Batch D）：跨 beat 各觸發一次 ──────────
-  testWidgets('音效：reveal 跨蓄力門檻觸發 riser、跨高潮門檻觸發 settle（各一次）', (tester) async {
-    final spy = _SpyPracticeDrawSfx();
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLockedWithSfx(tester, api: api, sfx: spy);
-
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 600)); // 等待微動
-    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pump(); // revealing：_reveal.forward(from:0)
-
-    // 白卡預覽段：尚未跨蓄力門檻，riser／settle 都未觸發。
-    await tester.pump(previewAt);
-    expect(spy.riser, 0);
-    expect(spy.settle, 0);
-
-    // 跨入高潮蓄力段（recharge）：riser 觸發一次、settle 仍未。
-    await tester.pump(backAt - previewAt);
-    expect(spy.riser, 1);
-    expect(spy.settle, 0);
-
-    // 跨入典藏卡停留段（grand flip 後）：settle 觸發一次。
-    await tester.pump(grandHoldAt - backAt);
-    expect(spy.riser, 1);
-    expect(spy.settle, 1);
-
-    // 走完整條：edge bool 防重觸發，各維持一次。
-    await tester.pumpAndSettle();
-    expect(spy.riser, 1);
-    expect(spy.settle, 1);
-  });
-
-  testWidgets('音效：再抽一次（forward from 0 重置 edge bool）→ riser／settle 可重觸發',
-      (tester) async {
-    final spy = _SpyPracticeDrawSfx();
-    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
-    await pumpLockedWithSfx(tester, api: api, sfx: spy);
-
-    // 第一次翻牌走完整條時間軸：riser／settle 各一次。
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pumpAndSettle();
-    expect(spy.riser, 1);
-    expect(spy.settle, 1);
-
-    // 換一位（再抽）→ forward(from:0) 重置 edge bool → 再次跨門檻各觸發一次。
-    await tester.tap(find.text('換一位'));
-    await tester.pump();
-    expect(
-      find.byKey(const ValueKey('practice-new-partner-quota-notice')),
-      findsOneWidget,
-    );
-    await tester.tap(find.text('換一位'));
-    await tester.pumpAndSettle();
-    expect(spy.riser, 2);
-    expect(spy.settle, 2);
-  });
-
   testWidgets('音效（D3）：normal-motion 叮聲配白卡預覽翻面、非 server 回應即播', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
@@ -1930,12 +1874,106 @@ void main() {
 
     // reduce-motion 沒有 reveal 動畫可跨門檻，叮聲必須即時播、不可被吞。
     expect(spy.chime, 1);
-    // reduce-motion 跳整條時間軸：riser／settle 不觸發。
-    expect(spy.riser, 0);
-    expect(spy.settle, 0);
 
     await tester.pumpAndSettle();
     expect(spy.chime, 1);
+  });
+
+  // ── E2：揭曉配樂 bed（復刻 音檔.mp4 音軌）取代離散 riser/settle ────────────────
+  // 一條與 `_reveal`（~9s）同長同步的連續配樂：揭曉起始播一次、每個離開出口收掉、
+  // 失敗／reduce-motion 不起。spy 以 bedStart/bedStop 推導「不殘留」。
+  testWidgets('音效（E2）：揭曉開始播一條配樂 bed、走完整條後收掉（不殘留）', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 600)); // 等待微動
+    expect(spy.bedStart, 0); // 抽牌等待期間：配樂尚未起
+
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pump(); // revealing：_reveal.forward(from:0) → 配樂起播
+    expect(spy.bedStart, 1); // 揭曉起始播一次配樂 bed
+    expect(spy.bedPlaying, isTrue);
+
+    await tester.pumpAndSettle(); // 走完整條揭曉 → 收掉 overlay
+    expect(spy.bedStop, greaterThanOrEqualTo(1));
+    expect(spy.bedPlaying, isFalse); // 配樂不殘留
+  });
+
+  testWidgets('音效（E2）：再抽一次 → 配樂 bed 重起一次（每次揭曉各一條，不殘留）',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+    expect(spy.bedStart, 1);
+
+    await tester.tap(find.text('換一位'));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('practice-new-partner-quota-notice')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('換一位'));
+    await tester.pumpAndSettle();
+    expect(spy.bedStart, 2); // 第二次揭曉重起一條
+    expect(spy.bedPlaying, isFalse);
+  });
+
+  testWidgets('音效（E2）：抽牌 402 → 不起配樂 bed（失敗不慶祝）', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final api = _DrawApi(
+      () async => throw PracticeDrawUpgradeRequiredException(
+        extraCostMessages: 5,
+        nextResetAt: '2026-06-27T04:00:00.000Z',
+      ),
+    );
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+    expect(spy.bedStart, 0); // 失敗（402）不放配樂
+    expect(spy.bedPlaying, isFalse);
+  });
+
+  testWidgets('音效（E2）：揭曉中卸載儀式 → dispose 收掉配樂 bed（不殘留）',
+      (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 600));
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pump(); // revealing：配樂起
+    expect(spy.bedPlaying, isTrue);
+
+    // 整個 PracticeChatScreen 子樹卸載 → 儀式 dispose 必收掉配樂。
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump();
+    expect(spy.bedStop, greaterThanOrEqualTo(1));
+    expect(spy.bedPlaying, isFalse);
+  });
+
+  testWidgets('音效（E2）：reduce-motion 跳整條時間軸 → 不起配樂 bed', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy, reduceMotion: true);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(); // draw 完成 → reduce-motion 直接收掉 overlay
+    expect(spy.bedStart, 0); // reduce-motion 無 _reveal 時間軸 → 不起配樂
+    expect(spy.bedPlaying, isFalse);
+
+    await tester.pumpAndSettle();
   });
 
   // ── E1：揭曉時間軸對齊參考音軌「音檔.mp4」＋放大卡（復刻）──────────────────────

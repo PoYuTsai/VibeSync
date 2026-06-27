@@ -130,13 +130,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
-  // 揭曉音效 edge-detect：跨白卡預覽翻面／蓄力／高潮門檻各觸發一次的 idempotent 旗標。
+  // 揭曉叮聲 edge-detect：跨白卡預覽翻面門檻觸發一次的 idempotent 旗標。
   // `_reveal` 是有限 forward-only controller，每幀 tick 比對門檻；旗標確保整條時間軸
-  // 只各播一次。`forward(from:0)`（重抽）與 `_toHidden`（收掉 overlay）一律重置。零 Timer。
+  // 只播一次。`forward(from:0)`（重抽）與 `_toHidden`（收掉 overlay）一律重置。零 Timer。
   // 註：reduce-motion 不跑 `_reveal`，叮聲改在 `_onStateChange` 即時播（見該處）。
+  // E2：整條配樂 bed（`playRevealBed`）在揭曉起始就起播，不靠 edge-detect。
   bool _firedChime = false;
-  bool _firedRiser = false;
-  bool _firedSettle = false;
 
   @override
   void initState() {
@@ -165,23 +164,17 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     if (mounted) setState(() {});
   }
 
-  /// 揭曉時間軸跨「蓄力 riser」「高潮 settle」門檻各觸發一次。只比對門檻、設旗標、
-  /// 播一聲——不 setState（`_onTick` 已負責重繪）。跨幅再大（測試一次 pump 跳過門檻）
-  /// 也用 `>=` 邊緣判定，故不漏觸發。
+  /// 揭曉時間軸跨白卡預覽翻面門檻觸發一次叮聲。只比對門檻、設旗標、播一聲——不
+  /// setState（`_onTick` 已負責重繪）。跨幅再大（測試一次 pump 跳過門檻）也用 `>=`
+  /// 邊緣判定，故不漏觸發。
+  /// E2：舊的離散蓄力 riser／落定 settle accent 已退役，高潮段能量改由 `_reveal` 起始
+  /// 就同步播放的整條配樂 bed（`playRevealBed`，復刻 `音檔.mp4` 音軌）承載。
   void _onRevealEdge() {
     final v = _reveal.value;
     // 叮聲落在 Stage-1 白卡預覽翻面那一刻（卡面翻出 = 揭曉），而非 server 回應瞬間。
     if (!_firedChime && v >= kPracticeRevealFlip1End) {
       _firedChime = true;
       _sfx.playRevealChime();
-    }
-    if (!_firedRiser && v >= kPracticeRevealRechargeEnd) {
-      _firedRiser = true;
-      _sfx.playRiser();
-    }
-    if (!_firedSettle && v >= kPracticeRevealGrandFlipEnd) {
-      _firedSettle = true;
-      _sfx.playSettle();
     }
   }
 
@@ -193,9 +186,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     });
     _waiting.stop();
     _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
+    _sfx.stopRevealBed(); // E2：揭曉結束／收掉 overlay → 配樂 bed 不殘留。
     _firedChime = false; // 下次揭曉重新 edge-detect。
-    _firedRiser = false;
-    _firedSettle = false;
     _reveal.value = 0;
   }
 
@@ -253,9 +245,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       _intro.value = 1;
       // 叮聲改由 `_onRevealEdge` 在白卡預覽翻面（kPracticeRevealFlip1End）觸發，
       // 讓「叮」落在卡面翻出那一刻、而非 server 回應的瞬間。
-      _firedChime = false; // 重抽：edge bool 歸零，本輪揭曉重新各觸發一次。
-      _firedRiser = false;
-      _firedSettle = false;
+      _firedChime = false; // 重抽：edge bool 歸零，本輪揭曉重新觸發一次叮聲。
+      _sfx.playRevealBed(); // E2：揭曉起始播一條與 `_reveal`（~9s）同長同步的配樂 bed。
       _reveal.forward(from: 0);
       return;
     }
@@ -265,6 +256,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         _phase == _CeremonyPhase.revealing) {
       _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
       _sfx.stopWaitingLoop(); // 失敗兜底（error／402／429）：同步停等待 loop，不播叮聲。
+      _sfx.stopRevealBed(); // 失敗兜底：配樂 bed 一律收掉（防殘留）。
       _reveal
         ..stop()
         ..value = 0;
@@ -279,6 +271,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   @override
   void dispose() {
     _sfx.stopWaitingLoop(); // 卸載儀式：確保等待 loop 不在背景殘留。
+    _sfx.stopRevealBed(); // 卸載儀式：確保配樂 bed 不在背景殘留。
     _intro.dispose();
     _reveal.dispose();
     _waiting.dispose();
