@@ -2225,6 +2225,7 @@ void main() {
 
       expect(practiceCeremonyParticleBloom(0.20), greaterThan(0.8));
       expect(practiceCeremonyParticleBloom(0.30), greaterThan(0.25));
+      expect(practiceCeremonyParticleBloom(0.34), greaterThan(0.18));
       expect(practiceCeremonyParticleBloom(0.04), lessThan(0.2));
       expect(practiceCeremonyParticleBloom(0.40), lessThan(0.2));
 

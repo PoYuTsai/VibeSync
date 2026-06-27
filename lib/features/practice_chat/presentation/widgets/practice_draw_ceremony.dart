@@ -115,7 +115,7 @@ double practiceCeremonyTumbleSpin(double revealFraction) {
 
 @visibleForTesting
 double practiceCeremonyParticleBloom(double revealFraction) {
-  final d = (revealFraction - 0.20) / 0.09;
+  final d = (revealFraction - 0.20) / 0.115;
   return math.exp(-d * d).clamp(0.0, 1.0);
 }
 
@@ -755,7 +755,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               ),
             ),
           ),
-          if (particleBloom > 0.02)
+          if (particleBloom > 0.06)
             Positioned.fill(
               key: const ValueKey('practice-draw-ceremony-particle-bloom'),
               child: IgnorePointer(
@@ -2019,31 +2019,31 @@ class _ParticleBloomPainter extends CustomPainter {
       width: cardSize.width,
       height: cardSize.height,
     );
-    final field = cardRect.inflate(cardSize.width * 0.24);
+    final field = cardRect.inflate(cardSize.width * 0.32);
     final glow = Paint()
       ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     final dot = Paint()..blendMode = BlendMode.plus;
 
     void spark(Offset p, Color color, double radius, double alpha) {
       final a = alpha.clamp(0.0, 1.0);
       if (a <= 0.01) return;
-      glow.color = color.withValues(alpha: a * 0.58);
+      glow.color = color.withValues(alpha: a * 0.66);
       dot.color = color.withValues(alpha: a);
-      canvas.drawCircle(p, radius * 3.4, glow);
+      canvas.drawCircle(p, radius * 3.9, glow);
       canvas.drawCircle(p, radius, dot);
     }
 
-    for (var i = 0; i < 112; i++) {
+    for (var i = 0; i < 168; i++) {
       final side = i % 4;
       final phase = (i * 0.61803398875 + progress * 0.22) % 1.0;
       final shimmer = 0.56 + 0.44 * math.sin(i * 1.73 + progress * 36);
       final color = Color.lerp(_kNeonCyan, _kGold, (i % 9) / 8)!;
-      final radius = 1.25 + (i % 6) * 0.40;
+      final radius = 1.15 + (i % 7) * 0.36;
       final jitter =
-          math.sin(i * 2.31 + progress * 18) * cardSize.width * 0.055;
+          math.sin(i * 2.31 + progress * 18) * cardSize.width * 0.075;
       late final Offset p;
-      var sideWeight = 1.55;
+      var sideWeight = 1.95;
       switch (side) {
         case 0:
           p = Offset(
@@ -2054,22 +2054,32 @@ class _ParticleBloomPainter extends CustomPainter {
               field.right + jitter.abs(), field.top + field.height * phase);
           break;
         case 2:
-          sideWeight = 0.96;
+          sideWeight = 1.42;
           p = Offset(
-              field.left + field.width * phase, field.top - jitter.abs());
+            field.left +
+                field.width * phase +
+                math.sin(i * 1.11 + progress * 21) * cardSize.width * 0.045,
+            field.top +
+                math.cos(i * 1.47 + progress * 29) * cardSize.height * 0.055,
+          );
           break;
         default:
-          sideWeight = 0.82;
+          sideWeight = 1.18;
           p = Offset(
-              field.left + field.width * phase, field.bottom + jitter.abs());
+            field.left +
+                field.width * phase +
+                math.cos(i * 1.23 + progress * 19) * cardSize.width * 0.04,
+            field.bottom +
+                math.sin(i * 1.63 + progress * 27) * cardSize.height * 0.05,
+          );
           break;
       }
       spark(p, color, radius, intensity * shimmer * sideWeight);
     }
 
-    for (var i = 0; i < 46; i++) {
+    for (var i = 0; i < 72; i++) {
       final angle = i * 2.399963229728653 + progress * 5.2;
-      final orbit = 0.58 + (i % 7) * 0.035;
+      final orbit = 0.60 + (i % 9) * 0.04;
       final p = center +
           Offset(
             math.cos(angle) * cardSize.width * orbit,
@@ -2080,7 +2090,29 @@ class _ParticleBloomPainter extends CustomPainter {
         p,
         Color.lerp(Colors.white, _kNeonCyan, (i % 4) / 3)!,
         1.0 + 1.7 * twinkle,
-        intensity * twinkle * 0.78,
+        intensity * twinkle * 0.92,
+      );
+    }
+
+    for (var i = 0; i < 130; i++) {
+      final angle = i * 2.399963229728653 + progress * 2.8;
+      final side = math.cos(angle).abs();
+      final haloBand = 0.58 + 0.36 * ((i * 7) % 13) / 12;
+      final x = center.dx +
+          math.cos(angle) * cardSize.width * haloBand +
+          math.sin(i * 1.19 + progress * 17) * cardSize.width * 0.08;
+      final y = center.dy +
+          math.sin(angle) * cardSize.height * (0.42 + 0.22 * side) +
+          math.cos(i * 1.73 + progress * 13) * cardSize.height * 0.04;
+      final shimmer = 0.45 + 0.55 * math.sin(i * 1.67 + progress * 44);
+      final color = i % 3 == 0
+          ? _kGold
+          : Color.lerp(_kNeonCyan, Colors.white, (i % 5) / 4)!;
+      spark(
+        Offset(x, y),
+        color,
+        0.72 + shimmer * 1.35,
+        intensity * shimmer * (0.28 + 0.58 * side),
       );
     }
   }
