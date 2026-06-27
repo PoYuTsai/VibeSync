@@ -67,17 +67,18 @@ double practiceCeremonyClimaxBurst(double revealFraction) {
   return math.exp(-d * d);
 }
 
-/// 揭曉卡片尺寸（E1 放大／復刻 音檔.mp4 的近滿版大卡）：寬 ≈ 0.84×螢幕寬、直式 3:4
-/// （高 = 寬 × 4/3）。大螢幕（平板）寬封頂 [kPracticeCardMaxWidth]；矮螢幕再被可用
-/// 高度夾住，確保 stage＋caption 不溢出。widget 與 widget test 共用單一真相。
+/// 揭曉卡片尺寸（G2 放大／復刻 音檔.mp4 的近滿版高卡）：寬 ≈ 0.84×螢幕寬、直式 2:3
+/// （高 = 寬 × 1.5，比舊 4/3 更高更主導，貼合參考片塔羅卡比例）。大螢幕（平板）寬封頂
+/// [kPracticeCardMaxWidth]；矮螢幕再被可用高度夾住，確保 stage＋caption 不溢出。
+/// widget 與 widget test 共用單一真相。
 @visibleForTesting
 const double kPracticeCardWidthFactor = 0.84;
 @visibleForTesting
 const double kPracticeCardMaxWidth = 360;
 @visibleForTesting
-const double kPracticeCardHeightRatio = 4 / 3; // 直式 3:4 → 高 = 寬 × 4/3
+const double kPracticeCardHeightRatio = 1.5; // 直式 2:3 → 高 = 寬 × 1.5（塔羅卡比例）
 @visibleForTesting
-const double kPracticeCardMaxHeightFactor = 0.6; // 卡高最多佔螢幕高，留白給 caption／光暈
+const double kPracticeCardMaxHeightFactor = 0.64; // 卡高最多佔螢幕高，留白給 caption／光暈
 
 @visibleForTesting
 Size practiceCeremonyCardSize(Size screen) {
@@ -679,11 +680,13 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 // ── 儀式專屬色票（scoped，不污染全域 AppColors）─────────────────────────────
 const Color _kGold = Color(0xFFF4D58D);
 const Color _kGoldDeep = Color(0xFFCB962F);
-const Color _kPurpleHi = Color(0xFF3A1E63);
-const Color _kPurpleLo = Color(0xFF130A24);
-const Color _kCrystalLight = Color(0xFFB892FF); // E3 紫水晶 facet 高光（朝光面）
-const Color _kFrameDark = Color(0xFF1A1208); // E3 黑金浮雕厚框外圈近黑金
-const Color _kStageGlow = Color(0xFF2A1248);
+const Color _kCrystalLight = Color(0xFFB892FF); // 紫水晶高光／徽記頂面、角寶石亮 facet
+// G2 重做：復刻參考片「黑塔羅」卡背用色。卡背改近黑底＋金羅盤＋小紫立方徽記。
+const Color _kInk = Color(0xFF0C0A14); // 卡背近黑底（中心略提亮）
+const Color _kInkLift = Color(0xFF16121F); // 卡背中心微亮
+const Color _kInkDeep = Color(0xFF050409); // 卡背近黑底（四角最暗）
+const Color _kLavender = Color(0xFF9E86E0); // 羅盤角寶石／徽記左面中段紫
+const Color _kMagenta = Color(0xFFB773D6); // 徽記右面底段洋紫
 const Color _kCardMatte = Color(0xFFFDF2F6); // 正面卡白／粉系鑲邊
 const Color _kTeal = Color(0xFF4FE0C8); // grand 典藏卡 teal accent（Batch C 目檢可退純金）
 const Color _kGrandGlass = Color(0xCC0E0A1C); // grand frosted 深色玻璃資訊欄底
@@ -703,75 +706,36 @@ class _CeremonyCardBack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(24);
+    final radius = BorderRadius.circular(22);
     return Container(
       key: const ValueKey('practice-draw-ceremony-back'),
       width: width,
       height: height,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [_kPurpleHi, _kPurpleLo],
-        ),
         borderRadius: radius,
         boxShadow: [
+          // 外圈脈動能量光暈（參考片 cyan→gold neon border 的 bloom）。
           BoxShadow(
-            color: _kGold.withValues(alpha: 0.22 + 0.26 * glow),
-            blurRadius: 34,
+            color: _kGold.withValues(alpha: 0.20 + 0.26 * glow),
+            blurRadius: 30,
             spreadRadius: 1,
           ),
           BoxShadow(
-            color: AppColors.brandBlush.withValues(alpha: 0.18 * glow),
-            blurRadius: 44,
-            spreadRadius: 2,
+            color: _kTeal.withValues(alpha: 0.10 + 0.16 * glow),
+            blurRadius: 42,
+            spreadRadius: 1,
           ),
         ],
       ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // E3：3D 紫六角水晶 logo＋密星空（CustomPaint，靜態、隨 glow 微亮）。
-          ClipRRect(
-            borderRadius: radius,
-            child: CustomPaint(painter: _MysticBackPainter(glow: glow)),
-          ),
-          // 黑金浮雕厚框：外圈近黑金粗邊＋中圈亮金 bevel＋內圈深金細溝，三層讓邊框讀起
-          // 來像一道有厚度的浮雕框（取代舊版細金雙鑲邊）。
-          DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              border: Border.all(
-                color: _kFrameDark.withValues(alpha: 0.9),
-                width: 3,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(3),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(21),
-                border: Border.all(
-                  color: _kGold.withValues(alpha: 0.85),
-                  width: 1.6,
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(6),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: _kGoldDeep.withValues(alpha: 0.5),
-                  width: 1,
-                ),
-              ),
-            ),
-          ),
-        ],
+      // G2 重做：卡背改「黑塔羅」——近黑底＋金羅盤紋章＋小紫立方徽記（_MysticBackPainter），
+      // 上覆賽博金框（chamfer 倒角＋上下 bracket＋segment ticks，_CyberFramePainter）。
+      child: ClipRRect(
+        borderRadius: radius,
+        child: CustomPaint(
+          painter: _MysticBackPainter(glow: glow),
+          foregroundPainter: _CyberFramePainter(glow: glow),
+          child: const SizedBox.expand(),
+        ),
       ),
     );
   }
@@ -1015,150 +979,515 @@ class _FrontInfo extends StatelessWidget {
 CustomPainter debugMysticBackPainter({required double glow}) =>
     _MysticBackPainter(glow: glow);
 
-/// 神秘卡背（E3 復刻 `音檔.mp4`）：中央一顆 3D 紫六角水晶 logo＋鋪滿卡背的密星空。
+/// 卡背整體（背景＋賽博金框＋羅盤紋章）的 test/preview seam：讓 still-recorder 與
+/// widget test 免跑整條儀式即可單獨渲染、目檢卡背還原度。
+@visibleForTesting
+Widget debugCeremonyCardBack({
+  required double width,
+  required double height,
+  double glow = 0.6,
+}) =>
+    _CeremonyCardBack(width: width, height: height, glow: glow);
+
+/// 神秘卡背「黑塔羅」（G2 重做，逐幀復刻 `音檔.mp4` t≈2.5s 卡背）：
+/// 近黑底 → 外圈放射光芒（sunburst）→ 金羅盤雙環＋齒刻度 → 十字軸線＋四方位金鑽
+/// ＋上下 bracket 屋脊 → 四對角紫水晶角寶石 → 中央一顆「3D 等角立方體徽記」
+/// （頂面巢狀 chevron、左右下面 Greek-key 迷宮鉤，紫→洋紫漸層＋亮金稜線）。
 ///
-/// **3D 水晶**：pointy-top 六邊形切成 6 個三角 facet，各 facet 依其外法線對「左上來光」
-/// 做 Lambert 點積上色（朝光面亮、背光面暗），金線描邊 facet 與外框成黑金浮雕，左上補一
-/// 抹 specular 高光與中央亮核 → 讀起來像一顆有體積的紫水晶寶石。
-/// **密星空**：golden-angle 螺旋把星點均勻鋪滿整面、白／金交錯。
+/// Eric 的「非紫六角」＝舊版那顆過大的紫水晶六角退場；改以**黑＋金羅盤為主視覺**，
+/// 紫只在中央徽記與角寶石當點綴（佔比 < 全卡 35%）。賽博金框另由 [_CyberFramePainter]
+/// 蓋在上層（chamfer 倒角＋上下 trapezoid bracket＋segment ticks）。
 ///
-/// **確定性、零 Random**：佈點／facet 明暗全由 index 與幾何決定，重建穩定
-/// （`shouldRepaint` 只認 [glow]）；[glow] 只調整整體亮度。
+/// **確定性、零 Random**：所有佈點／明暗全由幾何決定（`shouldRepaint` 只認 [glow]）。
 class _MysticBackPainter extends CustomPainter {
   _MysticBackPainter({required this.glow});
 
   final double glow;
 
-  static const int _starCount = 46;
-  // golden angle，讓螺旋佈點均勻不打結。
-  static const double _goldenAngle = 2.399963229728653;
-  // 來光方向（左上、約 45°）。
-  static const Offset _light = Offset(-0.7071, -0.7071);
-
   @override
   void paint(Canvas canvas, Size size) {
-    _paintStarfield(canvas, size);
-    _paintCrystal(canvas, size);
+    final c = Offset(size.width / 2, size.height / 2);
+    final s = size.shortestSide;
+    _paintBackground(canvas, size, c, s);
+    // 十字軸延伸到框（不隨紋章縮放，貼合參考片高卡比例的長軸線）。
+    _paintAxisCross(canvas, size, c, s);
+    // 紋章群整體縮至 [_medallionScale]，讓羅盤在高卡內留更多暗邊（貼合參考片比例）。
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.scale(_medallionScale);
+    canvas.translate(-c.dx, -c.dy);
+    _paintSunburst(canvas, c, s);
+    _paintCompass(canvas, c, s);
+    _paintCardinalNodes(canvas, c, s);
+    _paintCornerGems(canvas, c, s);
+    _paintEmblem(canvas, c, s);
+    canvas.restore();
   }
 
-  // 密星空：golden-angle 螺旋（半徑隨 √index 成長 → 均勻密度）鋪滿整面，白／金交錯、
-  // 隨 glow 微亮。落在卡外的點略過。確定性、零 Random。
-  void _paintStarfield(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final maxR = size.longestSide * 0.62;
-    for (var i = 0; i < _starCount; i++) {
-      final t = (i + 0.5) / _starCount;
-      final radius = maxR * math.sqrt(t);
-      final a = i * _goldenAngle;
-      final pos = center + Offset(math.cos(a), math.sin(a)) * radius;
-      if (!size.contains(pos)) continue;
+  // 紋章群縮放：高卡（2:3）下把羅盤/徽記縮小，留更多暗邊復刻參考片留白。
+  static const double _medallionScale = 0.82;
 
-      final base = 0.16 + 0.5 * (((i * 5) % 7) / 7.0);
-      final alpha = (base * (0.6 + 0.4 * glow)).clamp(0.0, 0.85);
-      if (alpha <= 0.02) continue;
-      final r = 0.8 + 1.4 * (((i * 3) % 5) / 5.0);
-      final color =
-          (i % 3 == 0 ? _kGold : Colors.white).withValues(alpha: alpha);
-
-      canvas.drawCircle(
-        pos,
-        r * 2.0,
-        Paint()
-          ..color = color.withValues(alpha: alpha * 0.35)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
-      );
-      canvas.drawCircle(pos, r, Paint()..color = color);
+  // 近黑底：中心微亮的徑向暗漸層＋上半幾道極淡科技斜板線。
+  void _paintBackground(Canvas canvas, Size size, Offset c, double s) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(0, -0.12),
+          radius: 0.95,
+          colors: [_kInkLift, _kInk, _kInkDeep],
+          stops: [0.0, 0.5, 1.0],
+        ).createShader(rect),
+    );
+    final panel = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = _kGold.withValues(alpha: 0.05 + 0.04 * glow);
+    for (var i = 0; i < 3; i++) {
+      final y = size.height * (0.14 + i * 0.055);
+      canvas.drawLine(Offset(size.width * 0.18, y),
+          Offset(size.width * 0.46, y - size.height * 0.035), panel);
+      canvas.drawLine(Offset(size.width * 0.82, y),
+          Offset(size.width * 0.54, y - size.height * 0.035), panel);
     }
   }
 
-  // 3D 紫六角水晶：6 facet 依外法線對 _light 做 Lambert 上色，金線描邊＋外框＝黑金浮雕，
-  // 左上 specular 高光＋中央亮核。確定性、零 Random。
-  void _paintCrystal(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final gemR = size.shortestSide * 0.26;
+  // 外圈放射光芒：長短交錯的細放射線，做出羅盤背後的「刻度＋光芒」層次。
+  void _paintSunburst(Canvas canvas, Offset c, double s) {
+    const n = 72;
+    final rIn = s * 0.30;
+    final rOut = s * 0.60;
+    for (var i = 0; i < n; i++) {
+      final a = i * 2 * math.pi / n;
+      final dir = Offset(math.cos(a), math.sin(a));
+      final long = i % 3 == 0;
+      final r0 = rIn + (long ? 0.0 : s * 0.05);
+      final r1 = long ? rOut : rIn + s * 0.11;
+      final alpha = (long ? 0.09 : 0.045) * (0.7 + 0.4 * glow);
+      canvas.drawLine(
+        c + dir * r0,
+        c + dir * r1,
+        Paint()
+          ..strokeWidth = 1
+          ..color = _kGold.withValues(alpha: alpha),
+      );
+    }
+  }
 
-    // 寶石後方柔光暈，把水晶從卡背襯出來。
+  // 金羅盤：外環＋中環＋內環（緊貼徽記）＋外/中環間的放射齒刻度。
+  void _paintCompass(Canvas canvas, Offset c, double s) {
+    final rOuter = s * 0.40;
+    final rMid = s * 0.355;
+    final rInner = s * 0.205;
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..color = _kGold.withValues(alpha: 0.42 + 0.2 * glow);
+    canvas.drawCircle(c, rOuter, ring);
+    canvas.drawCircle(c, rInner, ring);
     canvas.drawCircle(
-      center,
-      gemR * 1.7,
+      c,
+      rMid,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8
+        ..color = _kGold.withValues(alpha: 0.24 + 0.16 * glow),
+    );
+    const ticks = 60;
+    final tick = Paint()
+      ..strokeWidth = 0.8
+      ..color = _kGoldDeep.withValues(alpha: 0.2 + 0.12 * glow);
+    final tickIn = rMid + (rOuter - rMid) * 0.32; // 短齒，貼外環
+    for (var i = 0; i < ticks; i++) {
+      final a = i * 2 * math.pi / ticks;
+      final dir = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(c + dir * tickIn, c + dir * rOuter, tick);
+    }
+  }
+
+  // 十字軸線：垂直軸延伸到框頂/底（長軸），水平軸到外環外側。不隨紋章縮放。
+  void _paintAxisCross(Canvas canvas, Size size, Offset c, double s) {
+    final axis = Paint()
+      ..strokeWidth = 1
+      ..color = _kGold.withValues(alpha: 0.34 + 0.18 * glow);
+    canvas.drawLine(Offset(c.dx, size.height * 0.075),
+        Offset(c.dx, size.height * 0.925), axis);
+    final hx = s * 0.40 * _medallionScale * 1.05;
+    canvas.drawLine(Offset(c.dx - hx, c.dy), Offset(c.dx + hx, c.dy), axis);
+  }
+
+  // 四方位金鑽（落外環）＋垂直軸上 2 顆小金鑽節點＋徽記上下 bracket 屋脊。隨紋章縮放。
+  void _paintCardinalNodes(Canvas canvas, Offset c, double s) {
+    final rOuter = s * 0.40;
+    for (final ang in [-math.pi / 2, 0.0, math.pi / 2, math.pi]) {
+      _goldDiamond(canvas, c + Offset(math.cos(ang), math.sin(ang)) * rOuter,
+          s * 0.022);
+    }
+    _goldDiamond(canvas, Offset(c.dx, c.dy - rOuter * 0.62), s * 0.015);
+    _goldDiamond(canvas, Offset(c.dx, c.dy + rOuter * 0.62), s * 0.015);
+    _bracketPeak(canvas, Offset(c.dx, c.dy - s * 0.235), s, up: true);
+    _bracketPeak(canvas, Offset(c.dx, c.dy + s * 0.235), s, up: false);
+  }
+
+  void _goldDiamond(Canvas canvas, Offset p, double r) {
+    final path = Path()
+      ..moveTo(p.dx, p.dy - r)
+      ..lineTo(p.dx + r, p.dy)
+      ..lineTo(p.dx, p.dy + r)
+      ..lineTo(p.dx - r, p.dy)
+      ..close();
+    canvas.drawPath(path, Paint()..color = _kGold.withValues(alpha: 0.85));
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8
+        ..color = _kGoldDeep,
+    );
+  }
+
+  // 淺金 chevron 屋脊（up=true 尖朝上、置於徽記上方；false 尖朝下、置於下方）。
+  void _bracketPeak(Canvas canvas, Offset apex, double s, {required bool up}) {
+    final dy = up ? 1.0 : -1.0;
+    final wing = s * 0.085;
+    final drop = s * 0.05;
+    canvas.drawPath(
+      Path()
+        ..moveTo(apex.dx - wing, apex.dy + dy * drop)
+        ..lineTo(apex.dx, apex.dy)
+        ..lineTo(apex.dx + wing, apex.dy + dy * drop),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..strokeJoin = StrokeJoin.round
+        ..color = _kGold.withValues(alpha: 0.5 + 0.2 * glow),
+    );
+  }
+
+  // 四對角（NE/SE/SW/NW）紫水晶角寶石＋中心連接細線。
+  void _paintCornerGems(Canvas canvas, Offset c, double s) {
+    final r = s * 0.40 * 0.86;
+    final half = s * 0.044;
+    for (final ang in [
+      -math.pi * 3 / 4,
+      -math.pi / 4,
+      math.pi / 4,
+      math.pi * 3 / 4,
+    ]) {
+      final p = c + Offset(math.cos(ang), math.sin(ang)) * r;
+      canvas.drawLine(
+        c,
+        p,
+        Paint()
+          ..strokeWidth = 0.8
+          ..color = _kGold.withValues(alpha: 0.16 + 0.12 * glow),
+      );
+      _lavenderGem(canvas, p, half);
+    }
+  }
+
+  // 3D 紫水晶角寶石（鑽石上半亮 facet／下半暗 facet＋金線描邊）。
+  void _lavenderGem(Canvas canvas, Offset p, double half) {
+    final top = Offset(p.dx, p.dy - half);
+    final right = Offset(p.dx + half, p.dy);
+    final bottom = Offset(p.dx, p.dy + half);
+    final left = Offset(p.dx - half, p.dy);
+    canvas.drawPath(
+      Path()
+        ..moveTo(top.dx, top.dy)
+        ..lineTo(right.dx, right.dy)
+        ..lineTo(p.dx, p.dy)
+        ..lineTo(left.dx, left.dy)
+        ..close(),
+      Paint()..color = _kCrystalLight.withValues(alpha: 0.92),
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(left.dx, left.dy)
+        ..lineTo(p.dx, p.dy)
+        ..lineTo(right.dx, right.dy)
+        ..lineTo(bottom.dx, bottom.dy)
+        ..close(),
+      Paint()..color = _kLavender.withValues(alpha: 0.95),
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(top.dx, top.dy)
+        ..lineTo(right.dx, right.dy)
+        ..lineTo(bottom.dx, bottom.dy)
+        ..lineTo(left.dx, left.dy)
+        ..close(),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.1
+        ..color = _kGold.withValues(alpha: 0.7),
+    );
+  }
+
+  // 中央徽記：等角立方體（pointy-top 六邊輪廓，3 面：頂面亮、左面中、右面暗），
+  // 頂面 3 道巢狀 chevron、左右下面 Greek-key 迷宮鉤（皆 bevel 暗底＋亮金），亮金稜線。
+  void _paintEmblem(Canvas canvas, Offset c, double s) {
+    final rE = s * 0.15;
+    Offset v(int k) {
+      final a = -math.pi / 2 + k * math.pi / 3;
+      return c + Offset(math.cos(a), math.sin(a)) * rE;
+    }
+
+    final v0 = v(0), v1 = v(1), v2 = v(2), v3 = v(3), v4 = v(4), v5 = v(5);
+
+    // 徽記後柔光暈。
+    canvas.drawCircle(
+      c,
+      rE * 1.6,
       Paint()
         ..shader = RadialGradient(
           colors: [
-            _kCrystalLight.withValues(alpha: 0.26 + 0.22 * glow),
+            _kCrystalLight.withValues(alpha: 0.22 + 0.18 * glow),
             _kCrystalLight.withValues(alpha: 0.0),
           ],
-        ).createShader(Rect.fromCircle(center: center, radius: gemR * 1.7)),
+        ).createShader(Rect.fromCircle(center: c, radius: rE * 1.6)),
     );
 
-    // pointy-top 六邊形頂點（-90° 起、每 60°）。
-    final verts = <Offset>[
-      for (var k = 0; k < 6; k++)
-        center +
-            Offset(
-                  math.cos(-math.pi / 2 + k * math.pi / 3),
-                  math.sin(-math.pi / 2 + k * math.pi / 3),
-                ) *
-                gemR,
-    ];
-
-    // 6 個三角 facet（center→vk→v(k+1)），外法線≈中點方向，對 _light 做 Lambert。
-    for (var k = 0; k < 6; k++) {
-      final v0 = verts[k];
-      final v1 = verts[(k + 1) % 6];
-      var normal = (v0 + v1) / 2 - center;
-      final len = normal.distance;
-      if (len > 0) normal = normal / len;
-      final lambert = ((normal.dx * _light.dx + normal.dy * _light.dy) + 1) / 2;
-      final facet = Color.lerp(_kPurpleLo, _kCrystalLight, lambert)!;
-      final path = Path()
-        ..moveTo(center.dx, center.dy)
-        ..lineTo(v0.dx, v0.dy)
-        ..lineTo(v1.dx, v1.dy)
-        ..close();
-      canvas.drawPath(path, Paint()..color = facet);
+    Path quad(List<Offset> pts) {
+      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (final p in pts.skip(1)) {
+        path.lineTo(p.dx, p.dy);
+      }
+      return path..close();
     }
 
-    // facet 放射邊（黑金浮雕的細金線）。
-    final edgePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = _kGoldDeep.withValues(alpha: 0.5 + 0.2 * glow);
-    for (final v in verts) {
-      canvas.drawLine(center, v, edgePaint);
-    }
-
-    // 外框金線（浮雕厚邊）。
+    // 三面填色：top（v5,v0,v1,c）亮、left（c,v5,v4,v3）中、right（c,v1,v2,v3）暗。
     canvas.drawPath(
-      Path()..addPolygon(verts, true),
+      quad([v5, v0, v1, c]),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white, _kCrystalLight],
+        ).createShader(Rect.fromPoints(v0, c)),
+    );
+    canvas.drawPath(
+      quad([c, v5, v4, v3]),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_kCrystalLight, _kLavender],
+        ).createShader(Rect.fromPoints(v5, v3)),
+    );
+    canvas.drawPath(
+      quad([c, v1, v2, v3]),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_kLavender, _kMagenta],
+        ).createShader(Rect.fromPoints(v1, v3)),
+    );
+
+    // 外框六邊亮金稜線。
+    canvas.drawPath(
+      Path()..addPolygon([v0, v1, v2, v3, v4, v5], true),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.4
+        ..strokeWidth = 2.0
         ..strokeJoin = StrokeJoin.round
         ..color = _kGold.withValues(alpha: 0.7 + 0.3 * glow),
     );
+    // 三條稜（c→v3 垂直白脊、c→v1 金、c→v5 白）。
+    canvas.drawLine(c, v3,
+        Paint()..strokeWidth = 1.6..color = Colors.white.withValues(alpha: 0.5));
+    canvas.drawLine(c, v1,
+        Paint()..strokeWidth = 1.4..color = _kGold.withValues(alpha: 0.6));
+    canvas.drawLine(c, v5,
+        Paint()..strokeWidth = 1.4..color = Colors.white.withValues(alpha: 0.45));
 
-    // 左上朝光的兩 facet 補一抹 specular 高光。
+    // 頂面 3 道巢狀 chevron（沿頂面往上聚），bevel 暗底＋亮金面。
+    for (var i = 0; i < 3; i++) {
+      final t = 0.26 + i * 0.22;
+      final lx = Offset.lerp(c, v5, t)!;
+      final rx = Offset.lerp(c, v1, t)!;
+      final apex = Offset.lerp(c, v0, t + 0.22)!;
+      final ch = Path()
+        ..moveTo(lx.dx, lx.dy)
+        ..lineTo(apex.dx, apex.dy)
+        ..lineTo(rx.dx, rx.dy);
+      canvas.drawPath(
+        ch,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.2
+          ..strokeJoin = StrokeJoin.round
+          ..color = _kInkDeep.withValues(alpha: 0.55),
+      );
+      canvas.drawPath(
+        ch,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.9
+          ..strokeJoin = StrokeJoin.round
+          ..color = Color.lerp(_kGold, Colors.white, 0.3 - i * 0.1)!
+              .withValues(alpha: 0.92),
+      );
+    }
+
+    // 左右下面 Greek-key 迷宮鉤（鏡像，面內基底對齊 3D 斜面）。
+    _mazeKey(canvas, c, v5, v4, v3, rE, mirror: false);
+    _mazeKey(canvas, c, v1, v2, v3, rE, mirror: true);
+  }
+
+  // 在下斜面（o=中心、shoulder=肩頂點、side=外頂點、bottom=底頂點）內畫 Greek-key
+  // 直角鉤：以面內基底（ex 朝外、ey 朝底，正交化）放折線，貼合 3D 斜面；bevel 暗底＋亮金。
+  void _mazeKey(Canvas canvas, Offset o, Offset shoulder, Offset side,
+      Offset bottom, double rE,
+      {required bool mirror}) {
+    final fc = (o + shoulder + side + bottom) / 4;
+    var ex = side - o;
+    ex = ex / ex.distance;
+    var ey = bottom - o;
+    final dot = ey.dx * ex.dx + ey.dy * ex.dy;
+    ey = ey - ex * dot;
+    ey = ey / ey.distance;
+    final q = rE * 0.30;
+    final m = mirror ? -1.0 : 1.0;
+    Offset p(double a, double b) => fc + ex * (a * q * m) + ey * (b * q);
+    final pts = [
+      p(-1.1, -1.15),
+      p(1.1, -1.15),
+      p(1.1, 1.15),
+      p(-0.5, 1.15),
+      p(-0.5, 0.1),
+      p(0.45, 0.1),
+      p(0.45, -0.5),
+    ];
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (final q2 in pts.skip(1)) {
+      path.lineTo(q2.dx, q2.dy);
+    }
     canvas.drawPath(
-      Path()
-        ..moveTo(center.dx, center.dy)
-        ..lineTo(verts[5].dx, verts[5].dy)
-        ..lineTo(verts[0].dx, verts[0].dy)
-        ..close(),
-      Paint()..color = Colors.white.withValues(alpha: 0.12 + 0.12 * glow),
-    );
-
-    // 中央亮核。
-    canvas.drawCircle(
-      center,
-      gemR * 0.16,
+      path,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.5 + 0.3 * glow)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.4
+        ..strokeJoin = StrokeJoin.round
+        ..color = _kInkDeep.withValues(alpha: 0.6),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.9
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..color = _kGold.withValues(alpha: 0.9),
     );
   }
 
   @override
   bool shouldRepaint(_MysticBackPainter old) => old.glow != glow;
+}
+
+/// 賽博金框（G2 重做，復刻 `音檔.mp4` 卡背外框）：圓角金框帶 ＋ 內倒角八邊細線
+/// （cut corners）＋ 上下中央 trapezoid bracket ＋ 內線 segment ticks。蓋在卡背最上層。
+@visibleForTesting
+CustomPainter debugCyberFramePainter({required double glow}) =>
+    _CyberFramePainter(glow: glow);
+
+class _CyberFramePainter extends CustomPainter {
+  _CyberFramePainter({required this.glow});
+
+  final double glow;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final s = size.shortestSide;
+
+    // 1) 主金框帶（圓角矩形描邊，金漸層）。
+    final inset = s * 0.018;
+    final outer = RRect.fromRectAndRadius(
+      Rect.fromLTRB(inset, inset, w - inset, h - inset),
+      Radius.circular(s * 0.05),
+    );
+    canvas.drawRRect(
+      outer,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.022
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_kGold, _kGoldDeep, _kGold],
+        ).createShader(outer.outerRect),
+    );
+
+    // 2) 內倒角八邊形細線（cut corners）。
+    final cut = s * 0.12;
+    final pad = s * 0.07;
+    canvas.drawPath(
+      Path()
+        ..moveTo(pad + cut, pad)
+        ..lineTo(w - pad - cut, pad)
+        ..lineTo(w - pad, pad + cut)
+        ..lineTo(w - pad, h - pad - cut)
+        ..lineTo(w - pad - cut, h - pad)
+        ..lineTo(pad + cut, h - pad)
+        ..lineTo(pad, h - pad - cut)
+        ..lineTo(pad, pad + cut)
+        ..close(),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = _kGold.withValues(alpha: 0.5 + 0.2 * glow),
+    );
+
+    // 3) 上/下中央 trapezoid bracket（金實心 bevel）。
+    _bracket(canvas, size, s, top: true);
+    _bracket(canvas, size, s, top: false);
+
+    // 4) segment ticks（左上內線上的小亮金段）。
+    final tickPaint = Paint()
+      ..color = _kGold.withValues(alpha: 0.85)
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    for (final fx in [0.30, 0.35]) {
+      canvas.drawLine(
+        Offset(w * fx, pad),
+        Offset(w * fx + s * 0.025, pad),
+        tickPaint,
+      );
+    }
+  }
+
+  void _bracket(Canvas canvas, Size size, double s, {required bool top}) {
+    final w = size.width;
+    final edge = s * 0.018;
+    final yEdge = top ? edge : size.height - edge;
+    final yIn = top ? yEdge + s * 0.07 : yEdge - s * 0.07;
+    final x0 = w * 0.30;
+    final x1 = w * 0.70;
+    final taper = s * 0.05;
+    final path = Path()
+      ..moveTo(x0, yEdge)
+      ..lineTo(x1, yEdge)
+      ..lineTo(x1 - taper, yIn)
+      ..lineTo(x0 + taper, yIn)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..shader = LinearGradient(
+          begin: top ? Alignment.topCenter : Alignment.bottomCenter,
+          end: top ? Alignment.bottomCenter : Alignment.topCenter,
+          colors: const [_kGold, _kGoldDeep],
+        ).createShader(path.getBounds()),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CyberFramePainter old) => old.glow != glow;
 }
 
 /// 軌道彗星 halo 的夾層：`back` = 投影深度 z<0 的後半弧（畫在卡片**下方**）；

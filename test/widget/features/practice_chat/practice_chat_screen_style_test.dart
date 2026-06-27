@@ -2164,27 +2164,27 @@ void main() {
   });
 
   group('E1 卡尺寸 responsive', () {
-    test('卡寬≈0.84×螢幕寬、維持直式 3:4，且比舊版固定 214 大', () {
+    test('卡寬≈0.84×螢幕寬、維持直式 2:3，且比舊版固定 214 大', () {
       final s = practiceCeremonyCardSize(const Size(390, 844));
       expect(s.width, closeTo(390 * 0.84, 0.5));
-      expect(s.height, closeTo(s.width * 4 / 3, 0.5));
+      expect(s.height, closeTo(s.width * 1.5, 0.5));
       expect(s.width, greaterThan(214));
     });
 
-    test('大螢幕（平板）卡寬封頂、不無限放大（仍維持 3:4）', () {
+    test('大螢幕（平板）卡寬封頂、不無限放大（仍維持 2:3）', () {
       final s = practiceCeremonyCardSize(const Size(1200, 1600));
       expect(s.width, lessThanOrEqualTo(kPracticeCardMaxWidth));
-      expect(s.height, closeTo(s.width * 4 / 3, 0.5));
+      expect(s.height, closeTo(s.width * 1.5, 0.5));
     });
 
-    test('矮螢幕：卡高被可用高度夾住、不溢出（仍維持 3:4）', () {
+    test('矮螢幕：卡高被可用高度夾住、不溢出（仍維持 2:3）', () {
       final s = practiceCeremonyCardSize(const Size(360, 480));
-      expect(s.height, lessThanOrEqualTo(480 * 0.6 + 0.5));
-      expect(s.width, closeTo(s.height * 3 / 4, 0.5));
+      expect(s.height, lessThanOrEqualTo(480 * 0.64 + 0.5));
+      expect(s.width, closeTo(s.height / 1.5, 0.5));
     });
   });
 
-  testWidgets('E1：揭曉卡片在手機上明顯放大（卡背寬度 > 舊版 214、維持 3:4）',
+  testWidgets('E1：揭曉卡片在手機上明顯放大（卡背寬度 > 舊版 214、維持 2:3）',
       (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -2197,7 +2197,8 @@ void main() {
     final backSize = tester
         .getSize(find.byKey(const ValueKey('practice-draw-ceremony-back')));
     expect(backSize.width, greaterThan(214));
-    expect(backSize.height, closeTo(backSize.width * 4 / 3, 1.0));
+    // G2：卡比例改直式 2:3（高 = 寬 × 1.5，較舊 4/3 更高更主導，貼合參考片塔羅卡）。
+    expect(backSize.height, closeTo(backSize.width * 1.5, 1.0));
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await tester.pumpAndSettle();
@@ -2310,8 +2311,8 @@ void main() {
     });
   });
 
-  group('神秘卡背 painter（E3 紫水晶卡背）', () {
-    test('各 glow 建構＋paint 不丟例外（3D 紫六角水晶＋密星空＋黑金浮雕框）', () {
+  group('神秘卡背 painter（G2 黑塔羅卡背）', () {
+    test('各 glow 建構＋paint 不丟例外（近黑底＋金羅盤＋立方徽記）', () {
       for (final g in [0.0, 0.4, 1.0]) {
         final painter = debugMysticBackPainter(glow: g);
         expect(() => paintHaloOnce(painter), returnsNormally);
@@ -2326,5 +2327,32 @@ void main() {
       expect(base.shouldRepaint(same), isFalse);
       expect(base.shouldRepaint(diff), isTrue);
     });
+  });
+
+  group('賽博金框 painter（G2 卡背外框）', () {
+    test('各 glow 建構＋paint 不丟例外（圓角金框＋倒角＋上下 bracket＋ticks）', () {
+      for (final g in [0.0, 0.4, 1.0]) {
+        final painter = debugCyberFramePainter(glow: g);
+        expect(() => paintHaloOnce(painter), returnsNormally);
+      }
+    });
+
+    test('shouldRepaint 對 glow 敏感、同值不重畫', () {
+      final base = debugCyberFramePainter(glow: 0.4);
+      expect(base.shouldRepaint(debugCyberFramePainter(glow: 0.4)), isFalse);
+      expect(base.shouldRepaint(debugCyberFramePainter(glow: 0.8)), isTrue);
+    });
+  });
+
+  testWidgets('卡背整體（debugCeremonyCardBack）建構不丟、含卡背 key', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: debugCeremonyCardBack(width: 240, height: 360, glow: 0.6),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('practice-draw-ceremony-back')),
+        findsOneWidget);
   });
 }

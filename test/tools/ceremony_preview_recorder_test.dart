@@ -25,7 +25,7 @@ import 'package:vibesync/features/practice_chat/presentation/screens/practice_ch
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 
 const _outDir = '/tmp/claude-1000/-mnt-c-Users-eric1-OneDrive-Desktop-VibeSync/'
-    '42e105f3-0164-49f3-8173-2661976e3e24/scratchpad/cardrep/frames';
+    'a7e2e299-8914-4fff-807b-49dd540a6cf8/scratchpad/cardrep/frames';
 
 // 24fps × 10.0s = 240 frames，對齊參考片（音檔.mp4 720×1280 24fps 10.000s）。
 const int _fps = 24;
