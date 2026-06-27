@@ -2224,6 +2224,7 @@ void main() {
       expect(practiceCeremonyTumbleSpin(0.16), closeTo(0, 0.001));
 
       expect(practiceCeremonyParticleBloom(0.20), greaterThan(0.8));
+      expect(practiceCeremonyParticleBloom(0.30), greaterThan(0.25));
       expect(practiceCeremonyParticleBloom(0.04), lessThan(0.2));
       expect(practiceCeremonyParticleBloom(0.40), lessThan(0.2));
 
@@ -2231,9 +2232,13 @@ void main() {
       expect(practiceCeremonyPreviewRecede(0.36), closeTo(0, 0.001));
       expect(practiceCeremonyPreviewRecede(0.58), lessThan(0.1));
 
-      expect(practiceCeremonyGlassWipe(0.865), greaterThan(0.8));
+      expect(practiceCeremonyGlassWipe(0.84), greaterThan(0.85));
       expect(practiceCeremonyGlassWipe(0.76), lessThan(0.1));
       expect(practiceCeremonyGlassWipe(0.96), lessThan(0.1));
+
+      expect(practiceCeremonyAfterglow(0.90), greaterThan(0.75));
+      expect(practiceCeremonyAfterglow(0.78), lessThan(0.1));
+      expect(practiceCeremonyAfterglow(0.99), lessThan(0.1));
     });
 
     testWidgets('2s particle bloom appears around the card, then clears',
@@ -2276,6 +2281,29 @@ void main() {
       await tester.pump(atFraction(0.10));
       expect(
         find.byKey(const ValueKey('practice-draw-ceremony-glass-wipe')),
+        findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('8-9s afterglow keeps a final sparkle layer after glass wipe',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.90));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-afterglow')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.10));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-afterglow')),
         findsNothing,
       );
 

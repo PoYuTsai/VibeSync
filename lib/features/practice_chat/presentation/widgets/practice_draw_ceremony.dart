@@ -115,7 +115,7 @@ double practiceCeremonyTumbleSpin(double revealFraction) {
 
 @visibleForTesting
 double practiceCeremonyParticleBloom(double revealFraction) {
-  final d = (revealFraction - 0.20) / 0.075;
+  final d = (revealFraction - 0.20) / 0.09;
   return math.exp(-d * d).clamp(0.0, 1.0);
 }
 
@@ -128,7 +128,13 @@ double practiceCeremonyPreviewRecede(double revealFraction) {
 
 @visibleForTesting
 double practiceCeremonyGlassWipe(double revealFraction) {
-  final d = (revealFraction - 0.865) / 0.045;
+  final d = (revealFraction - 0.84) / 0.05;
+  return math.exp(-d * d).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
+double practiceCeremonyAfterglow(double revealFraction) {
+  final d = (revealFraction - 0.90) / 0.045;
   return math.exp(-d * d).clamp(0.0, 1.0);
 }
 
@@ -687,6 +693,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final settlePulse = practiceCeremonySettlePulse(f) * (1 - frontDepart);
     final particleBloom = practiceCeremonyParticleBloom(f) * (1 - frontDepart);
     final glassWipe = practiceCeremonyGlassWipe(f) * (1 - frontDepart);
+    final afterglow = practiceCeremonyAfterglow(f) * (1 - frontDepart);
 
     // 正面卡升階：高潮翻面前的白卡用 preview，高潮起換金框典藏卡 grand。
     final cardVariant = f < kPracticeRevealHaloClimax
@@ -826,6 +833,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                   painter: _GlassWipePainter(
                     progress: f,
                     intensity: glassWipe,
+                    cardSize: Size(cardW, cardH),
+                  ),
+                ),
+              ),
+            ),
+          if (afterglow > 0.02)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-afterglow'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _AfterglowPainter(
+                    progress: f,
+                    intensity: afterglow,
                     cardSize: Size(cardW, cardH),
                   ),
                 ),
@@ -1999,31 +2019,31 @@ class _ParticleBloomPainter extends CustomPainter {
       width: cardSize.width,
       height: cardSize.height,
     );
-    final field = cardRect.inflate(cardSize.width * 0.16);
+    final field = cardRect.inflate(cardSize.width * 0.24);
     final glow = Paint()
       ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
     final dot = Paint()..blendMode = BlendMode.plus;
 
     void spark(Offset p, Color color, double radius, double alpha) {
       final a = alpha.clamp(0.0, 1.0);
       if (a <= 0.01) return;
-      glow.color = color.withValues(alpha: a * 0.34);
+      glow.color = color.withValues(alpha: a * 0.58);
       dot.color = color.withValues(alpha: a);
-      canvas.drawCircle(p, radius * 2.4, glow);
+      canvas.drawCircle(p, radius * 3.4, glow);
       canvas.drawCircle(p, radius, dot);
     }
 
-    for (var i = 0; i < 72; i++) {
+    for (var i = 0; i < 112; i++) {
       final side = i % 4;
       final phase = (i * 0.61803398875 + progress * 0.22) % 1.0;
       final shimmer = 0.56 + 0.44 * math.sin(i * 1.73 + progress * 36);
       final color = Color.lerp(_kNeonCyan, _kGold, (i % 9) / 8)!;
-      final radius = 1.1 + (i % 5) * 0.32;
+      final radius = 1.25 + (i % 6) * 0.40;
       final jitter =
-          math.sin(i * 2.31 + progress * 18) * cardSize.width * 0.035;
+          math.sin(i * 2.31 + progress * 18) * cardSize.width * 0.055;
       late final Offset p;
-      var sideWeight = 1.0;
+      var sideWeight = 1.55;
       switch (side) {
         case 0:
           p = Offset(
@@ -2034,12 +2054,12 @@ class _ParticleBloomPainter extends CustomPainter {
               field.right + jitter.abs(), field.top + field.height * phase);
           break;
         case 2:
-          sideWeight = 0.56;
+          sideWeight = 0.96;
           p = Offset(
               field.left + field.width * phase, field.top - jitter.abs());
           break;
         default:
-          sideWeight = 0.42;
+          sideWeight = 0.82;
           p = Offset(
               field.left + field.width * phase, field.bottom + jitter.abs());
           break;
@@ -2047,7 +2067,7 @@ class _ParticleBloomPainter extends CustomPainter {
       spark(p, color, radius, intensity * shimmer * sideWeight);
     }
 
-    for (var i = 0; i < 30; i++) {
+    for (var i = 0; i < 46; i++) {
       final angle = i * 2.399963229728653 + progress * 5.2;
       final orbit = 0.58 + (i % 7) * 0.035;
       final p = center +
@@ -2059,8 +2079,8 @@ class _ParticleBloomPainter extends CustomPainter {
       spark(
         p,
         Color.lerp(Colors.white, _kNeonCyan, (i % 4) / 3)!,
-        0.8 + 1.2 * twinkle,
-        intensity * twinkle * 0.58,
+        1.0 + 1.7 * twinkle,
+        intensity * twinkle * 0.78,
       );
     }
   }
@@ -2096,7 +2116,7 @@ class _GlassWipePainter extends CustomPainter {
       rect,
       Radius.circular(cardSize.width * 0.075),
     );
-    final sweepT = ((progress - 0.81) / 0.13).clamp(0.0, 1.0);
+    final sweepT = ((progress - 0.765) / 0.15).clamp(0.0, 1.0);
 
     canvas.save();
     canvas.clipRRect(rrect);
@@ -2194,6 +2214,118 @@ class _GlassWipePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GlassWipePainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.cardSize != cardSize;
+}
+
+class _AfterglowPainter extends CustomPainter {
+  _AfterglowPainter({
+    required this.progress,
+    required this.intensity,
+    required this.cardSize,
+  });
+
+  final double progress;
+  final double intensity;
+  final Size cardSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0) return;
+    final center = size.center(Offset.zero);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: cardSize.width,
+      height: cardSize.height,
+    );
+    final rrect = RRect.fromRectAndRadius(
+      rect.inflate(cardSize.width * 0.035),
+      Radius.circular(cardSize.width * 0.09),
+    );
+    final phase = ((progress - 0.84) / 0.13).clamp(0.0, 1.0);
+
+    final rim = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = cardSize.width * (0.01 + 0.01 * intensity)
+      ..blendMode = BlendMode.plus
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.025)
+      ..shader = SweepGradient(
+        startAngle: -math.pi * 0.65,
+        endAngle: math.pi * 1.35,
+        colors: [
+          _kGold.withValues(alpha: 0),
+          _kGold.withValues(alpha: 0.54 * intensity),
+          Colors.white.withValues(alpha: 0.70 * intensity),
+          _kTeal.withValues(alpha: 0.44 * intensity),
+          _kGold.withValues(alpha: 0),
+        ],
+        stops: const [0.0, 0.24, 0.42, 0.63, 1.0],
+        transform: GradientRotation(progress * math.pi * 2.2),
+      ).createShader(rect.inflate(cardSize.width * 0.2));
+    canvas.drawRRect(rrect, rim);
+
+    final membrane = Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = RadialGradient(
+        center: const Alignment(0.18, -0.28),
+        radius: 0.78,
+        colors: [
+          Colors.white.withValues(alpha: 0.18 * intensity),
+          _kGold.withValues(alpha: 0.07 * intensity),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.42, 1.0],
+      ).createShader(rect);
+    canvas.save();
+    canvas.clipRRect(RRect.fromRectAndRadius(
+      rect,
+      Radius.circular(cardSize.width * 0.075),
+    ));
+    canvas.drawRect(rect, membrane);
+    canvas.restore();
+
+    final spark = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
+    for (var i = 0; i < 52; i++) {
+      final lane = (i % 5) / 4;
+      final fall = (phase + i * 0.071) % 1.0;
+      final x = rect.left +
+          cardSize.width * (0.04 + 0.92 * ((i * 0.61803398875) % 1.0)) +
+          math.sin(i * 1.37 + progress * 28) * cardSize.width * 0.035;
+      final y =
+          rect.top - cardSize.height * 0.10 + cardSize.height * 1.18 * fall;
+      final edgeBoost = (lane == 0 || lane == 1) ? 1.0 : 0.58;
+      final twinkle = 0.42 + 0.58 * math.sin(i * 2.03 + progress * 42);
+      final color = Color.lerp(_kGold, _kNeonCyan, lane)!;
+      spark.color = color.withValues(
+        alpha: intensity * twinkle * edgeBoost * (1 - 0.45 * phase),
+      );
+      canvas.drawCircle(
+        Offset(x, y),
+        0.9 + 1.9 * twinkle * intensity,
+        spark,
+      );
+    }
+
+    final flare = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7)
+      ..color = Colors.white.withValues(alpha: 0.20 * intensity);
+    for (var i = 0; i < 5; i++) {
+      final a = -math.pi * 0.72 + i * math.pi * 0.36 + progress * 0.7;
+      final p = center +
+          Offset(
+            math.cos(a) * cardSize.width * 0.62,
+            math.sin(a) * cardSize.height * 0.42,
+          );
+      canvas.drawCircle(p, cardSize.width * (0.014 + i * 0.002), flare);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AfterglowPainter old) =>
       old.progress != progress ||
       old.intensity != intensity ||
       old.cardSize != cardSize;
