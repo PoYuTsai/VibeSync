@@ -20,6 +20,7 @@ import { normalizeTier } from "../_shared/quota.ts";
 
 export const MAX_AI_REPLIES = 20;
 export const MAX_DEBRIEFS = 3;
+export const MAX_HINTS_PER_ROUND = 5;
 export const PRACTICE_QUOTA_COST = 1;
 /** MVP：一個 visible thread 最多 3 輪（60 則 AI 回覆）。roundIndex 的合法上界。 */
 export const MAX_PRACTICE_ROUNDS = 3;
@@ -33,6 +34,9 @@ export interface SessionLedger {
   aiCount: number;
   charged: boolean;
   debriefCount: number;
+  practiceMode?: PracticeLearningMode;
+  temperatureScore?: number | null;
+  hintCount?: number;
 }
 
 /** 一場已產生 aiTurnCount 則 AI 回覆後，是否已達上限（不能再聊）。 */
@@ -92,6 +96,24 @@ export function decideDebriefGate(opts: {
   }
   if (debriefCount >= max) {
     return { allowed: false, reason: "practice_debrief_limit" };
+  }
+  return { allowed: true };
+}
+
+export function decideHintGate(opts: {
+  ledger: SessionLedger;
+  maxHints?: number;
+}): { allowed: boolean; reason?: string } {
+  const max = opts.maxHints ?? MAX_HINTS_PER_ROUND;
+  const { exists, charged, aiCount, practiceMode } = opts.ledger;
+  if (!exists || !charged || aiCount < 1) {
+    return { allowed: false, reason: "practice_session_not_started" };
+  }
+  if (practiceMode !== "beginner") {
+    return { allowed: false, reason: "practice_hint_beginner_only" };
+  }
+  if ((opts.ledger.hintCount ?? 0) >= max) {
+    return { allowed: false, reason: "practice_hint_limit" };
   }
   return { allowed: true };
 }
