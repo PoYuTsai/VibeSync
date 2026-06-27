@@ -1312,6 +1312,28 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('儀式（E3）：抽牌中卡背改 CustomPaint 紫水晶、不再用金幣 auto_awesome 圖示',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 60)); // intro 入場推進
+
+    final back = find.byKey(const ValueKey('practice-draw-ceremony-back'));
+    expect(back, findsOneWidget);
+    // gap #2：金幣星芒（auto_awesome）退場，卡背中心改 CustomPaint 紫水晶六角。
+    expect(
+      find.descendant(of: back, matching: find.byIcon(Icons.auto_awesome)),
+      findsNothing,
+    );
+
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('儀式：reveal 動畫走完 → overlay 收掉、露出 hero（名字不重複）', (tester) async {
     final zoe = practiceGirlProfiles[2];
     final api = _DrawApi(() async => _drawResultFor(zoe));
@@ -2158,6 +2180,24 @@ void main() {
 
       expect(base.shouldRepaint(sameBeam), isFalse);
       expect(base.shouldRepaint(diffBeam), isTrue);
+    });
+  });
+
+  group('神秘卡背 painter（E3 紫水晶卡背）', () {
+    test('各 glow 建構＋paint 不丟例外（3D 紫六角水晶＋密星空＋黑金浮雕框）', () {
+      for (final g in [0.0, 0.4, 1.0]) {
+        final painter = debugMysticBackPainter(glow: g);
+        expect(() => paintHaloOnce(painter), returnsNormally);
+      }
+    });
+
+    test('shouldRepaint 對 glow 敏感、同值不重畫', () {
+      final base = debugMysticBackPainter(glow: 0.4);
+      final same = debugMysticBackPainter(glow: 0.4);
+      final diff = debugMysticBackPainter(glow: 0.8);
+
+      expect(base.shouldRepaint(same), isFalse);
+      expect(base.shouldRepaint(diff), isTrue);
     });
   });
 }
