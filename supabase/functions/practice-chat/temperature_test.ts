@@ -41,6 +41,63 @@ Deno.test("parseTemperatureJudgement accepts valid JSON and clamps delta", () =>
   });
 });
 
+Deno.test("parseTemperatureJudgement rejects malformed JSON", () => {
+  assertThrows(
+    () => parseTemperatureJudgement(`{"delta":3`, 50),
+    Error,
+  );
+});
+
+Deno.test("parseTemperatureJudgement rejects non-integer numeric delta", () => {
+  assertThrows(
+    () => parseTemperatureJudgement(`{"delta":1.5,"reason":"too warm"}`, 50),
+    Error,
+    "integer delta",
+  );
+});
+
+Deno.test("parseTemperatureJudgement rejects string delta", () => {
+  assertThrows(
+    () => parseTemperatureJudgement(`{"delta":"3","reason":"too warm"}`, 50),
+    Error,
+    "integer delta",
+  );
+});
+
+Deno.test("parseTemperatureJudgement clamps score to upper bound", () => {
+  assertEquals(parseTemperatureJudgement(`{"delta":8,"reason":"warmer"}`, 99), {
+    score: 100,
+    delta: 8,
+    band: "hot",
+    reason: "warmer",
+  });
+});
+
+Deno.test("parseTemperatureJudgement clamps score to lower bound", () => {
+  assertEquals(parseTemperatureJudgement(`{"delta":-8,"reason":"colder"}`, 2), {
+    score: 0,
+    delta: -8,
+    band: "frozen",
+    reason: "colder",
+  });
+});
+
+Deno.test("parseTemperatureJudgement rejects null JSON", () => {
+  assertThrows(
+    () => parseTemperatureJudgement(`null`, 50),
+    Error,
+    "object",
+  );
+});
+
+Deno.test("parseTemperatureJudgement rejects array JSON", () => {
+  assertThrows(
+    () => parseTemperatureJudgement(`[]`, 50),
+    Error,
+    "object",
+  );
+});
+
 Deno.test("parseTemperatureJudgement rejects missing delta", () => {
   assertThrows(
     () => parseTemperatureJudgement(`{"reason":"沒有分數"}`, 50),

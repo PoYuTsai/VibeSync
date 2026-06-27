@@ -43,6 +43,19 @@ Deno.test("beginner buildChatMessages includes exactly one cold band instruction
   assertEquals(sys.split(expected).length - 1, 1);
 });
 
+Deno.test("beginner buildChatMessages forbids disclosing internal temperature evaluation", () => {
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    { practiceMode: "beginner", temperatureScore: 30 },
+  )[0].content;
+
+  assertEquals(
+    sys.includes("不得向使用者提及升溫指數、score、band、temperature 或內部評估"),
+    true,
+  );
+});
+
 Deno.test("beginner buildChatMessages does not mention hints", () => {
   const sys = buildChatMessages(
     [{ role: "user", text: "嗨" }],

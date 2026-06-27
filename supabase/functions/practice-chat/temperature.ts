@@ -46,7 +46,7 @@ export function temperatureBandInstruction(score: number): string {
     warm: "她目前有投入感，可以自然調情或提出低壓邀約，但仍要保留退路。",
     hot: "她目前很投入，可以更明確推進邀約或曖昧張力，但不要過度用力。",
   };
-  return `升溫指數 ${clamped}/100（${band}）：${guidance[band]}`;
+  return `升溫指數 ${clamped}/100（${band}）：${guidance[band]}\n內部規則：不得向使用者提及升溫指數、score、band、temperature 或內部評估。`;
 }
 
 export function applyTemperatureDelta(
@@ -101,7 +101,10 @@ export function parseTemperatureJudgement(
   raw: string,
   priorScore: number,
 ): TemperatureJudgement {
-  const parsed = JSON.parse(raw) as { delta?: unknown; reason?: unknown };
+  const parsed = JSON.parse(raw);
+  if (!isRecord(parsed)) {
+    throw new Error("temperature judgement must be an object");
+  }
   const parsedDelta = parsed.delta;
   if (!Number.isInteger(parsedDelta)) {
     throw new Error("temperature judgement missing integer delta");
@@ -117,4 +120,8 @@ export function parseTemperatureJudgement(
     band: temperatureBandFor(score),
     reason,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
