@@ -15,6 +15,10 @@ function chatReq(turns: Array<{ role: string; text: string }>) {
   return { mode: "chat", sessionId: "s1", turns };
 }
 
+function hintReq(turns: Array<{ role: string; text: string }>) {
+  return { mode: "hint", sessionId: "s1", turns };
+}
+
 // ── happy path ───────────────────────────────────────────────────────
 
 Deno.test("chat：合法第一則請求通過", () => {
@@ -44,6 +48,120 @@ Deno.test("debrief：有一來一回 → 通過", () => {
     ],
   });
   assertEquals(r.mode, "debrief");
+});
+
+Deno.test("chat without practiceMode defaults to standard", () => {
+  const r = validateRequest(chatReq([{ role: "user", text: "hi" }]));
+  assertEquals(r.practiceMode, "standard");
+});
+
+Deno.test("practiceMode standard is accepted", () => {
+  const r = validateRequest({
+    ...chatReq([{ role: "user", text: "hi" }]),
+    practiceMode: "standard",
+  });
+  assertEquals(r.practiceMode, "standard");
+});
+
+Deno.test("practiceMode beginner is accepted", () => {
+  const r = validateRequest({
+    ...chatReq([{ role: "user", text: "hi" }]),
+    practiceMode: "beginner",
+  });
+  assertEquals(r.practiceMode, "beginner");
+});
+
+Deno.test("invalid practiceMode throws invalid_practiceMode", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...chatReq([{ role: "user", text: "hi" }]),
+        practiceMode: "expert",
+      }),
+    Error,
+    "invalid_practiceMode",
+  );
+});
+
+Deno.test("temperatureScore accepts integers from 0 to 100", () => {
+  for (const temperatureScore of [0, 1, 30, 100]) {
+    const r = validateRequest({
+      ...chatReq([{ role: "user", text: "hi" }]),
+      practiceMode: "beginner",
+      temperatureScore,
+    });
+    assertEquals(r.temperatureScore, temperatureScore);
+  }
+});
+
+Deno.test("missing beginner temperatureScore defaults to 30", () => {
+  const r = validateRequest({
+    ...chatReq([{ role: "user", text: "hi" }]),
+    practiceMode: "beginner",
+  });
+  assertEquals(r.temperatureScore, 30);
+});
+
+Deno.test("invalid temperatureScore throws invalid_temperatureScore", () => {
+  for (const temperatureScore of [-1, 101, 1.5, "30", null]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...chatReq([{ role: "user", text: "hi" }]),
+          practiceMode: "beginner",
+          temperatureScore,
+        }),
+      Error,
+      "invalid_temperatureScore",
+    );
+  }
+});
+
+Deno.test("mode hint is accepted when latest turn is AI", () => {
+  const r = validateRequest(
+    hintReq([
+      { role: "user", text: "hi" },
+      { role: "ai", text: "hello" },
+    ]),
+  );
+  assertEquals(r.mode, "hint");
+});
+
+Deno.test("hint with no AI turns throws invalid_hint_no_ai_turns", () => {
+  assertThrows(
+    () => validateRequest(hintReq([{ role: "user", text: "hi" }])),
+    Error,
+    "invalid_hint_no_ai_turns",
+  );
+});
+
+Deno.test("hint whose latest turn is not AI throws invalid_hint_last_turn_must_be_ai", () => {
+  assertThrows(
+    () =>
+      validateRequest(
+        hintReq([
+          { role: "user", text: "hi" },
+          { role: "ai", text: "hello" },
+          { role: "user", text: "one more" },
+        ]),
+      ),
+    Error,
+    "invalid_hint_last_turn_must_be_ai",
+  );
+});
+
+Deno.test("chat still requires latest turn to be user", () => {
+  assertThrows(
+    () =>
+      validateRequest(
+        chatReq([
+          { role: "user", text: "hi" },
+          { role: "ai", text: "hello" },
+        ]),
+      ),
+    Error,
+    "invalid_chat_last_turn_must_be_user",
+  );
 });
 
 // ── mode / sessionId ─────────────────────────────────────────────────

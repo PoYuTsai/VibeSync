@@ -2,7 +2,11 @@
 // 手寫驗證：schema 很小（mode + turns），不引第三方以保持測試零依賴。
 // 失敗一律 throw Error("invalid_*")，由 handler 轉 400。
 
-import { MAX_PRACTICE_ROUNDS, type PracticeMode } from "./quota_decision.ts";
+import {
+  MAX_PRACTICE_ROUNDS,
+  type PracticeLearningMode,
+  type PracticeMode,
+} from "./quota_decision.ts";
 import {
   isProfileId,
   type PracticeProfile,
@@ -25,6 +29,8 @@ export interface PracticeTurn {
 
 export interface PracticeChatRequest {
   mode: PracticeMode;
+  practiceMode: PracticeLearningMode;
+  temperatureScore: number;
   sessionId: string;
   turns: PracticeTurn[];
   profile: PracticeProfile;
@@ -47,8 +53,29 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   if (!isRecord(raw)) throw new Error("invalid_request_body");
 
   const mode = raw.mode;
-  if (mode !== "chat" && mode !== "debrief") {
+  if (mode !== "chat" && mode !== "debrief" && mode !== "hint") {
     throw new Error("invalid_mode");
+  }
+
+  let practiceMode: PracticeLearningMode = "standard";
+  if (raw.practiceMode !== undefined) {
+    if (raw.practiceMode !== "standard" && raw.practiceMode !== "beginner") {
+      throw new Error("invalid_practiceMode");
+    }
+    practiceMode = raw.practiceMode;
+  }
+
+  let temperatureScore = 30;
+  if (raw.temperatureScore !== undefined) {
+    if (
+      typeof raw.temperatureScore !== "number" ||
+      !Number.isInteger(raw.temperatureScore) ||
+      raw.temperatureScore < 0 ||
+      raw.temperatureScore > 100
+    ) {
+      throw new Error("invalid_temperatureScore");
+    }
+    temperatureScore = raw.temperatureScore;
   }
 
   const sessionId = raw.sessionId;
@@ -87,10 +114,15 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     // 注意：10 則上限「不」在此用 client count 把關——client 可少報 ai turns
     // 繞過。上限改由 server ledger（practice_chat_sessions.ai_count）在 handler
     // preflight 與 commit RPC 內以權威狀態強制。
-  } else {
+  } else if (mode === "debrief") {
     // debrief：client payload 至少要有一來一回才有逐字稿可拆解（形狀檢查）；
     // 「是否真為已扣費 session」由 server ledger 在 handler 內把關。
     if (aiCount === 0) throw new Error("invalid_debrief_no_ai_turns");
+  } else {
+    if (aiCount === 0) throw new Error("invalid_hint_no_ai_turns");
+    if (turns[turns.length - 1].role !== "ai") {
+      throw new Error("invalid_hint_last_turn_must_be_ai");
+    }
   }
 
   const profile = resolvePracticeProfile({
@@ -129,7 +161,16 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     visiblePracticeThreadId = raw.visiblePracticeThreadId;
   }
 
-  return { mode, sessionId, turns, profile, roundIndex, visiblePracticeThreadId };
+  return {
+    mode,
+    practiceMode,
+    temperatureScore,
+    sessionId,
+    turns,
+    profile,
+    roundIndex,
+    visiblePracticeThreadId,
+  };
 }
 
 // ── draw_profile：獨立 request shape ───────────────────────────────────────

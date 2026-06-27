@@ -24,7 +24,8 @@ export const PRACTICE_QUOTA_COST = 1;
 /** MVP：一個 visible thread 最多 3 輪（60 則 AI 回覆）。roundIndex 的合法上界。 */
 export const MAX_PRACTICE_ROUNDS = 3;
 
-export type PracticeMode = "chat" | "debrief";
+export type PracticeMode = "chat" | "debrief" | "hint";
+export type PracticeLearningMode = "standard" | "beginner";
 
 /** 某場練習的 server 端權威狀態快照（preflight 讀取後傳入）。 */
 export interface SessionLedger {
