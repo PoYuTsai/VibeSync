@@ -146,3 +146,46 @@ Deno.test("temperature update reports whether a beginner row was updated", () =>
   );
   assertEquals(body.includes("RETURN v_score;"), false);
 });
+
+Deno.test("hint generation claim serializes provider calls before success settlement", () => {
+  const claimBody = functionBody("claim_practice_hint_generation");
+  const releaseBody = functionBody("release_practice_hint_generation");
+  const recordBody = functionBody("record_practice_hint");
+
+  requiredIndex("ADD COLUMN IF NOT EXISTS hint_generation_started_at TIMESTAMPTZ");
+  assert(
+    claimBody.includes("FOR UPDATE"),
+    "claim_practice_hint_generation must lock the ledger row",
+  );
+  assert(
+    claimBody.includes("PRACTICE_HINT_IN_FLIGHT"),
+    "claim_practice_hint_generation must reject concurrent in-flight hints",
+  );
+  assert(
+    claimBody.includes("hint_count >= p_max_hints"),
+    "claim_practice_hint_generation must check hint cap before provider",
+  );
+  assert(
+    claimBody.includes("hint_generation_started_at = now()"),
+    "claim_practice_hint_generation must mark an in-flight generation",
+  );
+  assert(
+    releaseBody.includes("hint_generation_started_at = NULL"),
+    "release_practice_hint_generation must clear failed in-flight generations",
+  );
+  assert(
+    recordBody.includes("hint_generation_started_at = NULL"),
+    "record_practice_hint must clear the claim on successful settlement",
+  );
+  assert(
+    recordBody.indexOf("IF v_row.hint_count >= p_max_hints THEN") <
+      recordBody.indexOf("PERFORM public.increment_usage"),
+    "record_practice_hint must re-check the cap before charging",
+  );
+  requiredIndex(
+    "GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER)",
+  );
+  requiredIndex(
+    "GRANT EXECUTE ON FUNCTION public.release_practice_hint_generation(UUID, TEXT)",
+  );
+});

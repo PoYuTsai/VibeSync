@@ -6,6 +6,7 @@ ALTER TABLE public.practice_chat_sessions
   ADD COLUMN IF NOT EXISTS practice_mode TEXT NOT NULL DEFAULT 'standard',
   ADD COLUMN IF NOT EXISTS temperature_score INTEGER,
   ADD COLUMN IF NOT EXISTS hint_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS hint_generation_started_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS temperature_updated_at TIMESTAMPTZ;
 
 DO $$
@@ -247,6 +248,10 @@ BEGIN
     RAISE EXCEPTION 'PRACTICE_HINT_LIMIT';
   END IF;
 
+  IF v_row.hint_generation_started_at IS NULL THEN
+    RAISE EXCEPTION 'PRACTICE_HINT_NOT_CLAIMED';
+  END IF;
+
   did_charge := p_charge_quota;
   IF did_charge THEN
     PERFORM public.increment_usage(p_user_id, 1);
@@ -254,10 +259,98 @@ BEGIN
 
   UPDATE public.practice_chat_sessions
   SET hint_count = hint_count + 1,
+      hint_generation_started_at = NULL,
       updated_at = now()
   WHERE user_id = p_user_id AND session_id = p_session_id
   RETURNING hint_count INTO new_hint_count;
 
+  RETURN NEXT;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.claim_practice_hint_generation(
+  p_user_id    UUID,
+  p_session_id TEXT,
+  p_max_hints  INTEGER
+)
+RETURNS TABLE(current_hint_count INTEGER)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.practice_chat_sessions;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'claim_practice_hint_generation: p_user_id is required';
+  END IF;
+  IF p_session_id IS NULL OR length(p_session_id) = 0 OR length(p_session_id) > 64 THEN
+    RAISE EXCEPTION 'claim_practice_hint_generation: invalid p_session_id';
+  END IF;
+  IF p_max_hints IS NULL OR p_max_hints <= 0 OR p_max_hints > 5 THEN
+    RAISE EXCEPTION 'claim_practice_hint_generation: invalid p_max_hints';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.practice_chat_sessions
+  WHERE user_id = p_user_id AND session_id = p_session_id
+  FOR UPDATE;
+
+  IF NOT FOUND OR NOT v_row.charged OR v_row.ai_count < 1 THEN
+    RAISE EXCEPTION 'PRACTICE_SESSION_NOT_STARTED';
+  END IF;
+
+  IF v_row.practice_mode <> 'beginner' THEN
+    RAISE EXCEPTION 'PRACTICE_HINT_BEGINNER_ONLY';
+  END IF;
+
+  IF v_row.hint_count >= p_max_hints THEN
+    RAISE EXCEPTION 'PRACTICE_HINT_LIMIT';
+  END IF;
+
+  IF v_row.hint_generation_started_at IS NOT NULL
+    AND v_row.hint_generation_started_at > now() - interval '2 minutes' THEN
+    RAISE EXCEPTION 'PRACTICE_HINT_IN_FLIGHT';
+  END IF;
+
+  UPDATE public.practice_chat_sessions
+  SET hint_generation_started_at = now(),
+      updated_at = now()
+  WHERE user_id = p_user_id AND session_id = p_session_id
+  RETURNING hint_count INTO current_hint_count;
+
+  RETURN NEXT;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.release_practice_hint_generation(
+  p_user_id    UUID,
+  p_session_id TEXT
+)
+RETURNS TABLE(released BOOLEAN)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_rows INTEGER;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'release_practice_hint_generation: p_user_id is required';
+  END IF;
+  IF p_session_id IS NULL OR length(p_session_id) = 0 OR length(p_session_id) > 64 THEN
+    RAISE EXCEPTION 'release_practice_hint_generation: invalid p_session_id';
+  END IF;
+
+  UPDATE public.practice_chat_sessions
+  SET hint_generation_started_at = NULL,
+      updated_at = now()
+  WHERE user_id = p_user_id
+    AND session_id = p_session_id
+    AND hint_generation_started_at IS NOT NULL;
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  released := v_rows > 0;
   RETURN NEXT;
 END;
 $$;
@@ -323,6 +416,16 @@ GRANT EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, 
 REVOKE EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER)
+  TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER)
+  TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.release_practice_hint_generation(UUID, TEXT)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_practice_hint_generation(UUID, TEXT)
   TO service_role;
 
 REVOKE EXECUTE ON FUNCTION public.update_practice_temperature(UUID, TEXT, INTEGER)

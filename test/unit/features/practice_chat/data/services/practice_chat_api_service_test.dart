@@ -524,7 +524,7 @@ void main() {
     Map<String, dynamic> okHintBody() => {
           'replies': [
             {
-              'type': 'warmUp',
+              'type': 'warm_up',
               'label': '升溫回覆',
               'text': '那我先查朧月。你如果只推一道，會推熟成魚還是酒單？',
             },

@@ -482,7 +482,7 @@ class PracticeChatApiService {
 
   PracticeHintReplyType? _parseHintReplyType(dynamic value) {
     return switch (value) {
-      'warmUp' => PracticeHintReplyType.warmUp,
+      'warm_up' => PracticeHintReplyType.warmUp,
       'steady' => PracticeHintReplyType.steady,
       _ => null,
     };

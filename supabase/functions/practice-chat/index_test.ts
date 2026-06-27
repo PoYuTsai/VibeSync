@@ -31,6 +31,7 @@ interface FakeState {
   selects: Array<{ table: string; columns: string }>;
   rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
   deepSeekCalls: DeepSeekArgs[];
+  events: string[];
 }
 
 function subscription(overrides: Record<string, unknown> = {}) {
@@ -114,6 +115,7 @@ function makeFake(options: FakeOptions = {}) {
     selects: [],
     rpcCalls: [],
     deepSeekCalls: [],
+    events: [],
   };
   const rpcByName = new Map<string, number>();
   let deepSeekIndex = 0;
@@ -188,6 +190,7 @@ function makeFake(options: FakeOptions = {}) {
     },
     rpc(fn: string, params: Record<string, unknown>) {
       state.rpcCalls.push({ fn, params });
+      state.events.push(`rpc:${fn}`);
       const index = rpcByName.get(fn) ?? 0;
       rpcByName.set(fn, index + 1);
       const result = options.rpc?.[fn]?.[index] ??
@@ -204,6 +207,7 @@ function makeFake(options: FakeOptions = {}) {
 
   const deepSeek: DeepSeekCaller = (args) => {
     state.deepSeekCalls.push(args);
+    state.events.push("deepseek");
     const reply = options.deepSeekReplies?.[deepSeekIndex] ?? "AI reply";
     deepSeekIndex++;
     if (reply instanceof Error) {
@@ -232,6 +236,18 @@ async function run(options: FakeOptions, body: unknown = chatBody()) {
 
 function recordHintCalls(state: FakeState) {
   return state.rpcCalls.filter((call) => call.fn === "record_practice_hint");
+}
+
+function claimHintCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) =>
+    call.fn === "claim_practice_hint_generation"
+  );
+}
+
+function releaseHintCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) =>
+    call.fn === "release_practice_hint_generation"
+  );
 }
 
 function commitCalls(state: FakeState) {
@@ -478,6 +494,7 @@ Deno.test("hint standard practice mode rejects before DeepSeek and record RPC", 
   assertEquals(response.status, 403);
   assertEquals(json, { error: "practice_hint_beginner_only" });
   assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
   assertEquals(temperatureUpdateCalls(state).length, 0);
@@ -491,6 +508,7 @@ Deno.test("hint before first AI reply returns session_not_started before provide
   assertEquals(response.status, 403);
   assertEquals(json, { error: "practice_session_not_started" });
   assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
   assertEquals(recordHintCalls(state).length, 0);
 });
 
@@ -502,6 +520,7 @@ Deno.test("hint over max successful hints returns limit before provider and reco
   assertEquals(response.status, 403);
   assertEquals(json, { error: "practice_hint_limit" });
   assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
   assertEquals(recordHintCalls(state).length, 0);
 });
 
@@ -515,10 +534,27 @@ Deno.test("hint quota exceeded returns 429 before provider and record RPC", asyn
   assertEquals(json.error, "Monthly limit exceeded");
   assertEquals(json.quotaNeeded, 1);
   assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
   assertEquals(recordHintCalls(state).length, 0);
 });
 
-Deno.test("hint DeepSeek failure returns generation_failed and does not record hint", async () => {
+Deno.test("hint in-flight claim rejects before provider and record RPC", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger({ hint_count: 4 }),
+    rpc: {
+      claim_practice_hint_generation: [{ error: "PRACTICE_HINT_IN_FLIGHT" }],
+    },
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 403);
+  assertEquals(json, { error: "practice_hint_in_flight" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("hint DeepSeek failure releases claim and does not record hint", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
     deepSeekReplies: [new Error("deepseek down")],
@@ -527,11 +563,13 @@ Deno.test("hint DeepSeek failure returns generation_failed and does not record h
   assertEquals(response.status, 500);
   assertEquals(json, { error: "practice_generation_failed" });
   assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
 });
 
-Deno.test("hint malformed JSON returns generation_failed and does not record hint", async () => {
+Deno.test("hint malformed JSON releases claim and does not record hint", async () => {
   const { response, json, state } = await run({
     ledger: beginnerStartedLedger(),
     deepSeekReplies: ["not json"],
@@ -540,6 +578,8 @@ Deno.test("hint malformed JSON returns generation_failed and does not record hin
   assertEquals(response.status, 500);
   assertEquals(json, { error: "practice_generation_failed" });
   assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(releaseHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
 });
@@ -581,6 +621,12 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assertEquals(promptText.includes("currentTemperatureScore: 5/100"), false);
   assert(promptText.includes("assistant: hello"));
 
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(claimHintCalls(state)[0].params, {
+    p_user_id: "user-1",
+    p_session_id: "session-1",
+    p_max_hints: MAX_HINTS_PER_ROUND,
+  });
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state)[0].params, {
     p_user_id: "user-1",
@@ -588,8 +634,14 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
     p_charge_quota: true,
     p_max_hints: MAX_HINTS_PER_ROUND,
   });
+  assertEquals(releaseHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
   assertEquals(temperatureUpdateCalls(state).length, 0);
+  assertEquals(state.events, [
+    "rpc:claim_practice_hint_generation",
+    "deepseek",
+    "rpc:record_practice_hint",
+  ]);
 });
 
 Deno.test("successful hint falls back to temperature 30 when ledger has no score", async () => {
@@ -649,7 +701,9 @@ for (
     assertEquals(response.status, 403);
     assertEquals(json, { error: expected });
     assertEquals(state.deepSeekCalls.length, 1);
+    assertEquals(claimHintCalls(state).length, 1);
     assertEquals(recordHintCalls(state).length, 1);
+    assertEquals(releaseHintCalls(state).length, 1);
     assertEquals(commitCalls(state).length, 0);
     assertEquals(temperatureUpdateCalls(state).length, 0);
   });

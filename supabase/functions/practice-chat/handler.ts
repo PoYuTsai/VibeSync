@@ -100,6 +100,9 @@ function mapLedgerError(message: string): { error: string; status: number } {
   if (message.includes("PRACTICE_HINT_BEGINNER_ONLY")) {
     return { error: "practice_hint_beginner_only", status: 403 };
   }
+  if (message.includes("PRACTICE_HINT_IN_FLIGHT")) {
+    return { error: "practice_hint_in_flight", status: 403 };
+  }
   if (message.includes("PRACTICE_DEBRIEF_LIMIT")) {
     return { error: "practice_debrief_limit", status: 403 };
   }
@@ -204,6 +207,26 @@ async function judgeTemperature(opts: {
       error: getErrorMessage(e),
     });
     return fallback;
+  }
+}
+
+async function releaseHintGeneration(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  sessionId: string;
+}): Promise<void> {
+  const { error } = await opts.supabase.rpc(
+    "release_practice_hint_generation",
+    {
+      p_user_id: opts.userId,
+      p_session_id: opts.sessionId,
+    },
+  );
+  if (error) {
+    logWarn("practice_chat_hint_release_failed", {
+      user: summarizeUser(opts.userId),
+      error: error.message,
+    });
   }
 }
 
@@ -376,6 +399,23 @@ export function createPracticeChatHandler(
         );
       }
 
+      const { error: claimHintError } = await supabase.rpc(
+        "claim_practice_hint_generation",
+        {
+          p_user_id: user.id,
+          p_session_id: request.sessionId,
+          p_max_hints: MAX_HINTS_PER_ROUND,
+        },
+      );
+      if (claimHintError) {
+        const mapped = mapLedgerError(claimHintError.message);
+        logWarn("practice_chat_hint_claim_failed", {
+          user: summarizeUser(user.id),
+          error: claimHintError.message,
+        });
+        return jsonResponse({ error: mapped.error }, mapped.status);
+      }
+
       let hintResult: ReturnType<typeof parseHintResult>;
       try {
         const rawHint = await deps.callDeepSeek({
@@ -399,6 +439,11 @@ export function createPracticeChatHandler(
           difficulty: request.profile.difficulty,
           error: getErrorMessage(e),
         });
+        await releaseHintGeneration({
+          supabase,
+          userId: user.id,
+          sessionId: request.sessionId,
+        });
         return jsonResponse({ error: "practice_generation_failed" }, 500);
       }
 
@@ -416,6 +461,11 @@ export function createPracticeChatHandler(
         logWarn("practice_chat_hint_record_failed", {
           user: summarizeUser(user.id),
           error: recordError.message,
+        });
+        await releaseHintGeneration({
+          supabase,
+          userId: user.id,
+          sessionId: request.sessionId,
         });
         return jsonResponse({ error: mapped.error }, mapped.status);
       }
