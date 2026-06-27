@@ -5,6 +5,8 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/entities/practice_draw_draft.dart';
+import '../../domain/entities/practice_hint.dart';
+import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
@@ -17,6 +19,8 @@ const int kMaxPracticeAiReplies = 20;
 
 /// 同一位對象最多 3 輪（與伺服器 MAX_PRACTICE_ROUNDS 同步）；到頂不再顯示續玩。
 const int kMaxPracticeRounds = 3;
+
+const int kInitialPracticeTemperatureScore = 30;
 
 const _sentinel = Object();
 
@@ -39,6 +43,15 @@ class PracticeChatState {
   final bool quotaExceeded;
   final bool upgradeRequired; // Free 續同一位被擋（402）：導向付費牆，與額度用罄分開
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
+  final PracticeLearningMode learningMode;
+  final int? temperatureScore;
+  final int? lastTemperatureDelta;
+  final String? temperatureReason;
+  final bool isHintLoading;
+  final List<PracticeHintReply> hintReplies;
+  final String? hintCoaching;
+  final int hintUsedCount;
+  final bool hintLimitReached;
 
   // ── 每日翻牌：揭曉狀態與免費額度狀態 ──
   /// 翻牌揭曉狀態。locked / drawing 時 [girl] 為 null，畫面不得顯示任何對象。
@@ -96,6 +109,15 @@ class PracticeChatState {
     this.quotaExceeded = false,
     this.upgradeRequired = false,
     this.restoreText,
+    this.learningMode = PracticeLearningMode.standard,
+    this.temperatureScore,
+    this.lastTemperatureDelta,
+    this.temperatureReason,
+    this.isHintLoading = false,
+    this.hintReplies = const [],
+    this.hintCoaching,
+    this.hintUsedCount = 0,
+    this.hintLimitReached = false,
     this.roundIndex = 1,
     this.visiblePracticeThreadId,
   });
@@ -110,6 +132,23 @@ class PracticeChatState {
   /// 必須先翻好牌（revealed）才能送訊息。
   bool get canSend =>
       isRevealed && !isSending && !isDebriefing && !ended && !sessionComplete;
+
+  bool get isBeginnerMode => learningMode == PracticeLearningMode.beginner;
+
+  bool get canChangeLearningMode =>
+      isRevealed && messages.isEmpty && !isSending && !isDebriefing;
+
+  bool get canRequestHint =>
+      isBeginnerMode &&
+      isRevealed &&
+      !isHintLoading &&
+      !isSending &&
+      !isDebriefing &&
+      !ended &&
+      !sessionComplete &&
+      girl != null &&
+      messages.isNotEmpty &&
+      messages.last.role == 'ai';
 
   /// 至少有一則 AI 回覆、尚未拆解，才能結束練習看拆解卡。
   bool get canDebrief =>
@@ -141,9 +180,18 @@ class PracticeChatState {
     String? difficultyLabel,
     int? roundIndex,
     String? visiblePracticeThreadId,
+    PracticeLearningMode? learningMode,
+    bool? isHintLoading,
+    List<PracticeHintReply>? hintReplies,
+    int? hintUsedCount,
+    bool? hintLimitReached,
     Object? debrief = _sentinel,
     Object? errorMessage = _sentinel,
     Object? restoreText = _sentinel,
+    Object? temperatureScore = _sentinel,
+    Object? lastTemperatureDelta = _sentinel,
+    Object? temperatureReason = _sentinel,
+    Object? hintCoaching = _sentinel,
   }) {
     return PracticeChatState(
       sessionId: sessionId,
@@ -174,6 +222,23 @@ class PracticeChatState {
       roundIndex: roundIndex ?? this.roundIndex,
       visiblePracticeThreadId:
           visiblePracticeThreadId ?? this.visiblePracticeThreadId,
+      learningMode: learningMode ?? this.learningMode,
+      temperatureScore: identical(temperatureScore, _sentinel)
+          ? this.temperatureScore
+          : temperatureScore as int?,
+      lastTemperatureDelta: identical(lastTemperatureDelta, _sentinel)
+          ? this.lastTemperatureDelta
+          : lastTemperatureDelta as int?,
+      temperatureReason: identical(temperatureReason, _sentinel)
+          ? this.temperatureReason
+          : temperatureReason as String?,
+      isHintLoading: isHintLoading ?? this.isHintLoading,
+      hintReplies: hintReplies ?? this.hintReplies,
+      hintCoaching: identical(hintCoaching, _sentinel)
+          ? this.hintCoaching
+          : hintCoaching as String?,
+      hintUsedCount: hintUsedCount ?? this.hintUsedCount,
+      hintLimitReached: hintLimitReached ?? this.hintLimitReached,
       debrief: identical(debrief, _sentinel)
           ? this.debrief
           : debrief as PracticeDebrief?,
@@ -329,6 +394,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         girlProfileById(session.profileId) ?? fallbackPracticeProfile().girl;
     final personaId = session.personaId ?? girl.personaId;
     final difficulty = session.difficulty ?? 'normal';
+    final learningMode = PracticeLearningMode.fromWire(session.practiceMode);
     return PracticeChatState(
       sessionId: session.id,
       createdAt: session.createdAt,
@@ -348,6 +414,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           session.difficultyLabel ?? practiceDifficultyLabel(difficulty),
       roundIndex: session.roundIndex ?? 1,
       visiblePracticeThreadId: session.visiblePracticeThreadId ?? session.id,
+      learningMode: learningMode,
+      temperatureScore: learningMode == PracticeLearningMode.beginner
+          ? session.temperatureScore ?? kInitialPracticeTemperatureScore
+          : null,
+      hintUsedCount: learningMode == PracticeLearningMode.beginner
+          ? session.hintUsedCount ?? 0
+          : 0,
     );
   }
 
@@ -396,6 +469,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         drawStatus: PracticeDrawStatus.revealed,
         roundIndex: 1,
         visiblePracticeThreadId: sessionId,
+        learningMode: prior.learningMode,
+        temperatureScore: prior.learningMode == PracticeLearningMode.beginner
+            ? kInitialPracticeTemperatureScore
+            : null,
+        hintUsedCount: 0,
         drawFreeAllowance: result.draw.freeAllowance,
         drawFreeUsed: result.draw.freeUsed,
         drawFreeRemaining: result.draw.freeRemaining,
@@ -479,10 +557,31 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       aiReplyCount: 0,
       roundIndex: state.roundIndex + 1,
       visiblePracticeThreadId: state.visiblePracticeThreadId,
+      learningMode: state.learningMode,
+      temperatureScore:
+          state.isBeginnerMode ? kInitialPracticeTemperatureScore : null,
+      hintUsedCount: 0,
     );
   }
 
   /// 由目前 state 組出 PracticeProfile（調難度的衍生用）。
+  void setPracticeLearningMode(PracticeLearningMode mode) {
+    if (!state.canChangeLearningMode || state.learningMode == mode) return;
+    final beginner = mode == PracticeLearningMode.beginner;
+    state = state.copyWith(
+      learningMode: mode,
+      temperatureScore: beginner ? kInitialPracticeTemperatureScore : null,
+      lastTemperatureDelta: null,
+      temperatureReason: null,
+      isHintLoading: false,
+      hintReplies: const [],
+      hintCoaching: null,
+      hintUsedCount: 0,
+      hintLimitReached: false,
+      errorMessage: null,
+    );
+  }
+
   PracticeProfile _stateProfile() => PracticeProfile(
         girl: state.girl!,
         personaId: state.personaId,
@@ -503,6 +602,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     if (!state.canSend) return;
 
     final priorMessages = state.messages;
+    final learningMode = state.learningMode;
+    final temperatureScore = learningMode == PracticeLearningMode.beginner
+        ? state.temperatureScore ?? kInitialPracticeTemperatureScore
+        : null;
     final optimistic = [
       ...priorMessages,
       PracticeMessage(role: 'user', text: trimmed),
@@ -515,6 +618,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       upgradeRequired: false,
       debriefFailed: false,
       restoreText: null,
+      hintReplies: const [],
+      hintCoaching: null,
+      hintLimitReached: false,
     );
 
     try {
@@ -526,16 +632,31 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             .toList(),
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
+        practiceMode: learningMode,
+        temperatureScore: temperatureScore,
       );
       final withAi = [
         ...optimistic,
         PracticeMessage(role: 'ai', text: reply.reply),
       ];
+      final temperature = reply.temperature;
       state = state.copyWith(
         messages: withAi,
         isSending: false,
         aiReplyCount: reply.aiTurnCount,
         sessionComplete: reply.sessionComplete,
+        temperatureScore: learningMode == PracticeLearningMode.beginner
+            ? temperature?.score ?? temperatureScore
+            : null,
+        lastTemperatureDelta: learningMode == PracticeLearningMode.beginner
+            ? temperature?.delta
+            : null,
+        temperatureReason: learningMode == PracticeLearningMode.beginner
+            ? temperature?.reason
+            : null,
+        hintUsedCount: learningMode == PracticeLearningMode.beginner
+            ? reply.hintUsedCount ?? state.hintUsedCount
+            : 0,
       );
       await _persist();
       // 第一則成功 → 草稿交棒給正式 session（之後靠 recentSessions 還原）。
@@ -583,6 +704,77 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   /// 結束練習，請伺服器產一張教練拆解卡（同場不另扣額度）。
+  Future<void> requestHint() async {
+    if (!state.canRequestHint) return;
+    state = state.copyWith(
+      isHintLoading: true,
+      hintReplies: const [],
+      hintCoaching: null,
+      hintLimitReached: false,
+      errorMessage: null,
+      quotaExceeded: false,
+      upgradeRequired: false,
+    );
+
+    try {
+      final result = await _api.requestHint(
+        sessionId: state.sessionId,
+        profile: _profileDto(),
+        turns: state.messages
+            .map((m) => PracticeTurnDto(role: m.role, text: m.text))
+            .toList(),
+        roundIndex: state.roundIndex,
+        visiblePracticeThreadId: state.visiblePracticeThreadId,
+      );
+      state = state.copyWith(
+        isHintLoading: false,
+        hintReplies: result.replies,
+        hintCoaching: result.coaching,
+        hintUsedCount: result.hintUsedCount,
+        hintLimitReached: false,
+      );
+      await _persist();
+      if (result.costDeducted > 0 &&
+          result.monthlyRemaining != null &&
+          result.dailyRemaining != null) {
+        _onUsageSynced?.call(
+          monthlyRemaining: result.monthlyRemaining!,
+          dailyRemaining: result.dailyRemaining!,
+        );
+      }
+    } on PracticeHintLimitException {
+      state = state.copyWith(
+        isHintLoading: false,
+        hintLimitReached: true,
+        errorMessage: '這段練習的提示已用完，先試著用自己的話回覆看看。',
+      );
+    } on PracticeQuotaExceededException catch (e) {
+      state = state.copyWith(
+        isHintLoading: false,
+        quotaExceeded: true,
+        errorMessage: e.message,
+      );
+    } on PracticeUpgradeRequiredException {
+      state = state.copyWith(
+        isHintLoading: false,
+        upgradeRequired: true,
+        errorMessage: '這個提示會消耗訊息額度，升級後就能繼續使用。',
+      );
+    } on PracticeApiException catch (e) {
+      state = state.copyWith(
+        isHintLoading: false,
+        errorMessage: e.message == 'practice_hint_in_flight'
+            ? '提示正在產生中，等一下再試。'
+            : '提示暫時產生失敗，等一下再試。',
+      );
+    } catch (_) {
+      state = state.copyWith(
+        isHintLoading: false,
+        errorMessage: '提示暫時產生失敗，等一下再試。',
+      );
+    }
+  }
+
   Future<void> endPractice() async {
     if (!state.canDebrief) return;
     state = state.copyWith(
@@ -705,6 +897,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       visiblePracticeThreadId: s.visiblePracticeThreadId,
       roundIndex: s.roundIndex,
       profileId: girl.profileId,
+      practiceMode: s.learningMode.wireName,
+      temperatureScore: s.isBeginnerMode ? s.temperatureScore : null,
+      hintUsedCount: s.isBeginnerMode ? s.hintUsedCount : null,
     ));
   }
 }
