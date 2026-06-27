@@ -2230,6 +2230,11 @@ void main() {
       expect(practiceCeremonyParticleBloom(0.04), lessThan(0.2));
       expect(practiceCeremonyParticleBloom(0.40), lessThan(0.2));
 
+      expect(practiceCeremonyNeonFrameTrace(0.11), greaterThan(0.6));
+      expect(practiceCeremonyNeonFrameProgress(0.11), greaterThan(0.1));
+      expect(practiceCeremonyNeonParticleWall(0.11), lessThan(0.1));
+      expect(practiceCeremonyNeonParticleWall(0.20), greaterThan(0.8));
+
       expect(practiceCeremonyPreviewRecede(0.48), greaterThan(0.65));
       expect(practiceCeremonyPreviewRecede(0.36), closeTo(0, 0.001));
       expect(practiceCeremonyPreviewRecede(0.58), lessThan(0.1));
@@ -2262,6 +2267,35 @@ void main() {
       expect(
         find.byKey(const ValueKey('practice-draw-ceremony-particle-bloom')),
         findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('1.1s neon frame trace appears before the 2s particle wall',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.04));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-neon-trace-frame')),
+        findsNothing,
+      );
+
+      await tester.pump(atFraction(0.07));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-neon-trace-frame')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.09));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-neon-trace-frame')),
+        findsOneWidget,
       );
 
       await tester.pumpAndSettle();

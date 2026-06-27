@@ -120,6 +120,28 @@ double practiceCeremonyParticleBloom(double revealFraction) {
 }
 
 @visibleForTesting
+double practiceCeremonyNeonFrameTrace(double revealFraction) {
+  final rise = ((revealFraction - 0.075) / 0.055).clamp(0.0, 1.0);
+  final fall = (1 - ((revealFraction - 0.34) / 0.16).clamp(0.0, 1.0));
+  return Curves.easeOutCubic.transform(rise) * fall;
+}
+
+@visibleForTesting
+double practiceCeremonyNeonFrameProgress(double revealFraction) {
+  return Curves.easeInOutCubic
+      .transform(((revealFraction - 0.075) / 0.125).clamp(0.0, 1.0));
+}
+
+@visibleForTesting
+double practiceCeremonyNeonParticleWall(double revealFraction) {
+  final rise = ((revealFraction - 0.145) / 0.055).clamp(0.0, 1.0);
+  final fall = (1 - ((revealFraction - 0.34) / 0.14).clamp(0.0, 1.0));
+  return practiceCeremonyParticleBloom(revealFraction) *
+      Curves.easeOutCubic.transform(rise) *
+      fall;
+}
+
+@visibleForTesting
 double practiceCeremonyPreviewRecede(double revealFraction) {
   if (revealFraction <= 0.40 || revealFraction >= 0.54) return 0;
   final d = (revealFraction - 0.48) / 0.045;
@@ -692,6 +714,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final flash = math.max(flipFlash, climaxBurst);
     final settlePulse = practiceCeremonySettlePulse(f) * (1 - frontDepart);
     final particleBloom = practiceCeremonyParticleBloom(f) * (1 - frontDepart);
+    final neonTrace = practiceCeremonyNeonFrameTrace(f) * (1 - frontDepart);
+    final neonTraceProgress = practiceCeremonyNeonFrameProgress(f);
+    final neonParticleWall =
+        practiceCeremonyNeonParticleWall(f) * (1 - frontDepart);
     final glassWipe = practiceCeremonyGlassWipe(f) * (1 - frontDepart);
     final afterglow = practiceCeremonyAfterglow(f) * (1 - frontDepart);
 
@@ -751,7 +777,31 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                   ..setEntry(3, 2, 0.001)
                   ..rotateZ(introRoll + cardRoll)
                   ..rotateY(angle),
-                child: face,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    face,
+                    if (neonTrace > 0.02)
+                      SizedBox(
+                        key: const ValueKey(
+                          'practice-draw-ceremony-neon-trace-frame',
+                        ),
+                        width: cardW,
+                        height: cardH,
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _NeonTraceFramePainter(
+                              progress: f,
+                              intensity: neonTrace,
+                              traceProgress: neonTraceProgress,
+                              particleIntensity: neonParticleWall,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -762,7 +812,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 child: CustomPaint(
                   painter: _ParticleBloomPainter(
                     progress: f,
-                    intensity: particleBloom,
+                    intensity: particleBloom * 0.18,
                     cardSize: Size(cardW, cardH),
                   ),
                 ),
@@ -1997,6 +2047,207 @@ class _RevealFlashPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RevealFlashPainter old) => old.intensity != intensity;
+}
+
+class _NeonTraceFramePainter extends CustomPainter {
+  _NeonTraceFramePainter({
+    required this.progress,
+    required this.intensity,
+    required this.traceProgress,
+    required this.particleIntensity,
+  });
+
+  final double progress;
+  final double intensity;
+  final double traceProgress;
+  final double particleIntensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0.01) return;
+
+    final rect = (Offset.zero & size).inflate(size.width * 0.022);
+    final left = rect.left;
+    final right = rect.right;
+    final top = rect.top;
+    final bottom = rect.bottom;
+    final w = rect.width;
+    final h = rect.height;
+    final corner = size.width * 0.085;
+    final midX = rect.center.dx;
+
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.plus
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.030);
+    final core = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.plus;
+
+    void drawTrace(
+      Offset a,
+      Offset b,
+      Color color,
+      double start,
+      double end, {
+      double weight = 1.0,
+    }) {
+      final local = ((traceProgress - start) / (end - start)).clamp(0.0, 1.0);
+      if (local <= 0.0) return;
+      final target = Offset.lerp(a, b, Curves.easeOutCubic.transform(local))!;
+
+      glow
+        ..strokeWidth = size.width * 0.030 * weight
+        ..color = color.withValues(alpha: intensity * 0.48);
+      core
+        ..strokeWidth = size.width * 0.010 * weight
+        ..color = color.withValues(alpha: intensity * 0.9);
+      canvas.drawLine(a, target, glow);
+      canvas.drawLine(a, target, core);
+
+      final head = Paint()
+        ..blendMode = BlendMode.plus
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.018)
+        ..color = color.withValues(alpha: intensity * 0.72);
+      canvas.drawCircle(target, size.width * 0.016 * weight, head);
+    }
+
+    drawTrace(
+      Offset(left + corner, top),
+      Offset(midX - corner * 0.35, top),
+      _kGold,
+      0.00,
+      0.54,
+      weight: 1.05,
+    );
+    drawTrace(
+      Offset(right - corner, top),
+      Offset(midX + corner * 0.35, top),
+      _kNeonCyan,
+      0.04,
+      0.66,
+      weight: 1.05,
+    );
+    drawTrace(
+      Offset(left, top + corner),
+      Offset(left, top + h * 0.40),
+      _kGold,
+      0.00,
+      0.48,
+    );
+    drawTrace(
+      Offset(left, bottom - corner),
+      Offset(left, top + h * 0.42),
+      _kNeonCyan,
+      0.10,
+      0.78,
+      weight: 1.08,
+    );
+    drawTrace(
+      Offset(right, top + corner),
+      Offset(right, top + h * 0.58),
+      _kNeonCyan,
+      0.02,
+      0.62,
+      weight: 1.08,
+    );
+    drawTrace(
+      Offset(right, bottom - corner),
+      Offset(right, top + h * 0.60),
+      _kGold,
+      0.14,
+      0.82,
+    );
+    drawTrace(
+      Offset(left + corner, bottom),
+      Offset(midX - corner * 0.35, bottom),
+      _kNeonCyan,
+      0.12,
+      0.76,
+      weight: 1.05,
+    );
+    drawTrace(
+      Offset(right - corner, bottom),
+      Offset(midX + corner * 0.35, bottom),
+      _kGold,
+      0.08,
+      0.72,
+      weight: 1.05,
+    );
+
+    final wall = (particleIntensity * intensity).clamp(0.0, 1.0);
+    if (wall <= 0.03) return;
+
+    final sparkGlow = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.016);
+    final sparkDot = Paint()..blendMode = BlendMode.plus;
+
+    void spark(Offset p, Color color, double r, double alpha) {
+      final a = alpha.clamp(0.0, 1.0);
+      if (a <= 0.01) return;
+      sparkGlow.color = color.withValues(alpha: a * 0.40);
+      sparkDot.color = color.withValues(alpha: a * 0.88);
+      canvas.drawCircle(p, r * 3.3, sparkGlow);
+      canvas.drawCircle(p, r, sparkDot);
+    }
+
+    for (var i = 0; i < 520; i++) {
+      final side = i % 4;
+      final u = (i * 0.61803398875 + progress * 0.18) % 1.0;
+      final jitterAlong =
+          math.sin(i * 1.71 + progress * 31) * size.width * 0.012;
+      final jitterOut = math.cos(i * 2.13 + progress * 37) * size.width * 0.030;
+      final shimmer = 0.50 + 0.50 * math.sin(i * 1.37 + progress * 49);
+      late final Offset p;
+      late final Color color;
+      switch (side) {
+        case 0:
+          color = Color.lerp(_kGold, _kNeonCyan, u)!;
+          p = Offset(
+            left + w * u + jitterAlong,
+            top - size.width * 0.026 + jitterOut,
+          );
+          break;
+        case 1:
+          color = u < 0.38
+              ? Color.lerp(_kGold, Colors.white, u * 0.55)!
+              : Color.lerp(_kNeonCyan, Colors.white, (u - 0.38) * 0.22)!;
+          p = Offset(
+            left - size.width * 0.026 + jitterOut,
+            top + h * u + jitterAlong,
+          );
+          break;
+        case 2:
+          color = u < 0.58
+              ? Color.lerp(_kNeonCyan, Colors.white, u * 0.18)!
+              : Color.lerp(_kGold, Colors.white, (u - 0.58) * 0.32)!;
+          p = Offset(
+            right + size.width * 0.026 + jitterOut,
+            top + h * u + jitterAlong,
+          );
+          break;
+        default:
+          color = Color.lerp(_kNeonCyan, _kGold, u)!;
+          p = Offset(
+            left + w * u + jitterAlong,
+            bottom + size.width * 0.026 + jitterOut,
+          );
+          break;
+      }
+      final r = size.width * (0.0036 + (i % 5) * 0.0011);
+      spark(p, color, r, wall * shimmer * (0.72 + 0.36 * traceProgress));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_NeonTraceFramePainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.traceProgress != traceProgress ||
+      old.particleIntensity != particleIntensity;
 }
 
 class _ParticleBloomPainter extends CustomPainter {
