@@ -122,6 +122,12 @@ function practiceModeFromLedger(value: unknown): PracticeLearningMode {
   return value === "beginner" ? "beginner" : "standard";
 }
 
+function explicitPracticeModeFromLedger(
+  value: unknown,
+): PracticeLearningMode | null {
+  return value === "beginner" || value === "standard" ? value : null;
+}
+
 function temperatureFromLedger(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -322,6 +328,20 @@ export function createPracticeChatHandler(
       hintCount: hintCountFromLedger(ledgerRow?.hint_count),
     };
 
+    const lockedPracticeMode = explicitPracticeModeFromLedger(
+      ledgerRow?.practice_mode,
+    );
+    if (
+      ledger.exists && lockedPracticeMode !== null &&
+      lockedPracticeMode !== request.practiceMode
+    ) {
+      logWarn("practice_chat_mode_locked", {
+        user: summarizeUser(user.id),
+        sessionId: request.sessionId,
+      });
+      return jsonResponse({ error: "practice_mode_locked" }, 409);
+    }
+
     if (request.mode === "debrief") {
       const gate = decideDebriefGate({ ledger });
       if (!gate.allowed) {
@@ -438,7 +458,7 @@ export function createPracticeChatHandler(
 
     const beginnerMode = request.practiceMode === "beginner";
     const currentTemperature = beginnerMode
-      ? ledger.temperatureScore ?? request.temperatureScore ?? 30
+      ? ledger.temperatureScore ?? 30
       : null;
 
     let reply: string;
@@ -478,7 +498,7 @@ export function createPracticeChatHandler(
         p_charge_quota: !accountIsTest,
         p_max_replies: MAX_AI_REPLIES,
         p_practice_mode: request.practiceMode,
-        p_initial_temperature_score: request.temperatureScore,
+        p_temperature_score: currentTemperature ?? request.temperatureScore,
       },
     );
     if (commitError) {

@@ -82,7 +82,6 @@ Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled re
     warmUp: "  哈哈辛苦了，那我先給你一個下班後的小獎勵：今天不問難題  ",
     steady: "  辛苦了，先好好喘口氣。今天下班路上還順嗎？  ",
     coaching: "  她剛下班偏累，先接住狀態，再用輕鬆小互動試探能量。  ",
-    extraReply: "不要多出第三個",
   }));
 
   assertEquals(result.replies.length, 2);
@@ -99,6 +98,20 @@ Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled re
   assertEquals(
     result.coaching,
     "她剛下班偏累，先接住狀態，再用輕鬆小互動試探能量。",
+  );
+});
+
+Deno.test("parseHintResult rejects extra JSON keys", () => {
+  assertThrows(
+    () =>
+      parseHintResult(JSON.stringify({
+        warmUp: "升溫",
+        steady: "穩住",
+        coaching: "心法",
+        extraReply: "不要多出第三個",
+      })),
+    Error,
+    "extra",
   );
 });
 

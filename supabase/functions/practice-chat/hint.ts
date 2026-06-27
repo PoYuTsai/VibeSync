@@ -103,6 +103,14 @@ export function parseHintResult(raw: string): PracticeHintResult {
     "coaching",
     MAX_COACHING_LENGTH,
   );
+  const keys = Object.keys(parsed).sort();
+  const expected = ["coaching", "steady", "warmUp"];
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error("hint_extra_keys");
+  }
 
   return {
     replies: [

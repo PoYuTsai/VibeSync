@@ -251,6 +251,31 @@ Deno.test("beginner first chat uses initial temp 30 and returns temperature plus
   );
 });
 
+Deno.test("beginner first chat ignores client temperature and falls back to server initial 30", async () => {
+  const { response, json, state } = await run({
+    ledger: null,
+    deepSeekReplies: ["AI reply", new Error("judge down")],
+  }, chatBody({ practiceMode: "beginner", temperatureScore: 100 }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+
+  const allDeepSeekPromptText = state.deepSeekCalls
+    .flatMap((call) => call.messages)
+    .map((message) => message.content)
+    .join("\n");
+  assert(allDeepSeekPromptText.includes("30/100"));
+  assertEquals(allDeepSeekPromptText.includes("100/100"), false);
+
+  const commit = state.rpcCalls.find((call) =>
+    call.fn === "commit_practice_chat_turn"
+  );
+  assert(commit);
+  assertEquals(commit.params.p_temperature_score, 30);
+  assertEquals("p_initial_temperature_score" in commit.params, false);
+});
+
 Deno.test("beginner later chat uses ledger temperature over client sent score", async () => {
   const { response, json, state } = await run({
     ledger: ledger({
@@ -272,7 +297,7 @@ Deno.test("beginner later chat uses ledger temperature over client sent score", 
   assertEquals(systemPrompt.includes("10/100"), false);
 });
 
-Deno.test("chat commit uses practice mode and initial temperature RPC arguments", async () => {
+Deno.test("chat commit uses practice mode and temperature RPC arguments", async () => {
   const { state } = await run({
     ledger: ledger({ practice_mode: "standard" }),
   }, chatBody({ practiceMode: "standard", temperatureScore: 30 }));
@@ -286,7 +311,19 @@ Deno.test("chat commit uses practice mode and initial temperature RPC arguments"
   assertEquals(commit.params.p_charge_quota, true);
   assertEquals(commit.params.p_max_replies, 20);
   assertEquals(commit.params.p_practice_mode, "standard");
-  assertEquals(commit.params.p_initial_temperature_score, 30);
+  assertEquals(commit.params.p_temperature_score, 30);
+  assertEquals("p_initial_temperature_score" in commit.params, false);
+});
+
+Deno.test("existing ledger mode mismatch rejects before DeepSeek and RPC", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ practice_mode: "standard" }),
+  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_mode_locked" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(state.rpcCalls.length, 0);
 });
 
 Deno.test("commit PRACTICE_MODE_LOCKED maps to HTTP 409 practice_mode_locked", async () => {
