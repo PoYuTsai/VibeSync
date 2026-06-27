@@ -73,12 +73,12 @@ BEGIN
   IF p_max_replies IS NULL OR p_max_replies <= 0 THEN
     RAISE EXCEPTION 'commit_practice_chat_turn: invalid p_max_replies';
   END IF;
+  IF p_charge_quota IS NULL THEN
+    RAISE EXCEPTION 'commit_practice_chat_turn: invalid p_charge_quota';
+  END IF;
 
-  IF p_practice_mode IS NULL OR btrim(p_practice_mode) = '' OR p_practice_mode = 'standard' THEN
-    v_mode := 'standard';
-  ELSIF p_practice_mode = 'beginner' THEN
-    v_mode := 'beginner';
-  ELSE
+  v_mode := COALESCE(NULLIF(btrim(p_practice_mode), ''), 'standard');
+  IF v_mode NOT IN ('standard', 'beginner') THEN
     RAISE EXCEPTION 'PRACTICE_INVALID_MODE';
   END IF;
 
@@ -119,7 +119,7 @@ BEGIN
   END IF;
 
   v_should_settle := NOT v_row.charged;
-  did_charge := v_should_settle AND COALESCE(p_charge_quota, TRUE);
+  did_charge := v_should_settle AND p_charge_quota;
 
   IF did_charge THEN
     PERFORM public.increment_usage(p_user_id, 1);
@@ -167,6 +167,9 @@ BEGIN
   IF p_max_hints IS NULL OR p_max_hints <= 0 OR p_max_hints > 5 THEN
     RAISE EXCEPTION 'record_practice_hint: invalid p_max_hints';
   END IF;
+  IF p_charge_quota IS NULL THEN
+    RAISE EXCEPTION 'record_practice_hint: invalid p_charge_quota';
+  END IF;
 
   SELECT * INTO v_row
   FROM public.practice_chat_sessions
@@ -185,7 +188,7 @@ BEGIN
     RAISE EXCEPTION 'PRACTICE_HINT_LIMIT';
   END IF;
 
-  did_charge := COALESCE(p_charge_quota, TRUE);
+  did_charge := p_charge_quota;
   IF did_charge THEN
     PERFORM public.increment_usage(p_user_id, 1);
   END IF;
@@ -200,18 +203,21 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.update_practice_temperature(UUID, TEXT, INTEGER);
+
 CREATE OR REPLACE FUNCTION public.update_practice_temperature(
   p_user_id           UUID,
   p_session_id        TEXT,
   p_temperature_score INTEGER
 )
-RETURNS INTEGER
+RETURNS TABLE(updated BOOLEAN, temperature_score INTEGER)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
   v_score INTEGER;
+  v_rows  INTEGER;
 BEGIN
   IF p_user_id IS NULL THEN
     RAISE EXCEPTION 'update_practice_temperature: p_user_id is required';
@@ -237,7 +243,11 @@ BEGIN
     AND session_id = p_session_id
     AND practice_mode = 'beginner';
 
-  RETURN v_score;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+
+  updated := v_rows > 0;
+  temperature_score := v_score;
+  RETURN NEXT;
 END;
 $$;
 
