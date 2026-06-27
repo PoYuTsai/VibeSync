@@ -80,10 +80,12 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
 class _FakeAccountLogoutActions extends AccountLogoutActions {
   _FakeAccountLogoutActions({
     this.signOutError,
+    this.clearUsageSnapshotError,
     this.authenticated = false,
   });
 
   final Object? signOutError;
+  final Object? clearUsageSnapshotError;
   bool authenticated;
   var signOutCalls = 0;
   var clearUsageSnapshotCalls = 0;
@@ -103,6 +105,8 @@ class _FakeAccountLogoutActions extends AccountLogoutActions {
   @override
   Future<void> clearUsageSnapshot() async {
     clearUsageSnapshotCalls++;
+    final error = clearUsageSnapshotError;
+    if (error != null) throw error;
   }
 
   @override
@@ -319,6 +323,29 @@ void main() {
         (tester) async {
       final actions = _FakeAccountLogoutActions(
         signOutError: Exception('cleanup failed after auth signout'),
+        authenticated: false,
+      );
+
+      await pumpSettings(tester, logoutActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.logout));
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.signOutCalls, 1);
+      expect(actions.clearUsageSnapshotCalls, 1);
+      expect(actions.clearPracticeRoomStateCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+    });
+
+    testWidgets(
+        'logout auth-gone fallback runs practice cleanup if usage fails',
+        (tester) async {
+      final actions = _FakeAccountLogoutActions(
+        signOutError: Exception('cleanup failed after auth signout'),
+        clearUsageSnapshotError: Exception('usage cleanup failed'),
         authenticated: false,
       );
 

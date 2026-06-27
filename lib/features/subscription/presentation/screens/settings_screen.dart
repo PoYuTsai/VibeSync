@@ -593,8 +593,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _clearLocalLogoutState() async {
-    await widget.accountLogoutActions.clearUsageSnapshot();
-    await widget.accountLogoutActions.clearPracticeRoomState();
+    Object? cleanupError;
+
+    try {
+      await widget.accountLogoutActions.clearUsageSnapshot();
+    } catch (error) {
+      cleanupError = error;
+    }
+
+    try {
+      await widget.accountLogoutActions.clearPracticeRoomState();
+    } catch (error) {
+      cleanupError ??= error;
+    }
+
+    if (cleanupError == null) return;
+    if (cleanupError is Exception) throw cleanupError;
+    throw Exception(cleanupError.toString());
   }
 
   Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
