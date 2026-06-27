@@ -142,6 +142,24 @@ double practiceCeremonyNeonParticleWall(double revealFraction) {
 }
 
 @visibleForTesting
+double practiceCeremonyFrameParticleFlow(double revealFraction) {
+  final rise = ((revealFraction - 0.125) / 0.05).clamp(0.0, 1.0);
+  final fall = (1 - ((revealFraction - 0.31) / 0.075).clamp(0.0, 1.0));
+  final bloom = practiceCeremonyParticleBloom(revealFraction).clamp(0.0, 1.0);
+  return Curves.easeOutCubic.transform(rise) * fall * bloom;
+}
+
+@visibleForTesting
+double practiceCeremonyVolumetricBurst(double revealFraction) {
+  if (revealFraction <= 0.585 || revealFraction >= 0.745) return 0;
+  final fadeIn = ((revealFraction - 0.585) / 0.065).clamp(0.0, 1.0);
+  final fadeOut = ((0.745 - revealFraction) / 0.095).clamp(0.0, 1.0);
+  final envelope = math.min(fadeIn, fadeOut);
+  final peak = practiceCeremonyClimaxBurst(revealFraction);
+  return (envelope * (0.46 + 0.54 * peak)).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
 double practiceCeremonyPreviewRecede(double revealFraction) {
   if (revealFraction <= 0.40 || revealFraction >= 0.54) return 0;
   final d = (revealFraction - 0.48) / 0.045;
@@ -150,7 +168,13 @@ double practiceCeremonyPreviewRecede(double revealFraction) {
 
 @visibleForTesting
 double practiceCeremonyGlassWipe(double revealFraction) {
-  final d = (revealFraction - 0.84) / 0.05;
+  final d = (revealFraction - 0.825) / 0.042;
+  return math.exp(-d * d).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
+double practiceCeremonyFinalPolish(double revealFraction) {
+  final d = (revealFraction - 0.835) / 0.034;
   return math.exp(-d * d).clamp(0.0, 1.0);
 }
 
@@ -718,7 +742,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final neonTraceProgress = practiceCeremonyNeonFrameProgress(f);
     final neonParticleWall =
         practiceCeremonyNeonParticleWall(f) * (1 - frontDepart);
+    final frameParticleFlow =
+        practiceCeremonyFrameParticleFlow(f) * (1 - frontDepart);
+    final volumetricBurst =
+        practiceCeremonyVolumetricBurst(f) * (1 - frontDepart);
     final glassWipe = practiceCeremonyGlassWipe(f) * (1 - frontDepart);
+    final finalPolish = practiceCeremonyFinalPolish(f) * (1 - frontDepart);
     final afterglow = practiceCeremonyAfterglow(f) * (1 - frontDepart);
 
     // 正面卡升階：高潮翻面前的白卡用 preview，高潮起換金框典藏卡 grand。
@@ -800,6 +829,22 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                           ),
                         ),
                       ),
+                    if (frameParticleFlow > 0.03)
+                      SizedBox(
+                        key: const ValueKey(
+                          'practice-draw-ceremony-frame-particle-flow',
+                        ),
+                        width: cardW,
+                        height: cardH,
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _FrameParticleFlowPainter(
+                              progress: f,
+                              intensity: frameParticleFlow,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -812,7 +857,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 child: CustomPaint(
                   painter: _ParticleBloomPainter(
                     progress: f,
-                    intensity: particleBloom * 0.18,
+                    intensity: particleBloom * 0.22,
                     cardSize: Size(cardW, cardH),
                   ),
                 ),
@@ -842,6 +887,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                     progress: haloProgress,
                     intensity: haloIntensity,
                     half: PracticeHaloHalf.front,
+                  ),
+                ),
+              ),
+            ),
+          if (volumetricBurst > 0.02)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-volumetric-burst'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _VolumetricBurstPainter(
+                    progress: f,
+                    intensity: volumetricBurst,
+                    cardSize: Size(cardW, cardH),
                   ),
                 ),
               ),
@@ -883,6 +941,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                   painter: _GlassWipePainter(
                     progress: f,
                     intensity: glassWipe,
+                    cardSize: Size(cardW, cardH),
+                  ),
+                ),
+              ),
+            ),
+          if (finalPolish > 0.02)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-final-polish'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _FinalPolishPainter(
+                    progress: f,
+                    intensity: finalPolish,
                     cardSize: Size(cardW, cardH),
                   ),
                 ),
@@ -2250,6 +2321,136 @@ class _NeonTraceFramePainter extends CustomPainter {
       old.particleIntensity != particleIntensity;
 }
 
+class _FrameParticleFlowPainter extends CustomPainter {
+  _FrameParticleFlowPainter({
+    required this.progress,
+    required this.intensity,
+  });
+
+  final double progress;
+  final double intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0.01) return;
+
+    final rect = (Offset.zero & size).inflate(size.width * 0.040);
+    final center = rect.center;
+    final rrect = RRect.fromRectAndRadius(
+      rect,
+      Radius.circular(size.width * 0.095),
+    );
+    final path = Path()..addRRect(rrect);
+    final metrics = path.computeMetrics().toList();
+    if (metrics.isEmpty) return;
+    final metric = metrics.first;
+    final len = metric.length;
+
+    final railGlow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.plus
+      ..strokeWidth = size.width * 0.017
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.012)
+      ..shader = SweepGradient(
+        colors: [
+          _kGold.withValues(alpha: 0.30 * intensity),
+          _kNeonCyan.withValues(alpha: 0.38 * intensity),
+          _kGold.withValues(alpha: 0.34 * intensity),
+          _kNeonCyan.withValues(alpha: 0.36 * intensity),
+          _kGold.withValues(alpha: 0.30 * intensity),
+        ],
+        stops: const [0.0, 0.24, 0.50, 0.76, 1.0],
+        transform: GradientRotation(progress * math.pi * 5.2),
+      ).createShader(rect.inflate(size.width * 0.12));
+    canvas.drawPath(path, railGlow);
+
+    final railCore = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.plus
+      ..strokeWidth = size.width * 0.006
+      ..color = Colors.white.withValues(alpha: 0.08 * intensity);
+    canvas.drawPath(path, railCore);
+
+    final glow = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.014);
+    final dot = Paint()..blendMode = BlendMode.plus;
+    final streak = Paint()
+      ..blendMode = BlendMode.plus
+      ..strokeCap = StrokeCap.round;
+
+    void spark(Offset p, Offset dir, Color color, double r, double alpha) {
+      final a = alpha.clamp(0.0, 1.0);
+      if (a <= 0.012) return;
+      glow.color = color.withValues(alpha: a * 0.22);
+      dot.color = color.withValues(alpha: a * 0.82);
+      streak
+        ..strokeWidth = r * 0.92
+        ..color = color.withValues(alpha: a * 0.24);
+      canvas.drawLine(p - dir * (size.width * 0.026), p, streak);
+      canvas.drawCircle(p, r * 3.0, glow);
+      canvas.drawCircle(p, r, dot);
+    }
+
+    for (var i = 0; i < 560; i++) {
+      final lane = i % 5;
+      final travel = (i * 0.0137 + progress * (1.55 + lane * 0.08)) % 1.0;
+      final tangent = metric.getTangentForOffset(travel * len);
+      if (tangent == null) continue;
+      final outward = tangent.position - center;
+      final outLen = outward.distance;
+      final normal = outLen == 0 ? Offset.zero : outward / outLen;
+      final dir = tangent.vector;
+      final jitterOut = (lane - 2) * size.width * 0.014 +
+          math.sin(i * 1.43 + progress * 42) * size.width * 0.018;
+      final jitterAlong =
+          math.cos(i * 2.17 + progress * 37) * size.width * 0.006;
+      final p = tangent.position + normal * jitterOut + dir * jitterAlong;
+
+      final xMix = ((p.dx - rect.left) / rect.width).clamp(0.0, 1.0);
+      final yMix = ((p.dy - rect.top) / rect.height).clamp(0.0, 1.0);
+      final isSideWall =
+          xMix < 0.16 || xMix > 0.84 || yMix < 0.15 || yMix > 0.85;
+      final sideBoost = isSideWall ? 0.70 : 0.38;
+      final colorBias = (0.62 * xMix + 0.38 * (1 - yMix)).clamp(0.0, 1.0);
+      final base = Color.lerp(_kGold, _kNeonCyan, colorBias)!;
+      final shimmer = 0.46 + 0.54 * math.sin(i * 1.71 + progress * 68);
+      final r = size.width * (0.0032 + (i % 7) * 0.00072);
+      spark(
+        p,
+        dir,
+        i % 41 == 0 ? Color.lerp(Colors.white, base, 0.65)! : base,
+        r,
+        intensity * shimmer * sideBoost,
+      );
+    }
+
+    for (var i = 0; i < 72; i++) {
+      final t = (i * 0.027 + progress * 2.4) % 1.0;
+      final tangent = metric.getTangentForOffset(t * len);
+      if (tangent == null) continue;
+      final outward = tangent.position - center;
+      final normal =
+          outward.distance == 0 ? Offset.zero : outward / outward.distance;
+      final pulse = math.exp(-math.pow(((i % 24) / 24 - 0.5) / 0.34, 2));
+      final color = i.isEven ? _kGold : _kNeonCyan;
+      spark(
+        tangent.position + normal * size.width * 0.056,
+        tangent.vector,
+        color,
+        size.width * (0.0048 + 0.0022 * pulse),
+        intensity * (0.16 + 0.40 * pulse),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FrameParticleFlowPainter old) =>
+      old.progress != progress || old.intensity != intensity;
+}
+
 class _ParticleBloomPainter extends CustomPainter {
   _ParticleBloomPainter({
     required this.progress,
@@ -2381,6 +2582,151 @@ class _ParticleBloomPainter extends CustomPainter {
       old.cardSize != cardSize;
 }
 
+class _VolumetricBurstPainter extends CustomPainter {
+  _VolumetricBurstPainter({
+    required this.progress,
+    required this.intensity,
+    required this.cardSize,
+  });
+
+  final double progress;
+  final double intensity;
+  final Size cardSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0.01) return;
+    final center = size.center(Offset.zero);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: cardSize.width,
+      height: cardSize.height,
+    );
+    final phase = ((progress - 0.585) / 0.16).clamp(0.0, 1.0);
+    final peak = practiceCeremonyClimaxBurst(progress).clamp(0.0, 1.0);
+    final i = intensity.clamp(0.0, 1.0);
+
+    final radial = Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white.withValues(alpha: 0.34 * i),
+          _kGold.withValues(alpha: 0.26 * i),
+          _kNeonCyan.withValues(alpha: 0.16 * i),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.24, 0.56, 1.0],
+      ).createShader(
+        Rect.fromCircle(
+          center: center,
+          radius: cardSize.width * (0.66 + 0.18 * peak),
+        ),
+      );
+    canvas.drawCircle(center, cardSize.width * (0.72 + 0.24 * peak), radial);
+
+    void beam(double angle, double width, double alpha, Color color) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(angle);
+      final beamRect = Rect.fromCenter(
+        center: Offset.zero,
+        width: cardSize.width * 2.25,
+        height: width,
+      );
+      final paint = Paint()
+        ..blendMode = BlendMode.plus
+        ..shader = LinearGradient(
+          colors: [
+            Colors.transparent,
+            color.withValues(alpha: 0.18 * alpha * i),
+            Colors.white.withValues(alpha: 0.58 * alpha * i),
+            color.withValues(alpha: 0.18 * alpha * i),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.28, 0.50, 0.72, 1.0],
+        ).createShader(beamRect);
+      canvas.drawRect(beamRect, paint);
+      canvas.restore();
+    }
+
+    beam(-0.48 + phase * 0.08, cardSize.width * 0.26, 0.92, _kGold);
+    beam(0.34 - phase * 0.06, cardSize.width * 0.21, 0.78, _kNeonCyan);
+    beam(math.pi / 2 - 0.16, cardSize.width * 0.12, 0.44, Colors.white);
+
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..blendMode = BlendMode.plus
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.018);
+    for (var r = 0; r < 4; r++) {
+      final t = (phase + r * 0.18).clamp(0.0, 1.0);
+      final oval = Rect.fromCenter(
+        center: center,
+        width: cardSize.width * (0.86 + r * 0.18 + t * 0.36),
+        height: cardSize.height * (0.33 + r * 0.05 + t * 0.08),
+      );
+      ringPaint
+        ..strokeWidth = cardSize.width * (0.006 + r * 0.001)
+        ..color = Color.lerp(_kGold, _kNeonCyan, r / 3)!
+            .withValues(alpha: i * (0.42 - r * 0.055));
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(-0.40 + r * 0.22 + phase * 0.22);
+      canvas.translate(-center.dx, -center.dy);
+      canvas.drawArc(oval, -math.pi * 0.04, math.pi * 1.28, false, ringPaint);
+      canvas.restore();
+    }
+
+    final sparkle = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.2);
+    for (var k = 0; k < 132; k++) {
+      final a = k * 2.399963229728653 + phase * 3.8;
+      final lane = 0.22 + (k % 11) / 10 * 0.76;
+      final spread = cardSize.width * (0.28 + lane * (0.62 + 0.18 * peak));
+      final p = center +
+          Offset(
+            math.cos(a) * spread,
+            math.sin(a) * spread * (0.52 + 0.24 * math.sin(a + phase)),
+          );
+      final tw = 0.45 + 0.55 * math.sin(k * 1.83 + progress * 72);
+      final color = k % 7 == 0
+          ? Colors.white
+          : Color.lerp(_kGold, _kNeonCyan, (k % 9) / 8)!;
+      sparkle.color = color.withValues(alpha: i * tw * 0.70);
+      canvas.drawCircle(p, 0.9 + 2.4 * tw * i, sparkle);
+    }
+
+    final edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..blendMode = BlendMode.plus
+      ..strokeWidth = cardSize.width * 0.010
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.015)
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          _kGold.withValues(alpha: 0.66 * i),
+          Colors.white.withValues(alpha: 0.78 * i),
+          _kNeonCyan.withValues(alpha: 0.62 * i),
+        ],
+      ).createShader(rect.inflate(cardSize.width * 0.08));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        rect.inflate(cardSize.width * 0.030),
+        Radius.circular(cardSize.width * 0.088),
+      ),
+      edge,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_VolumetricBurstPainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.cardSize != cardSize;
+}
+
 class _GlassWipePainter extends CustomPainter {
   _GlassWipePainter({
     required this.progress,
@@ -2436,23 +2782,23 @@ class _GlassWipePainter extends CustomPainter {
     );
     final band = Paint()
       ..blendMode = BlendMode.plus
-      ..shader = const LinearGradient(
+      ..shader = LinearGradient(
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
         colors: [
           Colors.transparent,
-          Color(0x66FFFFFF),
-          Color(0xF2FFFFFF),
-          Color(0x66FFFFFF),
+          Colors.white.withValues(alpha: 0.16 * intensity),
+          Colors.white.withValues(alpha: 0.46 * intensity),
+          _kGold.withValues(alpha: 0.14 * intensity),
           Colors.transparent,
         ],
-        stops: [0.0, 0.32, 0.50, 0.68, 1.0],
+        stops: const [0.0, 0.32, 0.50, 0.68, 1.0],
       ).createShader(bandRect);
     canvas.drawRect(bandRect, band);
 
     final edge = Paint()
       ..blendMode = BlendMode.plus
-      ..color = Colors.white.withValues(alpha: 0.55 * intensity)
+      ..color = Colors.white.withValues(alpha: 0.36 * intensity)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
     canvas.drawRect(
       Rect.fromCenter(
@@ -2503,6 +2849,167 @@ class _GlassWipePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GlassWipePainter old) =>
+      old.progress != progress ||
+      old.intensity != intensity ||
+      old.cardSize != cardSize;
+}
+
+class _FinalPolishPainter extends CustomPainter {
+  _FinalPolishPainter({
+    required this.progress,
+    required this.intensity,
+    required this.cardSize,
+  });
+
+  final double progress;
+  final double intensity;
+  final Size cardSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0.01) return;
+    final center = size.center(Offset.zero);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: cardSize.width,
+      height: cardSize.height,
+    );
+    final radius = Radius.circular(cardSize.width * 0.075);
+    final rrect = RRect.fromRectAndRadius(rect, radius);
+    final phase = ((progress - 0.785) / 0.105).clamp(0.0, 1.0);
+    final i = intensity.clamp(0.0, 1.0);
+
+    canvas.save();
+    canvas.clipRRect(rrect);
+
+    final mist = Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = RadialGradient(
+        center: const Alignment(-0.18, -0.36),
+        radius: 0.96,
+        colors: [
+          Colors.white.withValues(alpha: 0.08 * i),
+          _kGold.withValues(alpha: 0.05 * i),
+          _kNeonCyan.withValues(alpha: 0.03 * i),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.28, 0.58, 1.0],
+      ).createShader(rect);
+    canvas.drawRect(rect, mist);
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-0.50);
+    final sweepX = -cardSize.width * 0.74 + cardSize.width * 1.58 * phase;
+    for (var lane = 0; lane < 3; lane++) {
+      final offset = (lane - 1) * cardSize.width * 0.105;
+      final bandRect = Rect.fromCenter(
+        center: Offset(sweepX + offset, 0),
+        width: cardSize.width * (0.18 + lane * 0.08),
+        height: cardSize.height * 1.66,
+      );
+      final band = Paint()
+        ..blendMode = BlendMode.plus
+        ..shader = LinearGradient(
+          colors: [
+            Colors.transparent,
+            Colors.white.withValues(alpha: i * (0.08 + lane * 0.035)),
+            (lane == 1 ? Colors.white : _kGold)
+                .withValues(alpha: i * (0.22 + lane * 0.05)),
+            Colors.white.withValues(alpha: i * (0.08 + lane * 0.03)),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.30, 0.50, 0.70, 1.0],
+        ).createShader(bandRect);
+      canvas.drawRect(bandRect, band);
+    }
+
+    final razor = Paint()
+      ..blendMode = BlendMode.plus
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = cardSize.width * 0.006
+      ..color = Colors.white.withValues(alpha: 0.48 * i)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+    canvas.drawLine(
+      Offset(sweepX - cardSize.width * 0.045, -cardSize.height * 0.76),
+      Offset(sweepX + cardSize.width * 0.20, cardSize.height * 0.76),
+      razor,
+    );
+    canvas.restore();
+
+    final bead = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
+    for (var k = 0; k < 72; k++) {
+      final t = (k * 0.61803398875 + phase * 0.62) % 1.0;
+      final edge = k % 4;
+      late final Offset p;
+      switch (edge) {
+        case 0:
+          p = Offset(rect.left + rect.width * t, rect.top + 4);
+          break;
+        case 1:
+          p = Offset(rect.right - 4, rect.top + rect.height * t);
+          break;
+        case 2:
+          p = Offset(rect.left + rect.width * t, rect.bottom - 4);
+          break;
+        default:
+          p = Offset(rect.left + 4, rect.top + rect.height * t);
+          break;
+      }
+      final tw = 0.44 + 0.56 * math.sin(k * 1.91 + progress * 80);
+      final color = k % 5 == 0
+          ? Colors.white
+          : Color.lerp(_kGold, _kNeonCyan, (edge + 1) / 5)!;
+      bead.color = color.withValues(alpha: i * tw * 0.46);
+      canvas.drawCircle(p, 0.9 + 1.8 * tw * i, bead);
+    }
+    canvas.restore();
+
+    final rim = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = cardSize.width * 0.014
+      ..blendMode = BlendMode.plus
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.026)
+      ..shader = SweepGradient(
+        colors: [
+          _kGold.withValues(alpha: 0.12 * i),
+          Colors.white.withValues(alpha: 0.54 * i),
+          _kNeonCyan.withValues(alpha: 0.34 * i),
+          _kGold.withValues(alpha: 0.36 * i),
+          _kGold.withValues(alpha: 0.12 * i),
+        ],
+        stops: const [0.0, 0.30, 0.50, 0.76, 1.0],
+        transform: GradientRotation(-math.pi * 0.24 + phase * math.pi * 0.55),
+      ).createShader(rect.inflate(cardSize.width * 0.12));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect.inflate(cardSize.width * 0.022), radius),
+      rim,
+    );
+
+    final star = Paint()
+      ..blendMode = BlendMode.plus
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = cardSize.width * 0.006
+      ..color = Colors.white.withValues(alpha: 0.54 * i)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    final starP = rect.topLeft +
+        Offset(cardSize.width * (0.22 + 0.46 * phase), cardSize.height * 0.18);
+    canvas.drawLine(
+      starP - Offset(cardSize.width * 0.065, 0),
+      starP + Offset(cardSize.width * 0.065, 0),
+      star,
+    );
+    canvas.drawLine(
+      starP - Offset(0, cardSize.width * 0.065),
+      starP + Offset(0, cardSize.width * 0.065),
+      star,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FinalPolishPainter old) =>
       old.progress != progress ||
       old.intensity != intensity ||
       old.cardSize != cardSize;

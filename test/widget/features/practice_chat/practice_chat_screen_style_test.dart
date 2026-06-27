@@ -2273,6 +2273,33 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('2s frame particle flow hugs the neon rim, then clears',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.20));
+      expect(
+        find.byKey(
+          const ValueKey('practice-draw-ceremony-frame-particle-flow'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.22));
+      expect(
+        find.byKey(
+          const ValueKey('practice-draw-ceremony-frame-particle-flow'),
+        ),
+        findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('1.1s neon frame trace appears before the 2s particle wall',
         (tester) async {
       final completer = Completer<PracticeDrawResult>();
@@ -2325,6 +2352,29 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('6.5s volumetric burst sits on the flip explosion peak',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.65));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-volumetric-burst')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.15));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-volumetric-burst')),
+        findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('8-9s afterglow keeps a final sparkle layer after glass wipe',
         (tester) async {
       final completer = Completer<PracticeDrawResult>();
@@ -2342,6 +2392,29 @@ void main() {
       await tester.pump(atFraction(0.10));
       expect(
         find.byKey(const ValueKey('practice-draw-ceremony-afterglow')),
+        findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('8.5s final polish aligns with the settle beat, then clears',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.85));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-final-polish')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.12));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-final-polish')),
         findsNothing,
       );
 
