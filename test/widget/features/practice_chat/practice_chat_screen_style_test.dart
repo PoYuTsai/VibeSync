@@ -2236,6 +2236,10 @@ void main() {
       expect(practiceCeremonyNeonParticleWall(0.11), lessThan(0.1));
       expect(practiceCeremonyNeonParticleWall(0.20), greaterThan(0.8));
 
+      expect(practiceCeremonyBreathHoldVignette(0.50), greaterThan(0.85));
+      expect(practiceCeremonyBreathHoldVignette(0.42), lessThan(0.1));
+      expect(practiceCeremonyBreathHoldVignette(0.58), lessThan(0.1));
+
       expect(practiceCeremonyPreviewRecede(0.48), greaterThan(0.65));
       expect(practiceCeremonyPreviewRecede(0.36), closeTo(0, 0.001));
       expect(practiceCeremonyPreviewRecede(0.58), lessThan(0.1));
@@ -2300,6 +2304,33 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('2s separated particle spray sits outside the neon frame',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.20));
+      expect(
+        find.byKey(
+          const ValueKey('practice-draw-ceremony-frame-particle-spray'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.22));
+      expect(
+        find.byKey(
+          const ValueKey('practice-draw-ceremony-frame-particle-spray'),
+        ),
+        findsNothing,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('1.1s neon frame trace appears before the 2s particle wall',
         (tester) async {
       final completer = Completer<PracticeDrawResult>();
@@ -2324,6 +2355,29 @@ void main() {
       expect(
         find.byKey(const ValueKey('practice-draw-ceremony-neon-trace-frame')),
         findsOneWidget,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('5s breath-hold vignette tightens the quiet transition',
+        (tester) async {
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester,
+          completer: completer, girl: practiceGirlProfiles[2]);
+
+      await tester.pump(atFraction(0.50));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-breath-hold')),
+        findsOneWidget,
+      );
+
+      await tester.pump(atFraction(0.12));
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-breath-hold')),
+        findsNothing,
       );
 
       await tester.pumpAndSettle();

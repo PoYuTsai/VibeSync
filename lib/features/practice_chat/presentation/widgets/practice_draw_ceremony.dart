@@ -160,6 +160,12 @@ double practiceCeremonyVolumetricBurst(double revealFraction) {
 }
 
 @visibleForTesting
+double practiceCeremonyBreathHoldVignette(double revealFraction) {
+  final d = (revealFraction - 0.50) / 0.034;
+  return math.exp(-d * d).clamp(0.0, 1.0);
+}
+
+@visibleForTesting
 double practiceCeremonyPreviewRecede(double revealFraction) {
   if (revealFraction <= 0.40 || revealFraction >= 0.54) return 0;
   final d = (revealFraction - 0.48) / 0.045;
@@ -746,6 +752,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         practiceCeremonyFrameParticleFlow(f) * (1 - frontDepart);
     final volumetricBurst =
         practiceCeremonyVolumetricBurst(f) * (1 - frontDepart);
+    final breathHold =
+        practiceCeremonyBreathHoldVignette(f) * (1 - frontDepart);
     final glassWipe = practiceCeremonyGlassWipe(f) * (1 - frontDepart);
     final finalPolish = practiceCeremonyFinalPolish(f) * (1 - frontDepart);
     final afterglow = practiceCeremonyAfterglow(f) * (1 - frontDepart);
@@ -845,6 +853,22 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                           ),
                         ),
                       ),
+                    if (frameParticleFlow > 0.08)
+                      SizedBox(
+                        key: const ValueKey(
+                          'practice-draw-ceremony-frame-particle-spray',
+                        ),
+                        width: cardW,
+                        height: cardH,
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _FrameParticleSprayPainter(
+                              progress: f,
+                              intensity: frameParticleFlow,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -901,6 +925,15 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                     intensity: volumetricBurst,
                     cardSize: Size(cardW, cardH),
                   ),
+                ),
+              ),
+            ),
+          if (breathHold > 0.02)
+            Positioned.fill(
+              key: const ValueKey('practice-draw-ceremony-breath-hold'),
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _BreathHoldVignettePainter(intensity: breathHold),
                 ),
               ),
             ),
@@ -2451,6 +2484,73 @@ class _FrameParticleFlowPainter extends CustomPainter {
       old.progress != progress || old.intensity != intensity;
 }
 
+class _FrameParticleSprayPainter extends CustomPainter {
+  _FrameParticleSprayPainter({
+    required this.progress,
+    required this.intensity,
+  });
+
+  final double progress;
+  final double intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0.01) return;
+    final rect = (Offset.zero & size).inflate(size.width * 0.090);
+    final center = rect.center;
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          rect,
+          Radius.circular(size.width * 0.115),
+        ),
+      );
+    final metrics = path.computeMetrics().toList();
+    if (metrics.isEmpty) return;
+    final metric = metrics.first;
+    final len = metric.length;
+    final glow = Paint()
+      ..blendMode = BlendMode.plus
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.010);
+    final dot = Paint()..blendMode = BlendMode.plus;
+
+    for (var i = 0; i < 360; i++) {
+      final travel = (i * 0.0179 + progress * (1.85 + (i % 3) * 0.10)) % 1.0;
+      final tangent = metric.getTangentForOffset(travel * len);
+      if (tangent == null) continue;
+      final outward = tangent.position - center;
+      final normal =
+          outward.distance == 0 ? Offset.zero : outward / outward.distance;
+      final sideNoise = math.sin(i * 1.91 + progress * 52);
+      final p = tangent.position +
+          normal * (size.width * (0.018 + 0.060 * ((i % 7) / 6))) +
+          tangent.vector * (sideNoise * size.width * 0.010);
+      final xMix = ((p.dx - rect.left) / rect.width).clamp(0.0, 1.0);
+      final yMix = ((p.dy - rect.top) / rect.height).clamp(0.0, 1.0);
+      final cyanSide = xMix > 0.52 || yMix < 0.24;
+      final base = cyanSide ? _kNeonCyan : _kGold;
+      final mixed = Color.lerp(
+        base,
+        Colors.white,
+        i % 23 == 0 ? 0.42 : 0.12,
+      )!;
+      final twinkle = 0.40 + 0.60 * math.sin(i * 2.13 + progress * 74);
+      final alpha =
+          (intensity * twinkle * (0.34 + 0.36 * (i % 5) / 4)).clamp(0.0, 1.0);
+      if (alpha <= 0.018) continue;
+      final radius = size.width * (0.0025 + (i % 6) * 0.00058);
+      glow.color = mixed.withValues(alpha: alpha * 0.30);
+      dot.color = mixed.withValues(alpha: alpha * 0.90);
+      canvas.drawCircle(p, radius * 3.0, glow);
+      canvas.drawCircle(p, radius, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FrameParticleSprayPainter old) =>
+      old.progress != progress || old.intensity != intensity;
+}
+
 class _ParticleBloomPainter extends CustomPainter {
   _ParticleBloomPainter({
     required this.progress,
@@ -2725,6 +2825,55 @@ class _VolumetricBurstPainter extends CustomPainter {
       old.progress != progress ||
       old.intensity != intensity ||
       old.cardSize != cardSize;
+}
+
+class _BreathHoldVignettePainter extends CustomPainter {
+  _BreathHoldVignettePainter({required this.intensity});
+
+  final double intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (intensity <= 0.01) return;
+    final center = size.center(Offset.zero);
+    final i = intensity.clamp(0.0, 1.0);
+
+    final veil = Paint()
+      ..color = const Color(0xFF05020D).withValues(alpha: 0.18 * i);
+    canvas.drawRect(Offset.zero & size, veil);
+
+    final vignette = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.transparent,
+          const Color(0xFF100726).withValues(alpha: 0.10 * i),
+          Colors.black.withValues(alpha: 0.34 * i),
+        ],
+        stops: const [0.0, 0.58, 1.0],
+      ).createShader(
+        Rect.fromCircle(center: center, radius: size.shortestSide * 0.72),
+      );
+    canvas.drawRect(Offset.zero & size, vignette);
+
+    final hush = Paint()
+      ..blendMode = BlendMode.plus
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          _kGold.withValues(alpha: 0.035 * i),
+          _kNeonCyan.withValues(alpha: 0.025 * i),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.44, 0.58, 1.0],
+      ).createShader(Offset.zero & size);
+    canvas.drawRect(Offset.zero & size, hush);
+  }
+
+  @override
+  bool shouldRepaint(_BreathHoldVignettePainter old) =>
+      old.intensity != intensity;
 }
 
 class _GlassWipePainter extends CustomPainter {
