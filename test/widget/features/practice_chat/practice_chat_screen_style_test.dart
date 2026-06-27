@@ -1342,7 +1342,7 @@ void main() {
 
     completer.complete(_drawResultFor(zoe));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(previewAt); // 白卡預覽段（beat 推導，對齊重定時）
 
     expect(
       find.byKey(const ValueKey('practice-draw-ceremony-front')),
@@ -1519,7 +1519,7 @@ void main() {
     await tester.pump(); // 進入 revealing：_reveal.forward(from:0)
   }
 
-  testWidgets('兩段升階：第一段翻出白卡預覽（~1.5s 顯正面卡、不顯卡背）', (tester) async {
+  testWidgets('兩段升階：第一段翻出白卡預覽（~3.5s 顯正面卡、不顯卡背）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
@@ -1557,7 +1557,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('兩段升階：高潮後典藏卡停留（~5.6s 顯正面卡）', (tester) async {
+  testWidgets('兩段升階：高潮後典藏卡停留（~8.3s 顯正面卡）', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
@@ -1611,7 +1611,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('兩段升階：整條 7.5s 時間軸 pumpAndSettle 收斂、最終露 hero', (tester) async {
+  testWidgets('兩段升階：整條 ~9s 時間軸 pumpAndSettle 收斂、最終露 hero', (tester) async {
     final zoe = practiceGirlProfiles[2];
     final api = _DrawApi(() async => _drawResultFor(zoe));
     await pumpLocked(tester, api: api);
@@ -1936,6 +1936,84 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(spy.chime, 1);
+  });
+
+  // ── E1：揭曉時間軸對齊參考音軌「音檔.mp4」＋放大卡（復刻）──────────────────────
+  group('E1 時間軸對齊音軌', () {
+    test('揭曉總長延長到約 9 秒（對齊參考音軌長度）', () {
+      expect(kPracticeRevealDuration, const Duration(milliseconds: 9000));
+    });
+
+    test('beat 對齊音軌三爆點：預覽~1/3、低谷~0.55、高潮落定~0.94', () {
+      // 第一爆點 ~3.0s/9s → 白卡預覽翻出。
+      expect(kPracticeRevealFlip1End, inInclusiveRange(0.30, 0.40));
+      // 近靜音低谷 ~5.0s/9s → 翻回卡背蓄力（屏息）。
+      expect(kPracticeRevealRechargeEnd, inInclusiveRange(0.50, 0.60));
+      // 第二爆點 ~8.5s/9s → 高潮典藏卡落定。
+      expect(kPracticeRevealHoldEnd, inInclusiveRange(0.90, 0.97));
+    });
+  });
+
+  testWidgets('E1：揭曉開場卡背先蓄力、不立即翻面（對齊第一爆點前的 build）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
+
+    // 揭曉早期（f≈0.2，第一爆點之前）：仍是神秘卡背蓄力、白卡尚未翻出。
+    await tester.pump(atFraction(0.2));
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      findsNothing,
+    );
+
+    await tester.pumpAndSettle();
+  });
+
+  group('E1 卡尺寸 responsive', () {
+    test('卡寬≈0.84×螢幕寬、維持直式 3:4，且比舊版固定 214 大', () {
+      final s = practiceCeremonyCardSize(const Size(390, 844));
+      expect(s.width, closeTo(390 * 0.84, 0.5));
+      expect(s.height, closeTo(s.width * 4 / 3, 0.5));
+      expect(s.width, greaterThan(214));
+    });
+
+    test('大螢幕（平板）卡寬封頂、不無限放大（仍維持 3:4）', () {
+      final s = practiceCeremonyCardSize(const Size(1200, 1600));
+      expect(s.width, lessThanOrEqualTo(kPracticeCardMaxWidth));
+      expect(s.height, closeTo(s.width * 4 / 3, 0.5));
+    });
+
+    test('矮螢幕：卡高被可用高度夾住、不溢出（仍維持 3:4）', () {
+      final s = practiceCeremonyCardSize(const Size(360, 480));
+      expect(s.height, lessThanOrEqualTo(480 * 0.6 + 0.5));
+      expect(s.width, closeTo(s.height * 3 / 4, 0.5));
+    });
+  });
+
+  testWidgets('E1：揭曉卡片在手機上明顯放大（卡背寬度 > 舊版 214、維持 3:4）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 60)); // intro 入場
+
+    final backSize = tester
+        .getSize(find.byKey(const ValueKey('practice-draw-ceremony-back')));
+    expect(backSize.width, greaterThan(214));
+    expect(backSize.height, closeTo(backSize.width * 4 / 3, 1.0));
+
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
   });
 
   // ── 軌道彗星 halo painter（Batch B）：純 painter smoke，免 widget harness ──
