@@ -14,20 +14,50 @@ import 'practice_girl_photo.dart';
 
 /// 翻牌揭曉時間軸（公開供 widget 與 widget test 共用單一真相）。
 /// fraction = ms / kPracticeRevealDuration。詳見 _buildStage 兩段升階分支。
+// 時間軸對齊參考音軌「音檔.mp4」（E1）：0–0.5s 靜默→卡背登場；~3.0s 第一爆點→預覽
+// 卡翻出；~5.0s 近靜音低谷→翻回卡背屏息；~6.5→8.5s 第二段 build＋第二爆點→高潮翻面
+// 典藏卡落定。fraction = 絕對秒 / 9.0。
 @visibleForTesting
-const Duration kPracticeRevealDuration = Duration(milliseconds: 7500);
+const Duration kPracticeRevealDuration = Duration(milliseconds: 9000);
 @visibleForTesting
-const double kPracticeRevealFlip1End = 0.0933; // 卡背→白卡預覽 翻面
+const double kPracticeRevealFlip1Start = 0.28; // 卡背蓄力（音樂 build）→ 翻面起手（≈2.5s）
 @visibleForTesting
-const double kPracticeRevealPreviewEnd = 0.3333; // 白卡停留、資訊浮出
+const double kPracticeRevealFlip1End = 0.34; // 卡背→白卡預覽翻面落定（≈3.06s 第一爆點）
 @visibleForTesting
-const double kPracticeRevealRechargeEnd = 0.4133; // 翻回卡背（蓄力重啟）
+const double kPracticeRevealPreviewEnd = 0.45; // 白卡停留、資訊浮出（屏息，≈4.05s）
 @visibleForTesting
-const double kPracticeRevealHaloClimax = 0.5733; // 卡背發亮、光環衝高潮
+const double kPracticeRevealRechargeEnd = 0.56; // 翻回卡背（蓄力重啟，≈5.04s 低谷）
 @visibleForTesting
-const double kPracticeRevealGrandFlipEnd = 0.6667; // 高潮翻面→典藏卡
+const double kPracticeRevealHaloClimax = 0.82; // 卡背發亮、光環衝高潮（≈7.38s）
 @visibleForTesting
-const double kPracticeRevealHoldEnd = 0.8667; // 典藏卡停留、落位、settle
+const double kPracticeRevealGrandFlipEnd = 0.90; // 高潮翻面→典藏卡（≈8.1s）
+@visibleForTesting
+const double kPracticeRevealHoldEnd = 0.94; // 典藏卡落定、settle（≈8.46s 第二爆點）
+
+/// 揭曉卡片尺寸（E1 放大／復刻 音檔.mp4 的近滿版大卡）：寬 ≈ 0.84×螢幕寬、直式 3:4
+/// （高 = 寬 × 4/3）。大螢幕（平板）寬封頂 [kPracticeCardMaxWidth]；矮螢幕再被可用
+/// 高度夾住，確保 stage＋caption 不溢出。widget 與 widget test 共用單一真相。
+@visibleForTesting
+const double kPracticeCardWidthFactor = 0.84;
+@visibleForTesting
+const double kPracticeCardMaxWidth = 360;
+@visibleForTesting
+const double kPracticeCardHeightRatio = 4 / 3; // 直式 3:4 → 高 = 寬 × 4/3
+@visibleForTesting
+const double kPracticeCardMaxHeightFactor = 0.6; // 卡高最多佔螢幕高，留白給 caption／光暈
+
+@visibleForTesting
+Size practiceCeremonyCardSize(Size screen) {
+  var w = (screen.width * kPracticeCardWidthFactor)
+      .clamp(0.0, kPracticeCardMaxWidth);
+  var h = w * kPracticeCardHeightRatio;
+  final maxH = screen.height * kPracticeCardMaxHeightFactor;
+  if (h > maxH) {
+    h = maxH;
+    w = h / kPracticeCardHeightRatio;
+  }
+  return Size(w, h);
+}
 
 /// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 → 4.5 高還原 → 4.6 等待微動）。
 ///
@@ -327,13 +357,18 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     );
   }
 
-  // ── 翻牌舞台：卡片 ＋ 星光 ＋ 光環 sweep ＋ flash，全部疊在一個固定尺寸 Stack ──
-  static const double _cardW = 214.0;
-  static const double _cardH = 292.0;
-  static const double _stageW = _cardW + 132;
-  static const double _stageH = _cardH + 132;
+  // ── 翻牌舞台：卡片 ＋ 星光 ＋ 光環 sweep ＋ flash，全部疊在一個 Stack ──
+  // 卡周圍留給星光／光環／能量邊框的 padding；stage 寬再夾進螢幕寬，避免大卡溢出。
+  static const double _stagePadding = 132;
 
   Widget _buildStage() {
+    final screen = MediaQuery.sizeOf(context);
+    final cardSize = practiceCeremonyCardSize(screen);
+    final cardW = cardSize.width;
+    final cardH = cardSize.height;
+    final stageW = math.min(cardW + _stagePadding, screen.width);
+    final stageH = cardH + _stagePadding;
+
     // 抽牌中：神秘卡背＋微放大入場＋（等待 server 期間）持續蓄力微動。
     if (_phase == _CeremonyPhase.drawing) {
       final intro = Curves.easeOutBack.transform(_intro.value.clamp(0.0, 1.0));
@@ -351,8 +386,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       final breathGlow = (0.52 + 0.26 * breath).clamp(0.0, 1.0); // 金光呼吸
 
       return SizedBox(
-        width: _stageW,
-        height: _stageH,
+        width: stageW,
+        height: stageH,
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -373,8 +408,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               child: Transform.scale(
                 scale: introScale * breathScale,
                 child: _CeremonyCardBack(
-                  width: _cardW,
-                  height: _cardH,
+                  width: cardW,
+                  height: cardH,
                   glow: breathGlow,
                 ),
               ),
@@ -400,9 +435,14 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     double beamProgress = 0; // 橫掃光束位置（只在高潮翻面段 0→1 掃一道）
     double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
 
-    if (f < kPracticeRevealFlip1End) {
-      // 第一段：卡背→白卡預覽（rotateY 0→π）。halo 尚未啟動（留給高潮）。
-      final rot = seg(0, kPracticeRevealFlip1End);
+    if (f < kPracticeRevealFlip1Start) {
+      // 卡背蓄力：對齊音樂第一爆點前的 build。卡背持續、金光漸亮，先不翻面。
+      angle = 0;
+      showFront = false;
+      backGlow = 0.6 + 0.25 * seg(0, kPracticeRevealFlip1Start);
+    } else if (f < kPracticeRevealFlip1End) {
+      // 第一段：卡背→白卡預覽（rotateY 0→π），落在第一爆點。halo 尚未啟動（留給高潮）。
+      final rot = seg(kPracticeRevealFlip1Start, kPracticeRevealFlip1End);
       angle = rot * math.pi;
       showFront = angle > math.pi / 2;
       frontAppear = 0;
@@ -472,18 +512,18 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             transform: Matrix4.identity()..rotateY(math.pi),
             child: _CeremonyCardFront(
               girl: _revealGirl,
-              width: _cardW,
-              height: _cardH,
+              width: cardW,
+              height: cardH,
               variant: cardVariant,
               appear: frontAppear,
               depart: frontDepart,
             ),
           )
-        : _CeremonyCardBack(width: _cardW, height: _cardH, glow: backGlow);
+        : _CeremonyCardBack(width: cardW, height: cardH, glow: backGlow);
 
     return SizedBox(
-      width: _stageW,
-      height: _stageH,
+      width: stageW,
+      height: stageH,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -517,7 +557,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                   painter: _EnergyBorderPainter(
                     progress: energyProgress,
                     intensity: energyIntensity,
-                    cardSize: Size(_cardW, _cardH),
+                    cardSize: Size(cardW, cardH),
                   ),
                 ),
               ),
