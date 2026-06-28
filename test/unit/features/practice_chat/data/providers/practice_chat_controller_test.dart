@@ -1065,6 +1065,85 @@ void main() {
       expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
       expect(c.currentState.errorMessage, isNotNull);
     });
+
+    test('requestHint explains when user must wait for the AI reply', () async {
+      final c = await makeRevealed();
+      c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            'invalid_hint_last_turn_must_be_ai',
+            status: 400,
+          );
+
+      await c.requestHint();
+
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.errorMessage, '要等對方回覆後，才能請 Hint。');
+      expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+    });
+
+    test('requestHint explains backend readiness failure', () async {
+      final c = await makeRevealed();
+      c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async =>
+          throw PracticeGenerationFailedException('practice_hint_not_ready');
+
+      await c.requestHint();
+
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.errorMessage, '提示服務正在更新中，請稍後再試。');
+      expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+    });
+
+    test('requestHint maps backend gate codes to clear copy', () async {
+      final cases = [
+        ('practice_hint_in_flight', '提示正在產生中，等一下再試。'),
+        ('practice_hint_beginner_only', '這場不是新手模式，下一場切到新手模式再用 Hint。'),
+        ('practice_mode_locked', '這場不是新手模式，下一場切到新手模式再用 Hint。'),
+      ];
+
+      for (final (code, expectedMessage) in cases) {
+        final c = await makeRevealed();
+        c.setPracticeLearningMode(PracticeLearningMode.beginner);
+        api.sendHandler = (_, {profile}) async => reply(
+              cost: 0,
+              temperature: const PracticeTemperature(
+                score: 30,
+                delta: 0,
+                band: 'cold',
+                reason: '維持',
+              ),
+            );
+        await c.sendMessage('hello');
+        api.hintHandler = (_, {profile}) async =>
+            throw PracticeApiException(code, status: 403);
+
+        await c.requestHint();
+
+        expect(c.currentState.isHintLoading, false);
+        expect(c.currentState.errorMessage, expectedMessage);
+        expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+      }
+    });
   });
 }
 

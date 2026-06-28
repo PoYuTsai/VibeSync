@@ -10,6 +10,21 @@
 
 ## 2026-06
 
+### [2026-06-28] 新手 Hint 失敗只顯示通用錯誤
+
+**Symptom**: TestFlight AI 實戰練習室新手模式按 Hint 後，畫面只顯示「提示暫時產生失敗，等一下再試」，沒有出現提示內容，也無法判斷是等待 AI 回覆、後端尚未部署，或真的生成失敗。
+
+**Root Cause**: Flutter `requestHint` 只特別處理 `practice_hint_in_flight`，其餘 backend gate / validation code 都折成通用錯誤；API service 對 5xx 也丟掉 response body 的 `error` code。Edge handler 遇到 hint RPC/migration 尚未存在時，會回一般 500 `session_state_failed`，真機無法分辨部署未完成。
+
+**Fix**: 保留 5xx response 的 hint error code；controller 將 `invalid_hint_*` / `practice_session_not_started` / `practice_hint_beginner_only` / `practice_hint_not_ready` 轉成明確文案；Edge handler 對缺少 hint RPC 的 schema-cache 錯誤回 `503 practice_hint_not_ready`。
+
+**Validation**:
+
+- `flutter test test/unit/features/practice_chat/data/services/practice_chat_api_service_test.dart test/unit/features/practice_chat/data/providers/practice_chat_controller_test.dart`
+- `flutter analyze lib/features/practice_chat/data/services/practice_chat_api_service.dart lib/features/practice_chat/data/providers/practice_chat_providers.dart test/unit/features/practice_chat/data/services/practice_chat_api_service_test.dart test/unit/features/practice_chat/data/providers/practice_chat_controller_test.dart`
+- `deno test --allow-read --allow-env --allow-net=127.0.0.1 supabase/functions/practice-chat`
+- `deno check supabase/functions/practice-chat/handler.ts`
+
 ### [2026-06-24] AI 實戰練習室本地紀錄缺少續聊、刪除與扣費提示
 
 **Symptom**: 使用者進 AI 實戰練習室後，看不到首次扣費時機；未完成練習離開再回來會開新場；最近練習只能看回顧，不能刪除。

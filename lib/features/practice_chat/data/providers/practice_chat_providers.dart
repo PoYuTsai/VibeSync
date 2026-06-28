@@ -763,9 +763,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     } on PracticeApiException catch (e) {
       state = state.copyWith(
         isHintLoading: false,
-        errorMessage: e.message == 'practice_hint_in_flight'
-            ? '提示正在產生中，等一下再試。'
-            : '提示暫時產生失敗，等一下再試。',
+        errorMessage: _hintApiErrorMessage(e.message),
+      );
+    } on PracticeGenerationFailedException catch (e) {
+      state = state.copyWith(
+        isHintLoading: false,
+        errorMessage: _hintGenerationErrorMessage(e.message),
       );
     } catch (_) {
       state = state.copyWith(
@@ -901,6 +904,35 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       temperatureScore: s.isBeginnerMode ? s.temperatureScore : null,
       hintUsedCount: s.isBeginnerMode ? s.hintUsedCount : null,
     ));
+  }
+}
+
+const _hintGenericErrorMessage = '提示暫時產生失敗，等一下再試。';
+
+String _hintApiErrorMessage(String code) {
+  switch (code) {
+    case 'practice_hint_in_flight':
+      return '提示正在產生中，等一下再試。';
+    case 'invalid_hint_no_ai_turns':
+    case 'invalid_hint_last_turn_must_be_ai':
+    case 'practice_session_not_started':
+      return '要等對方回覆後，才能請 Hint。';
+    case 'practice_hint_beginner_only':
+    case 'practice_mode_locked':
+      return '這場不是新手模式，下一場切到新手模式再用 Hint。';
+    case 'practice_hint_not_ready':
+      return '提示服務正在更新中，請稍後再試。';
+    default:
+      return _hintGenericErrorMessage;
+  }
+}
+
+String _hintGenerationErrorMessage(String code) {
+  switch (code) {
+    case 'practice_hint_not_ready':
+      return '提示服務正在更新中，請稍後再試。';
+    default:
+      return _hintGenericErrorMessage;
   }
 }
 

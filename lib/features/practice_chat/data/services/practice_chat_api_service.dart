@@ -543,8 +543,12 @@ class PracticeChatApiService {
         throw PracticeUpgradeRequiredException();
       default:
         if (response.status >= 500) {
+          final data = response.data is Map ? response.data as Map : const {};
+          final error = data['error'];
           throw PracticeGenerationFailedException(
-            'practice_generation_failed_${response.status}',
+            error is String && error.trim().isNotEmpty
+                ? error.trim()
+                : 'practice_generation_failed_${response.status}',
           );
         }
         final data = response.data is Map ? response.data as Map : const {};

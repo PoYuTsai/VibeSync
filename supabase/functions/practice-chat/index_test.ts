@@ -524,6 +524,19 @@ Deno.test("hint over max successful hints returns limit before provider and reco
   assertEquals(recordHintCalls(state).length, 0);
 });
 
+Deno.test("hint missing beginner ledger columns returns not-ready before provider", async () => {
+  const { response, json, state } = await run({
+    ledgerError:
+      "Could not find the 'hint_count' column of 'practice_chat_sessions' in the schema cache",
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_hint_not_ready" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
 Deno.test("hint quota exceeded returns 429 before provider and record RPC", async () => {
   const { response, json, state } = await run({
     sub: subscription({ monthly_messages_used: 300, daily_messages_used: 2 }),
@@ -548,6 +561,25 @@ Deno.test("hint in-flight claim rejects before provider and record RPC", async (
 
   assertEquals(response.status, 403);
   assertEquals(json, { error: "practice_hint_in_flight" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("hint missing claim RPC returns not-ready before provider", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    rpc: {
+      claim_practice_hint_generation: [{
+        error:
+          "Could not find the function public.claim_practice_hint_generation(p_max_hints, p_session_id, p_user_id) in the schema cache",
+      }],
+    },
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_hint_not_ready" });
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(claimHintCalls(state).length, 1);
   assertEquals(recordHintCalls(state).length, 0);

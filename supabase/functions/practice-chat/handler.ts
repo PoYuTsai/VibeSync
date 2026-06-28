@@ -87,7 +87,33 @@ function getErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+function isMissingPracticeHintRpc(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const referencesHintRpc =
+    normalized.includes("claim_practice_hint_generation") ||
+    normalized.includes("record_practice_hint") ||
+    normalized.includes("release_practice_hint_generation");
+  return referencesHintRpc &&
+    (normalized.includes("could not find the function") ||
+      normalized.includes("schema cache"));
+}
+
+function isMissingBeginnerHintLedgerSchema(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const referencesBeginnerHintLedger = normalized.includes("practice_mode") ||
+    normalized.includes("temperature_score") ||
+    normalized.includes("hint_count");
+  return referencesBeginnerHintLedger &&
+    (normalized.includes("schema cache") ||
+      normalized.includes("could not find") ||
+      normalized.includes("does not exist") ||
+      normalized.includes("undefined_column"));
+}
+
 function mapLedgerError(message: string): { error: string; status: number } {
+  if (isMissingPracticeHintRpc(message)) {
+    return { error: "practice_hint_not_ready", status: 503 };
+  }
   if (message.includes("PRACTICE_SESSION_COMPLETE")) {
     return { error: "practice_session_complete", status: 409 };
   }
@@ -342,11 +368,15 @@ export function createPracticeChatHandler(
       .eq("session_id", request.sessionId)
       .maybeSingle();
     if (ledgerError) {
+      const mapped = request.mode === "hint" &&
+          isMissingBeginnerHintLedgerSchema(ledgerError.message)
+        ? { error: "practice_hint_not_ready", status: 503 }
+        : { error: "session_state_failed", status: 500 };
       logWarn("practice_chat_ledger_fetch_error", {
         user: summarizeUser(user.id),
         error: ledgerError.message,
       });
-      return jsonResponse({ error: "session_state_failed" }, 500);
+      return jsonResponse({ error: mapped.error }, mapped.status);
     }
     const ledger: SessionLedger = {
       exists: !!ledgerRow,

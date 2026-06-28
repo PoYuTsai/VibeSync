@@ -634,6 +634,22 @@ void main() {
       );
     });
 
+    test('500 keeps hint readiness error code for controller copy', () async {
+      final svc = serviceReturning(500, {'error': 'practice_hint_not_ready'});
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeGenerationFailedException>()
+              .having((e) => e.message, 'message', 'practice_hint_not_ready'),
+        ),
+      );
+    });
+
     test('malformed response maps to PracticeGenerationFailedException',
         () async {
       final svc = serviceReturning(200, {
