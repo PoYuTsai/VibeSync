@@ -37,6 +37,7 @@ import {
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
+const CHAT_GENERATION_ATTEMPTS = 2;
 const DEBRIEF_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 2;
@@ -703,24 +704,42 @@ export function createPracticeChatHandler(
       ? ledger.temperatureScore ?? 30
       : null;
 
-    let reply: string;
+    let reply: string | null = null;
     try {
-      reply = await deps.callDeepSeek({
-        apiKey,
-        messages: buildChatMessages(
-          request.turns,
-          request.profile,
-          beginnerMode
-            ? {
-              practiceMode: request.practiceMode,
-              temperatureScore: currentTemperature ?? 30,
-            }
-            : {},
-        ),
-        maxTokens: CHAT_MAX_TOKENS,
-        temperature: CHAT_TEMPERATURE,
-        timeoutMs: DEEPSEEK_TIMEOUT_MS,
-      });
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
+        try {
+          reply = await deps.callDeepSeek({
+            apiKey,
+            messages: buildChatMessages(
+              request.turns,
+              request.profile,
+              beginnerMode
+                ? {
+                  practiceMode: request.practiceMode,
+                  temperatureScore: currentTemperature ?? 30,
+                }
+                : {},
+            ),
+            maxTokens: CHAT_MAX_TOKENS,
+            temperature: CHAT_TEMPERATURE,
+            timeoutMs: DEEPSEEK_TIMEOUT_MS,
+          });
+          break;
+        } catch (e) {
+          lastError = e;
+          logWarn("practice_chat_chat_generation_attempt_failed", {
+            user: summarizeUser(user.id),
+            attempt,
+            error: getErrorMessage(e),
+          });
+        }
+      }
+      if (reply === null) {
+        throw lastError instanceof Error
+          ? lastError
+          : new Error("chat_generation_failed");
+      }
     } catch (e) {
       logWarn("practice_chat_generation_failed", {
         user: summarizeUser(user.id),

@@ -1851,6 +1851,7 @@ class _SendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      key: const ValueKey('practice-send-button'),
       onTap: enabled ? onTap : null,
       child: Container(
         width: 46,

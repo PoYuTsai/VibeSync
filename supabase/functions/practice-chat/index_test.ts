@@ -308,6 +308,20 @@ Deno.test("standard chat response does not include temperature and does not judg
   assertEquals(state.deepSeekCalls[0].jsonMode, undefined);
 });
 
+Deno.test("chat retries a transient provider failure once before committing", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ practice_mode: "standard" }),
+    deepSeekReplies: [new Error("deepseek_timeout"), "AI retry reply"],
+  });
+
+  assertEquals(response.status, 200);
+  assertEquals(json.reply, "AI retry reply");
+  assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(state.deepSeekCalls[0].jsonMode, undefined);
+  assertEquals(state.deepSeekCalls[1].jsonMode, undefined);
+  assertEquals(commitCalls(state).length, 1);
+});
+
 Deno.test("beginner first chat uses initial temp 30 and returns temperature plus hint count", async () => {
   const { response, json, state } = await run({
     ledger: null,
