@@ -37,8 +37,9 @@ import {
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
-const DEBRIEF_MAX_TOKENS = 500;
+const DEBRIEF_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
+const DEBRIEF_GENERATION_ATTEMPTS = 2;
 const HINT_MAX_TOKENS = 450;
 const HINT_TEMPERATURE = 0.45;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
@@ -527,6 +528,7 @@ export function createPracticeChatHandler(
       ledgerRow?.practice_mode,
     );
     if (
+      request.mode === "chat" &&
       ledger.exists && lockedPracticeMode !== null &&
       lockedPracticeMode !== request.practiceMode
     ) {
@@ -564,17 +566,39 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: mapped.error }, mapped.status);
       }
 
-      let debriefCard: DebriefCard;
+      let debriefCard: DebriefCard | null = null;
       try {
-        const rawCard = await deps.callDeepSeek({
-          apiKey,
-          messages: buildDebriefMessages(request.turns, request.profile),
-          maxTokens: DEBRIEF_MAX_TOKENS,
-          temperature: DEBRIEF_TEMPERATURE,
-          jsonMode: true,
-          timeoutMs: DEEPSEEK_TIMEOUT_MS,
-        });
-        debriefCard = parseDebriefCard(rawCard);
+        let lastError: unknown;
+        for (
+          let attempt = 1;
+          attempt <= DEBRIEF_GENERATION_ATTEMPTS;
+          attempt++
+        ) {
+          try {
+            const rawCard = await deps.callDeepSeek({
+              apiKey,
+              messages: buildDebriefMessages(request.turns, request.profile),
+              maxTokens: DEBRIEF_MAX_TOKENS,
+              temperature: DEBRIEF_TEMPERATURE,
+              jsonMode: true,
+              timeoutMs: DEEPSEEK_TIMEOUT_MS,
+            });
+            debriefCard = parseDebriefCard(rawCard);
+            break;
+          } catch (e) {
+            lastError = e;
+            logWarn("practice_chat_debrief_generation_attempt_failed", {
+              user: summarizeUser(user.id),
+              attempt,
+              error: getErrorMessage(e),
+            });
+          }
+        }
+        if (debriefCard === null) {
+          throw lastError instanceof Error
+            ? lastError
+            : new Error("debrief_generation_failed");
+        }
       } catch (e) {
         logWarn("practice_chat_generation_failed", {
           user: summarizeUser(user.id),

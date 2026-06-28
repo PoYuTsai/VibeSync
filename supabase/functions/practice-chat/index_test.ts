@@ -90,6 +90,32 @@ function hintBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function debriefBody(overrides: Record<string, unknown> = {}) {
+  return {
+    mode: "debrief",
+    sessionId: "session-1",
+    turns: [
+      { role: "user", text: "hi" },
+      { role: "ai", text: "hello" },
+    ],
+    ...overrides,
+  };
+}
+
+function validDebriefJson(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    summary: "有接住對方情緒",
+    strengths: ["語氣輕鬆"],
+    watchouts: ["可以少一點急著邀約"],
+    suggestedLine: "那你今天最想把哪件事先放下？",
+    vibe: "中性",
+    dateChance: "medium",
+    dateChanceReason: "互動有延續但還需要多一點安全感",
+    nextInviteMove: "先接住她的下班狀態，再輕輕丟一個低壓邀約",
+    ...overrides,
+  });
+}
+
 function validHintJson(overrides: Record<string, string> = {}) {
   return JSON.stringify({
     warmUp: "我喜歡你剛剛那個反應，有點可愛。",
@@ -260,6 +286,10 @@ function temperatureUpdateCalls(state: FakeState) {
   return state.rpcCalls.filter((call) =>
     call.fn === "update_practice_temperature"
   );
+}
+
+function claimDebriefCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) => call.fn === "claim_practice_debrief");
 }
 
 Deno.test("standard chat response does not include temperature and does not judge or update", async () => {
@@ -479,6 +509,52 @@ Deno.test("successful beginner judge uses JSON mode and updates temperature", as
       p_temperature_score: 38,
     },
   );
+});
+
+Deno.test("debrief retries a malformed provider card once before returning the card", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["not json", validDebriefJson()],
+  }, debriefBody());
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "有接住對方情緒");
+  assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(state.deepSeekCalls[0].jsonMode, true);
+  assertEquals(state.deepSeekCalls[1].jsonMode, true);
+  assertEquals(state.deepSeekCalls[0].maxTokens, 800);
+  assertEquals(state.deepSeekCalls[1].maxTokens, 800);
+  assertEquals(claimDebriefCalls(state).length, 1);
+});
+
+Deno.test("debrief returns generation_failed after exhausting malformed card retries", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({ ai_count: 1, charged: true }),
+    deepSeekReplies: ["not json", "["],
+  }, debriefBody());
+
+  assertEquals(response.status, 500);
+  assertEquals(json, { error: "practice_generation_failed" });
+  assertEquals(state.deepSeekCalls.length, 2);
+  assertEquals(state.deepSeekCalls[0].jsonMode, true);
+  assertEquals(state.deepSeekCalls[1].jsonMode, true);
+  assertEquals(claimDebriefCalls(state).length, 1);
+});
+
+Deno.test("debrief accepts beginner ledger when client omits practiceMode", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({
+      ai_count: 1,
+      charged: true,
+      practice_mode: "beginner",
+    }),
+    deepSeekReplies: [validDebriefJson({ summary: "新手拆解成功" })],
+  }, debriefBody());
+
+  assertEquals(response.status, 200);
+  assertEquals(json.card.summary, "新手拆解成功");
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(claimDebriefCalls(state).length, 1);
 });
 
 Deno.test("hint standard practice mode rejects before DeepSeek and record RPC", async () => {
