@@ -69,6 +69,32 @@ function turnsToTranscript(turns: PracticeTurn[]): string {
     .join("\n");
 }
 
+function extractJsonObject(raw: string): string {
+  const fenced = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const start = fenced.indexOf("{");
+  const end = fenced.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return fenced.slice(start, end + 1).trim();
+  }
+  return fenced;
+}
+
+function parseIntegerDelta(value: unknown): number {
+  if (Number.isInteger(value)) {
+    return value as number;
+  }
+  if (typeof value === "string" && /^[+-]?\d+$/.test(value.trim())) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isInteger(parsed)) return parsed;
+  }
+  throw new Error("temperature judgement missing integer delta");
+}
+
 export function buildTemperatureJudgeMessages(opts: {
   priorScore: number;
   turns: PracticeTurn[];
@@ -103,16 +129,12 @@ export function parseTemperatureJudgement(
   raw: string,
   priorScore: number,
 ): TemperatureJudgement {
-  const parsed = JSON.parse(raw);
+  const parsed = JSON.parse(extractJsonObject(raw));
   if (!isRecord(parsed)) {
     throw new Error("temperature judgement must be an object");
   }
-  const parsedDelta = parsed.delta;
-  if (!Number.isInteger(parsedDelta)) {
-    throw new Error("temperature judgement missing integer delta");
-  }
 
-  const delta = clampTemperatureDelta(parsedDelta as number);
+  const delta = clampTemperatureDelta(parseIntegerDelta(parsed.delta));
   const score = clampTemperature(priorScore + delta);
   const rawReason = typeof parsed.reason === "string" ? parsed.reason.trim() : "";
   const reason = (rawReason || "模型未提供理由").slice(0, MAX_REASON_LENGTH);

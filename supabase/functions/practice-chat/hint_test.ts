@@ -101,6 +101,16 @@ Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled re
   );
 });
 
+Deno.test("parseHintResult accepts fenced JSON object", () => {
+  const result = parseHintResult(
+    '```json\n{"warmUp":"升溫一下","steady":"先穩住","coaching":"先接住，再輕推。"}\n```',
+  );
+
+  assertEquals(result.replies[0].text, "升溫一下");
+  assertEquals(result.replies[1].text, "先穩住");
+  assertEquals(result.coaching, "先接住，再輕推。");
+});
+
 Deno.test("parseHintResult rejects extra JSON keys", () => {
   assertThrows(
     () =>

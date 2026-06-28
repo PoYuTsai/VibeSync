@@ -61,6 +61,21 @@ Deno.test("parseTemperatureJudgement accepts valid JSON and clamps delta", () =>
   });
 });
 
+Deno.test("parseTemperatureJudgement accepts fenced JSON and integer string delta", () => {
+  assertEquals(
+    parseTemperatureJudgement(
+      '```json\n{"delta":"+3","reason":"warmer"}\n```',
+      30,
+    ),
+    {
+      score: 33,
+      delta: 3,
+      band: temperatureBandFor(33),
+      reason: "warmer",
+    },
+  );
+});
+
 Deno.test("parseTemperatureJudgement rejects malformed JSON", () => {
   assertThrows(
     () => parseTemperatureJudgement(`{"delta":3`, 50),
@@ -76,9 +91,9 @@ Deno.test("parseTemperatureJudgement rejects non-integer numeric delta", () => {
   );
 });
 
-Deno.test("parseTemperatureJudgement rejects string delta", () => {
+Deno.test("parseTemperatureJudgement rejects non-integer string delta", () => {
   assertThrows(
-    () => parseTemperatureJudgement(`{"delta":"3","reason":"too warm"}`, 50),
+    () => parseTemperatureJudgement(`{"delta":"1.5","reason":"too warm"}`, 50),
     Error,
     "integer delta",
   );

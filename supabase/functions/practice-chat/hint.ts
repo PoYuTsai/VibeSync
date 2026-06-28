@@ -27,6 +27,21 @@ function turnsToTranscript(turns: PracticeTurn[]): string {
     .join("\n");
 }
 
+function extractJsonObject(raw: string): string {
+  const fenced = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const start = fenced.indexOf("{");
+  const end = fenced.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return fenced.slice(start, end + 1).trim();
+  }
+  return fenced;
+}
+
 function profileToEvidence(profile: PracticeProfile): string {
   const girl = profile.girl;
   return [
@@ -69,7 +84,7 @@ export function buildHintMessages(opts: {
 }
 
 function parseObject(raw: string): Record<string, unknown> {
-  const parsed = JSON.parse(raw);
+  const parsed = JSON.parse(extractJsonObject(raw));
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("hint_not_object");
   }
