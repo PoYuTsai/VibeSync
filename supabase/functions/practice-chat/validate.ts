@@ -33,6 +33,7 @@ export interface PracticeChatRequest {
   mode: PracticeMode;
   practiceMode: PracticeLearningMode;
   temperatureScore: number;
+  familiarityScore: number;
   sessionId: string;
   turns: PracticeTurn[];
   profile: PracticeProfile;
@@ -80,6 +81,19 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
       throw new Error("invalid_temperatureScore");
     }
     temperatureScore = raw.temperatureScore;
+  }
+
+  let familiarityScore = 0;
+  if (raw.familiarityScore !== undefined) {
+    if (
+      typeof raw.familiarityScore !== "number" ||
+      !Number.isInteger(raw.familiarityScore) ||
+      raw.familiarityScore < 0 ||
+      raw.familiarityScore > 100
+    ) {
+      throw new Error("invalid_familiarityScore");
+    }
+    familiarityScore = raw.familiarityScore;
   }
 
   let appliedHintType: AppliedHintType | undefined;
@@ -181,6 +195,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     mode,
     practiceMode,
     temperatureScore,
+    familiarityScore,
     sessionId,
     turns,
     profile,

@@ -16,8 +16,9 @@ import { resolvePracticeProfile } from "./practice_persona.ts";
 const defaultProfile = resolvePracticeProfile({});
 
 Deno.test("standard buildChatMessages does not include temperature score", () => {
-  const sys = buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile)[0]
-    .content;
+  const sys =
+    buildChatMessages([{ role: "user", text: "嗨" }], defaultProfile)[0]
+      .content;
 
   assertEquals(sys.includes("升溫指數"), false);
 });
@@ -30,6 +31,28 @@ Deno.test("beginner buildChatMessages includes temperature score", () => {
   )[0].content;
 
   assertEquals(sys.includes("升溫指數 30/100"), true);
+});
+
+Deno.test("beginner buildChatMessages includes relationship stage without exposing familiarity score", () => {
+  const options = {
+    practiceMode: "beginner",
+    temperatureScore: 45,
+    familiarityScore: 45,
+  } as
+    & { practiceMode: "beginner"; temperatureScore: number }
+    & Record<
+      string,
+      unknown
+    >;
+  const sys = buildChatMessages(
+    [{ role: "user", text: "嗨" }],
+    defaultProfile,
+    options,
+  )[0].content;
+
+  assertEquals(sys.includes("關係階段：可以聊個人"), true);
+  assertEquals(sys.includes("熟悉度 45/100"), false);
+  assertEquals(sys.includes("不得向使用者提及熟悉度"), true);
 });
 
 Deno.test("beginner buildChatMessages includes exactly one cold band instruction", () => {
@@ -51,7 +74,9 @@ Deno.test("beginner buildChatMessages forbids disclosing internal temperature ev
   )[0].content;
 
   assertEquals(
-    sys.includes("不得向使用者提及升溫指數、score、band、temperature 或內部評估"),
+    sys.includes(
+      "不得向使用者提及升溫指數、score、band、temperature 或內部評估",
+    ),
     true,
   );
 });
@@ -122,7 +147,9 @@ Deno.test("debrief system prompt 是教練口吻且禁操控框架", () => {
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("約會教練"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("PUA"), true); // 明令禁止
   // JSON 契約欄位
-  for (const k of ["summary", "strengths", "watchouts", "suggestedLine", "vibe"]) {
+  for (
+    const k of ["summary", "strengths", "watchouts", "suggestedLine", "vibe"]
+  ) {
     assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(k), true);
   }
 });
@@ -269,6 +296,23 @@ Deno.test("debrief 收到與 chat 同一份 profile/signal 脈絡", () => {
   assertEquals(msg.includes("她可能用的訊號類型"), true);
 });
 
+Deno.test("beginner debrief includes abstract relationship stage without numeric familiarity", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_001" });
+  const msg = buildDebriefMessages(
+    [{ role: "user", text: "嗨" }, { role: "ai", text: "嗯？" }],
+    profile,
+    {
+      practiceMode: "beginner",
+      temperatureScore: 52,
+      familiarityScore: 44,
+    },
+  )[1].content;
+
+  assertEquals(msg.includes("本場抽象關係階段：可以輕推曖昧"), true);
+  assertEquals(msg.includes("familiarity"), false);
+  assertEquals(msg.includes("44/100"), false);
+});
+
 Deno.test("debrief system prompt：含 dateChance 三欄與誤判評估準則", () => {
   for (const k of ["dateChance", "dateChanceReason", "nextInviteMove"]) {
     assertEquals(DEBRIEF_SYSTEM_PROMPT.includes(k), true);
@@ -278,4 +322,13 @@ Deno.test("debrief system prompt：含 dateChance 三欄與誤判評估準則", 
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("脆弱性"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("goal-fixated"), true);
   assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("內容下切"), true);
+});
+
+Deno.test("debrief system prompt asks for plain-language heat/familiarity explanation", () => {
+  assertEquals(
+    DEBRIEF_SYSTEM_PROMPT.includes("白話說明為什麼升溫或降溫"),
+    true,
+  );
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("事件、個人、曖昧"), true);
+  assertEquals(DEBRIEF_SYSTEM_PROMPT.includes("不要只講分數"), true);
 });

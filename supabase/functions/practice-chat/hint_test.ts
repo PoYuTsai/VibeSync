@@ -116,6 +116,57 @@ Deno.test("buildHintMessages makes warm-up replies safe to apply without direct 
   }
 });
 
+Deno.test("buildHintMessages makes warm-up stage-aware in familiarity-building stage", () => {
+  const options = {
+    turns: [
+      { role: "user", text: "嗨" },
+      { role: "ai", text: "今天剛下班" },
+    ],
+    profile,
+    temperatureScore: 30,
+    familiarityScore: 10,
+  } as Parameters<typeof buildHintMessages>[0] & Record<string, unknown>;
+  const text = buildHintMessages(options).map((m) => m.content).join("\n");
+
+  assert(text.includes("目前關係階段：建立熟悉中"));
+  assert(text.includes("升溫回覆不是永遠更曖昧"));
+  assert(text.includes("目前最容易加分：事件導向"));
+  assert(text.includes("不要直接曖昧"));
+});
+
+Deno.test("buildHintMessages nudges personal replies after familiarity is established", () => {
+  const options = {
+    turns: [
+      { role: "user", text: "你常去那間店嗎" },
+      { role: "ai", text: "偶爾，週末人比較多" },
+    ],
+    profile,
+    temperatureScore: 42,
+    familiarityScore: 45,
+  } as Parameters<typeof buildHintMessages>[0] & Record<string, unknown>;
+  const text = buildHintMessages(options).map((m) => m.content).join("\n");
+
+  assert(text.includes("目前關係階段：可以聊個人"));
+  assert(text.includes("目前最容易加分：個人導向"));
+});
+
+Deno.test("buildHintMessages allows only low-pressure flirt when heat and familiarity are ready", () => {
+  const options = {
+    turns: [
+      { role: "user", text: "你講話滿好笑的" },
+      { role: "ai", text: "是嗎，你標準太低吧" },
+    ],
+    profile,
+    temperatureScore: 58,
+    familiarityScore: 50,
+  } as Parameters<typeof buildHintMessages>[0] & Record<string, unknown>;
+  const text = buildHintMessages(options).map((m) => m.content).join("\n");
+
+  assert(text.includes("目前關係階段：可以輕推曖昧"));
+  assert(text.includes("目前最容易加分：低壓曖昧"));
+  assert(text.includes("不能油、不能逼近"));
+});
+
 Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled replies", () => {
   const result = parseHintResult(JSON.stringify({
     warmUp: "  哈哈辛苦了，那我先給你一個下班後的小獎勵：今天不問難題  ",

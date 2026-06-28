@@ -1324,6 +1324,8 @@ class _TemperatureMeter extends StatelessWidget {
     final color = _temperatureColor(score);
     final delta = state.lastTemperatureDelta;
     final signalText = _temperatureSignalText(delta);
+    final stageLabel =
+        state.relationshipStageLabel ?? kInitialPracticeRelationshipStageLabel;
 
     return Container(
       key: const ValueKey('practice-temperature-meter'),
@@ -1348,7 +1350,19 @@ class _TemperatureMeter extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  stageLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               if (delta != null)
                 Text(
                   delta == 0 ? '±0' : '${delta > 0 ? '+' : ''}$delta',

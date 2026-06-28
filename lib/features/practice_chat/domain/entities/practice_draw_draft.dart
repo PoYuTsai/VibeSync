@@ -1,4 +1,7 @@
+import 'practice_learning_mode.dart';
 import 'practice_profile.dart';
+
+const _draftSentinel = Object();
 
 /// 「翻牌成功但尚未送出第一則」的本地草稿。離開練習室再回來時，用它把同一位對象
 /// 還原成 revealed（不重抽、不再扣翻牌次數）。
@@ -23,6 +26,11 @@ class PracticeDrawDraft {
   final int freeRemaining;
   final int extraCostMessages;
 
+  final PracticeLearningMode learningMode;
+  final int? temperatureScore;
+  final int? familiarityScore;
+  final String? relationshipStageLabel;
+
   final DateTime nextResetAt;
   final DateTime createdAt;
 
@@ -38,6 +46,10 @@ class PracticeDrawDraft {
     required this.freeUsed,
     required this.freeRemaining,
     required this.extraCostMessages,
+    this.learningMode = PracticeLearningMode.standard,
+    this.temperatureScore,
+    this.familiarityScore,
+    this.relationshipStageLabel,
     required this.nextResetAt,
     required this.createdAt,
   });
@@ -45,6 +57,10 @@ class PracticeDrawDraft {
   PracticeDrawDraft copyWith({
     String? difficulty,
     PracticeDifficultyPreference? difficultyPreference,
+    PracticeLearningMode? learningMode,
+    Object? temperatureScore = _draftSentinel,
+    Object? familiarityScore = _draftSentinel,
+    Object? relationshipStageLabel = _draftSentinel,
   }) {
     return PracticeDrawDraft(
       sessionId: sessionId,
@@ -58,6 +74,16 @@ class PracticeDrawDraft {
       freeUsed: freeUsed,
       freeRemaining: freeRemaining,
       extraCostMessages: extraCostMessages,
+      learningMode: learningMode ?? this.learningMode,
+      temperatureScore: identical(temperatureScore, _draftSentinel)
+          ? this.temperatureScore
+          : temperatureScore as int?,
+      familiarityScore: identical(familiarityScore, _draftSentinel)
+          ? this.familiarityScore
+          : familiarityScore as int?,
+      relationshipStageLabel: identical(relationshipStageLabel, _draftSentinel)
+          ? this.relationshipStageLabel
+          : relationshipStageLabel as String?,
       nextResetAt: nextResetAt,
       createdAt: createdAt,
     );
@@ -75,11 +101,17 @@ class PracticeDrawDraft {
         'freeUsed': freeUsed,
         'freeRemaining': freeRemaining,
         'extraCostMessages': extraCostMessages,
+        'learningMode': learningMode.wireName,
+        'temperatureScore': temperatureScore,
+        'familiarityScore': familiarityScore,
+        'relationshipStageLabel': relationshipStageLabel,
         'nextResetAt': nextResetAt.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
       };
 
   factory PracticeDrawDraft.fromJson(Map<String, dynamic> json) {
+    final learningMode =
+        PracticeLearningMode.fromWire(json['learningMode'] as String?);
     return PracticeDrawDraft(
       sessionId: json['sessionId'] as String,
       visiblePracticeThreadId: json['visiblePracticeThreadId'] as String,
@@ -93,6 +125,16 @@ class PracticeDrawDraft {
       freeUsed: (json['freeUsed'] as num?)?.toInt() ?? 0,
       freeRemaining: (json['freeRemaining'] as num?)?.toInt() ?? 0,
       extraCostMessages: (json['extraCostMessages'] as num?)?.toInt() ?? 0,
+      learningMode: learningMode,
+      temperatureScore: learningMode == PracticeLearningMode.beginner
+          ? (json['temperatureScore'] as num?)?.toInt()
+          : null,
+      familiarityScore: learningMode == PracticeLearningMode.beginner
+          ? (json['familiarityScore'] as num?)?.toInt()
+          : null,
+      relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+          ? json['relationshipStageLabel'] as String?
+          : null,
       nextResetAt: DateTime.parse(json['nextResetAt'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
     );

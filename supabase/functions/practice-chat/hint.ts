@@ -1,6 +1,6 @@
 import type { ChatMessage } from "./prompt.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
-import { clampTemperature } from "./temperature.ts";
+import { clampTemperature, relationshipStageFor } from "./temperature.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
 
@@ -61,8 +61,11 @@ export function buildHintMessages(opts: {
   turns: PracticeTurn[];
   profile: PracticeProfile;
   temperatureScore: number;
+  familiarityScore?: number;
 }): ChatMessage[] {
   const score = clampTemperature(opts.temperatureScore);
+  const stage = relationshipStageFor(opts.familiarityScore ?? 0, score);
+  const stageGuidance = hintStageGuidance(stage.stage);
   return [
     {
       role: "system",
@@ -84,11 +87,26 @@ export function buildHintMessages(opts: {
     {
       role: "user",
       content: `currentTemperatureScore: ${score}/100\n\n` +
+        `目前關係階段：${stage.label}\n` +
+        `升溫回覆不是永遠更曖昧；請選目前階段最容易加分的方向。\n` +
+        `目前最容易加分：${stageGuidance}\n\n` +
         `profile evidence:\n${profileToEvidence(opts.profile)}\n\n` +
         `transcript evidence:\n${turnsToTranscript(opts.turns)}\n\n` +
         "請根據最近上下文，產生剛好兩個可直接貼上的回覆選項與一段教學心法。這是在幫使用者接 assistant 最新一句，不是在分析使用者剛才那句。只回傳繁體中文 JSON。",
     },
   ];
+}
+
+function hintStageGuidance(
+  stage: ReturnType<typeof relationshipStageFor>["stage"],
+): string {
+  if (stage === "building_familiarity") {
+    return "事件導向，先接住對方剛說的事、生活狀態或具體情境；不要直接曖昧。";
+  }
+  if (stage === "personal_allowed") {
+    return "個人導向，從事件自然延伸到感受、偏好或小故事。";
+  }
+  return "低壓曖昧，可以輕推但不能油、不能逼近。";
 }
 
 function parseObject(raw: string): Record<string, unknown> {

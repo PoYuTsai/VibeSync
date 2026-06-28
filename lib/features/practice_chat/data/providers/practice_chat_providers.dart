@@ -24,6 +24,8 @@ const int kMaxPracticeHintsPerRound = 5;
 const int kMaxPracticeRounds = 3;
 
 const int kInitialPracticeTemperatureScore = 30;
+const int kInitialPracticeFamiliarityScore = 0;
+const String kInitialPracticeRelationshipStageLabel = '建立熟悉中';
 
 const _sentinel = Object();
 
@@ -48,6 +50,8 @@ class PracticeChatState {
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
   final PracticeLearningMode learningMode;
   final int? temperatureScore;
+  final int? familiarityScore;
+  final String? relationshipStageLabel;
   final int? lastTemperatureDelta;
   final String? temperatureReason;
   final bool isHintLoading;
@@ -114,6 +118,8 @@ class PracticeChatState {
     this.restoreText,
     this.learningMode = PracticeLearningMode.standard,
     this.temperatureScore,
+    this.familiarityScore,
+    this.relationshipStageLabel,
     this.lastTemperatureDelta,
     this.temperatureReason,
     this.isHintLoading = false,
@@ -194,6 +200,8 @@ class PracticeChatState {
     Object? errorMessage = _sentinel,
     Object? restoreText = _sentinel,
     Object? temperatureScore = _sentinel,
+    Object? familiarityScore = _sentinel,
+    Object? relationshipStageLabel = _sentinel,
     Object? lastTemperatureDelta = _sentinel,
     Object? temperatureReason = _sentinel,
     Object? hintCoaching = _sentinel,
@@ -231,6 +239,12 @@ class PracticeChatState {
       temperatureScore: identical(temperatureScore, _sentinel)
           ? this.temperatureScore
           : temperatureScore as int?,
+      familiarityScore: identical(familiarityScore, _sentinel)
+          ? this.familiarityScore
+          : familiarityScore as int?,
+      relationshipStageLabel: identical(relationshipStageLabel, _sentinel)
+          ? this.relationshipStageLabel
+          : relationshipStageLabel as String?,
       lastTemperatureDelta: identical(lastTemperatureDelta, _sentinel)
           ? this.lastTemperatureDelta
           : lastTemperatureDelta as int?,
@@ -364,6 +378,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   static PracticeChatState? _stateFromDraft(PracticeDrawDraft draft) {
     final girl = girlProfileById(draft.profileId);
     if (girl == null) return null;
+    final learningMode = draft.learningMode;
     return PracticeChatState(
       sessionId: draft.sessionId,
       createdAt: draft.createdAt,
@@ -381,6 +396,18 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       drawFreeRemaining: draft.freeRemaining,
       drawExtraCost: draft.extraCostMessages,
       drawNextResetAt: draft.nextResetAt.toIso8601String(),
+      learningMode: learningMode,
+      temperatureScore: learningMode == PracticeLearningMode.beginner
+          ? draft.temperatureScore ?? kInitialPracticeTemperatureScore
+          : null,
+      familiarityScore: learningMode == PracticeLearningMode.beginner
+          ? draft.familiarityScore ?? kInitialPracticeFamiliarityScore
+          : null,
+      relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+          ? draft.relationshipStageLabel ??
+              kInitialPracticeRelationshipStageLabel
+          : null,
+      hintUsedCount: 0,
     );
   }
 
@@ -422,6 +449,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       learningMode: learningMode,
       temperatureScore: learningMode == PracticeLearningMode.beginner
           ? session.temperatureScore ?? kInitialPracticeTemperatureScore
+          : null,
+      familiarityScore: learningMode == PracticeLearningMode.beginner
+          ? session.familiarityScore ?? kInitialPracticeFamiliarityScore
+          : null,
+      relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+          ? session.relationshipStageLabel ??
+              kInitialPracticeRelationshipStageLabel
           : null,
       hintUsedCount: learningMode == PracticeLearningMode.beginner
           ? session.hintUsedCount ?? 0
@@ -478,6 +512,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         temperatureScore: prior.learningMode == PracticeLearningMode.beginner
             ? kInitialPracticeTemperatureScore
             : null,
+        familiarityScore: prior.learningMode == PracticeLearningMode.beginner
+            ? kInitialPracticeFamiliarityScore
+            : null,
+        relationshipStageLabel:
+            prior.learningMode == PracticeLearningMode.beginner
+                ? kInitialPracticeRelationshipStageLabel
+                : null,
         hintUsedCount: 0,
         drawFreeAllowance: result.draw.freeAllowance,
         drawFreeUsed: result.draw.freeUsed,
@@ -565,17 +606,24 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       learningMode: state.learningMode,
       temperatureScore:
           state.isBeginnerMode ? kInitialPracticeTemperatureScore : null,
+      familiarityScore:
+          state.isBeginnerMode ? kInitialPracticeFamiliarityScore : null,
+      relationshipStageLabel:
+          state.isBeginnerMode ? kInitialPracticeRelationshipStageLabel : null,
       hintUsedCount: 0,
     );
   }
 
   /// 由目前 state 組出 PracticeProfile（調難度的衍生用）。
-  void setPracticeLearningMode(PracticeLearningMode mode) {
+  Future<void> setPracticeLearningMode(PracticeLearningMode mode) async {
     if (!state.canChangeLearningMode || state.learningMode == mode) return;
     final beginner = mode == PracticeLearningMode.beginner;
     state = state.copyWith(
       learningMode: mode,
       temperatureScore: beginner ? kInitialPracticeTemperatureScore : null,
+      familiarityScore: beginner ? kInitialPracticeFamiliarityScore : null,
+      relationshipStageLabel:
+          beginner ? kInitialPracticeRelationshipStageLabel : null,
       lastTemperatureDelta: null,
       temperatureReason: null,
       isHintLoading: false,
@@ -585,6 +633,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       hintLimitReached: false,
       errorMessage: null,
     );
+    final nextReset = state.drawNextResetAt;
+    if (nextReset != null) {
+      await _saveDraftFromState(nextReset);
+    }
   }
 
   PracticeProfile _stateProfile() => PracticeProfile(
@@ -614,6 +666,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final temperatureScore = learningMode == PracticeLearningMode.beginner
         ? state.temperatureScore ?? kInitialPracticeTemperatureScore
         : null;
+    final familiarityScore = learningMode == PracticeLearningMode.beginner
+        ? state.familiarityScore ?? kInitialPracticeFamiliarityScore
+        : null;
     final optimistic = [
       ...priorMessages,
       PracticeMessage(role: 'user', text: trimmed),
@@ -642,6 +697,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         visiblePracticeThreadId: state.visiblePracticeThreadId,
         practiceMode: learningMode,
         temperatureScore: temperatureScore,
+        familiarityScore: familiarityScore,
         appliedHintType: learningMode == PracticeLearningMode.beginner
             ? appliedHintType
             : null,
@@ -658,6 +714,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         sessionComplete: reply.sessionComplete,
         temperatureScore: learningMode == PracticeLearningMode.beginner
             ? temperature?.score ?? temperatureScore
+            : null,
+        familiarityScore: learningMode == PracticeLearningMode.beginner
+            ? familiarityScore
+            : null,
+        relationshipStageLabel: learningMode == PracticeLearningMode.beginner
+            ? temperature?.stageLabel ?? state.relationshipStageLabel
             : null,
         lastTemperatureDelta: learningMode == PracticeLearningMode.beginner
             ? temperature?.delta
@@ -885,6 +947,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       freeUsed: s.drawFreeUsed ?? 0,
       freeRemaining: s.drawFreeRemaining ?? 0,
       extraCostMessages: s.drawExtraCost ?? 0,
+      learningMode: s.learningMode,
+      temperatureScore: s.isBeginnerMode ? s.temperatureScore : null,
+      familiarityScore: s.isBeginnerMode ? s.familiarityScore : null,
+      relationshipStageLabel:
+          s.isBeginnerMode ? s.relationshipStageLabel : null,
       nextResetAt: nextReset,
       createdAt: s.createdAt,
     ));
@@ -913,6 +980,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       profileId: girl.profileId,
       practiceMode: s.learningMode.wireName,
       temperatureScore: s.isBeginnerMode ? s.temperatureScore : null,
+      familiarityScore: s.isBeginnerMode ? s.familiarityScore : null,
+      relationshipStageLabel:
+          s.isBeginnerMode ? s.relationshipStageLabel : null,
       hintUsedCount: s.isBeginnerMode ? s.hintUsedCount : null,
     ));
   }

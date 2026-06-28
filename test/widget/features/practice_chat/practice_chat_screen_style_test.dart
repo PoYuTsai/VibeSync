@@ -116,6 +116,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     String? visiblePracticeThreadId,
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
+    int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
   }) {
     throw UnimplementedError();
@@ -173,6 +174,7 @@ class _DrawApi extends PracticeChatApiService {
     String? visiblePracticeThreadId,
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
+    int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
   }) =>
       throw UnimplementedError();
@@ -260,6 +262,7 @@ class _MessageApi extends _NoopPracticeChatApi {
     String? visiblePracticeThreadId,
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
+    int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
   }) {
     sendCalls++;
@@ -1100,6 +1103,8 @@ void main() {
     final seed = revealedPreMsgSeed().copyWith(
       learningMode: PracticeLearningMode.beginner,
       temperatureScore: 35,
+      familiarityScore: 10,
+      relationshipStageLabel: '建立熟悉中',
       lastTemperatureDelta: 3,
       temperatureReason: '回复展现了直接有梗的风格，按住了用户关于直接的调侃，符合角色喜欢有来有回和反打的偏好，有助于升温。',
     );
@@ -1132,6 +1137,8 @@ void main() {
         findsOneWidget);
     expect(find.textContaining('回复'), findsNothing);
     expect(find.textContaining('风格'), findsNothing);
+    expect(find.text('建立熟悉中'), findsOneWidget);
+    expect(find.textContaining('熟悉度'), findsNothing);
     expect(find.text('這輪有升溫'), findsOneWidget);
   });
 

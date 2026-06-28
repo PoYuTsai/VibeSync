@@ -36,6 +36,7 @@ export interface SessionLedger {
   debriefCount: number;
   practiceMode?: PracticeLearningMode;
   temperatureScore?: number | null;
+  familiarityScore?: number | null;
   hintCount?: number;
 }
 

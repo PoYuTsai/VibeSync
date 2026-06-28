@@ -9,6 +9,12 @@ const migration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const dualAxisMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260628130000_practice_chat_dual_axis_learning.sql",
+    import.meta.url,
+  ),
+);
 
 function requiredIndex(snippet: string): number {
   const index = migration.indexOf(snippet);
@@ -27,7 +33,10 @@ function functionBody(name: string): string {
     : migration.slice(start);
 }
 
-function functionBodyWithSignature(name: string, signatureSnippet: string): string {
+function functionBodyWithSignature(
+  name: string,
+  signatureSnippet: string,
+): string {
   const start = requiredIndex(`CREATE OR REPLACE FUNCTION public.${name}(`);
   let cursor = start;
 
@@ -48,6 +57,29 @@ function functionBodyWithSignature(name: string, signatureSnippet: string): stri
   }
 
   assert(false, `Migration must contain ${name} overload: ${signatureSnippet}`);
+}
+
+function requiredDualAxisIndex(snippet: string): number {
+  const index = dualAxisMigration.indexOf(snippet);
+  assert(index >= 0, `Dual-axis migration must contain: ${snippet}`);
+  return index;
+}
+
+function dualAxisFunctionBody(name: string): string {
+  const start = requiredDualAxisIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = dualAxisMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? dualAxisMigration.slice(start, nextFunction)
+    : dualAxisMigration.slice(start);
+}
+
+function compactSql(value: string): string {
+  return value.replace(/\s+/g, " ");
 }
 
 Deno.test("ledger RPCs reject null quota charge flags before computing did_charge", () => {
@@ -152,7 +184,9 @@ Deno.test("hint generation claim serializes provider calls before success settle
   const releaseBody = functionBody("release_practice_hint_generation");
   const recordBody = functionBody("record_practice_hint");
 
-  requiredIndex("ADD COLUMN IF NOT EXISTS hint_generation_started_at TIMESTAMPTZ");
+  requiredIndex(
+    "ADD COLUMN IF NOT EXISTS hint_generation_started_at TIMESTAMPTZ",
+  );
   assert(
     claimBody.includes("FOR UPDATE"),
     "claim_practice_hint_generation must lock the ledger row",
@@ -187,5 +221,83 @@ Deno.test("hint generation claim serializes provider calls before success settle
   );
   requiredIndex(
     "GRANT EXECUTE ON FUNCTION public.release_practice_hint_generation(UUID, TEXT)",
+  );
+});
+
+Deno.test("dual-axis migration adds familiarity_score with bounded constraint", () => {
+  requiredDualAxisIndex("ADD COLUMN IF NOT EXISTS familiarity_score INTEGER");
+  requiredDualAxisIndex(
+    "practice_chat_sessions_familiarity_score_check",
+  );
+  requiredDualAxisIndex(
+    "CHECK (familiarity_score IS NULL OR familiarity_score BETWEEN 0 AND 100)",
+  );
+});
+
+Deno.test("dual-axis commit RPC accepts and initializes familiarity score", () => {
+  const body = dualAxisFunctionBody("commit_practice_chat_turn");
+
+  assert(body.includes("p_familiarity_score INTEGER"));
+  assert(body.includes("v_initial_familiarity"));
+  assert(body.includes("familiarity_score"));
+  assert(
+    body.includes(
+      "CASE WHEN v_mode = 'beginner' THEN v_initial_familiarity ELSE NULL END",
+    ),
+  );
+  requiredDualAxisIndex(
+    "GRANT EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER, INTEGER)",
+  );
+});
+
+Deno.test("dual-axis readiness RPC exists for pre-provider schema gate", () => {
+  const body = dualAxisFunctionBody("assert_practice_learning_ready");
+  const compactBody = compactSql(body);
+
+  assert(body.includes("RETURNS BOOLEAN"));
+  assert(body.includes("information_schema.columns"));
+  assert(body.includes("column_name = 'familiarity_score'"));
+  assert(
+    compactBody.includes(
+      "to_regprocedure('public.commit_practice_chat_turn(uuid,text,boolean,integer,text,integer,integer)')",
+    ),
+  );
+  assert(
+    compactBody.includes(
+      "to_regprocedure('public.update_practice_learning_state(uuid,text,integer,integer,integer,integer)')",
+    ),
+  );
+  assert(body.includes("PRACTICE_LEARNING_NOT_READY"));
+  assert(body.includes("RETURN true;"));
+  requiredDualAxisIndex(
+    "GRANT EXECUTE ON FUNCTION public.assert_practice_learning_ready(UUID, TEXT)",
+  );
+});
+
+Deno.test("dual-axis learning update RPC applies guarded deltas atomically", () => {
+  const body = dualAxisFunctionBody("update_practice_learning_state");
+  const compactBody = compactSql(body);
+
+  assert(
+    body.includes(
+      "RETURNS TABLE(updated BOOLEAN, temperature_score INTEGER, familiarity_score INTEGER)",
+    ),
+  );
+  assert(compactBody.includes("p_expected_temperature_score INTEGER"));
+  assert(compactBody.includes("p_expected_familiarity_score INTEGER"));
+  assert(compactBody.includes("p_temperature_delta INTEGER"));
+  assert(compactBody.includes("p_familiarity_delta INTEGER"));
+  assert(body.includes("AND practice_mode = 'beginner'"));
+  assert(body.includes("AND temperature_score = v_expected_temperature"));
+  assert(body.includes("AND familiarity_score = v_expected_familiarity"));
+  assert(compactBody.includes("SET temperature_score = v_new_temperature"));
+  assert(body.includes("familiarity_score = v_new_familiarity"));
+  assert(body.includes("updated := v_rows > 0;"));
+  assert(compactBody.includes("IF updated THEN"));
+  assert(
+    compactBody.includes("SELECT s.temperature_score, s.familiarity_score"),
+  );
+  requiredDualAxisIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER)",
   );
 });

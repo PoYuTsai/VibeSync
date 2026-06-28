@@ -52,6 +52,7 @@ function ledger(overrides: Record<string, unknown> = {}) {
     debrief_count: 0,
     practice_mode: "standard",
     temperature_score: null,
+    familiarity_score: null,
     hint_count: 0,
     ...overrides,
   };
@@ -219,10 +220,26 @@ function makeFake(options: FakeOptions = {}) {
       state.events.push(`rpc:${fn}`);
       const index = rpcByName.get(fn) ?? 0;
       rpcByName.set(fn, index + 1);
-      const result = options.rpc?.[fn]?.[index] ??
-        (fn === "commit_practice_chat_turn"
-          ? { data: { new_ai_count: 1, did_charge: true } }
-          : { data: { updated: true, temperature_score: 34 } });
+      const defaultResult: RpcResult = (() => {
+        if (fn === "commit_practice_chat_turn") {
+          return { data: { new_ai_count: 1, did_charge: true } };
+        }
+        if (fn === "update_practice_learning_state") {
+          return {
+            data: {
+              updated: true,
+              temperature_score:
+                (params.p_expected_temperature_score as number) +
+                (params.p_temperature_delta as number),
+              familiarity_score:
+                (params.p_expected_familiarity_score as number) +
+                (params.p_familiarity_delta as number),
+            },
+          };
+        }
+        return { data: true };
+      })();
+      const result = options.rpc?.[fn]?.[index] ?? defaultResult;
       return Promise.resolve(
         result.error
           ? { data: null, error: { message: result.error } }
@@ -288,6 +305,19 @@ function temperatureUpdateCalls(state: FakeState) {
   );
 }
 
+function learningUpdateCalls(state: FakeState) {
+  return state.rpcCalls.filter((call) =>
+    call.fn === "update_practice_learning_state"
+  );
+}
+
+function assertNoPublicFamiliarityFields(temperature: Record<string, unknown>) {
+  assertEquals("familiarityScore" in temperature, false);
+  assertEquals("familiarityDelta" in temperature, false);
+  assertEquals("classification" in temperature, false);
+  assertEquals("stage" in temperature, false);
+}
+
 function claimDebriefCalls(state: FakeState) {
   return state.rpcCalls.filter((call) => call.fn === "claim_practice_debrief");
 }
@@ -301,7 +331,7 @@ Deno.test("standard chat response does not include temperature and does not judg
   assertEquals(json.reply, "AI reply");
   assertEquals("temperature" in json, false);
   assertEquals(
-    state.rpcCalls.some((call) => call.fn === "update_practice_temperature"),
+    state.rpcCalls.some((call) => call.fn === "update_practice_learning_state"),
     false,
   );
   assertEquals(state.deepSeekCalls.length, 1);
@@ -323,28 +353,52 @@ Deno.test("chat retries a transient provider failure once before committing", as
 });
 
 Deno.test("beginner first chat uses initial temp 30 and returns temperature plus hint count", async () => {
-  const { response, json, state } = await run({
-    ledger: null,
-    deepSeekReplies: ["AI reply", `{"delta":4,"reason":"warmer"}`],
-  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","overstep":false}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      familiarityScore: 0,
+    }),
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.reply, "AI reply");
   assertEquals(json.hintUsedCount, 0);
   assertEquals(json.temperature, {
-    score: 34,
-    delta: 4,
-    band: temperatureBandFor(34),
-    reason: "warmer",
+    score: 33,
+    delta: 3,
+    band: temperatureBandFor(33),
+    reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
+    stageLabel: "建立熟悉中",
   });
+  assertNoPublicFamiliarityFields(json.temperature);
   assert(
     state.deepSeekCalls[0].messages[0].content.includes("30/100"),
     "chat system prompt should include beginner initial temperature",
   );
+  const classifierPrompt = state.deepSeekCalls[1].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(classifierPrompt.includes("只分類最後一句 user 訊息"));
+  assert(classifierPrompt.includes("事件 / 個人 / 曖昧"));
+  assertEquals(classifierPrompt.includes("S__42795075.jpg"), false);
   assertEquals(
-    state.rpcCalls.find((call) => call.fn === "update_practice_temperature")
-      ?.params.p_temperature_score,
-    34,
+    learningUpdateCalls(state)[0]?.params,
+    {
+      p_user_id: "user-1",
+      p_session_id: "session-1",
+      p_expected_temperature_score: 30,
+      p_expected_familiarity_score: 0,
+      p_temperature_delta: 3,
+      p_familiarity_delta: 8,
+    },
   );
 });
 
@@ -357,6 +411,8 @@ Deno.test("beginner first chat ignores client temperature and falls back to serv
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 30);
   assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.stageLabel, "建立熟悉中");
+  assertNoPublicFamiliarityFields(json.temperature);
 
   const allDeepSeekPromptText = state.deepSeekCalls
     .flatMap((call) => call.messages)
@@ -370,28 +426,96 @@ Deno.test("beginner first chat ignores client temperature and falls back to serv
   );
   assert(commit);
   assertEquals(commit.params.p_temperature_score, 30);
+  assertEquals(commit.params.p_familiarity_score, 0);
   assertEquals("p_initial_temperature_score" in commit.params, false);
 });
 
-Deno.test("beginner later chat uses ledger temperature over client sent score", async () => {
-  const { response, json, state } = await run({
-    ledger: ledger({
-      ai_count: 3,
-      charged: true,
-      practice_mode: "beginner",
-      temperature_score: 64,
-      hint_count: 2,
+Deno.test("beginner later chat uses ledger learning state over client sent scores", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        ai_count: 3,
+        charged: true,
+        practice_mode: "beginner",
+        temperature_score: 64,
+        familiarity_score: 45,
+        hint_count: 2,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"ordinary","overstep":false}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 10,
+      familiarityScore: 99,
     }),
-    deepSeekReplies: ["AI reply", `{"delta":-2,"reason":"cooler"}`],
-  }, chatBody({ practiceMode: "beginner", temperatureScore: 10 }));
+  );
 
   assertEquals(response.status, 200);
   assertEquals(json.hintUsedCount, 2);
-  assertEquals(json.temperature.score, 62);
-  assertEquals(json.temperature.delta, -2);
+  assertEquals(json.temperature.score, 69);
+  assertEquals(json.temperature.delta, 5);
+  assertEquals(json.temperature.stageLabel, "可以輕推曖昧");
+  assertNoPublicFamiliarityFields(json.temperature);
   const systemPrompt = state.deepSeekCalls[0].messages[0].content;
   assert(systemPrompt.includes("64/100"));
   assertEquals(systemPrompt.includes("10/100"), false);
+  const classifierPrompt = state.deepSeekCalls[1].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(classifierPrompt.includes("目前抽象關係階段：可以輕推曖昧"));
+  assertEquals(classifierPrompt.includes("45/100"), false);
+  assertEquals(classifierPrompt.includes("99/100"), false);
+});
+
+Deno.test("missing dual-axis readiness RPC returns not-ready before DeepSeek", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: null,
+      rpc: {
+        assert_practice_learning_ready: [{
+          error:
+            "Could not find the function public.assert_practice_learning_ready(p_session_id, p_user_id) in the schema cache",
+        }],
+      },
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      familiarityScore: 0,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_learning_not_ready" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(commitCalls(state).length, 0);
+  assertEquals(learningUpdateCalls(state).length, 0);
+});
+
+Deno.test("standard chat missing dual-axis readiness returns not-ready before DeepSeek", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({ practice_mode: "standard" }),
+      rpc: {
+        assert_practice_learning_ready: [{
+          error: "PRACTICE_LEARNING_NOT_READY: missing dual-axis commit RPC",
+        }],
+      },
+    },
+    chatBody({
+      practiceMode: "standard",
+      temperatureScore: 30,
+    }),
+  );
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_learning_not_ready" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(commitCalls(state).length, 0);
+  assertEquals(learningUpdateCalls(state).length, 0);
 });
 
 Deno.test("chat commit uses practice mode and temperature RPC arguments", async () => {
@@ -409,6 +533,7 @@ Deno.test("chat commit uses practice mode and temperature RPC arguments", async 
   assertEquals(commit.params.p_max_replies, 20);
   assertEquals(commit.params.p_practice_mode, "standard");
   assertEquals(commit.params.p_temperature_score, 30);
+  assertEquals(commit.params.p_familiarity_score, null);
   assertEquals("p_initial_temperature_score" in commit.params, false);
 });
 
@@ -434,7 +559,7 @@ Deno.test("commit PRACTICE_MODE_LOCKED maps to HTTP 409 practice_mode_locked", a
   assertEquals(response.status, 409);
   assertEquals(json, { error: "practice_mode_locked" });
   assertEquals(
-    state.rpcCalls.some((call) => call.fn === "update_practice_temperature"),
+    state.rpcCalls.some((call) => call.fn === "update_practice_learning_state"),
     false,
   );
 });
@@ -457,70 +582,86 @@ Deno.test("ledger select includes beginner fields and old rows fallback safely",
       charged: true,
       debrief_count: 0,
     },
-    deepSeekReplies: ["AI reply", `{"delta":1,"reason":"slightly warmer"}`],
+    deepSeekReplies: [
+      "AI reply",
+      `{"category":"event","quality":"ordinary","overstep":false}`,
+    ],
   }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
 
   assertEquals(response.status, 200);
   assertEquals(json.hintUsedCount, 0);
-  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.score, 33);
+  assertEquals(json.temperature.stageLabel, "建立熟悉中");
+  assertNoPublicFamiliarityFields(json.temperature);
   const ledgerSelect = state.selects.find((select) =>
     select.table === "practice_chat_sessions"
   );
   assert(ledgerSelect);
   assertEquals(
     ledgerSelect.columns,
-    "ai_count, charged, debrief_count, practice_mode, temperature_score, hint_count",
+    "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, hint_count",
   );
 });
 
-Deno.test("temperature judge failure is non-fatal and keeps previous temperature", async () => {
+Deno.test("turn classifier failure is non-fatal and keeps previous learning state", async () => {
   const { response, json, state } = await run({
     ledger: ledger({
       practice_mode: "beginner",
       temperature_score: 55,
+      familiarity_score: 42,
       hint_count: 1,
     }),
-    deepSeekReplies: ["AI reply", new Error("judge down")],
+    deepSeekReplies: ["AI reply", new Error("classifier down")],
   }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
 
   assertEquals(response.status, 200);
   assertEquals(json.reply, "AI reply");
   assertEquals(json.temperature.score, 55);
   assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.stageLabel, "可以輕推曖昧");
+  assertNoPublicFamiliarityFields(json.temperature);
   assertEquals(json.hintUsedCount, 1);
   assertEquals(
-    state.rpcCalls.some((call) => call.fn === "update_practice_temperature"),
+    state.rpcCalls.some((call) => call.fn === "update_practice_learning_state"),
     false,
   );
 });
 
-Deno.test("successful beginner judge uses JSON mode and updates temperature", async () => {
+Deno.test("successful beginner classifier uses JSON mode and updates learning state", async () => {
   const { response, json, state } = await run({
     ledger: ledger({
       practice_mode: "beginner",
       temperature_score: 30,
+      familiarity_score: 0,
     }),
-    deepSeekReplies: ["AI reply", `{"delta":8,"reason":"much warmer"}`],
+    deepSeekReplies: [
+      "AI reply",
+      `{"category":"personal","quality":"good","overstep":false}`,
+    ],
   }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature, {
-    score: 38,
-    delta: 8,
-    band: temperatureBandFor(38),
-    reason: "much warmer",
+    score: 29,
+    delta: -1,
+    band: temperatureBandFor(29),
+    reason: "個人分享接得住對方，熟悉度上升，熱度也比較穩。",
+    stageLabel: "建立熟悉中",
   });
+  assertNoPublicFamiliarityFields(json.temperature);
   assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.deepSeekCalls[1].jsonMode, true);
   assertEquals(state.deepSeekCalls[1].maxTokens, 450);
   assert(state.deepSeekCalls[1].temperature <= 0.3);
   assertEquals(
-    state.rpcCalls.find((call) => call.fn === "update_practice_temperature")
-      ?.params,
+    learningUpdateCalls(state)[0]?.params,
     {
       p_user_id: "user-1",
       p_session_id: "session-1",
-      p_temperature_score: 38,
+      p_expected_temperature_score: 30,
+      p_expected_familiarity_score: 0,
+      p_temperature_delta: -1,
+      p_familiarity_delta: 5,
     },
   );
 });
@@ -531,9 +672,13 @@ Deno.test("exact applied warm-up hint never lowers beginner temperature", async 
       ledger: ledger({
         practice_mode: "beginner",
         temperature_score: 30,
+        familiarity_score: 20,
         hint_count: 1,
       }),
-      deepSeekReplies: ["AI reply", `{"delta":-3,"reason":"too fast"}`],
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"flirt","quality":"bad","overstep":true}`,
+      ],
     },
     chatBody({
       practiceMode: "beginner",
@@ -548,8 +693,11 @@ Deno.test("exact applied warm-up hint never lowers beginner temperature", async 
     delta: 0,
     band: temperatureBandFor(30),
     reason: "套用提示回覆，維持不降溫",
+    stageLabel: "建立熟悉中",
   });
-  assertEquals(temperatureUpdateCalls(state)[0].params.p_temperature_score, 30);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
 Deno.test("exact applied steady hint never lowers beginner temperature", async () => {
@@ -558,9 +706,13 @@ Deno.test("exact applied steady hint never lowers beginner temperature", async (
       ledger: ledger({
         practice_mode: "beginner",
         temperature_score: 30,
+        familiarity_score: 20,
         hint_count: 1,
       }),
-      deepSeekReplies: ["AI reply", `{"delta":-3,"reason":"too blunt"}`],
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"ordinary","overstep":true}`,
+      ],
     },
     chatBody({
       practiceMode: "beginner",
@@ -575,8 +727,11 @@ Deno.test("exact applied steady hint never lowers beginner temperature", async (
     delta: 0,
     band: temperatureBandFor(30),
     reason: "套用提示回覆，維持不降溫",
+    stageLabel: "建立熟悉中",
   });
-  assertEquals(temperatureUpdateCalls(state)[0].params.p_temperature_score, 30);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
 Deno.test("exact applied hint keeps positive temperature judgement", async () => {
@@ -585,9 +740,13 @@ Deno.test("exact applied hint keeps positive temperature judgement", async () =>
       ledger: ledger({
         practice_mode: "beginner",
         temperature_score: 30,
+        familiarity_score: 10,
         hint_count: 1,
       }),
-      deepSeekReplies: ["AI reply", `{"delta":4,"reason":"有自然延伸"}`],
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"good","overstep":false}`,
+      ],
     },
     chatBody({
       practiceMode: "beginner",
@@ -601,9 +760,73 @@ Deno.test("exact applied hint keeps positive temperature judgement", async () =>
     score: 34,
     delta: 4,
     band: temperatureBandFor(34),
-    reason: "有自然延伸",
+    reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
+    stageLabel: "建立熟悉中",
   });
-  assertEquals(temperatureUpdateCalls(state)[0].params.p_temperature_score, 34);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 4);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 10);
+});
+
+Deno.test("stale guarded learning update reloads ledger and retries deterministic delta", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 0,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 40,
+              familiarity_score: 40,
+            },
+          },
+          {
+            data: {
+              updated: true,
+              temperature_score: 44,
+              familiarity_score: 50,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"good","overstep":false}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      familiarityScore: 0,
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 44);
+  assertEquals(json.temperature.stageLabel, "可以聊個人");
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  assertEquals(
+    learningUpdateCalls(state)[0].params.p_expected_temperature_score,
+    30,
+  );
+  assertEquals(
+    learningUpdateCalls(state)[0].params.p_expected_familiarity_score,
+    0,
+  );
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_temperature_score,
+    40,
+  );
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_familiarity_score,
+    40,
+  );
 });
 
 Deno.test("debrief retries a malformed provider card once before returning the card", async () => {
@@ -649,6 +872,11 @@ Deno.test("debrief accepts beginner ledger when client omits practiceMode", asyn
   assertEquals(response.status, 200);
   assertEquals(json.card.summary, "新手拆解成功");
   assertEquals(state.deepSeekCalls.length, 1);
+  const debriefPrompt = state.deepSeekCalls[0].messages
+    .map((message) => message.content)
+    .join("\n");
+  assert(debriefPrompt.includes("本場抽象關係階段：建立熟悉中"));
+  assertEquals(debriefPrompt.includes("familiarity"), false);
   assertEquals(claimDebriefCalls(state).length, 1);
 });
 
@@ -668,7 +896,7 @@ Deno.test("hint standard practice mode rejects before DeepSeek and record RPC", 
   assertEquals(claimHintCalls(state).length, 0);
   assertEquals(recordHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
-  assertEquals(temperatureUpdateCalls(state).length, 0);
+  assertEquals(learningUpdateCalls(state).length, 0);
 });
 
 Deno.test("hint before first AI reply returns session_not_started before provider and record RPC", async () => {
@@ -706,6 +934,28 @@ Deno.test("hint missing beginner ledger columns returns not-ready before provide
   assertEquals(state.deepSeekCalls.length, 0);
   assertEquals(claimHintCalls(state).length, 0);
   assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("chat missing dual-axis ledger column returns not-ready before provider", async () => {
+  const { response, json, state } = await run({
+    ledgerError:
+      "Could not find the 'familiarity_score' column of 'practice_chat_sessions' in the schema cache",
+  }, chatBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_learning_not_ready" });
+  assertEquals(state.deepSeekCalls.length, 0);
+});
+
+Deno.test("debrief missing dual-axis ledger column returns not-ready before provider", async () => {
+  const { response, json, state } = await run({
+    ledgerError:
+      "Could not find the 'familiarity_score' column of 'practice_chat_sessions' in the schema cache",
+  }, debriefBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 503);
+  assertEquals(json, { error: "practice_learning_not_ready" });
+  assertEquals(state.deepSeekCalls.length, 0);
 });
 
 Deno.test("hint quota exceeded returns 429 before provider and record RPC", async () => {
@@ -868,7 +1118,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   });
   assertEquals(releaseHintCalls(state).length, 0);
   assertEquals(commitCalls(state).length, 0);
-  assertEquals(temperatureUpdateCalls(state).length, 0);
+  assertEquals(learningUpdateCalls(state).length, 0);
   assertEquals(state.events, [
     "rpc:claim_practice_hint_generation",
     "deepseek",
@@ -937,6 +1187,6 @@ for (
     assertEquals(recordHintCalls(state).length, 1);
     assertEquals(releaseHintCalls(state).length, 1);
     assertEquals(commitCalls(state).length, 0);
-    assertEquals(temperatureUpdateCalls(state).length, 0);
+    assertEquals(learningUpdateCalls(state).length, 0);
   });
 }

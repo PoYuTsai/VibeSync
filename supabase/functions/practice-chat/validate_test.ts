@@ -123,6 +123,41 @@ Deno.test("invalid temperatureScore throws invalid_temperatureScore", () => {
   }
 });
 
+Deno.test("familiarityScore accepts integers from 0 to 100 and defaults to 0", () => {
+  const missing = validateRequest({
+    ...chatReq([{ role: "user", text: "hi" }]),
+    practiceMode: "beginner",
+  });
+  assertEquals((missing as { familiarityScore?: unknown }).familiarityScore, 0);
+
+  for (const familiarityScore of [0, 1, 40, 100]) {
+    const r = validateRequest({
+      ...chatReq([{ role: "user", text: "hi" }]),
+      practiceMode: "beginner",
+      familiarityScore,
+    });
+    assertEquals(
+      (r as { familiarityScore?: unknown }).familiarityScore,
+      familiarityScore,
+    );
+  }
+});
+
+Deno.test("invalid familiarityScore throws invalid_familiarityScore", () => {
+  for (const familiarityScore of [-1, 101, 1.5, "30", null]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...chatReq([{ role: "user", text: "hi" }]),
+          practiceMode: "beginner",
+          familiarityScore,
+        }),
+      Error,
+      "invalid_familiarityScore",
+    );
+  }
+});
+
 Deno.test("chat accepts appliedHintType for exact applied beginner hints", () => {
   for (const appliedHintType of ["warm_up", "steady"]) {
     const r = validateRequest({

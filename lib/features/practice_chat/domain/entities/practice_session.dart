@@ -74,6 +74,12 @@ class PracticeSession {
   @HiveField(18)
   final int? hintUsedCount;
 
+  @HiveField(19)
+  final int? familiarityScore;
+
+  @HiveField(20)
+  final String? relationshipStageLabel;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -94,6 +100,8 @@ class PracticeSession {
     this.practiceMode,
     this.temperatureScore,
     this.hintUsedCount,
+    this.familiarityScore,
+    this.relationshipStageLabel,
   });
 
   bool get hasDebrief => debriefSummary != null;
@@ -116,6 +124,8 @@ class PracticeSession {
     String? practiceMode,
     int? temperatureScore,
     int? hintUsedCount,
+    int? familiarityScore,
+    String? relationshipStageLabel,
   }) {
     return PracticeSession(
       id: id,
@@ -138,6 +148,9 @@ class PracticeSession {
       practiceMode: practiceMode ?? this.practiceMode,
       temperatureScore: temperatureScore ?? this.temperatureScore,
       hintUsedCount: hintUsedCount ?? this.hintUsedCount,
+      familiarityScore: familiarityScore ?? this.familiarityScore,
+      relationshipStageLabel:
+          relationshipStageLabel ?? this.relationshipStageLabel,
     );
   }
 }

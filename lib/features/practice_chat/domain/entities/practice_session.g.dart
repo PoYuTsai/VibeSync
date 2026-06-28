@@ -40,13 +40,15 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
       practiceMode: fields[16] as String?,
       temperatureScore: (fields[17] as num?)?.toInt(),
       hintUsedCount: (fields[18] as num?)?.toInt(),
+      familiarityScore: (fields[19] as num?)?.toInt(),
+      relationshipStageLabel: fields[20] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PracticeSession obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(21)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -84,7 +86,11 @@ class PracticeSessionAdapter extends TypeAdapter<PracticeSession> {
       ..writeByte(17)
       ..write(obj.temperatureScore)
       ..writeByte(18)
-      ..write(obj.hintUsedCount);
+      ..write(obj.hintUsedCount)
+      ..writeByte(19)
+      ..write(obj.familiarityScore)
+      ..writeByte(20)
+      ..write(obj.relationshipStageLabel);
   }
 
   @override

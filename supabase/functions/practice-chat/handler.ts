@@ -28,10 +28,13 @@ import { type DebriefCard, parseDebriefCard } from "./debrief_card.ts";
 import { buildHintMessages, parseHintResult } from "./hint.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
-  applyTemperatureDelta,
-  buildTemperatureJudgeMessages,
-  parseTemperatureJudgement,
-  type TemperatureJudgement,
+  applyLearningClassification,
+  buildTurnClassifierMessages,
+  type LearningJudgement,
+  parseTurnClassification,
+  relationshipStageFor,
+  temperatureBandFor,
+  type TurnClassification,
 } from "./temperature.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -105,8 +108,22 @@ function isMissingBeginnerHintLedgerSchema(message: string): boolean {
   const normalized = message.toLowerCase();
   const referencesBeginnerHintLedger = normalized.includes("practice_mode") ||
     normalized.includes("temperature_score") ||
+    normalized.includes("familiarity_score") ||
     normalized.includes("hint_count");
   return referencesBeginnerHintLedger &&
+    (normalized.includes("schema cache") ||
+      normalized.includes("could not find") ||
+      normalized.includes("does not exist") ||
+      normalized.includes("undefined_column"));
+}
+
+function isMissingDualAxisLearningSchema(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const referencesDualAxisLearning = normalized.includes("familiarity_score") ||
+    normalized.includes("assert_practice_learning_ready") ||
+    normalized.includes("update_practice_learning_state") ||
+    normalized.includes("commit_practice_chat_turn");
+  return referencesDualAxisLearning &&
     (normalized.includes("schema cache") ||
       normalized.includes("could not find") ||
       normalized.includes("does not exist") ||
@@ -116,6 +133,12 @@ function isMissingBeginnerHintLedgerSchema(message: string): boolean {
 function mapLedgerError(message: string): { error: string; status: number } {
   if (isMissingPracticeHintRpc(message)) {
     return { error: "practice_hint_not_ready", status: 503 };
+  }
+  if (message.includes("PRACTICE_LEARNING_NOT_READY")) {
+    return { error: "practice_learning_not_ready", status: 503 };
+  }
+  if (isMissingDualAxisLearningSchema(message)) {
+    return { error: "practice_learning_not_ready", status: 503 };
   }
   if (message.includes("PRACTICE_SESSION_COMPLETE")) {
     return { error: "practice_session_complete", status: 409 };
@@ -175,80 +198,234 @@ function temperatureFromLedger(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function familiarityFromLedger(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function hintCountFromLedger(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.trunc(value))
     : 0;
 }
 
-function updateTemperatureResultFailed(data: unknown): boolean {
+interface LearningStateUpdateResult {
+  updated: boolean;
+  temperatureScore: number | null;
+  familiarityScore: number | null;
+}
+
+function learningStateUpdateResultFromData(
+  data: unknown,
+): LearningStateUpdateResult {
   const row = Array.isArray(data) ? data[0] : data;
-  return isPlainObject(row) && row.updated === false;
+  return {
+    updated: !(isPlainObject(row) && row.updated === false),
+    temperatureScore: isPlainObject(row)
+      ? temperatureFromLedger(row.temperature_score)
+      : null,
+    familiarityScore: isPlainObject(row)
+      ? familiarityFromLedger(row.familiarity_score)
+      : null,
+  };
+}
+
+function withAuthoritativeLearningScores(
+  judgement: LearningJudgement,
+  result: LearningStateUpdateResult,
+): LearningJudgement {
+  const score = result.temperatureScore ?? judgement.score;
+  const familiarityScore = result.familiarityScore ??
+    judgement.familiarityScore;
+  const stage = relationshipStageFor(familiarityScore, score);
+  return {
+    ...judgement,
+    score,
+    band: temperatureBandFor(score),
+    familiarityScore,
+    stage: stage.stage,
+    stageLabel: stage.label,
+  };
+}
+
+function learningJudgementResponse(
+  judgement: LearningJudgement,
+): Record<string, unknown> {
+  return {
+    score: judgement.score,
+    delta: judgement.delta,
+    band: judgement.band,
+    reason: judgement.reason,
+    stageLabel: judgement.stageLabel,
+  };
 }
 
 function protectAppliedHintTemperature(
-  judgement: TemperatureJudgement,
+  judgement: LearningJudgement,
   currentTemperature: number,
+  currentFamiliarity: number,
   appliedHintType: string | undefined,
-): TemperatureJudgement {
-  if (!appliedHintType || judgement.delta >= 0) return judgement;
+): LearningJudgement {
+  if (
+    !appliedHintType ||
+    (judgement.delta >= 0 && judgement.familiarityDelta >= 0)
+  ) {
+    return judgement;
+  }
+  const stage = relationshipStageFor(currentFamiliarity, currentTemperature);
   return {
-    ...applyTemperatureDelta(currentTemperature, 0),
+    ...judgement,
+    score: currentTemperature,
+    delta: 0,
+    band: temperatureBandFor(currentTemperature),
+    familiarityScore: currentFamiliarity,
+    familiarityDelta: 0,
+    stage: stage.stage,
+    stageLabel: stage.label,
     reason: "套用提示回覆，維持不降溫",
   };
 }
 
-async function judgeTemperature(opts: {
+function fallbackLearningJudgement(
+  currentTemperature: number,
+  currentFamiliarity: number,
+): LearningJudgement {
+  const stage = relationshipStageFor(currentFamiliarity, currentTemperature);
+  return {
+    score: currentTemperature,
+    delta: 0,
+    band: temperatureBandFor(currentTemperature),
+    reason: "",
+    familiarityScore: currentFamiliarity,
+    familiarityDelta: 0,
+    stage: stage.stage,
+    stageLabel: stage.label,
+    classification: {
+      category: "event",
+      quality: "ordinary",
+      overstep: false,
+    },
+  };
+}
+
+async function assertPracticeLearningReady(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  sessionId: string;
+}): Promise<void> {
+  const { error } = await opts.supabase.rpc("assert_practice_learning_ready", {
+    p_user_id: opts.userId,
+    p_session_id: opts.sessionId,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function judgeLearningState(opts: {
   deps: PracticeChatHandlerDeps;
   apiKey: string;
   supabase: PracticeSupabaseClient;
   userId: string;
   sessionId: string;
   currentTemperature: number;
+  currentFamiliarity: number;
   request: ReturnType<typeof validateRequest>;
   reply: string;
-}): Promise<TemperatureJudgement> {
-  const fallback = applyTemperatureDelta(opts.currentTemperature, 0);
+}): Promise<LearningJudgement> {
+  const fallback = fallbackLearningJudgement(
+    opts.currentTemperature,
+    opts.currentFamiliarity,
+  );
   try {
-    const rawJudge = await opts.deps.callDeepSeek({
+    const rawClassification = await opts.deps.callDeepSeek({
       apiKey: opts.apiKey,
-      messages: buildTemperatureJudgeMessages({
-        priorScore: opts.currentTemperature,
+      messages: buildTurnClassifierMessages({
         turns: opts.request.turns,
-        assistantReply: opts.reply,
         profile: opts.request.profile,
+        heatScore: opts.currentTemperature,
+        familiarityScore: opts.currentFamiliarity,
       }),
       maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
       temperature: TEMPERATURE_JUDGE_TEMPERATURE,
       jsonMode: true,
       timeoutMs: DEEPSEEK_TIMEOUT_MS,
     });
-    const judgement = parseTemperatureJudgement(
-      rawJudge,
-      opts.currentTemperature,
+    const classification: TurnClassification = parseTurnClassification(
+      rawClassification,
     );
+    const judgement = applyLearningClassification({
+      heatScore: opts.currentTemperature,
+      familiarityScore: opts.currentFamiliarity,
+    }, classification);
     const protectedJudgement = protectAppliedHintTemperature(
       judgement,
       opts.currentTemperature,
+      opts.currentFamiliarity,
       opts.request.appliedHintType,
     );
-    const { data, error } = await opts.supabase.rpc(
-      "update_practice_temperature",
-      {
-        p_user_id: opts.userId,
-        p_session_id: opts.sessionId,
-        p_temperature_score: protectedJudgement.score,
-      },
+    const updateLearning = async (
+      expectedTemperature: number,
+      expectedFamiliarity: number,
+      learningJudgement: LearningJudgement,
+    ): Promise<LearningStateUpdateResult> => {
+      const { data, error } = await opts.supabase.rpc(
+        "update_practice_learning_state",
+        {
+          p_user_id: opts.userId,
+          p_session_id: opts.sessionId,
+          p_expected_temperature_score: expectedTemperature,
+          p_expected_familiarity_score: expectedFamiliarity,
+          p_temperature_delta: learningJudgement.delta,
+          p_familiarity_delta: learningJudgement.familiarityDelta,
+        },
+      );
+      if (error) {
+        throw new Error(error.message);
+      }
+      return learningStateUpdateResultFromData(data);
+    };
+
+    const firstUpdate = await updateLearning(
+      opts.currentTemperature,
+      opts.currentFamiliarity,
+      protectedJudgement,
     );
-    if (error) {
-      throw new Error(error.message);
+    if (!firstUpdate.updated) {
+      if (
+        firstUpdate.temperatureScore === null ||
+        firstUpdate.familiarityScore === null
+      ) {
+        throw new Error("learning_state_update_not_applied");
+      }
+      const retryJudgement = applyLearningClassification({
+        heatScore: firstUpdate.temperatureScore,
+        familiarityScore: firstUpdate.familiarityScore,
+      }, classification);
+      const protectedRetryJudgement = protectAppliedHintTemperature(
+        retryJudgement,
+        firstUpdate.temperatureScore,
+        firstUpdate.familiarityScore,
+        opts.request.appliedHintType,
+      );
+      const secondUpdate = await updateLearning(
+        firstUpdate.temperatureScore,
+        firstUpdate.familiarityScore,
+        protectedRetryJudgement,
+      );
+      if (!secondUpdate.updated) {
+        throw new Error("learning_state_update_not_applied");
+      }
+      return withAuthoritativeLearningScores(
+        protectedRetryJudgement,
+        secondUpdate,
+      );
     }
-    if (updateTemperatureResultFailed(data)) {
-      throw new Error("temperature_update_not_applied");
-    }
-    return protectedJudgement;
+    return withAuthoritativeLearningScores(protectedJudgement, firstUpdate);
   } catch (e) {
-    logWarn("practice_chat_temperature_judge_failed", {
+    if (isMissingDualAxisLearningSchema(getErrorMessage(e))) {
+      throw e;
+    }
+    logWarn("practice_chat_learning_classifier_failed", {
       user: summarizeUser(opts.userId),
       error: getErrorMessage(e),
     });
@@ -382,14 +559,16 @@ export function createPracticeChatHandler(
     const { data: ledgerRow, error: ledgerError } = await supabase
       .from("practice_chat_sessions")
       .select(
-        "ai_count, charged, debrief_count, practice_mode, temperature_score, hint_count",
+        "ai_count, charged, debrief_count, practice_mode, temperature_score, familiarity_score, hint_count",
       )
       .eq("user_id", user.id)
       .eq("session_id", request.sessionId)
       .maybeSingle();
     if (ledgerError) {
-      const mapped = request.mode === "hint" &&
-          isMissingBeginnerHintLedgerSchema(ledgerError.message)
+      const mapped = isMissingDualAxisLearningSchema(ledgerError.message)
+        ? { error: "practice_learning_not_ready", status: 503 }
+        : request.mode === "hint" &&
+            isMissingBeginnerHintLedgerSchema(ledgerError.message)
         ? { error: "practice_hint_not_ready", status: 503 }
         : { error: "session_state_failed", status: 500 };
       logWarn("practice_chat_ledger_fetch_error", {
@@ -405,6 +584,7 @@ export function createPracticeChatHandler(
       debriefCount: (ledgerRow?.debrief_count as number | undefined) ?? 0,
       practiceMode: practiceModeFromLedger(ledgerRow?.practice_mode),
       temperatureScore: temperatureFromLedger(ledgerRow?.temperature_score),
+      familiarityScore: familiarityFromLedger(ledgerRow?.familiarity_score),
       hintCount: hintCountFromLedger(ledgerRow?.hint_count),
     };
 
@@ -481,6 +661,7 @@ export function createPracticeChatHandler(
                 turns: request.turns,
                 profile: request.profile,
                 temperatureScore: ledger.temperatureScore ?? 30,
+                familiarityScore: ledger.familiarityScore ?? 0,
               }),
               maxTokens: HINT_MAX_TOKENS,
               temperature: HINT_TEMPERATURE,
@@ -590,6 +771,24 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: gate.reason }, 403);
       }
 
+      const debriefBeginnerMode = ledger.practiceMode === "beginner";
+      if (debriefBeginnerMode) {
+        try {
+          await assertPracticeLearningReady({
+            supabase,
+            userId: user.id,
+            sessionId: request.sessionId,
+          });
+        } catch (e) {
+          const mapped = mapLedgerError(getErrorMessage(e));
+          logWarn("practice_chat_learning_not_ready", {
+            user: summarizeUser(user.id),
+            error: getErrorMessage(e),
+          });
+          return jsonResponse({ error: mapped.error }, mapped.status);
+        }
+      }
+
       const { error: claimError } = await supabase.rpc(
         "claim_practice_debrief",
         {
@@ -618,7 +817,17 @@ export function createPracticeChatHandler(
           try {
             const rawCard = await deps.callDeepSeek({
               apiKey,
-              messages: buildDebriefMessages(request.turns, request.profile),
+              messages: buildDebriefMessages(
+                request.turns,
+                request.profile,
+                debriefBeginnerMode
+                  ? {
+                    practiceMode: "beginner",
+                    temperatureScore: ledger.temperatureScore ?? 30,
+                    familiarityScore: ledger.familiarityScore ?? 0,
+                  }
+                  : {},
+              ),
               maxTokens: DEBRIEF_MAX_TOKENS,
               temperature: DEBRIEF_TEMPERATURE,
               jsonMode: true,
@@ -720,6 +929,24 @@ export function createPracticeChatHandler(
     const currentTemperature = beginnerMode
       ? ledger.temperatureScore ?? 30
       : null;
+    const currentFamiliarity = beginnerMode
+      ? ledger.familiarityScore ?? 0
+      : null;
+
+    try {
+      await assertPracticeLearningReady({
+        supabase,
+        userId: user.id,
+        sessionId: request.sessionId,
+      });
+    } catch (e) {
+      const mapped = mapLedgerError(getErrorMessage(e));
+      logWarn("practice_chat_learning_not_ready", {
+        user: summarizeUser(user.id),
+        error: getErrorMessage(e),
+      });
+      return jsonResponse({ error: mapped.error }, mapped.status);
+    }
 
     let reply: string | null = null;
     try {
@@ -735,6 +962,7 @@ export function createPracticeChatHandler(
                 ? {
                   practiceMode: request.practiceMode,
                   temperatureScore: currentTemperature ?? 30,
+                  familiarityScore: currentFamiliarity ?? 0,
                 }
                 : {},
             ),
@@ -777,6 +1005,7 @@ export function createPracticeChatHandler(
         p_max_replies: MAX_AI_REPLIES,
         p_practice_mode: request.practiceMode,
         p_temperature_score: currentTemperature ?? request.temperatureScore,
+        p_familiarity_score: currentFamiliarity,
       },
     );
     if (commitError) {
@@ -792,18 +1021,28 @@ export function createPracticeChatHandler(
     const didCharge = (commitRow?.did_charge as boolean | undefined) ?? false;
     const deducted = didCharge ? PRACTICE_QUOTA_COST : 0;
 
-    let temperature: TemperatureJudgement | null = null;
+    let temperature: LearningJudgement | null = null;
     if (beginnerMode && currentTemperature !== null) {
-      temperature = await judgeTemperature({
-        deps,
-        apiKey,
-        supabase,
-        userId: user.id,
-        sessionId: request.sessionId,
-        currentTemperature,
-        request,
-        reply,
-      });
+      try {
+        temperature = await judgeLearningState({
+          deps,
+          apiKey,
+          supabase,
+          userId: user.id,
+          sessionId: request.sessionId,
+          currentTemperature,
+          currentFamiliarity: currentFamiliarity ?? 0,
+          request,
+          reply,
+        });
+      } catch (e) {
+        const mapped = mapLedgerError(getErrorMessage(e));
+        logWarn("practice_chat_learning_not_ready", {
+          user: summarizeUser(user.id),
+          error: getErrorMessage(e),
+        });
+        return jsonResponse({ error: mapped.error }, mapped.status);
+      }
     }
 
     logInfo("practice_chat_succeeded", {
@@ -826,7 +1065,7 @@ export function createPracticeChatHandler(
       ...remainingFrom(sub, limits, deducted),
     };
     if (temperature) {
-      body.temperature = temperature;
+      body.temperature = learningJudgementResponse(temperature);
       body.hintUsedCount = ledger.hintCount ?? 0;
     }
     return jsonResponse(body);

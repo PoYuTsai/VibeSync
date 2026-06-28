@@ -4,6 +4,12 @@ import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
 
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";
+export type RelationshipStage =
+  | "building_familiarity"
+  | "personal_allowed"
+  | "flirt_allowed";
+export type TurnCategory = "event" | "personal" | "flirt";
+export type TurnQuality = "good" | "ordinary" | "bad";
 
 export interface TemperatureJudgement {
   score: number;
@@ -12,11 +18,52 @@ export interface TemperatureJudgement {
   reason: string;
 }
 
+export interface RelationshipStageInfo {
+  stage: RelationshipStage;
+  label: "建立熟悉中" | "可以聊個人" | "可以輕推曖昧";
+}
+
+export interface LearningState {
+  heatScore: number;
+  familiarityScore: number;
+}
+
+export interface TurnClassification {
+  category: TurnCategory;
+  quality: TurnQuality;
+  overstep: boolean;
+}
+
+export interface LearningJudgement extends TemperatureJudgement {
+  familiarityScore: number;
+  familiarityDelta: number;
+  stage: RelationshipStage;
+  stageLabel: RelationshipStageInfo["label"];
+  classification: TurnClassification;
+}
+
 const MIN_TEMPERATURE = 0;
 const MAX_TEMPERATURE = 100;
 const MIN_DELTA = -8;
 const MAX_DELTA = 8;
+const MIN_LEARNING_DELTA = -12;
+const MAX_LEARNING_DELTA = 12;
 const MAX_REASON_LENGTH = 36;
+
+const HEAT_MATRIX: Record<RelationshipStage, Record<TurnCategory, number>> = {
+  building_familiarity: { event: 3, personal: -2, flirt: -8 },
+  personal_allowed: { event: 3, personal: 4, flirt: -5 },
+  flirt_allowed: { event: 3, personal: 5, flirt: 6 },
+};
+
+const FAMILIARITY_MATRIX: Record<
+  RelationshipStage,
+  Record<TurnCategory, number>
+> = {
+  building_familiarity: { event: 8, personal: 4, flirt: -4 },
+  personal_allowed: { event: 4, personal: 7, flirt: -2 },
+  flirt_allowed: { event: 3, personal: 5, flirt: 3 },
+};
 
 export function clampTemperature(score: number): number {
   if (!Number.isFinite(score)) return MIN_TEMPERATURE;
@@ -70,6 +117,107 @@ export function applyTemperatureDelta(
   };
 }
 
+export function relationshipStageFor(
+  familiarityScore: number,
+  heatScore: number,
+): RelationshipStageInfo {
+  const familiarity = clampTemperature(familiarityScore);
+  const heat = clampTemperature(heatScore);
+  if (familiarity < 40) {
+    return { stage: "building_familiarity", label: "建立熟悉中" };
+  }
+  if (heat < 50) {
+    return { stage: "personal_allowed", label: "可以聊個人" };
+  }
+  return { stage: "flirt_allowed", label: "可以輕推曖昧" };
+}
+
+function clampLearningDelta(delta: number): number {
+  if (!Number.isFinite(delta)) return 0;
+  return Math.min(
+    MAX_LEARNING_DELTA,
+    Math.max(MIN_LEARNING_DELTA, Math.round(delta)),
+  );
+}
+
+function scaleByQuality(base: number, quality: TurnQuality): number {
+  if (base === 0) return 0;
+  const multiplier = base > 0
+    ? { good: 1.3, ordinary: 1, bad: 0.5 }[quality]
+    : { good: 0.3, ordinary: 1, bad: 1.5 }[quality];
+  return clampLearningDelta(base * multiplier);
+}
+
+function learningReason(
+  stage: RelationshipStage,
+  classification: TurnClassification,
+): string {
+  if (classification.overstep && classification.category === "flirt") {
+    return "太早曖昧，對目前階段有越級感，先回到事件或輕鬆個人話題。";
+  }
+  if (classification.overstep) {
+    return "這句有越級感，先回到目前階段最容易加分的話題。";
+  }
+  if (classification.category === "event" && stage === "building_familiarity") {
+    return "事件導向有助於建立熟悉，先讓對話自然有來有回。";
+  }
+  if (classification.category === "personal") {
+    return "個人分享接得住對方，熟悉度上升，熱度也比較穩。";
+  }
+  if (classification.category === "flirt") {
+    return "目前熟悉與熱度都夠，輕推曖昧有加分。";
+  }
+  return "這句回在目前階段的安全區，對話先穩定前進。";
+}
+
+export function applyLearningClassification(
+  state: LearningState,
+  classification: TurnClassification,
+): LearningJudgement {
+  const currentHeat = clampTemperature(state.heatScore);
+  const currentFamiliarity = clampTemperature(state.familiarityScore);
+  const currentStage = relationshipStageFor(currentFamiliarity, currentHeat);
+  let heatDelta = scaleByQuality(
+    HEAT_MATRIX[currentStage.stage][classification.category],
+    classification.quality,
+  );
+  let familiarityDelta = scaleByQuality(
+    FAMILIARITY_MATRIX[currentStage.stage][classification.category],
+    classification.quality,
+  );
+
+  if (classification.overstep) {
+    heatDelta = Math.min(heatDelta, -6);
+    familiarityDelta = Math.min(familiarityDelta, -6);
+  }
+
+  heatDelta = clampLearningDelta(heatDelta);
+  familiarityDelta = clampLearningDelta(familiarityDelta);
+  const score = clampTemperature(currentHeat + heatDelta);
+  const familiarityScore = clampTemperature(
+    currentFamiliarity + familiarityDelta,
+  );
+  const nextStage = relationshipStageFor(familiarityScore, score);
+  return {
+    score,
+    delta: heatDelta,
+    band: temperatureBandFor(score),
+    reason: learningReason(currentStage.stage, classification),
+    familiarityScore,
+    familiarityDelta,
+    stage: nextStage.stage,
+    stageLabel: nextStage.label,
+    classification,
+  };
+}
+
+function lastUserTurn(turns: PracticeTurn[]): PracticeTurn | null {
+  for (let index = turns.length - 1; index >= 0; index--) {
+    if (turns[index].role === "user") return turns[index];
+  }
+  return null;
+}
+
 function turnsToTranscript(turns: PracticeTurn[]): string {
   return turns
     .map((turn) =>
@@ -102,6 +250,72 @@ function parseIntegerDelta(value: unknown): number {
     if (Number.isInteger(parsed)) return parsed;
   }
   throw new Error("temperature judgement missing integer delta");
+}
+
+function parseCategory(value: unknown): TurnCategory {
+  if (value === "event" || value === "personal" || value === "flirt") {
+    return value;
+  }
+  throw new Error("turn classification missing category");
+}
+
+function parseQuality(value: unknown): TurnQuality {
+  if (value === "good" || value === "ordinary" || value === "bad") {
+    return value;
+  }
+  throw new Error("turn classification missing quality");
+}
+
+function parseOverstep(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  throw new Error("turn classification missing overstep");
+}
+
+export function parseTurnClassification(raw: string): TurnClassification {
+  const parsed = JSON.parse(extractJsonObject(raw));
+  if (!isRecord(parsed)) {
+    throw new Error("turn classification must be an object");
+  }
+  const allowedKeys = new Set(["category", "quality", "overstep"]);
+  for (const key of Object.keys(parsed)) {
+    if (!allowedKeys.has(key)) {
+      throw new Error("turn classification has extra fields");
+    }
+  }
+
+  return {
+    category: parseCategory(parsed.category),
+    quality: parseQuality(parsed.quality),
+    overstep: parseOverstep(parsed.overstep),
+  };
+}
+
+export function buildTurnClassifierMessages(opts: {
+  turns: PracticeTurn[];
+  profile: PracticeProfile;
+  heatScore: number;
+  familiarityScore: number;
+}): ChatMessage[] {
+  const latest = lastUserTurn(opts.turns)?.text ?? "";
+  const stage = relationshipStageFor(opts.familiarityScore, opts.heatScore);
+  return [
+    {
+      role: "system",
+      content:
+        "你是 VibeSync 練習室分類器。只分類最後一句 user 訊息，不要替使用者寫回覆，也不要評估整段對話。\n" +
+        "分類維度：事件 / 個人 / 曖昧。英文值只能是 event、personal、flirt。\n" +
+        "品質維度：good、ordinary、bad。overstep 表示這句是否越級到目前關係階段還承受不了。\n" +
+        "男女對話深度只抽象成事件→個人→曖昧三階段；不要讀取、要求或引用任何圖片檔。\n" +
+        '只輸出 JSON：{"category":"event","quality":"ordinary","overstep":false}',
+    },
+    {
+      role: "user",
+      content: `目前抽象關係階段：${stage.label}\n` +
+        `只分類最後一句 user 訊息：${latest}`,
+    },
+  ];
 }
 
 export function buildTemperatureJudgeMessages(opts: {

@@ -168,6 +168,7 @@ void main() {
                 'delta': 8,
                 'band': 'cold',
                 'reason': '有具體延伸話題',
+                'stageLabel': '建立熟悉中',
               },
             },
           );
@@ -180,15 +181,20 @@ void main() {
         turns: turns,
         practiceMode: PracticeLearningMode.beginner,
         temperatureScore: 30,
+        familiarityScore: 0,
       );
 
       expect(captured.body?['practiceMode'], 'beginner');
       expect(captured.body?['temperatureScore'], 30);
+      expect(captured.body?['familiarityScore'], 0);
       expect(result.hintUsedCount, 1);
       expect(result.temperature?.score, 38);
       expect(result.temperature?.delta, 8);
       expect(result.temperature?.band, 'cold');
       expect(result.temperature?.reason, '有具體延伸話題');
+      expect((result.temperature as dynamic).familiarityScore, isNull);
+      expect((result.temperature as dynamic).familiarityDelta, isNull);
+      expect((result.temperature as dynamic).stageLabel, '建立熟悉中');
     });
 
     test('sendMessage includes appliedHintType when exact hint reply is used',

@@ -252,6 +252,7 @@ class PracticeChatApiService {
     String? visiblePracticeThreadId,
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
+    int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
   }) async {
     final response = await _invoke(
@@ -264,6 +265,7 @@ class PracticeChatApiService {
         'turns': turns.map((t) => t.toJson()).toList(),
         'roundIndex': roundIndex,
         if (temperatureScore != null) 'temperatureScore': temperatureScore,
+        if (familiarityScore != null) 'familiarityScore': familiarityScore,
         if (practiceMode == PracticeLearningMode.beginner &&
             appliedHintType != null)
           'appliedHintType': _hintReplyTypeWireName(appliedHintType),
@@ -508,6 +510,7 @@ class PracticeChatApiService {
     final delta = _asInt(raw['delta']);
     final band = raw['band'];
     final reason = raw['reason'];
+    final stageLabel = raw['stageLabel'];
     if (score == null ||
         delta == null ||
         band is! String ||
@@ -519,6 +522,7 @@ class PracticeChatApiService {
       delta: delta,
       band: band,
       reason: reason,
+      stageLabel: stageLabel is String ? stageLabel : null,
     );
   }
 
