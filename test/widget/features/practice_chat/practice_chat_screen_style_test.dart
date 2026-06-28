@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
@@ -23,6 +24,7 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
@@ -270,6 +272,7 @@ void main() {
   late InMemoryPracticeDrawDraftStore draftStore;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     repo = _MemoryPracticeSessionRepository();
     draftStore = InMemoryPracticeDrawDraftStore();
   });
@@ -1155,6 +1158,7 @@ void main() {
 
     expect(find.byKey(const ValueKey('practice-hint-panel')), findsOneWidget);
     expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+    expect(find.text('套用'), findsNWidgets(2));
     expect(find.textContaining('接住情緒'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('practice-hint-reply-0')));
@@ -1162,6 +1166,9 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller?.text, suggestedReply);
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(find.byKey(const ValueKey('practice-hint-collapsed-summary')),
+        findsOneWidget);
   });
 
   testWidgets('hint panel can collapse and expand after a hint is generated',
@@ -1227,6 +1234,77 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+  });
+
+  testWidgets('requesting hint dismisses the composer keyboard',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    final api = _HintApi(
+      const PracticeHintResult(
+        replies: [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: 'warm',
+            text: 'warm reply',
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: 'steady',
+            text: 'steady reply',
+          ),
+        ],
+        coaching: 'read the latest reply, then answer.',
+        costDeducted: 0,
+        hintUsedCount: 1,
+      ),
+    );
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'first line'),
+        PracticeMessage(role: 'ai', text: 'latest her line'),
+      ],
+      aiReplyCount: 1,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'draft');
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.hintCalls, 1);
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isFalse);
   });
 
   testWidgets('hint panel auto-expands when a generated hint arrives',

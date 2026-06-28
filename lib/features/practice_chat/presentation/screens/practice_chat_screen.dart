@@ -31,12 +31,14 @@ class PracticeChatScreen extends ConsumerStatefulWidget {
 
 class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _controller = TextEditingController();
+  final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
   bool _confirmPaidNewPartnerSpend = false;
 
   @override
   void dispose() {
     _controller.dispose();
+    _inputFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -60,6 +62,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   }
 
   Future<void> _requestHint() async {
+    _inputFocusNode.unfocus();
     final consented = await AiDataSharingConsent.ensure(
       context,
       featureLabel: 'AI 實戰練習室',
@@ -226,6 +229,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                     ? _PracticeProfileHero(state: state)
                     : ListView(
                         controller: _scrollController,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
                         children: [
                           for (final m in state.messages) _Bubble(message: m),
@@ -263,6 +268,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
             _BottomBar(
               state: state,
               inputController: _controller,
+              inputFocusNode: _inputFocusNode,
               isDebriefing: state.isDebriefing,
               onSend: _send,
               onEndPractice: () => ref
@@ -1118,6 +1124,7 @@ class _BottomBar extends StatelessWidget {
   const _BottomBar({
     required this.state,
     required this.inputController,
+    required this.inputFocusNode,
     required this.isDebriefing,
     required this.onSend,
     required this.onEndPractice,
@@ -1129,6 +1136,7 @@ class _BottomBar extends StatelessWidget {
 
   final PracticeChatState state;
   final TextEditingController inputController;
+  final FocusNode inputFocusNode;
   final bool isDebriefing;
   final VoidCallback onSend;
   final VoidCallback onEndPractice;
@@ -1196,6 +1204,7 @@ class _BottomBar extends StatelessWidget {
       inputController.selection = TextSelection.collapsed(
         offset: inputController.text.length,
       );
+      inputFocusNode.requestFocus();
     }
 
     return _BarContainer(
@@ -1246,6 +1255,7 @@ class _BottomBar extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: inputController,
+                  focusNode: inputFocusNode,
                   enabled: canSend,
                   minLines: 1,
                   maxLines: 4,
@@ -1524,7 +1534,10 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
               _HintReplyButton(
                 key: ValueKey('practice-hint-reply-$i'),
                 reply: state.hintReplies[i],
-                onTap: () => widget.onUseReply(state.hintReplies[i]),
+                onTap: () {
+                  setState(() => _expanded = false);
+                  widget.onUseReply(state.hintReplies[i]);
+                },
               ),
               if (i != state.hintReplies.length - 1) const SizedBox(height: 6),
             ],
@@ -1658,6 +1671,25 @@ class _HintReplyButton extends StatelessWidget {
                       reply.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: accent.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Text(
+                      '套用',
                       style: AppTypography.caption.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w800,
