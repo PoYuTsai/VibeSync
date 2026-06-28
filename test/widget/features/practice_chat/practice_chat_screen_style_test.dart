@@ -1713,6 +1713,93 @@ void main() {
     expect(find.text(warmReply.text), findsOneWidget);
   });
 
+  testWidgets('hint panel disables request button after fifth hint',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    final api = _HintApi(
+      const PracticeHintResult(
+        replies: [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: 'warm',
+            text: 'warm reply',
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: 'steady',
+            text: 'steady reply',
+          ),
+        ],
+        coaching: 'read the latest reply, then answer.',
+        costDeducted: 0,
+        hintUsedCount: 5,
+      ),
+    );
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 35,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'first line'),
+        PracticeMessage(role: 'ai', text: 'latest her line'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '升溫回覆',
+          text: '我喜歡你剛剛那個反應，有點可愛。',
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '穩住回覆',
+          text: '那我慢慢聽你說。',
+        ),
+      ],
+      hintCoaching: '先接住她的情緒，再丟一個好回的小問題。',
+      hintUsedCount: 5,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.text('Hint 5/5'), findsOneWidget);
+    expect(find.text('本輪已用完'), findsOneWidget);
+    expect(find.textContaining('本輪提示已用完'), findsOneWidget);
+
+    final button = tester
+        .widget<TextButton>(find.byKey(const ValueKey('practice-hint-button')));
+    expect(button.onPressed, isNull);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.hintCalls, 0);
+  });
+
   testWidgets('hint coaching can open a full teaching sheet', (tester) async {
     const longCoaching =
         '她剛剛把你的吐槽反打回來，重點不是解釋自己沒有得罪人，而是順著她的幽默承接，讓互動保有輕鬆感，再丟一個低壓問題讓她願意繼續接話。';

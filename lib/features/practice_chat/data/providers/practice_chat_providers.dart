@@ -17,6 +17,9 @@ import '../services/practice_chat_api_service.dart';
 /// 一場練習最多 20 則 AI 回覆（與伺服器 MAX_AI_REPLIES 同步）。
 const int kMaxPracticeAiReplies = 20;
 
+/// 新手模式同一輪最多 5 次 Hint（與伺服器 MAX_HINTS_PER_ROUND 同步）。
+const int kMaxPracticeHintsPerRound = 5;
+
 /// 同一位對象最多 3 輪（與伺服器 MAX_PRACTICE_ROUNDS 同步）；到頂不再顯示續玩。
 const int kMaxPracticeRounds = 3;
 
@@ -141,6 +144,8 @@ class PracticeChatState {
   bool get canRequestHint =>
       isBeginnerMode &&
       isRevealed &&
+      !hintLimitReached &&
+      hintUsedCount < kMaxPracticeHintsPerRound &&
       !isHintLoading &&
       !isSending &&
       !isDebriefing &&
@@ -737,7 +742,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         hintReplies: result.replies,
         hintCoaching: result.coaching,
         hintUsedCount: result.hintUsedCount,
-        hintLimitReached: false,
+        hintLimitReached: result.hintUsedCount >= kMaxPracticeHintsPerRound,
       );
       await _persist();
       if (result.costDeducted > 0 &&

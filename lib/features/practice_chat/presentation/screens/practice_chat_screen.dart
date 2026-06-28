@@ -61,8 +61,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     final appliedHintDraft = _appliedHintDraft;
     final isExactAppliedHint =
         appliedHintDraft != null && appliedHintDraft.text.trim() == text;
-    final appliedHintType =
-        isExactAppliedHint ? appliedHintDraft.type : null;
+    final appliedHintType = isExactAppliedHint ? appliedHintDraft.type : null;
     _controller.clear();
     await ref
         .read(practiceChatControllerProvider.notifier)
@@ -1449,7 +1448,11 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
-    final canRequest = state.canRequestHint && !state.hintLimitReached;
+    final hintUsedCount =
+        state.hintUsedCount.clamp(0, kMaxPracticeHintsPerRound).toInt();
+    final isHintLimitReached =
+        state.hintLimitReached || hintUsedCount >= kMaxPracticeHintsPerRound;
+    final canRequest = state.canRequestHint && !isHintLimitReached;
     final hasHint = state.hintReplies.isNotEmpty ||
         (state.hintCoaching != null && state.hintCoaching!.trim().isNotEmpty);
     return Container(
@@ -1470,9 +1473,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
             children: [
               Expanded(
                 child: Text(
-                  state.hintUsedCount == 0
-                      ? 'Hint'
-                      : 'Hint ${state.hintUsedCount}',
+                  'Hint $hintUsedCount/$kMaxPracticeHintsPerRound',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.caption.copyWith(
@@ -1491,7 +1492,7 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.lightbulb_outline, size: 16),
-                label: Text(state.hintLimitReached ? '已用完' : '提示 1 則'),
+                label: Text(isHintLimitReached ? '本輪已用完' : '提示 1 則'),
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.primaryLight,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1521,6 +1522,30 @@ class _HintCoachPanelState extends State<_HintCoachPanel> {
               ],
             ],
           ),
+          if (isHintLimitReached) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  Icons.lock_outline,
+                  size: 14,
+                  color: AppColors.onBackgroundSecondary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '本輪提示已用完，先用自己的話試著回覆。',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (hasHint && !_expanded) ...[
             const SizedBox(height: 4),
             Row(

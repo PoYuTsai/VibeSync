@@ -1097,6 +1097,35 @@ void main() {
       expect(c.currentState.errorMessage, isNotNull);
     });
 
+    test('requestHint stops locally after the fifth hint in a round', () async {
+      final c = await makeRevealed();
+      c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => hintResult(
+            cost: 1,
+            hintUsedCount: 5,
+          );
+
+      await c.requestHint();
+
+      expect(c.currentState.hintUsedCount, 5);
+      expect(c.currentState.canRequestHint, false);
+
+      await c.requestHint();
+
+      expect(api.hintCallCount, 1);
+      expect(c.currentState.errorMessage, isNull);
+    });
+
     test('requestHint explains when user must wait for the AI reply', () async {
       final c = await makeRevealed();
       c.setPracticeLearningMode(PracticeLearningMode.beginner);
