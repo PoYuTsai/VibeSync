@@ -111,6 +111,16 @@ Deno.test("parseHintResult accepts fenced JSON object", () => {
   assertEquals(result.coaching, "先接住，再輕推。");
 });
 
+Deno.test("parseHintResult accepts JSON object surrounded by provider text", () => {
+  const result = parseHintResult(
+    'Here is the JSON:\n{"warmUp":"warm reply","steady":"steady reply","coaching":"coach note"}\nHope this helps.',
+  );
+
+  assertEquals(result.replies[0].text, "warm reply");
+  assertEquals(result.replies[1].text, "steady reply");
+  assertEquals(result.coaching, "coach note");
+});
+
 Deno.test("parseHintResult rejects extra JSON keys", () => {
   assertThrows(
     () =>

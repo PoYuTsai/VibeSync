@@ -76,6 +76,21 @@ Deno.test("parseTemperatureJudgement accepts fenced JSON and integer string delt
   );
 });
 
+Deno.test("parseTemperatureJudgement accepts JSON object surrounded by provider text", () => {
+  assertEquals(
+    parseTemperatureJudgement(
+      'Result:\n{"delta":"-4","reason":"too pushy"}\nDone.',
+      30,
+    ),
+    {
+      score: 26,
+      delta: -4,
+      band: temperatureBandFor(26),
+      reason: "too pushy",
+    },
+  );
+});
+
 Deno.test("parseTemperatureJudgement rejects malformed JSON", () => {
   assertThrows(
     () => parseTemperatureJudgement(`{"delta":3`, 50),
