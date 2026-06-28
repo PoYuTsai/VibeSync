@@ -468,7 +468,8 @@ Deno.test("successful beginner judge uses JSON mode and updates temperature", as
   });
   assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.deepSeekCalls[1].jsonMode, true);
-  assert(state.deepSeekCalls[1].maxTokens <= 120);
+  assert(state.deepSeekCalls[1].maxTokens >= 160);
+  assert(state.deepSeekCalls[1].maxTokens <= 240);
   assert(state.deepSeekCalls[1].temperature <= 0.3);
   assertEquals(
     state.rpcCalls.find((call) => call.fn === "update_practice_temperature")
