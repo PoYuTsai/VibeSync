@@ -44,6 +44,16 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      - name: Apply practice beginner temperature hint migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db query --linked --file supabase/migrations/20260628120000_practice_beginner_temperature_hint.sql
+          supabase db query --linked --output csv "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'practice_chat_sessions' and column_name in ('practice_mode', 'temperature_score', 'hint_count', 'hint_generation_started_at', 'temperature_updated_at') order by column_name;"
+          supabase db query --linked --output csv "select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in ('claim_practice_hint_generation', 'record_practice_hint', 'release_practice_hint_generation', 'update_practice_temperature') order by proname;"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: Deploy Edge Functions
         # Deploy functions one-by-one instead of `supabase functions deploy --all`.
         # OCR baseline requires analyze-chat to keep --no-verify-jwt.
