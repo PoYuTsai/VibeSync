@@ -28,8 +28,8 @@ void main() {
       await tester.tap(find.text('Open Sheet'));
       await tester.pumpAndSettle();
 
-      expect(find.text('加購訊息包'), findsOneWidget);
-      expect(find.text('額度不夠用？立即加購'), findsOneWidget);
+      expect(find.text('Message Booster'), findsOneWidget);
+      expect(find.text('預覽即將推出的一次性加購包。'), findsOneWidget);
     });
 
     testWidgets('shows all package options', (tester) async {
@@ -61,16 +61,16 @@ void main() {
       expect(find.text('省 23%'), findsOneWidget);
     });
 
-    testWidgets('medium package is selected by default', (tester) async {
+    testWidgets('shows coming soon notice and CTA', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.tap(find.text('Open Sheet'));
       await tester.pumpAndSettle();
 
-      // Check purchase button shows medium package
-      expect(find.text('購買 150 則 - NT\$99'), findsOneWidget);
+      expect(find.text('加購包即將推出，敬請期待。'), findsOneWidget);
+      expect(find.text('Coming Soon'), findsOneWidget);
     });
 
-    testWidgets('can select different package', (tester) async {
+    testWidgets('can preview different package', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.tap(find.text('Open Sheet'));
       await tester.pumpAndSettle();
@@ -79,26 +79,26 @@ void main() {
       await tester.tap(find.text('300 則'));
       await tester.pumpAndSettle();
 
-      // Button should update
-      expect(find.text('購買 300 則 - NT\$179'), findsOneWidget);
+      // The sheet remains a preview while booster purchase is coming soon.
+      expect(find.text('Coming Soon'), findsOneWidget);
     });
 
-    testWidgets('tapping purchase button closes sheet', (tester) async {
+    testWidgets('tapping coming soon button closes sheet', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.tap(find.text('Open Sheet'));
       await tester.pumpAndSettle();
 
-      // Tap purchase button
-      await tester.tap(find.text('購買 150 則 - NT\$99'));
+      await tester.tap(find.text('Coming Soon'));
       await tester.pumpAndSettle();
 
       // Sheet should be closed
-      expect(find.text('加購訊息包'), findsNothing);
+      expect(find.text('Message Booster'), findsNothing);
+      expect(find.text('加購包即將推出，目前請先使用訂閱方案。'), findsOneWidget);
     });
   });
 
   group('showBoosterPurchaseSheet', () {
-    testWidgets('returns selected package on purchase', (tester) async {
+    testWidgets('returns null when coming soon CTA is tapped', (tester) async {
       BoosterPackage? result;
 
       await tester.pumpWidget(ProviderScope(
@@ -119,18 +119,19 @@ void main() {
       await tester.tap(find.text('Open Sheet'));
       await tester.pumpAndSettle();
 
-      // Select large and purchase
+      // Select large and tap the disabled purchase preview CTA.
       await tester.tap(find.text('300 則'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('購買 300 則 - NT\$179'));
+      await tester.tap(find.text('Coming Soon'));
       await tester.pumpAndSettle();
 
-      expect(result, BoosterPackage.large);
+      expect(result, isNull);
     });
 
     testWidgets('returns null when dismissed', (tester) async {
-      BoosterPackage? result = BoosterPackage.small; // Set to non-null initially
+      BoosterPackage? result =
+          BoosterPackage.small; // Set to non-null initially
 
       await tester.pumpWidget(ProviderScope(
         child: MaterialApp(
@@ -150,8 +151,9 @@ void main() {
       await tester.tap(find.text('Open Sheet'));
       await tester.pumpAndSettle();
 
-      // Dismiss by tapping outside (drag down)
-      await tester.fling(find.text('加購訊息包'), const Offset(0, 400), 500);
+      // Dismiss by dragging down.
+      await tester.fling(
+          find.text('Message Booster'), const Offset(0, 400), 500);
       await tester.pumpAndSettle();
 
       expect(result, isNull);
