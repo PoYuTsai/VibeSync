@@ -218,6 +218,25 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   void stopRevealBed() => bedStop++;
 }
 
+class _HintApi extends _NoopPracticeChatApi {
+  _HintApi(this.result);
+
+  final PracticeHintResult result;
+  int hintCalls = 0;
+
+  @override
+  Future<PracticeHintResult> requestHint({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+  }) async {
+    hintCalls++;
+    return result;
+  }
+}
+
 class _SeededPracticeChatController extends PracticeChatController {
   _SeededPracticeChatController({
     required PracticeChatState seed,
@@ -1143,6 +1162,206 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller?.text, suggestedReply);
+  });
+
+  testWidgets('hint panel can collapse and expand after a hint is generated',
+      (tester) async {
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: '妳這樣會很常得罪人吧'),
+        PracticeMessage(role: 'ai', text: '還好啊，我又不是沒事就亂噴人。'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '升溫回覆',
+          text: '那你覺得我是會得罪你，還是你已經準備好被我得罪了？',
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '穩住回覆',
+          text: '至少我對有興趣的人還是很溫柔的喔。',
+        ),
+      ],
+      hintCoaching: '她剛剛把你的吐槽反打回來，下一句要接住她的幽默。',
+      hintUsedCount: 2,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-toggle-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-hint-collapsed-summary')),
+        findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-toggle-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+  });
+
+  testWidgets('hint panel auto-expands when a generated hint arrives',
+      (tester) async {
+    const warmReply = PracticeHintReply(
+      type: PracticeHintReplyType.warmUp,
+      label: 'warm',
+      text: 'warm reply',
+    );
+    final api = _HintApi(
+      const PracticeHintResult(
+        replies: [
+          warmReply,
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: 'steady',
+            text: 'steady reply',
+          ),
+        ],
+        coaching: 'she answered the latest turn; you can reply lightly.',
+        costDeducted: 0,
+        hintUsedCount: 1,
+      ),
+    );
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'first line'),
+        PracticeMessage(role: 'ai', text: 'latest her line'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [],
+      hintCoaching: null,
+      hintUsedCount: 0,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-hint-toggle-button')),
+        findsNothing);
+
+    await controller.requestHint();
+    await tester.pumpAndSettle();
+
+    expect(api.hintCalls, 1);
+    expect(find.byKey(const ValueKey('practice-hint-toggle-button')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+    expect(find.text(warmReply.text), findsOneWidget);
+  });
+
+  testWidgets('hint coaching can open a full teaching sheet', (tester) async {
+    const longCoaching =
+        '她剛剛把你的吐槽反打回來，重點不是解釋自己沒有得罪人，而是順著她的幽默承接，讓互動保有輕鬆感，再丟一個低壓問題讓她願意繼續接話。';
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: '妳這樣會很常得罪人吧'),
+        PracticeMessage(role: 'ai', text: '還好啊，我又不是沒事就亂噴人。'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '升溫回覆',
+          text: '那你覺得我是會得罪你，還是你已經準備好被我得罪了？',
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '穩住回覆',
+          text: '至少我對有興趣的人還是很溫柔的喔。',
+        ),
+      ],
+      hintCoaching: longCoaching,
+      hintUsedCount: 2,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-coaching-more')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('practice-hint-coaching-sheet')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-hint-coaching-sheet-text')),
+        findsOneWidget);
+    expect(find.text(longCoaching), findsWidgets);
   });
 
   testWidgets('Free 換一位直接導 paywall，不打 draw API', (tester) async {

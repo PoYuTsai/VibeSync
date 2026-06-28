@@ -1384,7 +1384,7 @@ String? _temperatureSignalText(int? delta) {
   return '這輪持平';
 }
 
-class _HintCoachPanel extends StatelessWidget {
+class _HintCoachPanel extends StatefulWidget {
   const _HintCoachPanel({
     required this.state,
     required this.onRequestHint,
@@ -1396,8 +1396,35 @@ class _HintCoachPanel extends StatelessWidget {
   final ValueChanged<PracticeHintReply> onUseReply;
 
   @override
+  State<_HintCoachPanel> createState() => _HintCoachPanelState();
+}
+
+class _HintCoachPanelState extends State<_HintCoachPanel> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.state.hintReplies.isNotEmpty;
+  }
+
+  @override
+  void didUpdateWidget(covariant _HintCoachPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final receivedNewHint = widget.state.hintUsedCount !=
+            oldWidget.state.hintUsedCount ||
+        widget.state.hintReplies.length != oldWidget.state.hintReplies.length;
+    if (receivedNewHint && widget.state.hintReplies.isNotEmpty) {
+      _expanded = true;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final canRequest = state.canRequestHint && !state.hintLimitReached;
+    final hasHint = state.hintReplies.isNotEmpty ||
+        (state.hintCoaching != null && state.hintCoaching!.trim().isNotEmpty);
     return Container(
       key: const ValueKey('practice-hint-panel'),
       padding: const EdgeInsets.all(10),
@@ -1429,7 +1456,7 @@ class _HintCoachPanel extends StatelessWidget {
               ),
               TextButton.icon(
                 key: const ValueKey('practice-hint-button'),
-                onPressed: canRequest ? onRequestHint : null,
+                onPressed: canRequest ? widget.onRequestHint : null,
                 icon: state.isHintLoading
                     ? const SizedBox(
                         width: 14,
@@ -1445,20 +1472,65 @@ class _HintCoachPanel extends StatelessWidget {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),
+              if (hasHint) ...[
+                const SizedBox(width: 2),
+                IconButton(
+                  key: const ValueKey('practice-hint-toggle-button'),
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 20,
+                  ),
+                  color: AppColors.onBackgroundSecondary,
+                  tooltip: _expanded ? '收合提示' : '展開提示',
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
             ],
           ),
-          if (state.hintReplies.isNotEmpty) ...[
+          if (hasHint && !_expanded) ...[
+            const SizedBox(height: 4),
+            Row(
+              key: const ValueKey('practice-hint-collapsed-summary'),
+              children: [
+                Icon(
+                  Icons.lightbulb_outline,
+                  size: 14,
+                  color: AppColors.primaryLight,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '已產生 ${state.hintReplies.length} 則提示',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (_expanded && state.hintReplies.isNotEmpty) ...[
             const SizedBox(height: 8),
             for (var i = 0; i < state.hintReplies.length; i++) ...[
               _HintReplyButton(
                 key: ValueKey('practice-hint-reply-$i'),
                 reply: state.hintReplies[i],
-                onTap: () => onUseReply(state.hintReplies[i]),
+                onTap: () => widget.onUseReply(state.hintReplies[i]),
               ),
               if (i != state.hintReplies.length - 1) const SizedBox(height: 6),
             ],
           ],
-          if (state.hintCoaching != null &&
+          if (_expanded &&
+              state.hintCoaching != null &&
               state.hintCoaching!.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Row(
@@ -1471,20 +1543,80 @@ class _HintCoachPanel extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    state.hintCoaching!,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                      height: 1.35,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        state.hintCoaching!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.onBackgroundSecondary,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      TextButton(
+                        key: const ValueKey('practice-hint-coaching-more'),
+                        onPressed: () => _showCoachingSheet(
+                          context,
+                          state.hintCoaching!.trim(),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primaryLight,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 28),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('看完整心法'),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  void _showCoachingSheet(BuildContext context, String coaching) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.brandInk,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          key: const ValueKey('practice-hint-coaching-sheet'),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '回覆心法',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  coaching,
+                  key: const ValueKey('practice-hint-coaching-sheet-text'),
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    height: 1.55,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
