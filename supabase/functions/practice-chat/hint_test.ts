@@ -121,6 +121,31 @@ Deno.test("parseHintResult accepts JSON object surrounded by provider text", () 
   assertEquals(result.coaching, "coach note");
 });
 
+Deno.test("parseHintResult normalizes simplified Chinese fields to Traditional Chinese", () => {
+  const result = parseHintResult(JSON.stringify({
+    warmUp:
+      "\u56de\u590d\u5e26\u70b9\u8c03\u4f83\uff0c\u8ba9\u8bdd\u9898\u8f7b\u677e\u6709\u6765\u6709\u56de\u3002",
+    steady:
+      "\u5148\u63a5\u4f4f\u5bf9\u65b9\u7684\u98ce\u683c\uff0c\u4e0d\u8981\u8fc7\u4e8e\u6025\u7740\u5347\u6e29\u3002",
+    coaching:
+      "\u7528\u6237\u56de\u590d\u53ef\u4ee5\u66f4\u8f7b\u677e\uff0c\u540e\u7eed\u8bdd\u9898\u5148\u7a33\u4f4f\u53c2\u4e0e\u611f\u3002",
+  }));
+
+  const joined = [
+    result.replies[0].text,
+    result.replies[1].text,
+    result.coaching,
+  ].join("\n");
+  assertEquals(joined.includes("\u56de\u590d"), false);
+  assertEquals(joined.includes("\u98ce\u683c"), false);
+  assertEquals(joined.includes("\u8bdd\u9898"), false);
+  assertEquals(joined.includes("\u7528\u6237"), false);
+  assert(joined.includes("回覆"));
+  assert(joined.includes("風格"));
+  assert(joined.includes("話題"));
+  assert(joined.includes("使用者"));
+});
+
 Deno.test("parseHintResult rejects extra JSON keys", () => {
   assertThrows(
     () =>

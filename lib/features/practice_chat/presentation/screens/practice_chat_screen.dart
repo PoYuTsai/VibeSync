@@ -1297,7 +1297,7 @@ class _TemperatureMeter extends StatelessWidget {
         .toInt();
     final color = _temperatureColor(score);
     final delta = state.lastTemperatureDelta;
-    final reason = state.temperatureReason;
+    final signalText = _temperatureSignalText(delta);
 
     return Container(
       key: const ValueKey('practice-temperature-meter'),
@@ -1344,16 +1344,24 @@ class _TemperatureMeter extends StatelessWidget {
                   AppColors.onBackgroundSecondary.withValues(alpha: 0.14),
             ),
           ),
-          if (reason != null && reason.trim().isNotEmpty) ...[
+          if (signalText != null) ...[
             const SizedBox(height: 6),
-            Text(
-              reason,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary,
-                height: 1.25,
-              ),
+            Row(
+              children: [
+                Icon(Icons.insights, size: 14, color: color),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    signalText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
@@ -1367,6 +1375,13 @@ Color _temperatureColor(int score) {
   if (score >= 60) return AppColors.warm;
   if (score >= 40) return AppColors.warning;
   return AppColors.cold;
+}
+
+String? _temperatureSignalText(int? delta) {
+  if (delta == null) return null;
+  if (delta > 0) return '這輪有升溫';
+  if (delta < 0) return '這輪降溫，先放慢';
+  return '這輪持平';
 }
 
 class _HintCoachPanel extends StatelessWidget {

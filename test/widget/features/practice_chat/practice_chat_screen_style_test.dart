@@ -1043,6 +1043,46 @@ void main() {
     );
   });
 
+  testWidgets('temperature meter keeps feedback compact and Traditional',
+      (tester) async {
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 35,
+      lastTemperatureDelta: 3,
+      temperatureReason: '回复展现了直接有梗的风格，按住了用户关于直接的调侃，符合角色喜欢有来有回和反打的偏好，有助于升温。',
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-temperature-meter')),
+        findsOneWidget);
+    expect(find.textContaining('回复'), findsNothing);
+    expect(find.textContaining('风格'), findsNothing);
+    expect(find.text('這輪有升溫'), findsOneWidget);
+  });
+
   testWidgets('hint panel can fill the composer with a suggested reply',
       (tester) async {
     const suggestedReply = '我也想聽你多講一點。';

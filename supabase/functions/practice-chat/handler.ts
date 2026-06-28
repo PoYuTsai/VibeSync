@@ -40,8 +40,9 @@ const CHAT_TEMPERATURE = 0.9;
 const DEBRIEF_MAX_TOKENS = 800;
 const DEBRIEF_TEMPERATURE = 0.5;
 const DEBRIEF_GENERATION_ATTEMPTS = 2;
-const HINT_MAX_TOKENS = 450;
+const HINT_MAX_TOKENS = 650;
 const HINT_TEMPERATURE = 0.45;
+const HINT_GENERATION_ATTEMPTS = 2;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
@@ -447,21 +448,43 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: mapped.error }, mapped.status);
       }
 
-      let hintResult: ReturnType<typeof parseHintResult>;
+      let hintResult: ReturnType<typeof parseHintResult> | null = null;
       try {
-        const rawHint = await deps.callDeepSeek({
-          apiKey,
-          messages: buildHintMessages({
-            turns: request.turns,
-            profile: request.profile,
-            temperatureScore: ledger.temperatureScore ?? 30,
-          }),
-          maxTokens: HINT_MAX_TOKENS,
-          temperature: HINT_TEMPERATURE,
-          jsonMode: true,
-          timeoutMs: DEEPSEEK_TIMEOUT_MS,
-        });
-        hintResult = parseHintResult(rawHint);
+        let lastError: unknown;
+        for (
+          let attempt = 1;
+          attempt <= HINT_GENERATION_ATTEMPTS;
+          attempt++
+        ) {
+          try {
+            const rawHint = await deps.callDeepSeek({
+              apiKey,
+              messages: buildHintMessages({
+                turns: request.turns,
+                profile: request.profile,
+                temperatureScore: ledger.temperatureScore ?? 30,
+              }),
+              maxTokens: HINT_MAX_TOKENS,
+              temperature: HINT_TEMPERATURE,
+              jsonMode: true,
+              timeoutMs: DEEPSEEK_TIMEOUT_MS,
+            });
+            hintResult = parseHintResult(rawHint);
+            break;
+          } catch (e) {
+            lastError = e;
+            logWarn("practice_chat_hint_generation_attempt_failed", {
+              user: summarizeUser(user.id),
+              attempt,
+              error: getErrorMessage(e),
+            });
+          }
+        }
+        if (hintResult === null) {
+          throw lastError instanceof Error
+            ? lastError
+            : new Error("hint_generation_failed");
+        }
       } catch (e) {
         logWarn("practice_chat_generation_failed", {
           user: summarizeUser(user.id),

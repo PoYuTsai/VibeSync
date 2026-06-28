@@ -1,6 +1,7 @@
 import type { ChatMessage } from "./prompt.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import { clampTemperature } from "./temperature.ts";
+import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
 
 export type HintReplyType = "warm_up" | "steady";
@@ -106,7 +107,7 @@ function requiredString(
   if (trimmed.length === 0) {
     throw new Error(`hint_missing_${field}`);
   }
-  return trimmed.slice(0, maxLength);
+  return toTraditionalChinese(trimmed).slice(0, maxLength);
 }
 
 export function parseHintResult(raw: string): PracticeHintResult {
