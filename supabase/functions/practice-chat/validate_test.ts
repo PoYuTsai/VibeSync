@@ -123,6 +123,35 @@ Deno.test("invalid temperatureScore throws invalid_temperatureScore", () => {
   }
 });
 
+Deno.test("chat accepts appliedHintType for exact applied beginner hints", () => {
+  for (const appliedHintType of ["warm_up", "steady"]) {
+    const r = validateRequest({
+      ...chatReq([{ role: "user", text: "hint reply" }]),
+      practiceMode: "beginner",
+      appliedHintType,
+    });
+    assertEquals(
+      (r as { appliedHintType?: unknown }).appliedHintType,
+      appliedHintType,
+    );
+  }
+});
+
+Deno.test("invalid appliedHintType throws invalid_appliedHintType", () => {
+  for (const appliedHintType of ["warmUp", "hot", "", null, 1]) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...chatReq([{ role: "user", text: "hint reply" }]),
+          practiceMode: "beginner",
+          appliedHintType,
+        }),
+      Error,
+      "invalid_appliedHintType",
+    );
+  }
+});
+
 Deno.test("mode hint is accepted when latest turn is AI", () => {
   const r = validateRequest(
     hintReq([
@@ -204,7 +233,11 @@ Deno.test("turns 非陣列 → invalid_turns", () => {
 });
 
 Deno.test("turns 空陣列 → invalid_turns_empty", () => {
-  assertThrows(() => validateRequest(chatReq([])), Error, "invalid_turns_empty");
+  assertThrows(
+    () => validateRequest(chatReq([])),
+    Error,
+    "invalid_turns_empty",
+  );
 });
 
 Deno.test("turns 過多 → invalid_turns_too_many", () => {

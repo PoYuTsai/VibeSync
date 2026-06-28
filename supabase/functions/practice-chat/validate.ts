@@ -27,6 +27,8 @@ export interface PracticeTurn {
   text: string;
 }
 
+export type AppliedHintType = "warm_up" | "steady";
+
 export interface PracticeChatRequest {
   mode: PracticeMode;
   practiceMode: PracticeLearningMode;
@@ -38,6 +40,8 @@ export interface PracticeChatRequest {
   roundIndex: number;
   /** local 顯示用 thread id；僅供 log，絕不當作授權身份。 */
   visiblePracticeThreadId?: string;
+  /** 使用者原封不動套用的新手 Hint 類型；只作學習評分保護，不作授權。 */
+  appliedHintType?: AppliedHintType;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -78,6 +82,14 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     temperatureScore = raw.temperatureScore;
   }
 
+  let appliedHintType: AppliedHintType | undefined;
+  if (raw.appliedHintType !== undefined) {
+    if (raw.appliedHintType !== "warm_up" && raw.appliedHintType !== "steady") {
+      throw new Error("invalid_appliedHintType");
+    }
+    appliedHintType = raw.appliedHintType;
+  }
+
   const sessionId = raw.sessionId;
   if (
     typeof sessionId !== "string" ||
@@ -95,12 +107,16 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   const turns: PracticeTurn[] = rawTurns.map((t, i) => {
     if (!isRecord(t)) throw new Error(`invalid_turn_${i}`);
     const role = t.role;
-    if (role !== "user" && role !== "ai") throw new Error(`invalid_turn_role_${i}`);
+    if (role !== "user" && role !== "ai") {
+      throw new Error(`invalid_turn_role_${i}`);
+    }
     const text = t.text;
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new Error(`invalid_turn_text_${i}`);
     }
-    if (text.length > MAX_TEXT_LEN) throw new Error(`invalid_turn_text_len_${i}`);
+    if (text.length > MAX_TEXT_LEN) {
+      throw new Error(`invalid_turn_text_len_${i}`);
+    }
     return { role, text };
   });
 
@@ -170,6 +186,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     profile,
     roundIndex,
     visiblePracticeThreadId,
+    appliedHintType,
   };
 }
 

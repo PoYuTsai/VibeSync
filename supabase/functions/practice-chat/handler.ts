@@ -186,6 +186,18 @@ function updateTemperatureResultFailed(data: unknown): boolean {
   return isPlainObject(row) && row.updated === false;
 }
 
+function protectAppliedHintTemperature(
+  judgement: TemperatureJudgement,
+  currentTemperature: number,
+  appliedHintType: string | undefined,
+): TemperatureJudgement {
+  if (!appliedHintType || judgement.delta >= 0) return judgement;
+  return {
+    ...applyTemperatureDelta(currentTemperature, 0),
+    reason: "套用提示回覆，維持不降溫",
+  };
+}
+
 async function judgeTemperature(opts: {
   deps: PracticeChatHandlerDeps;
   apiKey: string;
@@ -215,12 +227,17 @@ async function judgeTemperature(opts: {
       rawJudge,
       opts.currentTemperature,
     );
+    const protectedJudgement = protectAppliedHintTemperature(
+      judgement,
+      opts.currentTemperature,
+      opts.request.appliedHintType,
+    );
     const { data, error } = await opts.supabase.rpc(
       "update_practice_temperature",
       {
         p_user_id: opts.userId,
         p_session_id: opts.sessionId,
-        p_temperature_score: judgement.score,
+        p_temperature_score: protectedJudgement.score,
       },
     );
     if (error) {
@@ -229,7 +246,7 @@ async function judgeTemperature(opts: {
     if (updateTemperatureResultFailed(data)) {
       throw new Error("temperature_update_not_applied");
     }
-    return judgement;
+    return protectedJudgement;
   } catch (e) {
     logWarn("practice_chat_temperature_judge_failed", {
       user: summarizeUser(opts.userId),

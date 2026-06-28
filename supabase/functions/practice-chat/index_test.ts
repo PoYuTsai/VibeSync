@@ -525,6 +525,87 @@ Deno.test("successful beginner judge uses JSON mode and updates temperature", as
   );
 });
 
+Deno.test("exact applied warm-up hint never lowers beginner temperature", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        hint_count: 1,
+      }),
+      deepSeekReplies: ["AI reply", `{"delta":-3,"reason":"too fast"}`],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "warm_up",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature, {
+    score: 30,
+    delta: 0,
+    band: temperatureBandFor(30),
+    reason: "套用提示回覆，維持不降溫",
+  });
+  assertEquals(temperatureUpdateCalls(state)[0].params.p_temperature_score, 30);
+});
+
+Deno.test("exact applied steady hint never lowers beginner temperature", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        hint_count: 1,
+      }),
+      deepSeekReplies: ["AI reply", `{"delta":-3,"reason":"too blunt"}`],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature, {
+    score: 30,
+    delta: 0,
+    band: temperatureBandFor(30),
+    reason: "套用提示回覆，維持不降溫",
+  });
+  assertEquals(temperatureUpdateCalls(state)[0].params.p_temperature_score, 30);
+});
+
+Deno.test("exact applied hint keeps positive temperature judgement", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        hint_count: 1,
+      }),
+      deepSeekReplies: ["AI reply", `{"delta":4,"reason":"有自然延伸"}`],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "warm_up",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature, {
+    score: 34,
+    delta: 4,
+    band: temperatureBandFor(34),
+    reason: "有自然延伸",
+  });
+  assertEquals(temperatureUpdateCalls(state)[0].params.p_temperature_score, 34);
+});
+
 Deno.test("debrief retries a malformed provider card once before returning the card", async () => {
   const { response, json, state } = await run({
     ledger: ledger({ ai_count: 1, charged: true }),

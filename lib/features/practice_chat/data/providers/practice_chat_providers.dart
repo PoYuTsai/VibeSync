@@ -592,7 +592,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   /// 送出一則使用者訊息並取得 AI 回覆。樂觀顯示使用者泡泡；任何失敗都回滾。
   /// 還沒翻牌（非 revealed）一律擋下並提示先翻開今日對象。
-  Future<void> sendMessage(String text) async {
+  Future<void> sendMessage(
+    String text, {
+    PracticeHintReplyType? appliedHintType,
+  }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     if (!state.isRevealed || state.girl == null) {
@@ -634,6 +637,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         visiblePracticeThreadId: state.visiblePracticeThreadId,
         practiceMode: learningMode,
         temperatureScore: temperatureScore,
+        appliedHintType: learningMode == PracticeLearningMode.beginner
+            ? appliedHintType
+            : null,
       );
       final withAi = [
         ...optimistic,

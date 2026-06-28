@@ -191,6 +191,54 @@ void main() {
       expect(result.temperature?.reason, '有具體延伸話題');
     });
 
+    test('sendMessage includes appliedHintType when exact hint reply is used',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintType: PracticeHintReplyType.warmUp,
+      );
+
+      expect(captured.body?['appliedHintType'], 'warm_up');
+    });
+
+    test('sendMessage omits appliedHintType when user did not apply hint',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+      );
+
+      expect(captured.body?.containsKey('appliedHintType'), false);
+    });
+
+    test('sendMessage omits appliedHintType outside beginner mode', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.standard,
+        appliedHintType: PracticeHintReplyType.warmUp,
+      );
+
+      expect(captured.body?.containsKey('appliedHintType'), false);
+    });
+
     test('429 → PracticeQuotaExceededException 帶剩餘額度', () async {
       final svc = serviceReturning(429, {
         'message': '本月額度已用完',

@@ -252,6 +252,7 @@ class PracticeChatApiService {
     String? visiblePracticeThreadId,
     PracticeLearningMode practiceMode = PracticeLearningMode.standard,
     int? temperatureScore,
+    PracticeHintReplyType? appliedHintType,
   }) async {
     final response = await _invoke(
       _functionName,
@@ -263,6 +264,9 @@ class PracticeChatApiService {
         'turns': turns.map((t) => t.toJson()).toList(),
         'roundIndex': roundIndex,
         if (temperatureScore != null) 'temperatureScore': temperatureScore,
+        if (practiceMode == PracticeLearningMode.beginner &&
+            appliedHintType != null)
+          'appliedHintType': _hintReplyTypeWireName(appliedHintType),
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
       },
@@ -485,6 +489,13 @@ class PracticeChatApiService {
       'warm_up' => PracticeHintReplyType.warmUp,
       'steady' => PracticeHintReplyType.steady,
       _ => null,
+    };
+  }
+
+  String _hintReplyTypeWireName(PracticeHintReplyType type) {
+    return switch (type) {
+      PracticeHintReplyType.warmUp => 'warm_up',
+      PracticeHintReplyType.steady => 'steady',
     };
   }
 

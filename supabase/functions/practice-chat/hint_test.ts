@@ -98,6 +98,24 @@ Deno.test("buildHintMessages anchors hint coaching to the latest assistant reply
   assert(text.includes("coaching 用「她」指練習對象，用「你」指使用者"));
 });
 
+Deno.test("buildHintMessages makes warm-up replies safe to apply without direct escalation", () => {
+  const text = allPromptText();
+
+  for (
+    const required of [
+      "可原封不動送出",
+      "不要直接邀約",
+      "不要提出見面",
+      "不要約出來",
+      "不要一起熬夜",
+      "穩住回覆必須不扣分",
+      "升溫回覆也不能讓溫度扣分",
+    ]
+  ) {
+    assert(text.includes(required), required);
+  }
+});
+
 Deno.test("parseHintResult accepts valid JSON and returns exactly two labeled replies", () => {
   const result = parseHintResult(JSON.stringify({
     warmUp: "  哈哈辛苦了，那我先給你一個下班後的小獎勵：今天不問難題  ",

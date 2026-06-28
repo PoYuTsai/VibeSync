@@ -34,6 +34,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
   bool _confirmPaidNewPartnerSpend = false;
+  PracticeHintReply? _appliedHintDraft;
 
   @override
   void dispose() {
@@ -57,8 +58,20 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       purposeText: AiDataSharingConsent.practicePurposeText,
     );
     if (!consented || !mounted) return;
+    final appliedHintDraft = _appliedHintDraft;
+    final isExactAppliedHint =
+        appliedHintDraft != null && appliedHintDraft.text.trim() == text;
+    final appliedHintType =
+        isExactAppliedHint ? appliedHintDraft.type : null;
     _controller.clear();
-    ref.read(practiceChatControllerProvider.notifier).sendMessage(text);
+    await ref
+        .read(practiceChatControllerProvider.notifier)
+        .sendMessage(text, appliedHintType: appliedHintType);
+    if (!mounted) return;
+    final restoredSameText =
+        ref.read(practiceChatControllerProvider).restoreText == text;
+    _appliedHintDraft =
+        isExactAppliedHint && restoredSameText ? appliedHintDraft : null;
   }
 
   Future<void> _requestHint() async {
@@ -275,6 +288,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                   .read(practiceChatControllerProvider.notifier)
                   .endPractice(),
               onRequestHint: () => _requestHint(),
+              onHintApplied: (reply) => _appliedHintDraft = reply,
               onFinish: () => context.pop(),
               onContinueSamePartner: _continueSamePartner,
               onNewPartner: _startNewPartner,
@@ -1129,6 +1143,7 @@ class _BottomBar extends StatelessWidget {
     required this.onSend,
     required this.onEndPractice,
     required this.onRequestHint,
+    required this.onHintApplied,
     required this.onFinish,
     required this.onContinueSamePartner,
     required this.onNewPartner,
@@ -1141,6 +1156,7 @@ class _BottomBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onEndPractice;
   final VoidCallback onRequestHint;
+  final ValueChanged<PracticeHintReply> onHintApplied;
   final VoidCallback onFinish;
   final VoidCallback onContinueSamePartner;
   final VoidCallback onNewPartner;
@@ -1204,6 +1220,7 @@ class _BottomBar extends StatelessWidget {
       inputController.selection = TextSelection.collapsed(
         offset: inputController.text.length,
       );
+      onHintApplied(reply);
       inputFocusNode.requestFocus();
     }
 
