@@ -285,15 +285,21 @@ function shouldProtectAppliedHint(opts: {
   classification: TurnClassification;
 }): boolean {
   if (!opts.request.appliedHintType) return false;
-  const source = opts.request.appliedHintText;
-  if (!source) return true;
-  if (
-    normalizedHintText(source) ===
-      normalizedHintText(lastUserText(opts.request.turns))
-  ) {
+  if (isExactAppliedHint(opts.request)) {
     return true;
   }
   return opts.classification.hintAlignment === "aligned";
+}
+
+function isExactAppliedHint(
+  request: ReturnType<typeof validateRequest>,
+): boolean {
+  if (!request.appliedHintType) return false;
+  const source = request.appliedHintText;
+  if (!source) return true;
+  return normalizedHintText(source) === normalizedHintText(
+    lastUserText(request.turns),
+  );
 }
 
 function protectAppliedHintTemperature(
@@ -410,7 +416,26 @@ async function judgeLearningState(opts: {
   request: ReturnType<typeof validateRequest>;
   reply: string;
 }): Promise<LearningJudgement> {
-  const fallback = fallbackLearningJudgement(
+  const exactAppliedHintType = isExactAppliedHint(opts.request)
+    ? opts.request.appliedHintType
+    : undefined;
+  const protectExactAppliedHintFallback = (
+    judgement: LearningJudgement,
+    currentTemperature: number,
+    currentFamiliarity: number,
+  ) =>
+    protectAppliedHintTemperature(
+      judgement,
+      currentTemperature,
+      currentFamiliarity,
+      exactAppliedHintType,
+    );
+  const baseFallback = fallbackLearningJudgement(
+    opts.currentTemperature,
+    opts.currentFamiliarity,
+  );
+  const fallback = protectExactAppliedHintFallback(
+    baseFallback,
     opts.currentTemperature,
     opts.currentFamiliarity,
   );
@@ -535,7 +560,12 @@ async function judgeLearningState(opts: {
         fallbackUpdate.temperatureScore !== null &&
         fallbackUpdate.familiarityScore !== null
       ) {
-        const retryFallback = fallbackLearningJudgement(
+        const retryBaseFallback = fallbackLearningJudgement(
+          fallbackUpdate.temperatureScore,
+          fallbackUpdate.familiarityScore,
+        );
+        const retryFallback = protectExactAppliedHintFallback(
+          retryBaseFallback,
           fallbackUpdate.temperatureScore,
           fallbackUpdate.familiarityScore,
         );

@@ -15,6 +15,12 @@ const dualAxisMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const dualAxisHotfixMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260629153500_fix_practice_learning_state_update_alias.sql",
+    import.meta.url,
+  ),
+);
 
 function requiredIndex(snippet: string): number {
   const index = migration.indexOf(snippet);
@@ -78,8 +84,54 @@ function dualAxisFunctionBody(name: string): string {
     : dualAxisMigration.slice(start);
 }
 
+function requiredDualAxisHotfixIndex(snippet: string): number {
+  const index = dualAxisHotfixMigration.indexOf(snippet);
+  assert(index >= 0, `Dual-axis hotfix migration must contain: ${snippet}`);
+  return index;
+}
+
+function dualAxisHotfixFunctionBody(name: string): string {
+  const start = requiredDualAxisHotfixIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = dualAxisHotfixMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? dualAxisHotfixMigration.slice(start, nextFunction)
+    : dualAxisHotfixMigration.slice(start);
+}
+
 function compactSql(value: string): string {
   return value.replace(/\s+/g, " ");
+}
+
+function assertLearningUpdateRpcAppliesGuardedDeltas(body: string): void {
+  const compactBody = compactSql(body);
+
+  assert(
+    body.includes(
+      "RETURNS TABLE(updated BOOLEAN, temperature_score INTEGER, familiarity_score INTEGER)",
+    ),
+  );
+  assert(compactBody.includes("p_expected_temperature_score INTEGER"));
+  assert(compactBody.includes("p_expected_familiarity_score INTEGER"));
+  assert(compactBody.includes("p_temperature_delta INTEGER"));
+  assert(compactBody.includes("p_familiarity_delta INTEGER"));
+  assert(
+    compactBody.includes("UPDATE public.practice_chat_sessions AS s SET"),
+  );
+  assert(body.includes("AND s.practice_mode = 'beginner'"));
+  assert(body.includes("AND s.temperature_score = v_expected_temperature"));
+  assert(body.includes("AND s.familiarity_score = v_expected_familiarity"));
+  assert(compactBody.includes("SET temperature_score = v_new_temperature"));
+  assert(body.includes("familiarity_score = v_new_familiarity"));
+  assert(body.includes("updated := v_rows > 0;"));
+  assert(compactBody.includes("IF updated THEN"));
+  assert(
+    compactBody.includes("SELECT s.temperature_score, s.familiarity_score"),
+  );
 }
 
 Deno.test("ledger RPCs reject null quota charge flags before computing did_charge", () => {
@@ -276,28 +328,16 @@ Deno.test("dual-axis readiness RPC exists for pre-provider schema gate", () => {
 
 Deno.test("dual-axis learning update RPC applies guarded deltas atomically", () => {
   const body = dualAxisFunctionBody("update_practice_learning_state");
-  const compactBody = compactSql(body);
-
-  assert(
-    body.includes(
-      "RETURNS TABLE(updated BOOLEAN, temperature_score INTEGER, familiarity_score INTEGER)",
-    ),
-  );
-  assert(compactBody.includes("p_expected_temperature_score INTEGER"));
-  assert(compactBody.includes("p_expected_familiarity_score INTEGER"));
-  assert(compactBody.includes("p_temperature_delta INTEGER"));
-  assert(compactBody.includes("p_familiarity_delta INTEGER"));
-  assert(body.includes("AND practice_mode = 'beginner'"));
-  assert(body.includes("AND temperature_score = v_expected_temperature"));
-  assert(body.includes("AND familiarity_score = v_expected_familiarity"));
-  assert(compactBody.includes("SET temperature_score = v_new_temperature"));
-  assert(body.includes("familiarity_score = v_new_familiarity"));
-  assert(body.includes("updated := v_rows > 0;"));
-  assert(compactBody.includes("IF updated THEN"));
-  assert(
-    compactBody.includes("SELECT s.temperature_score, s.familiarity_score"),
-  );
+  assertLearningUpdateRpcAppliesGuardedDeltas(body);
   requiredDualAxisIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER)",
+  );
+});
+
+Deno.test("dual-axis hotfix migration keeps learning update guard aliases", () => {
+  const body = dualAxisHotfixFunctionBody("update_practice_learning_state");
+  assertLearningUpdateRpcAppliesGuardedDeltas(body);
+  requiredDualAxisHotfixIndex(
     "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER)",
   );
 });

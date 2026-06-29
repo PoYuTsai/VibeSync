@@ -673,6 +673,50 @@ Deno.test("turn classifier fallback retries stale guarded learning updates", asy
   );
 });
 
+Deno.test("exact applied hint keeps warm-up floor when fallback retry sees stale state", async () => {
+  const exactHint = "你剛剛說今天很累，是工作很多嗎？";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 55,
+        familiarity_score: 42,
+        hint_count: 1,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 58,
+              familiarity_score: 50,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: ["AI reply", new Error("classifier down")],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "warm_up",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 61);
+  assertEquals(json.temperature.delta, 3);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_temperature_score,
+    58,
+  );
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 3);
+});
+
 Deno.test("successful beginner classifier uses JSON mode and updates learning state", async () => {
   const { response, json, state } = await run({
     ledger: ledger({
@@ -744,6 +788,70 @@ Deno.test("exact applied warm-up hint visibly raises protected beginner temperat
   assertNoPublicFamiliarityFields(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 3);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+});
+
+Deno.test("exact applied hint keeps warm-up floor when classifier falls back", async () => {
+  const exactHint = "你剛剛說今天很累，是工作很多嗎？";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"flirt","quality":"bad","overstep":true}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "warm_up",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 33);
+  assertEquals(json.temperature.delta, 3);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 3);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+});
+
+Deno.test("exact applied hint keeps steady floor when classifier falls back", async () => {
+  const exactHint = "聽起來真的很滿，我懂那種一整天被工作追著跑的感覺。";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"flirt","quality":"bad","overstep":true}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 32);
+  assertEquals(json.temperature.delta, 2);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 2);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
 });
 
 Deno.test("exact applied steady hint visibly raises protected beginner temperature", async () => {

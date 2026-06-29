@@ -235,16 +235,16 @@ BEGIN
   v_new_temperature := GREATEST(0, LEAST(100, v_expected_temperature + v_temperature_delta));
   v_new_familiarity := GREATEST(0, LEAST(100, v_expected_familiarity + v_familiarity_delta));
 
-  UPDATE public.practice_chat_sessions
+  UPDATE public.practice_chat_sessions AS s
   SET temperature_score = v_new_temperature,
       familiarity_score = v_new_familiarity,
       temperature_updated_at = now(),
       updated_at = now()
-  WHERE user_id = p_user_id
-    AND session_id = p_session_id
-    AND practice_mode = 'beginner'
-    AND temperature_score = v_expected_temperature
-    AND familiarity_score = v_expected_familiarity;
+  WHERE s.user_id = p_user_id
+    AND s.session_id = p_session_id
+    AND s.practice_mode = 'beginner'
+    AND s.temperature_score = v_expected_temperature
+    AND s.familiarity_score = v_expected_familiarity;
 
   GET DIAGNOSTICS v_rows = ROW_COUNT;
 
