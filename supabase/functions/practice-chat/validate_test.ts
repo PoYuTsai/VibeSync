@@ -172,6 +172,33 @@ Deno.test("chat accepts appliedHintType for exact applied beginner hints", () =>
   }
 });
 
+Deno.test("chat accepts appliedHintText when a hint draft was edited", () => {
+  const r = validateRequest({
+    ...chatReq([{ role: "user", text: "edited hint reply" }]),
+    practiceMode: "beginner",
+    appliedHintType: "steady",
+    appliedHintText: "original hint reply",
+  });
+
+  assertEquals(
+    (r as { appliedHintText?: unknown }).appliedHintText,
+    "original hint reply",
+  );
+});
+
+Deno.test("appliedHintText without appliedHintType throws invalid_appliedHintText", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...chatReq([{ role: "user", text: "edited hint reply" }]),
+        practiceMode: "beginner",
+        appliedHintText: "original hint reply",
+      }),
+    Error,
+    "invalid_appliedHintText",
+  );
+});
+
 Deno.test("invalid appliedHintType throws invalid_appliedHintType", () => {
   for (const appliedHintType of ["warmUp", "hot", "", null, 1]) {
     assertThrows(
@@ -183,6 +210,31 @@ Deno.test("invalid appliedHintType throws invalid_appliedHintType", () => {
         }),
       Error,
       "invalid_appliedHintType",
+    );
+  }
+});
+
+Deno.test("invalid appliedHintText throws invalid_appliedHintText", () => {
+  for (
+    const appliedHintText of [
+      "",
+      "   ",
+      "x".repeat(501),
+      "S__42795075.jpg",
+      null,
+      1,
+    ]
+  ) {
+    assertThrows(
+      () =>
+        validateRequest({
+          ...chatReq([{ role: "user", text: "hint reply" }]),
+          practiceMode: "beginner",
+          appliedHintType: "warm_up",
+          appliedHintText,
+        }),
+      Error,
+      "invalid_appliedHintText",
     );
   }
 });

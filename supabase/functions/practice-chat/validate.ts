@@ -19,6 +19,8 @@ export const MAX_TURNS = 130;
 export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
 export const MAX_SESSION_ID_LEN = 64;
 export const MAX_VISIBLE_THREAD_ID_LEN = 128;
+const RAW_IMAGE_FILENAME_PATTERN =
+  /\b(?:S__\d+|IMG_\d+|[^\\/\s]+\.(?:jpe?g|png|webp|heic))\b/i;
 
 export type TurnRole = "user" | "ai";
 
@@ -43,6 +45,7 @@ export interface PracticeChatRequest {
   visiblePracticeThreadId?: string;
   /** 使用者原封不動套用的新手 Hint 類型；只作學習評分保護，不作授權。 */
   appliedHintType?: AppliedHintType;
+  appliedHintText?: string;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -102,6 +105,20 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
       throw new Error("invalid_appliedHintType");
     }
     appliedHintType = raw.appliedHintType;
+  }
+
+  let appliedHintText: string | undefined;
+  if (raw.appliedHintText !== undefined) {
+    if (
+      appliedHintType === undefined ||
+      typeof raw.appliedHintText !== "string" ||
+      raw.appliedHintText.trim().length === 0 ||
+      raw.appliedHintText.length > MAX_TEXT_LEN ||
+      RAW_IMAGE_FILENAME_PATTERN.test(raw.appliedHintText)
+    ) {
+      throw new Error("invalid_appliedHintText");
+    }
+    appliedHintText = raw.appliedHintText.trim();
   }
 
   const sessionId = raw.sessionId;
@@ -202,6 +219,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     roundIndex,
     visiblePracticeThreadId,
     appliedHintType,
+    appliedHintText,
   };
 }
 

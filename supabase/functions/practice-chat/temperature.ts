@@ -10,6 +10,8 @@ export type RelationshipStage =
   | "flirt_allowed";
 export type TurnCategory = "event" | "personal" | "flirt";
 export type TurnQuality = "good" | "ordinary" | "bad";
+export type TurnImpact = "minor" | "medium" | "strong";
+export type HintAlignment = "none" | "aligned" | "diverged";
 
 export interface TemperatureJudgement {
   score: number;
@@ -31,7 +33,9 @@ export interface LearningState {
 export interface TurnClassification {
   category: TurnCategory;
   quality: TurnQuality;
+  impact: TurnImpact;
   overstep: boolean;
+  hintAlignment: HintAlignment;
 }
 
 export interface LearningJudgement extends TemperatureJudgement {
@@ -46,9 +50,13 @@ const MIN_TEMPERATURE = 0;
 const MAX_TEMPERATURE = 100;
 const MIN_DELTA = -8;
 const MAX_DELTA = 8;
+const MIN_HEAT_DELTA = -12;
+const MAX_HEAT_DELTA = 8;
 const MIN_LEARNING_DELTA = -12;
 const MAX_LEARNING_DELTA = 12;
 const MAX_REASON_LENGTH = 36;
+const RAW_IMAGE_FILENAME_PATTERN =
+  /\b(?:S__\d+|IMG_\d+|[^\\/\s]+\.(?:jpe?g|png|webp|heic))\b/gi;
 
 const HEAT_MATRIX: Record<RelationshipStage, Record<TurnCategory, number>> = {
   building_familiarity: { event: 3, personal: -2, flirt: -8 },
@@ -140,12 +148,37 @@ function clampLearningDelta(delta: number): number {
   );
 }
 
-function scaleByQuality(base: number, quality: TurnQuality): number {
+function roundNonZero(delta: number): number {
+  const rounded = Math.round(delta);
+  if (rounded !== 0) return rounded;
+  if (delta > 0) return 1;
+  if (delta < 0) return -1;
+  return 0;
+}
+
+function clampHeatDelta(delta: number): number {
+  if (!Number.isFinite(delta)) return 1;
+  return Math.min(
+    MAX_HEAT_DELTA,
+    Math.max(MIN_HEAT_DELTA, roundNonZero(delta)),
+  );
+}
+
+function impactMultiplier(impact: TurnImpact | undefined): number {
+  return { minor: 0.6, medium: 1, strong: 1.4 }[impact ?? "medium"];
+}
+
+function scaleByQuality(
+  base: number,
+  quality: TurnQuality,
+  impact: TurnImpact | undefined,
+  clamp: (delta: number) => number,
+): number {
   if (base === 0) return 0;
   const multiplier = base > 0
     ? { good: 1.3, ordinary: 1, bad: 0.5 }[quality]
     : { good: 0.3, ordinary: 1, bad: 1.5 }[quality];
-  return clampLearningDelta(base * multiplier);
+  return clamp(base * multiplier * impactMultiplier(impact));
 }
 
 function learningReason(
@@ -180,10 +213,14 @@ export function applyLearningClassification(
   let heatDelta = scaleByQuality(
     HEAT_MATRIX[currentStage.stage][classification.category],
     classification.quality,
+    classification.impact,
+    clampHeatDelta,
   );
   let familiarityDelta = scaleByQuality(
     FAMILIARITY_MATRIX[currentStage.stage][classification.category],
     classification.quality,
+    classification.impact,
+    clampLearningDelta,
   );
 
   if (classification.overstep) {
@@ -191,7 +228,7 @@ export function applyLearningClassification(
     familiarityDelta = Math.min(familiarityDelta, -6);
   }
 
-  heatDelta = clampLearningDelta(heatDelta);
+  heatDelta = clampHeatDelta(heatDelta);
   familiarityDelta = clampLearningDelta(familiarityDelta);
   const score = clampTemperature(currentHeat + heatDelta);
   const familiarityScore = clampTemperature(
@@ -266,6 +303,14 @@ function parseQuality(value: unknown): TurnQuality {
   throw new Error("turn classification missing quality");
 }
 
+function parseImpact(value: unknown): TurnImpact {
+  if (value === undefined) return "medium";
+  if (value === "minor" || value === "medium" || value === "strong") {
+    return value;
+  }
+  throw new Error("turn classification missing impact");
+}
+
 function parseOverstep(value: unknown): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -273,22 +318,51 @@ function parseOverstep(value: unknown): boolean {
   throw new Error("turn classification missing overstep");
 }
 
-export function parseTurnClassification(raw: string): TurnClassification {
+function parseHintAlignment(value: unknown): HintAlignment {
+  if (value === undefined) return "none";
+  if (value === "none" || value === "aligned" || value === "diverged") {
+    return value;
+  }
+  throw new Error("turn classification missing hintAlignment");
+}
+
+function scrubRawImageFilenames(text: string): string {
+  return text.replace(RAW_IMAGE_FILENAME_PATTERN, "[image concept omitted]");
+}
+
+export function parseTurnClassification(
+  raw: string,
+  opts: { requireImpact?: boolean; requireHintAlignment?: boolean } = {},
+): TurnClassification {
   const parsed = JSON.parse(extractJsonObject(raw));
   if (!isRecord(parsed)) {
     throw new Error("turn classification must be an object");
   }
-  const allowedKeys = new Set(["category", "quality", "overstep"]);
+  const allowedKeys = new Set([
+    "category",
+    "quality",
+    "impact",
+    "overstep",
+    "hintAlignment",
+  ]);
   for (const key of Object.keys(parsed)) {
     if (!allowedKeys.has(key)) {
       throw new Error("turn classification has extra fields");
     }
   }
+  if (opts.requireImpact && parsed.impact === undefined) {
+    throw new Error("turn classification missing impact");
+  }
+  if (opts.requireHintAlignment && parsed.hintAlignment === undefined) {
+    throw new Error("turn classification missing hintAlignment");
+  }
 
   return {
     category: parseCategory(parsed.category),
     quality: parseQuality(parsed.quality),
+    impact: parseImpact(parsed.impact),
     overstep: parseOverstep(parsed.overstep),
+    hintAlignment: parseHintAlignment(parsed.hintAlignment),
   };
 }
 
@@ -297,23 +371,31 @@ export function buildTurnClassifierMessages(opts: {
   profile: PracticeProfile;
   heatScore: number;
   familiarityScore: number;
+  appliedHintType?: string;
+  appliedHintText?: string;
 }): ChatMessage[] {
-  const latest = lastUserTurn(opts.turns)?.text ?? "";
+  const latest = scrubRawImageFilenames(lastUserTurn(opts.turns)?.text ?? "");
   const stage = relationshipStageFor(opts.familiarityScore, opts.heatScore);
+  const hintContext = opts.appliedHintText
+    ? `\nappliedHintType: ${opts.appliedHintType ?? "unknown"}\noriginalHint: ${
+      scrubRawImageFilenames(opts.appliedHintText)
+    }`
+    : "\nappliedHintType: none";
   return [
     {
       role: "system",
       content:
         "你是 VibeSync 練習室分類器。只分類最後一句 user 訊息，不要替使用者寫回覆，也不要評估整段對話。\n" +
         "分類維度：事件 / 個人 / 曖昧。英文值只能是 event、personal、flirt。\n" +
-        "品質維度：good、ordinary、bad。overstep 表示這句是否越級到目前關係階段還承受不了。\n" +
+        "品質維度：good、ordinary、bad。impact 表示這句影響強度，值只能是 minor、medium、strong。overstep 表示這句是否越級到目前關係階段還承受不了。\n" +
         "男女對話深度只抽象成事件→個人→曖昧三階段；不要讀取、要求或引用任何圖片檔。\n" +
-        '只輸出 JSON：{"category":"event","quality":"ordinary","overstep":false}',
+        "hintAlignment 只在有 originalHint 時判斷；沿著原 Hint 大方向用 aligned，改到不同語意或越級用 diverged，沒 Hint 用 none。\n" +
+        '只輸出 JSON：{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"none"}',
     },
     {
       role: "user",
       content: `目前抽象關係階段：${stage.label}\n` +
-        `只分類最後一句 user 訊息：${latest}`,
+        `只分類最後一句 user 訊息：${latest}${hintContext}`,
     },
   ];
 }

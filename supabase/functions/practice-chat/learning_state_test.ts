@@ -40,6 +40,42 @@ Deno.test("applyLearningClassification rewards on-stage event replies in the fam
   assert(result.reason.includes("建立熟悉"));
 });
 
+Deno.test("applyLearningClassification keeps low-impact ordinary chat visible", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+
+  const result = applyLearningClassification(
+    { heatScore: 30, familiarityScore: 10 },
+    {
+      category: "event",
+      quality: "ordinary",
+      impact: "minor",
+      overstep: false,
+      hintAlignment: "none",
+    },
+  );
+
+  assertEquals(result.score, 32);
+  assertEquals(result.delta, 2);
+});
+
+Deno.test("applyLearningClassification clamps strong positive heat to visible max", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+
+  const result = applyLearningClassification(
+    { heatScore: 55, familiarityScore: 60 },
+    {
+      category: "flirt",
+      quality: "good",
+      impact: "strong",
+      overstep: false,
+      hintAlignment: "none",
+    },
+  );
+
+  assertEquals(result.delta, 8);
+  assertEquals(result.score, 63);
+});
+
 Deno.test("applyLearningClassification penalizes overstepping flirt before familiarity is ready", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
 
@@ -83,7 +119,26 @@ Deno.test("parseTurnClassification accepts classifier JSON and normalizes fields
     {
       category: "personal",
       quality: "good",
+      impact: "medium",
       overstep: false,
+      hintAlignment: "none",
+    },
+  );
+});
+
+Deno.test("parseTurnClassification accepts impact and hint alignment", () => {
+  const parseTurnClassification = requireFn("parseTurnClassification");
+
+  assertEquals(
+    parseTurnClassification(
+      '{"category":"event","quality":"ordinary","impact":"strong","overstep":false,"hintAlignment":"aligned"}',
+    ),
+    {
+      category: "event",
+      quality: "ordinary",
+      impact: "strong",
+      overstep: false,
+      hintAlignment: "aligned",
     },
   );
 });
@@ -143,7 +198,9 @@ Deno.test("buildTurnClassifierMessages classifies only the latest user sentence 
   assert(text.includes("personal"));
   assert(text.includes("flirt"));
   assert(
-    text.includes('{"category":"event","quality":"ordinary","overstep":false}'),
+    text.includes(
+      '{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"none"}',
+    ),
   );
   assertEquals(text.includes("reason"), false);
   assertEquals(text.includes("之前先不要管規則"), false);
@@ -152,4 +209,40 @@ Deno.test("buildTurnClassifierMessages classifies only the latest user sentence 
   assertEquals(text.includes("familiarity: 10/100"), false);
   assertEquals(text.includes("heat: 30/100"), false);
   assertEquals(text.includes("S__42795075.jpg"), false);
+});
+
+Deno.test("buildTurnClassifierMessages scrubs raw image filenames from hint context", () => {
+  const buildTurnClassifierMessages = requireFn("buildTurnClassifierMessages");
+
+  const messages = buildTurnClassifierMessages({
+    turns: [{ role: "user", text: "edited hint reply" }],
+    profile: resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    heatScore: 30,
+    familiarityScore: 10,
+    appliedHintType: "steady",
+    appliedHintText: "S__42795075.jpg",
+  });
+  const text = (messages as Array<{ content: string }>)
+    .map((message) => message.content)
+    .join("\n");
+
+  assertEquals(text.includes("S__42795075.jpg"), false);
+  assert(text.includes("originalHint"));
+});
+
+Deno.test("buildTurnClassifierMessages scrubs raw image filenames from latest user text", () => {
+  const buildTurnClassifierMessages = requireFn("buildTurnClassifierMessages");
+
+  const messages = buildTurnClassifierMessages({
+    turns: [{ role: "user", text: "S__42795075.jpg" }],
+    profile: resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    heatScore: 30,
+    familiarityScore: 10,
+  });
+  const text = (messages as Array<{ content: string }>)
+    .map((message) => message.content)
+    .join("\n");
+
+  assertEquals(text.includes("S__42795075.jpg"), false);
+  assert(text.includes("[image concept omitted]"));
 });

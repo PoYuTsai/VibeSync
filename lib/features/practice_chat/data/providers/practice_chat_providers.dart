@@ -652,6 +652,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   Future<void> sendMessage(
     String text, {
     PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
@@ -700,6 +701,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         familiarityScore: familiarityScore,
         appliedHintType: learningMode == PracticeLearningMode.beginner
             ? appliedHintType
+            : null,
+        appliedHintText: learningMode == PracticeLearningMode.beginner
+            ? appliedHintText
             : null,
       );
       final withAi = [

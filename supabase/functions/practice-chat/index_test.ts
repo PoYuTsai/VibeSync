@@ -409,8 +409,8 @@ Deno.test("beginner first chat ignores client temperature and falls back to serv
   }, chatBody({ practiceMode: "beginner", temperatureScore: 100 }));
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 30);
-  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
   assertEquals(json.temperature.stageLabel, "建立熟悉中");
   assertNoPublicFamiliarityFields(json.temperature);
 
@@ -428,6 +428,7 @@ Deno.test("beginner first chat ignores client temperature and falls back to serv
   assertEquals(commit.params.p_temperature_score, 30);
   assertEquals(commit.params.p_familiarity_score, 0);
   assertEquals("p_initial_temperature_score" in commit.params, false);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
 });
 
 Deno.test("beginner later chat uses ledger learning state over client sent scores", async () => {
@@ -603,7 +604,7 @@ Deno.test("ledger select includes beginner fields and old rows fallback safely",
   );
 });
 
-Deno.test("turn classifier failure is non-fatal and keeps previous learning state", async () => {
+Deno.test("turn classifier failure is non-fatal and applies low-impact fallback", async () => {
   const { response, json, state } = await run({
     ledger: ledger({
       practice_mode: "beginner",
@@ -616,14 +617,59 @@ Deno.test("turn classifier failure is non-fatal and keeps previous learning stat
 
   assertEquals(response.status, 200);
   assertEquals(json.reply, "AI reply");
-  assertEquals(json.temperature.score, 55);
-  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.score, 56);
+  assertEquals(json.temperature.delta, 1);
   assertEquals(json.temperature.stageLabel, "可以輕推曖昧");
   assertNoPublicFamiliarityFields(json.temperature);
   assertEquals(json.hintUsedCount, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+});
+
+Deno.test("turn classifier fallback retries stale guarded learning updates", async () => {
+  const { response, json, state } = await run({
+    ledger: ledger({
+      practice_mode: "beginner",
+      temperature_score: 55,
+      familiarity_score: 42,
+      hint_count: 1,
+    }),
+    rpc: {
+      update_practice_learning_state: [
+        {
+          data: {
+            updated: false,
+            temperature_score: 58,
+            familiarity_score: 50,
+          },
+        },
+        {
+          data: {
+            updated: true,
+            temperature_score: 59,
+            familiarity_score: 51,
+          },
+        },
+      ],
+    },
+    deepSeekReplies: ["AI reply", new Error("classifier down")],
+  }, chatBody({ practiceMode: "beginner", temperatureScore: 30 }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 59);
+  assertEquals(json.temperature.delta, 1);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state).length, 2);
   assertEquals(
-    state.rpcCalls.some((call) => call.fn === "update_practice_learning_state"),
-    false,
+    learningUpdateCalls(state)[0].params.p_expected_temperature_score,
+    55,
+  );
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_temperature_score,
+    58,
+  );
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_familiarity_score,
+    50,
   );
 });
 
@@ -666,7 +712,7 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
   );
 });
 
-Deno.test("exact applied warm-up hint never lowers beginner temperature", async () => {
+Deno.test("exact applied warm-up hint visibly raises protected beginner temperature", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -689,18 +735,18 @@ Deno.test("exact applied warm-up hint never lowers beginner temperature", async 
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature, {
-    score: 30,
-    delta: 0,
-    band: temperatureBandFor(30),
+    score: 33,
+    delta: 3,
+    band: temperatureBandFor(33),
     reason: "套用提示回覆，維持不降溫",
     stageLabel: "建立熟悉中",
   });
   assertNoPublicFamiliarityFields(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 3);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("exact applied steady hint never lowers beginner temperature", async () => {
+Deno.test("exact applied steady hint visibly raises protected beginner temperature", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -723,15 +769,162 @@ Deno.test("exact applied steady hint never lowers beginner temperature", async (
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature, {
-    score: 30,
-    delta: 0,
-    band: temperatureBandFor(30),
+    score: 32,
+    delta: 2,
+    band: temperatureBandFor(32),
     reason: "套用提示回覆，維持不降溫",
     stageLabel: "建立熟悉中",
   });
   assertNoPublicFamiliarityFields(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 2);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+});
+
+Deno.test("exact applied steady hint preserves familiarity gains when heat is protected", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"ordinary","overstep":false}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 32);
+  assertEquals(json.temperature.delta, 2);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 2);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 4);
+});
+
+Deno.test("edited applied hint aligned with the original still gets visible hint credit", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "你剛剛說今天很累，是工作很多嗎？",
+      turns: [{ role: "user", text: "你今天很累，是工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 32);
+  assertEquals(json.temperature.delta, 2);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 2);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 2);
+});
+
+Deno.test("edited applied hint with old classifier shape falls back instead of scoring as diverged", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"flirt","quality":"bad","overstep":true}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "original hint reply",
+      turns: [{ role: "user", text: "edited hint reply" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+});
+
+Deno.test("edited applied hint that diverges is scored like a normal reply", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"flirt","quality":"bad","impact":"strong","overstep":true,"hintAlignment":"diverged"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "你剛剛說今天很累，是工作很多嗎？",
+      turns: [{ role: "user", text: "那你是不是想我陪你睡" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 18);
+  assertEquals(json.temperature.delta, -12);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+});
+
+Deno.test("normal low-impact beginner chat still moves the visible temperature", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"none"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 32);
+  assertEquals(json.temperature.delta, 2);
+  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 2);
 });
 
 Deno.test("exact applied hint keeps positive temperature judgement", async () => {

@@ -59,18 +59,18 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     );
     if (!consented || !mounted) return;
     final appliedHintDraft = _appliedHintDraft;
-    final isExactAppliedHint =
-        appliedHintDraft != null && appliedHintDraft.text.trim() == text;
-    final appliedHintType = isExactAppliedHint ? appliedHintDraft.type : null;
+    final appliedHintType = appliedHintDraft?.type;
+    final appliedHintText = appliedHintDraft?.text.trim();
     _controller.clear();
-    await ref
-        .read(practiceChatControllerProvider.notifier)
-        .sendMessage(text, appliedHintType: appliedHintType);
+    await ref.read(practiceChatControllerProvider.notifier).sendMessage(
+          text,
+          appliedHintType: appliedHintType,
+          appliedHintText: appliedHintText,
+        );
     if (!mounted) return;
     final restoredSameText =
         ref.read(practiceChatControllerProvider).restoreText == text;
-    _appliedHintDraft =
-        isExactAppliedHint && restoredSameText ? appliedHintDraft : null;
+    _appliedHintDraft = restoredSameText ? appliedHintDraft : null;
   }
 
   Future<void> _requestHint() async {

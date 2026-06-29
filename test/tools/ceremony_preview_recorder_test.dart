@@ -80,6 +80,7 @@ class _DrawApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) =>
       throw UnimplementedError();
   @override

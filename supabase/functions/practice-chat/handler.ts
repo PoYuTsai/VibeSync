@@ -30,6 +30,7 @@ import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
   applyLearningClassification,
   buildTurnClassifierMessages,
+  clampTemperature,
   type LearningJudgement,
   parseTurnClassification,
   relationshipStageFor,
@@ -50,6 +51,26 @@ const HINT_GENERATION_ATTEMPTS = 2;
 const TEMPERATURE_JUDGE_MAX_TOKENS = 450;
 const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
+
+function appliedHintHeatFloor(appliedHintType: string | undefined): number {
+  if (appliedHintType === "warm_up") return 3;
+  if (appliedHintType === "steady") return 2;
+  return Number.NEGATIVE_INFINITY;
+}
+
+function normalizedHintText(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function lastUserText(turns: Array<{ role: string; text: string }>): string {
+  for (let index = turns.length - 1; index >= 0; index--) {
+    if (turns[index].role === "user") return turns[index].text;
+  }
+  return "";
+}
 
 export type DeepSeekCaller = (args: DeepSeekArgs) => Promise<string>;
 
@@ -259,26 +280,54 @@ function learningJudgementResponse(
   };
 }
 
+function shouldProtectAppliedHint(opts: {
+  request: ReturnType<typeof validateRequest>;
+  classification: TurnClassification;
+}): boolean {
+  if (!opts.request.appliedHintType) return false;
+  const source = opts.request.appliedHintText;
+  if (!source) return true;
+  if (
+    normalizedHintText(source) ===
+      normalizedHintText(lastUserText(opts.request.turns))
+  ) {
+    return true;
+  }
+  return opts.classification.hintAlignment === "aligned";
+}
+
 function protectAppliedHintTemperature(
   judgement: LearningJudgement,
   currentTemperature: number,
   currentFamiliarity: number,
   appliedHintType: string | undefined,
 ): LearningJudgement {
+  const heatFloor = appliedHintHeatFloor(appliedHintType);
   if (
-    !appliedHintType ||
-    (judgement.delta >= 0 && judgement.familiarityDelta >= 0)
+    heatFloor === Number.NEGATIVE_INFINITY
   ) {
     return judgement;
   }
-  const stage = relationshipStageFor(currentFamiliarity, currentTemperature);
+  const protectedHeatDelta = Math.max(judgement.delta, heatFloor);
+  const protectedFamiliarityDelta = Math.max(judgement.familiarityDelta, 0);
+  if (
+    protectedHeatDelta === judgement.delta &&
+    protectedFamiliarityDelta === judgement.familiarityDelta
+  ) {
+    return judgement;
+  }
+  const score = clampTemperature(currentTemperature + protectedHeatDelta);
+  const familiarityScore = clampTemperature(
+    currentFamiliarity + protectedFamiliarityDelta,
+  );
+  const stage = relationshipStageFor(familiarityScore, score);
   return {
     ...judgement,
-    score: currentTemperature,
-    delta: 0,
-    band: temperatureBandFor(currentTemperature),
-    familiarityScore: currentFamiliarity,
-    familiarityDelta: 0,
+    score,
+    delta: protectedHeatDelta,
+    band: temperatureBandFor(score),
+    familiarityScore,
+    familiarityDelta: protectedFamiliarityDelta,
     stage: stage.stage,
     stageLabel: stage.label,
     reason: "套用提示回覆，維持不降溫",
@@ -289,20 +338,24 @@ function fallbackLearningJudgement(
   currentTemperature: number,
   currentFamiliarity: number,
 ): LearningJudgement {
-  const stage = relationshipStageFor(currentFamiliarity, currentTemperature);
+  const score = clampTemperature(currentTemperature + 1);
+  const familiarityScore = clampTemperature(currentFamiliarity + 1);
+  const stage = relationshipStageFor(familiarityScore, score);
   return {
-    score: currentTemperature,
-    delta: 0,
-    band: temperatureBandFor(currentTemperature),
-    reason: "",
-    familiarityScore: currentFamiliarity,
-    familiarityDelta: 0,
+    score,
+    delta: 1,
+    band: temperatureBandFor(score),
+    reason: "低影響回合，先保守調整",
+    familiarityScore,
+    familiarityDelta: 1,
     stage: stage.stage,
     stageLabel: stage.label,
     classification: {
       category: "event",
       quality: "ordinary",
+      impact: "minor",
       overstep: false,
+      hintAlignment: "none",
     },
   };
 }
@@ -319,6 +372,31 @@ async function assertPracticeLearningReady(opts: {
   if (error) {
     throw new Error(error.message);
   }
+}
+
+async function updateLearningState(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  sessionId: string;
+  expectedTemperature: number;
+  expectedFamiliarity: number;
+  judgement: LearningJudgement;
+}): Promise<LearningStateUpdateResult> {
+  const { data, error } = await opts.supabase.rpc(
+    "update_practice_learning_state",
+    {
+      p_user_id: opts.userId,
+      p_session_id: opts.sessionId,
+      p_expected_temperature_score: opts.expectedTemperature,
+      p_expected_familiarity_score: opts.expectedFamiliarity,
+      p_temperature_delta: opts.judgement.delta,
+      p_familiarity_delta: opts.judgement.familiarityDelta,
+    },
+  );
+  if (error) {
+    throw new Error(error.message);
+  }
+  return learningStateUpdateResultFromData(data);
 }
 
 async function judgeLearningState(opts: {
@@ -344,6 +422,8 @@ async function judgeLearningState(opts: {
         profile: opts.request.profile,
         heatScore: opts.currentTemperature,
         familiarityScore: opts.currentFamiliarity,
+        appliedHintType: opts.request.appliedHintType,
+        appliedHintText: opts.request.appliedHintText,
       }),
       maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
       temperature: TEMPERATURE_JUDGE_TEMPERATURE,
@@ -352,16 +432,26 @@ async function judgeLearningState(opts: {
     });
     const classification: TurnClassification = parseTurnClassification(
       rawClassification,
+      {
+        requireImpact: opts.request.appliedHintText !== undefined,
+        requireHintAlignment: opts.request.appliedHintText !== undefined,
+      },
     );
     const judgement = applyLearningClassification({
       heatScore: opts.currentTemperature,
       familiarityScore: opts.currentFamiliarity,
     }, classification);
+    const protectedHintType = shouldProtectAppliedHint({
+        request: opts.request,
+        classification,
+      })
+      ? opts.request.appliedHintType
+      : undefined;
     const protectedJudgement = protectAppliedHintTemperature(
       judgement,
       opts.currentTemperature,
       opts.currentFamiliarity,
-      opts.request.appliedHintType,
+      protectedHintType,
     );
     const updateLearning = async (
       expectedTemperature: number,
@@ -405,7 +495,7 @@ async function judgeLearningState(opts: {
         retryJudgement,
         firstUpdate.temperatureScore,
         firstUpdate.familiarityScore,
-        opts.request.appliedHintType,
+        protectedHintType,
       );
       const secondUpdate = await updateLearning(
         firstUpdate.temperatureScore,
@@ -429,6 +519,44 @@ async function judgeLearningState(opts: {
       user: summarizeUser(opts.userId),
       error: getErrorMessage(e),
     });
+    try {
+      const fallbackUpdate = await updateLearningState({
+        supabase: opts.supabase,
+        userId: opts.userId,
+        sessionId: opts.sessionId,
+        expectedTemperature: opts.currentTemperature,
+        expectedFamiliarity: opts.currentFamiliarity,
+        judgement: fallback,
+      });
+      if (fallbackUpdate.updated) {
+        return withAuthoritativeLearningScores(fallback, fallbackUpdate);
+      }
+      if (
+        fallbackUpdate.temperatureScore !== null &&
+        fallbackUpdate.familiarityScore !== null
+      ) {
+        const retryFallback = fallbackLearningJudgement(
+          fallbackUpdate.temperatureScore,
+          fallbackUpdate.familiarityScore,
+        );
+        const retryUpdate = await updateLearningState({
+          supabase: opts.supabase,
+          userId: opts.userId,
+          sessionId: opts.sessionId,
+          expectedTemperature: fallbackUpdate.temperatureScore,
+          expectedFamiliarity: fallbackUpdate.familiarityScore,
+          judgement: retryFallback,
+        });
+        if (retryUpdate.updated) {
+          return withAuthoritativeLearningScores(retryFallback, retryUpdate);
+        }
+      }
+    } catch (updateError) {
+      logWarn("practice_chat_learning_fallback_update_failed", {
+        user: summarizeUser(opts.userId),
+        error: getErrorMessage(updateError),
+      });
+    }
     return fallback;
   }
 }

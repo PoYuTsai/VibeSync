@@ -197,7 +197,7 @@ void main() {
       expect((result.temperature as dynamic).stageLabel, '建立熟悉中');
     });
 
-    test('sendMessage includes appliedHintType when exact hint reply is used',
+    test('sendMessage includes applied hint source when hint reply is used',
         () async {
       final captured = _CapturedInvoke();
       final svc = PracticeChatApiService(invoker: captured.call);
@@ -209,9 +209,64 @@ void main() {
         practiceMode: PracticeLearningMode.beginner,
         temperatureScore: 30,
         appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
       );
 
       expect(captured.body?['appliedHintType'], 'warm_up');
+      expect(captured.body?['appliedHintText'], 'original hint reply');
+    });
+
+    test('sendMessage trims appliedHintText before sending', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: '  original hint reply  ',
+      );
+
+      expect(captured.body?['appliedHintType'], 'steady');
+      expect(captured.body?['appliedHintText'], 'original hint reply');
+    });
+
+    test('sendMessage omits blank appliedHintText', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '   ',
+      );
+
+      expect(captured.body?['appliedHintType'], 'warm_up');
+      expect(captured.body?.containsKey('appliedHintText'), false);
+    });
+
+    test('sendMessage omits appliedHintText without appliedHintType', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintText: 'original hint reply',
+      );
+
+      expect(captured.body?.containsKey('appliedHintType'), false);
+      expect(captured.body?.containsKey('appliedHintText'), false);
     });
 
     test('sendMessage omits appliedHintType when user did not apply hint',
@@ -228,6 +283,7 @@ void main() {
       );
 
       expect(captured.body?.containsKey('appliedHintType'), false);
+      expect(captured.body?.containsKey('appliedHintText'), false);
     });
 
     test('sendMessage omits appliedHintType outside beginner mode', () async {
@@ -240,9 +296,11 @@ void main() {
         turns: turns,
         practiceMode: PracticeLearningMode.standard,
         appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
       );
 
       expect(captured.body?.containsKey('appliedHintType'), false);
+      expect(captured.body?.containsKey('appliedHintText'), false);
     });
 
     test('429 → PracticeQuotaExceededException 帶剩餘額度', () async {

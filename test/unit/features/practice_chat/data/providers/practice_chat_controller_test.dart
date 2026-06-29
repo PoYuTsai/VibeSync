@@ -35,6 +35,7 @@ class _FakeApi extends PracticeChatApiService {
   int? lastTemperatureScore;
   int? lastFamiliarityScore;
   PracticeHintReplyType? lastAppliedHintType;
+  String? lastAppliedHintText;
   int? lastDebriefRoundIndex;
   String? lastDebriefThreadId;
   int? lastHintRoundIndex;
@@ -58,6 +59,7 @@ class _FakeApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) {
     lastRoundIndex = roundIndex;
     lastVisibleThreadId = visiblePracticeThreadId;
@@ -65,6 +67,7 @@ class _FakeApi extends PracticeChatApiService {
     lastTemperatureScore = temperatureScore;
     lastFamiliarityScore = familiarityScore;
     lastAppliedHintType = appliedHintType;
+    lastAppliedHintText = appliedHintText;
     return sendHandler!(turns, profile: profile);
   }
 
@@ -1064,10 +1067,12 @@ void main() {
       await c.sendMessage(
         '我也想聽你多講一點。',
         appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
       );
 
       expect(api.lastPracticeMode, PracticeLearningMode.beginner);
       expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+      expect(api.lastAppliedHintText, 'original hint reply');
     });
 
     test('standard mode ignores applied hint metadata', () async {
@@ -1077,10 +1082,12 @@ void main() {
       await c.sendMessage(
         '我也想聽你多講一點。',
         appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
       );
 
       expect(api.lastPracticeMode, PracticeLearningMode.standard);
       expect(api.lastAppliedHintType, isNull);
+      expect(api.lastAppliedHintText, isNull);
     });
 
     test('restores beginner state from saved session', () {

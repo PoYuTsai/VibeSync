@@ -118,6 +118,7 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) {
     throw UnimplementedError();
   }
@@ -176,6 +177,7 @@ class _DrawApi extends PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) =>
       throw UnimplementedError();
 
@@ -251,6 +253,7 @@ class _MessageApi extends _NoopPracticeChatApi {
       _handler;
   int sendCalls = 0;
   PracticeHintReplyType? lastAppliedHintType;
+  String? lastAppliedHintText;
   List<PracticeTurnDto> lastTurns = const [];
 
   @override
@@ -264,9 +267,11 @@ class _MessageApi extends _NoopPracticeChatApi {
     int? temperatureScore,
     int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) {
     sendCalls++;
     lastAppliedHintType = appliedHintType;
+    lastAppliedHintText = appliedHintText;
     lastTurns = turns;
     return _handler(turns);
   }
@@ -1345,11 +1350,12 @@ void main() {
 
     expect(api.sendCalls, 1);
     expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
     expect(api.lastTurns.last.text, suggestedReply);
   });
 
   testWidgets(
-      'editing an applied hint before sending omits hint scoring marker',
+      'editing an applied hint before sending keeps hint source for scoring',
       (tester) async {
     SharedPreferences.setMockInitialValues({
       AiDataSharingConsent.practiceConsentKey: true,
@@ -1418,7 +1424,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.sendCalls, 1);
-    expect(api.lastAppliedHintType, isNull);
+    expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
     expect(api.lastTurns.last.text, '$suggestedReply！');
   });
 
@@ -1501,12 +1508,14 @@ void main() {
 
     expect(api.sendCalls, 1);
     expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
 
     await tester.tap(find.byKey(const ValueKey('practice-send-button')));
     await tester.pumpAndSettle();
 
     expect(api.sendCalls, 2);
     expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
     expect(api.lastTurns.last.text, suggestedReply);
   });
 

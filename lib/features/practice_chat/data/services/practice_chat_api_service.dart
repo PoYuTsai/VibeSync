@@ -254,7 +254,9 @@ class PracticeChatApiService {
     int? temperatureScore,
     int? familiarityScore,
     PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) async {
+    final normalizedAppliedHintText = appliedHintText?.trim();
     final response = await _invoke(
       _functionName,
       body: {
@@ -269,6 +271,11 @@ class PracticeChatApiService {
         if (practiceMode == PracticeLearningMode.beginner &&
             appliedHintType != null)
           'appliedHintType': _hintReplyTypeWireName(appliedHintType),
+        if (practiceMode == PracticeLearningMode.beginner &&
+            appliedHintType != null &&
+            normalizedAppliedHintText != null &&
+            normalizedAppliedHintText.isNotEmpty)
+          'appliedHintText': normalizedAppliedHintText,
         if (visiblePracticeThreadId != null)
           'visiblePracticeThreadId': visiblePracticeThreadId,
       },
