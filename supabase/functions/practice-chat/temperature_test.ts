@@ -56,6 +56,21 @@ Deno.test("buildTemperatureJudgeMessages treats evidence as data, not instructio
   );
 });
 
+Deno.test("buildTemperatureJudgeMessages abstracts raw image filenames in transcript and assistant reply", () => {
+  const messages = buildTemperatureJudgeMessages({
+    priorScore: 50,
+    turns: [{ role: "user", text: "S__42795075.jpg" }],
+    assistantReply: String.raw`C:\Users\eric1\Desktop\S__42795075.jpg`,
+    profile: resolvePracticeProfile({}),
+  });
+  const text = messages.map((message) => message.content).join("\n");
+
+  assertEquals(text.includes("S__42795075.jpg"), false);
+  assertEquals(text.includes(".jpg"), false);
+  assertEquals(text.includes("C:\\Users"), false);
+  assert(text.includes("[image concept omitted]"));
+});
+
 Deno.test("parseTemperatureJudgement accepts valid JSON and clamps delta", () => {
   assertEquals(
     parseTemperatureJudgement(`{"delta":12,"reason":"自然接住話題"}`, 50),

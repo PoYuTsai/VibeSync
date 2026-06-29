@@ -5,6 +5,7 @@
 import type { PracticeTurn } from "./validate.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
 import type { PracticeLearningMode } from "./quota_decision.ts";
+import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import {
   relationshipStageFor,
   temperatureBandInstruction,
@@ -61,7 +62,11 @@ export const DEBRIEF_SYSTEM_PROMPT =
 
 function turnsToTranscript(turns: PracticeTurn[]): string {
   return turns
-    .map((t) => (t.role === "user" ? `你：${t.text}` : `她：${t.text}`))
+    .map((t) =>
+      t.role === "user"
+        ? `你：${scrubRawImageFilenames(t.text)}`
+        : `她：${scrubRawImageFilenames(t.text)}`
+    )
     .join("\n");
 }
 
@@ -124,7 +129,7 @@ export function buildChatMessages(
 ): ChatMessage[] {
   const history: ChatMessage[] = turns.map((t) => ({
     role: t.role === "user" ? "user" : "assistant",
-    content: t.text,
+    content: scrubRawImageFilenames(t.text),
   }));
   const temperaturePrompt = options.practiceMode === "beginner"
     ? `\n\n${temperatureBandInstruction(options.temperatureScore ?? 30)}\n${

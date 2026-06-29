@@ -53,8 +53,8 @@ const TEMPERATURE_JUDGE_TEMPERATURE = 0.2;
 const DEEPSEEK_TIMEOUT_MS = 30000;
 
 function appliedHintHeatFloor(appliedHintType: string | undefined): number {
-  if (appliedHintType === "warm_up") return 3;
-  if (appliedHintType === "steady") return 2;
+  if (appliedHintType === "warm_up") return 0;
+  if (appliedHintType === "steady") return 0;
   return Number.NEGATIVE_INFINITY;
 }
 
@@ -288,6 +288,7 @@ function shouldProtectAppliedHint(opts: {
   if (isExactAppliedHint(opts.request)) {
     return true;
   }
+  if (!opts.request.appliedHintText) return false;
   return opts.classification.hintAlignment === "aligned";
 }
 
@@ -296,7 +297,7 @@ function isExactAppliedHint(
 ): boolean {
   if (!request.appliedHintType) return false;
   const source = request.appliedHintText;
-  if (!source) return true;
+  if (!source) return false;
   return normalizedHintText(source) === normalizedHintText(
     lastUserText(request.turns),
   );
@@ -344,16 +345,16 @@ function fallbackLearningJudgement(
   currentTemperature: number,
   currentFamiliarity: number,
 ): LearningJudgement {
-  const score = clampTemperature(currentTemperature + 1);
-  const familiarityScore = clampTemperature(currentFamiliarity + 1);
+  const score = clampTemperature(currentTemperature);
+  const familiarityScore = clampTemperature(currentFamiliarity);
   const stage = relationshipStageFor(familiarityScore, score);
   return {
     score,
-    delta: 1,
+    delta: 0,
     band: temperatureBandFor(score),
     reason: "低影響回合，先保守調整",
     familiarityScore,
-    familiarityDelta: 1,
+    familiarityDelta: 0,
     stage: stage.stage,
     stageLabel: stage.label,
     classification: {

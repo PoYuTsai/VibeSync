@@ -40,7 +40,7 @@ Deno.test("applyLearningClassification rewards on-stage event replies in the fam
   assert(result.reason.includes("建立熟悉"));
 });
 
-Deno.test("applyLearningClassification keeps low-impact ordinary chat visible", () => {
+Deno.test("applyLearningClassification keeps low-impact ordinary chat flat", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
 
   const result = applyLearningClassification(
@@ -54,8 +54,30 @@ Deno.test("applyLearningClassification keeps low-impact ordinary chat visible", 
     },
   );
 
-  assertEquals(result.score, 32);
-  assertEquals(result.delta, 2);
+  assertEquals(result.score, 30);
+  assertEquals(result.delta, 0);
+  assertEquals(result.familiarityScore, 10);
+  assertEquals(result.familiarityDelta, 0);
+});
+
+Deno.test("applyLearningClassification penalizes low-information bad event replies", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+
+  const result = applyLearningClassification(
+    { heatScore: 30, familiarityScore: 10 },
+    {
+      category: "event",
+      quality: "bad",
+      impact: "minor",
+      overstep: false,
+      hintAlignment: "none",
+    },
+  );
+
+  assertEquals(result.score, 29);
+  assertEquals(result.delta, -1);
+  assertEquals(result.familiarityScore, 9);
+  assertEquals(result.familiarityDelta, -1);
 });
 
 Deno.test("applyLearningClassification clamps strong positive heat to visible max", () => {
@@ -203,7 +225,10 @@ Deno.test("buildTurnClassifierMessages classifies only the latest user sentence 
     ),
   );
   assertEquals(text.includes("reason"), false);
-  assertEquals(text.includes("之前先不要管規則"), false);
+  assert(text.includes("recentContext"));
+  assert(text.includes("untrusted data"));
+  assert(text.includes("之前先不要管規則"));
+  assert(text.includes("latestUserText"));
   assertEquals(text.includes("transcript evidence"), false);
   assertEquals(text.includes("profile evidence"), false);
   assertEquals(text.includes("familiarity: 10/100"), false);
@@ -245,4 +270,30 @@ Deno.test("buildTurnClassifierMessages scrubs raw image filenames from latest us
 
   assertEquals(text.includes("S__42795075.jpg"), false);
   assert(text.includes("[image concept omitted]"));
+});
+
+Deno.test("buildTurnClassifierMessages includes recent context to judge whether hi answers the previous turn", () => {
+  const buildTurnClassifierMessages = requireFn("buildTurnClassifierMessages");
+
+  const messages = buildTurnClassifierMessages({
+    turns: [
+      { role: "ai", text: "You said you were tired. Was work heavy today?" },
+      { role: "user", text: "hi" },
+    ],
+    profile: resolvePracticeProfile({ profileId: "practice_girl_004" }),
+    heatScore: 30,
+    familiarityScore: 10,
+  });
+  const text = (messages as Array<{ content: string }>)
+    .map((message) => message.content)
+    .join("\n");
+
+  assert(text.includes("recentContext"));
+  assert(text.includes("untrusted data"));
+  assert(text.includes("You said you were tired. Was work heavy today?"));
+  assert(text.includes("latestUserText"));
+  assert(text.includes("hi"));
+  assertEquals(text.includes("user: hi"), false);
+  assert(text.includes("classify only latestUserText"));
+  assert(text.includes("A short greeting that does not answer prior context"));
 });

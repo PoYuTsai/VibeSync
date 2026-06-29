@@ -1,5 +1,6 @@
 import type { ChatMessage } from "./prompt.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
+import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
 import { clampTemperature, relationshipStageFor } from "./temperature.ts";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
 import type { PracticeTurn } from "./validate.ts";
@@ -23,7 +24,9 @@ const MAX_COACHING_LENGTH = 160;
 function turnsToTranscript(turns: PracticeTurn[]): string {
   return turns
     .map((turn) =>
-      `${turn.role === "user" ? "user" : "assistant"}: ${turn.text}`
+      `${turn.role === "user" ? "user" : "assistant"}: ${
+        scrubRawImageFilenames(turn.text)
+      }`
     )
     .join("\n");
 }

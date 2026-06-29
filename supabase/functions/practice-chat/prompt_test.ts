@@ -141,6 +141,17 @@ Deno.test("buildChatMessages：system 開頭 + user→user / ai→assistant 映�
   assertEquals(msgs.length, 4);
 });
 
+Deno.test("buildChatMessages abstracts raw image filenames before model prompts", () => {
+  const msgs = buildChatMessages(
+    [{ role: "user", text: "S__42795075.jpg" }],
+    defaultProfile,
+  );
+  const text = msgs.map((msg) => msg.content).join("\n");
+
+  assertEquals(text.includes("S__42795075.jpg"), false);
+  assertEquals(text.includes("[image concept omitted]"), true);
+});
+
 // ── debrief：教練口吻 + JSON 契約 + 逐字稿 ────────────────────────────
 
 Deno.test("debrief system prompt 是教練口吻且禁操控框架", () => {
@@ -167,6 +178,20 @@ Deno.test("buildDebriefMessages：system + 含『你/她』逐字稿的 user 指
   assertEquals(msgs[1].role, "user");
   assertEquals(msgs[1].content.includes("你：嗨"), true);
   assertEquals(msgs[1].content.includes("她：嗯？"), true);
+});
+
+Deno.test("buildDebriefMessages abstracts raw image filenames before model prompts", () => {
+  const msgs = buildDebriefMessages(
+    [
+      { role: "user", text: "S__42795075.jpg" },
+      { role: "ai", text: "hello" },
+    ],
+    defaultProfile,
+  );
+  const text = msgs.map((msg) => msg.content).join("\n");
+
+  assertEquals(text.includes("S__42795075.jpg"), false);
+  assertEquals(text.includes("[image concept omitted]"), true);
 });
 
 // ── 角色難度注入 ─────────────────────────────────────────────────────

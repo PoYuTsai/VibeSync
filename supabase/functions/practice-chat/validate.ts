@@ -12,6 +12,7 @@ import {
   type PracticeProfile,
   resolvePracticeProfile,
 } from "./practice_persona.ts";
+import { containsRawImageFilename } from "./prompt_sanitizer.ts";
 
 // 一個 visible thread 最多 3 輪、每輪 20 則 AI 回覆。debrief 會把整個 visible thread
 // 的逐字稿一起送，故 turns 上界要涵蓋 3 輪：3×(20 AI + 20 user)=120，留緩衝到 130。
@@ -19,8 +20,6 @@ export const MAX_TURNS = 130;
 export const MAX_TEXT_LEN = 500; // 單則訊息字數上限
 export const MAX_SESSION_ID_LEN = 64;
 export const MAX_VISIBLE_THREAD_ID_LEN = 128;
-const RAW_IMAGE_FILENAME_PATTERN =
-  /\b(?:S__\d+|IMG_\d+|[^\\/\s]+\.(?:jpe?g|png|webp|heic))\b/i;
 
 export type TurnRole = "user" | "ai";
 
@@ -114,7 +113,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
       typeof raw.appliedHintText !== "string" ||
       raw.appliedHintText.trim().length === 0 ||
       raw.appliedHintText.length > MAX_TEXT_LEN ||
-      RAW_IMAGE_FILENAME_PATTERN.test(raw.appliedHintText)
+      containsRawImageFilename(raw.appliedHintText)
     ) {
       throw new Error("invalid_appliedHintText");
     }
