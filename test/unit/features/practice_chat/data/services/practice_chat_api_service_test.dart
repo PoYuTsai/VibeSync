@@ -168,6 +168,8 @@ void main() {
                 'delta': 8,
                 'band': 'cold',
                 'reason': '有具體延伸話題',
+                'familiarityScore': 10,
+                'familiarityDelta': 10,
                 'stageLabel': '建立熟悉中',
               },
             },
@@ -192,8 +194,8 @@ void main() {
       expect(result.temperature?.delta, 8);
       expect(result.temperature?.band, 'cold');
       expect(result.temperature?.reason, '有具體延伸話題');
-      expect((result.temperature as dynamic).familiarityScore, isNull);
-      expect((result.temperature as dynamic).familiarityDelta, isNull);
+      expect((result.temperature as dynamic).familiarityScore, 10);
+      expect((result.temperature as dynamic).familiarityDelta, 10);
       expect((result.temperature as dynamic).stageLabel, '建立熟悉中');
     });
 

@@ -276,6 +276,8 @@ function learningJudgementResponse(
     delta: judgement.delta,
     band: judgement.band,
     reason: judgement.reason,
+    familiarityScore: judgement.familiarityScore,
+    familiarityDelta: judgement.familiarityDelta,
     stageLabel: judgement.stageLabel,
   };
 }
@@ -315,7 +317,10 @@ function protectAppliedHintTemperature(
   ) {
     return judgement;
   }
-  const protectedHeatDelta = Math.max(judgement.delta, heatFloor);
+  const visibleHintFloor = judgement.familiarityDelta > 0
+    ? Math.max(heatFloor, 1)
+    : heatFloor;
+  const protectedHeatDelta = Math.max(judgement.delta, visibleHintFloor);
   const protectedFamiliarityDelta = Math.max(judgement.familiarityDelta, 0);
   if (
     protectedHeatDelta === judgement.delta &&
@@ -328,6 +333,10 @@ function protectAppliedHintTemperature(
     currentFamiliarity + protectedFamiliarityDelta,
   );
   const stage = relationshipStageFor(familiarityScore, score);
+  const protectedReason =
+    protectedHeatDelta > 0 || protectedFamiliarityDelta > 0
+      ? "套用提示回覆，穩定推進關係"
+      : "套用提示回覆，維持不降溫";
   return {
     ...judgement,
     score,
@@ -337,7 +346,7 @@ function protectAppliedHintTemperature(
     familiarityDelta: protectedFamiliarityDelta,
     stage: stage.stage,
     stageLabel: stage.label,
-    reason: "套用提示回覆，維持不降溫",
+    reason: protectedReason,
   };
 }
 

@@ -517,6 +517,8 @@ class PracticeChatApiService {
     final delta = _asInt(raw['delta']);
     final band = raw['band'];
     final reason = raw['reason'];
+    final familiarityScore = _asInt(raw['familiarityScore']);
+    final familiarityDelta = _asInt(raw['familiarityDelta']);
     final stageLabel = raw['stageLabel'];
     if (score == null ||
         delta == null ||
@@ -529,6 +531,8 @@ class PracticeChatApiService {
       delta: delta,
       band: band,
       reason: reason,
+      familiarityScore: familiarityScore,
+      familiarityDelta: familiarityDelta,
       stageLabel: stageLabel is String ? stageLabel : null,
     );
   }

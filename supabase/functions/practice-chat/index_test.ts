@@ -311,9 +311,9 @@ function learningUpdateCalls(state: FakeState) {
   );
 }
 
-function assertNoPublicFamiliarityFields(temperature: Record<string, unknown>) {
-  assertEquals("familiarityScore" in temperature, false);
-  assertEquals("familiarityDelta" in temperature, false);
+function assertLearningFieldsAndNoDebug(temperature: Record<string, unknown>) {
+  assertEquals(typeof temperature.familiarityScore, "number");
+  assertEquals(typeof temperature.familiarityDelta, "number");
   assertEquals("classification" in temperature, false);
   assertEquals("stage" in temperature, false);
 }
@@ -376,9 +376,11 @@ Deno.test("beginner first chat uses initial temp 30 and returns temperature plus
     delta: 3,
     band: temperatureBandFor(33),
     reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
+    familiarityScore: 8,
+    familiarityDelta: 8,
     stageLabel: "建立熟悉中",
   });
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assert(
     state.deepSeekCalls[0].messages[0].content.includes("30/100"),
     "chat system prompt should include beginner initial temperature",
@@ -412,7 +414,7 @@ Deno.test("beginner first chat ignores client temperature and falls back to serv
   assertEquals(json.temperature.score, 30);
   assertEquals(json.temperature.delta, 0);
   assertEquals(json.temperature.stageLabel, "建立熟悉中");
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
 
   const allDeepSeekPromptText = state.deepSeekCalls
     .flatMap((call) => call.messages)
@@ -460,7 +462,7 @@ Deno.test("beginner later chat uses ledger learning state over client sent score
   assertEquals(json.temperature.score, 69);
   assertEquals(json.temperature.delta, 5);
   assertEquals(json.temperature.stageLabel, "可以輕推曖昧");
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   const systemPrompt = state.deepSeekCalls[0].messages[0].content;
   assert(systemPrompt.includes("64/100"));
   assertEquals(systemPrompt.includes("10/100"), false);
@@ -594,7 +596,7 @@ Deno.test("ledger select includes beginner fields and old rows fallback safely",
   assertEquals(json.hintUsedCount, 0);
   assertEquals(json.temperature.score, 33);
   assertEquals(json.temperature.stageLabel, "建立熟悉中");
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   const ledgerSelect = state.selects.find((select) =>
     select.table === "practice_chat_sessions"
   );
@@ -621,7 +623,7 @@ Deno.test("turn classifier failure is non-fatal and keeps non-hint chat flat", a
   assertEquals(json.temperature.score, 55);
   assertEquals(json.temperature.delta, 0);
   assertEquals(json.temperature.stageLabel, "可以輕推曖昧");
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(json.hintUsedCount, 1);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
@@ -659,7 +661,7 @@ Deno.test("turn classifier fallback retries stale guarded learning updates", asy
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 58);
   assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state).length, 2);
   assertEquals(
     learningUpdateCalls(state)[0].params.p_expected_temperature_score,
@@ -710,7 +712,7 @@ Deno.test("exact applied hint stays non-negative when fallback retry sees stale 
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 58);
   assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state).length, 2);
   assertEquals(
     learningUpdateCalls(state)[1].params.p_expected_temperature_score,
@@ -738,9 +740,11 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
     delta: -1,
     band: temperatureBandFor(29),
     reason: "個人分享接得住對方，熟悉度上升，熱度也比較穩。",
+    familiarityScore: 5,
+    familiarityDelta: 5,
     stageLabel: "建立熟悉中",
   });
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(state.deepSeekCalls.length, 2);
   assertEquals(state.deepSeekCalls[1].jsonMode, true);
   assertEquals(state.deepSeekCalls[1].maxTokens, 450);
@@ -788,9 +792,11 @@ Deno.test("exact applied warm-up hint does not drop protected beginner temperatu
     delta: 0,
     band: temperatureBandFor(30),
     reason: "套用提示回覆，維持不降溫",
+    familiarityScore: 20,
+    familiarityDelta: 0,
     stageLabel: "建立熟悉中",
   });
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
@@ -822,7 +828,7 @@ Deno.test("exact applied hint stays flat when classifier falls back", async () =
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 30);
   assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
@@ -854,7 +860,7 @@ Deno.test("exact applied steady hint stays flat when classifier falls back", asy
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 30);
   assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
@@ -890,14 +896,16 @@ Deno.test("exact applied steady hint does not drop protected beginner temperatur
     delta: 0,
     band: temperatureBandFor(30),
     reason: "套用提示回覆，維持不降溫",
+    familiarityScore: 20,
+    familiarityDelta: 0,
     stageLabel: "建立熟悉中",
   });
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("exact applied steady hint can preserve familiarity gains while heat stays flat", async () => {
+Deno.test("exact applied steady hint shows a small heat bump when familiarity grows", async () => {
   const exactHint =
     "That sounds like a packed day. What part drained you most?";
   const { response, json, state } = await run(
@@ -923,10 +931,10 @@ Deno.test("exact applied steady hint can preserve familiarity gains while heat s
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 30);
-  assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 4);
 });
 
@@ -956,7 +964,7 @@ Deno.test("edited applied hint aligned with the original is protected from dropp
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 30);
   assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
@@ -987,7 +995,7 @@ Deno.test("edited applied hint with old classifier shape falls back instead of s
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 30);
   assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
@@ -1018,7 +1026,7 @@ Deno.test("edited applied hint that diverges is scored like a normal reply", asy
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 18);
   assertEquals(json.temperature.delta, -12);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
 });
 
@@ -1045,7 +1053,7 @@ Deno.test("normal low-impact beginner chat can keep the visible temperature flat
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 30);
   assertEquals(json.temperature.delta, 0);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
@@ -1077,7 +1085,7 @@ Deno.test("low-information reply after a contextual question can cool both learn
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 29);
   assertEquals(json.temperature.delta, -1);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -1);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -1);
   const classifierPrompt = state.deepSeekCalls[1].messages
@@ -1117,7 +1125,7 @@ Deno.test("appliedHintType without original hint text does not receive exact hin
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 18);
   assertEquals(json.temperature.delta, -12);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
 });
@@ -1147,7 +1155,7 @@ Deno.test("appliedHintType without original hint text cannot receive aligned hin
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 18);
   assertEquals(json.temperature.delta, -12);
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
 });
@@ -1182,9 +1190,12 @@ Deno.test("exact applied hint keeps positive temperature judgement", async () =>
     delta: 4,
     band: temperatureBandFor(34),
     reason: "事件導向有助於建立熟悉，先讓對話自然有來有回。",
+    familiarityScore: 20,
+    familiarityDelta: 10,
     stageLabel: "建立熟悉中",
   });
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertEquals("classification" in json.temperature, false);
+  assertEquals("stage" in json.temperature, false);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 4);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 10);
 });
@@ -1230,7 +1241,7 @@ Deno.test("stale guarded learning update reloads ledger and retries deterministi
   assertEquals(response.status, 200);
   assertEquals(json.temperature.score, 44);
   assertEquals(json.temperature.stageLabel, "可以聊個人");
-  assertNoPublicFamiliarityFields(json.temperature);
+  assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state).length, 2);
   assertEquals(
     learningUpdateCalls(state)[0].params.p_expected_temperature_score,

@@ -711,6 +711,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         PracticeMessage(role: 'ai', text: reply.reply),
       ];
       final temperature = reply.temperature;
+      final returnedFamiliarityScore =
+          temperature?.familiarityScore ?? familiarityScore;
       state = state.copyWith(
         messages: withAi,
         isSending: false,
@@ -720,7 +722,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             ? temperature?.score ?? temperatureScore
             : null,
         familiarityScore: learningMode == PracticeLearningMode.beginner
-            ? familiarityScore
+            ? returnedFamiliarityScore
             : null,
         relationshipStageLabel: learningMode == PracticeLearningMode.beginner
             ? temperature?.stageLabel ?? state.relationshipStageLabel

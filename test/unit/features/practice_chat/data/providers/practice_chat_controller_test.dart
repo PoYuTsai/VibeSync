@@ -1003,6 +1003,8 @@ void main() {
               delta: 8,
               band: 'cold',
               reason: '有具體延伸話題',
+              familiarityScore: 10,
+              familiarityDelta: 10,
               stageLabel: '建立熟悉中',
             ),
             hintUsedCount: 1,
@@ -1017,14 +1019,14 @@ void main() {
       expect(s.temperatureScore, 38);
       expect(s.lastTemperatureDelta, 8);
       expect(s.temperatureReason, '有具體延伸話題');
-      expect(s.familiarityScore, 0);
+      expect(s.familiarityScore, 10);
       expect(s.relationshipStageLabel, '建立熟悉中');
       expect(s.hintUsedCount, 1);
 
       final saved = repo.getById(s.sessionId)!;
       expect(saved.practiceMode, 'beginner');
       expect(saved.temperatureScore, 38);
-      expect(saved.familiarityScore, 0);
+      expect(saved.familiarityScore, 10);
       expect(saved.relationshipStageLabel, '建立熟悉中');
       expect(saved.hintUsedCount, 1);
     });
