@@ -54,7 +54,15 @@ const DEEPSEEK_TIMEOUT_MS = 30000;
 
 function appliedHintHeatFloor(appliedHintType: string | undefined): number {
   if (appliedHintType === "warm_up") return 0;
-  if (appliedHintType === "steady") return 0;
+  if (appliedHintType === "steady") return 1;
+  return Number.NEGATIVE_INFINITY;
+}
+
+function appliedHintFamiliarityFloor(
+  appliedHintType: string | undefined,
+): number {
+  if (appliedHintType === "warm_up") return 0;
+  if (appliedHintType === "steady") return 1;
   return Number.NEGATIVE_INFINITY;
 }
 
@@ -63,6 +71,94 @@ function normalizedHintText(text: string): string {
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function commonSubsequenceRatio(left: string, right: string): number {
+  const a = Array.from(left);
+  const b = Array.from(right);
+  const maxLength = Math.max(a.length, b.length);
+  if (maxLength === 0) return 0;
+  let previous = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const current = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = a[i - 1] === b[j - 1]
+        ? previous[j - 1] + 1
+        : Math.max(previous[j], current[j - 1]);
+    }
+    previous = current;
+  }
+  return previous[b.length] / maxLength;
+}
+
+function isLikelySmallHintEdit(
+  request: ReturnType<typeof validateRequest>,
+): boolean {
+  const source = request.appliedHintText;
+  if (!source) return false;
+  const original = normalizedHintText(source);
+  const edited = normalizedHintText(lastUserText(request.turns));
+  if (!original || !edited) return false;
+  if (original === edited) return true;
+  return commonSubsequenceRatio(original, edited) >= 0.58;
+}
+
+function containsObviousOverstepInvite(text: string): boolean {
+  const normalized = normalizedHintText(text);
+  return [
+    "來我家睡",
+    "来我家睡",
+    "去我家睡",
+    "去你家睡",
+    "去妳家睡",
+    "開房",
+    "开房",
+    "上床",
+    "一起睡",
+    "睡你",
+    "睡妳",
+    "睡我",
+    "sleepatmyplace",
+    "comeoverandsleep",
+    "sleepwithme",
+  ].some((pattern) => normalized.includes(pattern));
+}
+
+function deterministicOverstepClassificationForSnapshot(opts: {
+  request: ReturnType<typeof validateRequest>;
+  currentTemperature: number;
+  currentFamiliarity: number;
+}): TurnClassification | null {
+  const stage = relationshipStageFor(
+    opts.currentFamiliarity,
+    opts.currentTemperature,
+  ).stage;
+  if (
+    stage !== "flirt_allowed" &&
+    containsObviousOverstepInvite(lastUserText(opts.request.turns))
+  ) {
+    return {
+      category: "flirt",
+      quality: "bad",
+      impact: "strong",
+      overstep: true,
+      hintAlignment: "diverged",
+    };
+  }
+  return null;
+}
+
+function withDeterministicSafetyOverride(opts: {
+  classification: TurnClassification;
+  request: ReturnType<typeof validateRequest>;
+  currentTemperature: number;
+  currentFamiliarity: number;
+}): TurnClassification {
+  const deterministic = deterministicOverstepClassificationForSnapshot(opts);
+  if (deterministic) {
+    return deterministic;
+  }
+  return opts.classification;
 }
 
 function lastUserText(turns: Array<{ role: string; text: string }>): string {
@@ -285,13 +381,27 @@ function learningJudgementResponse(
 function shouldProtectAppliedHint(opts: {
   request: ReturnType<typeof validateRequest>;
   classification: TurnClassification;
+  currentTemperature: number;
+  currentFamiliarity: number;
 }): boolean {
   if (!opts.request.appliedHintType) return false;
+  if (
+    deterministicOverstepClassificationForSnapshot({
+      request: opts.request,
+      currentTemperature: opts.currentTemperature,
+      currentFamiliarity: opts.currentFamiliarity,
+    })
+  ) {
+    return false;
+  }
   if (isExactAppliedHint(opts.request)) {
     return true;
   }
   if (!opts.request.appliedHintText) return false;
-  return opts.classification.hintAlignment === "aligned";
+  return opts.classification.hintAlignment === "aligned" &&
+    !opts.classification.overstep &&
+    opts.classification.quality !== "bad" &&
+    isLikelySmallHintEdit(opts.request);
 }
 
 function isExactAppliedHint(
@@ -320,8 +430,12 @@ function protectAppliedHintTemperature(
   const visibleHintFloor = judgement.familiarityDelta > 0
     ? Math.max(heatFloor, 1)
     : heatFloor;
+  const familiarityFloor = appliedHintFamiliarityFloor(appliedHintType);
   const protectedHeatDelta = Math.max(judgement.delta, visibleHintFloor);
-  const protectedFamiliarityDelta = Math.max(judgement.familiarityDelta, 0);
+  const protectedFamiliarityDelta = Math.max(
+    judgement.familiarityDelta,
+    familiarityFloor,
+  );
   if (
     protectedHeatDelta === judgement.delta &&
     protectedFamiliarityDelta === judgement.familiarityDelta
@@ -426,26 +540,65 @@ async function judgeLearningState(opts: {
   request: ReturnType<typeof validateRequest>;
   reply: string;
 }): Promise<LearningJudgement> {
-  const exactAppliedHintType = isExactAppliedHint(opts.request)
-    ? opts.request.appliedHintType
-    : undefined;
-  const protectExactAppliedHintFallback = (
-    judgement: LearningJudgement,
+  const fallbackForSnapshot = (
     currentTemperature: number,
     currentFamiliarity: number,
-  ) =>
-    protectAppliedHintTemperature(
+  ): LearningJudgement => {
+    const deterministic = deterministicOverstepClassificationForSnapshot({
+      request: opts.request,
+      currentTemperature,
+      currentFamiliarity,
+    });
+    if (deterministic) {
+      return applyLearningClassification({
+        heatScore: currentTemperature,
+        familiarityScore: currentFamiliarity,
+      }, deterministic);
+    }
+    const base = fallbackLearningJudgement(
+      currentTemperature,
+      currentFamiliarity,
+    );
+    return protectAppliedHintTemperature(
+      base,
+      currentTemperature,
+      currentFamiliarity,
+      isExactAppliedHint(opts.request)
+        ? opts.request.appliedHintType
+        : undefined,
+    );
+  };
+  const protectedJudgementForSnapshot = (
+    currentTemperature: number,
+    currentFamiliarity: number,
+    parsedClassification: TurnClassification,
+  ): LearningJudgement => {
+    const classification = withDeterministicSafetyOverride({
+      classification: parsedClassification,
+      request: opts.request,
+      currentTemperature,
+      currentFamiliarity,
+    });
+    const judgement = applyLearningClassification({
+      heatScore: currentTemperature,
+      familiarityScore: currentFamiliarity,
+    }, classification);
+    const protectedHintType = shouldProtectAppliedHint({
+        request: opts.request,
+        classification,
+        currentTemperature,
+        currentFamiliarity,
+      })
+      ? opts.request.appliedHintType
+      : undefined;
+    return protectAppliedHintTemperature(
       judgement,
       currentTemperature,
       currentFamiliarity,
-      exactAppliedHintType,
+      protectedHintType,
     );
-  const baseFallback = fallbackLearningJudgement(
-    opts.currentTemperature,
-    opts.currentFamiliarity,
-  );
-  const fallback = protectExactAppliedHintFallback(
-    baseFallback,
+  };
+  const fallback = fallbackForSnapshot(
     opts.currentTemperature,
     opts.currentFamiliarity,
   );
@@ -465,28 +618,17 @@ async function judgeLearningState(opts: {
       jsonMode: true,
       timeoutMs: DEEPSEEK_TIMEOUT_MS,
     });
-    const classification: TurnClassification = parseTurnClassification(
+    const parsedClassification: TurnClassification = parseTurnClassification(
       rawClassification,
       {
         requireImpact: opts.request.appliedHintText !== undefined,
         requireHintAlignment: opts.request.appliedHintText !== undefined,
       },
     );
-    const judgement = applyLearningClassification({
-      heatScore: opts.currentTemperature,
-      familiarityScore: opts.currentFamiliarity,
-    }, classification);
-    const protectedHintType = shouldProtectAppliedHint({
-        request: opts.request,
-        classification,
-      })
-      ? opts.request.appliedHintType
-      : undefined;
-    const protectedJudgement = protectAppliedHintTemperature(
-      judgement,
+    const protectedJudgement = protectedJudgementForSnapshot(
       opts.currentTemperature,
       opts.currentFamiliarity,
-      protectedHintType,
+      parsedClassification,
     );
     const updateLearning = async (
       expectedTemperature: number,
@@ -522,15 +664,10 @@ async function judgeLearningState(opts: {
       ) {
         throw new Error("learning_state_update_not_applied");
       }
-      const retryJudgement = applyLearningClassification({
-        heatScore: firstUpdate.temperatureScore,
-        familiarityScore: firstUpdate.familiarityScore,
-      }, classification);
-      const protectedRetryJudgement = protectAppliedHintTemperature(
-        retryJudgement,
+      const protectedRetryJudgement = protectedJudgementForSnapshot(
         firstUpdate.temperatureScore,
         firstUpdate.familiarityScore,
-        protectedHintType,
+        parsedClassification,
       );
       const secondUpdate = await updateLearning(
         firstUpdate.temperatureScore,
@@ -570,12 +707,7 @@ async function judgeLearningState(opts: {
         fallbackUpdate.temperatureScore !== null &&
         fallbackUpdate.familiarityScore !== null
       ) {
-        const retryBaseFallback = fallbackLearningJudgement(
-          fallbackUpdate.temperatureScore,
-          fallbackUpdate.familiarityScore,
-        );
-        const retryFallback = protectExactAppliedHintFallback(
-          retryBaseFallback,
+        const retryFallback = fallbackForSnapshot(
           fallbackUpdate.temperatureScore,
           fallbackUpdate.familiarityScore,
         );

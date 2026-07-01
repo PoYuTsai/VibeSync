@@ -126,6 +126,23 @@ function validHintJson(overrides: Record<string, string> = {}) {
   });
 }
 
+function obviousChineseOverstepInvite(): string {
+  return String.fromCodePoint(
+    0x4eca,
+    0x665a,
+    0x8981,
+    0x4e0d,
+    0x8981,
+    0x76f4,
+    0x63a5,
+    0x4f86,
+    0x6211,
+    0x5bb6,
+    0x7761,
+    0xff1f,
+  );
+}
+
 function makeRequest(body: unknown) {
   return new Request("http://localhost/practice-chat", {
     method: "POST",
@@ -762,7 +779,7 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
   );
 });
 
-Deno.test("exact applied warm-up hint does not drop protected beginner temperature", async () => {
+Deno.test("exact applied warm-up hint stays flat despite classifier overstep", async () => {
   const exactHint = "You said you were tired. Was work heavy today?";
   const { response, json, state } = await run(
     {
@@ -833,7 +850,7 @@ Deno.test("exact applied hint stays flat when classifier falls back", async () =
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("exact applied steady hint stays flat when classifier falls back", async () => {
+Deno.test("exact applied steady hint shows a small bump when classifier falls back", async () => {
   const exactHint = "聽起來真的很滿，我懂那種一整天被工作追著跑的感覺。";
   const { response, json, state } = await run(
     {
@@ -858,14 +875,54 @@ Deno.test("exact applied steady hint stays flat when classifier falls back", asy
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 30);
-  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+});
+
+Deno.test("exact applied warm-up hint does not drop protected beginner temperature", async () => {
+  const exactHint =
+    "That sounds like a packed day. What part drained you most?";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"ordinary","impact":"medium","overstep":true,"hintAlignment":"none"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "warm_up",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature, {
+    score: 30,
+    delta: 0,
+    band: temperatureBandFor(30),
+    reason: "套用提示回覆，維持不降溫",
+    familiarityScore: 20,
+    familiarityDelta: 0,
+    stageLabel: "建立熟悉中",
+  });
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("exact applied steady hint does not drop protected beginner temperature", async () => {
+Deno.test("exact applied steady hint gets visible credit despite classifier overstep", async () => {
   const exactHint =
     "That sounds like a packed day. What part drained you most?";
   const { response, json, state } = await run(
@@ -891,18 +948,43 @@ Deno.test("exact applied steady hint does not drop protected beginner temperatur
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature, {
-    score: 30,
-    delta: 0,
-    band: temperatureBandFor(30),
-    reason: "套用提示回覆，維持不降溫",
-    familiarityScore: 20,
-    familiarityDelta: 0,
-    stageLabel: "建立熟悉中",
-  });
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+});
+
+Deno.test("exact applied hint with obvious overstep is not protected", async () => {
+  const exactHint = obviousChineseOverstepInvite();
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"none"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 18);
+  assertEquals(json.temperature.delta, -12);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
 });
 
 Deno.test("exact applied steady hint shows a small heat bump when familiarity grows", async () => {
@@ -938,7 +1020,7 @@ Deno.test("exact applied steady hint shows a small heat bump when familiarity gr
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 4);
 });
 
-Deno.test("edited applied hint aligned with the original is protected from dropping", async () => {
+Deno.test("edited applied steady hint aligned with the original gets visible credit", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -962,11 +1044,169 @@ Deno.test("edited applied hint aligned with the original is protected from dropp
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 30);
-  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+});
+
+Deno.test("english edited applied steady hint with small wording changes gets visible credit", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "You said today felt heavy. Was work the hardest part?",
+      turns: [{
+        role: "user",
+        text: "You said today felt heavy - was work the hardest part?",
+      }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 31);
+  assertEquals(json.temperature.delta, 1);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+});
+
+Deno.test("edited applied hint with low text similarity is scored normally even when classifier says aligned", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"personal","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "You said you were tired. Was work heavy today?",
+      turns: [{ role: "user", text: "I want to change the topic." }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 29);
+  assertEquals(json.temperature.delta, -1);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -1);
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+});
+
+Deno.test("edited applied hint with obvious overstep is penalized even when classifier says aligned", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "You said you were tired. Was work heavy today?",
+      turns: [{ role: "user", text: obviousChineseOverstepInvite() }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 18);
+  assertEquals(json.temperature.delta, -12);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+});
+
+Deno.test("edited applied hint with obvious overstep is penalized when classifier returns old shape", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","overstep":false}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "You said you were tired. Was work heavy today?",
+      turns: [{ role: "user", text: obviousChineseOverstepInvite() }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 18);
+  assertEquals(json.temperature.delta, -12);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
+});
+
+Deno.test("edited applied hint marked aligned but overstepping is not protected", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"flirt","quality":"bad","impact":"strong","overstep":true,"hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: "You said you were tired. Was work heavy today?",
+      turns: [{ role: "user", text: "Come over tonight and sleep here." }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 18);
+  assertEquals(json.temperature.delta, -12);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -8);
 });
 
 Deno.test("edited applied hint with old classifier shape falls back instead of scoring as diverged", async () => {
@@ -1259,6 +1499,94 @@ Deno.test("stale guarded learning update reloads ledger and retries deterministi
     learningUpdateCalls(state)[1].params.p_expected_familiarity_score,
     40,
   );
+});
+
+Deno.test("stale retry recalculates obvious overstep while still below flirt-ready stage", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 0,
+        hint_count: 1,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 34,
+              familiarity_score: 20,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      familiarityScore: 0,
+      appliedHintType: "steady",
+      appliedHintText: "You said you were tired. Was work heavy today?",
+      turns: [{ role: "user", text: obviousChineseOverstepInvite() }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 22);
+  assertEquals(json.temperature.delta, -12);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, -8);
+});
+
+Deno.test("stale retry does not reuse low-stage overstep override after flirt-ready reload", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 0,
+        hint_count: 1,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 60,
+              familiarity_score: 60,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: [
+        "AI reply",
+        `{"category":"event","quality":"ordinary","impact":"minor","overstep":false,"hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      familiarityScore: 0,
+      appliedHintType: "steady",
+      appliedHintText: "You said you were tired. Was work heavy today?",
+      turns: [{ role: "user", text: obviousChineseOverstepInvite() }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 60);
+  assertEquals(json.temperature.delta, 0);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 0);
 });
 
 Deno.test("debrief retries a malformed provider card once before returning the card", async () => {
