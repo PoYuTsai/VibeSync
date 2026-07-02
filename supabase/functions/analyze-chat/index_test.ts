@@ -373,6 +373,58 @@ Deno.test({
 
 Deno.test({
   name:
+    "OPTIMIZE_MESSAGE_PROMPT distills long-form polish rules into the lean prompt",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const start = source.indexOf("const OPTIMIZE_MESSAGE_PROMPT =");
+    const end = source.indexOf("const MY_MESSAGE_PROMPT =");
+    assert(start !== -1 && end !== -1 && start < end);
+    const leanPrompt = source.slice(start, end);
+
+    // 1.8x 長度法則（style context 收尾句引用它，瘦版必須自己定義）
+    assert(leanPrompt.includes("1.8x"));
+    assert(leanPrompt.includes("寧短勿長"));
+    // 自貶改自嘲
+    assert(leanPrompt.includes("避免自貶"));
+    assert(leanPrompt.includes("自嘲"));
+    // 品質 few-shot：優化要加互動性，不是同義改寫
+    assert(leanPrompt.includes("感覺你潛水很厲害"));
+    assert(leanPrompt.includes("不要只輸出同義短句"));
+    // reason 欄位不得洩漏字數公式
+    assert(leanPrompt.includes("reason 不要提及 1.8x、字數計算或任何公式"));
+  },
+});
+
+Deno.test({
+  name:
+    "draft optimization contract teaches partner context usage on the shared path",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const start = source.indexOf("## User Draft To Optimize");
+    assert(start !== -1);
+    const end = source.indexOf(
+      "in the structured JSON response.",
+      start,
+    );
+    assert(end !== -1);
+    const contractBlock = source.slice(start, end);
+
+    // 契約塊為純文字與帶圖兩條路徑共用，partner 指引補這裡兩路徑同吃
+    assert(contractBlock.includes("Use Partner Context"));
+    assert(contractBlock.includes("User Voice & Coaching Preferences"));
+    assert(contractBlock.includes("likely to respond to"));
+    assert(contractBlock.includes("never invent facts"));
+  },
+});
+
+Deno.test({
+  name:
     "MY_MESSAGE_PROMPT provides concrete branch planning without invented topics",
   permissions: { read: true },
   fn: async () => {

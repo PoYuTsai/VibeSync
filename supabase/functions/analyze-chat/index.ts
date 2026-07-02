@@ -2073,6 +2073,10 @@ const OPTIMIZE_MESSAGE_PROMPT = `你是 VibeSync 的草稿潤飾器。
 - 不要新增 userDraft 沒有的事實、興趣、承諾或自我描述。
 - 若草稿已經自然，只做輕量節奏修整；不要過度文青、客服腔或 AI 腔。
 - 若草稿含有慾望、邀約、親密或短期意圖，保留方向但降低壓力，留下清楚拒絕空間。
+- 長度跟著 1.8x 法則走：以對方最近一則訊息的長度為基準，optimized 大約不要超過它的 1.8 倍；寧短勿長，不要為了豐富硬加長。
+- 避免自貶；需要幽默時用自嘲。
+- 範例：userDraft「感覺你潛水很厲害」可優化成「妳潛水看起來蠻有架式欸，是認真有在玩，還是被朋友拖下水的？」；不要只輸出同義短句。
+- reason 不要提及 1.8x、字數計算或任何公式，用自然描述（例：「精簡字數、語氣更自然」）。
 - optimized 必須是可直接送出的訊息，不要只是建議、分析或說明。
 - Do not include full analysis fields such as replies, replyOptions, finalRecommendation, psychology, topicDepth, or healthCheck.
 
@@ -5949,6 +5953,7 @@ Optimization contract:
 - Preserve the draft's main topic and intent even if it does not directly answer the latest partner message.
 - Actually improve the draft into a sendable message: more natural, warmer, easier to reply to, and aligned with the user's style.
 - Use conversation only to tune tone/rhythm and avoid awkward jumps.
+- Use Partner Context and User Voice & Coaching Preferences to pick wording and topic angles this specific partner is likely to respond to; never invent facts about her or the user beyond the provided context.
 - This is draft polishing, not Coach 1:1: do not ask a clarifying question, do not re-decide the whole strategy, and do not rewrite the user into a different persona.
 - Prefer light edits when the draft is already honest and calibrated; rewrite only when it is anxious, boundary-blurring, over-explaining, manipulative, or hard to reply to.
 - Keep the user's natural voice; do not over-polish into poetic, customer-service, or AI-like phrasing.
