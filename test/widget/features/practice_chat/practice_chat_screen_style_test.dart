@@ -240,6 +240,7 @@ class _HintApi extends _NoopPracticeChatApi {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? requestId,
   }) async {
     hintCalls++;
     return result;
@@ -1207,6 +1208,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.currentState.messages.map((m) => m.role), ['user', 'ai']);
+  });
+
+  testWidgets('hint in flight disables the composer (no parallel send)',
+      (tester) async {
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 30,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'hello'),
+        PracticeMessage(role: 'ai', text: 'hello back'),
+      ],
+      aiReplyCount: 1,
+      isHintLoading: true,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    // 輸入框／送出鈕都吃 canSend：hint 在途時一律停用，避免平行送出。
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, false);
   });
 
   testWidgets('hint panel can fill the composer with a suggested reply',

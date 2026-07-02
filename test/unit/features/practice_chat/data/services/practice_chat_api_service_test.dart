@@ -328,6 +328,23 @@ void main() {
       );
     });
 
+    test('409 practice_mode_locked → PracticeModeLockedException（不是場次已滿）',
+        () async {
+      final svc = serviceReturning(409, {'error': 'practice_mode_locked'});
+      expect(
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
+        throwsA(isA<PracticeModeLockedException>()),
+      );
+    });
+
+    test('409 讀不到 body → 維持 PracticeSessionCompleteException', () async {
+      final svc = serviceReturning(409, null);
+      expect(
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
+        throwsA(isA<PracticeSessionCompleteException>()),
+      );
+    });
+
     test('402 upgrade_required → PracticeUpgradeRequiredException（導向付費牆）',
         () async {
       final svc = serviceReturning(402, {'error': 'upgrade_required'});
@@ -693,6 +710,21 @@ void main() {
       expect(captured.body?['visiblePracticeThreadId'], 'thread-abc');
     });
 
+    test('body 帶 client 產的 requestId（扣費 idempotency）', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.hintBody = okHintBody();
+
+      await svc.requestHint(
+        sessionId: 'session-1',
+        requestId: 'hint-req-1',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(captured.body?['requestId'], 'hint-req-1');
+    });
+
     test('parses two replies, coaching, cost, hint count, and remaining counts',
         () async {
       final svc = serviceReturning(200, okHintBody());
@@ -731,6 +763,20 @@ void main() {
           turns: turns,
         ),
         throwsA(isA<PracticeQuotaExceededException>()),
+      );
+    });
+
+    test('409 practice_mode_locked maps to PracticeModeLockedException',
+        () async {
+      final svc = serviceReturning(409, {'error': 'practice_mode_locked'});
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<PracticeModeLockedException>()),
       );
     });
 

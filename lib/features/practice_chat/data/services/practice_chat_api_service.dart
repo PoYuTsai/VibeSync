@@ -210,6 +210,15 @@ class PracticeSessionCompleteException implements Exception {
   String toString() => 'PracticeSessionCompleteException';
 }
 
+/// 同一輪已用另一種模式進行中（伺服器回 409 `practice_mode_locked`）。前端應
+/// 提示切回原本的模式，**絕不**當成場次已滿——誤標 sessionComplete 會引導
+/// 「續聊同一位」開新 billing session 多扣費。
+class PracticeModeLockedException implements Exception {
+  PracticeModeLockedException();
+  @override
+  String toString() => 'PracticeModeLockedException';
+}
+
 /// Free 帳號續「同一位」需升級（伺服器回 402 `upgrade_required`）。
 /// 前端必須明確導向付費牆／升級 CTA，不可落入 generic 失敗訊息。
 class PracticeUpgradeRequiredException implements Exception {
@@ -298,18 +307,23 @@ class PracticeChatApiService {
     );
   }
 
+  /// [requestId] 是 client 產的扣費 idempotency key（比照 opener）：同一次意圖
+  /// 失敗重試沿用同 id，server 靠 (user, requestId) 去重傳輸層重試雙扣。
   Future<PracticeHintResult> requestHint({
     required String sessionId,
     required PracticeProfileDto profile,
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? requestId,
   }) async {
     final response = await _invoke(
       _functionName,
       body: {
         'mode': 'hint',
         'sessionId': sessionId,
+        if (requestId != null && requestId.trim().isNotEmpty)
+          'requestId': requestId.trim(),
         'practiceMode': PracticeLearningMode.beginner.wireName,
         ...profile.toJson(),
         'turns': turns.map((t) => t.toJson()).toList(),
@@ -564,6 +578,12 @@ class PracticeChatApiService {
           dailyRemaining: _asInt(data['dailyRemaining']),
         );
       case 409:
+        // 409 依 body error code 分流：mode locked 是「切回原模式」而非場次已滿；
+        // 讀不到 body 一律回退場次已滿（既有行為）。
+        final conflict = response.data is Map ? response.data as Map : const {};
+        if (conflict['error'] == 'practice_mode_locked') {
+          throw PracticeModeLockedException();
+        }
         throw PracticeSessionCompleteException();
       case 402:
         throw PracticeUpgradeRequiredException();

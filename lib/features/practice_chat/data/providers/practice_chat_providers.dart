@@ -138,9 +138,15 @@ class PracticeChatState {
   int get remainingReplies =>
       (kMaxPracticeAiReplies - aiReplyCount).clamp(0, kMaxPracticeAiReplies);
 
-  /// 必須先翻好牌（revealed）才能送訊息。
+  /// 必須先翻好牌（revealed）才能送訊息；hint 在途也擋（與 canRequestHint 的
+  /// !isSending 成雙向互斥，避免平行請求交錯覆寫）。
   bool get canSend =>
-      isRevealed && !isSending && !isDebriefing && !ended && !sessionComplete;
+      isRevealed &&
+      !isSending &&
+      !isDebriefing &&
+      !isHintLoading &&
+      !ended &&
+      !sessionComplete;
 
   bool get isBeginnerMode => learningMode == PracticeLearningMode.beginner;
 
@@ -322,6 +328,25 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       {required int monthlyRemaining,
       required int dailyRemaining})? _onUsageSynced;
 
+  /// hint 扣費 idempotency（比照 opener requestId 生命週期）：發起時若為 null
+  /// 才鑄新 id；失敗（timeout/5xx/網路）沿用同 id 供重試，成功或 4xx 明確拒絕
+  /// 才清空 rotate。
+  String? _pendingHintRequestId;
+
+  /// hint 世代序號：送出新訊息／續玩／換一位／還原場次都 +1。在途 hint 回應
+  /// 到達時序號不符＝過期（針對的 transcript 已翻頁）→ 丟棄不填 state。
+  int _hintGeneration = 0;
+
+  /// 過期 hint 回應統一丟棄點：已扣額度認列不回滾（server 事實），只是 UI 不
+  /// 顯示誤導內容；僅復位 loading 旗標。
+  bool _dropStaleHint(int generation) {
+    if (generation == _hintGeneration) return false;
+    if (state.isHintLoading) {
+      state = state.copyWith(isHintLoading: false);
+    }
+    return true;
+  }
+
   /// 測試用：對外讀取目前狀態。
   @visibleForTesting
   PracticeChatState get currentState => state;
@@ -464,6 +489,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   void resumeSession(PracticeSession session) {
+    _hintGeneration++; // 換場：在途 hint 全部作廢
     state = _stateFromSession(session);
   }
 
@@ -491,6 +517,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       final girl = girlProfileById(result.profile.profileId) ??
           fallbackPracticeProfile().girl;
       final sessionId = const Uuid().v4();
+      _hintGeneration++; // 換一位成功：在途 hint 對舊對象已無意義
       // 難度沿用目前已解析值（換一位不重抽難度）；locked 首抽時為預設 normal。
       final difficulty = prior.difficulty.isNotEmpty
           ? prior.difficulty
@@ -589,6 +616,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     if (state.roundIndex >= kMaxPracticeRounds) return;
+    _hintGeneration++; // 開新一輪：在途 hint 全部作廢
     state = PracticeChatState(
       sessionId: const Uuid().v4(),
       createdAt: DateTime.now(),
@@ -706,6 +734,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             ? appliedHintText
             : null,
       );
+      _hintGeneration++; // 成功送出新訊息：舊 transcript 的在途 hint 已過期
       final withAi = [
         ...optimistic,
         PracticeMessage(role: 'ai', text: reply.reply),
@@ -764,6 +793,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '這場練習已達上限，看看教練拆解吧。',
         restoreText: trimmed,
       );
+    } on PracticeModeLockedException {
+      // 同一輪已用另一種模式進行中：只提示切回，絕不標 sessionComplete
+      // （誤標會引導「續聊同一位」開新 billing session 多扣一則）、不鎖輸入。
+      state = state.copyWith(
+        messages: priorMessages,
+        isSending: false,
+        errorMessage: _practiceModeLockedMessage,
+        restoreText: trimmed,
+      );
     } on PracticeUpgradeRequiredException {
       state = state.copyWith(
         messages: priorMessages,
@@ -795,9 +833,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       upgradeRequired: false,
     );
 
+    // 發起時若無在途 id 才鑄新的：失敗重試沿用同一 id，server 才能去重雙扣。
+    final requestId = _pendingHintRequestId ??= const Uuid().v4();
+    // 捕捉當下世代：回應到達時序號不符＝過期回應，丟棄不填 state。
+    final generation = _hintGeneration;
+
     try {
       final result = await _api.requestHint(
         sessionId: state.sessionId,
+        requestId: requestId,
         profile: _profileDto(),
         turns: state.messages
             .map((m) => PracticeTurnDto(role: m.role, text: m.text))
@@ -805,6 +849,19 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
+      _pendingHintRequestId = null; // 成功 → rotate
+      if (_dropStaleHint(generation)) {
+        // 過期成功回應：內容不填、不持久化進新場；額度是 server 事實照樣同步。
+        if (result.costDeducted > 0 &&
+            result.monthlyRemaining != null &&
+            result.dailyRemaining != null) {
+          _onUsageSynced?.call(
+            monthlyRemaining: result.monthlyRemaining!,
+            dailyRemaining: result.dailyRemaining!,
+          );
+        }
+        return;
+      }
       state = state.copyWith(
         isHintLoading: false,
         hintReplies: result.replies,
@@ -822,34 +879,54 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
       }
     } on PracticeHintLimitException {
+      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         hintLimitReached: true,
         errorMessage: '這段練習的提示已用完，先試著用自己的話回覆看看。',
       );
     } on PracticeQuotaExceededException catch (e) {
+      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         quotaExceeded: true,
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {
+      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         upgradeRequired: true,
         errorMessage: '這個提示會消耗訊息額度，升級後就能繼續使用。',
       );
+    } on PracticeModeLockedException {
+      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      if (_dropStaleHint(generation)) return;
+      // 同 sendMessage 的 409 分流：提示切回原模式，不標 sessionComplete。
+      state = state.copyWith(
+        isHintLoading: false,
+        errorMessage: _practiceModeLockedMessage,
+      );
     } on PracticeApiException catch (e) {
+      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         errorMessage: _hintApiErrorMessage(e.message),
       );
     } on PracticeGenerationFailedException catch (e) {
+      // 5xx／格式壞掉：id 保留，重試沿用（server 可靠 ledger 去重）。
+      if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         errorMessage: _hintGenerationErrorMessage(e.message),
       );
     } catch (_) {
+      // timeout／網路失敗：id 保留，重試沿用。
+      if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
         errorMessage: '提示暫時產生失敗，等一下再試。',
@@ -995,6 +1072,9 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 }
 
 const _hintGenericErrorMessage = '提示暫時產生失敗，等一下再試。';
+
+/// 409 practice_mode_locked 共用文案（chat / hint 兩路徑同文案）。
+const _practiceModeLockedMessage = '這位練習對象這一輪已用另一種模式進行中，請切回原本的模式繼續';
 
 String _hintApiErrorMessage(String code) {
   switch (code) {

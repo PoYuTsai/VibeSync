@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
@@ -40,6 +42,7 @@ class _FakeApi extends PracticeChatApiService {
   String? lastDebriefThreadId;
   int? lastHintRoundIndex;
   String? lastHintThreadId;
+  String? lastHintRequestId;
   int hintCallCount = 0;
 
   // 翻牌捕捉。
@@ -78,10 +81,12 @@ class _FakeApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    String? requestId,
   }) {
     hintCallCount++;
     lastHintRoundIndex = roundIndex;
     lastHintThreadId = visiblePracticeThreadId;
+    lastHintRequestId = requestId;
     return hintHandler!(turns, profile: profile);
   }
 
@@ -656,6 +661,25 @@ void main() {
 
       await c.sendMessage('再一句');
       expect(c.currentState.messages.length, 2);
+    });
+
+    test('mode locked（409 practice_mode_locked）：提示切回原模式、絕不標 sessionComplete',
+        () async {
+      final c = await makeRevealed();
+      api.sendHandler =
+          (_, {profile}) async => throw PracticeModeLockedException();
+
+      await c.sendMessage('嗨');
+      final s = c.currentState;
+
+      expect(s.sessionComplete, false); // 誤標會引導「續聊同一位」多扣一則
+      expect(
+        s.errorMessage,
+        '這位練習對象這一輪已用另一種模式進行中，請切回原本的模式繼續',
+      );
+      expect(s.messages, isEmpty); // 回滾樂觀泡泡
+      expect(s.restoreText, '嗨');
+      expect(s.canSend, true); // 不鎖輸入
     });
 
     test('clearError 會一併清掉 upgradeRequired / draw 旗標', () async {
@@ -1251,6 +1275,187 @@ void main() {
       expect(c.currentState.isHintLoading, false);
       expect(c.currentState.errorMessage, '提示服務正在更新中，請稍後再試。');
       expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+    });
+
+    test('requestHint 帶 requestId：5xx 失敗重試沿用同 id、成功才 rotate', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      // 第一次 5xx 失敗：id 保留供重試
+      api.hintHandler = (_, {profile}) async =>
+          throw PracticeGenerationFailedException('boom');
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      // 重試成功：沿用同一 id（server 靠它去重雙扣）
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.lastHintRequestId, firstId);
+
+      // 成功後 rotate：下一次 hint 是新意圖 → 新 id
+      await c.requestHint();
+      expect(api.lastHintRequestId, isNotNull);
+      expect(api.lastHintRequestId, isNot(firstId));
+    });
+
+    test('requestHint 4xx 明確拒絕 → rotate 新 id（不沿用）', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            'invalid_hint_last_turn_must_be_ai',
+            status: 400,
+          );
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.lastHintRequestId, isNot(firstId));
+    });
+
+    test('requestHint mode locked（409）：同文案、isHintLoading 復位、不標 sessionComplete',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler =
+          (_, {profile}) async => throw PracticeModeLockedException();
+
+      await c.requestHint();
+
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.sessionComplete, false);
+      expect(
+        c.currentState.errorMessage,
+        '這位練習對象這一輪已用另一種模式進行中，請切回原本的模式繼續',
+      );
+      expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+    });
+
+    // ── 過期 hint 丟棄（generation 序號）──────────────────────────────────
+    /// 進到「beginner、已有 ai 回覆、hint 在途（completer 未完成）」的共用起手式。
+    Future<(PracticeChatController, Completer<PracticeHintResult>, Future<void>)>
+        pendingHint() async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      final completer = Completer<PracticeHintResult>();
+      api.hintHandler = (_, {profile}) => completer.future;
+      final hintFuture = c.requestHint();
+      expect(c.currentState.isHintLoading, true);
+      return (c, completer, hintFuture);
+    }
+
+    test('續玩同一位期間在途 hint 回來 → 丟棄不填 state、isHintLoading 復位、額度仍同步',
+        () async {
+      final (c, completer, hintFuture) = await pendingHint();
+
+      c.continueWithSamePartner(isPaid: true);
+      completer.complete(hintResult());
+      await hintFuture;
+
+      final s = c.currentState;
+      expect(s.hintReplies, isEmpty); // 過期內容不填回 UI
+      expect(s.hintCoaching, isNull);
+      expect(s.hintUsedCount, 0); // 新一輪計數不被舊回應污染
+      expect(s.isHintLoading, false);
+      expect(repo.getById(s.sessionId), isNull); // 不把舊 hint 持久化進新場
+      // 已扣額度認列不回滾（server 事實）：剩餘額度照樣同步
+      expect(synced, [
+        [28, 13]
+      ]);
+    });
+
+    test('換一位（draw）期間在途 hint 回來 → 丟棄、不污染新對象 state', () async {
+      final (c, completer, hintFuture) = await pendingHint();
+
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_011');
+      await c.drawNewPracticeGirl();
+
+      completer.complete(hintResult());
+      await hintFuture;
+
+      expect(c.currentState.girl!.profileId, 'practice_girl_011');
+      expect(c.currentState.hintReplies, isEmpty);
+      expect(c.currentState.hintUsedCount, 0);
+      expect(c.currentState.isHintLoading, false);
+    });
+
+    test('續玩後在途 hint 失敗回來 → 過期錯誤不打擾新狀態（無 errorMessage/旗標）',
+        () async {
+      final (c, completer, hintFuture) = await pendingHint();
+
+      c.continueWithSamePartner(isPaid: true);
+      completer.completeError(PracticeQuotaExceededException('本月額度已用完'));
+      await hintFuture;
+
+      expect(c.currentState.errorMessage, isNull);
+      expect(c.currentState.quotaExceeded, false);
+      expect(c.currentState.isHintLoading, false);
+    });
+
+    test('hint 在途時 canSend=false（雙向互斥）、sendMessage no-op，完成後恢復',
+        () async {
+      final (c, completer, hintFuture) = await pendingHint();
+      expect(c.currentState.canSend, false);
+
+      // 在途時搶送：不打 API、不長泡泡
+      var sendCalled = false;
+      api.sendHandler = (_, {profile}) async {
+        sendCalled = true;
+        return reply();
+      };
+      await c.sendMessage('搶著送');
+      expect(sendCalled, false);
+      expect(c.currentState.messages, hasLength(2));
+
+      completer.complete(hintResult());
+      await hintFuture;
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.canSend, true);
     });
 
     test('requestHint maps backend gate codes to clear copy', () async {
