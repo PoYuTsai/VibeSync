@@ -423,6 +423,10 @@ function normalizeOpenerPayload(
   };
 }
 
+// 主呼叫與 repair 共用同一上限：內容豐富截圖輸出可超過 1800（實測成功案例
+// 1566–1597 tokens），repair 上限若低於主呼叫，截斷輸入修完仍超長＝必再截斷。
+const OPENER_MAX_TOKENS = 3000;
+
 const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復器。
 
 任務：
@@ -497,7 +501,7 @@ async function repairMalformedOpenerPayload({
   const repairResult = await callClaudeWithFallback(
     {
       model: "claude-sonnet-4-6",
-      max_tokens: 1400,
+      max_tokens: OPENER_MAX_TOKENS,
       system: OPENER_REPAIR_PROMPT,
       messages: [
         {
@@ -5143,7 +5147,7 @@ serve(async (req) => {
         apiResult = await callClaudeWithFallback(
           {
             model: openerModel,
-            max_tokens: 1800,
+            max_tokens: OPENER_MAX_TOKENS,
             system: OPENER_PROMPT,
             messages: claudeMessages,
           },
@@ -5172,6 +5176,7 @@ serve(async (req) => {
       const apiData = apiResult.data as {
         content?: Array<{ text?: string }>;
         usage?: { input_tokens?: number; output_tokens?: number };
+        stop_reason?: string;
       };
       const rawText = apiData.content?.[0]?.text || "";
 
@@ -5195,6 +5200,7 @@ serve(async (req) => {
             logInfo("opener_response_repaired", {
               user: summarizeUser(user.id),
               model: apiResult.model,
+              stopReason: apiData.stop_reason,
               repairModel: repairMetadata.model,
               imageCount,
               originalTextLength: rawText.length,
@@ -5206,6 +5212,7 @@ serve(async (req) => {
             logWarn("opener_repair_failed", {
               user: summarizeUser(user.id),
               model: apiResult.model,
+              stopReason: apiData.stop_reason,
               repairModel: repairMetadata.model,
               imageCount,
               originalTextLength: rawText.length,
@@ -5225,6 +5232,7 @@ serve(async (req) => {
         logWarn("opener_response_invalid", {
           user: summarizeUser(user.id),
           model: apiResult.model,
+          stopReason: apiData.stop_reason,
           imageCount,
           textLength: rawText.length,
           startsWithCodeFence: rawText.trim().startsWith("```"),

@@ -871,13 +871,75 @@ Deno.test({
     assert(source.includes("opener_response_repaired"));
     assert(source.includes("opener_repair_failed"));
     assert(source.includes("opener_repair_error"));
-    assert(source.includes("max_tokens: 1800"));
+    assert(source.includes("max_tokens: OPENER_MAX_TOKENS"));
     assert(source.includes('imageCount > 0 || effectiveTier !== "free"'));
     assert(source.includes("lower.includes('\"profileanalysis\"')"));
     assert(source.includes("lower.includes('\"openers\"')"));
     assert(source.includes("opener_response_invalid"));
     assert(source.includes("本次不會扣額度"));
     assertFalse(source.includes("parsed = { openers: { extend: rawText } }"));
+  },
+});
+
+// 2026-07-02 opener 截圖 502 根因修復（黑箱 12 打 3 掛、全 502）：
+// 1) 主呼叫 max_tokens 1800 在內容豐富截圖會頂滿截斷（成功案例輸出 1566–1597
+//    tokens 離上限僅 ~10%＝「偶爾失敗」的機率來源；直打 API 同 prompt 兩輪
+//    stop_reason=max_tokens 頂滿 1800）
+// 2) repair 上限 1400 < 主呼叫 1800，截斷輸入修完仍超長＝結構上必再截斷 → 502
+// 3) opener_response_invalid 原本不記 stop_reason，截斷不可觀測
+Deno.test({
+  name: "opener 主呼叫與 repair 共用 OPENER_MAX_TOKENS=3000（1800/1400 不得殘留）",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assert(
+      source.includes("const OPENER_MAX_TOKENS = 3000"),
+      "必須有單一 OPENER_MAX_TOKENS 常數",
+    );
+    const usages = source.match(/max_tokens: OPENER_MAX_TOKENS/g) ?? [];
+    assertEquals(
+      usages.length,
+      2,
+      "主呼叫與 repair 兩處都必須用 OPENER_MAX_TOKENS（repair 上限結構上 ≥ 主呼叫）",
+    );
+    assertFalse(
+      source.includes("max_tokens: 1800"),
+      "opener 主呼叫 1800 上限不得殘留",
+    );
+    assertFalse(
+      source.includes("max_tokens: 1400"),
+      "repair 1400 上限不得殘留（< 主呼叫必再截斷）",
+    );
+  },
+});
+
+Deno.test({
+  name: "opener 主呼叫 stop_reason 進 telemetry（截斷可觀測）",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assert(
+      source.includes("stop_reason?: string"),
+      "opener 主呼叫 apiData type 必須含 stop_reason",
+    );
+    for (
+      const logSite of [
+        'logWarn("opener_response_invalid"',
+        'logInfo("opener_response_repaired"',
+        'logWarn("opener_repair_failed"',
+      ]
+    ) {
+      const idx = source.indexOf(logSite);
+      assert(idx >= 0, `找不到 ${logSite}`);
+      assert(
+        source.slice(idx, idx + 800).includes("stopReason: apiData.stop_reason"),
+        `${logSite} 必須記 stopReason`,
+      );
+    }
   },
 });
 
