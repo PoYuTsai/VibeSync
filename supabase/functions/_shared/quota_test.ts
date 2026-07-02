@@ -19,6 +19,7 @@ import {
   applyResetsIfNeeded,
   buildQuotaExceededPayload,
   checkQuota,
+  classifyQuotaRpcError,
   isPlainObject,
   normalizeTier,
   parseRevenueCatSubscriber,
@@ -457,4 +458,33 @@ Deno.test("isPlainObject discriminates objects from arrays / null / primitives",
   assertEquals(isPlainObject(null), false);
   assertEquals(isPlainObject("x"), false);
   assertEquals(isPlainObject(0), false);
+});
+
+// ---------------------------------------------------------------------------
+// classifyQuotaRpcError — Batch C#1 increment_usage 鎖內超限 RAISE 的 Edge 側
+// 偵測（message.includes 慣例，同 practice draw）。非超限錯誤回 null，讓呼叫
+// 端走既有 credit_deduct_failed 路徑。
+// ---------------------------------------------------------------------------
+
+Deno.test("classifyQuotaRpcError maps increment_usage RAISE messages to quota reasons", () => {
+  assertEquals(
+    classifyQuotaRpcError("QUOTA_EXCEEDED_MONTHLY"),
+    "monthly_limit_exceeded",
+  );
+  assertEquals(
+    classifyQuotaRpcError("QUOTA_EXCEEDED_DAILY"),
+    "daily_limit_exceeded",
+  );
+  // PostgREST 會把 RAISE 包進較長的 message，仍要抓得到。
+  assertEquals(
+    classifyQuotaRpcError('增量失敗: "QUOTA_EXCEEDED_MONTHLY" (P0001)'),
+    "monthly_limit_exceeded",
+  );
+});
+
+Deno.test("classifyQuotaRpcError returns null for non-quota errors and empty input", () => {
+  assertEquals(classifyQuotaRpcError("connection reset"), null);
+  assertEquals(classifyQuotaRpcError(""), null);
+  assertEquals(classifyQuotaRpcError(null), null);
+  assertEquals(classifyQuotaRpcError(undefined), null);
 });

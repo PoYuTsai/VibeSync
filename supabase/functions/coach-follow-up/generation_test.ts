@@ -17,6 +17,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   type ClaudeCallArgs,
+  CoachFollowUpQuotaExceededError,
   type GenerationDeps,
   type GenerationInput,
   runCoachFollowUp,
@@ -312,4 +313,44 @@ Deno.test("T7: deduct order — validate + safety pass BEFORE deductCredit fires
     "deduct",
     "info:coach_follow_up_succeeded",
   ]);
+});
+
+Deno.test("T7: deductCredit quota error → 429 with quota payload, NO succeeded log", async () => {
+  // Batch C#2：deductCredit 重查發現額度已被並發請求吃掉（或 increment_usage
+  // 鎖內 RAISE）→ 必須回 429 quota 語義，不是 500 credit_deduct_failed。
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = () =>
+    Promise.reject(
+      new CoachFollowUpQuotaExceededError("daily_limit_exceeded", 50, 50),
+    );
+
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 429);
+  assertEquals(result.body.error, "Daily limit exceeded");
+  assertEquals(result.body.quotaNeeded, 1);
+  assertEquals(result.body.used, 50);
+  assertEquals(result.body.limit, 50);
+  assertEquals(typeof result.body.message, "string");
+
+  const failed = h.logs.filter((l) => l.event === "coach_follow_up_failed");
+  assertEquals(failed.length, 1);
+  assertEquals(failed[0].data.errorClass, "daily_limit_exceeded");
+  assertEquals(
+    h.logs.some((l) => l.event === "coach_follow_up_succeeded"),
+    false,
+  );
+});
+
+Deno.test("T7: deductCredit monthly quota error → 429 monthly wording", async () => {
+  const h = makeHarness(async () => claudeWrapped(VALID_CARD));
+  h.deps.deductCredit = () =>
+    Promise.reject(
+      new CoachFollowUpQuotaExceededError("monthly_limit_exceeded", 300, 300),
+    );
+
+  const result = await runCoachFollowUp(BASE_INPUT, h.deps);
+
+  assertEquals(result.status, 429);
+  assertEquals(result.body.error, "Monthly limit exceeded");
 });

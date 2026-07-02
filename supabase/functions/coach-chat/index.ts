@@ -11,6 +11,7 @@ import {
   applyResetsIfNeeded,
   buildQuotaExceededPayload,
   checkQuota,
+  classifyQuotaRpcError,
   isPlainObject,
   normalizeTier,
   parseRevenueCatSubscriber,
@@ -388,11 +389,26 @@ export async function handleRequest(req: Request): Promise<Response> {
           );
         }
 
+        // Batch C#2：帶 tier 上限讓 increment_usage 鎖內複檢，兜住上面
+        // checkQuota 與真正扣費之間的並發競態；RAISE 映射回 429 語義。
         const { error } = await supabase.rpc("increment_usage", {
           p_user_id: userId,
           p_messages: COST_PER_GENERATION,
+          p_monthly_limit: latestLimits.monthly,
+          p_daily_limit: latestLimits.daily,
         });
         if (error) {
+          const quotaReason = classifyQuotaRpcError(error.message);
+          if (quotaReason) {
+            const isMonthly = quotaReason === "monthly_limit_exceeded";
+            throw new CoachChatQuotaExceededError(
+              quotaReason,
+              isMonthly
+                ? latestSub.monthly_messages_used
+                : latestSub.daily_messages_used,
+              isMonthly ? latestLimits.monthly : latestLimits.daily,
+            );
+          }
           logWarn("coach_chat_deduct_db_error", {
             user: summarizeUser(userId),
             error: error.message,

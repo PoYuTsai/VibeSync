@@ -27,6 +27,7 @@ import {
   validateResponseCard,
 } from "./validate.ts";
 import { buildCoachFollowUpPrompt } from "./prompts.ts";
+import { quotaExceededMessage } from "../_shared/quota.ts";
 import type {
   CoachFollowUpRequest,
   CoachFollowUpResponseCard,
@@ -55,6 +56,21 @@ export interface GenerationDeps {
   logger: GenerationLogger;
   /** Override for deterministic latency in tests; defaults to Date.now. */
   now?: () => number;
+}
+
+// Batch C#2 — deductCredit 重查（或 increment_usage 鎖內 RAISE）發現額度已被
+// 並發請求吃掉時丟這個，讓 429 語義與 coach-chat 對齊，而非 500
+// credit_deduct_failed（結構同 CoachChatQuotaExceededError；跨函式不互 import，
+// OCR isolation 慣例）。
+export class CoachFollowUpQuotaExceededError extends Error {
+  constructor(
+    readonly reason: "monthly_limit_exceeded" | "daily_limit_exceeded",
+    readonly used: number,
+    readonly limit: number,
+  ) {
+    super(reason);
+    this.name = "CoachFollowUpQuotaExceededError";
+  }
 }
 
 export interface GenerationInput {
@@ -152,6 +168,25 @@ export async function runCoachFollowUp(
     try {
       await deps.deductCredit({ userId: input.userId });
     } catch (e) {
+      if (e instanceof CoachFollowUpQuotaExceededError) {
+        deps.logger.warn("coach_follow_up_failed", {
+          phase: input.phase,
+          tier: input.tier,
+          errorClass: e.reason,
+        });
+        return {
+          status: 429,
+          body: {
+            error: e.reason === "monthly_limit_exceeded"
+              ? "Monthly limit exceeded"
+              : "Daily limit exceeded",
+            message: quotaExceededMessage(e.reason),
+            quotaNeeded: 1,
+            used: e.used,
+            limit: e.limit,
+          },
+        };
+      }
       deps.logger.warn("coach_follow_up_failed", {
         phase: input.phase,
         tier: input.tier,

@@ -189,6 +189,25 @@ export function checkQuota(opts: {
   return { ok: true };
 }
 
+/**
+ * Batch C#1 — increment_usage（4-arg 版）鎖內超限 RAISE 的 Edge 側偵測。
+ * PostgREST 會把 RAISE 訊息包進較長字串，用 includes 抓（同 practice draw
+ * 的 PRACTICE_DRAW_QUOTA_EXCEEDED_* 慣例）。非超限錯誤回 null，呼叫端走
+ * 既有 credit_deduct_failed 路徑。
+ */
+export function classifyQuotaRpcError(
+  message: string | null | undefined,
+): "monthly_limit_exceeded" | "daily_limit_exceeded" | null {
+  if (!message) return null;
+  if (message.includes("QUOTA_EXCEEDED_MONTHLY")) {
+    return "monthly_limit_exceeded";
+  }
+  if (message.includes("QUOTA_EXCEEDED_DAILY")) {
+    return "daily_limit_exceeded";
+  }
+  return null;
+}
+
 export function quotaExceededMessage(
   reason: "monthly_limit_exceeded" | "daily_limit_exceeded",
 ): string {

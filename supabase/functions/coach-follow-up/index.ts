@@ -17,11 +17,16 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import { validateRequest } from "./validate.ts";
-import { callClaudeAPI, runCoachFollowUp } from "./generation.ts";
+import {
+  callClaudeAPI,
+  CoachFollowUpQuotaExceededError,
+  runCoachFollowUp,
+} from "./generation.ts";
 import {
   applyResetsIfNeeded,
   buildQuotaExceededPayload,
   checkQuota,
+  classifyQuotaRpcError,
   isPlainObject,
   normalizeTier,
   parseRevenueCatSubscriber,
@@ -417,13 +422,78 @@ export async function handleRequest(req: Request): Promise<Response> {
     {
       callClaude: callClaudeAPI,
       deductCredit: async ({ userId }) => {
-        // Atomic server-side increment prevents concurrent generations from
-        // both reading the same usage count and under-deducting one credit.
+        // Batch C#2（plan C3）：對齊 coach-chat——生成期間額度可能被並發請求
+        // 吃掉，扣費前重查 sub＋窗口 reset＋checkQuota（失敗時給 RC refresh
+        // 一次翻身機會），最後帶 tier 上限呼叫 increment_usage，由鎖內複檢
+        // 兜住重查與扣費之間的殘餘競態。
+        let latestSub = await fetchSubscription(supabase, userId);
+        if (!latestSub) throw new Error("No subscription found");
+
+        const latestReset = applyResetsIfNeeded(latestSub, new Date());
+        latestSub = latestReset.sub;
+        if (latestReset.dailyReset || latestReset.monthlyReset) {
+          await persistResets(
+            supabase,
+            userId,
+            latestSub,
+            latestReset.dailyReset,
+            latestReset.monthlyReset,
+          );
+        }
+
+        let latestLimits = resolveLimits(latestSub.tier);
+        let deductGate = checkQuota({
+          sub: latestSub,
+          cost: COST_PER_GENERATION,
+          isTestAccount: accountIsTest,
+          monthlyLimit: latestLimits.monthly,
+          dailyLimit: latestLimits.daily,
+        });
+        if (!deductGate.ok) {
+          const refreshed = await maybeRefreshTierFromRevenueCat(
+            supabase,
+            userId,
+            latestSub,
+            deductGate.reason,
+          );
+          if (refreshed) {
+            latestSub = refreshed;
+            latestLimits = resolveLimits(latestSub.tier);
+            deductGate = checkQuota({
+              sub: latestSub,
+              cost: COST_PER_GENERATION,
+              isTestAccount: accountIsTest,
+              monthlyLimit: latestLimits.monthly,
+              dailyLimit: latestLimits.daily,
+            });
+          }
+        }
+        if (!deductGate.ok) {
+          throw new CoachFollowUpQuotaExceededError(
+            deductGate.reason,
+            deductGate.used,
+            deductGate.limit,
+          );
+        }
+
         const { error } = await supabase.rpc("increment_usage", {
           p_user_id: userId,
           p_messages: COST_PER_GENERATION,
+          p_monthly_limit: latestLimits.monthly,
+          p_daily_limit: latestLimits.daily,
         });
         if (error) {
+          const quotaReason = classifyQuotaRpcError(error.message);
+          if (quotaReason) {
+            const isMonthly = quotaReason === "monthly_limit_exceeded";
+            throw new CoachFollowUpQuotaExceededError(
+              quotaReason,
+              isMonthly
+                ? latestSub.monthly_messages_used
+                : latestSub.daily_messages_used,
+              isMonthly ? latestLimits.monthly : latestLimits.daily,
+            );
+          }
           logWarn("coach_follow_up_deduct_db_error", {
             user: summarizeUser(userId),
             error: error.message,
