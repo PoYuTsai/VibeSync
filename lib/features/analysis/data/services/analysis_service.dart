@@ -1025,6 +1025,27 @@ AnalysisException _mapAnalysisHttpError({
         code: errorCode ?? 'PAYLOAD_TOO_LARGE',
         suggestedAction: AnalysisErrorAction.shortenInput,
       );
+    case 429:
+      // 免費 OCR（recognizeOnly）限流：6/分、60/天。payload 不帶
+      // monthlyLimit/dailyLimit 鍵，所以不會被 _quotaExceptionFrom429
+      // 判成訂閱額度（那會誤導升級 paywall CTA）。wait 而非 retry。
+      if (errorCode == 'OCR_RATE_LIMITED') {
+        return AnalysisException(
+          _isReadableUserMessage(normalizedMessage) &&
+                  normalizedMessage.isNotEmpty
+              ? normalizedMessage
+              : '截圖辨識太頻繁，請稍等一下再試。',
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.wait,
+        );
+      }
+      // 其他 429（訂閱額度）已在呼叫端被 _quotaExceptionFrom429 接走；
+      // 走到這代表 payload 缺額度欄位，保守給 wait。
+      return AnalysisException(
+        '請求太頻繁，請稍後再試。',
+        code: errorCode ?? 'RATE_LIMITED',
+        suggestedAction: AnalysisErrorAction.wait,
+      );
     case 502:
     case 503:
     case 504:
@@ -1381,7 +1402,9 @@ class AnalysisService {
           ? const Duration(seconds: 120)
           : const Duration(seconds: 60);
 
-      final accessToken = SupabaseService.accessToken;
+      // 走注入的 provider（預設即 SupabaseService.accessToken），測試才能
+      // 不初始化 Supabase 就打到 HTTP 層。
+      final accessToken = _accessTokenProvider();
       if (accessToken == null) {
         throw AnalysisException(
           '請先重新登入後再試。',
@@ -1459,7 +1482,9 @@ class AnalysisService {
         ),
       );
 
-      final httpClient = http.Client();
+      // 走注入的 factory（預設即 http.Client.new，同 analyzeQuick/analyzeFull），
+      // 測試才能攔截 recognizeOnly 的 HTTP 層。
+      final httpClient = _clientFactory();
       try {
         final requestStartTime = DateTime.now();
         final awaitingAiTimer = Timer(const Duration(milliseconds: 700), () {
