@@ -865,8 +865,10 @@ Deno.test({
 
     assert(source.includes("function parseJsonObjectFromText"));
     assert(source.includes("repairJson(candidate)"));
-    assert(source.includes("function normalizeOpenerPayload"));
-    assert(source.includes("function sanitizeOpenerText"));
+    // sanitize/normalize/filter 已抽到 opener_payload.ts（行為測試在
+    // opener_payload_test.ts），index.ts 必須從該模組取用
+    assert(source.includes('from "./opener_payload.ts"'));
+    assert(source.includes("normalizeOpenerPayload(parseJsonObjectFromText"));
     assert(source.includes("repairMalformedOpenerPayload"));
     assert(source.includes("OPENER_REPAIR_PROMPT"));
     assert(source.includes("opener_response_repaired"));
@@ -874,8 +876,6 @@ Deno.test({
     assert(source.includes("opener_repair_error"));
     assert(source.includes("max_tokens: OPENER_MAX_TOKENS"));
     assert(source.includes('imageCount > 0 || effectiveTier !== "free"'));
-    assert(source.includes("lower.includes('\"profileanalysis\"')"));
-    assert(source.includes("lower.includes('\"openers\"')"));
     assert(source.includes("opener_response_invalid"));
     assert(source.includes("本次不會扣額度"));
     assertFalse(source.includes("parsed = { openers: { extend: rawText } }"));
@@ -952,7 +952,8 @@ Deno.test({
       new URL("./index.ts", import.meta.url),
     );
 
-    assert(source.includes("function filterOpenerPayloadForAllowedFeatures"));
+    // 函式本體在 opener_payload.ts（行為測試在 opener_payload_test.ts）
+    assert(source.includes("filterOpenerPayloadForAllowedFeatures,"));
     assert(
       source.includes(
         "const filteredOpenerPayload = filterOpenerPayloadForAllowedFeatures",

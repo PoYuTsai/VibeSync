@@ -37,6 +37,10 @@ import {
   VALID_IMAGE_MEDIA_TYPES,
   validateOpenerImages,
 } from "./opener_image_validation.ts";
+import {
+  filterOpenerPayloadForAllowedFeatures,
+  normalizeOpenerPayload,
+} from "./opener_payload.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
 import {
   computeBillingPayloadHash,
@@ -179,63 +183,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const OPENER_TYPES = [
-  "extend",
-  "resonate",
-  "tease",
-  "humor",
-  "coldRead",
-] as const;
-
-type OpenerType = typeof OPENER_TYPES[number];
-
-function isOpenerType(value: string): value is OpenerType {
-  return (OPENER_TYPES as readonly string[]).includes(value);
-}
-
-function filterOpenerPayloadForAllowedFeatures(
-  parsed: Record<string, unknown>,
-  allowedFeatures: readonly string[],
-): Record<string, unknown> | null {
-  const allowedOpenerTypes = new Set(
-    allowedFeatures.filter((feature): feature is OpenerType =>
-      isOpenerType(feature)
-    ),
-  );
-  const rawOpeners = isPlainObject(parsed.openers) ? parsed.openers : {};
-  const openers: Record<string, string> = {};
-
-  for (const type of OPENER_TYPES) {
-    if (!allowedOpenerTypes.has(type)) continue;
-    const opener = sanitizeOpenerText(rawOpeners[type]);
-    if (opener) {
-      openers[type] = opener;
-    }
-  }
-
-  const recommendedPick = typeof parsed.recommendedPick === "string" &&
-      isOpenerType(parsed.recommendedPick) &&
-      openers[parsed.recommendedPick]
-    ? parsed.recommendedPick
-    : OPENER_TYPES.find((type) => openers[type]);
-
-  if (!recommendedPick) {
-    return null;
-  }
-
-  const filtered: Record<string, unknown> = {
-    ...parsed,
-    openers,
-    recommendedPick,
-  };
-
-  if (filtered.recommendedPick !== parsed.recommendedPick) {
-    delete filtered.recommendedReason;
-  }
-
-  return filtered;
-}
-
 function normalizeDogfoodRecommendation(
   value: unknown,
 ): Record<string, unknown> | null {
@@ -357,70 +304,6 @@ function parseJsonObjectFromText(text: string): Record<string, unknown> | null {
   }
 
   return null;
-}
-
-function sanitizeOpenerText(value: unknown): string | null {
-  let text: string | null = null;
-
-  if (typeof value === "string") {
-    text = value;
-  } else if (isPlainObject(value)) {
-    for (const key of ["text", "message", "opener", "content", "line"]) {
-      const nested = value[key];
-      if (typeof nested === "string") {
-        text = nested;
-        break;
-      }
-    }
-  }
-
-  if (text == null) return null;
-
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-
-  const lower = trimmed.toLowerCase();
-  if (
-    trimmed.startsWith("```") ||
-    trimmed.startsWith("{") ||
-    trimmed.startsWith("[") ||
-    lower.includes('"profileanalysis"') ||
-    lower.includes('"openers"') ||
-    lower.includes("```json")
-  ) {
-    return null;
-  }
-
-  // Opening lines are short by contract. A very long value is usually a model
-  // explanation or malformed JSON that would be embarrassing to show.
-  if (trimmed.length > 180) return null;
-
-  return trimmed;
-}
-
-function normalizeOpenerPayload(
-  parsed: Record<string, unknown> | null,
-): Record<string, unknown> | null {
-  if (!parsed) return null;
-
-  const rawOpeners = isPlainObject(parsed.openers) ? parsed.openers : {};
-  const openers: Record<string, string> = {};
-
-  for (const type of OPENER_TYPES) {
-    const opener = sanitizeOpenerText(rawOpeners[type]);
-    if (opener) {
-      openers[type] = opener;
-    }
-  }
-
-  if (Object.keys(openers).length === 0) {
-    return null;
-  }
-
-  return {
-    ...parsed,
-    openers,
-  };
 }
 
 // 主呼叫與 repair 共用同一上限：內容豐富截圖輸出可超過 1800（實測成功案例
