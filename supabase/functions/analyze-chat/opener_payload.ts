@@ -104,11 +104,23 @@ export function filterOpenerPayloadForAllowedFeatures(
     }
   }
 
-  const recommendedPick = typeof parsed.recommendedPick === "string" &&
-      isOpenerType(parsed.recommendedPick) &&
-      openers[parsed.recommendedPick]
-    ? parsed.recommendedPick
-    : OPENER_TYPES.find((type) => openers[type]);
+  // 模型 schema 只吐 recommendation.pick（client 也只讀這欄），頂層
+  // recommendedPick 必須優先對齊它，否則 fallback 注入的頂層值恆為 extend、
+  // 與 recommendation.pick 在同一 response 內矛盾。openers[pick] 同時保證
+  // 該風格在 tier allowed 且清洗後仍有句可用。
+  const recommendationPick = isPlainObject(parsed.recommendation) &&
+      typeof parsed.recommendation.pick === "string" &&
+      isOpenerType(parsed.recommendation.pick) &&
+      openers[parsed.recommendation.pick]
+    ? parsed.recommendation.pick
+    : null;
+
+  const recommendedPick = recommendationPick ??
+    (typeof parsed.recommendedPick === "string" &&
+        isOpenerType(parsed.recommendedPick) &&
+        openers[parsed.recommendedPick]
+      ? parsed.recommendedPick
+      : OPENER_TYPES.find((type) => openers[type]));
 
   if (!recommendedPick) {
     return null;

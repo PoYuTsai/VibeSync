@@ -72,6 +72,69 @@ Deno.test("filterOpener 頂層 recommendedPick 合法且有句時沿用，並保
   assertEquals(filtered?.recommendedReason, "幽默對上她的動態");
 });
 
+// 2026-07-02 Eric 拍板：模型 schema 只吐 recommendation.pick（client 也只讀
+// 這欄），頂層 recommendedPick 是本函式 fallback 注入的，恆為 extend＝同一
+// response 兩欄矛盾。頂層必須優先對齊 recommendation.pick（合法＋tier
+// allowed＋openers 有句），fallback 只在 recommendation.pick 不可用時兜底。
+Deno.test("filterOpener 頂層缺 recommendedPick 時對齊 recommendation.pick", () => {
+  const filtered = filterOpenerPayloadForAllowedFeatures(
+    {
+      openers: { extend: "延展句", tease: "調情句" },
+      recommendation: { pick: "tease", reason: "她的動態在丟球" },
+    },
+    ALL_FEATURES,
+  );
+  assertEquals(filtered?.recommendedPick, "tease");
+});
+
+Deno.test("filterOpener 兩欄矛盾時 recommendation.pick 勝（兩欄一致）", () => {
+  const filtered = filterOpenerPayloadForAllowedFeatures(
+    {
+      openers: { extend: "延展句", tease: "調情句", humor: "幽默句" },
+      recommendedPick: "humor",
+      recommendation: { pick: "tease", reason: "她的動態在丟球" },
+    },
+    ALL_FEATURES,
+  );
+  assertEquals(filtered?.recommendedPick, "tease");
+});
+
+Deno.test("filterOpener recommendation.pick 不在 tier allowed 時 fallback 兜底", () => {
+  const filtered = filterOpenerPayloadForAllowedFeatures(
+    {
+      openers: { extend: "延展句", tease: "調情句" },
+      recommendation: { pick: "tease", reason: "調情最對味" },
+    },
+    ["extend"],
+  );
+  assertEquals(filtered?.recommendedPick, "extend");
+  // recommendation 本體不改寫：client 端 bestOpenerType 對缺句 pick 自帶 fallback
+  assertEquals(
+    (filtered?.recommendation as Record<string, unknown>).pick,
+    "tease",
+  );
+});
+
+Deno.test("filterOpener recommendation.pick 非法或缺句時 fallback 兜底", () => {
+  const illegal = filterOpenerPayloadForAllowedFeatures(
+    {
+      openers: { resonate: "共鳴句" },
+      recommendation: { pick: "banana", reason: "非法值" },
+    },
+    ALL_FEATURES,
+  );
+  assertEquals(illegal?.recommendedPick, "resonate");
+
+  const missingLine = filterOpenerPayloadForAllowedFeatures(
+    {
+      openers: { extend: "延展句" },
+      recommendation: { pick: "coldRead", reason: "冷讀但沒句子" },
+    },
+    ALL_FEATURES,
+  );
+  assertEquals(missingLine?.recommendedPick, "extend");
+});
+
 Deno.test("filterOpener 頂層 recommendedPick 無效時 fallback 首個有句風格並刪 reason", () => {
   const filtered = filterOpenerPayloadForAllowedFeatures(
     {
