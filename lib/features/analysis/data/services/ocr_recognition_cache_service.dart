@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -23,7 +23,12 @@ class OcrRecognitionCacheService {
   static const _cachePrefix = 'ocr_recognition_cache';
   // Bump this whenever OCR structure/speaker heuristics change so the app
   // does not keep replaying stale local recognition results for the same image.
-  static const _cacheVersion = 4;
+  // v5: server 端 LINE meta 錨點（bc023822）＋ metaDecisive guard（9b670516）
+  // 改變 side 判別行為，v4 快取的高信心錯誤結果不得再重播。
+  static const _cacheVersion = 5;
+
+  @visibleForTesting
+  static int get debugCacheVersion => _cacheVersion;
   static const _maxEntriesPerUser = 20;
   static const _maxAge = Duration(hours: 24);
 
