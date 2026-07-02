@@ -347,8 +347,10 @@ void main() {
     expect(service.loadDrafts(), isEmpty);
   });
 
-  test('continued free handoff replaces draft result with visible opener only',
-      () async {
+  test('continue never downgrades the stored draft result', () async {
+    // Batch 4 #4: a free/downgraded user continuing a paid-era draft must not
+    // permanently strip the paid styles from local storage. Leak protection
+    // is enforced at read time via visibleForAccess, not by rewriting drafts.
     final service = OpenerResultCacheService();
     final draft = await service.saveDraft(
       result: const OpenerResult(
@@ -363,16 +365,22 @@ void main() {
       partnerId: 'partner-a',
     );
 
-    await service.markDraftContinued(
-      draft.id,
-      result: draft.result.visibleForAccess(isFreeUser: true),
-    );
+    await service.markDraftContinued(draft.id);
 
-    final restored = service.loadLatestForScope(partnerId: 'partner-a')!;
-    expect(restored.openers, {'extend': 'free line'});
-    expect(restored.bestOpenerText, 'free line');
-    expect(restored.recommendedPick, 'extend');
-    expect(restored.recommendedReason, isNull);
+    final stored = service.loadDraft(draft.id)!;
+    expect(stored.continuedAt, isNotNull);
+    expect(stored.result.openers, {
+      'extend': 'free line',
+      'coldRead': 'locked line',
+    });
+    expect(stored.result.recommendedPick, 'coldRead');
+    expect(stored.result.recommendedReason, 'locked reason');
+
+    // Read-time gating still hides locked content from free users.
+    final visible = stored.result.visibleForAccess(isFreeUser: true);
+    expect(visible.openers, {'extend': 'free line'});
+    expect(visible.recommendedPick, 'extend');
+    expect(visible.recommendedReason, isNull);
   });
 
   test('deleteDraftsForPartner removes only that partner scoped drafts',

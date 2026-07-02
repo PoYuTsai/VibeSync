@@ -265,10 +265,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       }
       final draftId = _currentDraftId;
       if (draftId != null) {
-        await _resultCacheService.markDraftContinued(
-          draftId,
-          result: handoffResult,
-        );
+        await _resultCacheService.markDraftContinued(draftId);
       }
     } catch (_) {
       // Starting a conversation should not fail because local metadata failed.

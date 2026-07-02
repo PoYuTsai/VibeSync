@@ -212,15 +212,16 @@ class OpenerResultCacheService {
     return null;
   }
 
-  Future<void> markDraftContinued(String id, {OpenerResult? result}) async {
+  /// Stamps `continuedAt` on the draft. Never rewrites the stored result —
+  /// a free/downgraded caller continuing a paid-era draft must not strip the
+  /// paid styles from local storage; leak protection is read-time
+  /// (`visibleForAccess`), not write-time (Batch 4 #4).
+  Future<void> markDraftContinued(String id) async {
     final drafts = loadDrafts();
     final updated = drafts
         .map(
           (draft) => draft.id == id
-              ? draft.copyWith(
-                  result: result,
-                  continuedAt: DateTime.now(),
-                )
+              ? draft.copyWith(continuedAt: DateTime.now())
               : draft,
         )
         .toList(growable: false);
