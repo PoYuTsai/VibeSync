@@ -14,6 +14,12 @@ import {
   type FallbackResult,
 } from "./fallback.ts";
 import { applyLayoutFirstParser } from "./layout_parser.ts";
+import {
+  isReadReceiptSideDecisive,
+  META_ANCHOR_SCHEMA_NOTE,
+  SCREENSHOT_OCR_ACCURACY_RULES,
+  SCREENSHOT_OCR_ACCURACY_RULES_WITH_META_ANCHORS,
+} from "./screenshot_ocr_rules.ts";
 import { buildQuotedReplyPrefix } from "./quoted_reply_context.ts";
 import {
   type BlockType,
@@ -661,6 +667,10 @@ interface NormalizedRecognizedMessage {
   // Carries the geometry-lock signal down to applyLayoutFirstParser so an
   // unambiguous spatial side is never flipped by neighbour/dominant heuristics.
   geometryDecisive?: boolean;
+  // 已讀鎖：模型回報 readReceipt=true 的泡（LINE 介面規則＝已讀只出現在我方
+  // 訊息旁）強制 isFromMe=true，任何 speaker heuristic 不得再翻——與
+  // geometryDecisive 同款 invariant，訊號來源是 meta 錨點而非幾何。
+  metaDecisive?: boolean;
 }
 
 type VisibleSpeakerPattern = "mixed" | "only_left" | "only_right" | "unknown";
@@ -955,88 +965,6 @@ Only extract what is visible in the screenshots.
 Do not invent missing text, names, or message order.
 If the screenshots are not a normal one-to-one chat UI, classify them conservatively using one of: social_feed, group_chat, gallery_album, call_log_screen, system_ui, sensitive_content, unsupported.`;
 
-const SCREENSHOT_OCR_ACCURACY_RULES = [
-  "### MANDATORY FIRST STEP: Visual Layout Analysis",
-  "- STOP. Before reading ANY text, you MUST first analyze the visual layout:",
-  "- Step 1: Draw an imaginary vertical line through the CENTER of the screenshot (at x=50%).",
-  "- Step 2: Look at ONLY the OUTER bubble containers (ignore any small inset quoted-reply cards inside bubbles).",
-  "- Step 3: For each outer bubble, determine if its CENTER is LEFT of the midline (x < 40%) or RIGHT of the midline (x > 60%).",
-  "- Step 4: If ALL outer bubbles are on the LEFT side → set screenSpeakerPattern: 'only_left' and ALL messages are isFromMe: false.",
-  "- Step 5: If ALL outer bubbles are on the RIGHT side → set screenSpeakerPattern: 'only_right' and ALL messages are isFromMe: true.",
-  "- Step 6: Only if outer bubbles appear on BOTH sides → set screenSpeakerPattern: 'mixed'.",
-  "",
-  "### CRITICAL: What Counts as an 'Outer Bubble'",
-  "- An outer bubble is the main message container that sits against the left or right edge of the chat area.",
-  "- Quoted-reply cards (small inset boxes with colored borders showing old messages) are INSIDE outer bubbles - they are NOT outer bubbles themselves.",
-  "- Even if a quoted card shows someone's avatar/name, the OUTER bubble position determines the speaker.",
-  "- A left-side outer bubble with a quoted card showing 'Bruce' inside it is STILL a left-side message (isFromMe: false).",
-  "",
-  "### OCR Accuracy Rules",
-  "- Preserve Traditional Chinese exactly; do not guess unreadable characters.",
-  "- Read screenshots from top to bottom and keep message order stable across multiple images.",
-  "",
-  "### CRITICAL: Header Name vs Message Sender",
-  "- The contact name in the chat header (e.g., 'Bruce Chiang' at the top) is WHO YOU ARE CHATTING WITH, not who is sending messages.",
-  "- In one-on-one chat: left-side bubbles = messages FROM the contact (the header name person); right-side bubbles = messages FROM me.",
-  "- Do NOT confuse 'chatting with Bruce' with 'Bruce is sending these messages'. If the header says 'Bruce Chiang', then LEFT bubbles are Bruce's messages to me, and RIGHT bubbles are my messages to Bruce.",
-  "",
-  "### CRITICAL: Quoted Reply Cards in LINE",
-  "- LINE quoted-reply cards (colored/bordered inset boxes with avatar + name + quoted text) show OLD messages being quoted, NOT new messages.",
-  "- If a quoted card shows the header contact's avatar/name (e.g., 'Bruce Chiang'), it means the OUTER bubble is quoting Bruce's OLD message. The OUTER bubble itself is still from whoever owns that bubble position (left or right).",
-  "- NEVER let the avatar or name INSIDE a quoted card determine the speaker of the OUTER bubble. The outer bubble position (left/right) is the ONLY way to determine the current speaker.",
-  "",
-  "### SPECIFIC EXAMPLE: Single-Sided Screenshot with Quoted Replies",
-  "- Scenario: Header shows 'Bruce Chiang'. All visible outer bubbles are on the LEFT side. Some bubbles contain red-bordered quoted cards showing 'Bruce Chiang' avatar.",
-  "- CORRECT interpretation: This is screenSpeakerPattern: 'only_left'. ALL messages are from the contact (isFromMe: false). The quoted cards show Bruce's OLD messages being replied to.",
-  "- WRONG interpretation: Thinking messages without Bruce's avatar are 'from me' (right side). This is WRONG because the outer bubble position is LEFT for all of them.",
-  "- The presence or absence of an avatar in a quoted card does NOT change the outer bubble's side.",
-  "",
-  "### Screen Pattern Detection",
-  "- Before deciding each row, first judge the whole screenshot's visible outer-bubble pattern as `mixed`, `only_left`, or `only_right`, ignoring quoted-reply inset cards.",
-  "- If every visible outer bubble on the screen belongs to the left gutter and only the smaller quoted cards mention the other person, return `screenSpeakerPattern: only_left`.",
-  "- If every visible outer bubble on the screen belongs to the right gutter and only the smaller quoted cards mention the other person, return `screenSpeakerPattern: only_right`.",
-  "- When screenSpeakerPattern is `only_left`, ALL messages should be `isFromMe: false`. When it is `only_right`, ALL messages should be `isFromMe: true`.",
-  "",
-  "### Quoted Reply Handling (emit every block and tag it)",
-  "- Do NOT merge or omit anything. Emit EVERY visual block as its own message row, and tag each row with `blockType`, either `message` or `quoted_preview`.",
-  "- A LINE/Messenger quoted-reply card (the smaller embedded card with avatar/name/light-gray text) is its own block: output it as a separate row with `blockType: \"quoted_preview\"` and put its readable text in `content`.",
-  "- The larger main reply text below or beside that card is a separate row with `blockType: \"message\"`.",
-  "- Output the `quoted_preview` row immediately before its owner `message` row, on the SAME outer bubble side as that owner.",
-  "- Tag every normal live message row as `blockType: \"message\"`. When unsure which type, use `message`.",
-  "- Do not decide whether a card is readable, important, or worth keeping — just transcribe and tag it. A deterministic post-step folds quoted_preview rows into their owner message.",
-  "- This applies on both left-side and right-side bubbles. A quoted card sits on the same outer side as the reply that owns it; the current speaker is still decided by the outer bubble side.",
-  "- Never use the quoted card avatar, name, or quoted-text author to override the speaker of the outer reply bubble.",
-  '- Ignore LINE announcement banners, pinned-message jump banners, date separators, read receipts, timestamps, "回到最新訊息" style system hints, and other non-message UI. Do not turn them into chat messages.',
-  "- If the screenshot was opened from a pinned announcement and starts in older history, only extract the visible real chat bubbles. Do not invent or summarize missing messages above the visible area.",
-  "- Use a layout-first process: first identify each visible message bubble's horizontal side from the outer bubble/container position, then transcribe its content.",
-  "- For every message, first decide the outer bubble column as `outerColumn: left | right | center` before deciding speaker.",
-  "- Also estimate `horizontalPosition` as a rough 0-100 value for the outer bubble center, where 0 is far left, 50 is screen center, and 100 is far right.",
-  "- If a bubble contains an embedded photo, screenshot, video preview, or sticker, determine `side` from the outer bubble frame on the main chat layout, never from the inner image content.",
-  "- Determine `isFromMe` from bubble alignment first, not from wording, tone, or whose message would 'make sense' semantically.",
-  "- In a normal one-to-one chat UI, left-side bubbles are usually the other person (`isFromMe: false`) and right-side bubbles are usually me (`isFromMe: true`).",
-  "- If a bubble contains a quoted-reply preview card, keep the outer message on its own side, and emit the card as its own `blockType: \"quoted_preview\"` row on that same side (do not flip the owner's side to match the card's quoted author).",
-  "- Even for very short replies, stickers, image placeholders, or one-word bubbles like '超爽', follow the bubble side rather than guessing from meaning.",
-  "- A photo, sticker, or image placeholder inside a clearly right-side bubble is still `isFromMe: true`; inside a clearly left-side bubble it is `isFromMe: false`.",
-  "- If an image bubble and the next text bubble appear on the same side, keep them on the same speaker unless the layout clearly switches sides.",
-  "- If a media/image bubble is visually sandwiched between two bubbles on the same side, keep the media bubble on that same side too.",
-  "- Consecutive bubbles on the same side are common. Do not force alternating speakers if the layout still shows the same side.",
-  "- Build a left/right side sequence for all visible outer bubbles in top-to-bottom order before deciding speakers. Preserve same-side runs exactly as they appear on screen.",
-  "- Speaker changes should happen only when the visible outer bubble column actually switches sides. A pattern like left, left, left, right, right, left is normal and should stay that way.",
-  "- Imagine a vertical midline through the screenshot first. Judge each outer bubble by whether the bubble body sits mostly left or mostly right of that midline before you read the text.",
-  "- The outer bubble column is the source of truth across chat apps. Ignore quoted preview cards, inner screenshots, photo/video thumbnails, and avatar/no-avatar differences when deciding left vs right.",
-  "- If the whole visible screen is one-sided, keep the whole run on that side even if quoted preview cards mention the other person's name or the app theme makes some bubbles look visually different.",
-  "- In many chat apps, only the first bubble in a same-side run shows the avatar. Do not flip the last bubble in a left-side run to `isFromMe: true` just because the avatar disappears.",
-  "- If multiple screenshots appear to come from different contacts or different chat threads, do not merge them as one clean thread. Lower confidence, set `importPolicy: confirm`, and explain that the screenshots may belong to different conversations.",
-  "- Before returning JSON, double-check that no clearly right-aligned bubble is labeled `isFromMe: false` and no clearly left-aligned bubble is labeled `isFromMe: true`.",
-  "- If a bubble side is genuinely ambiguous, keep the message but lower confidence and use `importPolicy: confirm` instead of making a confident guess.",
-  "- Distinguish between a standalone phone call log screen and a one-to-one chat thread that contains missed-call or call-record entries.",
-  "- If missed calls, outgoing calls, or answered-call records appear inside a normal chat thread with the contact header, treat them as valid conversation events instead of rejecting the screenshot outright.",
-  "- Convert in-thread call records into messages while preserving direction: the other person's missed/incoming call is usually `isFromMe: false`, while my outgoing call is usually `isFromMe: true`.",
-  "- If the screenshot looks like a social feed, comment thread, profile page, group chat, album, call-log page, sensitive media, or other non-chat UI, classify it with the most specific label: `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, or `unsupported`.",
-  "- If text is blurry, cropped, or incomplete, lower confidence and use `importPolicy: confirm` instead of guessing.",
-  "- If the contact name is unclear, return `contactName: null`.",
-].join("\n");
-
 const RECOGNIZED_CONVERSATION_SCHEMA = `{
   "recognizedConversation": {
     "contactName": "Alex",
@@ -1132,11 +1060,12 @@ function buildRecognizeOnlyImagePrompt(options: {
 
   return joinPromptSections(
     `You received ${imageCount} chat screenshot(s). Extract the visible conversation only and return the JSON schema below.`,
-    SCREENSHOT_OCR_ACCURACY_RULES,
+    SCREENSHOT_OCR_ACCURACY_RULES_WITH_META_ANCHORS,
     "### Quote Preview Rules\n- In LINE-style quoted replies, emit the smaller inset quote card as its OWN row with `blockType: \"quoted_preview\"`; do not merge or omit it. Put the card's readable text in `content`.\n- Do this even when the inset card only shows the old message body and the quoted author's name is missing or too small to read.\n- In dark mode the quoted card often renders as a single dimmer gray line sitting DIRECTLY under the sender name+avatar header and ABOVE the brighter main message, with no separate card border and no avatar of its own. That dim under-name line is still a quoted_preview: tag it `blockType: \"quoted_preview\"` and tag the brighter line below it as its owner `blockType: \"message\"`. Never output the dim under-name line as a normal message.\n- Emit the larger outer bubble (the live reply) as a separate `blockType: \"message\"` row on the same side, right after its quoted_preview row. A deterministic post-step folds the card into it.\n- Tag every normal live message row as `blockType: \"message\"`; do not decide whether a card is worth keeping, just transcribe and tag.\n- Preserve visible names and nicknames exactly as shown in the screenshot header or quote card. Do not guess or normalize similar-looking Han characters.\n- IMPORTANT: If the quoted card shows the same name as the chat header (e.g., header='Bruce' and quoted card shows 'Bruce'), it means the contact is quoting old messages. The quoted card name does NOT change who is sending the OUTER bubble.\n- When all outer bubbles are visually on the LEFT side and only quoted cards reference the header contact, set `screenSpeakerPattern: only_left` and ALL messages must have `isFromMe: false`.",
     "### Output Rules\n- Return only `recognizedConversation`.\n- Do not include extra analysis fields.\n- Use `classification`, `importPolicy`, and `confidence` conservatively.\n- Valid `classification` values are: `valid_chat`, `low_confidence`, `social_feed`, `group_chat`, `gallery_album`, `call_log_screen`, `system_ui`, `sensitive_content`, `unsupported`.\n- If the thread only contains missed-call or call-record entries but is still a normal one-to-one chat view, return those call events as messages instead of rejecting the screenshot outright.\n- Determine each bubble's `side` from the outer chat layout first, before reading the text inside that bubble.\n- For speaker direction, layout beats semantics: a clearly right-side bubble should stay `isFromMe: true` even if the text itself is very short or could also sound like the other person.\n- This also applies to media placeholders and image-in-image content: a right-side photo bubble must not be flipped to `她說` just because the OCR text or the inner image content is generic.\n- If multiple visible bubbles continue on the same left side, keep them as the other person even when only the first bubble shows an avatar; do not treat missing-avatar rows as an automatic side switch.\n- Emit each quoted-reply preview card as its own `blockType: \"quoted_preview\"` row on the same outer side as the reply it belongs to; do not merge it into the reply and do not omit it. The quoted card never overrides the outer bubble speaker.\n- Tag every live message row as `blockType: \"message\"`. A deterministic post-step folds quoted_preview rows into their owner message.\n- For each returned message, include `outerColumn` as `left`, `right`, or `center`, and include `horizontalPosition` as an approximate 0-100 number for the outer bubble center.\n- For each returned message, include `side` as `left`, `right`, or `unknown`. If `outerColumn` or `horizontalPosition` is clear, keep `side` and `isFromMe` consistent with that geometry.",
     "### JSON Schema",
     RECOGNIZED_CONVERSATION_SCHEMA,
+    META_ANCHOR_SCHEMA_NOTE,
     contextInfo
       ? `${contextInfo}\n- Use this only as weak context for mismatch detection.`
       : "",
@@ -2871,7 +2800,10 @@ function applySingleVisibleSpeakerPattern(
   for (let index = 0; index < adjusted.length; index += 1) {
     // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被
     // 整體單側 pattern 壓掉——與四個 neighbour heuristic 同一 invariant。
-    if (adjusted[index].geometryDecisive === true) {
+    if (
+      adjusted[index].geometryDecisive === true ||
+      adjusted[index].metaDecisive === true
+    ) {
       continue;
     }
 
@@ -3209,7 +3141,7 @@ function applySpeakerContinuityHeuristics(
     }
 
     // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
-    if (current.geometryDecisive === true) {
+    if (current.geometryDecisive === true || current.metaDecisive === true) {
       continue;
     }
 
@@ -3431,7 +3363,7 @@ function applyGroupedSpeakerHeuristics(
     }
 
     // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
-    if (current.geometryDecisive === true) {
+    if (current.geometryDecisive === true || current.metaDecisive === true) {
       continue;
     }
 
@@ -3537,7 +3469,7 @@ function applySideRunGroupingHeuristics(
     }
 
     // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
-    if (current.geometryDecisive === true) {
+    if (current.geometryDecisive === true || current.metaDecisive === true) {
       continue;
     }
 
@@ -3623,7 +3555,7 @@ function applyTrailingSpeakerHeuristics(
   }
 
   // 幾何已定側的泡（明確 outerColumn 或越界 horizontalPosition）不得被鄰居啟發式翻側。
-  if (current.geometryDecisive === true) {
+  if (current.geometryDecisive === true || current.metaDecisive === true) {
     return {
       messages: adjusted,
       adjustedCount: 0,
@@ -4035,6 +3967,9 @@ function normalizeRecognizedConversation(
       const side = normalizeBubbleSide(record);
       const geometryDecisive = side !== "unknown" &&
         isGeometrySideDecisive(record);
+      // 已讀鎖：readReceipt=true 是介面規則級的我方訊號，蓋過模型自報的
+      // side/isFromMe（黑箱驗證 29 個回報零捏造；metaSide 會被捏造、這個不會）。
+      const metaDecisive = isReadReceiptSideDecisive(record);
       const blockType = normalizeBlockType(record);
       const quotedReplyPreview = sanitizeQuotedReplyPreviewValue(
         record.quotedReplyPreview,
@@ -4044,11 +3979,12 @@ function normalizeRecognizedConversation(
         : normalizeQuotedReplyPreviewIsFromMe(record);
 
       return {
-        side,
-        isFromMe: sideToIsFromMe(side, record.isFromMe),
+        side: metaDecisive ? "right" : side,
+        isFromMe: metaDecisive ? true : sideToIsFromMe(side, record.isFromMe),
         content,
         ...(blockType ? { blockType } : {}),
         ...(geometryDecisive ? { geometryDecisive } : {}),
+        ...(metaDecisive ? { metaDecisive } : {}),
         ...(quotedReplyPreview ? { quotedReplyPreview } : {}),
         ...(quotedReplyPreview != null && quotedReplyPreviewIsFromMe != null
           ? { quotedReplyPreviewIsFromMe }
@@ -7122,7 +7058,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         {
           model: selectedModel,
           max_tokens: recognizeOnly
-            ? 1600
+            ? 3000
             : (hasImages
               ? 2560
               : (isOptimizeMessageMode
@@ -7264,7 +7200,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           {
             model: selectedModel,
             max_tokens: recognizeOnly
-              ? 1600
+              ? 3000
               : (hasImages
                 ? 2048
                 : (isOptimizeMessageMode

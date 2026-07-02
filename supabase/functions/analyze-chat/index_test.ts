@@ -1648,3 +1648,177 @@ Deno.test({
     assertEquals(adjustedCount, 0);
   },
 });
+
+// ── meta 錨點（已讀/時間戳/邊欄頭像）落地接線測試（2026-07）──
+// prompt 規則本體測試在 screenshot_ocr_rules_test.ts；這裡鎖 index.ts 接線：
+// 1) recognize-only 路徑用 meta 錨點版、full-analysis 路徑維持 baseline（輸出形狀不變）
+// 2) recognizeOnly max_tokens 1600→3000（證據欄位讓長圖 JSON 在 1600 會被截斷，
+//    黑箱 B 臂兩張因此爛掉；C 臂實測最長輸出 ~2100 tokens）
+// 3) readReceipt=true 後處理鎖（metaDecisive）＝geometryDecisive 同款 invariant
+
+Deno.test({
+  name: "index.ts 改從 screenshot_ocr_rules 模組取規則（inline 陣列已移除）",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assert(
+      source.includes('from "./screenshot_ocr_rules.ts"'),
+      "index.ts 必須匯入 screenshot_ocr_rules 模組",
+    );
+    assertFalse(
+      source.includes("const SCREENSHOT_OCR_ACCURACY_RULES = ["),
+      "inline 規則陣列必須移除（單一事實來源在模組）",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "recognize-only prompt 用 meta 錨點版＋schema note；full-analysis prompt 維持 baseline",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const bodyOf = (name: string): string => {
+      const start = source.indexOf(`function ${name}(`);
+      assert(start >= 0, `找不到 function ${name}`);
+      const rest = source.slice(start + 1);
+      const nextDecl = rest.indexOf("\nfunction ");
+      return nextDecl >= 0 ? rest.slice(0, nextDecl) : rest;
+    };
+
+    const recognizeBody = bodyOf("buildRecognizeOnlyImagePrompt");
+    assert(
+      recognizeBody.includes("SCREENSHOT_OCR_ACCURACY_RULES_WITH_META_ANCHORS"),
+      "recognize-only 必須用 meta 錨點版規則",
+    );
+    assert(
+      recognizeBody.includes("META_ANCHOR_SCHEMA_NOTE"),
+      "recognize-only schema 之後必須附證據欄位 note",
+    );
+
+    const analysisBody = bodyOf("buildImageAnalysisPrompt");
+    assertFalse(
+      analysisBody.includes("SCREENSHOT_OCR_ACCURACY_RULES_WITH_META_ANCHORS"),
+      "full-analysis 路徑不得用 meta 錨點版（2560 預算會被證據欄位撐爆，未經黑箱驗證）",
+    );
+    assert(
+      analysisBody.includes("SCREENSHOT_OCR_ACCURACY_RULES"),
+      "full-analysis 路徑必須維持 baseline 規則",
+    );
+    assertFalse(
+      analysisBody.includes("META_ANCHOR_SCHEMA_NOTE"),
+      "full-analysis 路徑不得要求證據欄位",
+    );
+  },
+});
+
+Deno.test({
+  name: "recognizeOnly max_tokens = 3000（兩個呼叫點，1600 不得殘留）",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const bumped = source.match(/recognizeOnly\s*\n?\s*\?\s*3000/g) ?? [];
+    assertEquals(
+      bumped.length,
+      2,
+      "首呼叫與 parse-failure retry 兩處 recognizeOnly max_tokens 都必須是 3000",
+    );
+    assertFalse(
+      /recognizeOnly\s*\n?\s*\?\s*1600/.test(source),
+      "recognizeOnly 的 1600 上限不得殘留（證據欄位長圖會被截斷）",
+    );
+  },
+});
+
+Deno.test({
+  name: "normalize 步驟以 isReadReceiptSideDecisive 設 metaDecisive 並鎖 isFromMe=true",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assert(
+      source.includes("isReadReceiptSideDecisive(record)"),
+      "normalize map 必須呼叫 isReadReceiptSideDecisive",
+    );
+    assert(
+      source.includes("metaDecisive?: boolean"),
+      "NormalizedRecognizedMessage 必須有 metaDecisive 欄位",
+    );
+    // 鎖定語義：metaDecisive 時 side/isFromMe 必須是右/我方，不信模型自報值。
+    assert(
+      source.includes('side: metaDecisive ? "right" : side'),
+      "metaDecisive 必須強制 side=right",
+    );
+    assert(
+      source.includes(
+        "isFromMe: metaDecisive ? true : sideToIsFromMe(side, record.isFromMe)",
+      ),
+      "metaDecisive 必須強制 isFromMe=true",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "四 neighbour heuristic＋single-visible 都以 metaDecisive guard 保護已讀鎖定的泡不被翻側",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const bodyOf = (name: string): string => {
+      const start = source.indexOf(`function ${name}(`);
+      assert(start >= 0, `找不到 function ${name}`);
+      const rest = source.slice(start + 1);
+      const nextDecl = rest.indexOf("\nfunction ");
+      return nextDecl >= 0 ? rest.slice(0, nextDecl) : rest;
+    };
+
+    const guarded: Array<{ name: string; guard: string; mutation: string }> = [
+      {
+        name: "applySpeakerContinuityHeuristics",
+        guard: "current.metaDecisive === true",
+        mutation: "adjusted[index] = {",
+      },
+      {
+        name: "applyGroupedSpeakerHeuristics",
+        guard: "current.metaDecisive === true",
+        mutation: "adjusted[index] = {",
+      },
+      {
+        name: "applySideRunGroupingHeuristics",
+        guard: "current.metaDecisive === true",
+        mutation: "adjusted[index] = {",
+      },
+      {
+        name: "applyTrailingSpeakerHeuristics",
+        guard: "current.metaDecisive === true",
+        mutation: "adjusted[currentIndex] = {",
+      },
+      {
+        name: "applySingleVisibleSpeakerPattern",
+        guard: "adjusted[index].metaDecisive === true",
+        mutation: "side: targetSide",
+      },
+    ];
+
+    for (const { name, guard, mutation } of guarded) {
+      const body = bodyOf(name);
+      const guardAt = body.indexOf(guard);
+      const mutationAt = body.indexOf(mutation);
+      assert(guardAt >= 0, `${name} 缺少 metaDecisive guard`);
+      assert(mutationAt >= 0, `${name} 找不到 side mutation（測試假設失效）`);
+      assert(
+        guardAt < mutationAt,
+        `${name} 的 metaDecisive guard 必須在 side mutation 之前`,
+      );
+    }
+  },
+});
