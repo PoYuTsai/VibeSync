@@ -4042,6 +4042,11 @@ function normalizeRecognizedConversation(
       sideRunAdjustment.messages,
     );
   } catch (error) {
+    // 兜底不變（沿用未調整訊息），但失敗必須可觀測。
+    logWarn("layout_first_parser_failed", {
+      error: getErrorMessage(error),
+      messageCount: sideRunAdjustment.messages.length,
+    });
     layoutFirstAdjustment = {
       messages: sideRunAdjustment.messages,
       adjustedCount: 0,

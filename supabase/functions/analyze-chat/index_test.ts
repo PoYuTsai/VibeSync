@@ -1930,3 +1930,17 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "applyLayoutFirstParser 的 catch 必須 logWarn，不得靜默吞錯",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    assert(
+      source.includes('logWarn("layout_first_parser_failed"'),
+      "layout parser 失敗必須留 telemetry（layout_first_parser_failed），否則出錯不可見",
+    );
+  },
+});
