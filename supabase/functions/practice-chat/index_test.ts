@@ -9,7 +9,7 @@ import {
 } from "./handler.ts";
 import { temperatureBandFor } from "./temperature.ts";
 import { DEEPSEEK_MODEL, type DeepSeekArgs } from "./deepseek.ts";
-import { MAX_HINTS_PER_ROUND } from "./quota_decision.ts";
+import { MAX_AI_REPLIES, MAX_HINTS_PER_ROUND } from "./quota_decision.ts";
 
 const NOW = new Date("2026-06-28T04:00:00.000Z");
 const RESET_AT = "2026-06-28T00:00:00.000Z";
@@ -553,7 +553,8 @@ Deno.test("chat commit uses practice mode and temperature RPC arguments", async 
   assertEquals(commit.params.p_charge_quota, true);
   assertEquals(commit.params.p_max_replies, 20);
   assertEquals(commit.params.p_practice_mode, "standard");
-  assertEquals(commit.params.p_temperature_score, 30);
+  // standard 模式不再帶 client 溫度值（RPC 本就忽略，防誤導耦合）。
+  assertEquals(commit.params.p_temperature_score, null);
   assertEquals(commit.params.p_familiarity_score, null);
   assertEquals("p_initial_temperature_score" in commit.params, false);
 });
@@ -1922,6 +1923,185 @@ Deno.test("successful hint charges false for test accounts and trusts record did
   assertEquals(json.monthlyRemaining, 290);
   assertEquals(json.dailyRemaining, 48);
   assertEquals(recordHintCalls(state)[0].params.p_charge_quota, false);
+});
+
+// ── hint requestId 冪等 + 聊滿 gate ─────────────────────────────────────
+
+function storedHintResult(overrides: Record<string, unknown> = {}) {
+  return {
+    replies: [
+      { type: "warm_up", text: "先前那句 warm up" },
+      { type: "steady", text: "先前那句 steady" },
+    ],
+    coaching: "先前的 coaching",
+    costDeducted: 1,
+    hintUsedCount: 2,
+    provider: "deepseek",
+    model: DEEPSEEK_MODEL,
+    generatedAt: NOW.toISOString(),
+    monthlyRemaining: 289,
+    dailyRemaining: 47,
+    ...overrides,
+  };
+}
+
+Deno.test("hint on a completed session returns 409 practice_session_complete before provider and claim", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger({ ai_count: MAX_AI_REPLIES }),
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 409);
+  assertEquals(json, { error: "practice_session_complete" });
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("hint requestId matching stored ledger snapshot replays without provider, claim, or record", async () => {
+  const stored = storedHintResult();
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger({
+      last_hint_request_id: "req-1",
+      last_hint_result: stored,
+    }),
+  }, hintBody({ practiceMode: "beginner", requestId: "req-1" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("hint requestId replay wins at the hint cap and session cap edge", async () => {
+  const stored = storedHintResult({ hintUsedCount: MAX_HINTS_PER_ROUND });
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger({
+      ai_count: MAX_AI_REPLIES,
+      hint_count: MAX_HINTS_PER_ROUND,
+      last_hint_request_id: "req-edge",
+      last_hint_result: stored,
+    }),
+  }, hintBody({ practiceMode: "beginner", requestId: "req-edge" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("hint requestId replay bypasses the quota 429 gate because nothing new is charged", async () => {
+  const stored = storedHintResult();
+  const { response, json, state } = await run({
+    sub: subscription({ monthly_messages_used: 300, daily_messages_used: 2 }),
+    ledger: beginnerStartedLedger({
+      last_hint_request_id: "req-quota",
+      last_hint_result: stored,
+    }),
+  }, hintBody({ practiceMode: "beginner", requestId: "req-quota" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 0);
+  assertEquals(recordHintCalls(state).length, 0);
+});
+
+Deno.test("hint with a fresh requestId generates normally and threads the id into claim and record", async () => {
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger({
+      last_hint_request_id: "req-old",
+      last_hint_result: storedHintResult(),
+    }),
+    deepSeekReplies: [validHintJson()],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: true }],
+      }],
+    },
+  }, hintBody({ practiceMode: "beginner", requestId: "req-new" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json.replies.length, 2);
+  assertEquals(json.hintUsedCount, 1);
+  assertEquals(state.deepSeekCalls.length, 1);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(claimHintCalls(state)[0].params, {
+    p_user_id: "user-1",
+    p_session_id: "session-1",
+    p_max_hints: MAX_HINTS_PER_ROUND,
+    p_request_id: "req-new",
+  });
+  assertEquals(recordHintCalls(state).length, 1);
+  const recordParams = recordHintCalls(state)[0].params;
+  assertEquals(recordParams.p_request_id, "req-new");
+  const storedPayload = recordParams.p_result as Record<string, unknown>;
+  assertEquals(Array.isArray(storedPayload.replies), true);
+  assertEquals(typeof storedPayload.coaching, "string");
+  assertEquals(storedPayload.costDeducted, 1);
+  assertEquals(storedPayload.provider, "deepseek");
+  assertEquals(storedPayload.model, DEEPSEEK_MODEL);
+  assertEquals(typeof storedPayload.generatedAt, "string");
+  assertEquals(typeof storedPayload.monthlyRemaining, "number");
+  assertEquals(typeof storedPayload.dailyRemaining, "number");
+  // hintUsedCount 由 RPC 在鎖內以權威 new_hint_count merge，client 端不預填。
+  assertEquals("hintUsedCount" in storedPayload, false);
+});
+
+Deno.test("hint claim-level replay returns the stored result without provider or record", async () => {
+  const stored = storedHintResult({ hintUsedCount: 3 });
+  const { response, json, state } = await run({
+    ledger: beginnerStartedLedger(),
+    rpc: {
+      claim_practice_hint_generation: [{
+        data: [{ current_hint_count: 3, replay: true, stored_result: stored }],
+      }],
+    },
+  }, hintBody({ practiceMode: "beginner", requestId: "req-race" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(json, stored);
+  assertEquals(state.deepSeekCalls.length, 0);
+  assertEquals(claimHintCalls(state).length, 1);
+  assertEquals(recordHintCalls(state).length, 0);
+  assertEquals(releaseHintCalls(state).length, 0);
+});
+
+Deno.test("hint without requestId keeps legacy claim and record params and stores no result", async () => {
+  const { response, state } = await run({
+    ledger: beginnerStartedLedger(),
+    deepSeekReplies: [validHintJson()],
+    rpc: {
+      record_practice_hint: [{
+        data: [{ new_hint_count: 1, did_charge: true }],
+      }],
+    },
+  }, hintBody({ practiceMode: "beginner" }));
+
+  assertEquals(response.status, 200);
+  assertEquals(claimHintCalls(state)[0].params, {
+    p_user_id: "user-1",
+    p_session_id: "session-1",
+    p_max_hints: MAX_HINTS_PER_ROUND,
+  });
+  assertEquals(recordHintCalls(state)[0].params, {
+    p_user_id: "user-1",
+    p_session_id: "session-1",
+    p_charge_quota: true,
+    p_max_hints: MAX_HINTS_PER_ROUND,
+  });
+});
+
+Deno.test("standard chat commit passes null temperature instead of the client value", async () => {
+  const { response, state } = await run({
+    ledger: ledger({ practice_mode: "standard" }),
+  }, chatBody({ temperatureScore: 77 }));
+
+  assertEquals(response.status, 200);
+  assertEquals(commitCalls(state).length, 1);
+  assertEquals(commitCalls(state)[0].params.p_temperature_score, null);
 });
 
 for (

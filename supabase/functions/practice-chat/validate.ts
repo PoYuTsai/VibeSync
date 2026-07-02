@@ -45,6 +45,11 @@ export interface PracticeChatRequest {
   /** 使用者原封不動套用的新手 Hint 類型；只作學習評分保護，不作授權。 */
   appliedHintType?: AppliedHintType;
   appliedHintText?: string;
+  /**
+   * hint 模式限定的冪等 key（client 產 uuid；失敗重試沿用同 id）。選填：舊
+   * client 缺值走現行為（無冪等），向後相容。格式比照翻牌 requestId。
+   */
+  requestId?: string;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -157,7 +162,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     if (turns[turns.length - 1].role !== "user") {
       throw new Error("invalid_chat_last_turn_must_be_user");
     }
-    // 注意：10 則上限「不」在此用 client count 把關——client 可少報 ai turns
+    // 注意：20 則上限「不」在此用 client count 把關——client 可少報 ai turns
     // 繞過。上限改由 server ledger（practice_chat_sessions.ai_count）在 handler
     // preflight 與 commit RPC 內以權威狀態強制。
   } else if (mode === "debrief") {
@@ -179,6 +184,19 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     professionId: raw.professionId,
     photoId: raw.photoId,
   });
+
+  // requestId：hint 模式限定的冪等 key（選填；缺值＝舊 client，走無冪等現行為）。
+  // 格式檢查比照翻牌 requestId；非 hint 模式一律忽略。
+  let requestId: string | undefined;
+  if (mode === "hint" && raw.requestId !== undefined) {
+    if (
+      typeof raw.requestId !== "string" ||
+      !REQUEST_ID_RE.test(raw.requestId)
+    ) {
+      throw new Error("invalid_requestId");
+    }
+    requestId = raw.requestId;
+  }
 
   // roundIndex：缺值 fallback 1；只收整數 1..MAX_PRACTICE_ROUNDS。
   let roundIndex = 1;
@@ -219,6 +237,7 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     visiblePracticeThreadId,
     appliedHintType,
     appliedHintText,
+    requestId,
   };
 }
 
@@ -233,15 +252,15 @@ export interface PracticeDrawRequest {
 }
 
 // requestId：UUID 或安全 id 字串（client 產，server idempotency key）。長度 1..64
-// 與 ledger request_id CHECK 一致；字元集限制避免奇異輸入。
-const DRAW_REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
+// 與 ledger request_id CHECK 一致；字元集限制避免奇異輸入。翻牌與 hint 冪等共用。
+const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 
 export function validateDrawRequest(raw: unknown): PracticeDrawRequest {
   if (!isRecord(raw)) throw new Error("invalid_request_body");
   if (raw.mode !== "draw_profile") throw new Error("invalid_mode");
 
   const requestId = raw.requestId;
-  if (typeof requestId !== "string" || !DRAW_REQUEST_ID_RE.test(requestId)) {
+  if (typeof requestId !== "string" || !REQUEST_ID_RE.test(requestId)) {
     throw new Error("invalid_requestId");
   }
 

@@ -255,3 +255,46 @@ Deno.test("hint gate allows beginner ledger before max hints", () => {
 Deno.test("MAX_HINTS_PER_ROUND is 5", () => {
   assertEquals(MAX_HINTS_PER_ROUND, 5);
 });
+
+Deno.test("hint gate rejects a session that already hit the AI reply cap", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({
+        charged: true,
+        aiCount: MAX_AI_REPLIES,
+        practiceMode: "beginner",
+        hintCount: 0,
+      }),
+    }),
+    { allowed: false, reason: "practice_session_complete" },
+  );
+});
+
+Deno.test("hint gate still allows the last AI reply slot before the cap", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({
+        charged: true,
+        aiCount: MAX_AI_REPLIES - 1,
+        practiceMode: "beginner",
+        hintCount: 0,
+      }),
+    }),
+    { allowed: true },
+  );
+});
+
+Deno.test("hint gate session-complete respects a custom maxReplies", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({
+        charged: true,
+        aiCount: 3,
+        practiceMode: "beginner",
+        hintCount: 0,
+      }),
+      maxReplies: 3,
+    }),
+    { allowed: false, reason: "practice_session_complete" },
+  );
+});

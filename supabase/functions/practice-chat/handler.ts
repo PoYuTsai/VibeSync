@@ -889,19 +889,55 @@ export function createPracticeChatHandler(
     };
 
     if (request.mode === "hint") {
+      // requestId 冪等 preflight：回應遺失後的重試（同 requestId）直接回放上次
+      // 已扣費的結果。必須在 practiceMode / gate / quota 429 之前——重試在
+      // hint 上限、聊滿、額度耗盡邊緣都不得被擋死（同 opener preflight 前移慣例）。
+      // 缺欄位（migration 未套）或查詢失敗一律 fail-open 走現行為。
+      if (request.requestId) {
+        const { data: replayRow, error: replayError } = await supabase
+          .from("practice_chat_sessions")
+          .select("last_hint_request_id, last_hint_result")
+          .eq("user_id", user.id)
+          .eq("session_id", request.sessionId)
+          .maybeSingle();
+        if (replayError) {
+          logWarn("practice_chat_hint_replay_preflight_failed", {
+            user: summarizeUser(user.id),
+            error: replayError.message,
+          });
+        } else if (
+          replayRow?.last_hint_request_id === request.requestId &&
+          isPlainObject(replayRow?.last_hint_result)
+        ) {
+          logInfo("practice_chat_hint_replayed", {
+            user: summarizeUser(user.id),
+            sessionId: request.sessionId,
+            source: "preflight",
+          });
+          return jsonResponse(replayRow.last_hint_result);
+        }
+      }
+
       if (request.practiceMode !== "beginner") {
         return jsonResponse({ error: "practice_hint_beginner_only" }, 403);
       }
 
-      const gate = decideHintGate({ ledger, maxHints: MAX_HINTS_PER_ROUND });
+      const gate = decideHintGate({
+        ledger,
+        maxHints: MAX_HINTS_PER_ROUND,
+        maxReplies: MAX_AI_REPLIES,
+      });
       if (!gate.allowed) {
         logWarn("practice_chat_hint_rejected", {
           user: summarizeUser(user.id),
           reason: gate.reason,
         });
+        const reason = gate.reason ?? "practice_session_not_started";
+        // 聊滿 session 對齊 chat 的 409 practice_session_complete，client 走既有
+        // sessionComplete 分支；其餘 hint 拒絕維持 403。
         return jsonResponse(
-          { error: gate.reason ?? "practice_session_not_started" },
-          403,
+          { error: reason },
+          reason === "practice_session_complete" ? 409 : 403,
         );
       }
 
@@ -929,13 +965,19 @@ export function createPracticeChatHandler(
         );
       }
 
-      const { error: claimHintError } = await supabase.rpc(
+      // p_request_id 只在 client 有送 requestId 時帶：舊 client 缺值時維持 3-arg
+      // 呼叫形狀，與尚未套 idempotency migration 的舊 RPC 相容。
+      const claimHintParams: Record<string, unknown> = {
+        p_user_id: user.id,
+        p_session_id: request.sessionId,
+        p_max_hints: MAX_HINTS_PER_ROUND,
+      };
+      if (request.requestId) {
+        claimHintParams.p_request_id = request.requestId;
+      }
+      const { data: claimHintData, error: claimHintError } = await supabase.rpc(
         "claim_practice_hint_generation",
-        {
-          p_user_id: user.id,
-          p_session_id: request.sessionId,
-          p_max_hints: MAX_HINTS_PER_ROUND,
-        },
+        claimHintParams,
       );
       if (claimHintError) {
         const mapped = mapLedgerError(claimHintError.message);
@@ -944,6 +986,23 @@ export function createPracticeChatHandler(
           error: claimHintError.message,
         });
         return jsonResponse({ error: mapped.error }, mapped.status);
+      }
+      // claim 層 replay 後援：preflight 讀到 stale 快照、但 record 已在鎖內落帳的
+      // 併發窗口由 RPC 以 FOR UPDATE 權威判定。replay 不動 latch、不扣費。
+      const claimHintRow = Array.isArray(claimHintData)
+        ? claimHintData[0]
+        : claimHintData;
+      if (
+        isPlainObject(claimHintRow) &&
+        claimHintRow.replay === true &&
+        isPlainObject(claimHintRow.stored_result)
+      ) {
+        logInfo("practice_chat_hint_replayed", {
+          user: summarizeUser(user.id),
+          sessionId: request.sessionId,
+          source: "claim",
+        });
+        return jsonResponse(claimHintRow.stored_result);
       }
 
       let hintResult: ReturnType<typeof parseHintResult> | null = null;
@@ -1000,14 +1059,30 @@ export function createPracticeChatHandler(
         return jsonResponse({ error: "practice_generation_failed" }, 500);
       }
 
+      const recordHintParams: Record<string, unknown> = {
+        p_user_id: user.id,
+        p_session_id: request.sessionId,
+        p_charge_quota: !accountIsTest,
+        p_max_hints: MAX_HINTS_PER_ROUND,
+      };
+      if (request.requestId) {
+        // 供之後同 requestId 重試回放的完整回應快照。hintUsedCount 不在此預填：
+        // 由 RPC 在鎖內以權威 new_hint_count merge 進 stored result。
+        // costDeducted 可預判：record 的 did_charge 恆等於 p_charge_quota。
+        const predictedDeducted = accountIsTest ? 0 : PRACTICE_QUOTA_COST;
+        recordHintParams.p_request_id = request.requestId;
+        recordHintParams.p_result = {
+          ...hintResult,
+          costDeducted: predictedDeducted,
+          provider: "deepseek",
+          model: DEEPSEEK_MODEL,
+          generatedAt: (deps.now?.() ?? new Date()).toISOString(),
+          ...remainingFrom(sub, limits, predictedDeducted),
+        };
+      }
       const { data: recordData, error: recordError } = await supabase.rpc(
         "record_practice_hint",
-        {
-          p_user_id: user.id,
-          p_session_id: request.sessionId,
-          p_charge_quota: !accountIsTest,
-          p_max_hints: MAX_HINTS_PER_ROUND,
-        },
+        recordHintParams,
       );
       if (recordError) {
         const mapped = mapLedgerError(recordError.message);
@@ -1304,7 +1379,9 @@ export function createPracticeChatHandler(
         p_charge_quota: !accountIsTest,
         p_max_replies: MAX_AI_REPLIES,
         p_practice_mode: request.practiceMode,
-        p_temperature_score: currentTemperature ?? request.temperatureScore,
+        // standard 模式一律 null：client 溫度值本就被 RPC 忽略（非 beginner 存
+        // NULL），不再傳入以免誤導耦合。beginner 由 ledger 權威值（缺值 30）驅動。
+        p_temperature_score: currentTemperature,
         p_familiarity_score: currentFamiliarity,
       },
     );

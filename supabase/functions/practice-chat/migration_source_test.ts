@@ -21,6 +21,18 @@ const dualAxisHotfixMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const hintIdempotencyMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260703150000_practice_hint_idempotency.sql",
+    import.meta.url,
+  ),
+);
+const rpcCleanupMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260703160000_practice_rpc_cleanup.sql",
+    import.meta.url,
+  ),
+);
 
 function requiredIndex(snippet: string): number {
   const index = migration.indexOf(snippet);
@@ -339,5 +351,181 @@ Deno.test("dual-axis hotfix migration keeps learning update guard aliases", () =
   assertLearningUpdateRpcAppliesGuardedDeltas(body);
   requiredDualAxisHotfixIndex(
     "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER)",
+  );
+});
+
+// ── 20260703150000 hint requestId 冪等 migration ────────────────────────────
+
+function requiredIdempotencyIndex(snippet: string): number {
+  const index = hintIdempotencyMigration.indexOf(snippet);
+  assert(index >= 0, `Hint idempotency migration must contain: ${snippet}`);
+  return index;
+}
+
+function idempotencyFunctionBody(name: string): string {
+  const start = requiredIdempotencyIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = hintIdempotencyMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? hintIdempotencyMigration.slice(start, nextFunction)
+    : hintIdempotencyMigration.slice(start);
+}
+
+Deno.test("hint idempotency migration adds replay ledger columns with a length check", () => {
+  requiredIdempotencyIndex(
+    "ADD COLUMN IF NOT EXISTS last_hint_request_id TEXT",
+  );
+  requiredIdempotencyIndex("ADD COLUMN IF NOT EXISTS last_hint_result JSONB");
+  requiredIdempotencyIndex(
+    "practice_chat_sessions_last_hint_request_id_check",
+  );
+  requiredIdempotencyIndex(
+    "length(last_hint_request_id) BETWEEN 1 AND 64",
+  );
+});
+
+Deno.test("hint idempotency migration drops the old signatures so no overloads remain", () => {
+  requiredIdempotencyIndex(
+    "DROP FUNCTION IF EXISTS public.claim_practice_hint_generation(UUID, TEXT, INTEGER);",
+  );
+  requiredIdempotencyIndex(
+    "DROP FUNCTION IF EXISTS public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER);",
+  );
+});
+
+Deno.test("hint idempotency claim replays a matching request before latch, cap, and charge", () => {
+  const body = idempotencyFunctionBody("claim_practice_hint_generation");
+  const compactBody = compactSql(body);
+
+  assert(compactBody.includes("p_request_id TEXT DEFAULT NULL"));
+  assert(
+    body.includes(
+      "RETURNS TABLE(current_hint_count INTEGER, replay BOOLEAN, stored_result JSONB)",
+    ),
+    "claim must expose replay flag and stored result",
+  );
+  assert(body.includes("FOR UPDATE"), "claim must keep the row lock");
+
+  const replayIndex = body.indexOf(
+    "v_row.last_hint_request_id = p_request_id",
+  );
+  assert(replayIndex >= 0, "claim must compare the stored request id");
+  assert(
+    body.includes("v_row.last_hint_result IS NOT NULL"),
+    "claim replay requires a stored result",
+  );
+
+  const capIndex = body.indexOf("hint_count >= p_max_hints");
+  const inFlightIndex = body.indexOf("PRACTICE_HINT_IN_FLIGHT");
+  const latchIndex = body.indexOf("hint_generation_started_at = now()");
+  assert(capIndex >= 0 && inFlightIndex >= 0 && latchIndex >= 0);
+  assert(
+    replayIndex < capIndex,
+    "replay must beat the hint cap so cap-edge retries succeed",
+  );
+  assert(
+    replayIndex < inFlightIndex,
+    "replay must beat the in-flight guard",
+  );
+  assert(
+    replayIndex < latchIndex,
+    "replay must return before taking the latch",
+  );
+  assert(
+    !body.includes("increment_usage"),
+    "claim must never charge quota",
+  );
+});
+
+Deno.test("hint idempotency record stores the replay snapshot with the authoritative count", () => {
+  const body = idempotencyFunctionBody("record_practice_hint");
+  const compactBody = compactSql(body);
+
+  assert(compactBody.includes("p_request_id TEXT DEFAULT NULL"));
+  assert(compactBody.includes("p_result JSONB DEFAULT NULL"));
+  assert(
+    body.includes("last_hint_request_id = p_request_id"),
+    "record must persist the request id",
+  );
+  assert(
+    compactBody.includes(
+      "jsonb_build_object('hintUsedCount', hint_count + 1)",
+    ),
+    "record must merge the authoritative new hint count into the stored result",
+  );
+
+  // 既有保護不得回退：null p_charge_quota 拒絕、cap 複檢先於扣費、清 latch。
+  assert(body.includes("IF p_charge_quota IS NULL THEN"));
+  assert(
+    body.indexOf("IF v_row.hint_count >= p_max_hints THEN") <
+      body.indexOf("PERFORM public.increment_usage"),
+    "record must re-check the cap before charging",
+  );
+  assert(body.includes("hint_generation_started_at = NULL"));
+});
+
+Deno.test("hint idempotency migration locks down grants and reloads the schema cache", () => {
+  requiredIdempotencyIndex(
+    "REVOKE EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT)",
+  );
+  requiredIdempotencyIndex(
+    "GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER, TEXT)",
+  );
+  requiredIdempotencyIndex(
+    "REVOKE EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB)",
+  );
+  requiredIdempotencyIndex(
+    "GRANT EXECUTE ON FUNCTION public.record_practice_hint(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB)",
+  );
+  assert(
+    /GRANT EXECUTE ON FUNCTION public\.claim_practice_hint_generation\(UUID, TEXT, INTEGER, TEXT\)\s+TO service_role/
+      .test(
+        hintIdempotencyMigration,
+      ),
+  );
+  assert(
+    /GRANT EXECUTE ON FUNCTION public\.record_practice_hint\(UUID, TEXT, BOOLEAN, INTEGER, TEXT, JSONB\)\s+TO service_role/
+      .test(
+        hintIdempotencyMigration,
+      ),
+  );
+  requiredIdempotencyIndex("NOTIFY pgrst, 'reload schema';");
+});
+
+// ── 20260703160000 殘留 RPC 清理 migration ──────────────────────────────────
+
+function requiredCleanupIndex(snippet: string): number {
+  const index = rpcCleanupMigration.indexOf(snippet);
+  assert(index >= 0, `RPC cleanup migration must contain: ${snippet}`);
+  return index;
+}
+
+Deno.test("rpc cleanup migration warns it must run only after the new Edge deploy", () => {
+  requiredCleanupIndex("必須在新版 practice-chat Edge 部署完成後才可套用");
+});
+
+Deno.test("rpc cleanup migration drops the dead temperature RPC and legacy commit overloads", () => {
+  requiredCleanupIndex(
+    "DROP FUNCTION IF EXISTS public.update_practice_temperature(UUID, TEXT, INTEGER);",
+  );
+  requiredCleanupIndex(
+    "DROP FUNCTION IF EXISTS public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER);",
+  );
+  requiredCleanupIndex(
+    "DROP FUNCTION IF EXISTS public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER);",
+  );
+  requiredCleanupIndex("NOTIFY pgrst, 'reload schema';");
+});
+
+Deno.test("rpc cleanup migration must not drop the live 7-arg commit RPC", () => {
+  assert(
+    !rpcCleanupMigration.includes(
+      "commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER, INTEGER)",
+    ),
+    "the dual-axis 7-arg signature is the live one and must survive cleanup",
   );
 });

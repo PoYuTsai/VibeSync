@@ -14,7 +14,7 @@
 //   - 原子扣費 + 計數遞增由 RPC（commit_practice_chat_turn / claim_practice_debrief）
 //     在同一交易內完成；本檔僅做 preflight 預判。
 //   注意：上限值由 handler 以 p_max_replies 傳入 RPC，故改這裡即生效，毋須改已部署
-//   的 RPC（其 DEFAULT 10 不被使用）。
+//   的 RPC（舊 4-arg DEFAULT 10 overload 已由 20260703160000 cleanup migration 移除）。
 
 import { normalizeTier } from "../_shared/quota.ts";
 
@@ -49,7 +49,7 @@ export function isSessionComplete(aiTurnCount: number): boolean {
  * chat preflight（DeepSeek 前）：用 server ledger 判斷上限與是否需要走額度閘。
  * 權威扣費仍在 commit RPC 內以 FOR UPDATE 重判；此處只為「未達上限才打 DeepSeek」
  * 與「要扣費的人才做 quota 429 preflight」。
- * @returns atCap 是否已達 10 則上限；shouldChargePreview 預判本次是否要扣 1。
+ * @returns atCap 是否已達 20 則上限；shouldChargePreview 預判本次是否要扣 1。
  */
 export function decideChatGate(opts: {
   ledger: SessionLedger;
@@ -104,11 +104,18 @@ export function decideDebriefGate(opts: {
 export function decideHintGate(opts: {
   ledger: SessionLedger;
   maxHints?: number;
+  maxReplies?: number;
 }): { allowed: boolean; reason?: string } {
   const max = opts.maxHints ?? MAX_HINTS_PER_ROUND;
+  const maxReplies = opts.maxReplies ?? MAX_AI_REPLIES;
   const { exists, charged, aiCount, practiceMode } = opts.ledger;
   if (!exists || !charged || aiCount < 1) {
     return { allowed: false, reason: "practice_session_not_started" };
+  }
+  // 聊滿 session（20 則上限）不得再買 hint 燒額度：回既有 session-complete
+  // 語義（handler 轉 409，對齊 chat 聊滿的 error code，client 走 sessionComplete）。
+  if (aiCount >= maxReplies) {
+    return { allowed: false, reason: "practice_session_complete" };
   }
   if (practiceMode !== "beginner") {
     return { allowed: false, reason: "practice_hint_beginner_only" };

@@ -272,6 +272,84 @@ Deno.test("hint whose latest turn is not AI throws invalid_hint_last_turn_must_b
   );
 });
 
+// ── hint requestId（冪等 key，選填）──────────────────────────────────
+
+function validHintTurns(): Array<{ role: string; text: string }> {
+  return [
+    { role: "user", text: "hi" },
+    { role: "ai", text: "hello" },
+  ];
+}
+
+Deno.test("hint：缺 requestId → 通過（向後相容，requestId undefined）", () => {
+  const r = validateRequest(hintReq(validHintTurns()));
+  assertEquals(r.requestId, undefined);
+});
+
+Deno.test("hint：合法 requestId（uuid）被解析", () => {
+  const r = validateRequest({
+    ...hintReq(validHintTurns()),
+    requestId: "11111111-2222-3333-4444-555555555555",
+  });
+  assertEquals(r.requestId, "11111111-2222-3333-4444-555555555555");
+});
+
+Deno.test("hint：requestId 非字串 → invalid_requestId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...hintReq(validHintTurns()),
+        requestId: 123,
+      }),
+    Error,
+    "invalid_requestId",
+  );
+});
+
+Deno.test("hint：requestId 空字串 → invalid_requestId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...hintReq(validHintTurns()),
+        requestId: "",
+      }),
+    Error,
+    "invalid_requestId",
+  );
+});
+
+Deno.test("hint：requestId 含非法字元 → invalid_requestId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...hintReq(validHintTurns()),
+        requestId: "bad id with space",
+      }),
+    Error,
+    "invalid_requestId",
+  );
+});
+
+Deno.test("hint：requestId 過長（>64）→ invalid_requestId", () => {
+  assertThrows(
+    () =>
+      validateRequest({
+        ...hintReq(validHintTurns()),
+        requestId: "a".repeat(65),
+      }),
+    Error,
+    "invalid_requestId",
+  );
+});
+
+Deno.test("chat：requestId 只屬於 hint，chat 模式一律忽略", () => {
+  const r = validateRequest({
+    ...chatReq([{ role: "user", text: "hi" }]),
+    requestId: "bad id with space",
+  });
+  assertEquals(r.requestId, undefined);
+});
+
 Deno.test("chat still requires latest turn to be user", () => {
   assertThrows(
     () =>
