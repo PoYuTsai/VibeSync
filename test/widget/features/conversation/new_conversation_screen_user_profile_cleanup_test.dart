@@ -32,7 +32,7 @@ Future<void> _settle(WidgetTester t) async {
 }
 
 Future<void> _expandPersonalization(WidgetTester t) async {
-  final tile = find.text('個人化資訊（選填）');
+  final tile = find.text('這次分析設定（可不改）');
   await t.ensureVisible(tile);
   await _settle(t);
   await t.tap(tile);
@@ -85,11 +85,11 @@ void main() {
     expect(find.text('目前目標'), findsOneWidget);
   });
 
-  testWidgets('Manual input still shows 對方特質', (tester) async {
+  testWidgets('Manual input still shows 補充背景', (tester) async {
     await tester.pumpWidget(_harness());
     await _settle(tester);
     await _expandPersonalization(tester);
-    expect(find.text('對方特質'), findsOneWidget);
+    expect(find.text('補充背景（選填）'), findsOneWidget);
   });
 
   testWidgets('Legacy user-style CTA no longer renders in manual input',
@@ -102,6 +102,11 @@ void main() {
       findsNothing,
     );
     expect(find.textContaining('我的報告 > 關於我'), findsNothing);
-    expect(find.text('這些對方資訊可到對象卡的「對方特質」齒輪設定一次。'), findsOneWidget);
+    expect(
+      find.text(
+        '把 AI 看不到的關係、背景或你的真實狀態補在這裡。只影響這個對話的分析，不會改對象資料。',
+      ),
+      findsOneWidget,
+    );
   });
 }

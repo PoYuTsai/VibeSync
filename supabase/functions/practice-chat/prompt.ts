@@ -4,6 +4,12 @@
 
 import type { PracticeTurn } from "./validate.ts";
 import type { PracticeProfile } from "./practice_persona.ts";
+import type { PracticeLearningMode } from "./quota_decision.ts";
+import { scrubRawImageFilenames } from "./prompt_sanitizer.ts";
+import {
+  relationshipStageFor,
+  temperatureBandInstruction,
+} from "./temperature.ts";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -41,6 +47,7 @@ export const DEBRIEF_SYSTEM_PROMPT =
   - 低：冷、敷衍、查戶口感、太急、太油、沒有共同場景。
 - 要明確指出使用者有沒有做到：內容下切（抓住一個具體細節聊深）、關係連結（接住她的情緒/壓力）、在場感（回應情緒而非只回字面）。
 - 若使用者錯讀假窗口、忽略她的脆弱性暴露、只顧著邀約（goal-fixated）、或表現出冷處理/攻擊性/控制性，要在 watchouts 明確點出。
+- 要白話說明為什麼升溫或降溫：用事件、個人、曖昧三種導向與對方反應解釋，不要只講分數或抽象好壞。
 - 只輸出一個 JSON 物件，不要任何多餘文字或 markdown 圍欄，格式如下：
 {
   "summary": "一句話總評這場聊天的整體感覺（最多 40 字）",
@@ -55,7 +62,11 @@ export const DEBRIEF_SYSTEM_PROMPT =
 
 function turnsToTranscript(turns: PracticeTurn[]): string {
   return turns
-    .map((t) => (t.role === "user" ? `你：${t.text}` : `她：${t.text}`))
+    .map((t) =>
+      t.role === "user"
+        ? `你：${scrubRawImageFilenames(t.text)}`
+        : `她：${scrubRawImageFilenames(t.text)}`
+    )
     .join("\n");
 }
 
@@ -110,41 +121,92 @@ function buildProfilePrompt(profile: PracticeProfile): string {
 export function buildChatMessages(
   turns: PracticeTurn[],
   profile: PracticeProfile,
+  options: {
+    practiceMode?: PracticeLearningMode;
+    temperatureScore?: number;
+    familiarityScore?: number;
+  } = {},
 ): ChatMessage[] {
   const history: ChatMessage[] = turns.map((t) => ({
     role: t.role === "user" ? "user" : "assistant",
-    content: t.text,
+    content: scrubRawImageFilenames(t.text),
   }));
+  const temperaturePrompt = options.practiceMode === "beginner"
+    ? `\n\n${temperatureBandInstruction(options.temperatureScore ?? 30)}\n${
+      relationshipStageInstruction(
+        options.temperatureScore ?? 30,
+        options.familiarityScore ?? 0,
+      )
+    }`
+    : "";
   return [
     {
       role: "system",
-      content: `${CHAT_SYSTEM_PROMPT}${buildProfilePrompt(profile)}`,
+      content: `${CHAT_SYSTEM_PROMPT}${
+        buildProfilePrompt(profile)
+      }${temperaturePrompt}`,
     },
     ...history,
   ];
+}
+
+function relationshipStageInstruction(
+  temperatureScore: number,
+  familiarityScore: number,
+): string {
+  const stage = relationshipStageFor(familiarityScore, temperatureScore);
+  const guidance = {
+    building_familiarity:
+      "目前先對事件、生活狀態、具體情境有反應；不要突然變很親密或曖昧。",
+    personal_allowed: "可以對個人感受、偏好或小故事多一點好奇，但仍維持低壓。",
+    flirt_allowed: "可以自然接一點輕鬆曖昧，但仍要像真人聊天，不要油或逼近。",
+  }[stage.stage];
+  return `關係階段：${stage.label}\n${guidance}\n不得向使用者提及熟悉度、關係階段或任何內部評估。`;
 }
 
 /** debrief 模式：system + 一則含 profile/訊號脈絡與逐字稿的 user 指令。 */
 export function buildDebriefMessages(
   turns: PracticeTurn[],
   profile: PracticeProfile,
+  options: {
+    practiceMode?: PracticeLearningMode;
+    temperatureScore?: number;
+    familiarityScore?: number;
+  } = {},
 ): ChatMessage[] {
   const transcript = turnsToTranscript(turns);
   const g = profile.girl;
   const r = g.reactionModel;
+  const stagePrompt = options.practiceMode === "beginner"
+    ? `本場抽象關係階段：${
+      relationshipStageFor(
+        options.familiarityScore ?? 0,
+        options.temperatureScore ?? 30,
+      ).label
+    }\n` +
+      `拆解升溫/降溫時，請用這個階段解釋為什麼目前適合事件、個人或輕曖昧，不要提熟悉度分數。\n\n`
+    : "";
   return [
     { role: "system", content: DEBRIEF_SYSTEM_PROMPT },
     {
       role: "user",
-      content:
-        `本場模擬對象：${profile.personaLabel}\n` +
+      content: `本場模擬對象：${profile.personaLabel}\n` +
         `本場難度：${profile.difficultyLabel}\n\n` +
+        stagePrompt +
         `她的人物設定：${g.displayName}，${g.age} 歲，${g.professionLabel}，住${g.city}。` +
-        `興趣：${g.interestTags.join("、")}；生活：${g.lifestyleTags.join("、")}。\n` +
-        `她喜歡：${r.likes.join("、")}。她不喜歡：${r.dislikes.join("、")}。\n` +
-        `會讓她變熱：${r.warmsWhen.join("、")}。會讓她變冷：${r.coolsWhen.join("、")}。\n` +
+        `興趣：${g.interestTags.join("、")}；生活：${
+          g.lifestyleTags.join("、")
+        }。\n` +
+        `她喜歡：${r.likes.join("、")}。她不喜歡：${
+          r.dislikes.join("、")
+        }。\n` +
+        `會讓她變熱：${r.warmsWhen.join("、")}。會讓她變冷：${
+          r.coolsWhen.join("、")
+        }。\n` +
         `她願意被約的門檻：${r.inviteThreshold}\n` +
-        `她可能用的訊號類型（評估使用者有沒有讀懂窗口、脆弱性與淺溝通）：${g.signalStyle.join("；")}\n\n` +
+        `她可能用的訊號類型（評估使用者有沒有讀懂窗口、脆弱性與淺溝通）：${
+          g.signalStyle.join("；")
+        }\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +
         `請依系統指示，只回傳那個 JSON 物件。`,
     },

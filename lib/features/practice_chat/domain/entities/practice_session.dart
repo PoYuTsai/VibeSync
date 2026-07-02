@@ -65,6 +65,21 @@ class PracticeSession {
   @HiveField(15)
   final String? profileId;
 
+  @HiveField(16)
+  final String? practiceMode;
+
+  @HiveField(17)
+  final int? temperatureScore;
+
+  @HiveField(18)
+  final int? hintUsedCount;
+
+  @HiveField(19)
+  final int? familiarityScore;
+
+  @HiveField(20)
+  final String? relationshipStageLabel;
+
   const PracticeSession({
     required this.id,
     required this.createdAt,
@@ -82,6 +97,11 @@ class PracticeSession {
     this.visiblePracticeThreadId,
     this.roundIndex,
     this.profileId,
+    this.practiceMode,
+    this.temperatureScore,
+    this.hintUsedCount,
+    this.familiarityScore,
+    this.relationshipStageLabel,
   });
 
   bool get hasDebrief => debriefSummary != null;
@@ -101,6 +121,11 @@ class PracticeSession {
     String? visiblePracticeThreadId,
     int? roundIndex,
     String? profileId,
+    String? practiceMode,
+    int? temperatureScore,
+    int? hintUsedCount,
+    int? familiarityScore,
+    String? relationshipStageLabel,
   }) {
     return PracticeSession(
       id: id,
@@ -120,6 +145,12 @@ class PracticeSession {
           visiblePracticeThreadId ?? this.visiblePracticeThreadId,
       roundIndex: roundIndex ?? this.roundIndex,
       profileId: profileId ?? this.profileId,
+      practiceMode: practiceMode ?? this.practiceMode,
+      temperatureScore: temperatureScore ?? this.temperatureScore,
+      hintUsedCount: hintUsedCount ?? this.hintUsedCount,
+      familiarityScore: familiarityScore ?? this.familiarityScore,
+      relationshipStageLabel:
+          relationshipStageLabel ?? this.relationshipStageLabel,
     );
   }
 }

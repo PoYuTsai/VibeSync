@@ -1,0 +1,343 @@
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+
+const migration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260628120000_practice_beginner_temperature_hint.sql",
+    import.meta.url,
+  ),
+);
+const dualAxisMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260628130000_practice_chat_dual_axis_learning.sql",
+    import.meta.url,
+  ),
+);
+const dualAxisHotfixMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260629153500_fix_practice_learning_state_update_alias.sql",
+    import.meta.url,
+  ),
+);
+
+function requiredIndex(snippet: string): number {
+  const index = migration.indexOf(snippet);
+  assert(index >= 0, `Migration must contain: ${snippet}`);
+  return index;
+}
+
+function functionBody(name: string): string {
+  const start = requiredIndex(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  const nextFunction = migration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? migration.slice(start, nextFunction)
+    : migration.slice(start);
+}
+
+function functionBodyWithSignature(
+  name: string,
+  signatureSnippet: string,
+): string {
+  const start = requiredIndex(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  let cursor = start;
+
+  while (cursor >= 0) {
+    const nextFunction = migration.indexOf(
+      "CREATE OR REPLACE FUNCTION public.",
+      cursor + 1,
+    );
+    const body = nextFunction >= 0
+      ? migration.slice(cursor, nextFunction)
+      : migration.slice(cursor);
+
+    if (body.includes(signatureSnippet)) {
+      return body;
+    }
+
+    cursor = nextFunction;
+  }
+
+  assert(false, `Migration must contain ${name} overload: ${signatureSnippet}`);
+}
+
+function requiredDualAxisIndex(snippet: string): number {
+  const index = dualAxisMigration.indexOf(snippet);
+  assert(index >= 0, `Dual-axis migration must contain: ${snippet}`);
+  return index;
+}
+
+function dualAxisFunctionBody(name: string): string {
+  const start = requiredDualAxisIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = dualAxisMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? dualAxisMigration.slice(start, nextFunction)
+    : dualAxisMigration.slice(start);
+}
+
+function requiredDualAxisHotfixIndex(snippet: string): number {
+  const index = dualAxisHotfixMigration.indexOf(snippet);
+  assert(index >= 0, `Dual-axis hotfix migration must contain: ${snippet}`);
+  return index;
+}
+
+function dualAxisHotfixFunctionBody(name: string): string {
+  const start = requiredDualAxisHotfixIndex(
+    `CREATE OR REPLACE FUNCTION public.${name}(`,
+  );
+  const nextFunction = dualAxisHotfixMigration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.",
+    start + 1,
+  );
+  return nextFunction >= 0
+    ? dualAxisHotfixMigration.slice(start, nextFunction)
+    : dualAxisHotfixMigration.slice(start);
+}
+
+function compactSql(value: string): string {
+  return value.replace(/\s+/g, " ");
+}
+
+function assertLearningUpdateRpcAppliesGuardedDeltas(body: string): void {
+  const compactBody = compactSql(body);
+
+  assert(
+    body.includes(
+      "RETURNS TABLE(updated BOOLEAN, temperature_score INTEGER, familiarity_score INTEGER)",
+    ),
+  );
+  assert(compactBody.includes("p_expected_temperature_score INTEGER"));
+  assert(compactBody.includes("p_expected_familiarity_score INTEGER"));
+  assert(compactBody.includes("p_temperature_delta INTEGER"));
+  assert(compactBody.includes("p_familiarity_delta INTEGER"));
+  assert(
+    compactBody.includes("UPDATE public.practice_chat_sessions AS s SET"),
+  );
+  assert(body.includes("AND s.practice_mode = 'beginner'"));
+  assert(body.includes("AND s.temperature_score = v_expected_temperature"));
+  assert(body.includes("AND s.familiarity_score = v_expected_familiarity"));
+  assert(compactBody.includes("SET temperature_score = v_new_temperature"));
+  assert(body.includes("familiarity_score = v_new_familiarity"));
+  assert(body.includes("updated := v_rows > 0;"));
+  assert(compactBody.includes("IF updated THEN"));
+  assert(
+    compactBody.includes("SELECT s.temperature_score, s.familiarity_score"),
+  );
+}
+
+Deno.test("ledger RPCs reject null quota charge flags before computing did_charge", () => {
+  for (const name of ["commit_practice_chat_turn", "record_practice_hint"]) {
+    const body = functionBody(name);
+    const nullGuardIndex = body.indexOf("IF p_charge_quota IS NULL THEN");
+    const didChargeIndex = body.indexOf("did_charge :=");
+
+    assert(nullGuardIndex >= 0, `${name} must reject null p_charge_quota`);
+    assert(
+      body.includes(`RAISE EXCEPTION '${name}: invalid p_charge_quota';`),
+      `${name} must raise a clear invalid p_charge_quota exception`,
+    );
+    assert(
+      nullGuardIndex < didChargeIndex,
+      `${name} must validate p_charge_quota before did_charge`,
+    );
+    assert(
+      !body.includes("COALESCE(p_charge_quota, TRUE)"),
+      `${name} must not charge quota on null via COALESCE`,
+    );
+  }
+});
+
+Deno.test("legacy 4-arg chat ledger RPC rejects null quota before did_charge", () => {
+  const body = functionBodyWithSignature(
+    "commit_practice_chat_turn",
+    "p_max_replies  INTEGER DEFAULT 10",
+  );
+  const nullGuardIndex = body.indexOf("IF p_charge_quota IS NULL THEN");
+  const didChargeIndex = body.indexOf("did_charge :=");
+
+  assert(
+    body.includes("p_charge_quota BOOLEAN DEFAULT TRUE"),
+    "legacy commit_practice_chat_turn overload must preserve p_charge_quota default",
+  );
+  assert(
+    nullGuardIndex >= 0,
+    "legacy commit_practice_chat_turn overload must reject null p_charge_quota",
+  );
+  assert(
+    body.includes(
+      "RAISE EXCEPTION 'commit_practice_chat_turn: invalid p_charge_quota';",
+    ),
+    "legacy commit_practice_chat_turn overload must raise a clear invalid p_charge_quota exception",
+  );
+  assert(
+    nullGuardIndex < didChargeIndex,
+    "legacy commit_practice_chat_turn overload must validate p_charge_quota before did_charge",
+  );
+  assert(
+    body.includes("v_should_settle AND p_charge_quota IS TRUE"),
+    "legacy commit_practice_chat_turn overload must charge only on first settlement with an explicit true flag",
+  );
+  assert(
+    !body.includes("COALESCE(p_charge_quota, TRUE)"),
+    "legacy commit_practice_chat_turn overload must not charge quota on null via COALESCE",
+  );
+});
+
+Deno.test("practice mode normalization trims non-empty values", () => {
+  const body = functionBody("commit_practice_chat_turn");
+
+  assert(
+    body.includes(
+      "v_mode := COALESCE(NULLIF(btrim(p_practice_mode), ''), 'standard');",
+    ),
+    "commit_practice_chat_turn must trim mode and default blanks to standard",
+  );
+  assert(
+    body.includes("IF v_mode NOT IN ('standard', 'beginner') THEN"),
+    "commit_practice_chat_turn must validate the normalized mode",
+  );
+});
+
+Deno.test("temperature update reports whether a beginner row was updated", () => {
+  const body = functionBody("update_practice_temperature");
+
+  assert(
+    body.includes(
+      "RETURNS TABLE(updated BOOLEAN, temperature_score INTEGER)",
+    ),
+    "update_practice_temperature must return an updated flag plus clamped score",
+  );
+  assert(
+    body.includes("AND practice_mode = 'beginner'"),
+    "update_practice_temperature must update beginner rows only",
+  );
+  assert(
+    body.includes("GET DIAGNOSTICS v_rows = ROW_COUNT;"),
+    "update_practice_temperature must inspect whether UPDATE matched a row",
+  );
+  assert(
+    body.includes("updated := v_rows > 0;"),
+    "update_practice_temperature must expose no-update deterministically",
+  );
+  assertEquals(body.includes("RETURN v_score;"), false);
+});
+
+Deno.test("hint generation claim serializes provider calls before success settlement", () => {
+  const claimBody = functionBody("claim_practice_hint_generation");
+  const releaseBody = functionBody("release_practice_hint_generation");
+  const recordBody = functionBody("record_practice_hint");
+
+  requiredIndex(
+    "ADD COLUMN IF NOT EXISTS hint_generation_started_at TIMESTAMPTZ",
+  );
+  assert(
+    claimBody.includes("FOR UPDATE"),
+    "claim_practice_hint_generation must lock the ledger row",
+  );
+  assert(
+    claimBody.includes("PRACTICE_HINT_IN_FLIGHT"),
+    "claim_practice_hint_generation must reject concurrent in-flight hints",
+  );
+  assert(
+    claimBody.includes("hint_count >= p_max_hints"),
+    "claim_practice_hint_generation must check hint cap before provider",
+  );
+  assert(
+    claimBody.includes("hint_generation_started_at = now()"),
+    "claim_practice_hint_generation must mark an in-flight generation",
+  );
+  assert(
+    releaseBody.includes("hint_generation_started_at = NULL"),
+    "release_practice_hint_generation must clear failed in-flight generations",
+  );
+  assert(
+    recordBody.includes("hint_generation_started_at = NULL"),
+    "record_practice_hint must clear the claim on successful settlement",
+  );
+  assert(
+    recordBody.indexOf("IF v_row.hint_count >= p_max_hints THEN") <
+      recordBody.indexOf("PERFORM public.increment_usage"),
+    "record_practice_hint must re-check the cap before charging",
+  );
+  requiredIndex(
+    "GRANT EXECUTE ON FUNCTION public.claim_practice_hint_generation(UUID, TEXT, INTEGER)",
+  );
+  requiredIndex(
+    "GRANT EXECUTE ON FUNCTION public.release_practice_hint_generation(UUID, TEXT)",
+  );
+});
+
+Deno.test("dual-axis migration adds familiarity_score with bounded constraint", () => {
+  requiredDualAxisIndex("ADD COLUMN IF NOT EXISTS familiarity_score INTEGER");
+  requiredDualAxisIndex(
+    "practice_chat_sessions_familiarity_score_check",
+  );
+  requiredDualAxisIndex(
+    "CHECK (familiarity_score IS NULL OR familiarity_score BETWEEN 0 AND 100)",
+  );
+});
+
+Deno.test("dual-axis commit RPC accepts and initializes familiarity score", () => {
+  const body = dualAxisFunctionBody("commit_practice_chat_turn");
+
+  assert(body.includes("p_familiarity_score INTEGER"));
+  assert(body.includes("v_initial_familiarity"));
+  assert(body.includes("familiarity_score"));
+  assert(
+    body.includes(
+      "CASE WHEN v_mode = 'beginner' THEN v_initial_familiarity ELSE NULL END",
+    ),
+  );
+  requiredDualAxisIndex(
+    "GRANT EXECUTE ON FUNCTION public.commit_practice_chat_turn(UUID, TEXT, BOOLEAN, INTEGER, TEXT, INTEGER, INTEGER)",
+  );
+});
+
+Deno.test("dual-axis readiness RPC exists for pre-provider schema gate", () => {
+  const body = dualAxisFunctionBody("assert_practice_learning_ready");
+  const compactBody = compactSql(body);
+
+  assert(body.includes("RETURNS BOOLEAN"));
+  assert(body.includes("information_schema.columns"));
+  assert(body.includes("column_name = 'familiarity_score'"));
+  assert(
+    compactBody.includes(
+      "to_regprocedure('public.commit_practice_chat_turn(uuid,text,boolean,integer,text,integer,integer)')",
+    ),
+  );
+  assert(
+    compactBody.includes(
+      "to_regprocedure('public.update_practice_learning_state(uuid,text,integer,integer,integer,integer)')",
+    ),
+  );
+  assert(body.includes("PRACTICE_LEARNING_NOT_READY"));
+  assert(body.includes("RETURN true;"));
+  requiredDualAxisIndex(
+    "GRANT EXECUTE ON FUNCTION public.assert_practice_learning_ready(UUID, TEXT)",
+  );
+});
+
+Deno.test("dual-axis learning update RPC applies guarded deltas atomically", () => {
+  const body = dualAxisFunctionBody("update_practice_learning_state");
+  assertLearningUpdateRpcAppliesGuardedDeltas(body);
+  requiredDualAxisIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER)",
+  );
+});
+
+Deno.test("dual-axis hotfix migration keeps learning update guard aliases", () => {
+  const body = dualAxisHotfixFunctionBody("update_practice_learning_state");
+  assertLearningUpdateRpcAppliesGuardedDeltas(body);
+  requiredDualAxisHotfixIndex(
+    "GRANT EXECUTE ON FUNCTION public.update_practice_learning_state(UUID, TEXT, INTEGER, INTEGER, INTEGER, INTEGER)",
+  );
+});

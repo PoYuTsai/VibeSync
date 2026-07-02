@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
 
 PracticeChatApiService serviceReturning(int status, dynamic data) {
   return PracticeChatApiService(
@@ -15,6 +18,7 @@ class _CapturedInvoke {
 
   /// 翻牌成功回應（draw 測試設定後由 mode==draw_profile 分支回傳）。
   Map<String, dynamic>? drawBody;
+  Map<String, dynamic>? hintBody;
 
   Future<PracticeInvokeResponse> call(
     String fn, {
@@ -24,6 +28,9 @@ class _CapturedInvoke {
     this.body = body;
     if (body['mode'] == 'draw_profile') {
       return PracticeInvokeResponse(status: 200, data: drawBody ?? const {});
+    }
+    if (body['mode'] == 'hint') {
+      return PracticeInvokeResponse(status: 200, data: hintBody ?? const {});
     }
     if (body['mode'] == 'debrief') {
       return const PracticeInvokeResponse(
@@ -57,6 +64,59 @@ void main() {
   const profile =
       PracticeProfileDto(personaId: 'slow_worker', difficulty: 'normal');
 
+  group('PracticeLearningMode', () {
+    test('standard/beginner expose wireName and Traditional Chinese labels',
+        () {
+      expect(PracticeLearningMode.standard.wireName, 'standard');
+      expect(PracticeLearningMode.standard.label, '練習');
+      expect(PracticeLearningMode.beginner.wireName, 'beginner');
+      expect(PracticeLearningMode.beginner.label, '新手');
+    });
+
+    test('fromWire falls back to standard for null or unknown values', () {
+      expect(
+          PracticeLearningMode.fromWire(null), PracticeLearningMode.standard);
+      expect(
+        PracticeLearningMode.fromWire('expert'),
+        PracticeLearningMode.standard,
+      );
+      expect(
+        PracticeLearningMode.fromWire('beginner'),
+        PracticeLearningMode.beginner,
+      );
+    });
+  });
+
+  group('PracticeTemperature', () {
+    test('wentUp and wentDown reflect delta direction', () {
+      const warmer = PracticeTemperature(
+        score: 38,
+        delta: 8,
+        band: 'cold',
+        reason: '有接住話題',
+      );
+      const cooler = PracticeTemperature(
+        score: 28,
+        delta: -2,
+        band: 'cold',
+        reason: '回覆太短',
+      );
+      const flat = PracticeTemperature(
+        score: 30,
+        delta: 0,
+        band: 'cold',
+        reason: '維持',
+      );
+
+      expect(warmer.wentUp, true);
+      expect(warmer.wentDown, false);
+      expect(cooler.wentUp, false);
+      expect(cooler.wentDown, true);
+      expect(flat.wentUp, false);
+      expect(flat.wentDown, false);
+    });
+  });
+
   group('sendMessage', () {
     test('200 → 解析 reply / 計數 / 額度', () async {
       final svc = serviceReturning(200, {
@@ -75,6 +135,174 @@ void main() {
       expect(r.costDeducted, 1);
       expect(r.monthlyRemaining, 29);
       expect(r.dailyRemaining, 14);
+      expect(r.temperature, isNull);
+    });
+
+    test('sendMessage body includes default standard practiceMode', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(sessionId: 's', profile: profile, turns: turns);
+
+      expect(captured.body?['practiceMode'], 'standard');
+      expect(captured.body?.containsKey('temperatureScore'), false);
+    });
+
+    test('beginner sendMessage sends temperatureScore and parses temperature',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(
+        invoker: (fn, {required body}) async {
+          captured.functionName = fn;
+          captured.body = body;
+          return const PracticeInvokeResponse(
+            status: 200,
+            data: {
+              'reply': '可以先輕鬆接住她的關鍵字。',
+              'aiTurnCount': 2,
+              'sessionComplete': false,
+              'costDeducted': 1,
+              'hintUsedCount': 1,
+              'temperature': {
+                'score': 38,
+                'delta': 8,
+                'band': 'cold',
+                'reason': '有具體延伸話題',
+                'familiarityScore': 10,
+                'familiarityDelta': 10,
+                'stageLabel': '建立熟悉中',
+              },
+            },
+          );
+        },
+      );
+
+      final result = await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        familiarityScore: 0,
+      );
+
+      expect(captured.body?['practiceMode'], 'beginner');
+      expect(captured.body?['temperatureScore'], 30);
+      expect(captured.body?['familiarityScore'], 0);
+      expect(result.hintUsedCount, 1);
+      expect(result.temperature?.score, 38);
+      expect(result.temperature?.delta, 8);
+      expect(result.temperature?.band, 'cold');
+      expect(result.temperature?.reason, '有具體延伸話題');
+      expect((result.temperature as dynamic).familiarityScore, 10);
+      expect((result.temperature as dynamic).familiarityDelta, 10);
+      expect((result.temperature as dynamic).stageLabel, '建立熟悉中');
+    });
+
+    test('sendMessage includes applied hint source when hint reply is used',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
+      );
+
+      expect(captured.body?['appliedHintType'], 'warm_up');
+      expect(captured.body?['appliedHintText'], 'original hint reply');
+    });
+
+    test('sendMessage trims appliedHintText before sending', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintType: PracticeHintReplyType.steady,
+        appliedHintText: '  original hint reply  ',
+      );
+
+      expect(captured.body?['appliedHintType'], 'steady');
+      expect(captured.body?['appliedHintText'], 'original hint reply');
+    });
+
+    test('sendMessage omits blank appliedHintText', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: '   ',
+      );
+
+      expect(captured.body?['appliedHintType'], 'warm_up');
+      expect(captured.body?.containsKey('appliedHintText'), false);
+    });
+
+    test('sendMessage omits appliedHintText without appliedHintType', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+        appliedHintText: 'original hint reply',
+      );
+
+      expect(captured.body?.containsKey('appliedHintType'), false);
+      expect(captured.body?.containsKey('appliedHintText'), false);
+    });
+
+    test('sendMessage omits appliedHintType when user did not apply hint',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+      );
+
+      expect(captured.body?.containsKey('appliedHintType'), false);
+      expect(captured.body?.containsKey('appliedHintText'), false);
+    });
+
+    test('sendMessage omits appliedHintType outside beginner mode', () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+
+      await svc.sendMessage(
+        sessionId: 's',
+        profile: profile,
+        turns: turns,
+        practiceMode: PracticeLearningMode.standard,
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
+      );
+
+      expect(captured.body?.containsKey('appliedHintType'), false);
+      expect(captured.body?.containsKey('appliedHintText'), false);
     });
 
     test('429 → PracticeQuotaExceededException 帶剩餘額度', () async {
@@ -110,7 +338,8 @@ void main() {
     });
 
     test('500 → PracticeGenerationFailedException（不扣額度語意）', () async {
-      final svc = serviceReturning(500, {'error': 'practice_generation_failed'});
+      final svc =
+          serviceReturning(500, {'error': 'practice_generation_failed'});
       expect(
         () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeGenerationFailedException>()),
@@ -181,8 +410,8 @@ void main() {
     test('200 但缺 card → generation failed', () async {
       final svc = serviceReturning(200, {'costDeducted': 0});
       expect(
-        () => svc.requestDebrief(
-            sessionId: 's', profile: profile, turns: turns),
+        () =>
+            svc.requestDebrief(sessionId: 's', profile: profile, turns: turns),
         throwsA(isA<PracticeGenerationFailedException>()),
       );
     });
@@ -287,7 +516,8 @@ void main() {
           },
         };
 
-    test('body 帶 mode/requestId/currentProfileId/visiblePracticeThreadId', () async {
+    test('body 帶 mode/requestId/currentProfileId/visiblePracticeThreadId',
+        () async {
       final captured = _CapturedInvoke();
       final svc = PracticeChatApiService(invoker: captured.call);
       captured.drawBody = okBody();
@@ -305,7 +535,8 @@ void main() {
       expect(captured.body?['visiblePracticeThreadId'], 'thread-9');
     });
 
-    test('currentProfileId / visiblePracticeThreadId 為 null 時不放進 body', () async {
+    test('currentProfileId / visiblePracticeThreadId 為 null 時不放進 body',
+        () async {
       final captured = _CapturedInvoke();
       final svc = PracticeChatApiService(invoker: captured.call);
       captured.drawBody = okBody();
@@ -348,7 +579,8 @@ void main() {
       );
     });
 
-    test('402 → PracticeDrawUpgradeRequiredException 帶 allowance/成本/重置時間', () async {
+    test('402 → PracticeDrawUpgradeRequiredException 帶 allowance/成本/重置時間',
+        () async {
       final svc = serviceReturning(402, {
         'error': 'practice_draw_upgrade_required',
         'message': '升級後每天可以翻更多陪練女孩。',
@@ -398,6 +630,156 @@ void main() {
       expect(
         () => svc.drawProfile(requestId: 'req-8'),
         throwsA(isA<PracticeApiException>()),
+      );
+    });
+  });
+
+  group('requestHint', () {
+    Map<String, dynamic> okHintBody() => {
+          'replies': [
+            {
+              'type': 'warm_up',
+              'label': '升溫回覆',
+              'text': '那我先查朧月。你如果只推一道，會推熟成魚還是酒單？',
+            },
+            {
+              'type': 'steady',
+              'label': '穩住回覆',
+              'text': '好，我自己查。你剛剛提到酒單，看起來你蠻懂這類店。',
+            },
+          ],
+          'coaching': '先接住資訊，再問一個具體但低壓力的問題。',
+          'costDeducted': 1,
+          'hintUsedCount': 2,
+          'monthlyRemaining': 28,
+          'dailyRemaining': 13,
+        };
+
+    test('sends hint mode, beginner practiceMode, turns/profile/metadata',
+        () async {
+      final captured = _CapturedInvoke();
+      final svc = PracticeChatApiService(invoker: captured.call);
+      captured.hintBody = okHintBody();
+
+      await svc.requestHint(
+        sessionId: 'session-1',
+        profile: const PracticeProfileDto(
+          personaId: 'cool_rational',
+          difficulty: 'challenge',
+          profileId: 'practice_girl_007',
+          nameId: 'mia',
+          professionId: 'nurse',
+          photoId: 'practice_girl_007',
+        ),
+        turns: turns,
+        roundIndex: 4,
+        visiblePracticeThreadId: 'thread-abc',
+      );
+
+      expect(captured.functionName, 'practice-chat');
+      expect(captured.body?['mode'], 'hint');
+      expect(captured.body?['practiceMode'], 'beginner');
+      expect(captured.body?['sessionId'], 'session-1');
+      expect(captured.body?['personaId'], 'cool_rational');
+      expect(captured.body?['difficulty'], 'challenge');
+      expect(captured.body?['profileId'], 'practice_girl_007');
+      expect(captured.body?['nameId'], 'mia');
+      expect(captured.body?['professionId'], 'nurse');
+      expect(captured.body?['photoId'], 'practice_girl_007');
+      expect(captured.body?['turns'], [
+        {'role': 'user', 'text': '嗨'},
+      ]);
+      expect(captured.body?['roundIndex'], 4);
+      expect(captured.body?['visiblePracticeThreadId'], 'thread-abc');
+    });
+
+    test('parses two replies, coaching, cost, hint count, and remaining counts',
+        () async {
+      final svc = serviceReturning(200, okHintBody());
+
+      final result = await svc.requestHint(
+        sessionId: 'session-1',
+        profile: profile,
+        turns: turns,
+      );
+
+      expect(result.replies, hasLength(2));
+      expect(result.replies[0].type, PracticeHintReplyType.warmUp);
+      expect(result.replies[0].label, '升溫回覆');
+      expect(result.replies[0].text, contains('朧月'));
+      expect(result.replies[1].type, PracticeHintReplyType.steady);
+      expect(result.replies[1].label, '穩住回覆');
+      expect(result.replies[1].text, contains('酒單'));
+      expect(result.coaching, '先接住資訊，再問一個具體但低壓力的問題。');
+      expect(result.costDeducted, 1);
+      expect(result.hintUsedCount, 2);
+      expect(result.monthlyRemaining, 28);
+      expect(result.dailyRemaining, 13);
+    });
+
+    test('429 maps to PracticeQuotaExceededException', () async {
+      final svc = serviceReturning(429, {
+        'message': '本月額度已用完',
+        'monthlyRemaining': 0,
+        'dailyRemaining': 0,
+      });
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<PracticeQuotaExceededException>()),
+      );
+    });
+
+    test('403 practice_hint_limit maps to PracticeHintLimitException',
+        () async {
+      final svc = serviceReturning(403, {'error': 'practice_hint_limit'});
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<PracticeHintLimitException>()),
+      );
+    });
+
+    test('500 keeps hint readiness error code for controller copy', () async {
+      final svc = serviceReturning(500, {'error': 'practice_hint_not_ready'});
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(
+          isA<PracticeGenerationFailedException>()
+              .having((e) => e.message, 'message', 'practice_hint_not_ready'),
+        ),
+      );
+    });
+
+    test('malformed response maps to PracticeGenerationFailedException',
+        () async {
+      final svc = serviceReturning(200, {
+        'replies': [
+          {'type': 'warmUp', 'label': '升溫回覆', 'text': '只有一則'},
+        ],
+        'coaching': '少一則回覆',
+      });
+
+      expect(
+        () => svc.requestHint(
+          sessionId: 'session-1',
+          profile: profile,
+          turns: turns,
+        ),
+        throwsA(isA<PracticeGenerationFailedException>()),
       );
     });
   });

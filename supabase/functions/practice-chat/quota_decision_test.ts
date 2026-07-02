@@ -6,9 +6,11 @@ import {
   decideChatGate,
   decideContinuationGate,
   decideDebriefGate,
+  decideHintGate,
   isSessionComplete,
   MAX_AI_REPLIES,
   MAX_DEBRIEFS,
+  MAX_HINTS_PER_ROUND,
   type SessionLedger,
 } from "./quota_decision.ts";
 
@@ -18,6 +20,9 @@ function ledger(partial: Partial<SessionLedger> = {}): SessionLedger {
     aiCount: 0,
     charged: false,
     debriefCount: 0,
+    practiceMode: "standard",
+    temperatureScore: null,
+    hintCount: 0,
     ...partial,
   };
 }
@@ -176,4 +181,77 @@ Deno.test("isSessionComplete：< 20 未滿、>= 20 已滿", () => {
   assertEquals(isSessionComplete(20), true);
   assertEquals(isSessionComplete(21), true);
   assertEquals(MAX_AI_REPLIES, 20);
+});
+
+// ---- hint preflight: beginner-only server ledger gate ----
+
+Deno.test("hint gate rejects missing ledger", () => {
+  assertEquals(
+    decideHintGate({ ledger: ledger({ exists: false }) }),
+    { allowed: false, reason: "practice_session_not_started" },
+  );
+});
+
+Deno.test("hint gate rejects uncharged ledger", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({ exists: true, charged: false, aiCount: 1 }),
+    }),
+    { allowed: false, reason: "practice_session_not_started" },
+  );
+});
+
+Deno.test("hint gate rejects ledger before first AI reply", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({ exists: true, charged: true, aiCount: 0 }),
+    }),
+    { allowed: false, reason: "practice_session_not_started" },
+  );
+});
+
+Deno.test("hint gate rejects standard practice mode", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({
+        charged: true,
+        aiCount: 1,
+        practiceMode: "standard",
+      }),
+    }),
+    { allowed: false, reason: "practice_hint_beginner_only" },
+  );
+});
+
+Deno.test("hint gate rejects when hint count reaches max", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({
+        charged: true,
+        aiCount: 1,
+        practiceMode: "beginner",
+        hintCount: MAX_HINTS_PER_ROUND,
+      }),
+    }),
+    { allowed: false, reason: "practice_hint_limit" },
+  );
+});
+
+Deno.test("hint gate allows beginner ledger before max hints", () => {
+  assertEquals(
+    decideHintGate({
+      ledger: ledger({
+        charged: true,
+        aiCount: 1,
+        practiceMode: "beginner",
+        temperatureScore: 30,
+        hintCount: 4,
+      }),
+    }),
+    { allowed: true },
+  );
+});
+
+Deno.test("MAX_HINTS_PER_ROUND is 5", () => {
+  assertEquals(MAX_HINTS_PER_ROUND, 5);
 });

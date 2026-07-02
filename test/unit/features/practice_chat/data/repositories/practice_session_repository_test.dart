@@ -118,6 +118,51 @@ void main() {
     expect(repo.getById('legacy')!.profileId, isNull);
   });
 
+  test('save persists beginner learning metadata', () async {
+    await repo.save(PracticeSession(
+      id: 'beginner',
+      createdAt: DateTime(2026, 6, 28, 10),
+      practiceMode: 'beginner',
+      temperatureScore: 42,
+      familiarityScore: 44,
+      relationshipStageLabel: '可以聊個人',
+      hintUsedCount: 3,
+    ));
+
+    final loaded = repo.getById('beginner')!;
+    expect(loaded.practiceMode, 'beginner');
+    expect(loaded.temperatureScore, 42);
+    expect(loaded.familiarityScore, 44);
+    expect(loaded.relationshipStageLabel, '可以聊個人');
+    expect(loaded.hintUsedCount, 3);
+  });
+
+  test('copyWith updates beginner learning metadata', () {
+    final original = PracticeSession(
+      id: 'copy',
+      createdAt: DateTime(2026, 6, 28, 11),
+      practiceMode: 'standard',
+      temperatureScore: 30,
+      familiarityScore: 0,
+      relationshipStageLabel: '建立熟悉中',
+      hintUsedCount: 0,
+    );
+
+    final updated = original.copyWith(
+      practiceMode: 'beginner',
+      temperatureScore: 55,
+      familiarityScore: 45,
+      relationshipStageLabel: '可以聊個人',
+      hintUsedCount: 2,
+    );
+
+    expect(updated.practiceMode, 'beginner');
+    expect(updated.temperatureScore, 55);
+    expect(updated.familiarityScore, 45);
+    expect(updated.relationshipStageLabel, '可以聊個人');
+    expect(updated.hintUsedCount, 2);
+  });
+
   test('delete 移除指定練習紀錄，不影響其他場', () async {
     await repo.save(session('keep', 10));
     await repo.save(session('drop', 11));
@@ -158,9 +203,7 @@ void main() {
     final recent = repo.recentSessions();
     // 6 段對話 → 只留最近 5 段；A 只佔 1 個名額。
     expect(recent.length, 5);
-    final keys = recent
-        .map((s) => s.visiblePracticeThreadId ?? s.id)
-        .toList();
+    final keys = recent.map((s) => s.visiblePracticeThreadId ?? s.id).toList();
     expect(keys.where((k) => k == 'A').length, 1); // A 去重後只一筆
     expect(keys.toSet().length, 5); // 5 段不重複
     expect(keys.contains('A'), true); // A 最新，必留

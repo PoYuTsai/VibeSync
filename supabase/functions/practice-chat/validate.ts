@@ -2,12 +2,17 @@
 // 手寫驗證：schema 很小（mode + turns），不引第三方以保持測試零依賴。
 // 失敗一律 throw Error("invalid_*")，由 handler 轉 400。
 
-import { MAX_PRACTICE_ROUNDS, type PracticeMode } from "./quota_decision.ts";
+import {
+  MAX_PRACTICE_ROUNDS,
+  type PracticeLearningMode,
+  type PracticeMode,
+} from "./quota_decision.ts";
 import {
   isProfileId,
   type PracticeProfile,
   resolvePracticeProfile,
 } from "./practice_persona.ts";
+import { containsRawImageFilename } from "./prompt_sanitizer.ts";
 
 // 一個 visible thread 最多 3 輪、每輪 20 則 AI 回覆。debrief 會把整個 visible thread
 // 的逐字稿一起送，故 turns 上界要涵蓋 3 輪：3×(20 AI + 20 user)=120，留緩衝到 130。
@@ -23,8 +28,13 @@ export interface PracticeTurn {
   text: string;
 }
 
+export type AppliedHintType = "warm_up" | "steady";
+
 export interface PracticeChatRequest {
   mode: PracticeMode;
+  practiceMode: PracticeLearningMode;
+  temperatureScore: number;
+  familiarityScore: number;
   sessionId: string;
   turns: PracticeTurn[];
   profile: PracticeProfile;
@@ -32,6 +42,9 @@ export interface PracticeChatRequest {
   roundIndex: number;
   /** local 顯示用 thread id；僅供 log，絕不當作授權身份。 */
   visiblePracticeThreadId?: string;
+  /** 使用者原封不動套用的新手 Hint 類型；只作學習評分保護，不作授權。 */
+  appliedHintType?: AppliedHintType;
+  appliedHintText?: string;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -47,8 +60,64 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   if (!isRecord(raw)) throw new Error("invalid_request_body");
 
   const mode = raw.mode;
-  if (mode !== "chat" && mode !== "debrief") {
+  if (mode !== "chat" && mode !== "debrief" && mode !== "hint") {
     throw new Error("invalid_mode");
+  }
+
+  let practiceMode: PracticeLearningMode = "standard";
+  if (raw.practiceMode !== undefined) {
+    if (raw.practiceMode !== "standard" && raw.practiceMode !== "beginner") {
+      throw new Error("invalid_practiceMode");
+    }
+    practiceMode = raw.practiceMode;
+  }
+
+  let temperatureScore = 30;
+  if (raw.temperatureScore !== undefined) {
+    if (
+      typeof raw.temperatureScore !== "number" ||
+      !Number.isInteger(raw.temperatureScore) ||
+      raw.temperatureScore < 0 ||
+      raw.temperatureScore > 100
+    ) {
+      throw new Error("invalid_temperatureScore");
+    }
+    temperatureScore = raw.temperatureScore;
+  }
+
+  let familiarityScore = 0;
+  if (raw.familiarityScore !== undefined) {
+    if (
+      typeof raw.familiarityScore !== "number" ||
+      !Number.isInteger(raw.familiarityScore) ||
+      raw.familiarityScore < 0 ||
+      raw.familiarityScore > 100
+    ) {
+      throw new Error("invalid_familiarityScore");
+    }
+    familiarityScore = raw.familiarityScore;
+  }
+
+  let appliedHintType: AppliedHintType | undefined;
+  if (raw.appliedHintType !== undefined) {
+    if (raw.appliedHintType !== "warm_up" && raw.appliedHintType !== "steady") {
+      throw new Error("invalid_appliedHintType");
+    }
+    appliedHintType = raw.appliedHintType;
+  }
+
+  let appliedHintText: string | undefined;
+  if (raw.appliedHintText !== undefined) {
+    if (
+      appliedHintType === undefined ||
+      typeof raw.appliedHintText !== "string" ||
+      raw.appliedHintText.trim().length === 0 ||
+      raw.appliedHintText.length > MAX_TEXT_LEN ||
+      containsRawImageFilename(raw.appliedHintText)
+    ) {
+      throw new Error("invalid_appliedHintText");
+    }
+    appliedHintText = raw.appliedHintText.trim();
   }
 
   const sessionId = raw.sessionId;
@@ -68,12 +137,16 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
   const turns: PracticeTurn[] = rawTurns.map((t, i) => {
     if (!isRecord(t)) throw new Error(`invalid_turn_${i}`);
     const role = t.role;
-    if (role !== "user" && role !== "ai") throw new Error(`invalid_turn_role_${i}`);
+    if (role !== "user" && role !== "ai") {
+      throw new Error(`invalid_turn_role_${i}`);
+    }
     const text = t.text;
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new Error(`invalid_turn_text_${i}`);
     }
-    if (text.length > MAX_TEXT_LEN) throw new Error(`invalid_turn_text_len_${i}`);
+    if (text.length > MAX_TEXT_LEN) {
+      throw new Error(`invalid_turn_text_len_${i}`);
+    }
     return { role, text };
   });
 
@@ -87,10 +160,15 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     // 注意：10 則上限「不」在此用 client count 把關——client 可少報 ai turns
     // 繞過。上限改由 server ledger（practice_chat_sessions.ai_count）在 handler
     // preflight 與 commit RPC 內以權威狀態強制。
-  } else {
+  } else if (mode === "debrief") {
     // debrief：client payload 至少要有一來一回才有逐字稿可拆解（形狀檢查）；
     // 「是否真為已扣費 session」由 server ledger 在 handler 內把關。
     if (aiCount === 0) throw new Error("invalid_debrief_no_ai_turns");
+  } else {
+    if (aiCount === 0) throw new Error("invalid_hint_no_ai_turns");
+    if (turns[turns.length - 1].role !== "ai") {
+      throw new Error("invalid_hint_last_turn_must_be_ai");
+    }
   }
 
   const profile = resolvePracticeProfile({
@@ -129,7 +207,19 @@ export function validateRequest(raw: unknown): PracticeChatRequest {
     visiblePracticeThreadId = raw.visiblePracticeThreadId;
   }
 
-  return { mode, sessionId, turns, profile, roundIndex, visiblePracticeThreadId };
+  return {
+    mode,
+    practiceMode,
+    temperatureScore,
+    familiarityScore,
+    sessionId,
+    turns,
+    profile,
+    roundIndex,
+    visiblePracticeThreadId,
+    appliedHintType,
+    appliedHintText,
+  };
 }
 
 // ── draw_profile：獨立 request shape ───────────────────────────────────────

@@ -7,20 +7,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
@@ -109,6 +114,11 @@ class _NoopPracticeChatApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
+    int? temperatureScore,
+    int? familiarityScore,
+    PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) {
     throw UnimplementedError();
   }
@@ -163,6 +173,11 @@ class _DrawApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
+    int? temperatureScore,
+    int? familiarityScore,
+    PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) =>
       throw UnimplementedError();
 
@@ -212,6 +227,56 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   void stopRevealBed() => bedStop++;
 }
 
+class _HintApi extends _NoopPracticeChatApi {
+  _HintApi(this.result);
+
+  final PracticeHintResult result;
+  int hintCalls = 0;
+
+  @override
+  Future<PracticeHintResult> requestHint({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+  }) async {
+    hintCalls++;
+    return result;
+  }
+}
+
+class _MessageApi extends _NoopPracticeChatApi {
+  _MessageApi(this._handler);
+
+  final Future<PracticeChatReply> Function(List<PracticeTurnDto> turns)
+      _handler;
+  int sendCalls = 0;
+  PracticeHintReplyType? lastAppliedHintType;
+  String? lastAppliedHintText;
+  List<PracticeTurnDto> lastTurns = const [];
+
+  @override
+  Future<PracticeChatReply> sendMessage({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
+    int? temperatureScore,
+    int? familiarityScore,
+    PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
+  }) {
+    sendCalls++;
+    lastAppliedHintType = appliedHintType;
+    lastAppliedHintText = appliedHintText;
+    lastTurns = turns;
+    return _handler(turns);
+  }
+}
+
 class _SeededPracticeChatController extends PracticeChatController {
   _SeededPracticeChatController({
     required PracticeChatState seed,
@@ -245,6 +310,7 @@ void main() {
   late InMemoryPracticeDrawDraftStore draftStore;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     repo = _MemoryPracticeSessionRepository();
     draftStore = InMemoryPracticeDrawDraftStore();
   });
@@ -990,6 +1056,826 @@ void main() {
       messages: const [],
     );
   }
+
+  testWidgets('beginner mode toggle reveals temperature meter', (tester) async {
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed(),
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('practice-learning-mode-standard')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-temperature-meter')),
+      findsNothing,
+    );
+
+    await tester
+        .tap(find.byKey(const ValueKey('practice-learning-mode-beginner')));
+    await tester.pumpAndSettle();
+
+    expect(controller.currentState.learningMode, PracticeLearningMode.beginner);
+    expect(
+      find.byKey(const ValueKey('practice-temperature-meter')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('temperature meter keeps feedback compact and Traditional',
+      (tester) async {
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 35,
+      familiarityScore: 10,
+      relationshipStageLabel: '建立熟悉中',
+      lastTemperatureDelta: 3,
+      temperatureReason: '回复展现了直接有梗的风格，按住了用户关于直接的调侃，符合角色喜欢有来有回和反打的偏好，有助于升温。',
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-temperature-meter')),
+        findsOneWidget);
+    expect(find.textContaining('回复'), findsNothing);
+    expect(find.textContaining('风格'), findsNothing);
+    expect(find.text('建立熟悉中'), findsOneWidget);
+    expect(find.textContaining('熟悉度'), findsNothing);
+    expect(find.text('這輪有升溫'), findsOneWidget);
+  });
+
+  testWidgets('rapid send taps keep only one message submission in flight',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    final replyCompleter = Completer<PracticeChatReply>();
+    final api = _MessageApi(
+      (_) => replyCompleter.future,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        learningMode: PracticeLearningMode.beginner,
+        temperatureScore: 30,
+      ),
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'huhu');
+    final sendButton = find.byKey(const ValueKey('practice-send-button'));
+
+    await tester.tap(sendButton);
+    await tester.tap(sendButton);
+    await tester.pump();
+
+    expect(api.sendCalls, 1);
+    expect(controller.currentState.isSending, true);
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, false);
+
+    replyCompleter.complete(
+      const PracticeChatReply(
+        reply: '嗨，怎麼突然這麼簡短？',
+        aiTurnCount: 1,
+        sessionComplete: false,
+        costDeducted: 1,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.currentState.messages.map((m) => m.role), ['user', 'ai']);
+  });
+
+  testWidgets('hint panel can fill the composer with a suggested reply',
+      (tester) async {
+    const suggestedReply = '我也想聽你多講一點。';
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'hello'),
+        PracticeMessage(role: 'ai', text: 'hello back'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '加分回覆',
+          text: suggestedReply,
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '不扣分回覆',
+          text: '聽起來很棒，哪一段最有趣？',
+        ),
+      ],
+      hintCoaching: '先接住情緒，再丟一個小問題。',
+      hintUsedCount: 1,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-hint-panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+    expect(find.text('套用'), findsNWidgets(2));
+    expect(find.textContaining('接住情緒'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-reply-0')));
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller?.text, suggestedReply);
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(find.byKey(const ValueKey('practice-hint-collapsed-summary')),
+        findsOneWidget);
+  });
+
+  testWidgets('sending an exact applied hint marks the hint type for scoring',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    const suggestedReply = '我也想聽你多講一點。';
+    final api = _MessageApi(
+      (_) async => const PracticeChatReply(
+        reply: '這樣回就自然多了。',
+        aiTurnCount: 2,
+        sessionComplete: false,
+        costDeducted: 0,
+        temperature: PracticeTemperature(
+          score: 42,
+          delta: 0,
+          band: 'neutral',
+          reason: '維持節奏',
+        ),
+      ),
+    );
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        learningMode: PracticeLearningMode.beginner,
+        temperatureScore: 42,
+        messages: const [
+          PracticeMessage(role: 'user', text: 'hello'),
+          PracticeMessage(role: 'ai', text: 'hello back'),
+        ],
+        aiReplyCount: 1,
+        hintReplies: const [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: '加分回覆',
+            text: suggestedReply,
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: '不扣分回覆',
+            text: '聽起來很棒，哪一段最有趣？',
+          ),
+        ],
+        hintCoaching: '先接住情緒，再丟一個小問題。',
+        hintUsedCount: 1,
+      ),
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-reply-0')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('practice-send-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.sendCalls, 1);
+    expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
+    expect(api.lastTurns.last.text, suggestedReply);
+  });
+
+  testWidgets(
+      'editing an applied hint before sending keeps hint source for scoring',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    const suggestedReply = '我也想聽你多講一點。';
+    final api = _MessageApi(
+      (_) async => const PracticeChatReply(
+        reply: '有改過就算自己的回覆。',
+        aiTurnCount: 2,
+        sessionComplete: false,
+        costDeducted: 0,
+      ),
+    );
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        learningMode: PracticeLearningMode.beginner,
+        temperatureScore: 42,
+        messages: const [
+          PracticeMessage(role: 'user', text: 'hello'),
+          PracticeMessage(role: 'ai', text: 'hello back'),
+        ],
+        aiReplyCount: 1,
+        hintReplies: const [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: '加分回覆',
+            text: suggestedReply,
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: '不扣分回覆',
+            text: '聽起來很棒，哪一段最有趣？',
+          ),
+        ],
+        hintCoaching: '先接住情緒，再丟一個小問題。',
+        hintUsedCount: 1,
+      ),
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-reply-0')));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '$suggestedReply！');
+    await tester.tap(find.byKey(const ValueKey('practice-send-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.sendCalls, 1);
+    expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
+    expect(api.lastTurns.last.text, '$suggestedReply！');
+  });
+
+  testWidgets('failed exact hint send keeps marker for retry', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    const suggestedReply = '我喜歡你剛剛那個反應，有點可愛。';
+    var attempts = 0;
+    final api = _MessageApi((_) async {
+      attempts++;
+      if (attempts == 1) {
+        throw PracticeGenerationFailedException('boom');
+      }
+      return const PracticeChatReply(
+        reply: '這次成功了。',
+        aiTurnCount: 2,
+        sessionComplete: false,
+        costDeducted: 0,
+        temperature: PracticeTemperature(
+          score: 42,
+          delta: 0,
+          band: 'neutral',
+          reason: '套用提示回覆，維持不降溫',
+        ),
+      );
+    });
+    final controller = _SeededPracticeChatController(
+      seed: revealedPreMsgSeed().copyWith(
+        learningMode: PracticeLearningMode.beginner,
+        temperatureScore: 42,
+        messages: const [
+          PracticeMessage(role: 'user', text: 'hello'),
+          PracticeMessage(role: 'ai', text: 'hello back'),
+        ],
+        aiReplyCount: 1,
+        hintReplies: const [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: '加分回覆',
+            text: suggestedReply,
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: '不扣分回覆',
+            text: '聽起來很棒，哪一段最有趣？',
+          ),
+        ],
+        hintCoaching: '先接住情緒，再丟一個小問題。',
+        hintUsedCount: 1,
+      ),
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-reply-0')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('practice-send-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.sendCalls, 1);
+    expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
+
+    await tester.tap(find.byKey(const ValueKey('practice-send-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.sendCalls, 2);
+    expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+    expect(api.lastAppliedHintText, suggestedReply);
+    expect(api.lastTurns.last.text, suggestedReply);
+  });
+
+  testWidgets('hint panel can collapse and expand after a hint is generated',
+      (tester) async {
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: '妳這樣會很常得罪人吧'),
+        PracticeMessage(role: 'ai', text: '還好啊，我又不是沒事就亂噴人。'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '升溫回覆',
+          text: '那你覺得我是會得罪你，還是你已經準備好被我得罪了？',
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '穩住回覆',
+          text: '至少我對有興趣的人還是很溫柔的喔。',
+        ),
+      ],
+      hintCoaching: '她剛剛把你的吐槽反打回來，下一句要接住她的幽默。',
+      hintUsedCount: 2,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-toggle-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-hint-collapsed-summary')),
+        findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-toggle-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+  });
+
+  testWidgets('requesting hint dismisses the composer keyboard',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    final api = _HintApi(
+      const PracticeHintResult(
+        replies: [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: 'warm',
+            text: 'warm reply',
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: 'steady',
+            text: 'steady reply',
+          ),
+        ],
+        coaching: 'read the latest reply, then answer.',
+        costDeducted: 0,
+        hintUsedCount: 1,
+      ),
+    );
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'first line'),
+        PracticeMessage(role: 'ai', text: 'latest her line'),
+      ],
+      aiReplyCount: 1,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'draft');
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.hintCalls, 1);
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('hint panel auto-expands when a generated hint arrives',
+      (tester) async {
+    const warmReply = PracticeHintReply(
+      type: PracticeHintReplyType.warmUp,
+      label: 'warm',
+      text: 'warm reply',
+    );
+    final api = _HintApi(
+      const PracticeHintResult(
+        replies: [
+          warmReply,
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: 'steady',
+            text: 'steady reply',
+          ),
+        ],
+        coaching: 'she answered the latest turn; you can reply lightly.',
+        costDeducted: 0,
+        hintUsedCount: 1,
+      ),
+    );
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'first line'),
+        PracticeMessage(role: 'ai', text: 'latest her line'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [],
+      hintCoaching: null,
+      hintUsedCount: 0,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-hint-toggle-button')),
+        findsNothing);
+
+    await controller.requestHint();
+    await tester.pumpAndSettle();
+
+    expect(api.hintCalls, 1);
+    expect(find.byKey(const ValueKey('practice-hint-toggle-button')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-hint-reply-0')), findsOneWidget);
+    expect(find.text(warmReply.text), findsOneWidget);
+  });
+
+  testWidgets('hint panel disables request button after fifth hint',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      AiDataSharingConsent.practiceConsentKey: true,
+    });
+    final api = _HintApi(
+      const PracticeHintResult(
+        replies: [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: 'warm',
+            text: 'warm reply',
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: 'steady',
+            text: 'steady reply',
+          ),
+        ],
+        coaching: 'read the latest reply, then answer.',
+        costDeducted: 0,
+        hintUsedCount: 5,
+      ),
+    );
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 35,
+      messages: const [
+        PracticeMessage(role: 'user', text: 'first line'),
+        PracticeMessage(role: 'ai', text: 'latest her line'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '升溫回覆',
+          text: '我喜歡你剛剛那個反應，有點可愛。',
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '穩住回覆',
+          text: '那我慢慢聽你說。',
+        ),
+      ],
+      hintCoaching: '先接住她的情緒，再丟一個好回的小問題。',
+      hintUsedCount: 5,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+      api: api,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.text('Hint 5/5'), findsOneWidget);
+    expect(find.text('本輪已用完'), findsOneWidget);
+    expect(find.textContaining('本輪提示已用完'), findsOneWidget);
+
+    final button = tester
+        .widget<TextButton>(find.byKey(const ValueKey('practice-hint-button')));
+    expect(button.onPressed, isNull);
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-button')));
+    await tester.pumpAndSettle();
+
+    expect(api.hintCalls, 0);
+  });
+
+  testWidgets('hint coaching can open a full teaching sheet', (tester) async {
+    const longCoaching =
+        '她剛剛把你的吐槽反打回來，重點不是解釋自己沒有得罪人，而是順著她的幽默承接，讓互動保有輕鬆感，再丟一個低壓問題讓她願意繼續接話。';
+    final seed = revealedPreMsgSeed().copyWith(
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      messages: const [
+        PracticeMessage(role: 'user', text: '妳這樣會很常得罪人吧'),
+        PracticeMessage(role: 'ai', text: '還好啊，我又不是沒事就亂噴人。'),
+      ],
+      aiReplyCount: 1,
+      hintReplies: const [
+        PracticeHintReply(
+          type: PracticeHintReplyType.warmUp,
+          label: '升溫回覆',
+          text: '那你覺得我是會得罪你，還是你已經準備好被我得罪了？',
+        ),
+        PracticeHintReply(
+          type: PracticeHintReplyType.steady,
+          label: '穩住回覆',
+          text: '至少我對有興趣的人還是很溫柔的喔。',
+        ),
+      ],
+      hintCoaching: longCoaching,
+      hintUsedCount: 2,
+    );
+    final controller = _SeededPracticeChatController(
+      seed: seed,
+      repository: repo,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('practice-hint-coaching-more')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('practice-hint-coaching-sheet')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-hint-coaching-sheet-text')),
+        findsOneWidget);
+    expect(find.text(longCoaching), findsWidgets);
+  });
 
   testWidgets('Free 換一位直接導 paywall，不打 draw API', (tester) async {
     final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[3]));

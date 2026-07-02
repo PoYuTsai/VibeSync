@@ -20,6 +20,8 @@ import 'package:vibesync/features/practice_chat/data/repositories/practice_sessi
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
@@ -74,6 +76,11 @@ class _DrawApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
+    int? temperatureScore,
+    int? familiarityScore,
+    PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) =>
       throw UnimplementedError();
   @override

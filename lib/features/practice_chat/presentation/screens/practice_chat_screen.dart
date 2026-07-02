@@ -9,6 +9,8 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../data/repositories/practice_session_repository.dart';
+import '../../domain/entities/practice_hint.dart';
+import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
@@ -29,12 +31,15 @@ class PracticeChatScreen extends ConsumerStatefulWidget {
 
 class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _controller = TextEditingController();
+  final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
   bool _confirmPaidNewPartnerSpend = false;
+  PracticeHintReply? _appliedHintDraft;
 
   @override
   void dispose() {
     _controller.dispose();
+    _inputFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -53,8 +58,33 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       purposeText: AiDataSharingConsent.practicePurposeText,
     );
     if (!consented || !mounted) return;
+    final appliedHintDraft = _appliedHintDraft;
+    final appliedHintType = appliedHintDraft?.type;
+    final appliedHintText = appliedHintDraft?.text.trim();
     _controller.clear();
-    ref.read(practiceChatControllerProvider.notifier).sendMessage(text);
+    await ref.read(practiceChatControllerProvider.notifier).sendMessage(
+          text,
+          appliedHintType: appliedHintType,
+          appliedHintText: appliedHintText,
+        );
+    if (!mounted) return;
+    final restoredSameText =
+        ref.read(practiceChatControllerProvider).restoreText == text;
+    _appliedHintDraft = restoredSameText ? appliedHintDraft : null;
+  }
+
+  Future<void> _requestHint() async {
+    _inputFocusNode.unfocus();
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: 'AI 實戰練習室',
+      consentKey: AiDataSharingConsent.practiceConsentKey,
+      destinationLabel: AiDataSharingConsent.practiceDestinationLabel,
+      dataDescription: AiDataSharingConsent.practiceDataDescription,
+      purposeText: AiDataSharingConsent.practicePurposeText,
+    );
+    if (!consented || !mounted) return;
+    ref.read(practiceChatControllerProvider.notifier).requestHint();
   }
 
   /// 續聊同一位：付費才放行；Free 由 controller 觸發付費牆（不動 transcript）。
@@ -211,6 +241,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                     ? _PracticeProfileHero(state: state)
                     : ListView(
                         controller: _scrollController,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
                         children: [
                           for (final m in state.messages) _Bubble(message: m),
@@ -248,11 +280,14 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
             _BottomBar(
               state: state,
               inputController: _controller,
+              inputFocusNode: _inputFocusNode,
               isDebriefing: state.isDebriefing,
               onSend: _send,
               onEndPractice: () => ref
                   .read(practiceChatControllerProvider.notifier)
                   .endPractice(),
+              onRequestHint: () => _requestHint(),
+              onHintApplied: (reply) => _appliedHintDraft = reply,
               onFinish: () => context.pop(),
               onContinueSamePartner: _continueSamePartner,
               onNewPartner: _startNewPartner,
@@ -423,7 +458,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
 }
 
 // ── 開場前控制列：換一位＋難度 chips（深色 scaffold 底，沿用原樣式）──
-class _PracticeOpeningControls extends StatelessWidget {
+class _PracticeOpeningControls extends ConsumerWidget {
   const _PracticeOpeningControls({
     required this.state,
     required this.onNewPartner,
@@ -433,7 +468,7 @@ class _PracticeOpeningControls extends StatelessWidget {
   final VoidCallback onNewPartner;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
@@ -464,6 +499,13 @@ class _PracticeOpeningControls extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _DifficultyChips(state: state),
+          const SizedBox(height: 10),
+          _LearningModeToggle(
+            state: state,
+            onChanged: (mode) => ref
+                .read(practiceChatControllerProvider.notifier)
+                .setPracticeLearningMode(mode),
+          ),
         ],
       ),
     );
@@ -605,6 +647,114 @@ class _DifficultyChip extends StatelessWidget {
 }
 
 // ── 淺色聊天工作區：沿用 analyze-chat 的對話視窗底色 ─────────────────────
+class _LearningModeToggle extends StatelessWidget {
+  const _LearningModeToggle({
+    required this.state,
+    required this.onChanged,
+  });
+
+  final PracticeChatState state;
+  final ValueChanged<PracticeLearningMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 42,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.brandSurface2.withValues(alpha: 0.42),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppColors.onBackgroundSecondary.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _LearningModeSegment(
+                key: const ValueKey('practice-learning-mode-standard'),
+                icon: Icons.chat_bubble_outline,
+                label: '標準',
+                selected: state.learningMode == PracticeLearningMode.standard,
+                enabled: state.canChangeLearningMode,
+                onTap: () => onChanged(PracticeLearningMode.standard),
+              ),
+            ),
+            Expanded(
+              child: _LearningModeSegment(
+                key: const ValueKey('practice-learning-mode-beginner'),
+                icon: Icons.school_outlined,
+                label: '新手',
+                selected: state.learningMode == PracticeLearningMode.beginner,
+                enabled: state.canChangeLearningMode,
+                onTap: () => onChanged(PracticeLearningMode.beginner),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LearningModeSegment extends StatelessWidget {
+  const _LearningModeSegment({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected
+        ? Colors.white
+        : AppColors.onBackgroundSecondary.withValues(
+            alpha: enabled ? 0.86 : 0.45,
+          );
+    return Tooltip(
+      message: label,
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Material(
+          color: selected ? AppColors.ctaStart : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(9),
+            onTap: enabled ? onTap : null,
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16, color: foreground),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PracticeChatWorkspaceFrame extends StatelessWidget {
   const _PracticeChatWorkspaceFrame({required this.child});
 
@@ -987,9 +1137,12 @@ class _BottomBar extends StatelessWidget {
   const _BottomBar({
     required this.state,
     required this.inputController,
+    required this.inputFocusNode,
     required this.isDebriefing,
     required this.onSend,
     required this.onEndPractice,
+    required this.onRequestHint,
+    required this.onHintApplied,
     required this.onFinish,
     required this.onContinueSamePartner,
     required this.onNewPartner,
@@ -997,9 +1150,12 @@ class _BottomBar extends StatelessWidget {
 
   final PracticeChatState state;
   final TextEditingController inputController;
+  final FocusNode inputFocusNode;
   final bool isDebriefing;
   final VoidCallback onSend;
   final VoidCallback onEndPractice;
+  final VoidCallback onRequestHint;
+  final ValueChanged<PracticeHintReply> onHintApplied;
   final VoidCallback onFinish;
   final VoidCallback onContinueSamePartner;
   final VoidCallback onNewPartner;
@@ -1058,11 +1214,32 @@ class _BottomBar extends StatelessWidget {
     final quotaLabel = state.aiReplyCount == 0
         ? '首次 AI 回覆成功才扣 1 則'
         : '本場已扣 1 則，還能聊 ${state.remainingReplies} 則';
+    void useHintReply(PracticeHintReply reply) {
+      inputController.text = reply.text;
+      inputController.selection = TextSelection.collapsed(
+        offset: inputController.text.length,
+      );
+      onHintApplied(reply);
+      inputFocusNode.requestFocus();
+    }
+
     return _BarContainer(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (state.isBeginnerMode) ...[
+            _TemperatureMeter(state: state),
+            const SizedBox(height: 8),
+          ],
+          if (state.isBeginnerMode && state.messages.isNotEmpty) ...[
+            _HintCoachPanel(
+              state: state,
+              onRequestHint: onRequestHint,
+              onUseReply: useHintReply,
+            ),
+            const SizedBox(height: 8),
+          ],
           Row(
             children: [
               Expanded(
@@ -1094,6 +1271,7 @@ class _BottomBar extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: inputController,
+                  focusNode: inputFocusNode,
                   enabled: canSend,
                   minLines: 1,
                   maxLines: 4,
@@ -1128,6 +1306,467 @@ class _BottomBar extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TemperatureMeter extends StatelessWidget {
+  const _TemperatureMeter({required this.state});
+
+  final PracticeChatState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = (state.temperatureScore ?? kInitialPracticeTemperatureScore)
+        .clamp(0, 100)
+        .toInt();
+    final color = _temperatureColor(score);
+    final delta = state.lastTemperatureDelta;
+    final signalText = _temperatureSignalText(delta);
+    final stageLabel =
+        state.relationshipStageLabel ?? kInitialPracticeRelationshipStageLabel;
+
+    return Container(
+      key: const ValueKey('practice-temperature-meter'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.brandSurface2.withValues(alpha: 0.44),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.34)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.thermostat, size: 17, color: color),
+              const SizedBox(width: 6),
+              Text(
+                '升溫 $score',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  stageLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (delta != null)
+                Text(
+                  delta == 0 ? '±0' : '${delta > 0 ? '+' : ''}$delta',
+                  style: AppTypography.caption.copyWith(
+                    color: delta >= 0 ? AppColors.success : AppColors.info,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 6,
+              value: score / 100,
+              color: color,
+              backgroundColor:
+                  AppColors.onBackgroundSecondary.withValues(alpha: 0.14),
+            ),
+          ),
+          if (signalText != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.insights, size: 14, color: color),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    signalText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Color _temperatureColor(int score) {
+  if (score >= 80) return AppColors.hot;
+  if (score >= 60) return AppColors.warm;
+  if (score >= 40) return AppColors.warning;
+  return AppColors.cold;
+}
+
+String? _temperatureSignalText(int? delta) {
+  if (delta == null) return null;
+  if (delta > 0) return '這輪有升溫';
+  if (delta < 0) return '這輪降溫，先放慢';
+  return '這輪持平';
+}
+
+class _HintCoachPanel extends StatefulWidget {
+  const _HintCoachPanel({
+    required this.state,
+    required this.onRequestHint,
+    required this.onUseReply,
+  });
+
+  final PracticeChatState state;
+  final VoidCallback onRequestHint;
+  final ValueChanged<PracticeHintReply> onUseReply;
+
+  @override
+  State<_HintCoachPanel> createState() => _HintCoachPanelState();
+}
+
+class _HintCoachPanelState extends State<_HintCoachPanel> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.state.hintReplies.isNotEmpty;
+  }
+
+  @override
+  void didUpdateWidget(covariant _HintCoachPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final receivedNewHint = widget.state.hintUsedCount !=
+            oldWidget.state.hintUsedCount ||
+        widget.state.hintReplies.length != oldWidget.state.hintReplies.length;
+    if (receivedNewHint && widget.state.hintReplies.isNotEmpty) {
+      _expanded = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    final hintUsedCount =
+        state.hintUsedCount.clamp(0, kMaxPracticeHintsPerRound).toInt();
+    final isHintLimitReached =
+        state.hintLimitReached || hintUsedCount >= kMaxPracticeHintsPerRound;
+    final canRequest = state.canRequestHint && !isHintLimitReached;
+    final hasHint = state.hintReplies.isNotEmpty ||
+        (state.hintCoaching != null && state.hintCoaching!.trim().isNotEmpty);
+    return Container(
+      key: const ValueKey('practice-hint-panel'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.brandSurface2.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primaryLight.withValues(alpha: 0.24),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Hint $hintUsedCount/$kMaxPracticeHintsPerRound',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                key: const ValueKey('practice-hint-button'),
+                onPressed: canRequest ? widget.onRequestHint : null,
+                icon: state.isHintLoading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.lightbulb_outline, size: 16),
+                label: Text(isHintLimitReached ? '本輪已用完' : '提示 1 則'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryLight,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+              if (hasHint) ...[
+                const SizedBox(width: 2),
+                IconButton(
+                  key: const ValueKey('practice-hint-toggle-button'),
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 20,
+                  ),
+                  color: AppColors.onBackgroundSecondary,
+                  tooltip: _expanded ? '收合提示' : '展開提示',
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
+            ],
+          ),
+          if (isHintLimitReached) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  Icons.lock_outline,
+                  size: 14,
+                  color: AppColors.onBackgroundSecondary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '本輪提示已用完，先用自己的話試著回覆。',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (hasHint && !_expanded) ...[
+            const SizedBox(height: 4),
+            Row(
+              key: const ValueKey('practice-hint-collapsed-summary'),
+              children: [
+                Icon(
+                  Icons.lightbulb_outline,
+                  size: 14,
+                  color: AppColors.primaryLight,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '已產生 ${state.hintReplies.length} 則提示',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (_expanded && state.hintReplies.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (var i = 0; i < state.hintReplies.length; i++) ...[
+              _HintReplyButton(
+                key: ValueKey('practice-hint-reply-$i'),
+                reply: state.hintReplies[i],
+                onTap: () {
+                  setState(() => _expanded = false);
+                  widget.onUseReply(state.hintReplies[i]);
+                },
+              ),
+              if (i != state.hintReplies.length - 1) const SizedBox(height: 6),
+            ],
+          ],
+          if (_expanded &&
+              state.hintCoaching != null &&
+              state.hintCoaching!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.psychology_alt_outlined,
+                  size: 16,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        state.hintCoaching!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.onBackgroundSecondary,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      TextButton(
+                        key: const ValueKey('practice-hint-coaching-more'),
+                        onPressed: () => _showCoachingSheet(
+                          context,
+                          state.hintCoaching!.trim(),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primaryLight,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 28),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('看完整心法'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showCoachingSheet(BuildContext context, String coaching) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.brandInk,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          key: const ValueKey('practice-hint-coaching-sheet'),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '回覆心法',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  coaching,
+                  key: const ValueKey('practice-hint-coaching-sheet-text'),
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    height: 1.55,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HintReplyButton extends StatelessWidget {
+  const _HintReplyButton({
+    super.key,
+    required this.reply,
+    required this.onTap,
+  });
+
+  final PracticeHintReply reply;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = reply.type == PracticeHintReplyType.warmUp
+        ? AppColors.ctaStart
+        : AppColors.info;
+    return Material(
+      color: accent.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_fix_high, size: 14, color: accent),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      reply.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: accent.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Text(
+                      '套用',
+                      style: AppTypography.caption.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                reply.text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1268,6 +1907,7 @@ class _SendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      key: const ValueKey('practice-send-button'),
       onTap: enabled ? onTap : null,
       child: Container(
         width: 46,

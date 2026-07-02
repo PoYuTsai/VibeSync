@@ -6,15 +6,22 @@ import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_draw_draft.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_message.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
 
 class _FakeApi extends PracticeChatApiService {
   Future<PracticeChatReply> Function(
     List<PracticeTurnDto> turns, {
     PracticeProfileDto? profile,
   })? sendHandler;
+  Future<PracticeHintResult> Function(
+    List<PracticeTurnDto> turns, {
+    PracticeProfileDto? profile,
+  })? hintHandler;
   Future<PracticeDebrief> Function(
     List<PracticeTurnDto> turns, {
     PracticeProfileDto? profile,
@@ -24,8 +31,16 @@ class _FakeApi extends PracticeChatApiService {
   // 續玩 metadata 捕捉。
   int? lastRoundIndex;
   String? lastVisibleThreadId;
+  PracticeLearningMode? lastPracticeMode;
+  int? lastTemperatureScore;
+  int? lastFamiliarityScore;
+  PracticeHintReplyType? lastAppliedHintType;
+  String? lastAppliedHintText;
   int? lastDebriefRoundIndex;
   String? lastDebriefThreadId;
+  int? lastHintRoundIndex;
+  String? lastHintThreadId;
+  int hintCallCount = 0;
 
   // 翻牌捕捉。
   int drawCallCount = 0;
@@ -40,10 +55,34 @@ class _FakeApi extends PracticeChatApiService {
     required List<PracticeTurnDto> turns,
     int roundIndex = 1,
     String? visiblePracticeThreadId,
+    PracticeLearningMode practiceMode = PracticeLearningMode.standard,
+    int? temperatureScore,
+    int? familiarityScore,
+    PracticeHintReplyType? appliedHintType,
+    String? appliedHintText,
   }) {
     lastRoundIndex = roundIndex;
     lastVisibleThreadId = visiblePracticeThreadId;
+    lastPracticeMode = practiceMode;
+    lastTemperatureScore = temperatureScore;
+    lastFamiliarityScore = familiarityScore;
+    lastAppliedHintType = appliedHintType;
+    lastAppliedHintText = appliedHintText;
     return sendHandler!(turns, profile: profile);
+  }
+
+  @override
+  Future<PracticeHintResult> requestHint({
+    required String sessionId,
+    required PracticeProfileDto profile,
+    required List<PracticeTurnDto> turns,
+    int roundIndex = 1,
+    String? visiblePracticeThreadId,
+  }) {
+    hintCallCount++;
+    lastHintRoundIndex = roundIndex;
+    lastHintThreadId = visiblePracticeThreadId;
+    return hintHandler!(turns, profile: profile);
   }
 
   @override
@@ -146,12 +185,42 @@ void main() {
     int cost = 1,
     int? monthly = 29,
     int? daily = 14,
+    PracticeTemperature? temperature,
+    int? hintUsedCount,
   }) =>
       PracticeChatReply(
         reply: text,
         aiTurnCount: aiTurnCount,
         sessionComplete: complete,
         costDeducted: cost,
+        monthlyRemaining: monthly,
+        dailyRemaining: daily,
+        temperature: temperature,
+        hintUsedCount: hintUsedCount,
+      );
+
+  PracticeHintResult hintResult({
+    int cost = 1,
+    int hintUsedCount = 1,
+    int? monthly = 28,
+    int? daily = 13,
+  }) =>
+      PracticeHintResult(
+        replies: const [
+          PracticeHintReply(
+            type: PracticeHintReplyType.warmUp,
+            label: '加分回覆',
+            text: '我也想聽你多講一點，這件事聽起來很有趣。',
+          ),
+          PracticeHintReply(
+            type: PracticeHintReplyType.steady,
+            label: '不扣分回覆',
+            text: '聽起來你今天過得很充實，最累的是哪一段？',
+          ),
+        ],
+        coaching: '先接住情緒，再丟一個好回答的小問題。',
+        costDeducted: cost,
+        hintUsedCount: hintUsedCount,
         monthlyRemaining: monthly,
         dailyRemaining: daily,
       );
@@ -178,6 +247,10 @@ void main() {
     String profileId, {
     DateTime? nextResetAt,
     String difficulty = 'normal',
+    PracticeLearningMode learningMode = PracticeLearningMode.standard,
+    int? temperatureScore,
+    int? familiarityScore,
+    String? relationshipStageLabel,
   }) {
     final g = girlProfileById(profileId)!;
     return PracticeDrawDraft(
@@ -192,6 +265,10 @@ void main() {
       freeUsed: 1,
       freeRemaining: 0,
       extraCostMessages: 5,
+      learningMode: learningMode,
+      temperatureScore: temperatureScore,
+      familiarityScore: familiarityScore,
+      relationshipStageLabel: relationshipStageLabel,
       nextResetAt: nextResetAt ?? DateTime.utc(2999, 1, 1, 4),
       createdAt: DateTime(2026, 6, 26, 13),
     );
@@ -218,6 +295,23 @@ void main() {
       expect(s.girl!.profileId, 'practice_girl_005');
       expect(s.messages, isEmpty);
       expect(api.drawCallCount, 0); // 還原 draft 不重抽
+    });
+
+    test('有效 beginner draft → 還原 learning state', () {
+      draftStore.save(draftFor(
+        'practice_girl_005',
+        learningMode: PracticeLearningMode.beginner,
+        temperatureScore: 42,
+        familiarityScore: 44,
+        relationshipStageLabel: '可以聊個人',
+      ));
+      final c = makeController();
+      final s = c.currentState;
+
+      expect(s.learningMode, PracticeLearningMode.beginner);
+      expect(s.temperatureScore, 42);
+      expect(s.familiarityScore, 44);
+      expect(s.relationshipStageLabel, '可以聊個人');
     });
 
     test('過期 draft（已過 nextResetAt）→ 忽略 → locked', () {
@@ -249,9 +343,10 @@ void main() {
 
   // ── drawNewPracticeGirl ────────────────────────────────────────────────
   group('drawNewPracticeGirl', () {
-    test('成功 → revealed、girl=server 回的對象、roundIndex 1、threadId=新 sessionId', () async {
-      api.drawHandler =
-          ({currentProfileId}) async => drawResult(profileId: 'practice_girl_010');
+    test('成功 → revealed、girl=server 回的對象、roundIndex 1、threadId=新 sessionId',
+        () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_010');
       final c = makeController();
 
       await c.drawNewPracticeGirl();
@@ -267,8 +362,9 @@ void main() {
     });
 
     test('成功 → 存 draft（同一位、含 nextResetAt），但不寫進 recent sessions', () async {
-      api.drawHandler = ({currentProfileId}) async =>
-          drawResult(profileId: 'practice_girl_010', nextResetAt: '2999-01-01T04:00:00.000Z');
+      api.drawHandler = ({currentProfileId}) async => drawResult(
+          profileId: 'practice_girl_010',
+          nextResetAt: '2999-01-01T04:00:00.000Z');
       final c = makeController();
 
       await c.drawNewPracticeGirl();
@@ -282,20 +378,21 @@ void main() {
     });
 
     test('換一位（已 revealed 再抽）→ 帶 currentProfileId 排除目前這位', () async {
-      api.drawHandler =
-          ({currentProfileId}) async => drawResult(profileId: 'practice_girl_010');
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_010');
       final c = await makeRevealed();
       final firstId = c.currentState.girl!.profileId;
 
-      api.drawHandler =
-          ({currentProfileId}) async => drawResult(profileId: 'practice_girl_011');
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_011');
       await c.drawNewPracticeGirl();
 
       expect(api.lastDrawCurrentProfileId, firstId);
       expect(c.currentState.girl!.profileId, 'practice_girl_011');
     });
 
-    test('402 → drawUpgradeRequired、保留原狀態（仍 locked、girl null）、不存 draft', () async {
+    test('402 → drawUpgradeRequired、保留原狀態（仍 locked、girl null）、不存 draft',
+        () async {
       api.drawHandler = ({currentProfileId}) async =>
           throw PracticeDrawUpgradeRequiredException(
             freeAllowance: 1,
@@ -330,8 +427,8 @@ void main() {
     });
 
     test('換一位失敗（402）→ 不污染目前已揭曉的對象', () async {
-      api.drawHandler =
-          ({currentProfileId}) async => drawResult(profileId: 'practice_girl_010');
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_010');
       final c = await makeRevealed();
       final before = c.currentState.girl!.profileId;
 
@@ -376,8 +473,7 @@ void main() {
     });
 
     test('免費翻牌（cost=0）→ 不同步額度', () async {
-      api.drawHandler =
-          ({currentProfileId}) async => drawResult(cost: 0);
+      api.drawHandler = ({currentProfileId}) async => drawResult(cost: 0);
       final c = makeController();
       await c.drawNewPracticeGirl();
       expect(synced, isEmpty);
@@ -485,8 +581,8 @@ void main() {
     });
 
     test('翻牌後送訊息帶上 server 給的 girl 身份', () async {
-      api.drawHandler =
-          ({currentProfileId}) async => drawResult(profileId: 'practice_girl_010');
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_010');
       final c = await makeRevealed();
       final girl = c.currentState.girl!;
 
@@ -505,8 +601,8 @@ void main() {
 
     test('生成失敗：回滾泡泡、設錯誤與還原文字、不持久化、不同步', () async {
       final c = await makeRevealed();
-      api.sendHandler =
-          (_, {profile}) async => throw PracticeGenerationFailedException('boom');
+      api.sendHandler = (_, {profile}) async =>
+          throw PracticeGenerationFailedException('boom');
 
       await c.sendMessage('嗨');
       final s = c.currentState;
@@ -520,11 +616,12 @@ void main() {
 
     test('額度用罄：quotaExceeded + 回滾', () async {
       final c = await makeRevealed();
-      api.sendHandler = (_, {profile}) async => throw PracticeQuotaExceededException(
-            '本月額度已用完',
-            monthlyRemaining: 0,
-            dailyRemaining: 0,
-          );
+      api.sendHandler =
+          (_, {profile}) async => throw PracticeQuotaExceededException(
+                '本月額度已用完',
+                monthlyRemaining: 0,
+                dailyRemaining: 0,
+              );
 
       await c.sendMessage('嗨');
       final s = c.currentState;
@@ -610,8 +707,8 @@ void main() {
       api.sendHandler = (_, {profile}) async => reply();
       await c.sendMessage('嗨');
 
-      api.debriefHandler =
-          (_, {profile}) async => throw PracticeGenerationFailedException('boom');
+      api.debriefHandler = (_, {profile}) async =>
+          throw PracticeGenerationFailedException('boom');
       await c.endPractice();
       final s = c.currentState;
 
@@ -720,7 +817,8 @@ void main() {
       expect(c.currentState.visiblePracticeThreadId, 'thread-x');
     });
 
-    test('sendMessage 帶上 state 的 roundIndex 與 visiblePracticeThreadId', () async {
+    test('sendMessage 帶上 state 的 roundIndex 與 visiblePracticeThreadId',
+        () async {
       api.sendHandler = (_, {profile}) async => reply(cost: 0);
       final c = resumeR2();
       await c.sendMessage('在嗎');
@@ -728,7 +826,8 @@ void main() {
       expect(api.lastVisibleThreadId, 'thread-x');
     });
 
-    test('endPractice 帶上 state 的 roundIndex 與 visiblePracticeThreadId', () async {
+    test('endPractice 帶上 state 的 roundIndex 與 visiblePracticeThreadId',
+        () async {
       api.sendHandler = (_, {profile}) async => reply(cost: 0);
       final c = resumeR2();
       api.debriefHandler = (_, {profile}) async => const PracticeDebrief(
@@ -867,10 +966,322 @@ void main() {
       c.continueWithSamePartner(isPaid: true);
       expect(c.currentState.girl!.photoAssetPath, asset0);
 
-      api.drawHandler =
-          ({currentProfileId}) async => drawResult(profileId: 'practice_girl_010');
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_010');
       await c.startNewPartner();
       expect(c.currentState.girl!.photoAssetPath, isNot(asset0));
+    });
+  });
+
+  group('beginner learning mode', () {
+    test('standard mode sends no temperature metadata', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+
+      await c.sendMessage('hello');
+
+      expect(c.currentState.learningMode, PracticeLearningMode.standard);
+      expect(api.lastPracticeMode, PracticeLearningMode.standard);
+      expect(api.lastTemperatureScore, isNull);
+      expect(c.currentState.temperatureScore, isNull);
+      expect(repo.getById(c.currentState.sessionId)!.practiceMode, 'standard');
+    });
+
+    test(
+        'beginner mode sends current learning state and persists public returned state',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      expect(c.currentState.temperatureScore, 30);
+      expect(c.currentState.familiarityScore, 0);
+      expect(c.currentState.relationshipStageLabel, '建立熟悉中');
+
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 38,
+              delta: 8,
+              band: 'cold',
+              reason: '有具體延伸話題',
+              familiarityScore: 10,
+              familiarityDelta: 10,
+              stageLabel: '建立熟悉中',
+            ),
+            hintUsedCount: 1,
+          );
+
+      await c.sendMessage('hello');
+
+      final s = c.currentState;
+      expect(api.lastPracticeMode, PracticeLearningMode.beginner);
+      expect(api.lastTemperatureScore, 30);
+      expect(api.lastFamiliarityScore, 0);
+      expect(s.temperatureScore, 38);
+      expect(s.lastTemperatureDelta, 8);
+      expect(s.temperatureReason, '有具體延伸話題');
+      expect(s.familiarityScore, 10);
+      expect(s.relationshipStageLabel, '建立熟悉中');
+      expect(s.hintUsedCount, 1);
+
+      final saved = repo.getById(s.sessionId)!;
+      expect(saved.practiceMode, 'beginner');
+      expect(saved.temperatureScore, 38);
+      expect(saved.familiarityScore, 10);
+      expect(saved.relationshipStageLabel, '建立熟悉中');
+      expect(saved.hintUsedCount, 1);
+    });
+
+    test('pre-message beginner mode is saved in draft and restored', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+
+      final draft = draftStore.load()!;
+      expect(draft.learningMode, PracticeLearningMode.beginner);
+      expect(draft.temperatureScore, kInitialPracticeTemperatureScore);
+      expect(draft.familiarityScore, kInitialPracticeFamiliarityScore);
+      expect(
+        draft.relationshipStageLabel,
+        kInitialPracticeRelationshipStageLabel,
+      );
+
+      final restored = makeController();
+      expect(restored.currentState.learningMode, PracticeLearningMode.beginner);
+      expect(
+        restored.currentState.temperatureScore,
+        kInitialPracticeTemperatureScore,
+      );
+      expect(
+        restored.currentState.familiarityScore,
+        kInitialPracticeFamiliarityScore,
+      );
+      expect(
+        restored.currentState.relationshipStageLabel,
+        kInitialPracticeRelationshipStageLabel,
+      );
+    });
+
+    test('sendMessage forwards applied hint metadata only in beginner mode',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+
+      await c.sendMessage(
+        '我也想聽你多講一點。',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
+      );
+
+      expect(api.lastPracticeMode, PracticeLearningMode.beginner);
+      expect(api.lastAppliedHintType, PracticeHintReplyType.warmUp);
+      expect(api.lastAppliedHintText, 'original hint reply');
+    });
+
+    test('standard mode ignores applied hint metadata', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply(cost: 0);
+
+      await c.sendMessage(
+        '我也想聽你多講一點。',
+        appliedHintType: PracticeHintReplyType.warmUp,
+        appliedHintText: 'original hint reply',
+      );
+
+      expect(api.lastPracticeMode, PracticeLearningMode.standard);
+      expect(api.lastAppliedHintType, isNull);
+      expect(api.lastAppliedHintText, isNull);
+    });
+
+    test('restores beginner state from saved session', () {
+      final c = makeControllerFrom(PracticeSession(
+        id: 'beginner-resume',
+        createdAt: DateTime(2026, 6, 28, 14),
+        aiReplyCount: 1,
+        messages: const [
+          PracticeMessage(role: 'user', text: 'hi'),
+          PracticeMessage(role: 'ai', text: 'hello'),
+        ],
+        profileId: 'practice_girl_005',
+        practiceMode: 'beginner',
+        temperatureScore: 44,
+        familiarityScore: 46,
+        relationshipStageLabel: '可以聊個人',
+        hintUsedCount: 2,
+      ));
+
+      expect(c.currentState.learningMode, PracticeLearningMode.beginner);
+      expect(c.currentState.temperatureScore, 44);
+      expect(c.currentState.familiarityScore, 46);
+      expect(c.currentState.relationshipStageLabel, '可以聊個人');
+      expect(c.currentState.hintUsedCount, 2);
+    });
+
+    test('requestHint is beginner-only and uses existing AI turn', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 34,
+              delta: 4,
+              band: 'cold',
+              reason: '延伸得不錯',
+            ),
+            hintUsedCount: 0,
+          );
+
+      await c.requestHint();
+      expect(api.hintCallCount, 0);
+
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => hintResult();
+
+      await c.requestHint();
+
+      final s = c.currentState;
+      expect(api.hintCallCount, 1);
+      expect(api.lastHintRoundIndex, s.roundIndex);
+      expect(api.lastHintThreadId, s.visiblePracticeThreadId);
+      expect(s.hintReplies, hasLength(2));
+      expect(s.hintCoaching, contains('接住情緒'));
+      expect(s.hintUsedCount, 1);
+      expect(s.isHintLoading, false);
+      expect(synced, [
+        [28, 13]
+      ]);
+      expect(repo.getById(s.sessionId)!.hintUsedCount, 1);
+    });
+
+    test('requestHint marks limit reached without clearing chat', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler =
+          (_, {profile}) async => throw PracticeHintLimitException();
+
+      await c.requestHint();
+
+      expect(c.currentState.hintLimitReached, true);
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+      expect(c.currentState.errorMessage, isNotNull);
+    });
+
+    test('requestHint stops locally after the fifth hint in a round', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => hintResult(
+            cost: 1,
+            hintUsedCount: 5,
+          );
+
+      await c.requestHint();
+
+      expect(c.currentState.hintUsedCount, 5);
+      expect(c.currentState.canRequestHint, false);
+
+      await c.requestHint();
+
+      expect(api.hintCallCount, 1);
+      expect(c.currentState.errorMessage, isNull);
+    });
+
+    test('requestHint explains when user must wait for the AI reply', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            'invalid_hint_last_turn_must_be_ai',
+            status: 400,
+          );
+
+      await c.requestHint();
+
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.errorMessage, '要等對方回覆後，才能請 Hint。');
+      expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+    });
+
+    test('requestHint explains backend readiness failure', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async =>
+          throw PracticeGenerationFailedException('practice_hint_not_ready');
+
+      await c.requestHint();
+
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.errorMessage, '提示服務正在更新中，請稍後再試。');
+      expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+    });
+
+    test('requestHint maps backend gate codes to clear copy', () async {
+      final cases = [
+        ('practice_hint_in_flight', '提示正在產生中，等一下再試。'),
+        ('practice_hint_beginner_only', '這場不是新手模式，下一場切到新手模式再用 Hint。'),
+        ('practice_mode_locked', '這場不是新手模式，下一場切到新手模式再用 Hint。'),
+      ];
+
+      for (final (code, expectedMessage) in cases) {
+        final c = await makeRevealed();
+        await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+        api.sendHandler = (_, {profile}) async => reply(
+              cost: 0,
+              temperature: const PracticeTemperature(
+                score: 30,
+                delta: 0,
+                band: 'cold',
+                reason: '維持',
+              ),
+            );
+        await c.sendMessage('hello');
+        api.hintHandler = (_, {profile}) async =>
+            throw PracticeApiException(code, status: 403);
+
+        await c.requestHint();
+
+        expect(c.currentState.isHintLoading, false);
+        expect(c.currentState.errorMessage, expectedMessage);
+        expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+      }
     });
   });
 }

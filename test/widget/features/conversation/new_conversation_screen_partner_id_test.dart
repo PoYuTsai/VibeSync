@@ -203,7 +203,7 @@ void main() {
 
     expect(find.text('對話內容'), findsOneWidget);
     expect(find.text('這次分析設定（可不改）'), findsOneWidget);
-    expect(find.text('只影響這次分析，不會改對象資料。'), findsOneWidget);
+    expect(find.text('不確定可以先跳過；AI 會用預設情境分析。'), findsOneWidget);
     expect(find.text('認識情境'), findsNothing,
         reason: 'Partner-scoped manual input should not lead with settings; '
             'the optional per-analysis controls stay collapsed by default.');
@@ -219,6 +219,7 @@ void main() {
     expect(find.text('認識情境'), findsOneWidget);
     expect(find.text('認識多久'), findsOneWidget);
     expect(find.text('目前目標'), findsOneWidget);
+    expect(find.text('補充背景（選填）'), findsOneWidget);
   });
 
   testWidgets('partnerId null still shows 對話對象 input (legacy entry)',
@@ -245,7 +246,7 @@ void main() {
     ));
     await _settle(t);
 
-    expect(find.text('個人化資訊（選填）'), findsOneWidget,
+    expect(find.text('這次分析設定（可不改）'), findsOneWidget,
         reason: 'Orphan / legacy manual input still has no Partner card, so '
             'the old per-conversation note escape hatch stays available.');
   });

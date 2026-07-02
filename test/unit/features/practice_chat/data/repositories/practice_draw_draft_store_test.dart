@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_draw_draft.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_profile.dart';
 
 PracticeDrawDraft sampleDraft() => PracticeDrawDraft(
@@ -16,6 +17,10 @@ PracticeDrawDraft sampleDraft() => PracticeDrawDraft(
       freeUsed: 1,
       freeRemaining: 2,
       extraCostMessages: 5,
+      learningMode: PracticeLearningMode.beginner,
+      temperatureScore: 42,
+      familiarityScore: 44,
+      relationshipStageLabel: '可以聊個人',
       nextResetAt: DateTime.utc(2026, 6, 27, 4),
       createdAt: DateTime.utc(2026, 6, 26, 5),
     );
@@ -37,8 +42,27 @@ void main() {
       expect(back.freeUsed, d.freeUsed);
       expect(back.freeRemaining, d.freeRemaining);
       expect(back.extraCostMessages, d.extraCostMessages);
+      expect(back.learningMode, PracticeLearningMode.beginner);
+      expect(back.temperatureScore, 42);
+      expect(back.familiarityScore, 44);
+      expect(back.relationshipStageLabel, '可以聊個人');
       expect(back.nextResetAt, d.nextResetAt);
       expect(back.createdAt, d.createdAt);
+    });
+
+    test('舊 draft 缺 learning 欄位 → fallback standard', () {
+      final json = sampleDraft().toJson()
+        ..remove('learningMode')
+        ..remove('temperatureScore')
+        ..remove('familiarityScore')
+        ..remove('relationshipStageLabel');
+
+      final back = PracticeDrawDraft.fromJson(json);
+
+      expect(back.learningMode, PracticeLearningMode.standard);
+      expect(back.temperatureScore, isNull);
+      expect(back.familiarityScore, isNull);
+      expect(back.relationshipStageLabel, isNull);
     });
 
     test('未知 difficultyPreference 名稱 → 兜底 normal', () {

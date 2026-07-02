@@ -16,7 +16,7 @@ void main() {
         ),
       );
 
-      expect(find.text('🔄 延展'), findsOneWidget);
+      expect(find.text('🔄 延展・深挖她的回答'), findsOneWidget);
       expect(find.text('測試內容'), findsOneWidget);
     });
 
@@ -32,7 +32,7 @@ void main() {
         ),
       );
 
-      expect(find.text('💬 共鳴'), findsOneWidget);
+      expect(find.text('💬 共鳴・讓她覺得你懂她'), findsOneWidget);
     });
 
     testWidgets('displays correct label for tease type', (tester) async {
@@ -47,7 +47,7 @@ void main() {
         ),
       );
 
-      expect(find.text('😏 調情'), findsOneWidget);
+      expect(find.text('😏 調情・製造曖昧張力'), findsOneWidget);
     });
 
     testWidgets('displays correct label for humor type', (tester) async {
@@ -62,7 +62,7 @@ void main() {
         ),
       );
 
-      expect(find.text('🎭 幽默'), findsOneWidget);
+      expect(find.text('🎭 幽默・讓她笑著想回'), findsOneWidget);
     });
 
     testWidgets('displays correct label for coldRead type', (tester) async {
@@ -77,7 +77,7 @@ void main() {
         ),
       );
 
-      expect(find.text('🔮 冷讀'), findsOneWidget);
+      expect(find.text('🔮 冷讀・猜中她沒說的'), findsOneWidget);
     });
 
     testWidgets('shows lock icon when isLocked is true', (tester) async {
