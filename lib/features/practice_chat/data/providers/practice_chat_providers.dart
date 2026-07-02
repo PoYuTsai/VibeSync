@@ -15,6 +15,7 @@ import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../repositories/practice_collection_store.dart';
 import '../repositories/practice_draw_draft_store.dart';
+import '../repositories/practice_pending_hint_store.dart';
 import '../repositories/practice_session_repository.dart';
 import '../services/practice_chat_api_service.dart';
 
@@ -286,6 +287,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required PracticeChatApiService api,
     required PracticeSessionRepository repository,
     PracticeDrawDraftStore? draftStore,
+    PracticePendingHintStore? pendingHintStore,
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
     void Function(String profileId)? onProfileUnlocked,
@@ -297,6 +299,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           api: api,
           repository: repository,
           draftStore: draftStore ?? InMemoryPracticeDrawDraftStore(),
+          pendingHintStore:
+              pendingHintStore ?? InMemoryPracticePendingHintStore(),
           onUsageSynced: onUsageSynced,
           onProfileUnlocked: onProfileUnlocked,
           initialSession: initialSession,
@@ -309,6 +313,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required PracticeChatApiService api,
     required PracticeSessionRepository repository,
     required PracticeDrawDraftStore draftStore,
+    required PracticePendingHintStore pendingHintStore,
     required void Function(
             {required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
@@ -320,6 +325,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   })  : _api = api,
         _repo = repository,
         _draftStore = draftStore,
+        _pendingHintStore = pendingHintStore,
         _onUsageSynced = onUsageSynced,
         _onProfileUnlocked = onProfileUnlocked,
         super(_initialState(
@@ -335,6 +341,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   final PracticeChatApiService _api;
   final PracticeSessionRepository _repo;
   final PracticeDrawDraftStore _draftStore;
+  final PracticePendingHintStore _pendingHintStore;
   final void Function(
       {required int monthlyRemaining,
       required int dailyRemaining})? _onUsageSynced;
@@ -359,6 +366,14 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 才鑄新 id；失敗（timeout/5xx/網路）沿用同 id 供重試，成功或 4xx 明確拒絕
   /// 才清空 rotate。
   String? _pendingHintRequestId;
+
+  /// 成功或 4xx 明確拒絕 → rotate：清記憶體＋清持久化 store。5xx/timeout
+  /// **不**走這裡（兩者都保留，重試與重建後沿用）。dispose 也不清——在途 id
+  /// 必須活過 autoDispose 重建，server 才能 replay 不雙扣。
+  void _rotateHintRequestId() {
+    _pendingHintRequestId = null;
+    unawaited(_pendingHintStore.clear());
+  }
 
   /// hint 世代序號：送出新訊息／續玩／換一位／還原場次都 +1。在途 hint 回應
   /// 到達時序號不符＝過期（針對的 transcript 已翻頁）→ 丟棄不填 state。
@@ -517,6 +532,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   void resumeSession(PracticeSession session) {
     _hintGeneration++; // 換場：在途 hint 全部作廢
+    _rotateHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     state = _stateFromSession(session);
     _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
   }
@@ -546,6 +562,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           fallbackPracticeProfile().girl;
       final sessionId = const Uuid().v4();
       _hintGeneration++; // 換一位成功：在途 hint 對舊對象已無意義
+      _rotateHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
       // 難度沿用目前已解析值（換一位不重抽難度）；locked 首抽時為預設 normal。
       final difficulty = prior.difficulty.isNotEmpty
           ? prior.difficulty
@@ -646,6 +663,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
     if (state.roundIndex >= kMaxPracticeRounds) return;
     _hintGeneration++; // 開新一輪：在途 hint 全部作廢
+    _rotateHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     state = PracticeChatState(
       sessionId: const Uuid().v4(),
       createdAt: DateTime.now(),
@@ -863,7 +881,28 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
 
     // 發起時若無在途 id 才鑄新的：失敗重試沿用同一 id，server 才能去重雙扣。
-    final requestId = _pendingHintRequestId ??= const Uuid().v4();
+    // 記憶體優先；controller 是 autoDispose，重建後記憶體 id 消失 → 讀持久化
+    // store，指紋（sessionId＋當下 AI 回覆數）吻合才沿用，否則作廢鑄新 id。
+    var requestId = _pendingHintRequestId;
+    if (requestId == null) {
+      final stored = _pendingHintStore.load();
+      if (stored != null &&
+          stored.sessionId == state.sessionId &&
+          stored.aiCount == state.aiReplyCount) {
+        requestId = stored.requestId;
+      }
+    }
+    requestId ??= const Uuid().v4();
+    _pendingHintRequestId = requestId;
+    // 無論 id 來源都寫回 store（覆寫舊指紋），讓在途 id 活過重建；store 實作
+    // 自身防呆，寫失敗只是退回「重建後鑄新 id」，不阻斷 hint 主流程。
+    // 刻意 fire-and-forget：不得在 API 呼叫前引入新的 await 縫隙，
+    // 否則世代序號（_hintGeneration）的捕捉時序會被打亂。
+    unawaited(_pendingHintStore.save(PracticePendingHint(
+      sessionId: state.sessionId,
+      aiCount: state.aiReplyCount,
+      requestId: requestId,
+    )));
     // 捕捉當下世代：回應到達時序號不符＝過期回應，丟棄不填 state。
     final generation = _hintGeneration;
 
@@ -878,7 +917,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
-      _pendingHintRequestId = null; // 成功 → rotate
+      _rotateHintRequestId(); // 成功 → rotate
       if (_dropStaleHint(generation)) {
         // 過期成功回應：內容不填、不持久化進新場；額度是 server 事實照樣同步。
         if (result.costDeducted > 0 &&
@@ -908,7 +947,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
       }
     } on PracticeHintLimitException {
-      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
@@ -916,7 +955,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '這段練習的提示已用完，先試著用自己的話回覆看看。',
       );
     } on PracticeQuotaExceededException catch (e) {
-      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
@@ -924,7 +963,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {
-      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
@@ -932,7 +971,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '這個提示會消耗訊息額度，升級後就能繼續使用。',
       );
     } on PracticeModeLockedException {
-      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       // 同 sendMessage 的 409 分流：提示切回原模式，不標 sessionComplete。
       state = state.copyWith(
@@ -940,7 +979,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: _practiceModeLockedMessage,
       );
     } on PracticeApiException catch (e) {
-      _pendingHintRequestId = null; // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
@@ -1148,6 +1187,16 @@ final practiceDrawDraftStoreProvider = Provider<PracticeDrawDraftStore>((ref) {
   return HivePracticeDrawDraftStore(StorageService.settingsBox);
 });
 
+/// 在途 hint requestId 本地存取（JSON 存進加密 settings box）。controller 是
+/// autoDispose，靠它讓失敗未 rotate 的 requestId 活過重建，server 才能 replay
+/// 已扣費的結果不雙扣。
+final practicePendingHintStoreProvider =
+    Provider<PracticePendingHintStore>((ref) {
+  // box getter 延遲取用：box 沒開的環境（headless／widget 測試）只退化成
+  // 不持久化，不在 provider 建構期丟例外。
+  return HivePracticePendingHintStore(() => StorageService.settingsBox);
+});
+
 /// 角色圖鑑解鎖記錄本地存取（JSON list 存進加密 settings box）。
 final practiceCollectionStoreProvider =
     Provider<PracticeCollectionStore>((ref) {
@@ -1189,6 +1238,7 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     api: ref.read(practiceChatApiServiceProvider),
     repository: repository,
     draftStore: ref.read(practiceDrawDraftStoreProvider),
+    pendingHintStore: ref.read(practicePendingHintStoreProvider),
     initialSession: _latestOpenPracticeSession(repository.recentSessions()),
     onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
       ref.read(subscriptionProvider.notifier).syncUsageFromServer(

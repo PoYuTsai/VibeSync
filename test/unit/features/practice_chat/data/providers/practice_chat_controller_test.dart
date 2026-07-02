@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_hint_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_draw_draft.dart';
@@ -146,11 +147,14 @@ void main() {
     await box.deleteFromDisk();
   });
 
-  PracticeChatController makeController() {
+  PracticeChatController makeController({
+    PracticePendingHintStore? pendingHintStore,
+  }) {
     final c = PracticeChatController(
       api: api,
       repository: repo,
       draftStore: draftStore,
+      pendingHintStore: pendingHintStore,
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
         synced.add([monthlyRemaining, dailyRemaining]);
       },
@@ -161,11 +165,15 @@ void main() {
     return c;
   }
 
-  PracticeChatController makeControllerFrom(PracticeSession session) {
+  PracticeChatController makeControllerFrom(
+    PracticeSession session, {
+    PracticePendingHintStore? pendingHintStore,
+  }) {
     final c = PracticeChatController(
       api: api,
       repository: repo,
       draftStore: draftStore,
+      pendingHintStore: pendingHintStore,
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
         synced.add([monthlyRemaining, dailyRemaining]);
       },
@@ -176,8 +184,10 @@ void main() {
   }
 
   /// 進到 revealed（翻好一張牌）的 controller，給「需要先有對象才能聊天」的測試用。
-  Future<PracticeChatController> makeRevealed() async {
-    final c = makeController();
+  Future<PracticeChatController> makeRevealed({
+    PracticePendingHintStore? pendingHintStore,
+  }) async {
+    final c = makeController(pendingHintStore: pendingHintStore);
     await c.drawNewPracticeGirl();
     expect(c.currentState.drawStatus, PracticeDrawStatus.revealed);
     return c;
@@ -795,6 +805,8 @@ void main() {
           practiceSessionRepositoryProvider.overrideWithValue(repo),
           practiceChatApiServiceProvider.overrideWithValue(api),
           practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practicePendingHintStoreProvider
+              .overrideWithValue(InMemoryPracticePendingHintStore()),
         ],
       );
       addTearDown(container.dispose);
@@ -810,6 +822,8 @@ void main() {
           practiceSessionRepositoryProvider.overrideWithValue(repo),
           practiceChatApiServiceProvider.overrideWithValue(api),
           practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practicePendingHintStoreProvider
+              .overrideWithValue(InMemoryPracticePendingHintStore()),
         ],
       );
       addTearDown(container.dispose);
@@ -1333,6 +1347,90 @@ void main() {
 
       api.hintHandler = (_, {profile}) async => hintResult();
       await c.requestHint();
+      expect(api.lastHintRequestId, isNot(firstId));
+    });
+
+    test('hint timeout 失敗 → controller 重建（同持久化 store）→ 重試沿用同 requestId',
+        () async {
+      // controller 是 autoDispose：離開練習室後記憶體 id 消失，靠 store 沿用。
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final c = await makeRevealed(pendingHintStore: pendingStore);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      // timeout 失敗：id 保留（記憶體＋store）
+      api.hintHandler =
+          (_, {profile}) async => throw TimeoutException('timeout');
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+      expect(pendingStore.load()!.requestId, firstId);
+
+      // 模擬 autoDispose 重建：從 repo 還原同一場、共用同一個持久化 store
+      final rebuilt = makeControllerFrom(
+        repo.getById(c.currentState.sessionId)!,
+        pendingHintStore: pendingStore,
+      );
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await rebuilt.requestHint();
+
+      // 沿用同 id → server 才能 replay 已扣費的結果，不重扣
+      expect(api.lastHintRequestId, firstId);
+      // 成功 → rotate：store 也清掉
+      expect(pendingStore.load(), isNull);
+    });
+
+    test('重建後已是不同 turn（aiCount 變了）→ 不沿用舊 requestId', () async {
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final c = await makeRevealed(pendingHintStore: pendingStore);
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      api.hintHandler =
+          (_, {profile}) async => throw TimeoutException('timeout');
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+
+      // 重建後又聊了一輪（aiReplyCount 1→2）＝store 指紋不吻合，舊 id 作廢
+      final rebuilt = makeControllerFrom(
+        repo.getById(c.currentState.sessionId)!,
+        pendingHintStore: pendingStore,
+      );
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 2,
+            temperature: const PracticeTemperature(
+              score: 32,
+              delta: 2,
+              band: 'cold',
+              reason: '延伸',
+            ),
+          );
+      await rebuilt.sendMessage('再聊一句');
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await rebuilt.requestHint();
+
+      expect(api.lastHintRequestId, isNotNull);
       expect(api.lastHintRequestId, isNot(firstId));
     });
 
