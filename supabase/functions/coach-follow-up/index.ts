@@ -102,7 +102,7 @@ async function fetchSubscription(
 }
 
 // deno-lint-ignore no-explicit-any
-async function selfHealSubscription(
+export async function selfHealSubscription(
   supabase: any,
   userId: string,
 ): Promise<SubscriptionRow | null> {
@@ -121,6 +121,17 @@ async function selfHealSubscription(
     .select(SUBSCRIPTION_COLUMNS)
     .single();
   if (error) {
+    // 首次使用併發：另一請求已先插入同 user 的列（unique violation 23505）。
+    // 回讀既有列，否則上游會把 null 映射成 403 鎖住新用戶。
+    if (error.code === "23505") {
+      const existing = await fetchSubscription(supabase, userId);
+      if (existing) {
+        logInfo("subscription_self_heal_raced", {
+          user: summarizeUser(userId),
+        });
+        return existing;
+      }
+    }
     logError("subscription_self_heal_failed", {
       user: summarizeUser(userId),
       error: error.message,
@@ -513,4 +524,6 @@ export async function handleRequest(req: Request): Promise<Response> {
   return jsonResponse(result.body, result.status);
 }
 
-serve(handleRequest);
+if (import.meta.main) {
+  serve(handleRequest);
+}
