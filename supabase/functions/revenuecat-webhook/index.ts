@@ -469,13 +469,14 @@ Deno.serve(async (req) => {
           newTier = decision.newTier;
           shouldUpdate = decision.kind === "update";
           subscriptionUpdate = decision.subscriptionUpdate ?? null;
-          if (!shouldUpdate) {
+          if (shouldUpdate) {
+            console.log(`Downgrading user ${app_user_id} to free`);
+          } else {
             console.log(
               `Ignoring stale EXPIRATION for user ${app_user_id}: DB expiry ${currentExpiresAt} is newer than event expiry ${expiresAt}`,
             );
           }
         }
-        console.log(`Downgrading user ${app_user_id} to free`);
         break;
 
       case "BILLING_ISSUE": {
@@ -661,10 +662,32 @@ Deno.serve(async (req) => {
     );
 
     if (shouldUpdate) {
-      const { data: updatedRows, error: updateError } = await supabase
+      // The pre-read stale-EXPIRATION guard (see EXPIRATION case) is not enough
+      // on its own: a RENEWAL can commit a newer expiry between our read and
+      // this write. Re-check expires_at atomically at write time so a stale
+      // EXPIRATION can never clobber a concurrently-renewed paid period. Only
+      // rows whose stored expiry is null/absent or <= this event's expiry are
+      // downgraded; a newer expiry means the row already reflects a live renewal.
+      const isExpiration = type === "EXPIRATION";
+
+      let updateQuery = supabase
         .from("subscriptions")
         .update(subscriptionUpdate ?? { tier: newTier })
-        .eq("user_id", app_user_id)
+        .eq("user_id", app_user_id);
+      if (isExpiration) {
+        if (expiresAt) {
+          updateQuery = updateQuery.or(
+            `expires_at.is.null,expires_at.lte.${expiresAt}`,
+          );
+        } else {
+          // Malformed EXPIRATION with no authoritative expiry: we cannot prove
+          // it supersedes any live period, so only downgrade a row that has no
+          // active expiry recorded. Never clobber a non-null (paid) expiry.
+          updateQuery = updateQuery.is("expires_at", null);
+        }
+      }
+
+      const { data: updatedRows, error: updateError } = await updateQuery
         .select("user_id")
         .limit(1);
 
@@ -674,24 +697,33 @@ Deno.serve(async (req) => {
       }
 
       if (!updatedRows || updatedRows.length === 0) {
-        const { error: insertError } = await supabase
-          .from("subscriptions")
-          .insert({
-            user_id: app_user_id,
-            ...(subscriptionUpdate ?? { tier: newTier }),
-            monthly_messages_used: 0,
-            daily_messages_used: 0,
-            daily_reset_at: nowIso,
-            monthly_reset_at: nowIso,
-            started_at: nowIso,
-          });
+        if (isExpiration) {
+          // No row matched: either the user has no subscription row (nothing to
+          // expire) or a newer paid period now guards it. Never insert a fresh
+          // free/expired row here — that would fabricate state and zero usage.
+          console.log(
+            `Skipped EXPIRATION write for user ${app_user_id}: no stale paid row matched (expiry guard)`,
+          );
+        } else {
+          const { error: insertError } = await supabase
+            .from("subscriptions")
+            .insert({
+              user_id: app_user_id,
+              ...(subscriptionUpdate ?? { tier: newTier }),
+              monthly_messages_used: 0,
+              daily_messages_used: 0,
+              daily_reset_at: nowIso,
+              monthly_reset_at: nowIso,
+              started_at: nowIso,
+            });
 
-        if (insertError) {
-          console.error("Failed to insert subscription:", insertError);
-          return jsonResponse({ error: "Database error" }, 500);
+          if (insertError) {
+            console.error("Failed to insert subscription:", insertError);
+            return jsonResponse({ error: "Database error" }, 500);
+          }
+
+          console.log(`Inserted subscription record for user ${app_user_id}`);
         }
-
-        console.log(`Inserted subscription record for user ${app_user_id}`);
       }
 
       console.log(
