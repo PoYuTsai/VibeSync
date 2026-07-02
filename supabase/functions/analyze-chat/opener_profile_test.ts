@@ -92,6 +92,35 @@ Deno.test("normalize: null values are dropped", () => {
   assertEquals(out, { interests: "real" });
 });
 
+Deno.test("normalize: oversized fields are truncated to per-field caps (prompt cost containment)", () => {
+  const out = normalizeOpenerProfileInfo({
+    name: "n".repeat(500),
+    bio: "b".repeat(5000),
+    interests: "i".repeat(5000),
+    meetingContext: "m".repeat(500),
+  });
+  assertEquals(out.name?.length, 200);
+  assertEquals(out.bio?.length, 2000);
+  assertEquals(out.interests?.length, 2000);
+  assertEquals(out.meetingContext?.length, 200);
+  assert(out.bio?.startsWith("bbb"));
+});
+
+Deno.test("normalize: fields at or under the cap pass through untouched", () => {
+  const bio = "b".repeat(2000);
+  const out = normalizeOpenerProfileInfo({ name: "Alice", bio });
+  assertEquals(out.bio, bio);
+  assertEquals(out.name, "Alice");
+});
+
+Deno.test("normalize: truncation applies after trim (leading whitespace does not eat the cap)", () => {
+  const out = normalizeOpenerProfileInfo({
+    name: "  " + "n".repeat(300),
+  });
+  assertEquals(out.name?.length, 200);
+  assert(out.name?.startsWith("nnn"));
+});
+
 Deno.test("hasSubstance: empty profile → false (free opener path)", () => {
   assert(!hasOpenerProfileSubstance({}));
 });

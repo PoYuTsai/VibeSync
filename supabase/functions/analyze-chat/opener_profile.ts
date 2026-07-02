@@ -20,6 +20,18 @@ export type OpenerProfileKey = typeof OPENER_PROFILE_KEYS[number];
 
 export type NormalizedOpenerProfile = Partial<Record<OpenerProfileKey, string>>;
 
+// Per-field caps: profileInfo is user-controlled text that gets string-
+// interpolated into the prompt under a flat 3-quota price, so uncapped
+// input is platform-absorbed token cost. Caps mirror the client-side
+// LengthLimitingTextInputFormatter values; server is the authority since
+// the API can be called directly.
+export const OPENER_PROFILE_FIELD_LIMITS: Record<OpenerProfileKey, number> = {
+  name: 200,
+  bio: 2000,
+  interests: 2000,
+  meetingContext: 200,
+};
+
 export function normalizeOpenerProfileInfo(
   raw: unknown,
 ): NormalizedOpenerProfile {
@@ -31,7 +43,7 @@ export function normalizeOpenerProfileInfo(
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
     if (trimmed.length === 0) continue;
-    out[key] = trimmed;
+    out[key] = trimmed.slice(0, OPENER_PROFILE_FIELD_LIMITS[key]);
   }
   return out;
 }
