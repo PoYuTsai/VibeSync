@@ -41,6 +41,10 @@ import {
   filterOpenerPayloadForAllowedFeatures,
   normalizeOpenerPayload,
 } from "./opener_payload.ts";
+import {
+  chargeOpenerQuota,
+  isValidOpenerRequestId,
+} from "./opener_charge.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
 import {
   computeBillingPayloadHash,
@@ -4409,6 +4413,7 @@ serve(async (req) => {
       recognizeOnly: rawRecognizeOnly,
       mode: rawMode,
       profileInfo: rawProfileInfo,
+      requestId: rawRequestId,
       previousAnalyzedCount: rawPreviousAnalyzedCount,
       previousAnalyzedCharCount: rawPreviousAnalyzedCharCount,
       billingProtocolVersion: rawBillingProtocolVersion,
@@ -5185,40 +5190,55 @@ serve(async (req) => {
 
       // Deduct quota。Batch C#2：帶 tier 上限讓 increment_usage 鎖內複檢，
       // 兜住 preflight 與扣費之間的並發競態；超限 RAISE 映射 429。
+      // Batch 4#2：client 帶合法 requestId → increment_usage_idempotent
+      // 去重扣費（傳輸層重試不雙扣）；舊 client 走舊路，行為不變。
       if (!accountIsTest && effectiveOpenerCost > 0) {
-        const { error: usageError } = await supabase.rpc("increment_usage", {
-          p_user_id: user.id,
-          p_messages: effectiveOpenerCost,
-          p_monthly_limit: monthlyLimit,
-          p_daily_limit: dailyLimit,
+        const openerRequestId = isValidOpenerRequestId(rawRequestId)
+          ? rawRequestId
+          : null;
+        const chargeOutcome = await chargeOpenerQuota({
+          rpc: async (fn, params) => await supabase.rpc(fn, params),
+          userId: user.id,
+          cost: effectiveOpenerCost,
+          monthlyLimit,
+          dailyLimit,
+          requestId: openerRequestId,
         });
 
-        if (usageError) {
-          const quotaReason = classifyQuotaRpcError(usageError.message);
-          if (quotaReason) {
-            logWarn("opener_credit_deduct_quota_exceeded", {
-              user: summarizeUser(user.id),
-              reason: quotaReason,
-            });
-            return jsonResponse(
-              buildQuotaExceededPayload({
-                sub,
-                cost: effectiveOpenerCost,
-                reason: quotaReason,
-                monthlyLimit,
-                dailyLimit,
-              }),
-              429,
-            );
-          }
+        if (chargeOutcome.kind === "quota_exceeded") {
+          logWarn("opener_credit_deduct_quota_exceeded", {
+            user: summarizeUser(user.id),
+            reason: chargeOutcome.reason,
+          });
+          return jsonResponse(
+            buildQuotaExceededPayload({
+              sub,
+              cost: effectiveOpenerCost,
+              reason: chargeOutcome.reason,
+              monthlyLimit,
+              dailyLimit,
+            }),
+            429,
+          );
+        }
+        if (chargeOutcome.kind === "failed") {
           logError("opener_credit_deduct_failed", {
             user: summarizeUser(user.id),
-            error: usageError.message,
+            error: chargeOutcome.message,
           });
           return jsonResponse({
             error: "credit_deduct_failed",
             message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
           }, 500);
+        }
+        if (chargeOutcome.kind === "dedup") {
+          // 同 requestId 已扣過（前次回應在傳輸層丟失後的重試）：
+          // 不再扣，照常回 200 完整結果。
+          logInfo("opener_charge_dedup_hit", {
+            user: summarizeUser(user.id),
+            requestId: openerRequestId,
+            cost: effectiveOpenerCost,
+          });
         }
       }
 
