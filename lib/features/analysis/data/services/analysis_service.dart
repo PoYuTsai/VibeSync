@@ -1118,6 +1118,32 @@ class AnalysisService {
   static const Duration _streamConnectTimeout = Duration(seconds: 45);
   static const Duration _streamIdleTimeout = Duration(seconds: 120);
 
+  static const _retriableCodes = <String>{
+    'NETWORK_ERROR',
+    'TIMEOUT',
+    'UNEXPECTED_ERROR',
+    'UPSTREAM_UNAVAILABLE',
+  };
+
+  /// 圖片完整分析（已扣費路徑）的 TIMEOUT 不自動重試：server Claude timeout
+  /// 120s（parse 失敗再 retry 最壞 +120s）≥ client 120s，client timeout 時
+  /// server 很可能已完成並扣費，自動重打會讓一次操作重複扣 2-3 則。
+  /// recognizeOnly 免費、無圖路徑走 stream 有 run-id 豁免，維持自動重試。
+  @visibleForTesting
+  static bool isAutoRetriableAnalysisError({
+    required String? code,
+    required bool hasImages,
+    required bool recognizeOnly,
+  }) {
+    if (code == null || !_retriableCodes.contains(code)) {
+      return false;
+    }
+    if (code == 'TIMEOUT' && hasImages && !recognizeOnly) {
+      return false;
+    }
+    return true;
+  }
+
   final http.Client Function() _clientFactory;
   final String? Function() _accessTokenProvider;
   final String? Function() _expectedTierProvider;
@@ -1208,12 +1234,6 @@ class AnalysisService {
     }
 
     const maxRetries = 2;
-    const retriableCodes = <String>{
-      'NETWORK_ERROR',
-      'TIMEOUT',
-      'UNEXPECTED_ERROR',
-      'UPSTREAM_UNAVAILABLE',
-    };
 
     Exception? lastError;
 
@@ -1251,7 +1271,11 @@ class AnalysisService {
         lastError = error is Exception ? error : Exception(error.toString());
 
         if (error is AnalysisException &&
-            !retriableCodes.contains(error.code)) {
+            !isAutoRetriableAnalysisError(
+              code: error.code,
+              hasImages: images != null && images.isNotEmpty,
+              recognizeOnly: recognizeOnly,
+            )) {
           rethrow;
         }
 
