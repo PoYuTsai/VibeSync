@@ -198,3 +198,32 @@ Deno.test("isReadReceiptSideDecisive：false/缺欄/字串/1 都不觸發", () =
   assertEquals(isReadReceiptSideDecisive({ readReceipt: 1 }), false);
   assertEquals(isReadReceiptSideDecisive({ metaSide: "left" }), false);
 });
+
+Deno.test("isReadReceiptSideDecisive：quoted_preview row 不觸發（引用卡上的已讀屬 owner 訊息，翻卡會讓 fold 丟孤兒）", () => {
+  assertEquals(
+    isReadReceiptSideDecisive({
+      readReceipt: true,
+      blockType: "quoted_preview",
+    }),
+    false,
+  );
+  // 大小寫/空白容錯要跟 normalizeBlockType 一致。
+  assertEquals(
+    isReadReceiptSideDecisive({
+      readReceipt: true,
+      blockType: " Quoted_Preview ",
+    }),
+    false,
+  );
+});
+
+Deno.test("isReadReceiptSideDecisive：message/缺省 blockType 維持觸發（向後相容）", () => {
+  assertEquals(
+    isReadReceiptSideDecisive({ readReceipt: true, blockType: "message" }),
+    true,
+  );
+  assertEquals(
+    isReadReceiptSideDecisive({ readReceipt: true, blockType: "unknown-x" }),
+    true,
+  );
+});

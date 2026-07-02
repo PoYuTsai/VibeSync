@@ -9,6 +9,8 @@
 // 歷史失敗方案（幾何/顏色/預處理）都沒碰過這三個 meta 訊號；
 // 錨點是介面規則（已讀只出現在我方訊息旁）非統計先驗，theme/顏色無關。
 
+import { normalizeBlockType } from "./blocktype_fold.ts";
+
 const LAYOUT_FIRST_STEP_LINES = [
   "### MANDATORY FIRST STEP: Visual Layout Analysis",
   "- STOP. Before reading ANY text, you MUST first analyze the visual layout:",
@@ -151,5 +153,10 @@ export const META_ANCHOR_SCHEMA_NOTE =
 export function isReadReceiptSideDecisive(
   record: Record<string, unknown>,
 ): boolean {
+  // quoted_preview row 的已讀標記屬於 owner 訊息的介面元素；若拿來翻卡，
+  // 左側 owner 的引用卡會被鎖成 right，fold 時因不同側被當孤兒丟棄。
+  if (normalizeBlockType(record) === "quoted_preview") {
+    return false;
+  }
   return record.readReceipt === true;
 }
