@@ -1535,6 +1535,33 @@ void main() {
       expect(c.currentState.isHintLoading, false);
     });
 
+    test('過期舊 hint 完成 → 不得清掉較新 hint 的 pending requestId（replay 保護）',
+        () async {
+      // 舊 hint A 在途 → 續玩換場 → 新 hint B 在途（已存新 pending id）→
+      // A 這時才回來：rotate 只認自己的 id，B 的 id 必須活下來供重試沿用。
+      final (c, completerA, hintFutureA) = await pendingHint();
+
+      c.continueWithSamePartner(isPaid: true);
+      await c.sendMessage('新一輪 hello');
+
+      final completerB = Completer<PracticeHintResult>();
+      api.hintHandler = (_, {profile}) => completerB.future;
+      final hintFutureB = c.requestHint();
+      final bId = api.lastHintRequestId;
+      expect(bId, isNotNull);
+
+      // 過期的 A 成功回來：不得動到 B 的 pending id
+      completerA.complete(hintResult());
+      await hintFutureA;
+
+      // B 之後 5xx 失敗 → 重試必須沿用 B 的同一個 id（若被 A 清掉會鑄新 id）
+      completerB.completeError(PracticeGenerationFailedException('提示產生失敗'));
+      await hintFutureB;
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.lastHintRequestId, bId);
+    });
+
     test('hint 在途時 canSend=false（雙向互斥）、sendMessage no-op，完成後恢復',
         () async {
       final (c, completer, hintFuture) = await pendingHint();

@@ -370,7 +370,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 成功或 4xx 明確拒絕 → rotate：清記憶體＋清持久化 store。5xx/timeout
   /// **不**走這裡（兩者都保留，重試與重建後沿用）。dispose 也不清——在途 id
   /// 必須活過 autoDispose 重建，server 才能 replay 不雙扣。
-  void _rotateHintRequestId() {
+  /// 只在完成的 [completedId] 仍是當前 pending id 時才清：過期舊回應完成時
+  /// pending 可能已被較新的 hint 覆寫，不得把新 id 連帶清掉（會失去 replay 保護）。
+  void _rotateHintRequestId(String completedId) {
+    if (_pendingHintRequestId != completedId) return;
+    _clearPendingHintRequestId();
+  }
+
+  /// 換場（送出新訊息／續玩／換一位／還原場次）時的無條件清：在途扣費 id
+  /// 只對舊場有意義。
+  void _clearPendingHintRequestId() {
     _pendingHintRequestId = null;
     unawaited(_pendingHintStore.clear());
   }
@@ -532,7 +541,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 
   void resumeSession(PracticeSession session) {
     _hintGeneration++; // 換場：在途 hint 全部作廢
-    _rotateHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+    _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     state = _stateFromSession(session);
     _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
   }
@@ -562,7 +571,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           fallbackPracticeProfile().girl;
       final sessionId = const Uuid().v4();
       _hintGeneration++; // 換一位成功：在途 hint 對舊對象已無意義
-      _rotateHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+      _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
       // 難度沿用目前已解析值（換一位不重抽難度）；locked 首抽時為預設 normal。
       final difficulty = prior.difficulty.isNotEmpty
           ? prior.difficulty
@@ -663,7 +672,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
     if (state.roundIndex >= kMaxPracticeRounds) return;
     _hintGeneration++; // 開新一輪：在途 hint 全部作廢
-    _rotateHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+    _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
     state = PracticeChatState(
       sessionId: const Uuid().v4(),
       createdAt: DateTime.now(),
@@ -917,7 +926,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         roundIndex: state.roundIndex,
         visiblePracticeThreadId: state.visiblePracticeThreadId,
       );
-      _rotateHintRequestId(); // 成功 → rotate
+      _rotateHintRequestId(requestId); // 成功 → rotate
       if (_dropStaleHint(generation)) {
         // 過期成功回應：內容不填、不持久化進新場；額度是 server 事實照樣同步。
         if (result.costDeducted > 0 &&
@@ -947,7 +956,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
       }
     } on PracticeHintLimitException {
-      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
@@ -955,7 +964,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '這段練習的提示已用完，先試著用自己的話回覆看看。',
       );
     } on PracticeQuotaExceededException catch (e) {
-      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
@@ -963,7 +972,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {
-      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
@@ -971,7 +980,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '這個提示會消耗訊息額度，升級後就能繼續使用。',
       );
     } on PracticeModeLockedException {
-      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       // 同 sendMessage 的 409 分流：提示切回原模式，不標 sessionComplete。
       state = state.copyWith(
@@ -979,7 +988,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: _practiceModeLockedMessage,
       );
     } on PracticeApiException catch (e) {
-      _rotateHintRequestId(); // 4xx 明確拒絕 → rotate
+      _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
         isHintLoading: false,
