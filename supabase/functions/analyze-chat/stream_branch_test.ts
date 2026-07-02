@@ -133,3 +133,16 @@ Deno.test("stream fallback telemetry keeps enough gate context", async () => {
   assert(source.includes("supported: streamSupported"));
   assert(source.includes("allowed: streamAllowed"));
 });
+
+Deno.test("legacy fallback charge point skips stream retry (no double charge)", async () => {
+  const source = await readIndexSource();
+
+  // stream retry 的推薦已在 analysis_stream_runs 扣過費；stream gate 不放行
+  // 而 fallback 到 legacy 時，legacy 扣費點必須跳過，否則同一次分析扣兩次。
+  assert(
+    source.includes(
+      "quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0 &&\n" +
+        "      !isStreamRetryMode",
+    ),
+  );
+});

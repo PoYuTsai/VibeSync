@@ -51,7 +51,7 @@ import {
   OverchargeClaimStore,
 } from "./overcharge_claims.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
-import { buildQuotaExceededPayload } from "../_shared/quota.ts";
+import { buildQuotaExceededPayload, TEST_EMAILS } from "../_shared/quota.ts";
 import {
   normalizeRequestMode,
   type ResponseMode,
@@ -4347,8 +4347,6 @@ const STREAM_WHITELIST = Deno.env.get("STREAM_WHITELIST");
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 const STREAM_ANALYZE_MAX_TOKENS = 3200;
-// 測試帳號白名單 (不扣額度)
-const TEST_EMAILS = ["vibesync.test@gmail.com"];
 
 // 模型選擇函數 (設計規格 4.9)
 function selectModel(context: {
@@ -4777,9 +4775,10 @@ serve(async (req) => {
 
           effectiveTier = accountIsTest ? "essential" : sub.tier;
           allowedFeatures = TIER_FEATURES[effectiveTier] || TIER_FEATURES.free;
-          monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+          monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
             TIER_MONTHLY_LIMITS.free;
-          dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+          dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+            TIER_DAILY_LIMITS.free;
 
           if (refreshedError) {
             logError("subscription_revenuecat_refresh_persist_failed", {
@@ -4818,9 +4817,10 @@ serve(async (req) => {
       }
     };
 
-    let monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+    let monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
       TIER_MONTHLY_LIMITS.free;
-    let dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+    let dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+      TIER_DAILY_LIMITS.free;
     if (
       !recognizeOnly && !accountIsTest &&
       tierRank(expectedTier) > tierRank(normalizeTier(sub.tier))
@@ -4993,9 +4993,10 @@ serve(async (req) => {
             );
           const refreshed = refreshStatus === "applied";
           if (refreshed) {
-            monthlyLimit = TIER_MONTHLY_LIMITS[sub.tier] ||
+            monthlyLimit = TIER_MONTHLY_LIMITS[normalizeTier(sub.tier)] ||
               TIER_MONTHLY_LIMITS.free;
-            dailyLimit = TIER_DAILY_LIMITS[sub.tier] || TIER_DAILY_LIMITS.free;
+            dailyLimit = TIER_DAILY_LIMITS[normalizeTier(sub.tier)] ||
+              TIER_DAILY_LIMITS.free;
           }
         }
 
@@ -6241,8 +6242,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           messageCount: shouldCharge ? quotaUsage.chargedMessageCount : 0,
         });
       } catch (error) {
-        // Atomic RPC failed — either DB outage, or increment_usage RAISED
-        // (quota race). The atomic TX guarantees nothing partially committed.
+        // Atomic RPC failed（DB outage / constraint violation）。注意：
+        // increment_usage 目前沒有超限 RAISE 保護——並發超限不會在這裡被
+        // 擋下（交易內 FOR UPDATE 驗上限的改造屬 Batch C）。The atomic TX
+        // guarantees nothing partially committed.
         logError("quick_run_create_failed", {
           user: summarizeUser(user.id),
           error: getErrorMessage(error),
@@ -7489,8 +7492,14 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       },
     });
 
-    // Update usage count (測試帳號、純識別模式不扣額度)
-    if (quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0) {
+    // Update usage count (測試帳號、純識別模式不扣額度)。
+    // Stream retry fallback 也不扣：retry 的推薦已在 analysis_stream_runs
+    // 扣過費（chargeRun），gate 不放行 fallback 到 legacy 時再走這裡的
+    // increment_usage 會變成同一次分析扣兩次。
+    if (
+      quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0 &&
+      !isStreamRetryMode
+    ) {
       // Single source of truth for usage accounting (avoid double counting).
       const { error: usageError } = await supabase.rpc("increment_usage", {
         p_user_id: user.id,

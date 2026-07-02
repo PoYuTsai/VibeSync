@@ -1874,3 +1874,43 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "tier limit lookups normalize sub.tier before indexing",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // 異常 tier 字串（如 " Starter "、"STARTER"）直接查表會 fallback 成
+    // free 30/15 提早 429；三處查表都必須先過 normalizeTier。
+    assertEquals(
+      source.match(/TIER_MONTHLY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)
+        ?.length,
+      3,
+    );
+    assertEquals(
+      source.match(/TIER_DAILY_LIMITS\[normalizeTier\(sub\.tier\)\]/g)?.length,
+      3,
+    );
+    assertFalse(source.includes("TIER_MONTHLY_LIMITS[sub.tier]"));
+    assertFalse(source.includes("TIER_DAILY_LIMITS[sub.tier]"));
+  },
+});
+
+Deno.test({
+  name: "TEST_EMAILS comes from _shared/quota (single source, no drift)",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    assertFalse(source.includes("const TEST_EMAILS"));
+    assert(
+      /import \{[^}]*\bTEST_EMAILS\b[^}]*\} from "\.\.\/_shared\/quota\.ts"/s
+        .test(source),
+    );
+  },
+});
