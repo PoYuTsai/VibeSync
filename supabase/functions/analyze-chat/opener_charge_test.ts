@@ -12,8 +12,10 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   chargeOpenerQuota,
+  classifyOpenerReplayPreflight,
   computeOpenerInputHash,
   isValidOpenerRequestId,
+  OPENER_REPLAY_LIMIT,
   type OpenerChargeRpc,
 } from "./opener_charge.ts";
 
@@ -91,8 +93,72 @@ Deno.test("valid requestId routes to increment_usage_idempotent with exact param
       p_daily_limit: 10,
       p_request_id: REQUEST_ID,
       p_input_hash: "hash-1",
+      p_replay_limit: OPENER_REPLAY_LIMIT,
     },
   }]);
+});
+
+Deno.test("replay budget exhausted maps to replay_exhausted (Codex R2 P2a)", async () => {
+  const outcome = await chargeOpenerQuota({
+    ...BASE,
+    rpc: makeRpc({
+      data: null,
+      error: { message: "P0001: OPENER_REQUEST_REPLAY_EXHAUSTED" },
+    }, []),
+    requestId: REQUEST_ID,
+    inputHash: "hash-1",
+  });
+
+  assertEquals(outcome, { kind: "replay_exhausted" });
+});
+
+// ---------------------------------------------------------------------------
+// classifyOpenerReplayPreflight — 模型呼叫前的成本護欄（Codex R2 P2b）。
+// 非原子、fail-open；最終權威仍在扣費 RPC。
+// ---------------------------------------------------------------------------
+
+Deno.test("preflight proceeds when no ledger row exists (fresh request)", () => {
+  assertEquals(
+    classifyOpenerReplayPreflight({
+      row: null,
+      inputHash: "hash-1",
+      replayLimit: 3,
+    }),
+    "proceed",
+  );
+});
+
+Deno.test("preflight blocks mismatched payload before the model call", () => {
+  assertEquals(
+    classifyOpenerReplayPreflight({
+      row: { input_hash: "hash-other", replay_count: 0 },
+      inputHash: "hash-1",
+      replayLimit: 3,
+    }),
+    "mismatch",
+  );
+});
+
+Deno.test("preflight allows same-payload retries under the replay budget", () => {
+  assertEquals(
+    classifyOpenerReplayPreflight({
+      row: { input_hash: "hash-1", replay_count: 2 },
+      inputHash: "hash-1",
+      replayLimit: 3,
+    }),
+    "proceed",
+  );
+});
+
+Deno.test("preflight blocks same-payload replay farming past the budget", () => {
+  assertEquals(
+    classifyOpenerReplayPreflight({
+      row: { input_hash: "hash-1", replay_count: 3 },
+      inputHash: "hash-1",
+      replayLimit: 3,
+    }),
+    "exhausted",
+  );
 });
 
 Deno.test("replay with mismatched payload maps to replay_mismatch (Codex P2)", async () => {

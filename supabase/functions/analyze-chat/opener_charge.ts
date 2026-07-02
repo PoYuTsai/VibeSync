@@ -16,10 +16,41 @@ export function isValidOpenerRequestId(value: unknown): value is string {
   return typeof value === "string" && UUID_PATTERN.test(value);
 }
 
+/**
+ * Codex R2 P2a：同 id 同 payload 的 dedup 重試上限。合法傳輸層重試一兩次
+ * 就夠；超過＝改造 client 付一次刷無限新產出，直接擋。權威在 Edge 傳入
+ * RPC（I7 慣例），SQL 不寫死。
+ */
+export const OPENER_REPLAY_LIMIT = 3;
+
+export type OpenerPreflightVerdict = "proceed" | "mismatch" | "exhausted";
+
+/**
+ * Codex R2 P2b：模型呼叫前的 replay 護欄——mismatch/超限在燒 Claude 成本
+ * 之前就擋。讀取非原子、fail-open；最終權威仍在扣費 RPC 的同款檢查。
+ */
+export function classifyOpenerReplayPreflight(args: {
+  row: Record<string, unknown> | null;
+  inputHash: string;
+  replayLimit: number;
+}): OpenerPreflightVerdict {
+  if (!args.row) return "proceed";
+  const storedHash = typeof args.row.input_hash === "string"
+    ? args.row.input_hash
+    : "";
+  if (storedHash !== args.inputHash) return "mismatch";
+  const replays = typeof args.row.replay_count === "number"
+    ? args.row.replay_count
+    : 0;
+  if (replays + 1 > args.replayLimit) return "exhausted";
+  return "proceed";
+}
+
 export type OpenerChargeOutcome =
   | { kind: "charged"; idempotent: boolean }
   | { kind: "dedup" }
   | { kind: "replay_mismatch" }
+  | { kind: "replay_exhausted" }
   | {
     kind: "quota_exceeded";
     reason: "monthly_limit_exceeded" | "daily_limit_exceeded";
@@ -73,6 +104,7 @@ export async function chargeOpenerQuota(args: {
       p_daily_limit: args.dailyLimit,
       p_request_id: args.requestId,
       p_input_hash: args.inputHash,
+      p_replay_limit: OPENER_REPLAY_LIMIT,
     })
     : await args.rpc("increment_usage", {
       p_user_id: args.userId,
@@ -86,6 +118,9 @@ export async function chargeOpenerQuota(args: {
     if (reason) return { kind: "quota_exceeded", reason };
     if (error.message?.includes("OPENER_REQUEST_REPLAY_MISMATCH")) {
       return { kind: "replay_mismatch" };
+    }
+    if (error.message?.includes("OPENER_REQUEST_REPLAY_EXHAUSTED")) {
+      return { kind: "replay_exhausted" };
     }
     return {
       kind: "failed",

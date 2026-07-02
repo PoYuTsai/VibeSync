@@ -17,6 +17,15 @@
    `OPENER_REQUEST_REPLAY_MISMATCH` → Edge 400 不扣費。防改造 client 付一次
    後同 id 換輸入無限免費重生成。連動：client 輸入變更**也 rotate**（原設計
    「輸入變更不 rotate」作廢——被 7 天免費重生成漏洞否決）。
+8. **（Codex R2 P2a）**同 id 同 payload dedup 有預算：ledger `replay_count`
+   每次 dedup +1，超過 `OPENER_REPLAY_LIMIT`（3，權威在 Edge）→ RAISE
+   `OPENER_REQUEST_REPLAY_EXHAUSTED` → 400。擋「付一次刷無限新產出」。
+9. **（Codex R2 P2b）**replay 檢查前移：模型呼叫前 preflight 讀 ledger
+   （fail-open、非原子），mismatch／超限直接 400——不燒 Claude 成本；
+   扣費 RPC 內同款檢查仍是原子權威，preflight 漏網的並發在那裡被抓。
+10. 已接受殘餘：部署窗口內舊 Edge 寫入的 `input_hash=''` 行，新 Edge 重試
+    同 id 會 mismatch 400（一次性、要求重新生成即可）；app 重啟丟 in-memory
+    requestId＝回到今天的行為（可能重扣一次），不做持久化。
 
 ## 設計
 
