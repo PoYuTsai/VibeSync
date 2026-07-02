@@ -118,7 +118,8 @@ void main() {
     expect(drafts, hasLength(1));
     expect(drafts.first.id, draft.id);
     expect(drafts.first.title, 'Grace');
-    expect(drafts.first.preview, '2 張截圖');
+    expect(drafts.first.previewForAccess(isFreeUser: false), '2 張截圖');
+    expect(drafts.first.previewForAccess(isFreeUser: true), '2 張截圖');
     expect(drafts.first.result.bestOpenerText, 'First line');
     expect(service.loadLatest()!.bestOpenerText, 'First line');
   });
@@ -381,6 +382,41 @@ void main() {
     expect(visible.openers, {'extend': 'free line'});
     expect(visible.recommendedPick, 'extend');
     expect(visible.recommendedReason, isNull);
+  });
+
+  test('draft preview never exposes a locked opener to free users', () async {
+    // Codex P2 follow-up to Batch 4 #4: a draft without inputPreview falls
+    // back to the opener text — that fallback must be access-aware, or the
+    // recent-drafts list leaks the locked paid pick to free users.
+    final service = OpenerResultCacheService();
+    final draft = await service.saveDraft(
+      result: const OpenerResult(
+        openers: {
+          'extend': 'free line',
+          'coldRead': 'locked line',
+        },
+        recommendedPick: 'coldRead',
+      ),
+      displayName: 'Grace',
+    );
+
+    expect(draft.previewForAccess(isFreeUser: false), 'locked line');
+    expect(draft.previewForAccess(isFreeUser: true), 'free line');
+  });
+
+  test('draft preview falls back to neutral copy when nothing is visible',
+      () async {
+    final service = OpenerResultCacheService();
+    final draft = await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'coldRead': 'locked line'},
+        recommendedPick: 'coldRead',
+      ),
+      displayName: 'Grace',
+    );
+
+    expect(draft.previewForAccess(isFreeUser: false), 'locked line');
+    expect(draft.previewForAccess(isFreeUser: true), '已保存開場建議');
   });
 
   test('deleteDraftsForPartner removes only that partner scoped drafts',

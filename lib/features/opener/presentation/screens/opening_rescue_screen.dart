@@ -792,7 +792,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    draft.preview,
+                    draft.previewForAccess(
+                      isFreeUser: !ref.watch(subscriptionProvider).isPremium,
+                    ),
                     style: AppTypography.caption.copyWith(
                       color: AppColors.onBackgroundSecondary
                           .withValues(alpha: 0.70),

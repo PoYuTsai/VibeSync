@@ -38,13 +38,18 @@ class OpenerDraft {
     return '開場草稿';
   }
 
-  String get preview {
+  /// Access-aware preview for the recent-drafts list. The opener-text
+  /// fallback must respect the caller's tier — the stored result keeps the
+  /// paid styles verbatim, so a raw `bestOpenerText` here would leak the
+  /// locked pick to free users (Codex P2 on Batch 4 #4).
+  String previewForAccess({required bool isFreeUser}) {
     final input = inputPreview?.trim();
     if (input != null && input.isNotEmpty) {
       return input;
     }
 
-    return result.bestOpenerText ?? '已保存開場建議';
+    return result.bestOpenerTextForAccess(isFreeUser: isFreeUser) ??
+        '已保存開場建議';
   }
 
   OpenerDraft copyWith({
