@@ -229,6 +229,25 @@ CoachChatResult _storedResult() => CoachChatResult(
       modelUsed: 'claude-sonnet-4-20250514',
     );
 
+CoachChatResult _storedSessionResult({required DateTime generatedAt}) =>
+    CoachChatResult(
+      id: 'old',
+      conversationId: 'c-1',
+      partnerId: 'p-1',
+      question: '她是什麼意思？',
+      mode: 'replyCraft',
+      headline: '舊答案',
+      answer: '舊答案內容',
+      userState: '穩住',
+      nextStep: '再看',
+      boundaryReminder: '不要急',
+      needsReflection: false,
+      generatedAt: generatedAt,
+      provider: 'claude',
+      modelUsed: 'claude-sonnet-4-20250514',
+      sessionId: 's-old',
+    );
+
 void main() {
   group('coachChatControllerProvider', () {
     test('build returns the latest stored coach answer', () async {
@@ -353,6 +372,57 @@ void main() {
       expect(turns.length, 2);
       expect(turns.first['kind'], 'question');
       expect(turns.last['kind'], 'clarification');
+    });
+
+    test('stale stored session is not resumed as current round', () async {
+      final repo = _FakeRepo();
+      repo.seed(_storedSessionResult(
+        generatedAt: DateTime.now().subtract(const Duration(hours: 25)),
+      ));
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await notifier.ask(
+        question: '換個新問題',
+        analysisSnapshot: _snapshot(),
+      );
+
+      expect(calls.single.body['sessionId'], isNot('s-old'));
+      expect(calls.single.body.containsKey('activeSessionTurns'), isFalse);
+    });
+
+    test('recent stored session is resumed with seeded turns', () async {
+      final repo = _FakeRepo();
+      repo.seed(_storedSessionResult(
+        generatedAt: DateTime.now().subtract(const Duration(hours: 1)),
+      ));
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider('c-1').future);
+      final notifier = c.read(coachChatControllerProvider('c-1').notifier);
+      await notifier.ask(
+        question: '接著上一題再問',
+        analysisSnapshot: _snapshot(),
+      );
+
+      expect(calls.single.body['sessionId'], 's-old');
+      final turns = calls.single.body['activeSessionTurns'] as List<dynamic>;
+      expect(turns.length, 2);
     });
 
     test('forceAnswer sends forceAnswer flag after clarification', () async {

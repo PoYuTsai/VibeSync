@@ -80,6 +80,10 @@ class CoachChatController
     extends AutoDisposeFamilyAsyncNotifier<CoachChatResult?, String> {
   static const int maxNoChargeClarificationTurns = 3;
 
+  // Hive 舊結果的 session 只在此窗口內視為「本輪延續」；超過即換新
+  // session，避免 prompt 把幾天前的問答當成本輪脈絡。
+  static const Duration sessionResumeWindow = Duration(hours: 24);
+
   bool _inFlight = false;
   String? _activeSessionId;
   List<CoachChatSessionTurn> _activeTurns = const [];
@@ -117,10 +121,14 @@ class CoachChatController
       final repo = ref.read(coachChatRepositoryProvider);
       final previousResult =
           state.valueOrNull ?? repo.latestForConversation(conversationId);
+      final resumablePrevious =
+          previousResult != null && _canResumeSession(previousResult)
+              ? previousResult
+              : null;
       final sessionId = _activeSessionId ??
-          previousResult?.sessionId ??
+          resumablePrevious?.sessionId ??
           'coach-$conversationId-${DateTime.now().microsecondsSinceEpoch}';
-      final outboundTurns = _seedTurns(previousResult);
+      final outboundTurns = _seedTurns(resumablePrevious);
       final effectiveForceAnswer =
           CoachChatController.shouldForceAnswerAfterClarifications(
         turns: outboundTurns,
@@ -200,6 +208,12 @@ class CoachChatController
       analysisSnapshot: analysisSnapshot,
       forceAnswer: true,
     );
+  }
+
+  bool _canResumeSession(CoachChatResult previousResult) {
+    if (previousResult.sessionId == null) return false;
+    return DateTime.now().difference(previousResult.generatedAt) <=
+        sessionResumeWindow;
   }
 
   List<CoachChatSessionTurn> _seedTurns(CoachChatResult? previousResult) {
