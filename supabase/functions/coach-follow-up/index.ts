@@ -31,6 +31,7 @@ import {
   normalizeTier,
   parseRevenueCatSubscriber,
   resolveLimits,
+  type ResetResult,
   type SubscriptionRow,
   TEST_EMAILS,
   tierRank,
@@ -134,38 +135,55 @@ async function persistResets(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   userId: string,
-  sub: SubscriptionRow,
-  dailyReset: boolean,
-  monthlyReset: boolean,
+  reset: ResetResult,
 ): Promise<void> {
-  const update: Record<string, unknown> = {};
-  if (dailyReset) {
-    update.daily_messages_used = 0;
-    update.daily_reset_at = sub.daily_reset_at;
-  }
-  if (monthlyReset) {
-    update.monthly_messages_used = 0;
-    update.monthly_reset_at = sub.monthly_reset_at;
-  }
-  if (Object.keys(update).length === 0) return;
-  const { error } = await supabase.from("subscriptions").update(update).eq(
-    "user_id",
-    userId,
-  );
-  if (error) {
-    logWarn("subscription_reset_persist_failed", {
-      user: summarizeUser(userId),
-      dailyReset,
-      monthlyReset,
-      error: error.message,
-    });
-  } else {
-    if (dailyReset) {
-      logInfo("daily_quota_reset", { user: summarizeUser(userId) });
+  // Batch C#4：CAS 條件化——WHERE reset_at = 舊值（null 用 IS NULL），daily/
+  // monthly 分開兩句。只有第一個跨窗口的請求能歸零；後到者 CAS 匹配 0 rows
+  // ＝別人已 reset，放棄覆寫，才不會抹掉並發請求剛扣的額度。
+  const casReset = async (
+    update: Record<string, unknown>,
+    column: "daily_reset_at" | "monthly_reset_at",
+    previous: string | null,
+    which: "daily" | "monthly",
+  ) => {
+    let query = supabase.from("subscriptions").update(update).eq(
+      "user_id",
+      userId,
+    );
+    query = previous === null
+      ? query.is(column, null)
+      : query.eq(column, previous);
+    const { error } = await query;
+    if (error) {
+      logWarn("subscription_reset_persist_failed", {
+        user: summarizeUser(userId),
+        reset: which,
+        error: error.message,
+      });
+    } else {
+      logInfo(which === "daily" ? "daily_quota_reset" : "monthly_quota_reset", {
+        user: summarizeUser(userId),
+      });
     }
-    if (monthlyReset) {
-      logInfo("monthly_quota_reset", { user: summarizeUser(userId) });
-    }
+  };
+  if (reset.dailyReset) {
+    await casReset(
+      { daily_messages_used: 0, daily_reset_at: reset.sub.daily_reset_at },
+      "daily_reset_at",
+      reset.previousDailyResetAt,
+      "daily",
+    );
+  }
+  if (reset.monthlyReset) {
+    await casReset(
+      {
+        monthly_messages_used: 0,
+        monthly_reset_at: reset.sub.monthly_reset_at,
+      },
+      "monthly_reset_at",
+      reset.previousMonthlyResetAt,
+      "monthly",
+    );
   }
 }
 
@@ -335,13 +353,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   const resetResult = applyResetsIfNeeded(sub, new Date());
   sub = resetResult.sub;
   if (resetResult.dailyReset || resetResult.monthlyReset) {
-    await persistResets(
-      supabase,
-      user.id,
-      sub,
-      resetResult.dailyReset,
-      resetResult.monthlyReset,
-    );
+    await persistResets(supabase, user.id, resetResult);
   }
 
   // ── Tier resolution + cap check ──
@@ -432,13 +444,7 @@ export async function handleRequest(req: Request): Promise<Response> {
         const latestReset = applyResetsIfNeeded(latestSub, new Date());
         latestSub = latestReset.sub;
         if (latestReset.dailyReset || latestReset.monthlyReset) {
-          await persistResets(
-            supabase,
-            userId,
-            latestSub,
-            latestReset.dailyReset,
-            latestReset.monthlyReset,
-          );
+          await persistResets(supabase, userId, latestReset);
         }
 
         let latestLimits = resolveLimits(latestSub.tier);

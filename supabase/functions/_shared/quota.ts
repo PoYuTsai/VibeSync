@@ -83,6 +83,13 @@ export interface ResetResult {
   sub: SubscriptionRow;
   dailyReset: boolean;
   monthlyReset: boolean;
+  /**
+   * Batch C#4 — reset 持久化改 CAS（UPDATE ... WHERE reset_at = 舊值）用的
+   * 比對值。null＝該欄從未 reset 過（CAS 用 IS NULL）。CAS 失敗代表別的並發
+   * 請求已跨窗口歸零，後到者必須放棄覆寫，才不會抹掉它剛扣的額度。
+   */
+  previousDailyResetAt: string | null;
+  previousMonthlyResetAt: string | null;
 }
 
 export function sameUtcDay(a: Date, b: Date): boolean {
@@ -137,7 +144,13 @@ export function applyResetsIfNeeded(
     monthlyReset = true;
   }
 
-  return { sub: out, dailyReset, monthlyReset };
+  return {
+    sub: out,
+    dailyReset,
+    monthlyReset,
+    previousDailyResetAt: sub.daily_reset_at,
+    previousMonthlyResetAt: sub.monthly_reset_at,
+  };
 }
 
 // ---------------------------------------------------------------------------

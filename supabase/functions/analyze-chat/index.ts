@@ -4634,16 +4634,23 @@ serve(async (req) => {
     }
 
     // Check if daily reset needed
+    // Batch C#4：CAS 條件化——WHERE reset_at = 舊值（null 用 IS NULL）。只有
+    // 第一個跨窗口的請求能歸零；後到者 CAS 匹配 0 rows＝別人已 reset，放棄
+    // 覆寫，才不會抹掉並發請求剛扣的額度。
     const now = new Date();
     // 安全處理 null 值
     const dailyResetAt = sub.daily_reset_at
       ? new Date(sub.daily_reset_at)
       : new Date(0);
     if (!sameUtcDay(now, dailyResetAt)) {
-      await supabase
+      let dailyResetQuery = supabase
         .from("subscriptions")
         .update({ daily_messages_used: 0, daily_reset_at: now.toISOString() })
         .eq("user_id", user.id);
+      dailyResetQuery = sub.daily_reset_at === null
+        ? dailyResetQuery.is("daily_reset_at", null)
+        : dailyResetQuery.eq("daily_reset_at", sub.daily_reset_at);
+      await dailyResetQuery;
       sub.daily_messages_used = 0;
       logInfo("daily_quota_reset", { user: summarizeUser(user.id) });
     }
@@ -4653,13 +4660,17 @@ serve(async (req) => {
       ? new Date(sub.monthly_reset_at)
       : new Date(0);
     if (!sameUtcMonth(now, monthlyResetAt)) {
-      await supabase
+      let monthlyResetQuery = supabase
         .from("subscriptions")
         .update({
           monthly_messages_used: 0,
           monthly_reset_at: now.toISOString(),
         })
         .eq("user_id", user.id);
+      monthlyResetQuery = sub.monthly_reset_at === null
+        ? monthlyResetQuery.is("monthly_reset_at", null)
+        : monthlyResetQuery.eq("monthly_reset_at", sub.monthly_reset_at);
+      await monthlyResetQuery;
       sub.monthly_messages_used = 0;
       logInfo("monthly_quota_reset", { user: summarizeUser(user.id) });
     }

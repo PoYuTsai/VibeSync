@@ -488,3 +488,35 @@ Deno.test("classifyQuotaRpcError returns null for non-quota errors and empty inp
   assertEquals(classifyQuotaRpcError(null), null);
   assertEquals(classifyQuotaRpcError(undefined), null);
 });
+
+// ---------------------------------------------------------------------------
+// applyResetsIfNeeded — Batch C#4 CAS 條件化 reset 需要舊 reset_at 當比對值
+// ---------------------------------------------------------------------------
+
+Deno.test("applyResetsIfNeeded exposes previous reset timestamps for CAS", () => {
+  const sub: SubscriptionRow = {
+    tier: "free",
+    monthly_messages_used: 10,
+    daily_messages_used: 5,
+    daily_reset_at: "2026-06-30T01:00:00.000Z",
+    monthly_reset_at: "2026-06-01T01:00:00.000Z",
+  };
+  const result = applyResetsIfNeeded(sub, new Date("2026-07-01T02:00:00Z"));
+  assertEquals(result.dailyReset, true);
+  assertEquals(result.monthlyReset, true);
+  assertEquals(result.previousDailyResetAt, "2026-06-30T01:00:00.000Z");
+  assertEquals(result.previousMonthlyResetAt, "2026-06-01T01:00:00.000Z");
+});
+
+Deno.test("applyResetsIfNeeded previous timestamps preserve null (never reset)", () => {
+  const sub: SubscriptionRow = {
+    tier: "free",
+    monthly_messages_used: 0,
+    daily_messages_used: 0,
+    daily_reset_at: null,
+    monthly_reset_at: null,
+  };
+  const result = applyResetsIfNeeded(sub, new Date("2026-07-01T02:00:00Z"));
+  assertEquals(result.previousDailyResetAt, null);
+  assertEquals(result.previousMonthlyResetAt, null);
+});
