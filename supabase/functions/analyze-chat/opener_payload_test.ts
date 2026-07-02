@@ -23,6 +23,9 @@ Deno.test("sanitizeOpenerText 擋 JSON/code fence/超長，收合法短句", () 
   assertEquals(sanitizeOpenerText({ text: "巢狀欄位也收" }), "巢狀欄位也收");
   assertEquals(sanitizeOpenerText('{"openers": {}}'), null);
   assertEquals(sanitizeOpenerText("```json\n{}\n```"), null);
+  // 哨兵子字串不在句首也要擋（模型把整包 JSON 塞進說明文字的洩漏形態）
+  assertEquals(sanitizeOpenerText('開場白如下 "profileAnalysis" 洩漏'), null);
+  assertEquals(sanitizeOpenerText('先看 "openers" 欄位再說'), null);
   assertEquals(sanitizeOpenerText("a".repeat(181)), null);
   assertEquals(sanitizeOpenerText(""), null);
   assertEquals(sanitizeOpenerText(42), null);
