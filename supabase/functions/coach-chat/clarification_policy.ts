@@ -21,10 +21,3 @@ export function shouldForceCoachAnswerAfterClarifications(opts: {
     countCoachClarifications(opts.activeSessionTurns ?? []) >=
       MAX_NO_CHARGE_CLARIFICATION_TURNS;
 }
-
-export function shouldAllowNoChargeClarificationAttempt(opts: {
-  forceAnswer?: boolean;
-  activeSessionTurns?: readonly CoachSessionTurnLike[];
-}): boolean {
-  return !shouldForceCoachAnswerAfterClarifications(opts);
-}

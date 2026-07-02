@@ -1,7 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   countCoachClarifications,
-  shouldAllowNoChargeClarificationAttempt,
   shouldForceCoachAnswerAfterClarifications,
 } from "./clarification_policy.ts";
 
@@ -20,12 +19,6 @@ Deno.test("coach clarification policy allows at most three no-charge clarificati
 
   assertEquals(countCoachClarifications(twoClarifications), 2);
   assertEquals(
-    shouldAllowNoChargeClarificationAttempt({
-      activeSessionTurns: twoClarifications,
-    }),
-    true,
-  );
-  assertEquals(
     shouldForceCoachAnswerAfterClarifications({
       activeSessionTurns: twoClarifications,
     }),
@@ -33,12 +26,6 @@ Deno.test("coach clarification policy allows at most three no-charge clarificati
   );
 
   assertEquals(countCoachClarifications(threeClarifications), 3);
-  assertEquals(
-    shouldAllowNoChargeClarificationAttempt({
-      activeSessionTurns: threeClarifications,
-    }),
-    false,
-  );
   assertEquals(
     shouldForceCoachAnswerAfterClarifications({
       activeSessionTurns: threeClarifications,
@@ -48,13 +35,6 @@ Deno.test("coach clarification policy allows at most three no-charge clarificati
 });
 
 Deno.test("coach clarification policy treats explicit forceAnswer as formal answer", () => {
-  assertEquals(
-    shouldAllowNoChargeClarificationAttempt({
-      forceAnswer: true,
-      activeSessionTurns: [],
-    }),
-    false,
-  );
   assertEquals(
     shouldForceCoachAnswerAfterClarifications({
       forceAnswer: true,

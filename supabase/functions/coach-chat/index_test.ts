@@ -33,20 +33,18 @@ Deno.test("POST without auth returns 401", async () => {
 });
 
 Deno.test({
-  name: "quota preflight allows bounded no-charge clarification attempts",
+  name: "quota preflight always gates, no clarification bypass",
   permissions: { read: true },
   fn: async () => {
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
 
+    // D1：checkQuota preflight 恆跑；額度歸零者不得再蹭免費釐清
     assertEquals(
-      source.includes("shouldAllowNoChargeClarificationAttempt(payload)"),
-      true,
+      source.includes("allowNoChargeClarificationAttempt"),
+      false,
     );
-    assertEquals(
-      source.includes("!allowNoChargeClarificationAttempt && !gate.ok"),
-      true,
-    );
+    assertEquals(source.includes("if (!gate.ok)"), true);
   },
 });
