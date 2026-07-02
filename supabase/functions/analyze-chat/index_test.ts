@@ -472,7 +472,8 @@ Deno.test({
     assert(source.includes("開場白的北極星：低壓、具體、可回、像真人"));
     assert(source.includes("每天可能收到很多罐頭訊息"));
     assert(source.includes("推薦開場必須有一點好奇心鉤子"));
-    assert(source.includes("更偏玩咖"));
+    // Batch 3 game 化（2026-07-02）：玩咖標籤拔除、留定義句（黑名單掃描見 opener_prompt_test.ts）
+    assert(source.includes("更鬆、更敢"));
     assert(source.includes("這男的是怎樣？我來跟他尬一下"));
     assert(source.includes("VibeSync 是教練，不是話術產生器"));
     assert(source.includes("回話只是示範，框架大於話術"));
@@ -531,7 +532,7 @@ Deno.test({
     assert(source.includes("真正高手會看，但不會拿來逐條回覆"));
     assert(source.includes("規則只是背景紅線"));
     assert(source.includes("妳是不是那種明明該補眠，結果又突然開一個新坑的人"));
-    assert(source.includes("玩咖但有邊界"));
+    assert(source.includes("有點壞但有邊界的鬆弛感"));
     assert(source.includes("旁路冷讀：不要把線索原文講破"));
     assert(source.includes("從資料旁邊長出一個合理但不明說的推測"));
     assert(source.includes("不要直接說「妳在酒吧上班」或問上班"));
@@ -570,7 +571,7 @@ Deno.test({
     assert(source.includes("自介有點像入境規定"));
     assert(source.includes("走私罐頭訊息"));
     assert(source.includes("五種風格各有任務"));
-    assert(source.includes("不要把它們全部做成同一種玩咖推拉"));
+    assert(source.includes("不要把它們全部做成同一種壞壞推拉"));
     assert(source.includes("用戶看到的名稱是「調情」"));
     assert(source.includes("不要輸出「微拉」這個內部術語"));
     assert(source.includes("目標質感接近「沒到微胖吧，挺辣，謙虛了。」"));
