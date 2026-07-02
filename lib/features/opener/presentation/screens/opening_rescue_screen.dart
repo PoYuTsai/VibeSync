@@ -67,9 +67,70 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     return '已複製「$label」。貼到交友軟體送出；她回覆後，點下方「她回覆了，開始分析對話」。';
   }
 
+  /// Canonical 5-style contract shared with the server's OPENER_TYPES.
+  /// `extend` first so the free tier's only unlocked card leads the list.
+  static const openerTypeLabels = {
+    'extend': '🔄 延展',
+    'resonate': '💬 共鳴',
+    'tease': '😏 調情',
+    'humor': '🎭 幽默',
+    'coldRead': '🔮 冷讀',
+  };
+
+  /// Card list is canonical-style driven, not payload driven: the server
+  /// strips locked styles from free payloads, so missing styles are
+  /// synthesized as locked upsell cards for free users. Paid users never
+  /// see locked cards — a style the sanitizer dropped is simply skipped.
+  /// A free result with no usable opener renders nothing (no orphan upsell).
+  static List<OpenerCardSpec> visibleOpenerCards({
+    required Map<String, String> openers,
+    required String? recommendedPick,
+    required bool isFreeUser,
+  }) {
+    final hasAnyContent =
+        openers.values.any((content) => content.trim().isNotEmpty);
+
+    final cards = <OpenerCardSpec>[];
+    for (final type in openerTypeLabels.keys) {
+      final content = openers[type]?.trim() ?? '';
+      final isLocked = isFreeUser && type != 'extend';
+      if (content.isEmpty && !(isLocked && hasAnyContent)) continue;
+
+      cards.add(OpenerCardSpec(
+        type: type,
+        content: content,
+        isLocked: isLocked,
+        isRecommended:
+            type == recommendedPick && !isLocked && content.isNotEmpty,
+      ));
+    }
+    return cards;
+  }
+
+  static String openerStylesHeaderSuffix({required int cardCount}) {
+    return ' ・$cardCount 種風格';
+  }
+
   @override
   ConsumerState<OpeningRescueScreen> createState() =>
       _OpeningRescueScreenState();
+}
+
+/// One rendered opener card: a real payload entry, or a synthesized locked
+/// upsell placeholder (empty content) for a style the server stripped from
+/// a free-tier payload.
+class OpenerCardSpec {
+  const OpenerCardSpec({
+    required this.type,
+    required this.content,
+    required this.isLocked,
+    required this.isRecommended,
+  });
+
+  final String type;
+  final String content;
+  final bool isLocked;
+  final bool isRecommended;
 }
 
 class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
@@ -94,14 +155,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   bool _suppressInputClear = false;
 
   static const _meetingOptions = ['交友軟體', 'IG', '現實認識', '其他'];
-
-  static const _openerTypeLabels = {
-    'extend': '🔄 延展',
-    'resonate': '💬 共鳴',
-    'tease': '😏 調情',
-    'humor': '🎭 幽默',
-    'coldRead': '🔮 冷讀',
-  };
 
   // Flat 3-quota cost per opener request. Image processing cost is
   // platform-absorbed; the predictable price is more important than
@@ -936,6 +989,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   Widget _buildResults(SubscriptionState subscription) {
     final result = _result!;
     final isFree = subscription.isFreeUser;
+    final openerCards = OpeningRescueScreen.visibleOpenerCards(
+      openers: result.openers,
+      recommendedPick: result.recommendedPick,
+      isFreeUser: isFree,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -971,7 +1029,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               ),
             ),
             Text(
-              ' ・5 種風格',
+              OpeningRescueScreen.openerStylesHeaderSuffix(
+                cardCount: openerCards.length,
+              ),
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),
@@ -992,20 +1052,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           height: 220,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: result.openers.length,
+            itemCount: openerCards.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
-              final entry = result.openers.entries.elementAt(index);
-              final type = entry.key;
-              final content = entry.value;
-              final isLocked = isFree && type != 'extend';
-              final isRecommended = type == result.recommendedPick && !isLocked;
-
+              final card = openerCards[index];
               return _buildOpenerCard(
-                type: type,
-                content: content,
-                isRecommended: isRecommended,
-                isLocked: isLocked,
+                type: card.type,
+                content: card.content,
+                isRecommended: card.isRecommended,
+                isLocked: card.isLocked,
               );
             },
           ),
@@ -1350,7 +1405,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     bool isRecommended = false,
     bool isLocked = false,
   }) {
-    final label = _openerTypeLabels[type] ?? type;
+    final label = OpeningRescueScreen.openerTypeLabels[type] ?? type;
 
     return SizedBox(
       width: 280,
