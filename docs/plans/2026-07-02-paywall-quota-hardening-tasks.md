@@ -34,6 +34,36 @@
 
 鐵則：**絕不 `supabase db push`**；MCP `apply_migration` 目標式套用＋帳本 version 對齊本地檔名。注意既有 migration 版本號分歧未對齊（repo 20260626120000 vs prod ledger 20260626064403）。
 
+### Batch C 實作設計（2026-07-02 定稿，動碼前 invariants＋failure matrix）
+
+**Invariants（全批必守）**
+
+- I1 扣 1 則 ⇔ AI 真生成（Batch D 鐵則不得倒退）：新增的超限 RAISE 只會「少扣＋拒發結果」，絕不多扣。
+- I2 counters 永不超過該 tier 上限（有帶 limits 的扣費路徑）；RAISE 時整筆交易 rollback，無半扣。
+- I3 上限值的唯一權威在 Edge（`_shared/quota.ts`），SQL 不複製 pricing 表（`check_and_reset_usage` 的 hardcode CASE 是既有 legacy，不擴散）。
+- I4 reset 只允許「第一個跨窗口的請求」歸零一次；後到者 CAS 失敗即放棄，不得覆寫已發生的扣費。
+- I5 付費 tier 不因本批任何失敗路徑降級（本批不碰 tier 欄位）。
+- I6 向後相容：舊 2-arg 呼叫（三個 wrapper RPC：create_charged_analysis_run／charge_stream_analysis_run／practice settle）行為不變（無上限檢查、只多了 row lock 串行化）。
+
+**C1 設計**：DROP 舊 `increment_usage(uuid, integer)` 再建 4-arg（`p_monthly_limit`/`p_daily_limit` DEFAULT NULL）——不能只 CREATE OR REPLACE，否則新舊 overload 並存、2-arg 呼叫產生 ambiguity。函式體：`SELECT … FOR UPDATE` 鎖 subscriptions row → limits 非 NULL 時月先日後驗 `used + p_messages > limit` → 超限 `RAISE 'QUOTA_EXCEEDED_MONTHLY'/'QUOTA_EXCEEDED_DAILY'`（Edge 以 message.includes 偵測，同 practice draw 慣例）→ 更新 counters＋users.total_analyses。row NOT FOUND 保留現版 silent no-op（現版 UPDATE 0 rows 同義；所有呼叫點前面都有 self-heal）。
+
+**Failure matrix（C1 charge 點）**
+
+| 情境 | 現版行為 | 新版行為 |
+|------|----------|----------|
+| 並發 N 請求同時過 preflight、額度只剩 1 | N 筆全扣、counters 超上限 | FOR UPDATE 串行化，第 1 筆扣到上限，其餘 RAISE→429，counters 封頂 |
+| RAISE 後 | — | 整筆 rollback（含 wrapper RPC 內的 run insert），無半扣；該次生成成本已花＝既知取捨（與 coach-chat 既有 post-generation 429 同語義） |
+| 跨午夜邊界：Edge 已 reset、RPC 讀到新窗口 | 正常 | 正常 |
+| 跨午夜邊界：請求橫跨午夜、row 仍舊窗口 | 照扣 | 可能誤 RAISE（用舊窗口 used 驗新請求）＝極窄殘餘，Edge 呼叫前一律先 applyResets，接受 |
+| subscription row 不存在 | UPDATE 0 rows silent | 同樣 silent no-op（行為保留） |
+| 舊 2-arg 呼叫（wrapper RPC） | 無上限檢查 | 無上限檢查（NULL limits），僅多 row lock |
+
+**C2 設計**：CAS 條件化 reset——`applyResetsIfNeeded` 回傳舊 `daily_reset_at`/`monthly_reset_at`；persistResets／analyze-chat inline 改成 daily、monthly 各自獨立 UPDATE，WHERE 加 `reset_at = 舊值`（舊值 null 用 IS NULL）。CAS 失敗＝別的並發請求已 reset→不覆寫（保住它剛扣的額度），本請求繼續用記憶體中歸零值做 preflight（可能低估 used，超限由 C1 charge 點兜底）。`check_and_reset_usage` RPC 無 live 呼叫者（client 已 REVOKE、Edge 不呼），同 migration 補 UPDATE WHERE 重複窗口條件除 TOCTOU，不刪（舊環境相容）。
+
+**C3 設計**：coach-follow-up `deductCredit` 對齊 coach-chat——重查 sub＋applyResets＋checkQuota＋RC refresh 一次，過門檻才呼 RPC（帶 limits）；新 `CoachFollowUpQuotaExceededError` 讓 generation.ts 映射 429（現在任何 deduct 失敗都是 500）。coach-chat／analyze-chat 兩直呼點（opener 5240、legacy 7555）同步帶 limits＋QUOTA_EXCEEDED→429 映射。
+
+**範圍外（記入 review packet 殘餘）**：三個 wrapper RPC 簽名不改、不傳 limits——quick/stream/practice 路徑維持 preflight-only 上限防護（改簽名＝三份 migration＋三處 Edge 呼叫點連動，另案評估）；`analyze-chat/rate_limiter.ts` 整個模組零 live 引用（不只 reset 死碼），本批直接刪檔。
+
 ## Batch D — Eric 已拍板（2026-07-02）
 
 1. **D1 免費釐清加額度前提**：釐清豁免判定在 checkQuota 之前（coach-chat/index.ts:273-282），且次數純信 client（clarification_policy.ts:8-14、schemas.ts:74）。拍板＝不做 server ledger；改為 **checkQuota preflight 恆跑**，釐清仍不扣費但額度歸零者直接 429/paywall。殘餘風險（有額度者偽造 turns 多蹭免費釐清）＝已知取捨，註記即可。
