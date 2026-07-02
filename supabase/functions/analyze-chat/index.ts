@@ -85,6 +85,12 @@ import {
 import { isStreamStyle, STREAM_STYLES } from "./stream_events.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
 import {
+  buildOcrRateLimitedPayload,
+  classifyOcrRateLimitError,
+  OCR_RATE_LIMIT_PER_DAY,
+  OCR_RATE_LIMIT_PER_MINUTE,
+} from "./ocr_rate_limit.ts";
+import {
   finalizeTierSyncRefreshStatus,
   normalizeSubscriptionTier,
   shouldFailPaidTierSync,
@@ -5463,6 +5469,37 @@ serve(async (req) => {
         if (estimatedBytes > MAX_IMAGE_BYTES) {
           return jsonResponse({ error: "圖片太大，請壓縮後重試" }, 400);
         }
+      }
+    }
+
+    // recognizeOnly OCR 限流（docs/plans/2026-07-02-ocr-rate-limit-design.md）。
+    // 免費 Sonnet vision 入口的成本上界：6/分、60/天。放在圖片驗證後
+    // （非法請求 400 不佔名額）、prompt/Claude 流程前；計 attempt 不計
+    // success——限的是成本不是產出。與訂閱額度（increment_usage）零交集。
+    if (recognizeOnly && !accountIsTest) {
+      const { error: ocrRateError } = await supabase.rpc(
+        "increment_ocr_usage",
+        {
+          p_user_id: user.id,
+          p_minute_limit: OCR_RATE_LIMIT_PER_MINUTE,
+          p_daily_limit: OCR_RATE_LIMIT_PER_DAY,
+        },
+      );
+      if (ocrRateError) {
+        const ocrRateReason = classifyOcrRateLimitError(ocrRateError.message);
+        if (ocrRateReason) {
+          logWarn("ocr_rate_limited", {
+            user: summarizeUser(user.id),
+            reason: ocrRateReason,
+          });
+          return jsonResponse(buildOcrRateLimitedPayload(ocrRateReason), 429);
+        }
+        // fail-open：infra 錯誤（非超限 RAISE）不擋免費核心匯入流程——RPC
+        // 失敗非用戶可誘發，漏計一次成本上界仍近似成立；但必留 telemetry。
+        logError("ocr_rate_limit_check_failed", {
+          user: summarizeUser(user.id),
+          error: ocrRateError.message,
+        });
       }
     }
 

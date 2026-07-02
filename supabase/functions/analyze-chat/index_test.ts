@@ -1944,3 +1944,62 @@ Deno.test({
     );
   },
 });
+
+// ---------------------------------------------------------------------------
+// recognizeOnly OCR 限流源碼契約
+// （docs/plans/2026-07-02-ocr-rate-limit-design.md）
+// ---------------------------------------------------------------------------
+
+Deno.test({
+  name: "recognizeOnly 限流：RPC gate 在圖片驗證後、AI 護欄前，且測試帳號 bypass",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // I1/I2：走 increment_ocr_usage RPC 原子計數（regex 容忍 fmt 斷行）
+    const rpcCallPattern = /supabase\.rpc\(\s*"increment_ocr_usage"/;
+    assert(
+      rpcCallPattern.test(source),
+      "recognizeOnly 必須經 increment_ocr_usage RPC 限流（I1 成本上界）",
+    );
+
+    // gate：只限 recognizeOnly 且測試帳號 bypass
+    assert(
+      source.includes("recognizeOnly && !accountIsTest"),
+      "限流 gate 必須是 recognizeOnly && !accountIsTest",
+    );
+
+    // 順序：非法請求（無圖 400）不佔名額 → RPC 在 requires images 之後；
+    // 成本保護 → RPC 在 AI 護欄 checkInput 之前（更在 Claude 呼叫前）。
+    const rpcAt = source.search(rpcCallPattern);
+    const requiresImagesAt = source.indexOf("recognizeOnly requires images");
+    const checkInputAt = source.indexOf("checkInput(messages)");
+    assert(requiresImagesAt >= 0 && checkInputAt >= 0);
+    assert(
+      rpcAt > requiresImagesAt,
+      "限流 RPC 必須在圖片驗證（400 拒絕）之後，非法請求不得佔名額",
+    );
+    assert(
+      rpcAt < checkInputAt,
+      "限流 RPC 必須在 prompt/Claude 流程之前（preflight）",
+    );
+
+    // I4/I5：429 走 buildOcrRateLimitedPayload（保證無 monthlyLimit/dailyLimit 鍵）
+    assert(
+      source.includes("buildOcrRateLimitedPayload("),
+      "429 payload 必須經 buildOcrRateLimitedPayload（I4 防 paywall 誤傷）",
+    );
+    assert(
+      source.includes("classifyOcrRateLimitError("),
+      "RPC 錯誤必須經 classifyOcrRateLimitError 判別（I6 fail-open）",
+    );
+
+    // I6：非超限 RPC 錯誤 fail-open 且必留 telemetry
+    assert(
+      source.includes('logError("ocr_rate_limit_check_failed"'),
+      "限流 RPC infra 錯誤必須 logError 後放行（I6），不得靜默",
+    );
+  },
+});
