@@ -47,10 +47,17 @@ export function buildSubscriptionProductMetadata(
   };
 }
 
+function parseTimestamp(value: string | null | undefined): number | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 export function resolveSubscriptionUpdateForWebhookEvent({
   type,
   effectiveProductId,
   currentTier,
+  currentExpiresAt,
   expiresAt,
   nowIso,
   event,
@@ -58,6 +65,7 @@ export function resolveSubscriptionUpdateForWebhookEvent({
   type: string;
   effectiveProductId: string;
   currentTier: string;
+  currentExpiresAt?: string | null;
   expiresAt: string | null;
   nowIso: string;
   event: Record<string, unknown>;
@@ -122,7 +130,19 @@ export function resolveSubscriptionUpdateForWebhookEvent({
       };
     }
 
-    case "EXPIRATION":
+    case "EXPIRATION": {
+      // A stale EXPIRATION can arrive after the user has already re-subscribed.
+      // If the DB tracks a strictly later expiry than this event's, the row
+      // reflects a newer paid period — do not downgrade or reset its usage.
+      const eventExpiry = parseTimestamp(expiresAt);
+      const dbExpiry = parseTimestamp(currentExpiresAt);
+      if (eventExpiry != null && dbExpiry != null && dbExpiry > eventExpiry) {
+        return {
+          kind: "ignore",
+          newTier: currentTier,
+        };
+      }
+
       return {
         kind: "update",
         newTier: "free",
@@ -137,6 +157,7 @@ export function resolveSubscriptionUpdateForWebhookEvent({
           daily_reset_at: nowIso,
         },
       };
+    }
 
     case "BILLING_ISSUE": {
       const preservedTier = resolveBillingIssueTier({

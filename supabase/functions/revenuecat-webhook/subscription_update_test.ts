@@ -33,6 +33,57 @@ Deno.test("EXPIRATION downgrades to free and resets local quota counters", () =>
   );
 });
 
+Deno.test("EXPIRATION for an older period does not overwrite a newer active subscription", () => {
+  // Stale EXPIRATION event (expires 2026-06-07) arrives after the user already
+  // re-subscribed with a later expiry recorded in the DB (2026-09-01).
+  const decision = resolveSubscriptionUpdateForWebhookEvent({
+    type: "EXPIRATION",
+    effectiveProductId: "vibesync_essential_quarterly_v2",
+    currentTier: "essential",
+    currentExpiresAt: "2026-09-01T00:00:00.000Z",
+    expiresAt,
+    nowIso,
+    event,
+  });
+
+  assertEquals(decision.kind, "ignore");
+  if (decision.kind !== "ignore") throw new Error("expected ignore");
+  assertEquals(decision.newTier, "essential");
+  assertEquals(decision.subscriptionUpdate, undefined);
+});
+
+Deno.test("EXPIRATION matching the tracked period still downgrades", () => {
+  const decision = resolveSubscriptionUpdateForWebhookEvent({
+    type: "EXPIRATION",
+    effectiveProductId: "vibesync_essential_quarterly_v2",
+    currentTier: "essential",
+    currentExpiresAt: expiresAt,
+    expiresAt,
+    nowIso,
+    event,
+  });
+
+  assertEquals(decision.kind, "update");
+  if (decision.kind !== "update") throw new Error("expected update");
+  assertEquals(decision.newTier, "free");
+});
+
+Deno.test("EXPIRATION with unknown DB expiry falls back to downgrade", () => {
+  const decision = resolveSubscriptionUpdateForWebhookEvent({
+    type: "EXPIRATION",
+    effectiveProductId: "vibesync_essential_quarterly_v2",
+    currentTier: "essential",
+    currentExpiresAt: null,
+    expiresAt,
+    nowIso,
+    event,
+  });
+
+  assertEquals(decision.kind, "update");
+  if (decision.kind !== "update") throw new Error("expected update");
+  assertEquals(decision.newTier, "free");
+});
+
 Deno.test("CANCELLATION marks cancelled but preserves paid tier until expiration", () => {
   const decision = resolveSubscriptionUpdateForWebhookEvent({
     type: "CANCELLATION",

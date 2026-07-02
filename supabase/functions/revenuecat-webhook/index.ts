@@ -373,7 +373,7 @@ Deno.serve(async (req) => {
     const { data: existingSubscription, error: subscriptionLookupError } =
       await supabase
         .from("subscriptions")
-        .select("tier")
+        .select("tier, expires_at")
         .eq("user_id", app_user_id)
         .maybeSingle();
 
@@ -392,6 +392,10 @@ Deno.serve(async (req) => {
     const currentTier = typeof existingSubscription?.tier === "string"
       ? existingSubscription.tier
       : "free";
+    const currentExpiresAt =
+      typeof existingSubscription?.expires_at === "string"
+        ? existingSubscription.expires_at
+        : null;
 
     switch (type) {
       case "INITIAL_PURCHASE":
@@ -457,6 +461,7 @@ Deno.serve(async (req) => {
             type,
             effectiveProductId,
             currentTier,
+            currentExpiresAt,
             expiresAt,
             nowIso,
             event,
@@ -464,6 +469,11 @@ Deno.serve(async (req) => {
           newTier = decision.newTier;
           shouldUpdate = decision.kind === "update";
           subscriptionUpdate = decision.subscriptionUpdate ?? null;
+          if (!shouldUpdate) {
+            console.log(
+              `Ignoring stale EXPIRATION for user ${app_user_id}: DB expiry ${currentExpiresAt} is newer than event expiry ${expiresAt}`,
+            );
+          }
         }
         console.log(`Downgrading user ${app_user_id} to free`);
         break;
