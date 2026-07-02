@@ -1,5 +1,21 @@
 # Practice Beginner Temperature Hint Implementation Plan
 
+## 2026-07-03 實作對齊補記
+
+> 本計畫是動工前版本，原文照留。實作已完成（雙軸升溫版）並於 2026-07-03 再修一輪風險；以下逐條記錄最終實作與本計畫的差異，日後讀者以補記為準。
+
+- **temperature 模組實作與本計畫不同**：最終為「雙軸升溫」＝temperature（熱度）＋familiarity（熟悉度），judge 是 classifier（category/quality/impact 矩陣換算 delta），非本文 `parseTemperatureJudgement` 直接收 delta 的設計；clamp 為 heat [-12,+8]、familiarity [-12,+12]（越界強制 ≤-6），本文「delta clamp -8..8」相關步驟作廢。
+- **RPC 授權策略與本文不同（原文作廢）**：本文「Grant execution to the service role and authenticated role」一句作廢——實際 migration 全部 REVOKE anon/authenticated、GRANT service_role only（比照 `20260624120000` 現行風格）。
+- **RPC 簽名策略（與原文不同）**：不留 overload。`commit_practice_chat_turn` 現役唯一簽名為 7-arg；本文的 6-arg overload 與更舊的 3/4-arg 簽名已由 migration `20260703160000` DROP（該 migration 須在新 Edge 部署後才套用）。
+- **client temperatureScore 已被忽略（與原文不同）**：本文 Step 4 的 `p_initial_temperature_score: request.temperatureScore` 語義已被取代——server 一律 ledger 權威（首回合固定 30），standard 模式 commit 傳 null。
+- **hint 冪等已實作（原文未涵蓋）**：client 產 requestId（失敗沿用、成功才 rotate）＋server ledger replay（`last_hint_request_id`/`last_hint_result` 欄位，migration `20260703150000`），replay 命中不重扣、不重生成。
+- **mode locked 已實作**：server 回 409＋`practice_mode_locked`（同本文 Step 4 mapping），client 已補分流——不誤標 session complete、不誤導續聊。
+- **hint gate 已擋聊滿（原文未列）**：`aiCount >= 20` → 409 `practice_session_complete`；hint 上限 5/回合維持 server-side 為準。
+- **judge 獨立常數（原文未列）**：`TEMPERATURE_JUDGE_MAX_TOKENS=450`、temp 0.2、timeout 30s、失敗 fallback delta 0（溫度不動）；judge prompt 已含防注入（recentContext 標 untrusted data）。
+- **client 併發防護（原文未列）**：hint 在途禁送 chat（canSend）、過期 hint 回應以 generation 序號丟棄。
+- **成本結構認列**：beginner 每回合 2 次 DeepSeek call（chat 200tok＋judge 450tok）、hint 1 call 650tok 扣 1 額度；一場滿載約 48 calls、最多 6 額度（1 chat＋5 hint）。
+- **部署順序（新增，取代本文 Step 14）**：migration `20260703150000`（hint replay 欄位）→ 部署新 practice-chat Edge → migration `20260703160000`（DROP 舊簽名）。順序不可倒置，否則舊 Edge 會呼叫已被 DROP 的簽名。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` for parallel implementation when possible, or `superpowers:executing-plans` for single-agent implementation. Track this plan with the checkbox items below and keep one commit per concern.
 
 **Goal:** Add a beginner learning mode to AI 實戰練習室 with a live 升溫指數, temperature-influenced practice replies, and paid on-demand hint coaching while preserving the existing 實戰 mode.

@@ -1,5 +1,18 @@
 # AI 實戰練習室新手學習模式：升溫指數與提示教學設計
 
+## 2026-07-03 實作對齊補記
+
+> 本規格是動工前版本，原文照留。實作已完成並於 2026-07-03 再修一輪風險；以下逐條記錄最終實作與本文的差異，讀本規格時以補記為準。
+
+- **溫度模型演進為「雙軸升溫」（與原文不同）**：最終實作有 temperature（熱度）＋familiarity（熟悉度）兩軸；judge 是 classifier（輸出 category/quality/impact，由矩陣換算 delta），非原文的單軸 judge 直接吐 delta。clamp 為 heat [-12,+8]、familiarity [-12,+12]，越界回覆強制 ≤-6；原文「delta 限制 -8..+8」一段作廢。
+- **mode locked 行為已實作**：session 模式不符時 server 回 409＋body error code `practice_mode_locked`，client 已分流處理（不會誤標 session complete、不會誤導使用者續聊）。外部掃描對此提的 P0 疑慮已解。
+- **起始溫度 server 權威（與原文不同）**：首回合固定 30 由 server ledger 決定，client 送的 `temperatureScore` 一律被忽略；原文 API Contract 中 chat request 帶 `temperatureScore: 30` 的欄位語義作廢（standard 模式 client 傳 null）。
+- **hint 已有冪等保護（原文未涵蓋）**：client 產 requestId（失敗重試沿用、成功才 rotate），server 以 ledger replay（`last_hint_request_id`/`last_hint_result`）承接——replay 命中時不重扣額、不重新生成，直接回上次結果。
+- **hint gate 已擋聊滿（原文未明列）**：`aiCount >= 20` 時 hint 回 409 `practice_session_complete`；hint 上限維持每回合 5 次，server-side gate 為準。
+- **judge 失敗規則已實作且更精確**：judge 有獨立常數 `TEMPERATURE_JUDGE_MAX_TOKENS=450`、temp 0.2、timeout 30s；失敗 fallback delta 0（溫度不動、聊天照常成功），符合原文精神。另 judge prompt 已含防注入處理（recentContext 標為 untrusted data）。
+- **client 併發防護（原文未涵蓋）**：hint 在途時禁止送 chat（canSend gate）；過期 hint 回應以 generation 序號比對丟棄，不會蓋新狀態。
+- **成本結構認列（原文未量化）**：beginner 每回合 2 次 DeepSeek call（chat 200tok＋judge 450tok）；hint 1 call 650tok、成功扣 1 額度。一場滿載約 48 calls、最多扣 6 額度（1 chat＋5 hint）。
+
 Date: 2026-06-28
 Status: Approved for implementation planning
 Owner: Eric product decision / implementation owner assigned during planning
