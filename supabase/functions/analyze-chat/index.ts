@@ -53,6 +53,7 @@ import {
 import { buildServerGuardrails } from "./server_guardrails.ts";
 import {
   buildQuotaExceededPayload,
+  classifyQuotaRpcError,
   sameUtcDay,
   sameUtcMonth,
   TEST_EMAILS,
@@ -5235,14 +5236,34 @@ serve(async (req) => {
       const aiInsufficientFlag = profileAnalysisObj?.insufficientInfo === true;
       const effectiveOpenerCost = serverEligibleForNoCharge ? 0 : openerCost;
 
-      // Deduct quota
+      // Deduct quota。Batch C#2：帶 tier 上限讓 increment_usage 鎖內複檢，
+      // 兜住 preflight 與扣費之間的並發競態；超限 RAISE 映射 429。
       if (!accountIsTest && effectiveOpenerCost > 0) {
         const { error: usageError } = await supabase.rpc("increment_usage", {
           p_user_id: user.id,
           p_messages: effectiveOpenerCost,
+          p_monthly_limit: monthlyLimit,
+          p_daily_limit: dailyLimit,
         });
 
         if (usageError) {
+          const quotaReason = classifyQuotaRpcError(usageError.message);
+          if (quotaReason) {
+            logWarn("opener_credit_deduct_quota_exceeded", {
+              user: summarizeUser(user.id),
+              reason: quotaReason,
+            });
+            return jsonResponse(
+              buildQuotaExceededPayload({
+                sub,
+                cost: effectiveOpenerCost,
+                reason: quotaReason,
+                monthlyLimit,
+                dailyLimit,
+              }),
+              429,
+            );
+          }
           logError("opener_credit_deduct_failed", {
             user: summarizeUser(user.id),
             error: usageError.message,
@@ -7552,12 +7573,33 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       !streamRetryChargeWaived
     ) {
       // Single source of truth for usage accounting (avoid double counting).
+      // Batch C#2：帶 tier 上限讓 increment_usage 鎖內複檢，超限 RAISE 映射 429。
       const { error: usageError } = await supabase.rpc("increment_usage", {
         p_user_id: user.id,
         p_messages: quotaUsage.chargedMessageCount,
+        p_monthly_limit: monthlyLimit,
+        p_daily_limit: dailyLimit,
       });
 
       if (usageError) {
+        const quotaReason = classifyQuotaRpcError(usageError.message);
+        if (quotaReason) {
+          logWarn("analysis_credit_deduct_quota_exceeded", {
+            user: summarizeUser(user.id),
+            reason: quotaReason,
+            chargedMessageCount: quotaUsage.chargedMessageCount,
+          });
+          return jsonResponse(
+            buildQuotaExceededPayload({
+              sub,
+              cost: quotaUsage.chargedMessageCount,
+              reason: quotaReason,
+              monthlyLimit,
+              dailyLimit,
+            }),
+            429,
+          );
+        }
         logError("analysis_credit_deduct_failed", {
           user: summarizeUser(user.id),
           error: usageError.message,
