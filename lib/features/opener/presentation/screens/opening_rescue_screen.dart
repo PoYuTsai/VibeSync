@@ -12,6 +12,7 @@ import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
+import '../../data/services/opener_request_session.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
 
@@ -85,6 +86,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   String? _error;
   final _scrollController = ScrollController();
   final _resultCacheService = OpenerResultCacheService();
+
+  // 扣費 idempotency（Batch 4#2）：失敗重試沿用同 requestId，成功才 rotate。
+  final _requestSession = OpenerRequestIdSession();
   List<OpenerDraft> _drafts = const [];
   String? _currentDraftId;
   bool _suppressInputClear = false;
@@ -408,7 +412,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         meetingContext: input.meetingContext,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
+        requestId: _requestSession.beginAttempt(),
       );
+      // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
+      // 下一次生成沿用同 id 而被 server 當重試去重。
+      _requestSession.markSuccess();
       try {
         final draft = await _resultCacheService.saveDraft(
           result: result,

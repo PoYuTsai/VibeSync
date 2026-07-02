@@ -85,6 +85,51 @@ void main() {
       expect(visible.costUsed, 3);
     });
 
+    test('sends requestId in body when provided (charge idempotency)',
+        () async {
+      final calls = <Map<String, dynamic>>[];
+      final service = OpenerService(
+        invoker: (functionName, {required body}) async {
+          calls.add(body);
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {'extend': '嗨！'},
+            },
+          );
+        },
+      );
+
+      await service.generateOpeners(
+        name: 'Grace',
+        requestId: '123e4567-e89b-42d3-a456-426614174000',
+      );
+
+      expect(
+        calls.single['requestId'],
+        '123e4567-e89b-42d3-a456-426614174000',
+      );
+    });
+
+    test('omits requestId key entirely when not provided', () async {
+      final calls = <Map<String, dynamic>>[];
+      final service = OpenerService(
+        invoker: (functionName, {required body}) async {
+          calls.add(body);
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {'extend': '嗨！'},
+            },
+          );
+        },
+      );
+
+      await service.generateOpeners(name: 'Grace');
+
+      expect(calls.single.containsKey('requestId'), isFalse);
+    });
+
     test('sends opener mode with image data objects and profile info',
         () async {
       final calls = <Map<String, dynamic>>[];

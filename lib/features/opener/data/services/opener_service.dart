@@ -289,6 +289,7 @@ class OpenerService {
     String? meetingContext,
     String? expectedTier,
     String? revenueCatAppUserId,
+    String? requestId,
   }) async {
     // Build image list as ImageData objects (matching existing format)
     List<Map<String, dynamic>>? imageDataList;
@@ -331,6 +332,9 @@ class OpenerService {
         'expectedTier': expectedTier.trim(),
       if (revenueCatAppUserId != null && revenueCatAppUserId.trim().isNotEmpty)
         'revenueCatAppUserId': revenueCatAppUserId.trim(),
+      // 扣費 idempotency：server 靠 (user, requestId) 去重傳輸層重試雙扣。
+      if (requestId != null && requestId.trim().isNotEmpty)
+        'requestId': requestId.trim(),
     };
 
     final response = await _invoke('analyze-chat', body: body);
