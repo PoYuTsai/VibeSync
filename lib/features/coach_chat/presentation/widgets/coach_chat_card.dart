@@ -52,7 +52,7 @@ class CoachChatCard extends ConsumerStatefulWidget {
     if (error is CoachChatQuotaExceededException) {
       return '這是額度限制，不是教練失敗。升級或等額度重置後再試。';
     }
-    return '未扣額度。上一輪回覆已保留，但不是這題的新結果。';
+    return '上一輪回覆已保留，但不是這題的新結果。';
   }
 
   static String failureMessageFor(Object error) {
@@ -68,13 +68,16 @@ class CoachChatCard extends ConsumerStatefulWidget {
       }
       return error.message;
     }
+    // 「未扣額度」只保證在 4xx 驗證失敗路徑（server 未走到扣費）成立；
+    // generation failure 含 client 端 parse 失敗（server 已扣）、未知錯誤
+    // 含網路掉包（可能已扣），不得承諾未扣。
     if (error is CoachChatGenerationFailedException) {
-      return '教練暫時沒接住，這次未扣額度，請稍後再試。';
+      return '教練暫時沒接住，請稍後再試。';
     }
     if (error is CoachChatApiException) {
       return '連線暫時不穩，這次未扣額度，請稍後再試。';
     }
-    return '教練暫時沒接住，這次未扣額度，請稍後再試。';
+    return '教練暫時沒接住，請稍後再試。';
   }
 
   static String failureActionLabelFor(Object error) {

@@ -23,7 +23,30 @@ void main() {
     final error = CoachChatGenerationFailedException('invalid_card');
 
     expect(CoachChatCard.failureTitleFor(error), '這題教練沒接住');
-    expect(CoachChatCard.failureMessageFor(error), contains('未扣額度'));
     expect(CoachChatCard.failureActionLabelFor(error), '重試這題');
+  });
+
+  // 「未扣額度」只能出現在 server 保證沒走到扣費的路徑（4xx 驗證失敗）。
+  // generation failure 含 client 端 parse 失敗（server 已扣）、未知錯誤含
+  // 網路掉包（可能已扣），這兩處承諾未扣會說謊。
+  test('no-charge promise only appears on guaranteed 4xx path', () {
+    final apiError = CoachChatApiException('bad_request', status: 400);
+    expect(CoachChatCard.failureMessageFor(apiError), contains('未扣額度'));
+
+    final generationError = CoachChatGenerationFailedException('invalid_card');
+    expect(
+      CoachChatCard.failureMessageFor(generationError),
+      isNot(contains('未扣額度')),
+    );
+    expect(
+      CoachChatCard.failureSubtitleFor(generationError),
+      isNot(contains('未扣額度')),
+    );
+
+    final unknownError = StateError('socket closed');
+    expect(
+      CoachChatCard.failureMessageFor(unknownError),
+      isNot(contains('未扣額度')),
+    );
   });
 }
