@@ -22,13 +22,73 @@ import {
   isPlainObject,
   normalizeTier,
   parseRevenueCatSubscriber,
+  quotaExceededMessage,
   resolveLimits,
+  sameUtcDay,
+  sameUtcMonth,
   type SubscriptionRow,
   TEST_EMAILS,
   TIER_DAILY_LIMITS,
   TIER_MONTHLY_LIMITS,
   tierRank,
 } from "./quota.ts";
+
+// ---------------------------------------------------------------------------
+// sameUtcDay / sameUtcMonth — exported for analyze-chat inline reset checks
+// (Batch D#3: local-time toDateString()/getMonth() comparisons are forbidden)
+// ---------------------------------------------------------------------------
+
+Deno.test("sameUtcDay compares by UTC calendar day, not local time", () => {
+  assertEquals(
+    sameUtcDay(
+      new Date("2026-07-01T00:00:01Z"),
+      new Date("2026-07-01T23:59:59Z"),
+    ),
+    true,
+  );
+  assertEquals(
+    sameUtcDay(
+      new Date("2026-07-01T23:59:59Z"),
+      new Date("2026-07-02T00:00:01Z"),
+    ),
+    false,
+  );
+});
+
+Deno.test("sameUtcMonth compares by UTC month with year wraparound", () => {
+  assertEquals(
+    sameUtcMonth(
+      new Date("2026-07-01T00:00:00Z"),
+      new Date("2026-07-31T23:59:59Z"),
+    ),
+    true,
+  );
+  assertEquals(
+    sameUtcMonth(
+      new Date("2026-07-01T00:00:00Z"),
+      new Date("2026-08-01T00:00:00Z"),
+    ),
+    false,
+  );
+  assertEquals(
+    sameUtcMonth(
+      new Date("2025-07-15T00:00:00Z"),
+      new Date("2026-07-15T00:00:00Z"),
+    ),
+    false,
+  );
+});
+
+Deno.test("quotaExceededMessage daily copy states the 8am reset time", () => {
+  assertEquals(
+    quotaExceededMessage("daily_limit_exceeded").includes("每天早上 8 點恢復"),
+    true,
+  );
+  assertEquals(
+    quotaExceededMessage("daily_limit_exceeded").includes("明天會自動恢復"),
+    false,
+  );
+});
 
 // ---------------------------------------------------------------------------
 // normalizeTier — unknown / null / wrong-type all fall back to "free"

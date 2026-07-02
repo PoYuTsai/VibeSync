@@ -85,7 +85,7 @@ export interface ResetResult {
   monthlyReset: boolean;
 }
 
-function sameUtcDay(a: Date, b: Date): boolean {
+export function sameUtcDay(a: Date, b: Date): boolean {
   return (
     a.getUTCFullYear() === b.getUTCFullYear() &&
     a.getUTCMonth() === b.getUTCMonth() &&
@@ -93,7 +93,7 @@ function sameUtcDay(a: Date, b: Date): boolean {
   );
 }
 
-function sameUtcMonth(a: Date, b: Date): boolean {
+export function sameUtcMonth(a: Date, b: Date): boolean {
   return (
     a.getUTCFullYear() === b.getUTCFullYear() &&
     a.getUTCMonth() === b.getUTCMonth()
@@ -194,7 +194,7 @@ export function quotaExceededMessage(
 ): string {
   return reason === "monthly_limit_exceeded"
     ? "本月額度已用完，升級方案可取得更多分析與教練額度。"
-    : "今日額度已用完，明天會自動恢復；也可以升級取得更多額度。";
+    : "今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。";
 }
 
 export function buildQuotaExceededPayload(opts: {

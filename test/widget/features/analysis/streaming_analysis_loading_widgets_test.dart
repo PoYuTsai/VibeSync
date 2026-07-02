@@ -146,7 +146,7 @@ void main() {
       expect(viewed, 1);
     });
 
-    testWidgets('daily：明天恢復 + 升級文案', (tester) async {
+    testWidgets('daily：每天早上 8 點恢復 + 升級文案', (tester) async {
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: false,
         remaining: 0,
@@ -155,7 +155,7 @@ void main() {
       )));
 
       expect(
-        find.text('今日額度剩 0 則，這次分析需要 3 則。明天會自動恢復，也可以升級取得更多額度。'),
+        find.text('今日額度剩 0 則，這次分析需要 3 則。每天早上 8 點恢復，也可以升級取得更多額度。'),
         findsOneWidget,
       );
       expect(find.text('查看方案'), findsOneWidget);

@@ -342,7 +342,7 @@ class OpenerService {
         final fallbackMessage = rawError.contains('monthly')
             ? '本月額度不足，升級方案可取得更多開場與分析額度。'
             : rawError.contains('daily')
-                ? '今日額度不足，明天會自動恢復；也可以升級取得更多額度。'
+                ? '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。'
                 : '額度不足，請先升級方案。';
         throw OpenerQuotaExceededException(
           message: errorData['message'] as String? ?? fallbackMessage,

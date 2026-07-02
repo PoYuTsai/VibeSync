@@ -260,7 +260,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   String _dailyQuotaExceededMessage(DailyLimitExceededException e) {
-    return '目前方案 ${_currentPlanLabel()}：今日額度已用完 (${e.used}/${e.dailyLimit})，明天會自動恢復；升級方案可取得更多額度。';
+    return '目前方案 ${_currentPlanLabel()}：今日額度已用完 (${e.used}/${e.dailyLimit})，每天早上 8 點恢復；升級方案可取得更多額度。';
   }
 
   String _monthlyQuotaExceededMessage(MonthlyLimitExceededException e) {

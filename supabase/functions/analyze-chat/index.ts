@@ -51,7 +51,12 @@ import {
   OverchargeClaimStore,
 } from "./overcharge_claims.ts";
 import { buildServerGuardrails } from "./server_guardrails.ts";
-import { buildQuotaExceededPayload, TEST_EMAILS } from "../_shared/quota.ts";
+import {
+  buildQuotaExceededPayload,
+  sameUtcDay,
+  sameUtcMonth,
+  TEST_EMAILS,
+} from "../_shared/quota.ts";
 import {
   normalizeRequestMode,
   type ResponseMode,
@@ -4633,7 +4638,7 @@ serve(async (req) => {
     const dailyResetAt = sub.daily_reset_at
       ? new Date(sub.daily_reset_at)
       : new Date(0);
-    if (now.toDateString() !== dailyResetAt.toDateString()) {
+    if (!sameUtcDay(now, dailyResetAt)) {
       await supabase
         .from("subscriptions")
         .update({ daily_messages_used: 0, daily_reset_at: now.toISOString() })
@@ -4646,10 +4651,7 @@ serve(async (req) => {
     const monthlyResetAt = sub.monthly_reset_at
       ? new Date(sub.monthly_reset_at)
       : new Date(0);
-    if (
-      now.getMonth() !== monthlyResetAt.getMonth() ||
-      now.getFullYear() !== monthlyResetAt.getFullYear()
-    ) {
+    if (!sameUtcMonth(now, monthlyResetAt)) {
       await supabase
         .from("subscriptions")
         .update({
@@ -4921,7 +4923,7 @@ serve(async (req) => {
         });
         return jsonResponse({
           error: "Daily limit exceeded",
-          message: "今日額度已用完，明天會自動恢復；也可以升級取得更多額度。",
+          message: "今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。",
           dailyLimit,
           used: sub.daily_messages_used,
           resetAt: "tomorrow",
@@ -5011,7 +5013,7 @@ serve(async (req) => {
           );
           const message = monthlyRemaining < upfrontGateCost
             ? "本月額度不足，升級方案可取得更多開場與分析額度。"
-            : "今日額度不足，明天會自動恢復；也可以升級取得更多額度。";
+            : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。";
           return jsonResponse({
             error: "額度不足",
             message,

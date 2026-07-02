@@ -16,6 +16,22 @@ function base64PayloadWithEstimatedBytes(bytes: number): string {
   return "A".repeat(Math.ceil((bytes * 4) / 3));
 }
 
+Deno.test({
+  name: "quota reset comparisons use UTC helpers, not local time",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // D3：Edge 跑 UTC，本地時間比較會受宿主時區影響
+    assertFalse(source.includes("toDateString()"));
+    assertFalse(source.includes(".getMonth()"));
+    assert(source.includes("sameUtcDay("));
+    assert(source.includes("sameUtcMonth("));
+  },
+});
+
 // 模型選擇函數
 function selectModel(context: {
   conversationLength: number;

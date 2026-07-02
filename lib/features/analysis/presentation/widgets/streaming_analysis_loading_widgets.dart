@@ -233,8 +233,8 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
           : '本月額度不足，升級至 Starter 或 Essential 繼續分析。';
     }
     return hasNumbers
-        ? '今日額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。明天會自動恢復，也可以升級取得更多額度。'
-        : '今日額度不足，明天會自動恢復，也可以升級取得更多額度。';
+        ? '今日額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。每天早上 8 點恢復，也可以升級取得更多額度。'
+        : '今日額度不足，每天早上 8 點恢復，也可以升級取得更多額度。';
   }
 
   @override
