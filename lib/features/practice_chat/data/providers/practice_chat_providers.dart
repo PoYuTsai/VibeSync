@@ -373,8 +373,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 只在完成的 [completedId] 仍是當前 pending id 時才清：過期舊回應完成時
   /// pending 可能已被較新的 hint 覆寫，不得把新 id 連帶清掉（會失去 replay 保護）。
   void _rotateHintRequestId(String completedId) {
-    if (_pendingHintRequestId != completedId) return;
-    _clearPendingHintRequestId();
+    if (_pendingHintRequestId == completedId) {
+      _pendingHintRequestId = null;
+    }
+    // store 是跨 controller 共用的：autoDispose 後舊 controller 的在途請求
+    // 可能晚到，這時 store 裡已是新 controller 的 id——只有 store 現值就是
+    // 完成中的 id 才清，絕不誤刪別人的 replay 保護。
+    final stored = _pendingHintStore.load();
+    if (stored != null && stored.requestId == completedId) {
+      unawaited(_pendingHintStore.clear());
+    }
   }
 
   /// 換場（送出新訊息／續玩／換一位／還原場次）時的無條件清：在途扣費 id

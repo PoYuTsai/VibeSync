@@ -1562,6 +1562,59 @@ void main() {
       expect(api.lastHintRequestId, bId);
     });
 
+    test('舊 controller dispose 後晚到的完成 → 不得清掉新 controller 的 pending id',
+        () async {
+      // autoDispose 情境：舊 controller 的在途 hint A 晚到時，共用 store 裡
+      // 已是新 controller 的 id B——store 只有現值＝A 才可清。
+      final pendingStore = InMemoryPracticePendingHintStore();
+      final c1 = await makeRevealed(pendingHintStore: pendingStore);
+      await c1.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c1.sendMessage('hello');
+
+      final completerA = Completer<PracticeHintResult>();
+      api.hintHandler = (_, {profile}) => completerA.future;
+      final hintFutureA = c1.requestHint();
+      final aId = api.lastHintRequestId;
+
+      // 模擬重建：新 controller 共用 store，聊到下一個 turn 後發起 hint B
+      // （timeout 失敗 → B 的 id 保留在 store 供重試）
+      final c2 = makeControllerFrom(
+        repo.getById(c1.currentState.sessionId)!,
+        pendingHintStore: pendingStore,
+      );
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            aiTurnCount: 2, // 下一個 turn：讓 B 的指紋與 A（aiCount=1）不同
+            temperature: const PracticeTemperature(
+              score: 32,
+              delta: 2,
+              band: 'cold',
+              reason: '升溫',
+            ),
+          );
+      await c2.sendMessage('again');
+      api.hintHandler =
+          (_, {profile}) async => throw TimeoutException('timeout');
+      await c2.requestHint();
+      final bId = api.lastHintRequestId;
+      expect(bId, isNot(aId));
+      expect(pendingStore.load()!.requestId, bId);
+
+      // A 晚到成功：只能清自己的；B 的 replay 保護必須活著
+      completerA.complete(hintResult());
+      await hintFutureA;
+      expect(pendingStore.load()!.requestId, bId);
+    });
+
     test('hint 在途時 canSend=false（雙向互斥）、sendMessage no-op，完成後恢復',
         () async {
       final (c, completer, hintFuture) = await pendingHint();
