@@ -839,6 +839,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           _buildBrandField(
             controller: _nameController,
             hintText: '輸入對方名字（選填）',
+            maxLength: 200,
             isDense: true,
           ),
           const SizedBox(height: 16),
@@ -847,6 +848,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           _buildBrandField(
             controller: _bioController,
             hintText: '貼上對方的自介內容',
+            maxLength: 2000,
             maxLines: 3,
           ),
           const SizedBox(height: 16),
@@ -855,6 +857,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           _buildBrandField(
             controller: _interestsController,
             hintText: '對方的興趣標籤（選填）',
+            maxLength: 2000,
             isDense: true,
           ),
           const SizedBox(height: 16),
@@ -894,15 +897,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   /// 暗紫橘輸入框（取代淺色 GlassmorphicTextField / 自繪多行框）。
+  /// maxLength 用 formatter 靜默截斷（無 counter、不擋操作），鏡像 server
+  /// normalizeOpenerProfileInfo 的權威上限，防超長輸入插值進 prompt。
   Widget _buildBrandField({
     required TextEditingController controller,
     required String hintText,
+    required int maxLength,
     bool isDense = false,
     int maxLines = 1,
   }) {
     return TextField(
       controller: controller,
       maxLines: maxLines,
+      inputFormatters: [LengthLimitingTextInputFormatter(maxLength)],
       cursorColor: AppColors.ctaStart,
       style: AppTypography.bodyMedium.copyWith(color: Colors.white),
       decoration: brandInputDecoration(hintText: hintText).copyWith(
