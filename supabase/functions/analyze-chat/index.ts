@@ -43,6 +43,7 @@ import {
 } from "./opener_payload.ts";
 import {
   chargeOpenerQuota,
+  computeOpenerInputHash,
   isValidOpenerRequestId,
 } from "./opener_charge.ts";
 import { buildQuotaUsageMetadata, deriveRequestType } from "./quota_usage.ts";
@@ -5196,6 +5197,14 @@ serve(async (req) => {
         const openerRequestId = isValidOpenerRequestId(rawRequestId)
           ? rawRequestId
           : null;
+        // Codex P2：requestId 綁 payload hash——同 id 換輸入會被 RPC 擋，
+        // 防改造 client 付一次後無限免費重生成。
+        const openerInputHash = openerRequestId === null
+          ? null
+          : await computeOpenerInputHash({
+            images,
+            profileInfo: rawProfileInfo,
+          });
         const chargeOutcome = await chargeOpenerQuota({
           rpc: async (fn, params) => await supabase.rpc(fn, params),
           userId: user.id,
@@ -5203,6 +5212,7 @@ serve(async (req) => {
           monthlyLimit,
           dailyLimit,
           requestId: openerRequestId,
+          inputHash: openerInputHash,
         });
 
         if (chargeOutcome.kind === "quota_exceeded") {
@@ -5220,6 +5230,18 @@ serve(async (req) => {
             }),
             429,
           );
+        }
+        if (chargeOutcome.kind === "replay_mismatch") {
+          // 同 requestId 換 payload：正常 client 不會走到（requestId 隨輸入
+          // 指紋 rotate），只有改造 client 蹭免費生成會踩，直接擋。
+          logWarn("opener_charge_replay_mismatch", {
+            user: summarizeUser(user.id),
+            requestId: openerRequestId,
+          });
+          return jsonResponse({
+            error: "OPENER_REQUEST_REPLAY_MISMATCH",
+            message: "這次的輸入和先前的重試不一致，請重新生成一次。本次不會扣額度。",
+          }, 400);
         }
         if (chargeOutcome.kind === "failed") {
           logError("opener_credit_deduct_failed", {

@@ -12,6 +12,11 @@
 4. 現有 `increment_usage` 函式與其他呼叫點（analyze-chat full、coach 等）零改動。
 5. dedup hit 不是錯誤：照常回 200 完整結果，只記 telemetry。
 6. free no-charge 路徑（`effectiveOpenerCost === 0`）與 test account 不進 ledger（今天也不扣費）。
+7. **（Codex P2 修訂）**request_id 綁 payload：ledger 存 input_hash（SHA-256 of
+   images＋profileInfo），同 id 重放但 hash 不符 → RAISE
+   `OPENER_REQUEST_REPLAY_MISMATCH` → Edge 400 不扣費。防改造 client 付一次
+   後同 id 換輸入無限免費重生成。連動：client 輸入變更**也 rotate**（原設計
+   「輸入變更不 rotate」作廢——被 7 天免費重生成漏洞否決）。
 
 ## 設計
 
@@ -40,8 +45,9 @@
 - `opening_rescue_screen` 持有 `_pendingRequestId`：
   - 按生成時為 null → 產新 UUID。
   - 成功 parse 出 `OpenerResult` 後才清 null（下次生成是新 id）。
-  - 失敗（任何 throw）保留——重試沿用同 id。
-  - 輸入變更**不** rotate：用戶已付未得的那次，改完輸入重試仍不重扣。
+  - 失敗（任何 throw）保留——同輸入重試沿用同 id。
+  - 輸入變更 rotate（Codex P2 修訂）：`OpenerRequestIdSession` 以輸入指紋
+    判斷，指紋變即鑄新 id，與 server 端 input_hash 綁定一致。
 
 ## 明確不做（YAGNI）
 

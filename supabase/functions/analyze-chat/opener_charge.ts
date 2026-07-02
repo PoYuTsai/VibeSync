@@ -19,11 +19,35 @@ export function isValidOpenerRequestId(value: unknown): value is string {
 export type OpenerChargeOutcome =
   | { kind: "charged"; idempotent: boolean }
   | { kind: "dedup" }
+  | { kind: "replay_mismatch" }
   | {
     kind: "quota_exceeded";
     reason: "monthly_limit_exceeded" | "daily_limit_exceeded";
   }
   | { kind: "failed"; message: string };
+
+/**
+ * Codex P2：requestId 必須綁 payload——ledger 存 input hash，同 id 換輸入
+ * 會被 RPC RAISE 擋下，防改造 client 付一次後無限免費重生成。
+ * 對相同 body 決定性；不同 client 序列化差異只會讓 hash 不同 → 被擋，
+ * 攻擊者玩 key 順序只會害到自己。
+ */
+export async function computeOpenerInputHash(args: {
+  images: unknown;
+  profileInfo: unknown;
+}): Promise<string> {
+  const canonical = JSON.stringify([
+    args.images ?? null,
+    args.profileInfo ?? null,
+  ]);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 export type OpenerChargeRpc = (
   fn: string,
@@ -37,6 +61,7 @@ export async function chargeOpenerQuota(args: {
   monthlyLimit: number;
   dailyLimit: number;
   requestId: string | null;
+  inputHash: string | null;
 }): Promise<OpenerChargeOutcome> {
   const useIdempotent = args.requestId !== null;
 
@@ -47,6 +72,7 @@ export async function chargeOpenerQuota(args: {
       p_monthly_limit: args.monthlyLimit,
       p_daily_limit: args.dailyLimit,
       p_request_id: args.requestId,
+      p_input_hash: args.inputHash,
     })
     : await args.rpc("increment_usage", {
       p_user_id: args.userId,
@@ -58,6 +84,9 @@ export async function chargeOpenerQuota(args: {
   if (error) {
     const reason = classifyQuotaRpcError(error.message);
     if (reason) return { kind: "quota_exceeded", reason };
+    if (error.message?.includes("OPENER_REQUEST_REPLAY_MISMATCH")) {
+      return { kind: "replay_mismatch" };
+    }
     return {
       kind: "failed",
       message: error.message || "opener charge rpc failed without message",

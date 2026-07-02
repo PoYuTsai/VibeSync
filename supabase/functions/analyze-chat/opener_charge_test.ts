@@ -12,6 +12,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   chargeOpenerQuota,
+  computeOpenerInputHash,
   isValidOpenerRequestId,
   type OpenerChargeRpc,
 } from "./opener_charge.ts";
@@ -77,6 +78,7 @@ Deno.test("valid requestId routes to increment_usage_idempotent with exact param
     ...BASE,
     rpc: makeRpc({ data: true, error: null }, calls),
     requestId: REQUEST_ID,
+    inputHash: "hash-1",
   });
 
   assertEquals(outcome, { kind: "charged", idempotent: true });
@@ -88,8 +90,44 @@ Deno.test("valid requestId routes to increment_usage_idempotent with exact param
       p_monthly_limit: 100,
       p_daily_limit: 10,
       p_request_id: REQUEST_ID,
+      p_input_hash: "hash-1",
     },
   }]);
+});
+
+Deno.test("replay with mismatched payload maps to replay_mismatch (Codex P2)", async () => {
+  const outcome = await chargeOpenerQuota({
+    ...BASE,
+    rpc: makeRpc({
+      data: null,
+      error: { message: "P0001: OPENER_REQUEST_REPLAY_MISMATCH" },
+    }, []),
+    requestId: REQUEST_ID,
+    inputHash: "hash-2",
+  });
+
+  assertEquals(outcome, { kind: "replay_mismatch" });
+});
+
+Deno.test("computeOpenerInputHash is deterministic and payload-sensitive", async () => {
+  const images = [{ data: "abc", mediaType: "image/jpeg", order: 1 }];
+  const profileInfo = { name: "Candy", bio: "喜歡旅行" };
+
+  const h1 = await computeOpenerInputHash({ images, profileInfo });
+  const h2 = await computeOpenerInputHash({ images, profileInfo });
+  const hDifferentProfile = await computeOpenerInputHash({
+    images,
+    profileInfo: { name: "Candy", bio: "喜歡爬山" },
+  });
+  const hNoInputs = await computeOpenerInputHash({
+    images: undefined,
+    profileInfo: undefined,
+  });
+
+  assertEquals(h1, h2);
+  assert(/^[0-9a-f]{64}$/.test(h1), "sha-256 hex");
+  assert(h1 !== hDifferentProfile, "different payload → different hash");
+  assert(/^[0-9a-f]{64}$/.test(hNoInputs));
 });
 
 Deno.test("rpc returning false means already charged → dedup (not an error)", async () => {
@@ -98,6 +136,7 @@ Deno.test("rpc returning false means already charged → dedup (not an error)", 
     ...BASE,
     rpc: makeRpc({ data: false, error: null }, calls),
     requestId: REQUEST_ID,
+    inputHash: "hash-1",
   });
 
   assertEquals(outcome, { kind: "dedup" });
@@ -109,6 +148,7 @@ Deno.test("missing requestId falls back to legacy increment_usage (byte-for-byte
     ...BASE,
     rpc: makeRpc({ data: null, error: null }, calls),
     requestId: null,
+    inputHash: null,
   });
 
   assertEquals(outcome, { kind: "charged", idempotent: false });
@@ -131,6 +171,7 @@ Deno.test("quota RAISE maps to quota_exceeded on idempotent path", async () => {
       error: { message: "P0001: QUOTA_EXCEEDED_MONTHLY" },
     }, []),
     requestId: REQUEST_ID,
+    inputHash: "hash-1",
   });
 
   assertEquals(outcome, {
@@ -147,6 +188,7 @@ Deno.test("quota RAISE maps to quota_exceeded on legacy path", async () => {
       error: { message: "P0001: QUOTA_EXCEEDED_DAILY" },
     }, []),
     requestId: null,
+    inputHash: null,
   });
 
   assertEquals(outcome, {
@@ -163,6 +205,7 @@ Deno.test("non-quota rpc error maps to failed with message", async () => {
       error: { message: "connection reset" },
     }, []),
     requestId: REQUEST_ID,
+    inputHash: "hash-1",
   });
 
   assertEquals(outcome, { kind: "failed", message: "connection reset" });
@@ -173,6 +216,7 @@ Deno.test("rpc error without message still maps to failed (non-empty message)", 
     ...BASE,
     rpc: makeRpc({ data: null, error: {} }, []),
     requestId: REQUEST_ID,
+    inputHash: "hash-1",
   });
 
   assertEquals(outcome.kind, "failed");
