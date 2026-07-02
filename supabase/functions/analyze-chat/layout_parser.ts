@@ -11,6 +11,12 @@ export interface LayoutFirstMessage {
    * Geometry-decisive messages are locked: the layout parser never flips them.
    */
   geometryDecisive?: boolean;
+  /**
+   * True when `side` was locked by an interface-rule meta anchor
+   * (readReceipt=true: 已讀 only renders beside our own bubbles).
+   * Same invariant as geometryDecisive: the layout parser never flips them.
+   */
+  metaDecisive?: boolean;
 }
 
 export interface LayoutFirstParseResult<TMessage extends LayoutFirstMessage> {
@@ -256,8 +262,8 @@ function applyRunSide<TMessage extends LayoutFirstMessage>(
     if (!message) {
       continue; // Skip undefined elements
     }
-    if (message.geometryDecisive === true) {
-      continue; // Geometry-locked: an unambiguous spatial side never flips.
+    if (message.geometryDecisive === true || message.metaDecisive === true) {
+      continue; // Geometry/meta-locked: a decisive side never flips.
     }
     if (
       message.side !== side ||

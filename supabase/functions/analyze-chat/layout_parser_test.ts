@@ -9,6 +9,7 @@ function buildMessage(
   options?: {
     quotedReplyPreview?: string;
     geometryDecisive?: boolean;
+    metaDecisive?: boolean;
   },
 ): LayoutFirstMessage {
   return {
@@ -17,6 +18,7 @@ function buildMessage(
     content,
     quotedReplyPreview: options?.quotedReplyPreview,
     geometryDecisive: options?.geometryDecisive,
+    metaDecisive: options?.metaDecisive,
   };
 }
 
@@ -95,6 +97,22 @@ Deno.test("never flips a geometry-decisive run against neighbors and dominant si
     throw new Error(
       "Expected the second geometry-decisive bubble to stay right",
     );
+  }
+});
+
+Deno.test("never flips a meta-decisive bubble against neighbors and dominant side", () => {
+  // 已讀鎖 invariant：readReceipt=true 的單顆 right 短句被 dominant=left＋
+  // 兩側 left 鄰居包夾，也不得翻——與 geometryDecisive 同款鎖。
+  const result = applyLayoutFirstParser([
+    buildMessage("left", "在嗎"),
+    buildMessage("left", "今天好嗎"),
+    buildMessage("right", "好", { metaDecisive: true }),
+    buildMessage("left", "我也不錯"),
+    buildMessage("left", "在幹嘛"),
+  ]);
+
+  if (result.messages[2].side !== "right" || !result.messages[2].isFromMe) {
+    throw new Error("Expected the meta-decisive bubble to stay right");
   }
 });
 
