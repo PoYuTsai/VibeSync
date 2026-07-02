@@ -1601,7 +1601,10 @@ Deno.test("done merge conforms client-casted fields inside psychology and gameSt
   assertEquals("suggestion" in shitTest, false);
   const gameStage = finalResult.gameStage as Record<string, unknown>;
   assertEquals(gameStage.current, "premise");
-  assertEquals("nextStep" in gameStage, false);
+  // 2026-07-02 gameStage 改 merge 語意（decision 的 nextStep 不得被 done 蓋掉）
+  // 後，錯型 nextStep: 5 一樣被 conform 丟棄，但 assembler 種子 "" 會留著
+  // ——client `as String? ?? ''` 等價，重點仍是數字 5 不得存活。
+  assertEquals(gameStage.nextStep, "");
 });
 
 Deno.test("done merge conforms healthCheck bool and num fields", async () => {
@@ -2411,4 +2414,136 @@ Deno.test("fail-soft: selected style segment sourced from 略 ball is NOT blocke
     (e) => e.type === "analysis.reply_option" &&
       (e as Record<string, unknown>).style === "coldRead",
   ));
+});
+
+Deno.test("metrics gameStage record flows into finalResult and keeps decision nextStep", async () => {
+  // 2026-07-02 dogfood：stream 協議 v2 後沒有任何 required 事件承載 gameStage，
+  // assembler 種子預設 opening 永遠外流 → UI 對話進度永遠卡在破冰。修法＝
+  // analysis.metrics 加掛 gameStage，reframer 吸收並保留 decision 填的 nextStep。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "resonate",
+    nextStepBody: "Confirm the dinner plan she floated.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "Bring me the curry one.",
+    reason: "She is pushing to meet.",
+    quotedContext: "want me to bring dinner?",
+  }));
+  reframer.pushText(line({
+    type: "analysis.metrics",
+    heat: 90,
+    gameStage: { current: "close", status: "canAdvance" },
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {},
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(gameStage.current, "close");
+  assertEquals(gameStage.status, "canAdvance");
+  assertEquals(gameStage.nextStep, "Confirm the dinner plan she floated.");
+});
+
+Deno.test("gameStage synonyms and casing normalize to client enum values", async () => {
+  // client GameStage.fromString / GameStageStatus.fromString 是大小寫敏感精確比對，
+  // 不認得就靜默 fallback opening/normal——server 必須把中文標籤與大寫變體
+  // 正規化成 client enum 名，否則模型輸出白給。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "So which stall are we hitting first?",
+    reason: "Ride her momentum.",
+    quotedContext: "night market later",
+  }));
+  reframer.pushText(line({
+    type: "analysis.metrics",
+    heat: 76,
+    gameStage: { current: "升溫階段", status: "正常進行" },
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      gameStage: { current: "Qualification (評估)", status: "可以推進" },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(gameStage.current, "qualification");
+  assertEquals(gameStage.status, "canAdvance");
+});
+
+Deno.test("unmappable gameStage values keep assembler defaults instead of clobbering", async () => {
+  // 值域守門：模型寫出無法映射的 stage 值時，保留 assembler 既有值
+  //（client 端 fallback 也是 opening/normal，寧可 server 端就守住，
+  //  不讓垃圾字串流出去）。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "humor",
+    message: "My biggest workout today was the fridge run.",
+    reason: "Self-deprecation keeps it light.",
+    quotedContext: "watched the race all day",
+  }));
+  reframer.pushText(line({
+    type: "analysis.metrics",
+    heat: 55,
+    gameStage: { current: "vibing hard", status: 42 },
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: { gameStage: "感覺不錯" },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(typeof finalResult.gameStage, "object");
+  assertEquals(gameStage.current, "opening");
+  assertEquals(gameStage.status, "normal");
 });

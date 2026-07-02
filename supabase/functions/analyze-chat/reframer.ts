@@ -824,6 +824,15 @@ function createLegacyAnalysisAssembler() {
 
     const topicDepth = recordField(event.topicDepth);
     if (topicDepth) result.topicDepth = topicDepth;
+
+    // 2026-07-02 dogfood：stream 協議 v2 後沒有 required 事件承載 gameStage，
+    // assembler 種子 opening 永遠外流 → UI 對話進度永遠卡破冰。stage 掛在
+    // metrics（required、模型穩定會發），與 done merge 走同一條值域守門。
+    const gameStage = recordField(event.gameStage);
+    if (gameStage) {
+      const coerced = coerceClientShapeValue(result, "gameStage", gameStage);
+      if (coerced !== undefined) result.gameStage = coerced;
+    }
   }
 
   function absorbReportSection(event: Record<string, unknown>) {
@@ -897,6 +906,86 @@ export const STRING_ONLY_FINAL_RESULT_KEYS = new Set([
   "reminder",
 ]);
 
+// client GameStage.fromString / GameStageStatus.fromString（game_stage.dart）
+// 是大小寫敏感的 enum 名精確比對，match 不到就「靜默」fallback opening/normal
+// ——垃圾值不會 throw，只會讓 UI 永遠顯示破冰。所以 server 端必須把模型的
+// 中文標籤、大寫變體正規化成 client enum 名；映射不到就丟棄保留既有值。
+const GAME_STAGE_CURRENT_SYNONYMS: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ["opening", ["opening", "破冰", "打開"]],
+  ["premise", ["premise", "升溫", "前提", "曖昧"]],
+  ["qualification", ["qualification", "評估", "深入", "篩選"]],
+  ["narrative", ["narrative", "敘事", "連結", "說故事"]],
+  ["close", ["close", "收尾", "邀約"]],
+];
+
+const GAME_STAGE_STATUS_SYNONYMS: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ["normal", ["normal", "正常進行", "正常", "進展順利"]],
+  ["stuckFriend", ["stuckfriend", "stuck_friend", "偏向朋友", "朋友感"]],
+  [
+    "canAdvance",
+    ["canadvance", "can_advance", "可以推進", "時機成熟", "可以更進一步"],
+  ],
+  ["shouldRetreat", ["shouldretreat", "should_retreat", "放慢", "退回"]],
+];
+
+function normalizeFromSynonyms(
+  value: unknown,
+  table: ReadonlyArray<readonly [string, readonly string[]]>,
+): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim().toLowerCase();
+  if (!text) return null;
+  for (const [canonical, keys] of table) {
+    if (keys.includes(text)) return canonical;
+  }
+  // 複合寫法（"Qualification (評估)"、"升溫階段"）走包含比對，表序決定優先。
+  for (const [canonical, keys] of table) {
+    if (keys.some((key) => text.includes(key))) return canonical;
+  }
+  return null;
+}
+
+function normalizeGameStageCurrent(value: unknown): string | null {
+  return normalizeFromSynonyms(value, GAME_STAGE_CURRENT_SYNONYMS);
+}
+
+function normalizeGameStageStatus(value: unknown): string | null {
+  return normalizeFromSynonyms(value, GAME_STAGE_STATUS_SYNONYMS);
+}
+
+function coerceGameStageValue(
+  result: Record<string, unknown>,
+  value: unknown,
+): Record<string, unknown> | undefined {
+  const existing = isRecord(result.gameStage)
+    ? result.gameStage as Record<string, unknown>
+    : {};
+  if (isRecord(value)) {
+    const conformed = normalizeRecordForClient("gameStage", value);
+    // merge 而非整顆替換：decision 事件先填的 nextStep 不能被 compact
+    // finalResult 的 gameStage 蓋掉。
+    const merged: Record<string, unknown> = { ...existing, ...conformed };
+    const current = normalizeGameStageCurrent(conformed.current);
+    if (current) merged.current = current;
+    else if ("current" in existing) merged.current = existing.current;
+    else delete merged.current;
+    const status = normalizeGameStageStatus(conformed.status);
+    if (status) merged.status = status;
+    else if ("status" in existing) merged.status = existing.status;
+    else delete merged.status;
+    return merged;
+  }
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return undefined;
+  const current = normalizeGameStageCurrent(text);
+  if (!current) return undefined;
+  return { ...existing, current };
+}
+
 function coerceClientShapeValue(
   result: Record<string, unknown>,
   key: string,
@@ -908,6 +997,7 @@ function coerceClientShapeValue(
   if (STRING_ONLY_FINAL_RESULT_KEYS.has(key)) {
     return typeof value === "string" ? value : undefined;
   }
+  if (key === "gameStage") return coerceGameStageValue(result, value);
   if (!RECORD_ONLY_FINAL_RESULT_KEYS.has(key)) return value;
   if (isRecord(value)) return normalizeRecordForClient(key, value);
 
@@ -916,7 +1006,6 @@ function coerceClientShapeValue(
     : {};
   const text = typeof value === "string" ? value.trim() : "";
 
-  if (key === "gameStage" && text) return { ...existing, current: text };
   if (key === "psychology" && text) return { ...existing, subtext: text };
   if (key === "topicDepth" && text) return { ...existing, current: text };
   if (key === "enthusiasm") {

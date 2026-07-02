@@ -52,7 +52,9 @@ Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   assert(prompt.includes("Traditional Chinese"));
   // v2 few-shot、硬版 compliance floor (b)＋callback (c)＋黑箱後選中風格強化 (b2)
   // 後再放寬，仍鎖上限防 contract 無限膨脹。
-  assert(prompt.length < 5600);
+  // 2026-07-02 metrics 掛 gameStage（enum 值域必須全列，UI 對話進度卡破冰案）
+  // 再放寬一檔。
+  assert(prompt.length < 5800);
 });
 
 Deno.test("stream prompt trims the base prompt before appending contract", () => {
@@ -220,4 +222,30 @@ Deno.test("compliance(b2): prompt forbids writing the selected/lead style more t
   // 卻到 3 段 → 閘每跑退回選中風格。專打這個系統性偏差。
   assert(prompt.includes("never write it more tersely than your other styles"));
   assert(prompt.includes("one sharp segment per ball"));
+});
+
+Deno.test("metrics step requires gameStage with client enum values and context rule", () => {
+  // 2026-07-02：stream 協議 v2 沒有事件承載 gameStage → UI 永遠破冰。
+  // metrics 是 required 事件，stage 掛在這裡最可靠；值域必須點名 client enum。
+  const prompt = buildStreamSystemPrompt("BASE");
+
+  assert(prompt.includes("`analysis.metrics`"));
+  assert(prompt.includes("gameStage"));
+  for (
+    const stage of [
+      "opening",
+      "premise",
+      "qualification",
+      "narrative",
+      "close",
+    ]
+  ) {
+    assert(prompt.includes(stage), `missing stage value ${stage}`);
+  }
+  for (
+    const status of ["normal", "stuckFriend", "canAdvance", "shouldRetreat"]
+  ) {
+    assert(prompt.includes(status), `missing status value ${status}`);
+  }
+  assert(prompt.includes("認識場景"));
 });
