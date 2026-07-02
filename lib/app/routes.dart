@@ -11,6 +11,7 @@ import 'main_shell.dart';
 import '../features/learning/presentation/screens/article_detail_screen.dart';
 import '../features/opener/presentation/screens/opening_rescue_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_chat_screen.dart';
+import '../features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import '../features/onboarding/data/onboarding_service.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
@@ -167,6 +168,10 @@ final router = GoRouter(
     GoRoute(
       path: '/practice-chat',
       builder: (context, state) => const PracticeChatScreen(),
+    ),
+    GoRoute(
+      path: '/practice-collection',
+      builder: (context, state) => const PracticeCollectionScreen(),
     ),
     // literal '/profile/about-me' MUST come before '/profile/:id' so
     // 'about-me' isn't matched as a conversationId by the parametric route.

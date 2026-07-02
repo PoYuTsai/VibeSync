@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -5,11 +7,13 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../domain/entities/practice_draw_draft.dart';
+import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_hint.dart';
 import '../../domain/entities/practice_learning_mode.dart';
 import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
+import '../repositories/practice_collection_store.dart';
 import '../repositories/practice_draw_draft_store.dart';
 import '../repositories/practice_session_repository.dart';
 import '../services/practice_chat_api_service.dart';
@@ -284,6 +288,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     PracticeDrawDraftStore? draftStore,
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
+    void Function(String profileId)? onProfileUnlocked,
     PracticeSession? initialSession,
     String? sessionId,
     DateTime? createdAt,
@@ -293,6 +298,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           repository: repository,
           draftStore: draftStore ?? InMemoryPracticeDrawDraftStore(),
           onUsageSynced: onUsageSynced,
+          onProfileUnlocked: onProfileUnlocked,
           initialSession: initialSession,
           sessionId: sessionId,
           createdAt: createdAt,
@@ -306,6 +312,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required void Function(
             {required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
+    required void Function(String profileId)? onProfileUnlocked,
     required PracticeSession? initialSession,
     required String? sessionId,
     required DateTime? createdAt,
@@ -314,12 +321,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _repo = repository,
         _draftStore = draftStore,
         _onUsageSynced = onUsageSynced,
+        _onProfileUnlocked = onProfileUnlocked,
         super(_initialState(
           initialSession: initialSession,
           draft: _validDraft(draftStore, now),
           sessionId: sessionId,
           createdAt: createdAt ?? now,
-        ));
+        )) {
+    // 圖鑑種子：進場還原到的當前對象（session 或 draft）視同已解鎖。
+    _notifyProfileUnlocked(state.girl?.profileId);
+  }
 
   final PracticeChatApiService _api;
   final PracticeSessionRepository _repo;
@@ -327,6 +338,22 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   final void Function(
       {required int monthlyRemaining,
       required int dailyRemaining})? _onUsageSynced;
+  final void Function(String profileId)? _onProfileUnlocked;
+
+  /// 圖鑑解鎖記錄：純附加 side-channel。用 microtask 延後（provider 建構期
+  /// 不得同步改其他 provider 的 state），callback 例外一律吞掉——圖鑑記錄
+  /// 失敗絕不影響練習主流程。
+  void _notifyProfileUnlocked(String? profileId) {
+    final callback = _onProfileUnlocked;
+    if (callback == null || profileId == null || profileId.isEmpty) return;
+    scheduleMicrotask(() {
+      try {
+        callback(profileId);
+      } catch (_) {
+        // 圖鑑記錄失敗不阻斷練習。
+      }
+    });
+  }
 
   /// hint 扣費 idempotency（比照 opener requestId 生命週期）：發起時若為 null
   /// 才鑄新 id；失敗（timeout/5xx/網路）沿用同 id 供重試，成功或 4xx 明確拒絕
@@ -491,6 +518,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   void resumeSession(PracticeSession session) {
     _hintGeneration++; // 換場：在途 hint 全部作廢
     state = _stateFromSession(session);
+    _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
   }
 
   /// 每日翻牌：呼叫 server 抽一位新對象並原子扣費。換一位（已 revealed 再抽）會帶上
@@ -554,6 +582,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         drawNextResetAt: result.draw.nextResetAt,
       );
       await _saveDraftFromState(result.draw.nextResetAt);
+      _notifyProfileUnlocked(girl.profileId); // 圖鑑：抽到即解鎖
       // 付費額外翻牌會扣一般 quota → 同步訂閱剩餘額度。
       if (result.draw.costMessages > 0) {
         _onUsageSynced?.call(
@@ -1119,6 +1148,39 @@ final practiceDrawDraftStoreProvider = Provider<PracticeDrawDraftStore>((ref) {
   return HivePracticeDrawDraftStore(StorageService.settingsBox);
 });
 
+/// 角色圖鑑解鎖記錄本地存取（JSON list 存進加密 settings box）。
+final practiceCollectionStoreProvider =
+    Provider<PracticeCollectionStore>((ref) {
+  return HivePracticeCollectionStore(StorageService.settingsBox);
+});
+
+/// 已解鎖 profileId 集合（角色圖鑑）。app 存活期間常駐；翻牌成功／還原
+/// 舊場即時 +1，收藏頁與 learning 入口 chip 都 watch 它。
+class PracticeCollectionNotifier extends StateNotifier<Set<String>> {
+  PracticeCollectionNotifier(this._store) : super(_store.load());
+
+  final PracticeCollectionStore _store;
+
+  Future<void> add(String profileId) async {
+    if (profileId.isEmpty || state.contains(profileId)) return;
+    state = {...state, profileId};
+    await _store.add(profileId);
+  }
+}
+
+final practiceCollectionProvider =
+    StateNotifierProvider<PracticeCollectionNotifier, Set<String>>((ref) {
+  return PracticeCollectionNotifier(ref.read(practiceCollectionStoreProvider));
+});
+
+/// 已解鎖數（只數 catalog 內成員，避免髒資料把 N 撐超過 60）。
+final unlockedPracticeGirlCountProvider = Provider<int>((ref) {
+  final unlocked = ref.watch(practiceCollectionProvider);
+  return practiceGirlProfiles
+      .where((p) => unlocked.contains(p.profileId))
+      .length;
+});
+
 /// autoDispose：離開畫面即重置，下次進來是全新一場練習。
 final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     PracticeChatController, PracticeChatState>((ref) {
@@ -1133,6 +1195,9 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
             monthlyRemaining: monthlyRemaining,
             dailyRemaining: dailyRemaining,
           );
+    },
+    onProfileUnlocked: (profileId) {
+      ref.read(practiceCollectionProvider.notifier).add(profileId);
     },
   );
 });

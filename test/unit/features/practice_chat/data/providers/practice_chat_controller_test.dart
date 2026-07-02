@@ -1489,6 +1489,100 @@ void main() {
       }
     });
   });
+
+  // ── 圖鑑解鎖記錄（onProfileUnlocked side-channel）────────────────────────
+  group('圖鑑解鎖記錄 onProfileUnlocked', () {
+    PracticeChatController makeCollector(
+      List<String> sink, {
+      PracticeSession? initialSession,
+      void Function(String)? onProfileUnlocked,
+    }) {
+      final c = PracticeChatController(
+        api: api,
+        repository: repo,
+        draftStore: draftStore,
+        onProfileUnlocked: onProfileUnlocked ?? sink.add,
+        initialSession: initialSession,
+        sessionId: initialSession == null ? 'sess-1' : null,
+        createdAt:
+            initialSession == null ? DateTime(2026, 6, 26, 13, 0) : null,
+      );
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    PracticeSession openSession(String profileId) => PracticeSession(
+          id: 'open-1',
+          createdAt: DateTime(2026, 6, 26, 12),
+          aiReplyCount: 1,
+          messages: const [
+            PracticeMessage(role: 'user', text: '嗨'),
+            PracticeMessage(role: 'ai', text: '嗯？'),
+          ],
+          profileId: profileId,
+        );
+
+    test('locked 進場（無 session／draft）→ 不觸發', () async {
+      final unlocked = <String>[];
+      makeCollector(unlocked);
+      await pumpEventQueue();
+      expect(unlocked, isEmpty);
+    });
+
+    test('翻牌成功 → 記錄抽到的 profileId', () async {
+      final unlocked = <String>[];
+      final c = makeCollector(unlocked);
+      await c.drawNewPracticeGirl();
+      await pumpEventQueue();
+      expect(unlocked, ['practice_girl_010']);
+    });
+
+    test('翻牌失敗 → 不記錄', () async {
+      api.drawHandler = ({currentProfileId}) async => throw Exception('boom');
+      final unlocked = <String>[];
+      final c = makeCollector(unlocked);
+      await c.drawNewPracticeGirl();
+      await pumpEventQueue();
+      expect(unlocked, isEmpty);
+    });
+
+    test('initialSession 還原 → 種子記錄該場 profileId', () async {
+      final unlocked = <String>[];
+      makeCollector(unlocked, initialSession: openSession('practice_girl_009'));
+      await pumpEventQueue();
+      expect(unlocked, ['practice_girl_009']);
+    });
+
+    test('有效 draft 還原 → 種子記錄 draft 的 profileId', () async {
+      await draftStore.save(draftFor('practice_girl_005'));
+      final unlocked = <String>[];
+      makeCollector(unlocked);
+      await pumpEventQueue();
+      expect(unlocked, ['practice_girl_005']);
+    });
+
+    test('resumeSession → 記錄該場 profileId', () async {
+      final unlocked = <String>[];
+      final c = makeCollector(unlocked);
+      await pumpEventQueue();
+      expect(unlocked, isEmpty);
+
+      c.resumeSession(openSession('practice_girl_009'));
+      await pumpEventQueue();
+      expect(unlocked, ['practice_girl_009']);
+    });
+
+    test('callback 丟例外 → 翻牌主流程不受影響', () async {
+      final c = makeCollector(
+        <String>[],
+        onProfileUnlocked: (_) => throw StateError('collection boom'),
+      );
+      await c.drawNewPracticeGirl();
+      await pumpEventQueue();
+      expect(c.currentState.drawStatus, PracticeDrawStatus.revealed);
+      expect(c.currentState.girl!.profileId, 'practice_girl_010');
+    });
+  });
 }
 
 /// 測試用翻牌回應：從 catalog 取真實對象身份，draw/usage 用參數覆寫。
