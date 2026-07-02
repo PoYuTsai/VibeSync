@@ -154,21 +154,24 @@ class CoachChatApiService {
       if (partnerId != null) 'partnerId': partnerId,
       if (sessionId != null && sessionId.trim().isNotEmpty)
         'sessionId': sessionId.trim(),
-      'userQuestion': question.trim(),
+      'userQuestion': _clampForWire(question.trim(), 240),
       if (rawReplyDraft != null && rawReplyDraft.trim().isNotEmpty)
-        'rawReplyDraft': rawReplyDraft.trim(),
+        'rawReplyDraft': _clampForWire(rawReplyDraft.trim(), 240),
       if (activeSessionTurns.isNotEmpty)
         'activeSessionTurns':
             activeSessionTurns.map(_sessionTurnToWire).toList(),
       if (forceAnswer) 'forceAnswer': true,
       'recentMessages': recentMessages.map(_messageToWire).toList(),
       if (conversationSummary != null && conversationSummary.trim().isNotEmpty)
-        'conversationSummary': conversationSummary.trim(),
+        'conversationSummary': _clampForWire(conversationSummary.trim(), 500),
       if (analysisSnapshot != null)
         'analysisSnapshot': _analysisSnapshotToWire(analysisSnapshot),
       if (effectiveStyleContext != null &&
           effectiveStyleContext.trim().isNotEmpty)
-        'effectiveStyleContext': effectiveStyleContext.trim(),
+        'effectiveStyleContext': _clampForWire(
+          effectiveStyleContext.trim(),
+          500,
+        ),
       if (partnerHint != null)
         'partnerHint': _partnerHintToWire(
           partnerHint,
@@ -216,10 +219,17 @@ class CoachChatApiService {
     return null;
   }
 
+  // server RequestSchema 是 strict＋硬長度上限，任一欄位超標整包 400；
+  // 送出前一律照 schema clamp（截斷補省略號，總長不超過上限）。
+  static String _clampForWire(String value, int maxLength) {
+    if (value.length <= maxLength) return value;
+    return '${value.substring(0, maxLength - 1).trimRight()}…';
+  }
+
   Map<String, dynamic> _messageToWire(CoachChatMessage message) {
     return <String, dynamic>{
       'sender': message.isFromMe ? 'me' : 'partner',
-      'text': message.text.trim(),
+      'text': _clampForWire(message.text.trim(), 500),
       if (message.createdAt != null)
         'createdAt': message.createdAt!.toIso8601String(),
     };
@@ -229,7 +239,7 @@ class CoachChatApiService {
     return <String, dynamic>{
       'role': turn.role,
       'kind': turn.kind,
-      'content': turn.content.trim(),
+      'content': _clampForWire(turn.content.trim(), 500),
       if (turn.createdAt != null)
         'createdAt': turn.createdAt!.toIso8601String(),
     };
@@ -239,20 +249,22 @@ class CoachChatApiService {
     CoachChatAnalysisSnapshot snapshot,
   ) {
     return <String, dynamic>{
-      if (snapshot.heatScore != null) 'heatScore': snapshot.heatScore,
+      if (snapshot.heatScore != null)
+        'heatScore': snapshot.heatScore!.clamp(0, 100),
       if (snapshot.stage != null && snapshot.stage!.trim().isNotEmpty)
-        'stage': snapshot.stage!.trim(),
+        'stage': _clampForWire(snapshot.stage!.trim(), 40),
       if (snapshot.summary != null && snapshot.summary!.trim().isNotEmpty)
-        'summary': snapshot.summary!.trim(),
+        'summary': _clampForWire(snapshot.summary!.trim(), 220),
       if (snapshot.nextStep != null && snapshot.nextStep!.trim().isNotEmpty)
-        'nextStep': snapshot.nextStep!.trim(),
+        'nextStep': _clampForWire(snapshot.nextStep!.trim(), 220),
       if (snapshot.coachActionType != null &&
           snapshot.coachActionType!.trim().isNotEmpty)
-        'coachActionType': snapshot.coachActionType!.trim(),
+        'coachActionType': _clampForWire(snapshot.coachActionType!.trim(), 80),
       if (snapshot.keySignals.isNotEmpty)
         'keySignals': snapshot.keySignals
             .map((signal) => signal.trim())
             .where((signal) => signal.isNotEmpty)
+            .map((signal) => _clampForWire(signal, 80))
             .take(8)
             .toList(),
     };
@@ -264,11 +276,12 @@ class CoachChatApiService {
   }) {
     return <String, dynamic>{
       if (hint.name != null && hint.name!.trim().isNotEmpty)
-        'name': hint.name!.trim(),
+        'name': _clampForWire(hint.name!.trim(), 80),
       if (!dataQualityFlagged && hint.traits.isNotEmpty)
         'traits': hint.traits
             .map((trait) => trait.trim())
             .where((trait) => trait.isNotEmpty)
+            .map((trait) => _clampForWire(trait, 40))
             .take(5)
             .toList(),
     };

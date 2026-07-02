@@ -191,6 +191,80 @@ void main() {
       expect(calls.single.body.containsKey('effectiveStyleContext'), isFalse);
       expect(calls.single.body.containsKey('partnerHint'), isFalse);
     });
+
+    test('clamps over-length wire fields to server schema limits', () async {
+      // server RequestSchema 是 strict＋硬上限：任一欄位超標整包 400，
+      // 而長訊息/長分析快照會留在本機 → 同一對話每次問都失敗。
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        sessionId: 's-1',
+        question: '問${'很' * 300}？',
+        rawReplyDraft: '草稿${'長' * 300}',
+        activeSessionTurns: [
+          CoachChatSessionTurn(
+            role: 'user',
+            kind: 'question',
+            content: '回合${'內' * 600}',
+          ),
+        ],
+        recentMessages: [
+          CoachChatMessage(isFromMe: true, text: '訊息${'字' * 600}'),
+        ],
+        conversationSummary: '摘要${'多' * 600}',
+        analysisSnapshot: CoachChatAnalysisSnapshot(
+          heatScore: 150,
+          stage: '階段${'名' * 60}',
+          summary: '分析${'長' * 300}',
+          nextStep: '下一步${'走' * 300}',
+          coachActionType: '動作${'型' * 100}',
+          keySignals: ['訊號${'一' * 100}'],
+        ),
+        effectiveStyleContext: '風格${'述' * 600}',
+        partnerHint: CoachChatPartnerHint(
+          name: '名字${'長' * 100}',
+          traits: ['特質${'多' * 60}'],
+        ),
+        dataQualityFlagged: false,
+      );
+
+      final body = calls.single.body;
+      expect((body['userQuestion'] as String).length, lessThanOrEqualTo(240));
+      expect((body['rawReplyDraft'] as String).length, lessThanOrEqualTo(240));
+      expect(
+        (body['conversationSummary'] as String).length,
+        lessThanOrEqualTo(500),
+      );
+      expect(
+        (body['effectiveStyleContext'] as String).length,
+        lessThanOrEqualTo(500),
+      );
+      final turn =
+          (body['activeSessionTurns'] as List).single as Map<String, dynamic>;
+      expect((turn['content'] as String).length, lessThanOrEqualTo(500));
+      final message =
+          (body['recentMessages'] as List).single as Map<String, dynamic>;
+      expect((message['text'] as String).length, lessThanOrEqualTo(500));
+      final snapshot = body['analysisSnapshot'] as Map<String, dynamic>;
+      expect(snapshot['heatScore'], 100);
+      expect((snapshot['stage'] as String).length, lessThanOrEqualTo(40));
+      expect((snapshot['summary'] as String).length, lessThanOrEqualTo(220));
+      expect((snapshot['nextStep'] as String).length, lessThanOrEqualTo(220));
+      expect(
+        (snapshot['coachActionType'] as String).length,
+        lessThanOrEqualTo(80),
+      );
+      final signal = (snapshot['keySignals'] as List).single as String;
+      expect(signal.length, lessThanOrEqualTo(80));
+      final hint = body['partnerHint'] as Map<String, dynamic>;
+      expect((hint['name'] as String).length, lessThanOrEqualTo(80));
+      final trait = (hint['traits'] as List).single as String;
+      expect(trait.length, lessThanOrEqualTo(40));
+    });
   });
 
   group('CoachChatApiService response contract', () {
