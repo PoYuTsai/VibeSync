@@ -134,15 +134,44 @@ Deno.test("stream fallback telemetry keeps enough gate context", async () => {
   assert(source.includes("allowed: streamAllowed"));
 });
 
-Deno.test("legacy fallback charge point skips stream retry (no double charge)", async () => {
+Deno.test("legacy fallback validates stream retry before waiving billing", async () => {
   const source = await readIndexSource();
 
-  // stream retry 的推薦已在 analysis_stream_runs 扣過費；stream gate 不放行
-  // 而 fallback 到 legacy 時，legacy 扣費點必須跳過，否則同一次分析扣兩次。
+  // Codex P1：isStreamRetryMode 只是 responseMode+analysisRunId，client 可控。
+  // 豁免 legacy 扣費前必須驗證 run 存在、屬於本人、綁同一份對話 hash 且
+  // 已扣費（charged_at）；查無此 run 直接 409，偽造 runId 拿不到免費分析。
+  assert(source.includes("let streamRetryChargeWaived = false"));
+  assert(source.includes("fallbackStreamStore.getRun({"));
+  assert(
+    source.includes(
+      "streamRetryChargeWaived = fallbackStreamRun.charged_at !== null",
+    ),
+  );
+  assert(source.includes("stream_retry_fallback_run_invalid"));
+
+  // 扣費點只看驗證後的 flag，不看 client 可控的 isStreamRetryMode；
+  // 已扣費 run 的 retry 不得在 legacy 二次 increment_usage。
   assert(
     source.includes(
       "quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0 &&\n" +
-        "      !isStreamRetryMode",
+        "      !streamRetryChargeWaived",
+    ),
+  );
+});
+
+Deno.test("legacy fallback usage reports zero charge when billing is waived", async () => {
+  const source = await readIndexSource();
+
+  // Codex P2：豁免扣費時 usage/telemetry 不得報假扣費——Flutter 拿
+  // messagesUsed / remaining 做扣費 toast 與本地額度同步。
+  assert(
+    source.includes("const legacyReportedCharge = streamRetryChargeWaived"),
+  );
+  assert(source.includes("messagesUsed: legacyReportedCharge"));
+  assert(source.includes("chargedMessageCount: legacyReportedCharge"));
+  assert(
+    source.includes(
+      "quotaUsage.shouldChargeQuota &&\n        !streamRetryChargeWaived",
     ),
   );
 });

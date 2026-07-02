@@ -7034,6 +7034,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       });
     }
 
+    let streamRetryChargeWaived = false;
     if (responseMode === "stream") {
       logInfo("stream_request_fell_back_to_legacy", {
         user: summarizeUser(user.id),
@@ -7046,6 +7047,54 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         recognizeOnly,
         requestType,
       });
+
+      // Codex P1：isStreamRetryMode 只是 responseMode+analysisRunId，client
+      // 可控。豁免 legacy 扣費前必須驗證這顆 run 真的存在、屬於本人、綁同
+      // 一份對話 hash，且已扣過費（charged_at）；查無此 run ＝偽造或過期
+      // retry，直接 409 拒絕（在呼叫 Claude 之前，不付白工的 AI 成本）。
+      // run 存在但還沒扣費（stream 在扣費前就掛）→ 不豁免，legacy 正常扣，
+      // 符合「扣 1 則 ⇔ AI 真正生成的回覆」。
+      if (isStreamRetryMode && analysisRunId) {
+        const fallbackConversationHash = await hashConversation({
+          messages,
+          userDraft,
+          partnerSummary,
+          sessionContext,
+          conversationSummary,
+          effectiveStyleContext,
+          knownContactName,
+        });
+        const fallbackStreamStore = new AnalysisStreamRunStore(
+          createSupabaseAnalysisStreamRunDriver(
+            supabase as unknown as Parameters<
+              typeof createSupabaseAnalysisStreamRunDriver
+            >[0],
+          ),
+        );
+        try {
+          const fallbackStreamRun = await fallbackStreamStore.getRun({
+            runId: analysisRunId,
+            userId: user.id,
+            conversationHash: fallbackConversationHash,
+          });
+          streamRetryChargeWaived = fallbackStreamRun.charged_at !== null;
+        } catch (error) {
+          logError("stream_retry_fallback_run_invalid", {
+            user: summarizeUser(user.id),
+            analysisRunId,
+            error: getErrorMessage(error),
+          });
+          return jsonResponse(
+            {
+              error: "STREAM_RUN_RETRY_UNAVAILABLE",
+              code: "STREAM_RUN_RETRY_UNAVAILABLE",
+              message: "這次串流分析無法接續，請重新分析。",
+              retryable: false,
+            },
+            409,
+          );
+        }
+      }
     }
 
     let claudeResult;
@@ -7493,12 +7542,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     });
 
     // Update usage count (測試帳號、純識別模式不扣額度)。
-    // Stream retry fallback 也不扣：retry 的推薦已在 analysis_stream_runs
-    // 扣過費（chargeRun），gate 不放行 fallback 到 legacy 時再走這裡的
-    // increment_usage 會變成同一次分析扣兩次。
+    // 已驗證且已扣費的 stream retry fallback 也不扣（streamRetryChargeWaived
+    // ＝上面 getRun 驗過 charged_at）：原始 stream 已在 analysis_stream_runs
+    // 扣過費，再走 increment_usage 會變成同一次分析扣兩次。
     if (
       quotaUsage.shouldChargeQuota && quotaUsage.chargedMessageCount > 0 &&
-      !isStreamRetryMode
+      !streamRetryChargeWaived
     ) {
       // Single source of truth for usage accounting (avoid double counting).
       const { error: usageError } = await supabase.rpc("increment_usage", {
@@ -7519,18 +7568,22 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       }
     }
 
-    // Add usage info to response
+    // Add usage info to response。豁免扣費時不得報假扣費——Flutter 拿
+    // messagesUsed / remaining 做扣費 toast 與本地額度同步。
+    const legacyReportedCharge = streamRetryChargeWaived
+      ? 0
+      : quotaUsage.chargedMessageCount;
     result.usage = {
-      messagesUsed: quotaUsage.chargedMessageCount,
+      messagesUsed: legacyReportedCharge,
       estimatedMessages: quotaUsage.estimatedMessageCount,
       monthlyRemaining: accountIsTest ? 999999 : Math.max(
         0,
         monthlyLimit - sub.monthly_messages_used -
-          quotaUsage.chargedMessageCount,
+          legacyReportedCharge,
       ),
       dailyRemaining: accountIsTest ? 999999 : Math.max(
         0,
-        dailyLimit - sub.daily_messages_used - quotaUsage.chargedMessageCount,
+        dailyLimit - sub.daily_messages_used - legacyReportedCharge,
       ),
       model: actualModel,
       fallbackUsed: claudeResult.fallbackUsed,
@@ -7539,7 +7592,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       tierUsed: effectiveTier,
       isTestAccount: accountIsTest,
       requestType,
-      shouldChargeQuota: quotaUsage.shouldChargeQuota,
+      shouldChargeQuota: quotaUsage.shouldChargeQuota &&
+        !streamRetryChargeWaived,
       quotaReason: quotaUsage.quotaReason,
       quotaUnit: quotaUsage.quotaUnit,
     };
@@ -7583,8 +7637,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       guardrailCount: successGuardrails.guardrailCount,
       guardrailFlags: successGuardrails.guardrailFlags,
       totalTokens: successGuardrails.totalTokens,
-      shouldChargeQuota: quotaUsage.shouldChargeQuota,
-      chargedMessageCount: quotaUsage.chargedMessageCount,
+      shouldChargeQuota: quotaUsage.shouldChargeQuota &&
+        !streamRetryChargeWaived,
+      chargedMessageCount: legacyReportedCharge,
       estimatedMessageCount: quotaUsage.estimatedMessageCount,
       quotaReason: quotaUsage.quotaReason,
     };
