@@ -115,6 +115,56 @@ void main() {
     });
   });
 
+  group('resultHasPaidStyles', () {
+    test('payload shape is the authoritative paid signal for fresh results',
+        () {
+      // 非 extend 風格有內容＝server 以付費 tier 處理了本次請求；
+      // 這次生成的渲染絕不能被 stale 的 free 訂閱快照蓋鎖卡。
+      expect(
+        OpeningRescueScreen.resultHasPaidStyles(
+          const {'extend': 'a', 'tease': 'b'},
+        ),
+        isTrue,
+      );
+      expect(
+        OpeningRescueScreen.resultHasPaidStyles(const {'extend': 'a'}),
+        isFalse,
+      );
+      expect(
+        OpeningRescueScreen.resultHasPaidStyles(const {'tease': '   '}),
+        isFalse,
+      );
+      expect(OpeningRescueScreen.resultHasPaidStyles(const {}), isFalse);
+    });
+
+    test('paid-shaped fresh result renders unlocked even on a stale free '
+        'subscription snapshot', () {
+      const openers = {
+        'extend': 'a',
+        'resonate': 'b',
+        'tease': 'c',
+        'humor': 'd',
+        'coldRead': 'e',
+      };
+      // 訂閱快照還停在 free，但 payload 是付費形狀 → 本結果以付費渲染。
+      const staleSnapshotSaysFree = true;
+      final isFreeForRender = staleSnapshotSaysFree &&
+          !OpeningRescueScreen.resultHasPaidStyles(openers);
+
+      final cards = OpeningRescueScreen.visibleOpenerCards(
+        openers: openers,
+        recommendedPick: 'tease',
+        isFreeUser: isFreeForRender,
+      );
+
+      expect(cards.any((c) => c.isLocked), isFalse);
+      expect(
+        cards.where((c) => c.isRecommended).map((c) => c.type),
+        ['tease'],
+      );
+    });
+  });
+
   group('openerStylesHeaderSuffix', () {
     test('header count follows rendered card count', () {
       expect(

@@ -111,6 +111,20 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     return ' ・$cardCount 種風格';
   }
 
+  /// The payload shape is the server's authoritative tier decision for the
+  /// request that produced it: locked styles never survive the server-side
+  /// filter for free users, so any non-extend content means the request was
+  /// served as paid. A fresh result that passes this check must render
+  /// unlocked even while the local subscription snapshot is still stale-free
+  /// (RevenueCat hint upgraded the request before the provider refreshed).
+  /// Draft replays deliberately do NOT use this: a paid-era draft viewed by
+  /// a now-free user stays gated by the live subscription.
+  static bool resultHasPaidStyles(Map<String, String> openers) {
+    return openers.entries.any(
+      (entry) => entry.key != 'extend' && entry.value.trim().isNotEmpty,
+    );
+  }
+
   @override
   ConsumerState<OpeningRescueScreen> createState() =>
       _OpeningRescueScreenState();
@@ -153,6 +167,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   List<OpenerDraft> _drafts = const [];
   String? _currentDraftId;
   bool _suppressInputClear = false;
+
+  // 本次 _result 是否由 server 以付費 tier 產出（payload 形狀判定）。
+  // fresh 生成設定、draft 回看清空；渲染鎖卡時優先於訂閱快照，
+  // 封掉「付費結果被 stale free 快照蓋鎖卡」的 race（Codex R1 P2）。
+  bool _resultGeneratedPaid = false;
 
   static const _meetingOptions = ['交友軟體', 'IG', '現實認識', '其他'];
 
@@ -351,6 +370,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       _images = [];
       _meetingContext = null;
       _result = draft.result;
+      _resultGeneratedPaid = false;
       _currentDraftId = draft.id;
       _error = null;
     });
@@ -494,6 +514,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       if (mounted) {
         setState(() {
           _result = result;
+          _resultGeneratedPaid =
+              OpeningRescueScreen.resultHasPaidStyles(result.openers);
           _isGenerating = false;
           _reloadDrafts();
         });
@@ -988,7 +1010,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   Widget _buildResults(SubscriptionState subscription) {
     final result = _result!;
-    final isFree = subscription.isFreeUser;
+    final isFree = subscription.isFreeUser && !_resultGeneratedPaid;
     final openerCards = OpeningRescueScreen.visibleOpenerCards(
       openers: result.openers,
       recommendedPick: result.recommendedPick,
