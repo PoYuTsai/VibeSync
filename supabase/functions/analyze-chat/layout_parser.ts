@@ -35,7 +35,8 @@ interface SideRun {
 }
 
 function isLikelyMediaPlaceholderContent(content: string): boolean {
-  const normalized = content.trim().toLowerCase();
+  // 全形括號歸一成半形，模型輸出「［照片］」「【貼圖】」也吃得到。
+  const normalized = content.trim().toLowerCase().replace(/[［【]/g, "[");
   if (!normalized) {
     return false;
   }
@@ -44,6 +45,11 @@ function isLikelyMediaPlaceholderContent(content: string): boolean {
     normalized.startsWith("[image") ||
     normalized.startsWith("[sticker") ||
     normalized.startsWith("[video") ||
+    normalized.startsWith("[照片") ||
+    normalized.startsWith("[圖片") ||
+    normalized.startsWith("[貼圖") ||
+    normalized.startsWith("[影片") ||
+    normalized.startsWith("[語音") ||
     normalized.includes("photo of ") ||
     normalized.includes("image of ") ||
     normalized.includes("shared a photo") ||
@@ -92,6 +98,14 @@ function isLikelySystemRowContent(content: string): boolean {
     return true;
   }
 
+  // LINE 繁中系統列：日期分隔（今天/昨天/星期三）與時間戳（下午1:03，
+  // 可帶日期前綴）。繁中是核心市場，只認英文等於安全網缺口。
+  const zhStandaloneDateOrTimePattern =
+    /^(今天|昨天|前天|(星期|週|禮拜)[一二三四五六日天]|(今天|昨天)?(上午|下午|中午|凌晨|清晨|晚上)?\d{1,2}:\d{2})$/;
+  if (zhStandaloneDateOrTimePattern.test(compact)) {
+    return true;
+  }
+
   const systemKeywords = [
     "matched",
     "you matched",
@@ -102,6 +116,10 @@ function isLikelySystemRowContent(content: string): boolean {
     "retracted a message",
     "joined the chat",
     "left the chat",
+    "收回訊息",
+    "已刪除訊息",
+    "加入聊天",
+    "退出聊天",
   ];
 
   return systemKeywords.some((keyword) => normalized.includes(keyword));

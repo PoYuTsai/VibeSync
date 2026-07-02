@@ -146,3 +146,42 @@ Deno.test("fills an unknown run between decisive anchors without moving them", (
     throw new Error("Expected the unknown row to be filled to the right run");
   }
 });
+
+Deno.test("drops LINE zh-TW system rows (date/weekday/time/retraction)", () => {
+  const result = applyLayoutFirstParser([
+    buildMessage("left", "等等見"),
+    buildMessage("unknown", "今天"),
+    buildMessage("unknown", "星期三"),
+    buildMessage("unknown", "下午1:03"),
+    buildMessage("unknown", "已收回訊息"),
+    buildMessage("right", "好啊"),
+  ]);
+
+  if (result.systemRowsRemovedCount !== 4) {
+    throw new Error(
+      `Expected four zh-TW system rows removed, got ${result.systemRowsRemovedCount}`,
+    );
+  }
+
+  if (result.messages.length !== 2) {
+    throw new Error("Expected only actual chat bubbles to remain");
+  }
+});
+
+Deno.test("repairs a media bridge with zh-TW placeholders (照片/貼圖)", () => {
+  const result = applyLayoutFirstParser([
+    buildMessage("left", "今天上班超級忙的啦。"),
+    buildMessage("right", "我剛剛去看了那個新房子喔。"),
+    buildMessage("left", "[照片]"),
+    buildMessage("left", "[貼圖]"),
+    buildMessage("right", "陽台真的很大很好。"),
+    buildMessage("right", "而且採光超級好的呢。"),
+  ]);
+
+  if (result.messages[2].side !== "right" || !result.messages[2].isFromMe) {
+    throw new Error("Expected the zh photo placeholder to follow the right run");
+  }
+  if (result.messages[3].side !== "right" || !result.messages[3].isFromMe) {
+    throw new Error("Expected the zh sticker placeholder to follow the right run");
+  }
+});
