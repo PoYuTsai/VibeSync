@@ -412,7 +412,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         meetingContext: input.meetingContext,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
-        requestId: _requestSession.beginAttempt(),
+        requestId: _requestSession.beginAttempt(
+          fingerprint: OpenerRequestIdSession.fingerprintFor(
+            images: input.images,
+            name: input.name,
+            bio: input.bio,
+            interests: input.interests,
+            meetingContext: input.meetingContext,
+          ),
+        ),
       );
       // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
       // 下一次生成沿用同 id 而被 server 當重試去重。
