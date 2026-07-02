@@ -250,6 +250,17 @@ function parseAndValidateCard(
   const truncated = truncateCard(repaired);
   const card = validateResponseCard(truncated);
   assertCardSafe(card);
+  // repair 落保守 no-charge fallback（如 forced 模式下空 answer）時，
+  // validateResponseCard 會把 coachAnswer 的 costDeducted 正規化回 1——
+  // 必須重掛 0（扣 1 則 ⇔ AI 真生成）。repaired.costDeducted 全由 server
+  // 端 repair 函式設定，不受模型原始輸出影響。buildFallbackCard 已有同款
+  // 重掛（見上方 FALLBACK_NO_CHARGE spread）。
+  if (
+    repaired.costDeducted === FALLBACK_NO_CHARGE &&
+    card.responseType === "coachAnswer"
+  ) {
+    return { ...card, costDeducted: FALLBACK_NO_CHARGE };
+  }
   return card;
 }
 

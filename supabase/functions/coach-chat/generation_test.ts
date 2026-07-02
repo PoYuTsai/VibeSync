@@ -649,3 +649,35 @@ Deno.test("runCoachChat does not deduct on Claude failure", async () => {
   assertEquals(result.status, 500);
   assertEquals(harness.deductCalls, 0);
 });
+
+Deno.test("runCoachChat repairs forced empty-answer card into no-charge conservative answer", async () => {
+  // D2 Codex P3 顯式覆蓋：釐清上限已到（forced coachAnswer）且模型吐出
+  // answer 為空的 coachAnswer——repair 直接落保守 no-charge 答案，不再釐清、
+  // 不重試、絕不扣費（扣 1 則 ⇔ AI 真生成）。
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(partialClaudeAnswer({ answer: "" }));
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        activeSessionTurns: [...threeClarificationTurns],
+      },
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(card.responseType, "coachAnswer");
+  assertEquals(card.costDeducted, 0);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(calls, 1);
+});
