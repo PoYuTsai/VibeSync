@@ -338,6 +338,10 @@ Deno.test({
     // 既有 inline 目標質感句就地標注（從示範學行為，不引進新範例素材）
     assert(prompt.includes("「妳感覺蠻會唱歌。」（旁路冷讀）"));
     assert(prompt.includes("問一題比較像人類的。」（失格）"));
+    // 防抄指令（Codex P2 2026-07-02）：示範句旁的括號旁注是教學標注，
+    // 不得被照抄進可直接貼出的輸出欄位
+    assert(prompt.includes("旁注是給你看的教學標注"));
+    assert(prompt.includes("絕不把括號標注抄進 openers"));
   },
 });
 

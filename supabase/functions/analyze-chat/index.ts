@@ -2206,6 +2206,7 @@ const OPENER_PROMPT =
 ### 顯現規則（硬指令）
 - openingStrategy 與 recommendation.reason 用到表內技巧時，必須標技巧名＋一句為什麼（例：「旁路冷讀：從夜場線索旁路到會唱歌，不說破、不查戶口」）；twoBallPlan 建議雙球時要標「雙球」。
 - openers 五句本體、talkingPoints、pioneerPlan 永遠是可直接貼出的自然句子，不夾技巧名。
+- 本 prompt 中示範句旁的「（技巧名）」旁注是給你看的教學標注；輸出時絕不把括號標注抄進 openers、talkingPoints、pioneerPlan 的句子裡。
 - 反向禁令：不得為了標名而出招。先有值得接的球才有招；線索不足走安全開場時，整份輸出零技巧標籤也完全合格。
 
 ## 可見線索優先
