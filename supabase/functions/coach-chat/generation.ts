@@ -101,7 +101,7 @@ export async function runCoachChat(
     }
 
     try {
-      card = enforceClarificationLimit(
+      card = assertClarificationAllowed(
         parseAndValidateCard(claudeData, request),
         request,
       );
@@ -116,6 +116,8 @@ export async function runCoachChat(
       const message = getErrorMessage(e);
       lastValidationError = message.startsWith("banned_token")
         ? "banned_token"
+        : message === "clarification_forbidden"
+        ? "clarification_forbidden"
         : "schema_invalid";
       deps.logger.warn("coach_chat_card_invalid", {
         tier: input.tier,
@@ -129,10 +131,7 @@ export async function runCoachChat(
           errorClass: lastValidationError,
           attempts: attempt,
         });
-        card = enforceClarificationLimit(
-          buildFallbackCard(request),
-          request,
-        );
+        card = buildFallbackCard(request);
         break;
       }
     }
@@ -202,48 +201,17 @@ export async function runCoachChat(
   };
 }
 
-function enforceClarificationLimit(
+function assertClarificationAllowed(
   card: CoachChatResponseCard,
   request: CoachChatRequest,
 ): CoachChatResponseCard {
   if (
-    card.responseType !== "clarifyingQuestion" ||
-    !shouldForceCoachAnswerAfterClarifications(request)
+    card.responseType === "clarifyingQuestion" &&
+    shouldForceCoachAnswerAfterClarifications(request)
   ) {
-    return card;
+    throw new Error("clarification_forbidden");
   }
-
-  const forced = validateResponseCard(
-    buildClarificationLimitAnswerShape(request),
-  );
-  assertCardSafe(forced);
-  return forced;
-}
-
-function buildClarificationLimitAnswerShape(
-  request: CoachChatRequest,
-): Record<string, string | number | boolean | null | undefined> {
-  const baseLine = request.rawReplyDraft?.trim();
-  return {
-    responseType: "coachAnswer",
-    mode: inferFallbackAnswerMode(request),
-    headline: "先給你一個可執行建議",
-    answer:
-      "你已經釐清幾輪了，我先把目前資訊收斂成下一步：不要再卡在判斷對錯，先用低壓方式接住她的訊號，讓對話往下一球走。",
-    userTruth: null,
-    userState: "你現在需要的是可執行方向，不是再多一輪確認。",
-    frictionType: "unclearIntent",
-    nextStep: "先採取一個低風險回覆，再觀察她願不願意接球。",
-    suggestedLine: baseLine && baseLine.length <= 80
-      ? baseLine
-      : "我懂你的意思，這樣我比較知道怎麼接了。那我先回一個輕一點的版本。",
-    rewriteDecision: baseLine ? "light_edit" : "rewrite",
-    rewriteReason: "釐清次數已到上限，這輪改給正式建議。",
-    boundaryReminder: "如果她回得短，就先降低壓力，不要連續追問。",
-    needsReflection: false,
-    reflectionQuestion: null,
-    costDeducted: 1,
-  };
+  return card;
 }
 
 function buildAttemptPrompt(
@@ -252,6 +220,16 @@ function buildAttemptPrompt(
   lastValidationError: string,
 ): string {
   if (attempt === 1) return basePrompt;
+  if (lastValidationError === "clarification_forbidden") {
+    return `${basePrompt}
+
+上一次輸出違反釐清上限：免費釐清已達上限，本輪禁止再輸出 clarifyingQuestion。
+請重新輸出 responseType="coachAnswer" 的正式建議 JSON：
+- 只輸出 JSON，不要 markdown，不要前後解釋。
+- 所有 schema 欄位都要存在；rewriteDecision 必填。
+- 資訊不足可以低信心，但仍要給一個最小安全下一步。
+- 避免輸出被禁止的可見詞彙。`;
+  }
   return `${basePrompt}
 
 上一次輸出未通過後端驗證：${lastValidationError}

@@ -157,36 +157,49 @@ Deno.test("runCoachChat returns clarification without deducting credit", async (
   assertEquals((result.body.card as Record<string, unknown>).costDeducted, 0);
 });
 
-Deno.test("runCoachChat forces a paid answer after three clarifications", async () => {
+function insistentClarificationCard() {
+  return validClaudeCard({
+    responseType: "clarifyingQuestion",
+    mode: "clarifyIntent",
+    headline: "我先問清楚一點",
+    answer: "我還需要再確認你的意思。",
+    userTruth: null,
+    userState: "你還在釐清。",
+    nextStep: "再補一點想法。",
+    suggestedLine: null,
+    rewriteDecision: null,
+    rewriteReason: null,
+    boundaryReminder: "正式建議才扣額度。",
+    needsReflection: true,
+    reflectionQuestion: "你現在最怕的是什麼？",
+    costDeducted: 0,
+  });
+}
+
+const threeClarificationTurns = [
+  { role: "coach", kind: "clarification", content: "q1" },
+  { role: "coach", kind: "clarification", content: "q2" },
+  { role: "coach", kind: "clarification", content: "q3" },
+] as const;
+
+Deno.test("runCoachChat regenerates a real paid answer when limit-hit clarification is rejected", async () => {
+  const prompts: string[] = [];
+  let calls = 0;
   const harness = deps({
-    callClaude: () =>
-      Promise.resolve(validClaudeCard({
-        responseType: "clarifyingQuestion",
-        mode: "clarifyIntent",
-        headline: "我先問清楚一點",
-        answer: "我還需要再確認你的意思。",
-        userTruth: null,
-        userState: "你還在釐清。",
-        nextStep: "再補一點想法。",
-        suggestedLine: null,
-        rewriteDecision: null,
-        rewriteReason: null,
-        boundaryReminder: "正式建議才扣額度。",
-        needsReflection: true,
-        reflectionQuestion: "你現在最怕的是什麼？",
-        costDeducted: 0,
-      })),
+    callClaude: (args) => {
+      prompts.push(args.prompt);
+      calls++;
+      return Promise.resolve(
+        calls === 1 ? insistentClarificationCard() : validClaudeCard(),
+      );
+    },
   });
   const result = await runCoachChat(
     {
       userId: "u1",
       request: {
         ...request,
-        activeSessionTurns: [
-          { role: "coach", kind: "clarification", content: "q1" },
-          { role: "coach", kind: "clarification", content: "q2" },
-          { role: "coach", kind: "clarification", content: "q3" },
-        ],
+        activeSessionTurns: [...threeClarificationTurns],
       },
       tier: "free",
       accountIsTest: false,
@@ -197,8 +210,43 @@ Deno.test("runCoachChat forces a paid answer after three clarifications", async 
   const card = result.body.card as Record<string, unknown>;
   assertEquals(result.status, 200);
   assertEquals(card.responseType, "coachAnswer");
+  // 扣 1 則 ⇔ AI 真正生成的回覆：重生成功的真卡才扣費
   assertEquals(card.costDeducted, 1);
   assertEquals(harness.deductCalls, 1);
+  assertEquals(card.headline, "承認一半再反問");
+  assertEquals(calls, 2);
+  assertEquals(prompts[1].includes("禁止再輸出 clarifyingQuestion"), true);
+});
+
+Deno.test("runCoachChat falls back without deducting when model insists on clarification past limit", async () => {
+  let calls = 0;
+  const harness = deps({
+    callClaude: () => {
+      calls++;
+      return Promise.resolve(insistentClarificationCard());
+    },
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: {
+        ...request,
+        activeSessionTurns: [...threeClarificationTurns],
+      },
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(result.status, 200);
+  assertEquals(card.responseType, "coachAnswer");
+  // 重生 3 次全失敗 → 保守 fallback 不是 AI 真生成，不得扣費
+  assertEquals(card.costDeducted, 0);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(calls, 3);
+  assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
 });
 
 Deno.test("runCoachChat accepts clarification when Claude omits cost", async () => {
