@@ -680,6 +680,10 @@ function createLegacyAnalysisAssembler() {
   // 模型 done finalResult 不得 clobber。
   let finalRecommendationAuthoritative = false;
 
+  // 2026-07-02 Codex 雙審 P2：metrics 給出可映射 gameStage 後為權威，
+  // done/report_section 不得覆蓋 current/status。
+  let gameStageAuthoritative = false;
+
   const absorbReply = (
     style: StreamStyle,
     message: string,
@@ -832,7 +836,23 @@ function createLegacyAnalysisAssembler() {
     if (gameStage) {
       const coerced = coerceClientShapeValue(result, "gameStage", gameStage);
       if (coerced !== undefined) result.gameStage = coerced;
+      // metrics 給出可映射 stage 後即為權威（Codex 雙審 P2）：base prompt
+      // 的 legacy schema 範例仍含 gameStage，done/report_section 照抄殘骸
+      //（opening/premise）不得反過來覆蓋 current/status。
+      if (normalizeGameStageCurrent(gameStage.current)) {
+        gameStageAuthoritative = true;
+      }
     }
+  }
+
+  // done/report_section 寫 gameStage 前的權威守門：metrics 已定 stage 時
+  // 只准補其他欄位（如 nextStep），current/status 回填 metrics 版本。
+  function guardAuthoritativeGameStage(coerced: unknown): unknown {
+    if (!gameStageAuthoritative || !isRecord(coerced)) return coerced;
+    const existing = isRecord(result.gameStage)
+      ? result.gameStage as Record<string, unknown>
+      : {};
+    return { ...coerced, current: existing.current, status: existing.status };
   }
 
   function absorbReportSection(event: Record<string, unknown>) {
@@ -848,11 +868,14 @@ function createLegacyAnalysisAssembler() {
     // 同一個 result 的另一條寫入路徑，必須走與 done merge 相同的形狀守門
     // （2026-06-13 queue 補強：section=gameStage/psychology 字串 payload 可
     // 繞過 mergeFinalResult 的 coerce）。
-    const coerced = coerceClientShapeValue(
+    let coerced = coerceClientShapeValue(
       result,
       section,
       payload ?? omitType(event),
     );
+    if (section === "gameStage") {
+      coerced = guardAuthoritativeGameStage(coerced);
+    }
     if (coerced === undefined) return;
     result[section] = coerced;
   }
@@ -864,7 +887,10 @@ function createLegacyAnalysisAssembler() {
       if (key === "finalRecommendation" && finalRecommendationAuthoritative) {
         continue;
       }
-      const coerced = coerceClientShapeValue(result, key, value);
+      let coerced = coerceClientShapeValue(result, key, value);
+      if (key === "gameStage") {
+        coerced = guardAuthoritativeGameStage(coerced);
+      }
       if (coerced === undefined) continue;
       result[key] = coerced;
     }
@@ -942,11 +968,17 @@ function normalizeFromSynonyms(
   for (const [canonical, keys] of table) {
     if (keys.includes(text)) return canonical;
   }
-  // 複合寫法（"Qualification (評估)"、"升溫階段"）走包含比對，表序決定優先。
+  // 複合寫法（"Qualification (評估)"、"升溫階段"）走包含比對；命中超過
+  // 一個 canonical（否定/跨階段句如「升溫之後，接近評估」）＝歧義，
+  // 拒絕映射保留既有值（Codex 雙審 P3）。
+  let hit: string | null = null;
   for (const [canonical, keys] of table) {
-    if (keys.some((key) => text.includes(key))) return canonical;
+    if (keys.some((key) => text.includes(key))) {
+      if (hit !== null && hit !== canonical) return null;
+      hit = canonical;
+    }
   }
-  return null;
+  return hit;
 }
 
 function normalizeGameStageCurrent(value: unknown): string | null {

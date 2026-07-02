@@ -2491,6 +2491,41 @@ Deno.test("gameStage synonyms and casing normalize to client enum values", async
   }));
   reframer.pushText(line({
     type: "analysis.done",
+    finalResult: {},
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(gameStage.current, "premise");
+  assertEquals(gameStage.status, "normal");
+});
+
+Deno.test("done gameStage composite labels normalize when metrics gave no stage", async () => {
+  // metrics 沒帶 stage 時 done 是唯一來源，複合寫法（"Qualification (評估)"）
+  // 仍要能經包含比對映射到 client enum。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "coldRead",
+    message: "You strike me as the type who yells at the screen.",
+    reason: "Playful guess invites correction.",
+    quotedContext: "watched the race",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
     finalResult: {
       gameStage: { current: "Qualification (評估)", status: "可以推進" },
     },
@@ -2504,6 +2539,105 @@ Deno.test("gameStage synonyms and casing normalize to client enum values", async
   const gameStage = finalResult.gameStage as Record<string, unknown>;
   assertEquals(gameStage.current, "qualification");
   assertEquals(gameStage.status, "canAdvance");
+});
+
+Deno.test("metrics gameStage is authoritative over stale done gameStage", async () => {
+  // Codex 雙審 P2：base prompt 的 legacy JSON schema 範例仍含 gameStage，
+  // 模型可能在 compact finalResult 照抄殘骸（opening/premise）。metrics 是
+  // 我們指定的權威通道——done/report_section 只能補欄位，不得覆蓋
+  // current/status。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.decision",
+    selectedStyle: "resonate",
+    nextStepBody: "Lock the dinner plan.",
+  }));
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "resonate",
+    message: "Curry, and I am picking it up myself.",
+    reason: "She is pushing to meet.",
+    quotedContext: "want me to bring dinner?",
+  }));
+  reframer.pushText(line({
+    type: "analysis.metrics",
+    heat: 90,
+    gameStage: { current: "close", status: "canAdvance" },
+  }));
+  reframer.pushText(line({
+    type: "analysis.report_section",
+    section: "gameStage",
+    payload: "破冰",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      gameStage: { current: "opening", status: "normal" },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(gameStage.current, "close");
+  assertEquals(gameStage.status, "canAdvance");
+  assertEquals(gameStage.nextStep, "Lock the dinner plan.");
+});
+
+Deno.test("ambiguous multi-stage strings refuse to map and keep defaults", async () => {
+  // Codex 雙審 P3：包含比對首中即回會把否定/複合句誤映（「已非破冰，進入升溫」
+  // 命中破冰→opening）。命中超過一個 canonical＝歧義＝拒絕映射、保留既有值。
+  const events: StreamOutputEvent[] = [];
+  const reframer = createStreamReframer({
+    emit(event) {
+      events.push(event);
+    },
+    onRecommendation() {
+      return { charged: true };
+    },
+  });
+
+  reframer.pushText(line({
+    type: "analysis.recommendation",
+    selectedStyle: "extend",
+    message: "Which stall first?",
+    reason: "Ride her momentum.",
+    quotedContext: "night market later",
+  }));
+  reframer.pushText(line({
+    type: "analysis.done",
+    finalResult: {
+      gameStage: {
+        // 命中 premise(升溫)＋qualification(評估) 兩個 canonical；
+        // 首中即回會誤映 premise，歧義拒絕則守 opening 預設。
+        current: "升溫之後，接近評估",
+        // 命中 stuckFriend(偏向朋友)＋canAdvance(可以推進)；
+        // 首中即回誤映 stuckFriend，歧義拒絕守 normal。
+        status: "可以推進但偏向朋友",
+      },
+    },
+  }));
+
+  await reframer.flush();
+
+  const done = events.find((event) => event.type === "analysis.done");
+  assert(done, "expected analysis.done");
+  const finalResult = done.finalResult as Record<string, unknown>;
+  const gameStage = finalResult.gameStage as Record<string, unknown>;
+  assertEquals(gameStage.current, "opening");
+  assertEquals(gameStage.status, "normal");
 });
 
 Deno.test("unmappable gameStage values keep assembler defaults instead of clobbering", async () => {
