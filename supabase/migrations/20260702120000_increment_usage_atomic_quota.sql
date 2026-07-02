@@ -80,3 +80,7 @@ REVOKE EXECUTE ON FUNCTION
   FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.increment_usage(uuid, integer, integer, integer) TO service_role;
+
+-- 簽名變更（2-arg → 4-arg）必須刷新 PostgREST schema cache，否則 Edge 的
+-- 4-arg rpc() 呼叫在 cache 過期前會吃 function not found（Codex P2）。
+NOTIFY pgrst, 'reload schema';
