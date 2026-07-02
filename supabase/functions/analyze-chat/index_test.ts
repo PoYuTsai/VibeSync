@@ -2003,3 +2003,43 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "OCR normalize：metaDecisive 蓋過幾何確定左側時必留衝突 telemetry（不改判定）",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+
+    // P2-2（Bruce 掃描）：readReceipt 已讀鎖無條件蓋過 geometry-decisive-left
+    // 訊號。bench 29 例零捏造，但線上若捏造一次會無聲翻掉硬幾何證據且無法
+    // 事後觀察。保守修法＝只加 logWarn telemetry，metaDecisive 優先序不動。
+    // regex 容忍 deno fmt 斷行（index.ts 本身非 fmt-clean，絕不全檔 fmt）。
+    assert(
+      /logWarn\(\s*"ocr_meta_geometry_side_conflict"/.test(source),
+      "meta/geometry 側別衝突必須打 ocr_meta_geometry_side_conflict telemetry",
+    );
+
+    // 衝突偵測必須落在 side 決議之處：條件需同時看 metaDecisive、
+    // geometryDecisive 與左側訊號，缺一即是空砲 telemetry。
+    const conflictAt = source.indexOf("ocr_meta_geometry_side_conflict");
+    const windowBefore = source.slice(
+      Math.max(0, conflictAt - 600),
+      conflictAt,
+    );
+    assert(
+      windowBefore.includes("metaDecisive") &&
+        windowBefore.includes("geometryDecisive") &&
+        /"left"/.test(windowBefore),
+      "衝突條件必須同時檢查 metaDecisive、geometryDecisive 與 left 側",
+    );
+
+    // 判定行為不得改變：metaDecisive 仍強制 right/isFromMe（bc02382 C 臂配方）。
+    assert(
+      /side:\s*metaDecisive\s*\?\s*"right"\s*:\s*side/.test(source),
+      "metaDecisive 優先序不得因 telemetry 改動（維持強制 right）",
+    );
+  },
+});

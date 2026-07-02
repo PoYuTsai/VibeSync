@@ -3986,6 +3986,20 @@ function normalizeRecognizedConversation(
       // 已讀鎖：readReceipt=true 是介面規則級的我方訊號，蓋過模型自報的
       // side/isFromMe（黑箱驗證 29 個回報零捏造；metaSide 會被捏造、這個不會）。
       const metaDecisive = isReadReceiptSideDecisive(record);
+      // 衝突 telemetry（P2-2）：readReceipt 若真的捏造一次，會無聲翻掉
+      // geometry-decisive 的左側硬證據，事後無法從 log 觀察。只記錄不改
+      // 優先序（metaDecisive 仍勝，bc02382 C 臂配方）；先收線上數據再議。
+      if (metaDecisive && geometryDecisive && side === "left") {
+        logWarn("ocr_meta_geometry_side_conflict", {
+          outerColumn: typeof record.outerColumn === "string"
+            ? record.outerColumn
+            : undefined,
+          horizontalPosition: typeof record.horizontalPosition === "number"
+            ? record.horizontalPosition
+            : undefined,
+          contentLength: content.length,
+        });
+      }
       const blockType = normalizeBlockType(record);
       const quotedReplyPreview = sanitizeQuotedReplyPreviewValue(
         record.quotedReplyPreview,
