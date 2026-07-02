@@ -374,4 +374,132 @@ void main() {
     expect(restored.recommendedPick, 'extend');
     expect(restored.recommendedReason, isNull);
   });
+
+  test('deleteDraftsForPartner removes only that partner scoped drafts',
+      () async {
+    final service = OpenerResultCacheService();
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line a'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'A 對象',
+      partnerId: 'partner-a',
+    );
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line b'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'B 對象',
+      partnerId: 'partner-b',
+    );
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line global'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '全域入口',
+    );
+
+    await service.deleteDraftsForPartner('partner-a');
+
+    expect(service.loadDraftsForScope(partnerId: 'partner-a'), isEmpty);
+    expect(
+      service.loadDraftsForScope(partnerId: 'partner-b').map((d) => d.title),
+      ['B 對象'],
+    );
+    expect(
+      service.loadDraftsForScope().map((d) => d.title),
+      ['全域入口'],
+    );
+  });
+
+  test('deleteDraftsForPartner with blank id never touches global drafts',
+      () async {
+    final service = OpenerResultCacheService();
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line global'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '全域入口',
+    );
+
+    await service.deleteDraftsForPartner('   ');
+
+    expect(
+      service.loadDraftsForScope().map((d) => d.title),
+      ['全域入口'],
+    );
+  });
+
+  test('reassignDraftsPartner moves source drafts into target scope',
+      () async {
+    final service = OpenerResultCacheService();
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line a'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'A 對象',
+      partnerId: 'partner-a',
+    );
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line b'},
+        recommendedPick: 'extend',
+      ),
+      displayName: 'B 對象',
+      partnerId: 'partner-b',
+    );
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line global'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '全域入口',
+    );
+
+    await service.reassignDraftsPartner(
+      fromPartnerId: 'partner-a',
+      toPartnerId: 'partner-b',
+    );
+
+    expect(service.loadDraftsForScope(partnerId: 'partner-a'), isEmpty);
+    expect(
+      service
+          .loadDraftsForScope(partnerId: 'partner-b')
+          .map((d) => d.title)
+          .toSet(),
+      {'A 對象', 'B 對象'},
+    );
+    expect(
+      service.loadDraftsForScope().map((d) => d.title),
+      ['全域入口'],
+    );
+  });
+
+  test('reassignDraftsPartner with blank source never touches global drafts',
+      () async {
+    final service = OpenerResultCacheService();
+    await service.saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line global'},
+        recommendedPick: 'extend',
+      ),
+      displayName: '全域入口',
+    );
+
+    await service.reassignDraftsPartner(
+      fromPartnerId: '   ',
+      toPartnerId: 'partner-b',
+    );
+
+    expect(service.loadDraftsForScope(partnerId: 'partner-b'), isEmpty);
+    expect(
+      service.loadDraftsForScope().map((d) => d.title),
+      ['全域入口'],
+    );
+  });
 }

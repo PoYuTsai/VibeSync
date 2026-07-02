@@ -50,6 +50,7 @@ class OpenerDraft {
   OpenerDraft copyWith({
     OpenerResult? result,
     DateTime? continuedAt,
+    String? partnerId,
   }) {
     return OpenerDraft(
       id: id,
@@ -59,7 +60,7 @@ class OpenerDraft {
       sourceLabel: sourceLabel,
       inputPreview: inputPreview,
       continuedAt: continuedAt ?? this.continuedAt,
-      partnerId: partnerId,
+      partnerId: partnerId ?? this.partnerId,
     );
   }
 
@@ -229,6 +230,39 @@ class OpenerResultCacheService {
   Future<void> deleteDraft(String id) async {
     final updated =
         loadDrafts().where((draft) => draft.id != id).toList(growable: false);
+    await _saveDrafts(updated);
+  }
+
+  /// Removes every draft scoped to [partnerId] (partner delete cascade).
+  /// A blank id is a no-op — it must never match the unscoped (global-entry)
+  /// drafts, which store a null partnerId.
+  Future<void> deleteDraftsForPartner(String partnerId) async {
+    final scopedPartnerId = _blankToNull(partnerId);
+    if (scopedPartnerId == null) return;
+    final updated = loadDrafts()
+        .where((draft) => _blankToNull(draft.partnerId) != scopedPartnerId)
+        .toList(growable: false);
+    await _saveDrafts(updated);
+  }
+
+  /// Re-points every draft scoped to [fromPartnerId] onto [toPartnerId]
+  /// (partner merge cascade — paid opener content survives under the merged
+  /// identity). Blank ids are a no-op for the same reason as
+  /// [deleteDraftsForPartner].
+  Future<void> reassignDraftsPartner({
+    required String fromPartnerId,
+    required String toPartnerId,
+  }) async {
+    final from = _blankToNull(fromPartnerId);
+    final to = _blankToNull(toPartnerId);
+    if (from == null || to == null || from == to) return;
+    final updated = loadDrafts()
+        .map(
+          (draft) => _blankToNull(draft.partnerId) == from
+              ? draft.copyWith(partnerId: to)
+              : draft,
+        )
+        .toList(growable: false);
     await _saveDrafts(updated);
   }
 

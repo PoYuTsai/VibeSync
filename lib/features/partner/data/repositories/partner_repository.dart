@@ -6,6 +6,7 @@ import '../../../coach_follow_up/domain/repositories/coach_follow_up_repository.
 import '../../../coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
 import '../../../coaching_memory/domain/repositories/coaching_outcome_repository.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../opener/data/services/opener_result_cache_service.dart';
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../../user_profile/data/repositories/partner_style_repository.dart';
 import '../../domain/entities/partner.dart';
@@ -23,9 +24,10 @@ import '../services/partner_id_factory.dart';
 ///   the source partner's `customNote` into the target with a `[from <name>]`
 ///   tag, then deletes the source partner and cascades cleanup of its style
 ///   override (Spec 2), data-quality state (Spec 3), and coach follow-up
-///   card (Spec 5). The target partner's per-partner state is never cloned
-///   or overwritten. No-op on same id; throws `ArgumentError` if either side
-///   is missing (no partial state).
+///   card (Spec 5). Coaching outcome events and opener drafts are reassigned
+///   to the target instead of deleted. The target partner's per-partner state
+///   is never cloned or overwritten. No-op on same id; throws `ArgumentError`
+///   if either side is missing (no partial state).
 /// - [delete] — removes a partner row, but only after confirming zero
 ///   conversations still reference it. Throws
 ///   [PartnerHasConversationsException] otherwise; UI must surface this and
@@ -80,6 +82,10 @@ class PartnerRepository {
       _injectedOutcomeRepo ??
       CoachingOutcomeRepositoryImpl(StorageService.coachingOutcomeEventsBox);
 
+  // Stateless facade over the shared settings box — safe to construct per
+  // cascade call, no injection seam needed (Batch 4 #1 opener draft cascade).
+  OpenerResultCacheService get _openerDraftCache => OpenerResultCacheService();
+
   Partner? getById(String id) => _box.get(id);
 
   List<Partner> listByOwner(String ownerUserId) =>
@@ -127,6 +133,8 @@ class PartnerRepository {
 
     await _outcomeRepo.reassignPartner(
         fromPartnerId: fromId, toPartnerId: toId);
+    await _openerDraftCache.reassignDraftsPartner(
+        fromPartnerId: fromId, toPartnerId: toId);
     await _box.delete(fromId);
     await _styleRepo.delete(fromId);
     await _qualityRepo.delete(fromId);
@@ -156,6 +164,8 @@ class PartnerRepository {
   ///   - Spec 2 `PartnerStyleRepository` — per-partner style overrides
   ///   - Spec 3 `PartnerDataQualityRepository` — name-pair confirmation state
   ///   - Spec 5 `CoachFollowUpRepository` — last generated follow-up card
+  ///   - `CoachingOutcomeRepository` — per-partner outcome events
+  ///   - `OpenerResultCacheService` — partner-scoped opener drafts
   /// so none of those rows survive a deleted partner. If the guard throws,
   /// no rows are touched (atomic-failure semantics).
   Future<void> delete(String partnerId) async {
@@ -169,6 +179,7 @@ class PartnerRepository {
     await _qualityRepo.delete(partnerId);
     await _followUpRepo.delete(partnerId);
     await _outcomeRepo.deleteByPartner(partnerId);
+    await _openerDraftCache.deleteDraftsForPartner(partnerId);
   }
 
   /// Splits the conversations listed in [matchedConversationIds] off the

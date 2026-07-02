@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
@@ -8,6 +9,8 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/conversation/domain/entities/conversation_summary.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
+import 'package:vibesync/features/opener/data/services/opener_result_cache_service.dart';
+import 'package:vibesync/features/opener/data/services/opener_service.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_data_quality_repository.dart';
@@ -126,6 +129,9 @@ void main() {
 
   setUp(() async {
     final ts = DateTime.now().microsecondsSinceEpoch;
+    // Opener drafts live under a fixed key in the shared settings box, so the
+    // box name cannot be timestamp-isolated; tearDown deletes it from disk.
+    await Hive.openBox(AppConstants.settingsBox);
     partnerBox = await Hive.openBox<Partner>('partners_cascade_$ts');
     conversationBox =
         await Hive.openBox<Conversation>('conversations_cascade_$ts');
@@ -149,6 +155,7 @@ void main() {
   });
 
   tearDown(() async {
+    await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await outcomeBox.deleteFromDisk();
     await followUpBox.deleteFromDisk();
     await qualityBox.deleteFromDisk();
@@ -510,5 +517,118 @@ void main() {
       throwsA(isA<ArgumentError>()),
     );
     expect(outcomeRepo.get('o-1')?.partnerId, 'p1');
+  });
+
+  // ── Batch 4 #1 — opener draft cascade on partner delete / merge ──────────
+  // Mirrors the coaching-outcome contract: delete wipes the deleted partner's
+  // drafts (paid content of a gone identity), merge reassigns them onto the
+  // surviving identity, and unscoped (global-entry) drafts are never touched.
+
+  Future<void> saveOpenerDraft(String title, {String? partnerId}) async {
+    await OpenerResultCacheService().saveDraft(
+      result: const OpenerResult(
+        openers: {'extend': 'line'},
+        recommendedPick: 'extend',
+      ),
+      displayName: title,
+      partnerId: partnerId,
+    );
+  }
+
+  test('delete cascades to clear opener drafts of that partner only',
+      () async {
+    final p1 = _partner('p1');
+    final p2 = _partner('p2');
+    await partnerBox.put(p1.id, p1);
+    await partnerBox.put(p2.id, p2);
+    final cache = OpenerResultCacheService();
+    await saveOpenerDraft('p1 draft', partnerId: 'p1');
+    await saveOpenerDraft('p2 draft', partnerId: 'p2');
+    await saveOpenerDraft('global draft');
+
+    await repo.delete('p1');
+
+    expect(partnerBox.containsKey('p1'), isFalse);
+    expect(cache.loadDraftsForScope(partnerId: 'p1'), isEmpty);
+    expect(
+      cache.loadDraftsForScope(partnerId: 'p2').map((d) => d.title),
+      ['p2 draft'],
+    );
+    expect(
+      cache.loadDraftsForScope().map((d) => d.title),
+      ['global draft'],
+    );
+  });
+
+  test('delete blocked by conversations does NOT clear opener drafts',
+      () async {
+    final p = _partner('p1');
+    await partnerBox.put(p.id, p);
+    final c = Conversation(
+      id: 'c1',
+      name: 'conv',
+      messages: const [],
+      createdAt: DateTime(2026, 5, 1),
+      updatedAt: DateTime(2026, 5, 1),
+      ownerUserId: 'u1',
+      partnerId: 'p1',
+    );
+    c.currentRound = 1;
+    await conversationBox.put(c.id, c);
+    await saveOpenerDraft('survives guard', partnerId: 'p1');
+
+    expect(
+      () => repo.delete('p1'),
+      throwsA(isA<PartnerHasConversationsException>()),
+    );
+    // Draft survives the failed delete — atomic-failure semantics.
+    expect(
+      OpenerResultCacheService()
+          .loadDraftsForScope(partnerId: 'p1')
+          .map((d) => d.title),
+      ['survives guard'],
+    );
+  });
+
+  test('merge reassigns source partner opener drafts to target', () async {
+    final source = _partner('p1');
+    final target = _partner('p2');
+    await partnerBox.put(source.id, source);
+    await partnerBox.put(target.id, target);
+    final cache = OpenerResultCacheService();
+    await saveOpenerDraft('source draft', partnerId: 'p1');
+    await saveOpenerDraft('target draft', partnerId: 'p2');
+    await saveOpenerDraft('global draft');
+
+    await repo.merge(fromId: 'p1', toId: 'p2');
+
+    expect(cache.loadDraftsForScope(partnerId: 'p1'), isEmpty);
+    expect(
+      cache.loadDraftsForScope(partnerId: 'p2').map((d) => d.title).toSet(),
+      {'source draft', 'target draft'},
+    );
+    expect(
+      cache.loadDraftsForScope().map((d) => d.title),
+      ['global draft'],
+    );
+  });
+
+  test(
+      'merge guard failure (missing partner) does NOT reassign opener drafts',
+      () async {
+    final source = _partner('p1');
+    await partnerBox.put(source.id, source);
+    await saveOpenerDraft('survives guard', partnerId: 'p1');
+
+    expect(
+      () => repo.merge(fromId: 'p1', toId: 'p2'),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect(
+      OpenerResultCacheService()
+          .loadDraftsForScope(partnerId: 'p1')
+          .map((d) => d.title),
+      ['survives guard'],
+    );
   });
 }

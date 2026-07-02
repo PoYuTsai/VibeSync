@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/coach_follow_up/data/repositories/coach_follow_up_repository_impl.dart';
 import 'package:vibesync/features/coach_follow_up/domain/entities/coach_follow_up_result.dart';
 import 'package:vibesync/features/coaching_memory/data/repositories/coaching_outcome_repository_impl.dart';
@@ -114,6 +115,8 @@ void main() {
 
   setUp(() async {
     final ts = DateTime.now().microsecondsSinceEpoch;
+    // delete() cascades opener drafts, which live in the shared settings box.
+    await Hive.openBox(AppConstants.settingsBox);
     partnerBox = await Hive.openBox<Partner>('partners_$ts');
     conversationBox = await Hive.openBox<Conversation>('conversations_$ts');
     styleBox = await Hive.openBox<PartnerStyleOverride>('pso_$ts');
@@ -131,6 +134,7 @@ void main() {
   });
 
   tearDown(() async {
+    await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await outcomeBox.deleteFromDisk();
     await followUpBox.deleteFromDisk();
     await qualityBox.deleteFromDisk();
