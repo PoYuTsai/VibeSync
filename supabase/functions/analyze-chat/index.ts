@@ -4934,8 +4934,62 @@ serve(async (req) => {
       // reach the model when the server already plans to bill nothing.
       const upfrontGateCost = serverEligibleForNoCharge ? 0 : openerCost;
 
-      // Quota check for opener
-      if (!accountIsTest) {
+      // Batch 4#2 idempotency：requestId＋payload hash 在 quota gate 之前算。
+      // Codex R2 P2b：replay 護欄前移——mismatch / 同 payload 刷超過上限
+      // 在燒 Claude 成本之前就 400。此讀 fail-open、非原子；最終權威仍在
+      // 扣費 RPC 的同款檢查。
+      // Codex R3 P2-1：已知同 payload 預算內 dedup（已扣過費的重試）必須
+      // 跳過 upfront quota gate——用戶額度剛好扣到頂時，回應丟失的重試
+      // 才拿得到 dedup 200，不會被 429 卡死（dedup 不會再扣，跳過安全）。
+      const openerRequestId = isValidOpenerRequestId(rawRequestId)
+        ? rawRequestId
+        : null;
+      const openerInputHash = openerRequestId === null
+        ? null
+        : await computeOpenerInputHash({
+          images,
+          profileInfo: rawProfileInfo,
+        });
+      let openerKnownDedupReplay = false;
+      if (openerRequestId !== null && openerInputHash !== null) {
+        const { data: replayRow, error: replayReadError } = await supabase
+          .from("opener_request_charges")
+          .select("input_hash, replay_count")
+          .eq("user_id", user.id)
+          .eq("request_id", openerRequestId)
+          .maybeSingle();
+        if (replayReadError) {
+          logWarn("opener_replay_preflight_read_failed", {
+            user: summarizeUser(user.id),
+            error: replayReadError.message,
+          });
+        } else {
+          const verdict = classifyOpenerReplayPreflight({
+            row: replayRow,
+            inputHash: openerInputHash,
+            replayLimit: OPENER_REPLAY_LIMIT,
+          });
+          if (verdict !== "proceed") {
+            logWarn("opener_charge_replay_blocked_preflight", {
+              user: summarizeUser(user.id),
+              requestId: openerRequestId,
+              verdict,
+            });
+            return jsonResponse({
+              error: verdict === "mismatch"
+                ? "OPENER_REQUEST_REPLAY_MISMATCH"
+                : "OPENER_REQUEST_REPLAY_EXHAUSTED",
+              message: verdict === "mismatch"
+                ? "這次的輸入和先前的重試不一致，請重新生成一次。本次不會扣額度。"
+                : "這個請求已重試太多次，請重新生成一次。本次不會扣額度。",
+            }, 400);
+          }
+          openerKnownDedupReplay = replayRow !== null;
+        }
+      }
+
+      // Quota check for opener（已知 dedup 重試不進 gate——那次已扣過費）
+      if (!accountIsTest && !openerKnownDedupReplay) {
         const openerExceedsQuota = () =>
           sub.monthly_messages_used + upfrontGateCost > monthlyLimit ||
           sub.daily_messages_used + upfrontGateCost > dailyLimit;
@@ -4977,55 +5031,6 @@ serve(async (req) => {
             monthlyUsed: sub.monthly_messages_used,
             dailyUsed: sub.daily_messages_used,
           }, 429);
-        }
-      }
-
-      // Batch 4#2 idempotency：requestId＋payload hash 在模型呼叫前先算。
-      // Codex R2 P2b：replay 護欄前移——mismatch / 同 payload 刷超過上限
-      // 在燒 Claude 成本之前就 400。此讀 fail-open、非原子；最終權威仍在
-      // 扣費 RPC 的同款檢查。
-      const openerRequestId = isValidOpenerRequestId(rawRequestId)
-        ? rawRequestId
-        : null;
-      const openerInputHash = openerRequestId === null
-        ? null
-        : await computeOpenerInputHash({
-          images,
-          profileInfo: rawProfileInfo,
-        });
-      if (openerRequestId !== null && openerInputHash !== null) {
-        const { data: replayRow, error: replayReadError } = await supabase
-          .from("opener_request_charges")
-          .select("input_hash, replay_count")
-          .eq("user_id", user.id)
-          .eq("request_id", openerRequestId)
-          .maybeSingle();
-        if (replayReadError) {
-          logWarn("opener_replay_preflight_read_failed", {
-            user: summarizeUser(user.id),
-            error: replayReadError.message,
-          });
-        } else {
-          const verdict = classifyOpenerReplayPreflight({
-            row: replayRow,
-            inputHash: openerInputHash,
-            replayLimit: OPENER_REPLAY_LIMIT,
-          });
-          if (verdict !== "proceed") {
-            logWarn("opener_charge_replay_blocked_preflight", {
-              user: summarizeUser(user.id),
-              requestId: openerRequestId,
-              verdict,
-            });
-            return jsonResponse({
-              error: verdict === "mismatch"
-                ? "OPENER_REQUEST_REPLAY_MISMATCH"
-                : "OPENER_REQUEST_REPLAY_EXHAUSTED",
-              message: verdict === "mismatch"
-                ? "這次的輸入和先前的重試不一致，請重新生成一次。本次不會扣額度。"
-                : "這個請求已重試太多次，請重新生成一次。本次不會扣額度。",
-            }, 400);
-          }
         }
       }
 

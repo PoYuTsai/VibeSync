@@ -26,6 +26,15 @@
 10. 已接受殘餘：部署窗口內舊 Edge 寫入的 `input_hash=''` 行，新 Edge 重試
     同 id 會 mismatch 400（一次性、要求重新生成即可）；app 重啟丟 in-memory
     requestId＝回到今天的行為（可能重扣一次），不做持久化。
+11. **（Codex R3 P2-1）**preflight 前移到 upfront quota gate 之前；已知同
+    payload 預算內 dedup（＝那次已扣過費）跳過 gate——額度剛好扣到頂的
+    用戶，回應丟失重試才拿得到 dedup 200 而不是被 429 卡死。dedup 不會再
+    扣費，跳過安全；preflight 讀失敗 fail-open 時 gate 照常（殘餘：cap 邊
+    緣＋讀失敗的重試吃 429，方向一致可接受）。
+12. Codex R3 P2-2（並發同 id storm 於計數更新前燒模型成本）＝WAITING_ON_ERIC，
+    見 docs/reviews/ai-arbitration-queue.md 2026-07-03 條目；CC 傾向不在本案
+    修（損害有界＋同型暴露為 charge-after-generate 既有性質＋完整修法是設計
+    變更）。
 
 ## 設計
 

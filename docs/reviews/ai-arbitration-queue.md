@@ -687,3 +687,17 @@ Closed items before 2026-05-14 were intentionally pruned from this live queue. U
 **鐵律**：只在高信度單側 anchor、絕不取代 LLM、絕不自動翻側、不碰 recognized side/isFromMe、引用/圖中圖另案。
 
 **Close 條件**：量測跑完、Gate-2 五條（安全四＋有用性一）判定有結論（過＝開實作 plan 案＋Codex 雙審；不過＝記死因停在 client 兜底）。
+
+## OPEN — 2026-07-03 opener idempotency 並發 replay storm 燒模型成本（Codex R3 P2-2）
+
+Status: OPEN（WAITING_ON_ERIC 拍板要不要修）
+
+**脈絡**：opener 扣費 idempotency 案（docs/plans/2026-07-03-opener-idempotency-design.md，4c080300..R4 range）。Codex R3 指出：preflight 是非原子讀、權威 replay 計數在模型呼叫後的扣費 RPC——攻擊者可在 replay_count 未更新前，並發灌大量同 requestId/同 payload 請求：只有預算內 3 次拿到 200，但超限批次已進模型、事後才 400＝燒我們的 Claude 成本。
+
+**CC 分析（不迎合、傾向不修或另案緩修）**：
+1. 損害有界：超限批次拿不到任何結果（400），只燒 token 成本；成功產出仍被 replay 預算鎖死在 3 次/付費。
+2. 同型暴露本來就存在：charge-after-generate 設計下，並發打「不同請求」一樣先燒模型後才被 quota RAISE 429——這條不是 idempotency 案引入的新面，是 opener/analyze 全鏈路的既有性質。
+3. 完整修法＝模型呼叫前原子預約（preflight 改 RPC、FOR UPDATE 先加計數）＋扣費 RPC 加 skip-count 參數處理部署窗口雙計數——是一個設計變更案，不宜紅區倉促上。
+4. 若要更廣的成本護欄，建議另開「opener per-user rate limit」小案（比照 recognizeOnly 6/分 pattern），一次蓋掉同 id 與不同請求兩種 storm。
+
+**Close 條件**：Eric 拍板（不修＝記載已接受殘餘／修＝開設計小案走 TDD＋雙審）。
