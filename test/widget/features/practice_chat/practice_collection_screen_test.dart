@@ -81,7 +81,7 @@ void main() {
       expect(count.data, '1');
     });
 
-    testWidgets('鎖卡顯「？？？」＋鎖 icon；解鎖卡顯名字＋職業＋星等', (tester) async {
+    testWidgets('鎖卡顯「？？？」＋大問號（無鎖頭）；解鎖卡顯名字＋職業＋星等', (tester) async {
       await pumpCollection(tester, unlocked: {'practice_girl_004'});
 
       // 鎖卡：practice_girl_001（Alice）未解鎖
@@ -96,10 +96,12 @@ void main() {
         find.descendant(of: lockedCard, matching: find.text('Alice')),
         findsNothing,
       );
-      expect(
-        find.byKey(const ValueKey('collection-lock-practice_girl_001')),
-        findsOneWidget,
+      // 鎖頭圓徽已退役 → 換中央大「？」神秘標記
+      expect(find.byIcon(Icons.lock_rounded), findsNothing);
+      final mystery = tester.widget<Text>(
+        find.byKey(const ValueKey('collection-mystery-practice_girl_001')),
       );
+      expect(mystery.data, '？');
       // 鎖卡無星等
       expect(
         find.descendant(
@@ -134,7 +136,7 @@ void main() {
         findsNWidgets(1),
       );
       expect(
-        find.byKey(const ValueKey('collection-lock-practice_girl_004')),
+        find.byKey(const ValueKey('collection-mystery-practice_girl_004')),
         findsNothing,
       );
     });

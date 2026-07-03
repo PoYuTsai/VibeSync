@@ -26,11 +26,11 @@ Color _rarityColor(PracticeGirlRarity rarity) {
   }
 }
 
-/// 標準亮度加權 greyscale（鎖卡去彩度用）。
-const List<double> _greyscaleMatrix = <double>[
-  0.2126, 0.7152, 0.0722, 0, 0, //
-  0.2126, 0.7152, 0.0722, 0, 0, //
-  0.2126, 0.7152, 0.0722, 0, 0, //
+/// 鎖卡剪影：灰階×0.07 近全黑，只留人形輪廓隱約可辨。
+const List<double> _silhouetteMatrix = <double>[
+  0.0149, 0.0501, 0.0051, 0, 0, //
+  0.0149, 0.0501, 0.0051, 0, 0, //
+  0.0149, 0.0501, 0.0051, 0, 0, //
   0, 0, 0, 1, 0, //
 ];
 
@@ -382,21 +382,14 @@ class _CollectionCard extends StatelessWidget {
                       )
                     else
                       Center(
-                        child: Container(
+                        child: Text(
+                          '？',
                           key: ValueKey(
-                              'collection-lock-${profile.profileId}'),
-                          padding: const EdgeInsets.all(9),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.lock_rounded,
-                            size: 18,
-                            color: Colors.white70,
+                              'collection-mystery-${profile.profileId}'),
+                          style: AppTypography.headlineLarge.copyWith(
+                            color: Colors.white.withValues(alpha: 0.55),
+                            fontSize: 44,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
@@ -469,9 +462,9 @@ class _CollectionCardPhoto extends StatelessWidget {
       errorBuilder: (context, error, stack) => _fallback(),
     );
     if (!locked) return image;
-    // 鎖卡：去彩度＋暗化 overlay（保留輪廓當剪影，不暴露身份細節）。
+    // 鎖卡：剪影矩陣壓到近全黑（保輪廓不露細節），overlay 只做勻化。
     image = ColorFiltered(
-      colorFilter: const ColorFilter.matrix(_greyscaleMatrix),
+      colorFilter: const ColorFilter.matrix(_silhouetteMatrix),
       child: image,
     );
     return Stack(
@@ -480,7 +473,7 @@ class _CollectionCardPhoto extends StatelessWidget {
         image,
         DecoratedBox(
           decoration:
-              BoxDecoration(color: Colors.black.withValues(alpha: 0.55)),
+              BoxDecoration(color: Colors.black.withValues(alpha: 0.25)),
         ),
       ],
     );
