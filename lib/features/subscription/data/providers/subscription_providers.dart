@@ -1272,7 +1272,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       throw Exception('尚未登入');
     }
 
-    debugPrint('[forceSyncTier] Starting sync: tier=$tier, user=${user.id}');
+    debugPrint('[forceSyncTier] Starting sync: tier=$tier');
     final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
       user.id,
     );
