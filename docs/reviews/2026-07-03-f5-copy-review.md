@@ -1,8 +1,11 @@
 # F5 文案總審改字清單（2026-07-03）
 
 > 7 路唯讀 fan-out（首頁/分析/opener/coach/練習室＋圖鑑/paywall/設定＋onboarding）。
-> 給 Eric 挑：勾了才改，一律純文案 commit，不動邏輯。
-> 分三級：A＝App Review 風險（建議上架前必改）、B＝計費/正確性語意、C＝術語與標點統一（可批次一次改）。
+> 分三級：A＝App Review 風險、B＝計費/正確性語意、C＝術語與標點統一。
+>
+> **狀態：已全數收案（2026-07-04）。** Eric 拍板＝A1 只換「送→解鎖」、A2/A3 不改、A4+A5+B2–B5+C 全收。
+> 落地：`b83cee50`（B1）＋`4bd4d4a2`（A/B/C 批次 42 檔純文案）＋`e7f3aeea`（A7 設定頁「AI 與你的隱私」入口，onboarding 略過保留）。
+> 未擴散項：「段互動紀錄」partner_list 以外還有 6 處未統一（拍板範圍外，要做另開）；`analysis_screen.dart:3336`「請識別截圖內容」是送 server 的 payload 非 UI 文案，刻意不動。
 
 ## A — App Review 風險
 
