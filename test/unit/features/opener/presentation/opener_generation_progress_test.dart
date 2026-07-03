@@ -99,6 +99,37 @@ void main() {
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
     });
 
+    testWidgets(
+        'phrase list changes after mount are ignored (generation snapshot)',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const OpenerGenerationProgress(
+          phrases: testPhrases,
+          interval: interval,
+        ),
+      ));
+      await tester.pump(interval);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('第二階段'), findsOneWidget);
+
+      // 生成中途 parent rebuild 換了 phrases（例如用戶切 tab 改輸入）：
+      // 進度文案必須凍結在生成開始當下的快照，不得跟著漂移。
+      await tester.pumpWidget(_wrap(
+        const OpenerGenerationProgress(
+          phrases: ['漂移一', '漂移二', '漂移三'],
+          interval: interval,
+        ),
+      ));
+      await tester.pump();
+      expect(find.text('第二階段'), findsOneWidget);
+      expect(find.text('漂移二'), findsNothing);
+
+      await tester.pump(interval);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('第三階段'), findsOneWidget);
+      expect(find.text('漂移三'), findsNothing);
+    });
+
     testWidgets('single-phrase list never schedules a timer', (tester) async {
       await tester.pumpWidget(_wrap(
         const OpenerGenerationProgress(

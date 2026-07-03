@@ -57,19 +57,22 @@ class OpenerGenerationProgress extends StatefulWidget {
 }
 
 class _OpenerGenerationProgressState extends State<OpenerGenerationProgress> {
+  // 生成生命週期快照：mount 後 parent 換 phrases（用戶切 tab/改輸入）不得
+  // 讓進度文案漂到另一條路徑——後端處理的仍是生成開始時的輸入。
+  late final List<String> _phrases = widget.phrases;
   int _stage = 0;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    if (widget.phrases.length > 1) {
+    if (_phrases.length > 1) {
       _timer = Timer.periodic(widget.interval, (_) {
         if (!mounted) return;
         setState(() {
           _stage++;
-          if (_stage >= widget.phrases.length - 1) {
-            _stage = widget.phrases.length - 1;
+          if (_stage >= _phrases.length - 1) {
+            _stage = _phrases.length - 1;
             _timer?.cancel();
             _timer = null;
           }
@@ -86,8 +89,8 @@ class _OpenerGenerationProgressState extends State<OpenerGenerationProgress> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.phrases.isEmpty) return const SizedBox.shrink();
-    final stage = _stage.clamp(0, widget.phrases.length - 1);
+    if (_phrases.isEmpty) return const SizedBox.shrink();
+    final stage = _stage.clamp(0, _phrases.length - 1);
     return Column(
       children: [
         const SizedBox(height: 8),
@@ -98,7 +101,7 @@ class _OpenerGenerationProgressState extends State<OpenerGenerationProgress> {
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: Text(
-            widget.phrases[stage],
+            _phrases[stage],
             key: ValueKey<int>(stage),
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary,

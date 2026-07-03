@@ -159,6 +159,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   String? _meetingContext;
 
   bool _isGenerating = false;
+
+  // F3-2 進度文案凍結在生成開始送出的 input（Codex R1 P2）：生成中用戶仍可
+  // 切 tab/移除截圖，activeInput 會變但後端處理的是原始輸入，文案不得跟漂。
+  List<String>? _generationProgressPhrases;
   OpenerResult? _result;
   String? _error;
   final _scrollController = ScrollController();
@@ -454,6 +458,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     setState(() {
       _isGenerating = true;
+      _generationProgressPhrases = OpenerGenerationProgress.phrasesFor(
+        hasImages: input.images?.isNotEmpty ?? false,
+      );
       _error = null;
       _result = null;
       _currentDraftId = null;
@@ -745,14 +752,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 const SizedBox(height: 16),
 
                 // Loading state：staged 本地進度文案（F3-2 低配版，
-                // 真 streaming 另案）。截圖/手動兩套文案由附圖與否決定。
+                // 真 streaming 另案）。文案凍結在 _generate 送出的 input，
+                // 不讀 activeInput——生成中切 tab/改輸入不得讓文案漂移。
                 if (_isGenerating)
                   Center(
                     child: OpenerGenerationProgress(
-                      phrases: OpenerGenerationProgress.phrasesFor(
-                        hasImages: activeInput.images != null &&
-                            activeInput.images!.isNotEmpty,
-                      ),
+                      phrases: _generationProgressPhrases ??
+                          kOpenerManualProgressPhrases,
                     ),
                   ),
 
