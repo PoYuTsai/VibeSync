@@ -38,6 +38,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       'https://apps.apple.com/account/subscriptions';
   static const _purchaseTimeout = Duration(seconds: 45);
   static const _planRefreshTimeout = Duration(seconds: 20);
+  static const _postSuccessRefreshTimeout = Duration(seconds: 20);
 
   String _selectedOptionId = 'essential_monthly';
   bool _isPurchasing = false;
@@ -1045,7 +1046,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         return;
       }
 
-      await notifier.refresh();
+      // 錢已扣：成功呈現不得依賴 refresh 成敗，逾時/失敗只記 log。
+      await _refreshAfterSuccessBestEffort(notifier);
       if (!mounted) return;
 
       final purchasedTier =
@@ -1067,6 +1069,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       if (mounted) {
         setState(() => _isPurchasing = false);
       }
+    }
+  }
+
+  Future<void> _refreshAfterSuccessBestEffort(
+    SubscriptionNotifier notifier,
+  ) async {
+    try {
+      await notifier.refresh().timeout(_postSuccessRefreshTimeout);
+    } on TimeoutException catch (error) {
+      debugPrint('Paywall post-success refresh timeout: $error');
+    } catch (error) {
+      debugPrint('Paywall post-success refresh error: $error');
     }
   }
 
@@ -1173,11 +1187,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     setState(() => _isPurchasing = true);
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
-      final restored = await notifier.restorePurchases();
+      final restored =
+          await notifier.restorePurchases().timeout(_purchaseTimeout);
       if (!mounted) return;
 
       if (restored) {
-        await notifier.refresh();
+        await _refreshAfterSuccessBestEffort(notifier);
         if (!mounted) return;
         _showSnackBar(
           '訂閱狀態已更新。',
@@ -1187,6 +1202,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       } else {
         _showSnackBar('這個 Apple ID 目前沒有可恢復的有效訂閱。');
       }
+    } on TimeoutException catch (error) {
+      debugPrint('Paywall restore timeout: $error');
+      _showSnackBar('App Store 恢復購買逾時，請稍後再試。');
     } catch (error) {
       debugPrint('Paywall restore error: $error');
       _showSnackBar('恢復購買失敗，請稍後再試。');

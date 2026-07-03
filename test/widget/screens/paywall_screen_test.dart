@@ -1,11 +1,54 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
+
+class _StubSubscriptionNotifier extends SubscriptionNotifier {
+  _StubSubscriptionNotifier({
+    this.onRestore,
+    this.onRefresh,
+    this.onPurchase,
+  });
+
+  final Future<bool> Function()? onRestore;
+  final Future<void> Function()? onRefresh;
+  final Future<SubscriptionPurchaseResult> Function()? onPurchase;
+
+  void seedState(SubscriptionState value) => state = value;
+
+  @override
+  Future<bool> restorePurchases() {
+    final handler = onRestore;
+    if (handler == null) {
+      fail('restorePurchases should not be called in this test');
+    }
+    return handler();
+  }
+
+  @override
+  Future<void> refresh() {
+    final handler = onRefresh;
+    return handler != null ? handler() : Future<void>.value();
+  }
+
+  @override
+  Future<SubscriptionPurchaseResult> purchase(Package package) {
+    final handler = onPurchase;
+    if (handler == null) {
+      fail('purchase should not be called in this test');
+    }
+    return handler();
+  }
+}
 
 void main() {
   Future<void> pumpPaywall(
@@ -184,6 +227,207 @@ void main() {
       await pumpPaywall(tester);
 
       expect(find.text('複製訂閱診斷'), findsOneWidget);
+    });
+  });
+
+  group('PaywallScreen purchase/restore spinner never hangs (2.1(b))', () {
+    Finder purchasingOverlay() => find.byType(CircularProgressIndicator);
+
+    SubscriptionState stateWithEssentialMonthly() {
+      final package = Package(
+        r'$rc_monthly',
+        PackageType.monthly,
+        StoreProduct(
+          'vibesync_essential_monthly',
+          'description',
+          'Essential',
+          590,
+          r'$590',
+          'TWD',
+          subscriptionPeriod: 'P1M',
+        ),
+        const PresentedOfferingContext('default', null, null),
+      );
+      final offering = Offering(
+        'default',
+        'Default offering',
+        const {},
+        [package],
+      );
+      return SubscriptionState(
+        offerings: Offerings({'default': offering}, current: offering),
+      );
+    }
+
+    Future<_StubSubscriptionNotifier> pumpPaywallWithStub(
+      WidgetTester tester, {
+      Future<bool> Function()? onRestore,
+      Future<void> Function()? onRefresh,
+      Future<SubscriptionPurchaseResult> Function()? onPurchase,
+      SubscriptionState? seededState,
+    }) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final stub = _StubSubscriptionNotifier(
+        onRestore: onRestore,
+        onRefresh: onRefresh,
+        onPurchase: onPurchase,
+      );
+      final router = GoRouter(
+        initialLocation: '/paywall',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, __) => const Scaffold(body: Text('home-root')),
+            routes: [
+              GoRoute(
+                path: 'paywall',
+                builder: (_, __) => const PaywallScreen(),
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            subscriptionProvider.overrideWith((ref) => stub),
+            subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      if (seededState != null) {
+        stub.seedState(seededState);
+        await tester.pump();
+      }
+      return stub;
+    }
+
+    Future<void> startRestoreFlow(WidgetTester tester) async {
+      final restoreLink = find.widgetWithText(TextButton, '恢復購買');
+      await tester.ensureVisible(restoreLink);
+      await tester.pump();
+      await tester.tap(restoreLink, warnIfMissed: false);
+      await tester.pump();
+      // Dialog 確認鈕與 footer 連結同字，dialog 在 overlay 內＝last。
+      await tester.tap(
+        find.widgetWithText(TextButton, '恢復購買').last,
+        warnIfMissed: false,
+      );
+      await tester.pump();
+    }
+
+    Future<void> flushSnackBars(WidgetTester tester) async {
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    testWidgets('restore hang times out and dismisses the spinner',
+        (tester) async {
+      await pumpPaywallWithStub(
+        tester,
+        onRestore: () => Completer<bool>().future,
+      );
+
+      await startRestoreFlow(tester);
+      // 轉圈中：overlay spinner＋CTA 按鈕內建 loading spinner。
+      expect(purchasingOverlay(), findsWidgets);
+
+      await tester.pump(const Duration(seconds: 46));
+      await tester.pump();
+
+      expect(purchasingOverlay(), findsNothing);
+      expect(find.textContaining('恢復購買逾時'), findsOneWidget);
+      await flushSnackBars(tester);
+    });
+
+    testWidgets(
+        'restore success with hanging refresh still completes and pops',
+        (tester) async {
+      await pumpPaywallWithStub(
+        tester,
+        onRestore: () async => true,
+        onRefresh: () => Completer<void>().future,
+      );
+
+      await startRestoreFlow(tester);
+
+      await tester.pump(const Duration(seconds: 21));
+      await tester.pump();
+
+      expect(purchasingOverlay(), findsNothing);
+      expect(find.text('訂閱狀態已更新。'), findsOneWidget);
+      expect(find.text('home-root'), findsOneWidget);
+      await flushSnackBars(tester);
+    });
+
+    testWidgets(
+        'purchase success with hanging refresh still completes and pops',
+        (tester) async {
+      await pumpPaywallWithStub(
+        tester,
+        onPurchase: () async => const SubscriptionPurchaseResult(
+          success: true,
+          cancelled: false,
+          isDeferredDowngrade: false,
+          requestedTier: SubscriptionTierHelper.essential,
+          previousTier: SubscriptionTierHelper.free,
+          activeTier: SubscriptionTierHelper.essential,
+        ),
+        onRefresh: () => Completer<void>().future,
+        seededState: stateWithEssentialMonthly(),
+      );
+
+      final cta = find.textContaining('訂閱 Essential');
+      expect(cta, findsOneWidget);
+      await tester.ensureVisible(cta);
+      await tester.pump();
+      await tester.tap(cta, warnIfMissed: false);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 21));
+      await tester.pump();
+
+      expect(purchasingOverlay(), findsNothing);
+      expect(find.textContaining('方案已更新'), findsOneWidget);
+      expect(find.text('home-root'), findsOneWidget);
+      await flushSnackBars(tester);
+    });
+
+    testWidgets(
+        'purchase success with failing refresh must not report failure',
+        (tester) async {
+      await pumpPaywallWithStub(
+        tester,
+        onPurchase: () async => const SubscriptionPurchaseResult(
+          success: true,
+          cancelled: false,
+          isDeferredDowngrade: false,
+          requestedTier: SubscriptionTierHelper.essential,
+          previousTier: SubscriptionTierHelper.free,
+          activeTier: SubscriptionTierHelper.essential,
+        ),
+        onRefresh: () async => throw Exception('refresh boom'),
+        seededState: stateWithEssentialMonthly(),
+      );
+
+      final cta = find.textContaining('訂閱 Essential');
+      await tester.ensureVisible(cta);
+      await tester.pump();
+      await tester.tap(cta, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump();
+
+      expect(purchasingOverlay(), findsNothing);
+      expect(find.text('訂閱處理失敗，請稍後再試。'), findsNothing);
+      expect(find.textContaining('方案已更新'), findsOneWidget);
+      expect(find.text('home-root'), findsOneWidget);
+      await flushSnackBars(tester);
     });
   });
 }
