@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
-import 'package:vibesync/features/learning/presentation/screens/learning_screen.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_collection_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
@@ -384,52 +383,6 @@ void main() {
         find.byKey(const ValueKey('practice-girl-full-photo-viewer')),
         findsNothing,
       );
-    });
-  });
-
-  group('learning 入口 chip', () {
-    testWidgets('顯示解鎖數且點擊導航到圖鑑頁', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(500, 1600));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-
-      final router = GoRouter(
-        routes: [
-          GoRoute(
-            path: '/',
-            builder: (context, state) =>
-                const Scaffold(body: LearningScreen()),
-          ),
-          GoRoute(
-            path: '/practice-collection',
-            builder: (context, state) => const PracticeCollectionScreen(),
-          ),
-        ],
-      );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          // 付費 tier：跳過 free 每日閱讀提示（避免觸 usage box）。
-          overrides: _collectionOverrides(
-            unlocked: {'practice_girl_001', 'practice_girl_004'},
-            subscription: _paidSubscription,
-          ),
-          child: MaterialApp.router(routerConfig: router),
-        ),
-      );
-      await tester.pump();
-
-      final chip =
-          find.byKey(const ValueKey('practice-collection-entry-chip'));
-      expect(chip, findsOneWidget);
-      expect(
-        find.descendant(of: chip, matching: find.text('角色圖鑑 2/60')),
-        findsOneWidget,
-      );
-
-      await tester.tap(chip);
-      await tester.pumpAndSettle();
-
-      expect(find.text('COMPLETION 完成度'), findsOneWidget);
     });
   });
 

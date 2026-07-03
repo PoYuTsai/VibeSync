@@ -12,7 +12,8 @@ const double kPracticeRoomEntryHeroBlurSigma = 4.2;
 
 /// 學習 tab 第一屏主視覺：AI 實戰練習室 Hero。
 ///
-/// 填滿 learning_screen 給定的首屏高度；整張卡都可點入 practice-chat。
+/// 填滿 learning_screen 給定的首屏高度；整張卡都可點入圖鑑
+/// （practice-collection＝gacha hub，翻牌／進對話都由圖鑑承擔）。
 class PracticeRoomEntryCard extends StatelessWidget {
   const PracticeRoomEntryCard({super.key});
 
@@ -33,7 +34,7 @@ class PracticeRoomEntryCard extends StatelessWidget {
           borderRadius: radius,
           child: InkWell(
             borderRadius: radius,
-            onTap: () => context.push('/practice-chat'),
+            onTap: () => context.push('/practice-collection'),
             child: SizedBox(
               height: height,
               child: ClipRRect(

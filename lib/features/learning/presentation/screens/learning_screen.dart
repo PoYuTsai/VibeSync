@@ -13,7 +13,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
-import '../../../practice_chat/presentation/screens/practice_collection_screen.dart';
 import '../../../practice_chat/presentation/widgets/practice_room_entry_card.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
@@ -57,20 +56,12 @@ class LearningScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '練習專區',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.ctaStart,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    // 角色圖鑑入口：N 即時反映解鎖數。
-                    const PracticeCollectionEntryChip(),
-                  ],
+                Text(
+                  '練習專區',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.ctaStart,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 RichText(
