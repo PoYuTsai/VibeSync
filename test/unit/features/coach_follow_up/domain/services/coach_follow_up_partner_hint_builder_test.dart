@@ -72,6 +72,21 @@ void main() {
           buildCoachFollowUpPartnerHint(partner: _partner(name: '   '));
       expect(hint.name, '');
     });
+
+    test('caps name at 50 chars so the Edge z.string().max(50) never 400s',
+        () {
+      final hint = buildCoachFollowUpPartnerHint(
+        partner: _partner(name: 'a' * 80),
+      );
+      expect(hint.name, 'a' * 50);
+    });
+
+    test('keeps a 50-char name intact', () {
+      final hint = buildCoachFollowUpPartnerHint(
+        partner: _partner(name: 'b' * 50),
+      );
+      expect(hint.name, 'b' * 50);
+    });
   });
 
   group('buildCoachFollowUpPartnerHint — heatScore + gameStage passthrough',

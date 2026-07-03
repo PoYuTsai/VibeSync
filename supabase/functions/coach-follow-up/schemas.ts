@@ -51,7 +51,7 @@ export const RequestSchema = z.object({
   }),
   partnerHint: z
     .object({
-      name: z.string(),
+      name: z.string().max(50),
       heatScore: z.number().int().min(0).max(100).nullable().optional(),
       gameStage: z.string().nullable().optional(),
       lastConversationSummary: z.string().max(200).nullable().optional(),

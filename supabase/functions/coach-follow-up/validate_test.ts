@@ -123,6 +123,32 @@ Deno.test("validateRequest rejects partnerHint.lastConversationSummary over 200 
   );
 });
 
+Deno.test("validateRequest rejects partnerHint.name over 50 chars", async () => {
+  await assertRejects(
+    async () =>
+      validateRequest({
+        phase: "prepareInvite",
+        answers: { q1: "fuzzy" },
+        partnerHint: {
+          name: "a".repeat(51),
+        },
+      }),
+    Error,
+    "name",
+  );
+});
+
+Deno.test("validateRequest accepts partnerHint.name up to 50 chars", () => {
+  const r = validateRequest({
+    phase: "prepareInvite",
+    answers: { q1: "fuzzy" },
+    partnerHint: {
+      name: "a".repeat(50),
+    },
+  });
+  assertEquals(r.partnerHint?.name?.length, 50);
+});
+
 Deno.test("validateRequest rejects styleContext over 500 chars", async () => {
   await assertRejects(
     async () =>

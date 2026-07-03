@@ -25,6 +25,9 @@ import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 /// site — the Edge would 400 a longer string anyway.
 const int kCoachFollowUpSummaryMaxChars = 200;
 
+/// Hard cap mirroring the Edge schema (`name: z.string().max(50)`).
+const int kCoachFollowUpNameMaxChars = 50;
+
 /// Wire-shape value object handed to the API service (C18). Field names
 /// mirror the Edge schema exactly so JSON serialization is trivial.
 class CoachFollowUpPartnerHint {
@@ -59,7 +62,11 @@ CoachFollowUpPartnerHint buildCoachFollowUpPartnerHint({
   int? heatScore,
   GameStage? gameStage,
 }) {
-  final name = partner.name.trim();
+  // 對齊 Edge schema `name: z.string().max(50)`：client 先截斷，長名絕不 400。
+  final trimmedName = partner.name.trim();
+  final name = trimmedName.length > kCoachFollowUpNameMaxChars
+      ? trimmedName.substring(0, kCoachFollowUpNameMaxChars)
+      : trimmedName;
 
   String? lastSummary;
   final isFlagged = dataQualityFlag?.isFlagged ?? false;
