@@ -1,29 +1,41 @@
 ﻿# App Review Submission Package
 
-最後更新：2026-07-04（本次僅補 DeepSeek 第三方 AI 揭露；全文對齊 R1–F5 修復現況與 GO/HOLD 重判留給 Batch V-4）
+最後更新：2026-07-04（V-4 全文對齊：2026-05-27 拒審點修復對照＋V-2 對抗審＋V-3 dogfood 證據；GO/HOLD 重判見 §6.3）
 
 這份文件是送審前的「主控台」：App Store Connect 審核說明、Reviewer 測試步驟、Privacy Label 對照、Go/No-Go gate 都先放這裡。密碼、API key、Apple sandbox 帳密不要 commit，請只填在 App Store Connect 的 App Review Information。
 
 ---
 
-## 0. 2026-05-23 送審狀態摘要
+## 0. 送審狀態摘要（2026-07-04 更新）
 
-目前 repo 端的送審包已整理到「文件與技術 gate 可交叉檢查」狀態；真正送出前仍要在 App Store Connect、RevenueCat、Supabase Dashboard、真機 TestFlight 做最後人工確認。
+### 送審歷史
 
-已完成的穩定化證據：
+- 2026-05-23 首次送審 → 2026-05-27 Apple 拒審（審核機＝iPad Air 11 M3）：3.1.2(c)×2（帳單金額不醒目＋必要資訊）、2.1(b)（購買鈕無限轉圈）、5.1.1(i)/5.1.2(i)（AI 資料同意揭露不足）。
+- 2026-07-03 起依 `docs/plans/2026-07-03-app-review-readiness-plan.md` 全面補修（Batch R1/R2/F1/F2/F3/F5＋V-2 對抗式總驗證），全部 client 修復已進 V-3 TestFlight build。
 
-- Legal / support：Privacy、Terms、Support URL、Settings / Paywall / Login legal links 已核對。
-- Backend：live OPTIONS probe 已確認 7 個 Edge Functions 有 CORS；`analyze-chat` 未被平台 JWT 擋住；RevenueCat webhook health 可回應。
-- Edge validation：Deno Edge tests 307 passed；7 個主要 Edge Function `deno check` passed。
-- Core flow targeted tests：quota、OCR、analyze 分段回覆、coach context、opener draft、partner memory、UX guide 等階段已補測或補 review。
-- Privacy label 草稿：已依 app 與第三方服務的資料處理列出 Email、User ID、Purchase History、User Content、Photos/Videos、Usage Data、Diagnostics；目前不勾 Tracking、Location、Contacts。
+### 拒審點修復對照
 
-送出前仍需人工 gate：
+| 拒審 Guideline | 修復內容 | 驗證 |
+|---|---|---|
+| 2.1(b) 購買鈕無限轉圈 | 所有掛 blocking UI 的訂閱/同步 await 全部加時限：StoreKit 類 45s、狀態同步類 20s；失敗一律變可重試狀態；購買成功呈現不依賴後續 refresh 成敗 | 7 條 hang widget 測試；V-2 Codex 四輪對抗審 R4 APPROVED |
+| 3.1.2(c) 帳單金額 | priceString 為 paywall 最大價格元素；「省 X%」徽章改 App Store 實價動態計算（floor 絕不高報、抓不到價或幣別不符不顯示） | R2-1，TDD 9 新測 |
+| 3.1.2(c) 必要資訊 | app 內名稱/訂閱長度/價格/Terms/Privacy 可點連結齊全；`vibesyncai.app/terms` 六項 EULA 要素查核齊全 | R2-2；metadata 側 EULA/Privacy 連結歸 H-2 人工 |
+| 5.1.1(i)/5.1.2(i) AI 同意 | 同意閘 v2 帳號級化（consent key 綁 userId，換帳號不沿用）；onboarding 第 4 頁靜態「AI 與隱私」揭露頁；設定頁常駐「AI 與你的隱私」入口；練習室 DeepSeek 獨立同意；privacy policy／Review Notes 點名 Anthropic＋DeepSeek | R1-1 Codex 雙審 APPROVED；R1-4／F5 A7 |
 
-- App Store Connect：填入 reviewer account password、build number、App Review contact、Privacy Label、IAP 審核資訊。
-- IAP / RevenueCat：確認 4 個產品同一 subscription group、entitlement `premium` 綁定、sandbox purchase / restore / upgrade / downgrade matrix。
-- Supabase Dashboard：確認 live secrets 包含 `CLAUDE_API_KEY`、`REVENUECAT_IOS_API_KEY`、`REVENUECAT_WEBHOOK_SECRET`，並抽查 `ai_logs`。
-- TestFlight 真機：跑 Phase 13 smoke，含登入、手動分析、截圖 OCR、Coach、Paywall、Restore、刪帳入口。
+### 拒審點以外的加固（同期落地）
+
+- per-user 模型呼叫限流七 scope；429 顯示稍後再試訊息，絕不誤導到 paywall。
+- opener 扣費 idempotency（request-id＋ledger）；opener 等待改 staged 進度文案（非只有轉圈）。
+- 刪帳「遠端成功/本機清理失敗」分流；清理未完成擋在不可跳過的重試 dialog，絕不放行 login 見前用戶資料。
+- 全 app 文案總審（F5）：拿掉高風險用語與「未扣額度」假承諾，22 檔純文案批改。
+
+### 驗證證據（2026-07-04）
+
+- Edge 層 deno 全套 1176 passed / 0 failed。
+- V-2 對抗式總驗證：Codex 攻擊四個拒審 guideline 四輪（R1–R3 各抓一破口→修），R4 APPROVED 全過。
+- V-3 TestFlight build：Eric 全動線 dogfood 通過（2026-07-04），清單含訂閱按鈕逾時行為、onboarding AI 揭露頁、opener staged 文案、練習室導覽/圖鑑。
+
+送出前仍需人工 gate（Eric 側 Batch H）：見 §6.3。
 
 ## 1. App Review Information 草稿
 
@@ -33,6 +45,11 @@
 VibeSync is a communication coaching app that helps users review private chat context, understand conversation signals, and receive AI-assisted reply suggestions.
 
 The app is not a social network, does not provide public posting or user-to-user messaging, does not automate messages to third parties, and does not guarantee dating or relationship outcomes.
+
+Response to the previous review (rejected 2026-05-27):
+- Guideline 2.1: Purchase, restore, and plan-refresh flows now have explicit timeouts (45s for App Store operations, 20s for state sync). Any failure resolves to a visible, retryable state; the purchase button can no longer spin indefinitely.
+- Guideline 3.1.2(c): The billed price is the most prominent price element on the paywall. The savings badge is computed from actual App Store prices. App name, subscription length, billed price, and tappable links to the Terms of Use (EULA) and Privacy Policy are all shown before purchase. A screen recording of the full subscription purchase flow is attached.
+- Guideline 5.1.1 / 5.1.2: Onboarding now includes an AI & privacy disclosure page that names our third-party AI providers (Anthropic Claude API; DeepSeek API for practice chat). Consent is stored per account, each AI feature asks for consent before any data is sent, and a persistent "AI and your privacy" entry is available in Settings.
 
 Privacy and AI processing:
 - Conversation content is local-first and stored on the user's device by default.
@@ -54,6 +71,8 @@ Reviewer demo flow:
 4. Tap analysis to view heat score, conversation stage, and reply suggestions.
 5. Tap "Ask Coach" to test the 1:1 coaching flow.
 6. Open Settings / Subscription to verify plan, quota, Restore Purchases, Terms, Privacy, and account deletion entry points.
+7. Optional: from the new-conversation sheet, try the opener generator (staged progress text is shown while generating).
+8. Optional: in the Learn tab, open the practice chat. It asks for its own separate AI consent (DeepSeek) before starting.
 
 Reviewer account:
 - Email: [fill in App Store Connect only]
@@ -160,6 +179,14 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 - [ ] 刪除帳號入口可找到
 - [ ] 刪除帳號前提醒 Apple 訂閱需要另外到 App Store 管理
 - [ ] 刪除帳號後重新登入不會吃到舊本地 session
+
+### F. Opener / 練習室 / 限流（2026-07 新增動線）
+
+- [ ] 新增對話 sheet 可產生開場白；等待期間顯示 staged 進度文案，不是只有轉圈
+- [ ] Free 用戶 opener 付費型卡顯示鎖卡與升級導流，不顯示 raw error
+- [ ] 練習室首次使用出現獨立 AI 同意（點名 DeepSeek）；拒絕則不送出任何內容
+- [ ] 翻牌／圖鑑收藏動線正常
+- [ ] 觸發 per-user 限流時顯示「稍後再試」類訊息，不落 paywall、不顯示 raw error
 
 ---
 
@@ -280,15 +307,15 @@ App 內 AI 邊界：
 
 送審前只要有任一項是 No-Go，就先不送。
 
-| Gate | Go 條件 | 狀態 |
+| Gate | Go 條件 | 狀態（2026-07-04） |
 |------|---------|------|
-| Auth | Apple / Google / Email / 登出登入 / 刪帳主流程無 P1 | Targeted review passed；TestFlight 真機 round-trip / delete-account smoke 待 Phase 13 |
-| Subscription | 購買、restore、升降級、quota refresh 無 P1 | Code review / targeted tests passed；RevenueCat sandbox matrix 與 ASC IAP 狀態待人工 |
-| OCR | 清楚單圖、長圖、多圖、fallback 無 P1 | Targeted tests passed；真機截圖集 smoke 待 Phase 13 |
-| Core AI | 分析、5 種回覆、Coach 1:1 無 P1 | Analyze / Coach / Opener targeted tests passed；Eric 最後 dogfood 待 Phase 14 |
-| Privacy | URL、policy、ASC privacy label、Review Notes 一致 | Repo 端已對齊；ASC Privacy Label / support email manual check 待人工 |
-| Backend | Edge deploy 綠、`analyze-chat --no-verify-jwt` 維持、webhook 正常 | Live probes + Deno tests passed；Supabase secrets / live logs / RevenueCat delivery 待 dashboard |
-| Review Notes | 測試帳號、測試步驟、IAP 說明已填 ASC | 草稿 ready；password、build number、ASC contact 只填 App Store Connect |
+| Auth | Apple / Google / Email / 登出登入 / 刪帳主流程無 P1 | F2 刪帳分流 Codex R4 APPROVED；V-3 dogfood 通過 |
+| Subscription | 購買、restore、升降級、quota refresh 無 P1、無無限轉圈 | V-2 時限加固 Codex R4 APPROVED＋7 hang 測試綠；V-3 dogfood 通過；**iPad sandbox 矩陣（H-5）待人工** |
+| OCR | 清楚單圖、長圖、多圖、fallback 無 P1 | Targeted tests passed；recognizeOnly 限流 6/分 60/天已上 prod |
+| Core AI | 分析、5 種回覆、Coach 1:1、opener 無 P1 | Edge deno 1176 綠；opener idempotency＋限流七 scope 上 prod；V-3 dogfood 通過 |
+| Privacy | URL、policy、ASC privacy label、Review Notes 一致（含 Anthropic＋DeepSeek） | Repo 端已對齊含 DeepSeek；**ASC Privacy Label（H-3）＋live privacy 頁重部署（H-6）待人工** |
+| Backend | Edge deploy 綠、`analyze-chat --no-verify-jwt` 維持、webhook 正常 | Edge deno 全套 1176 passed / 0 failed；Supabase secrets / live logs / RevenueCat delivery 待 dashboard 抽查 |
+| Review Notes | 測試帳號、測試步驟、IAP 說明、拒審回應已填 ASC | 草稿 ready（§1 已含拒審回應段）；password、build number、錄屏附件（H-4）只在 App Store Connect 補 |
 
 ### 6.1 最後人工確認清單
 
@@ -304,7 +331,7 @@ App 內 AI 邊界：
 - [ ] `vibesyncaiapp@gmail.com` 可收信；Support URL 頁面有可聯絡資訊。
 - [ ] TestFlight build 完成 Phase 13 smoke，再由 Eric 做 Phase 14 final dogfood。
 
-### 6.2 Phase 14 Final Submit Gate - 2026-05-23
+### 6.2 Phase 14 Final Submit Gate - 2026-05-23（歷史紀錄，已被 §6.3 取代）
 
 目前判定：`Repo GO / Submit HOLD`。
 
@@ -325,6 +352,27 @@ Repo 端已達送審候選狀態：
 - Supabase Dashboard 需確認 live secrets 與 `ai_logs` 可查。
 
 只有上述人工 gate 全部完成，且沒有 P1 / No-Go 條件，才把 `Submit HOLD` 改成 `Submit GO`。
+
+### 6.3 V-4 Submit Gate - 2026-07-04（現行判定）
+
+目前判定：**`Repo GO / Submit HOLD`**——code 與文件側全部完成，HOLD 僅剩 Eric 側 App Store Connect / 真機人工項（Batch H）。
+
+Repo/code 端已達送審候選狀態：
+
+- 2026-05-27 四個拒審 guideline 全部修復（§0 對照表），V-2 Codex 四輪對抗審 R4 APPROVED。
+- Edge deno 全套 1176 passed / 0 failed（2026-07-04）。
+- V-3 TestFlight build 出爐，Eric 全動線 dogfood 通過（2026-07-04）。
+- 送審包本文件已全文對齊現況（Review Notes 含拒審回應段、Privacy Label 含 DeepSeek）。
+
+把 HOLD 改成 GO 前，Eric 必須完成（缺一不送）：
+
+- [ ] H-1 Paid Apps Agreement 生效；4 個 IAP 掛回新版本送審、同一 subscription group。
+- [ ] H-2 metadata：App 描述加 EULA 連結、Privacy Policy 欄位、Support URL。
+- [ ] H-3 ASC Privacy Label 實填並掛上版本，第三方 AI **必含 Anthropic＋DeepSeek**。
+- [ ] H-4 App Review Notes 貼 §1 草稿＋補測試帳密/build number/contact；**附訂閱流程錄屏**（Apple 3.1.2(c) 回覆明確要求）。
+- [ ] H-5 iPad 真機/模擬器：paywall 佈局＋sandbox 訂閱矩陣（購買/restore/升級/降級/取消降級）——拒審機就是 iPad Air 11 M3。
+- [ ] H-6 live `vibesyncai.app/privacy` **重新部署含 DeepSeek 揭露**（repo 版已更新，live 站需另部署）；privacy/terms/support 頁可開；`vibesyncaiapp@gmail.com` 可收信；年齡分級 17+ 核對。
+- [ ] Supabase Dashboard 抽查：live secrets（`CLAUDE_API_KEY`、`REVENUECAT_IOS_API_KEY`、`REVENUECAT_WEBHOOK_SECRET`）＋`ai_logs` 近期紀錄可查。
 
 ---
 

@@ -71,10 +71,10 @@
 
 ## Batch V — 對抗式總驗證（1–2 session，全部完成後）
 
-- [ ] V-1 黑箱驗證：Edge 層測試**已過＝deno 全套 1176 passed / 0 failed（2026-07-04）**；TestFlight regression checklist（`docs/testflight-regression-checklist.md`）等 V-3 build 才能跑＝唯一殘餘
+- [x] V-1 黑箱驗證：Edge 層測試**已過＝deno 全套 1176 passed / 0 failed（2026-07-04）**；TF 迴歸由 Eric 在 V-3 build 以白話 dogfood 清單跑過（2026-07-04）＝完成（正式 `docs/testflight-regression-checklist.md` 全表未逐項勾，風險已由 dogfood＋V-2 對抗審覆蓋）
 - [x] V-2 **DONE 2026-07-04，Codex R4 APPROVED（四 guideline 全過）**：R1–R3 各抓一條 2.1(b) 同族破口並修——R1 P1＝paywall 購買/restore 後 refresh 無界 await（`f01d4474`，restorePurchases 45s＋post-success refresh 20s best-effort、成功呈現不依賴 refresh）；R2 P2＝取消降級同步 paywall/settings 兩處（`870069d3`，20s）；R3 P2＝settings 恢復購買 blocking dialog（`8697832b`，45s）；自掃同族收尾＝analysis 頁三處（`9d71673b`，20s，ensure 逾時放行由 server 把關）。文件破口＝privacy-policy/送審包漏 DeepSeek（`5daabb00` 補齊）。「不掛 blocking UI 的 await 不修」判斷 Codex 複核成立。全程 TDD：7 新 hang widget 測，paywall/settings/analysis 測試綠
-- [ ] V-3 出新 TF build，Eric 全動線 dogfood（含既欠的：練習室導覽、限流 client 行為、圖鑑動線、opener staged 等待文案、onboarding AI 揭露頁）
-- [ ] V-4 更新 `docs/app-review-submission-package.md`（2026-07-04 已先補 DeepSeek 揭露），判定 Submit GO/HOLD
+- [x] V-3 **DONE 2026-07-04**：新 TF build 出爐，Eric 全動線 dogfood 通過（含既欠的：練習室導覽、限流 client 行為、圖鑑動線、opener staged 等待文案、onboarding AI 揭露頁）
+- [x] V-4 **DONE 2026-07-04**：`docs/app-review-submission-package.md` 全文對齊（§0 拒審點修復對照、§1 Review Notes 加拒審回應段、§2F opener/練習室/限流測試路徑、§6.3 新 gate）；判定＝**Repo GO / Submit HOLD**，HOLD 僅剩 Eric 側 H batch（見送審包 §6.3 清單，缺一不送）
 - Eric 側人工前置（Codex R4 收尾清單，對應 H batch）：H-1 Paid Apps Agreement＋4 IAP 掛回；H-2 metadata EULA/Privacy/Support；H-3 Privacy Label 實填**含 Anthropic＋DeepSeek**；H-4 Review Notes＋訂閱錄屏；H-5 iPad sandbox 矩陣；**live `vibesyncai.app/privacy` 重新部署含 DeepSeek**（repo 版已更新，live 站另部署）
 
 ## Session 估算
