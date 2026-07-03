@@ -13,6 +13,7 @@ import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
+import '../widgets/practice_draw_ceremony.dart';
 
 /// 稀有度主色：SR 金、R 紫、N 冷灰藍。只用於邊框／badge／星等（display-only）。
 Color _rarityColor(PracticeGirlRarity rarity) {
@@ -24,6 +25,29 @@ Color _rarityColor(PracticeGirlRarity rarity) {
     case PracticeGirlRarity.n:
       return const Color(0xFF8FA0BE);
   }
+}
+
+/// 揭曉後新卡微光的等待段：等整條儀式 reveal 時間軸走完才點亮（儀式 scrim 中段
+/// 全黑，蓋著點了也看不到）。與儀式共用同一常數＝儀式重定時不會讓微光搶跑。
+@visibleForTesting
+const Duration kCollectionHighlightWait = kPracticeRevealDuration;
+
+/// 揭曉後新卡微光的微光段長度（亮起→停留→淡出）。
+@visibleForTesting
+const Duration kCollectionHighlightGlow = Duration(milliseconds: 1500);
+
+/// 高亮時間軸（0→1）映微光強度：等待段（儀式收場前）恆 0；進微光段後
+/// 快亮起（前 18%）→ 停留 → 淡出（後 38%），收尾歸 0 不殘留。
+@visibleForTesting
+double collectionHighlightIntensityAt(double t) {
+  final totalMs =
+      (kCollectionHighlightWait + kCollectionHighlightGlow).inMilliseconds;
+  final glowStart = kCollectionHighlightWait.inMilliseconds / totalMs;
+  if (t <= glowStart) return 0;
+  final g = ((t - glowStart) / (1 - glowStart)).clamp(0.0, 1.0);
+  if (g < 0.18) return g / 0.18;
+  if (g < 0.62) return 1;
+  return (1 - (g - 0.62) / 0.38).clamp(0.0, 1.0);
 }
 
 /// 鎖卡剪影：灰階×0.07 近全黑，只留人形輪廓隱約可辨。
@@ -44,9 +68,18 @@ class PracticeCollectionScreen extends ConsumerStatefulWidget {
 
 class _PracticeCollectionScreenState
     extends ConsumerState<PracticeCollectionScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// null＝全部；否則只顯示該稀有度。
   PracticeGirlRarity? _filter;
+
+  /// grid 版面常數：估算新卡捲動位置（[_estimatedCardOffset]）與 sliver 版面
+  /// 共用單一真相，改版面不會讓捲動定位漂掉。
+  static const int _gridCrossAxisCount = 2;
+  static const double _gridSidePadding = 16;
+  static const double _gridTopPadding = 16;
+  static const double _gridBottomPadding = 32;
+  static const double _gridSpacing = 12;
+  static const double _gridAspectRatio = 0.62;
 
   /// 今日未翻的翻牌鈕脈動微光。repeat 鐵則：只在 !isRevealed && !reduceMotion
   /// 時跑；revealed／reduce-motion／dispose 一律 stop（不然 pumpAndSettle 會 hang）。
@@ -55,10 +88,132 @@ class _PracticeCollectionScreenState
     duration: const Duration(milliseconds: 1400),
   );
 
+  /// 揭曉後新卡的邊框微光：**單次** forward，時間軸＝「等待段＋微光段」
+  /// （[kCollectionHighlightWait] + [kCollectionHighlightGlow]）。
+  ///
+  /// 等待段的存在理由：解鎖通知在抽牌成功當下發＝儀式 reveal 時間軸起點，而儀式
+  /// scrim 中段全黑不透明會把圖鑑整頁蓋死——微光若即時點亮，交棒時早已走完、
+  /// 使用者根本看不到。故非 reduce-motion 從 0 起跑（前段強度恆 0，等儀式收場才
+  /// 亮）；reduce-motion 沒有儀式時間軸，直接從微光段起跑。等待用 controller 幀
+  /// 驅動而非 `Future.delayed`：不留 pending Timer（pumpAndSettle 可推完收斂）。
+  /// 走完即在 status listener 清掉 [_highlightProfileId]，絕不 repeat。
+  late final AnimationController _highlight = AnimationController(
+    vsync: this,
+    duration: kCollectionHighlightWait + kCollectionHighlightGlow,
+  )..addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _highlightProfileId = null);
+      }
+    });
+
+  /// 微光段在整條高亮時間軸上的起點 fraction（reduce-motion 的 forward 起點）。
+  static final double _glowStartFraction =
+      kCollectionHighlightWait.inMilliseconds /
+          (kCollectionHighlightWait + kCollectionHighlightGlow).inMilliseconds;
+
+  final ScrollController _scrollController = ScrollController();
+
+  /// 新解鎖待高亮的卡；掛 [GlobalKey] 供 ensureVisible 精準定位。
+  String? _highlightProfileId;
+  final GlobalKey _highlightCardKey = GlobalKey();
+
   @override
   void dispose() {
     _drawPulse.dispose();
+    _highlight.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 目前 filter 下 grid 實際顯示的清單（build 與捲動估算共用）。
+  List<PracticeGirlProfile> _visibleProfiles() {
+    if (_filter == null) return practiceGirlProfiles;
+    return practiceGirlProfiles
+        .where((p) => practiceGirlRarityFor(p.personaId) == _filter)
+        .toList(growable: false);
+  }
+
+  /// 集合新增（翻牌解鎖）→ 收掉會濾掉新卡的稀有度 filter、捲動定位＋微光高亮。
+  void _onProfileUnlocked(PracticeGirlProfile profile) {
+    setState(() {
+      if (_filter != null &&
+          practiceGirlRarityFor(profile.personaId) != _filter) {
+        _filter = null; // filter 開著時新卡可能不在 visible 清單：先收掉。
+      }
+      _highlightProfileId = profile.profileId;
+    });
+    _highlight
+      ..stop()
+      ..value = 0;
+    // 等 filter／highlight 的重建落地後才捲（新卡要先進 visible 清單）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToHighlight(profile.profileId);
+    });
+  }
+
+  /// 兩段捲動定位：builder 惰性 grid 裡遠處的新卡尚未 build（拿不到 context），
+  /// 先用版面常數估算 offset 捲近，讓卡片 build 出來後再 ensureVisible 精準對齊，
+  /// 最後才點亮單次微光。
+  Future<void> _scrollToHighlight(String profileId) async {
+    if (!mounted || _highlightProfileId != profileId) return;
+    if (_highlightCardKey.currentContext == null &&
+        _scrollController.hasClients) {
+      final estimated = _estimatedCardOffset(profileId);
+      if (estimated != null) {
+        await _scrollController.animateTo(
+          estimated.clamp(0.0, _scrollController.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
+    if (!mounted || _highlightProfileId != profileId) return;
+    final cardContext = _highlightCardKey.currentContext;
+    if (cardContext != null && cardContext.mounted) {
+      await Scrollable.ensureVisible(
+        cardContext,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    if (!mounted || _highlightProfileId != profileId) return;
+    // 非 reduce-motion：儀式 scrim 還蓋在圖鑑上（捲動照舊即時做沒差，收掉時卡
+    // 已在視野內），微光從等待段起跑、儀式收場才亮；reduce-motion 直接進微光段。
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _highlight.forward(from: reduceMotion ? _glowStartFraction : 0);
+  }
+
+  /// 由捲動 metrics 反推新卡所在 row 的 offset：
+  /// 總內容高 = maxScrollExtent + viewport；grid 段高可由版面常數精算，
+  /// 差值即 grid 之前（header＋filter chips）的高度。
+  /// 注意：此推導假設 grid（含其 SliverPadding）是**最後一個 sliver**；
+  /// 若之後在 grid 後面加 sliver，這裡要跟著扣掉其高度。
+  double? _estimatedCardOffset(String profileId) {
+    final visible = _visibleProfiles();
+    final index = visible.indexWhere((p) => p.profileId == profileId);
+    if (index < 0) return null;
+    final position = _scrollController.position;
+    final crossExtent =
+        MediaQuery.of(context).size.width - _gridSidePadding * 2;
+    if (crossExtent <= 0) return null;
+    final tileWidth = (crossExtent - _gridSpacing * (_gridCrossAxisCount - 1)) /
+        _gridCrossAxisCount;
+    final rowExtent = tileWidth / _gridAspectRatio + _gridSpacing;
+    final rows =
+        (visible.length + _gridCrossAxisCount - 1) ~/ _gridCrossAxisCount;
+    final gridExtent = rows * rowExtent - _gridSpacing;
+    final total = position.maxScrollExtent + position.viewportDimension;
+    final beforeGrid =
+        total - gridExtent - _gridTopPadding - _gridBottomPadding;
+    final row = index ~/ _gridCrossAxisCount;
+    // 粗定位刻意比 ensureVisible 的 alignment 0.35 略高（視窗 1/4 處），讓卡片
+    // 先 build 出來，fine-tune 只需再小捲一段。
+    return beforeGrid +
+        _gridTopPadding +
+        row * rowExtent -
+        position.viewportDimension * 0.25;
   }
 
   /// 翻牌鈕 gating（語義照抄 practice_chat_screen._requestNewPartner，兩態分流）。
@@ -232,12 +387,20 @@ class _PracticeCollectionScreenState
       }
     });
 
+    // 揭曉後新卡高亮定位：集合新增（翻牌解鎖）時取新 id 捲動＋微光。
+    ref.listen<Set<String>>(practiceCollectionProvider, (prev, next) {
+      if (prev == null || next.length <= prev.length) return;
+      final added = next.difference(prev);
+      for (final profile in practiceGirlProfiles) {
+        if (added.contains(profile.profileId)) {
+          _onProfileUnlocked(profile);
+          break;
+        }
+      }
+    });
+
     final total = practiceGirlProfiles.length;
-    final visible = _filter == null
-        ? practiceGirlProfiles
-        : practiceGirlProfiles
-            .where((p) => practiceGirlRarityFor(p.personaId) == _filter)
-            .toList(growable: false);
+    final visible = _visibleProfiles();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -255,80 +418,156 @@ class _PracticeCollectionScreenState
         ),
         iconTheme: const IconThemeData(color: AppColors.onBackgroundPrimary),
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.backgroundGradientStart,
-              AppColors.backgroundGradientMid,
-              AppColors.backgroundGradientEnd,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: _CollectionHeader(
-                  unlockedCount: unlockedCount,
-                  total: total,
-                  drawPulse: _drawPulse,
-                  drawIsDrawing: chatState.isDrawing,
-                  onDrawPressed: _onDrawPressed,
-                ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  AppColors.backgroundGradientStart,
+                  AppColors.backgroundGradientMid,
+                  AppColors.backgroundGradientEnd,
+                ],
               ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                  child: Row(
-                    children: [
-                      _RarityFilterChip(
-                        chipKey: const ValueKey('collection-filter-all'),
-                        label: '全部',
-                        selected: _filter == null,
-                        onTap: () => setState(() => _filter = null),
+            ),
+            child: SafeArea(
+              child: CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _CollectionHeader(
+                      unlockedCount: unlockedCount,
+                      total: total,
+                      drawPulse: _drawPulse,
+                      drawIsDrawing: chatState.isDrawing,
+                      onDrawPressed: _onDrawPressed,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      child: Row(
+                        children: [
+                          _RarityFilterChip(
+                            chipKey: const ValueKey('collection-filter-all'),
+                            label: '全部',
+                            selected: _filter == null,
+                            onTap: () => setState(() => _filter = null),
+                          ),
+                          const SizedBox(width: 8),
+                          for (final rarity in PracticeGirlRarity.values) ...[
+                            _RarityFilterChip(
+                              chipKey: ValueKey(
+                                  'collection-filter-${rarity.label.toLowerCase()}'),
+                              label: rarity.label,
+                              selected: _filter == rarity,
+                              onTap: () => setState(() => _filter = rarity),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      for (final rarity in PracticeGirlRarity.values) ...[
-                        _RarityFilterChip(
-                          chipKey: ValueKey(
-                              'collection-filter-${rarity.label.toLowerCase()}'),
-                          label: rarity.label,
-                          selected: _filter == rarity,
-                          onTap: () => setState(() => _filter = rarity),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                sliver: SliverGrid.builder(
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.62,
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      _gridSidePadding,
+                      _gridTopPadding,
+                      _gridSidePadding,
+                      _gridBottomPadding,
+                    ),
+                    sliver: SliverGrid.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: _gridCrossAxisCount,
+                        crossAxisSpacing: _gridSpacing,
+                        mainAxisSpacing: _gridSpacing,
+                        childAspectRatio: _gridAspectRatio,
+                      ),
+                      itemCount: visible.length,
+                      itemBuilder: (context, index) {
+                        final profile = visible[index];
+                        final card = _CollectionCard(
+                          profile: profile,
+                          unlocked: unlocked.contains(profile.profileId),
+                        );
+                        if (profile.profileId != _highlightProfileId) {
+                          return card;
+                        }
+                        // 新解鎖高亮：GlobalKey 供 ensureVisible、微光包框。
+                        return KeyedSubtree(
+                          key: _highlightCardKey,
+                          child: _UnlockHighlight(
+                            profileId: profile.profileId,
+                            glow: _highlight,
+                            child: card,
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                  itemCount: visible.length,
-                  itemBuilder: (context, index) {
-                    final profile = visible[index];
-                    return _CollectionCard(
-                      profile: profile,
-                      unlocked: unlocked.contains(profile.profileId),
-                    );
-                  },
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          // 翻牌揭曉儀式 overlay：idle 時透明＋IgnorePointer，不影響底下互動。
+          // 全 app 唯一掛載點（Task 4b 由練習室搬來：翻牌入口在本頁，儀式就地揭曉）。
+          const Positioned.fill(child: PracticeDrawCeremony()),
+        ],
       ),
+    );
+  }
+}
+
+/// 揭曉後新卡的單次微光高亮：邊框金光亮起→淡出，由單一 forward-only controller
+/// 驅動（走完由 screen 清掉高亮 id，本 widget 隨之卸載，絕不常駐）。強度映射
+/// 見 [collectionHighlightIntensityAt]（等待段恆 0＝儀式 scrim 蓋著時不白亮）。
+class _UnlockHighlight extends StatelessWidget {
+  const _UnlockHighlight({
+    required this.profileId,
+    required this.glow,
+    required this.child,
+  });
+
+  final String profileId;
+  final Animation<double> glow;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: glow,
+      builder: (context, inner) {
+        final intensity = collectionHighlightIntensityAt(glow.value);
+        return Container(
+          key: ValueKey('collection-highlight-$profileId'),
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              width: 2,
+              color: const Color(0xFFFFC24D)
+                  .withValues(alpha: 0.9 * intensity),
+            ),
+          ),
+          decoration: intensity <= 0.001
+              ? null
+              : BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.brandFlame
+                          .withValues(alpha: 0.5 * intensity),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+          child: inner,
+        );
+      },
+      child: child,
     );
   }
 }

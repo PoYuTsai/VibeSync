@@ -24,6 +24,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.da
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 
 final _outDir = '${Directory.current.path}/build/card_draw_preview/frames';
@@ -168,9 +169,15 @@ void main() {
         ],
         child: MaterialApp(
           theme: ThemeData(fontFamily: 'NotoTC'),
+          // Task 4b 後儀式掛在圖鑑頁；錄製器自行疊 overlay（時間軸與掛載頁無關）。
           home: RepaintBoundary(
             key: captureKey,
-            child: const PracticeChatScreen(),
+            child: const Stack(
+              children: [
+                PracticeChatScreen(),
+                Positioned.fill(child: PracticeDrawCeremony()),
+              ],
+            ),
           ),
         ),
       ),

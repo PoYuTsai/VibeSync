@@ -304,6 +304,18 @@ class _StartProfileSpyController extends _SeededPracticeChatController {
   }
 }
 
+/// Task 4b：儀式 overlay 的 production 掛載點已搬到角色圖鑑頁（唯一掛載，
+/// 見 practice_collection_screen.dart 與其測試）。本檔的儀式時間軸／音效行為
+/// 測試驗的是 ceremony 狀態機（watch controller 驅動、與掛載頁無關），改用
+/// 這個測試 host 保住既有觸發路徑（practice-draw-cta／換一位）；練習室本體
+/// 不再掛儀式，另有專測釘住。
+const Widget _ceremonyTestHost = Stack(
+  children: [
+    PracticeChatScreen(),
+    Positioned.fill(child: PracticeDrawCeremony()),
+  ],
+);
+
 void main() {
   // 兩段升階揭曉時間軸：測試的 pump 時間點全由 widget 公開的 beat 常數推導，
   // 與 _PracticeDrawCeremonyState 共用單一真相（重新調 beat 不會讓測試落點失準）。
@@ -993,7 +1005,8 @@ void main() {
           practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
           practiceChatApiServiceProvider.overrideWithValue(api),
         ],
-        child: const MaterialApp(home: PracticeChatScreen()),
+        // 儀式行為測試 host：練習室內容＋ceremony overlay（掛載點見檔頭註解）。
+        child: const MaterialApp(home: _ceremonyTestHost),
       ),
     );
   }
@@ -2167,7 +2180,7 @@ void main() {
         overrides: [
           practiceChatControllerProvider.overrideWith((ref) => controller),
         ],
-        child: const MaterialApp(home: PracticeChatScreen()),
+        child: const MaterialApp(home: _ceremonyTestHost),
       ),
     );
 
@@ -2180,6 +2193,41 @@ void main() {
       find.byKey(const ValueKey('practice-draw-ceremony-front')),
       findsNothing,
     );
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+  });
+
+  testWidgets('Task 4b：練習室本體不再掛儀式 overlay（抽牌中也無卡背，掛載點唯一在圖鑑）',
+      (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    // 刻意 pump「純 PracticeChatScreen」（production 組合，非 _ceremonyTestHost）。
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practiceChatApiServiceProvider.overrideWithValue(api),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+
+    expect(find.byType(PracticeDrawCeremony), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 抽牌中：本頁不再浮現儀式卡背（儀式只在圖鑑頁揭曉）。
+    expect(
+      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      findsNothing,
+    );
+
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
@@ -2207,7 +2255,7 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: PracticeChatScreen()),
+        child: const MaterialApp(home: _ceremonyTestHost),
       ),
     );
 
@@ -2341,7 +2389,7 @@ void main() {
             data: MediaQuery.of(context).copyWith(disableAnimations: true),
             child: child!,
           ),
-          home: const PracticeChatScreen(),
+          home: _ceremonyTestHost,
         ),
       ),
     );
@@ -2446,7 +2494,7 @@ void main() {
             data: MediaQuery.of(context).copyWith(disableAnimations: true),
             child: child!,
           ),
-          home: const PracticeChatScreen(),
+          home: _ceremonyTestHost,
         ),
       ),
     );
@@ -2687,7 +2735,7 @@ void main() {
                     child: child!,
                   )
               : null,
-          home: const PracticeChatScreen(),
+          home: _ceremonyTestHost,
         ),
       ),
     );
@@ -3107,7 +3155,7 @@ void main() {
               data: MediaQuery.of(context).copyWith(disableAnimations: true),
               child: child!,
             ),
-            home: const PracticeChatScreen(),
+            home: _ceremonyTestHost,
           ),
         ),
       );

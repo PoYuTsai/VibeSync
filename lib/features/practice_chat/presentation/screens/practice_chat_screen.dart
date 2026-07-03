@@ -15,7 +15,6 @@ import '../../domain/entities/practice_message.dart';
 import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../widgets/practice_debrief_card.dart';
-import '../widgets/practice_draw_ceremony.dart';
 import '../widgets/practice_girl_photo.dart';
 import '../widgets/practice_profile_sheet.dart';
 
@@ -318,13 +317,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       );
     }
 
-    // 翻牌揭曉儀式 overlay：idle 時透明＋IgnorePointer，不影響底下互動。
-    return Stack(
-      children: [
-        content,
-        const Positioned.fill(child: PracticeDrawCeremony()),
-      ],
-    );
+    // 翻牌揭曉儀式 overlay 已搬到角色圖鑑頁（翻牌入口所在地）；本頁不再掛載。
+    return content;
   }
 
   void _openHistory(BuildContext context) {

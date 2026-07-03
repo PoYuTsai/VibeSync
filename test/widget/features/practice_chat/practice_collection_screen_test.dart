@@ -9,8 +9,10 @@ import 'package:vibesync/features/practice_chat/data/repositories/practice_colle
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
@@ -137,9 +139,11 @@ List<Override> _collectionOverrides({
   Set<String> unlocked = const {},
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
+  PracticeCollectionNotifier? collectionNotifier,
 }) {
   return [
-    practiceCollectionProvider.overrideWith((ref) => _seededCollection(unlocked)),
+    practiceCollectionProvider.overrideWith(
+        (ref) => collectionNotifier ?? _seededCollection(unlocked)),
     practiceChatControllerProvider.overrideWith(
       (ref) => controller ?? _SeededPracticeChatController(_revealedSeed()),
     ),
@@ -152,12 +156,14 @@ Widget collectionApp({
   Set<String> unlocked = const {},
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
+  PracticeCollectionNotifier? collectionNotifier,
 }) {
   return ProviderScope(
     overrides: _collectionOverrides(
       unlocked: unlocked,
       controller: controller,
       subscription: subscription,
+      collectionNotifier: collectionNotifier,
     ),
     child: const MaterialApp(home: PracticeCollectionScreen()),
   );
@@ -665,6 +671,191 @@ void main() {
       await tester.pump();
 
       expect(find.text('今日翻牌額度用完了'), findsOneWidget);
+    });
+  });
+
+  group('儀式 overlay 掛圖鑑＋揭曉後新卡高亮（Task 4b）', () {
+    const backKey = ValueKey('practice-draw-ceremony-back');
+    const frontKey = ValueKey('practice-draw-ceremony-front');
+
+    Future<void> pumpApp(WidgetTester tester, Widget app) async {
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(app);
+      await tester.pump();
+    }
+
+    // 高亮 wrapper 邊框的實際 alpha（微光強度 proxy；等待段＝0、微光段>0）。
+    double highlightBorderAlpha(WidgetTester tester, String profileId) {
+      final container = tester.widget<Container>(
+        find.byKey(ValueKey('collection-highlight-$profileId')),
+      );
+      final decoration = container.foregroundDecoration as BoxDecoration?;
+      final border = decoration?.border as Border?;
+      return border?.top.color.a ?? 0;
+    }
+
+    test('微光時間軸：等待段＝整條儀式 reveal 總長，收場前恆 0、收場後才亮、走完歸 0', () {
+      // 等待段與儀式 reveal 共用同一常數：儀式重定時不會讓微光搶跑。
+      expect(kCollectionHighlightWait, kPracticeRevealDuration);
+
+      final totalMs =
+          (kCollectionHighlightWait + kCollectionHighlightGlow).inMilliseconds;
+      final glowStart = kCollectionHighlightWait.inMilliseconds / totalMs;
+      expect(collectionHighlightIntensityAt(0), 0);
+      expect(collectionHighlightIntensityAt(glowStart * 0.5), 0);
+      expect(collectionHighlightIntensityAt(glowStart), 0); // 收場瞬間仍 0
+      expect(collectionHighlightIntensityAt(glowStart + 0.02), greaterThan(0));
+      expect(collectionHighlightIntensityAt(1), 0); // 收尾歸 0，不殘留
+    });
+
+    testWidgets('主路徑時序：儀式 scrim 蓋著期間微光強度 0，過整條 reveal 時間軸後才亮起',
+        (tester) async {
+      final notifier = _seededCollection(const {});
+      await pumpApp(tester, collectionApp(collectionNotifier: notifier));
+
+      await notifier.add('practice_girl_004');
+      await tester.pump(); // 掛上高亮（等待段）、post-frame 捲動起跑
+      await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
+      await tester.pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
+      await tester.pump(const Duration(milliseconds: 16)); // 微光 ticker 定基準
+
+      // 解鎖通知＝reveal 時間軸起點；中段（scrim 全黑）微光必須還沒亮。
+      await tester.pump(const Duration(seconds: 5));
+      expect(highlightBorderAlpha(tester, 'practice_girl_004'), 0);
+
+      // 過了整條 kPracticeRevealDuration（儀式收場交棒）：微光亮起、使用者看得到。
+      await tester.pump(const Duration(seconds: 6));
+      expect(
+        highlightBorderAlpha(tester, 'practice_girl_004'),
+        greaterThan(0),
+      );
+
+      // 單次 forward 收尾：settle 收斂、高亮移除不殘留。
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('collection-highlight-practice_girl_004')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('reduce-motion：無儀式時間軸，微光直接進微光段即時亮起', (tester) async {
+      final notifier = _seededCollection(const {});
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(collectionNotifier: notifier),
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await notifier.add('practice_girl_004');
+      await tester.pump(); // 掛上高亮、post-frame 捲動起跑
+      await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
+      await tester.pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
+      await tester.pump(const Duration(milliseconds: 16)); // 微光 ticker 定基準
+      await tester.pump(const Duration(milliseconds: 300)); // 微光段推進
+
+      expect(
+        highlightBorderAlpha(tester, 'practice_girl_004'),
+        greaterThan(0),
+      );
+
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('collection-highlight-practice_girl_004')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('儀式 overlay 掛在圖鑑頁：idle 休眠、drawing 浮卡背、揭曉走完收掉',
+        (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      // 唯一掛載點：圖鑑頁 body 疊 ceremony；idle 全透明無卡。
+      expect(find.byType(PracticeDrawCeremony), findsOneWidget);
+      expect(find.byKey(backKey), findsNothing);
+      expect(find.byKey(frontKey), findsNothing);
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80)); // intro 入場推進
+
+      expect(find.byKey(backKey), findsOneWidget);
+      expect(find.byKey(frontKey), findsNothing);
+
+      // 抽牌成功 → 有限 reveal 時間軸走完必收斂（含停掉翻牌鈕脈動）。
+      controller.debugSetState(_revealedSeed());
+      await tester.pumpAndSettle();
+      expect(find.byKey(backKey), findsNothing);
+      expect(find.byKey(frontKey), findsNothing);
+    });
+
+    testWidgets('翻牌解鎖 → 新卡微光高亮，單次 forward 走完自動移除（settle 收斂）',
+        (tester) async {
+      final notifier = _seededCollection({'practice_girl_001'});
+      await pumpApp(tester, collectionApp(collectionNotifier: notifier));
+
+      await notifier.add('practice_girl_004');
+      await tester.pump(); // 集合新增 → listener 掛上高亮
+
+      const highlightKey =
+          ValueKey('collection-highlight-practice_girl_004');
+      expect(find.byKey(highlightKey), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 800)); // 微光中段仍在
+      expect(find.byKey(highlightKey), findsOneWidget);
+
+      // 單次 forward 終結：settle 必收斂、高亮 wrapper 移除不殘留。
+      await tester.pumpAndSettle();
+      expect(find.byKey(highlightKey), findsNothing);
+      expect(
+        find.byKey(const ValueKey('collection-card-practice_girl_004')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('filter 開著時解鎖遠端新卡 → 收 filter、捲動到新卡進視野', (tester) async {
+      final notifier = _seededCollection(const {});
+      await pumpApp(tester, collectionApp(collectionNotifier: notifier));
+
+      // 開一個會把新卡濾掉的稀有度 filter。
+      final last = practiceGirlProfiles.last;
+      final lastRarity = practiceGirlRarityFor(last.personaId);
+      final otherRarity =
+          PracticeGirlRarity.values.firstWhere((r) => r != lastRarity);
+      await tester.tap(find.byKey(
+          ValueKey('collection-filter-${otherRarity.label.toLowerCase()}')));
+      await tester.pump();
+      final cardFinder =
+          find.byKey(ValueKey('collection-card-${last.profileId}'));
+      expect(cardFinder, findsNothing);
+
+      await notifier.add(last.profileId);
+      await tester.pump();
+      await tester.pumpAndSettle(); // 收 filter＋捲動＋微光全走完
+
+      // builder 惰性 grid：catalog 尾端的卡沒捲近絕不 build → 找得到＝已定位。
+      expect(cardFinder, findsOneWidget);
+      final rect = tester.getRect(cardFinder);
+      expect(rect.bottom, greaterThan(0));
+      expect(rect.top, lessThan(1600));
+      // 高亮已走完移除。
+      expect(
+        find.byKey(ValueKey('collection-highlight-${last.profileId}')),
+        findsNothing,
+      );
     });
   });
 }

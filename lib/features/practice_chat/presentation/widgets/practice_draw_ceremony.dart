@@ -28,7 +28,8 @@ const String _kReferenceExplosionAsset =
 //   → 5.0s **屏息**（−77dB 最深谷）預覽收最小 → 5.25–6.0 翻回卡背再蓄力
 //   → 6.0–7.25 flip-explosion（6.5s **PEAK#2** 高潮）→ 7.25–8.0 grand 典藏卡
 //   → 8.25–8.75 grand 縮、UI 淡回（8.5s **PEAK#3** 落定）→ 8.75–10.0 settle 亮 UI。
-@visibleForTesting
+// 揭曉總長是跨檔正式 API（圖鑑頁新卡微光等儀式收場才點亮，共用此常數），
+// 不掛 @visibleForTesting；其餘 beat 常數仍只給測試推導時間點用。
 const Duration kPracticeRevealDuration = Duration(milliseconds: 10000);
 @visibleForTesting
 const double kPracticeRevealFlip1Start = 0.30; // 3.0s PEAK#1：卡背立直→翻面起手
@@ -258,8 +259,8 @@ Size practiceCeremonyCardSize(Size screen) {
 ///   離開 drawing 的出口（reveal／error／402／429／hidden／dispose）都 `stopWaitingLoop`，
 ///   絕不殘留背景音。
 ///
-/// 由 [PracticeChatScreen] 以 `Positioned.fill` 疊在內容最上層；idle 時整片透明且
-/// `IgnorePointer`，不攔截底下的點擊。
+/// 由角色圖鑑頁（PracticeCollectionScreen，翻牌入口所在地）以 `Positioned.fill`
+/// 疊在內容最上層；idle 時整片透明且 `IgnorePointer`，不攔截底下的點擊。
 class PracticeDrawCeremony extends ConsumerStatefulWidget {
   const PracticeDrawCeremony({super.key});
 
