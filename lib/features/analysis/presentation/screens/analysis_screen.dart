@@ -87,6 +87,8 @@ enum _AnalysisErrorOrigin {
 
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     with WidgetsBindingObserver {
+  // 訂閱同步屬 best-effort 前置：卡住不得凍結分析/刷新 spinner（2.1(b)）。
+  static const _subscriptionSyncTimeout = Duration(seconds: 20);
   final MemoryService _memoryService = MemoryService();
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
@@ -305,15 +307,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     });
 
     try {
-      await ref.read(subscriptionProvider.notifier).refresh();
+      await ref
+          .read(subscriptionProvider.notifier)
+          .refresh()
+          .timeout(_subscriptionSyncTimeout);
       if (!mounted) {
         return;
       }
 
       final refreshedSubscription = ref.read(subscriptionProvider);
       if (!refreshedSubscription.isPremium) {
-        await ref.read(subscriptionProvider.notifier).syncWithRevenueCat();
-        await ref.read(subscriptionProvider.notifier).refresh();
+        await ref
+            .read(subscriptionProvider.notifier)
+            .syncWithRevenueCat()
+            .timeout(_subscriptionSyncTimeout);
+        await ref
+            .read(subscriptionProvider.notifier)
+            .refresh()
+            .timeout(_subscriptionSyncTimeout);
         if (!mounted) {
           return;
         }
@@ -3602,9 +3613,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _activeAnalysisMessageCount = analyzedMessageCount;
       });
 
-      await ref
-          .read(subscriptionProvider.notifier)
-          .ensureServerEntitlementSyncedForAnalysis();
+      try {
+        await ref
+            .read(subscriptionProvider.notifier)
+            .ensureServerEntitlementSyncedForAnalysis()
+            .timeout(_subscriptionSyncTimeout);
+      } on TimeoutException catch (error) {
+        // 該方法內部已 catch-all（只剩卡住這一種失敗模式）；逾時放行，
+        // 額度/權益由 server 端最終把關，不得讓分析卡在「開始完整分析」。
+        debugPrint('Analysis entitlement pre-sync timeout: $error');
+      }
       if (!mounted) {
         return;
       }
