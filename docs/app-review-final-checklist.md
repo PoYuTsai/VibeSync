@@ -1,6 +1,6 @@
 # App Review Final Checklist
 
-最後更新：2026-05-23
+最後更新：2026-07-04
 
 這份清單是送審前最後核對用，不是功能願望清單。
 
@@ -10,7 +10,7 @@
 
 ## 0. Phase 14 目前判定
 
-目前判定：`Repo GO / Submit HOLD`。
+目前判定：`Repo GO / Submit GO`——**2026-07-04 已送審（build 305）**，現行判定與 H batch 完成紀錄以 `app-review-submission-package.md` §6.3 為準。
 
 Repo 端已完成：`b515cad` 已 push、`flutter analyze` PASS、Phase 13 targeted tests 103 tests PASS、Edge live probes / Deno tests 已在 Phase 12 PASS。
 

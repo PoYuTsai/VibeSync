@@ -1,6 +1,6 @@
 ﻿# App Review Submission Package
 
-最後更新：2026-07-04（V-4 全文對齊：2026-05-27 拒審點修復對照＋V-2 對抗審＋V-3 dogfood 證據；GO/HOLD 重判見 §6.3）
+最後更新：2026-07-04（**已送審**：build 305，§6.3 判定 Submit GO；H batch 完成紀錄見 §6.3）
 
 這份文件是送審前的「主控台」：App Store Connect 審核說明、Reviewer 測試步驟、Privacy Label 對照、Go/No-Go gate 都先放這裡。密碼、API key、Apple sandbox 帳密不要 commit，請只填在 App Store Connect 的 App Review Information。
 
@@ -355,7 +355,7 @@ Repo 端已達送審候選狀態：
 
 ### 6.3 V-4 Submit Gate - 2026-07-04（現行判定）
 
-目前判定：**`Repo GO / Submit HOLD`**——code 與文件側全部完成，HOLD 僅剩 Eric 側 App Store Connect / 真機人工項（Batch H）。
+目前判定：**`Repo GO / Submit GO`**——**已於 2026-07-04 送審（Version 1.0, build 305）**，並在 5/27 拒審 thread 回覆四 guideline 修復摘要＋附訂閱流程錄屏。
 
 Repo/code 端已達送審候選狀態：
 
@@ -364,15 +364,15 @@ Repo/code 端已達送審候選狀態：
 - V-3 TestFlight build 出爐，Eric 全動線 dogfood 通過（2026-07-04）。
 - 送審包本文件已全文對齊現況（Review Notes 含拒審回應段、Privacy Label 含 DeepSeek）。
 
-把 HOLD 改成 GO 前，Eric 必須完成（缺一不送）：
+H batch 完成紀錄（2026-07-04 送審前全數處理）：
 
-- [ ] H-1 Paid Apps Agreement 生效；4 個 IAP 掛回新版本送審、同一 subscription group。
-- [ ] H-2 metadata：App 描述加 EULA 連結、Privacy Policy 欄位、Support URL。
-- [ ] H-3 ASC Privacy Label 實填並掛上版本，第三方 AI **必含 Anthropic＋DeepSeek**。
-- [ ] H-4 App Review Notes 貼 §1 草稿＋補測試帳密/build number/contact；**附訂閱流程錄屏**（Apple 3.1.2(c) 回覆明確要求）。
-- [ ] H-5 iPad 真機/模擬器：paywall 佈局＋sandbox 訂閱矩陣（購買/restore/升級/降級/取消降級）——拒審機就是 iPad Air 11 M3。
-- [ ] H-6 live `vibesyncai.app/privacy` **重新部署含 DeepSeek 揭露**（repo 版已更新，live 站需另部署）；privacy/terms/support 頁可開；`vibesyncaiapp@gmail.com` 可收信；年齡分級 17+ 核對。
-- [ ] Supabase Dashboard 抽查：live secrets（`CLAUDE_API_KEY`、`REVENUECAT_IOS_API_KEY`、`REVENUECAT_WEBHOOK_SECRET`）＋`ai_logs` 近期紀錄可查。
+- [x] H-1 Paid Apps Agreement 生效；4 訂閱 Waiting for Review＝已綁送審佇列，Product ID 與 `lib/subscription_providers.dart` 逐字核對一致。
+- [x] H-2 metadata：App 描述補 EULA/Privacy/Support 三連結＋opener/練習室兩行。
+- [x] H-3 Privacy Label 實填並 Publish：貼上的聊天內容歸 Other User Content、Tracking 全 No、含 Anthropic＋DeepSeek 揭露。
+- [x] H-4 Review Notes 整格換新草稿（含拒審回應三段）；訂閱流程錄屏（同意 dialog→分析→paywall→降級購買→設定頁排程狀態，117s）已傳 Attachment＋拒審 thread 回覆再附一次。
+- [x] H-5 iPad 矩陣：**風險承擔跳過**（Eric 無 iPad/Mac 可用）。依據：轉圈根因＝無界 await 屬裝置無關、修復已 Codex R4 雙審、iPhone 真機 sandbox 全矩陣錄屏驗證通過、上輪 iPad 審核無任何佈局類 finding。殘餘風險＝再吃一次拒審循環（可承受）。
+- [x] H-6 live `vibesyncai.app/privacy` 重新部署（vibesync-web `5fdc46b`），6 處 DeepSeek 揭露已驗；年齡分級 Apple 新制 18+（=舊 17+）免動。
+- [x] Supabase secrets 抽查 OK；`ai_logs` 最後一筆停 2026-07-02（telemetry 疑斷，非送審 blocker，另案追）。
 
 ---
 
