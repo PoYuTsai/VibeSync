@@ -246,13 +246,11 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
         resizeToAvoidBottomInset: true,
         body: Column(
           children: [
-            // 開場前：換一位＋難度控制（深色 scaffold 底，沿用原樣式）。
+            // 開場前：難度控制（深色 scaffold 底，沿用原樣式；換一位入口
+            // 已收斂角色圖鑑）。
             // 開聊後：compact identity header（小圓照片＋名字/職業/難度）。
             if (state.messages.isEmpty)
-              _PracticeOpeningControls(
-                state: state,
-                onNewPartner: _regeneratePersona,
-              )
+              _PracticeOpeningControls(state: state)
             else
               _PracticeProfileBar(state: state),
             Expanded(
@@ -310,7 +308,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
               onHintApplied: (reply) => _appliedHintDraft = reply,
               onFinish: () => context.pop(),
               onContinueSamePartner: _continueSamePartner,
-              onNewPartner: _startNewPartner,
+              // 換人＝回圖鑑翻牌（top-level route，go 收斂 stack）。
+              onNewPartner: () => context.go('/practice-collection'),
             ),
           ],
         ),
@@ -355,7 +354,6 @@ class _PracticeLockedEntry extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final drawing = state.isDrawing;
     final upgradeLocked = state.drawUpgradeRequired;
     final quotaLocked = state.drawQuotaExceeded;
     return Center(
@@ -381,7 +379,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              '翻開今日對象，開始一場真實聊天練習。',
+              '到角色圖鑑翻開今日對象，開始練習。',
               textAlign: TextAlign.center,
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary,
@@ -404,30 +402,18 @@ class _PracticeLockedEntry extends ConsumerWidget {
                 ),
               )
             else
+              // Task 5：翻牌觸發點全收斂角色圖鑑，這裡只做導引。
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  key: const ValueKey('practice-draw-cta'),
-                  onPressed: drawing
-                      ? null
-                      : () => ref
-                          .read(practiceChatControllerProvider.notifier)
-                          .drawNewPracticeGirl(),
+                  key: const ValueKey('practice-goto-collection-cta'),
+                  onPressed: () => context.push('/practice-collection'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  child: drawing
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('翻開今日對象'),
+                  child: const Text('去圖鑑翻牌'),
                 ),
               ),
             if (state.drawUpgradeRequired) ...[
@@ -472,15 +458,12 @@ class _PracticeLockedEntry extends ConsumerWidget {
   }
 }
 
-// ── 開場前控制列：換一位＋難度 chips（深色 scaffold 底，沿用原樣式）──
+// ── 開場前控制列：難度 chips（深色 scaffold 底，沿用原樣式）──
+// 換一位入口已收斂角色圖鑑（Task 5）：這裡只留難度與教學模式控制。
 class _PracticeOpeningControls extends ConsumerWidget {
-  const _PracticeOpeningControls({
-    required this.state,
-    required this.onNewPartner,
-  });
+  const _PracticeOpeningControls({required this.state});
 
   final PracticeChatState state;
-  final VoidCallback onNewPartner;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -489,30 +472,6 @@ class _PracticeOpeningControls extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '為你抽了一位，先看看再開練',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: onNewPartner,
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.ctaStart,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(0, 32),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text('換一位'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
           _DifficultyChips(state: state),
           const SizedBox(height: 10),
           _LearningModeToggle(
@@ -1835,8 +1794,9 @@ class _DebriefFailedActionsBar extends StatelessWidget {
   }
 }
 
-// ── 拆解後動作列：續玩同一位（主）＋ 換一位／完成（次）─────────────────
-// roundIndex 已達上限（kMaxPracticeRounds）時隱藏續玩，只留換一位／完成。
+// ── 拆解後動作列：續玩同一位（主）＋ 去圖鑑換人／完成（次）─────────────
+// roundIndex 已達上限（kMaxPracticeRounds）時隱藏續玩，只留去圖鑑換人／完成。
+// 換人＝導回角色圖鑑翻牌（Task 5：翻牌觸發點唯一收斂圖鑑）。
 class _DebriefActionsBar extends StatelessWidget {
   const _DebriefActionsBar({
     required this.state,
@@ -1879,7 +1839,7 @@ class _DebriefActionsBar extends StatelessWidget {
             children: [
               Expanded(
                 child: BrandSecondaryButton(
-                  label: '換一位',
+                  label: '去圖鑑換人',
                   onPressed: onNewPartner,
                 ),
               ),

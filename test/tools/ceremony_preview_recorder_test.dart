@@ -5,6 +5,7 @@
 // 驅動真實 PracticeChatScreen 的揭曉儀式，從 _reveal t=0 起，以固定步長 pump、
 // 逐幀 RenderRepaintBoundary.toImage 截圖到 scratchpad/cardrep/frames/，
 // 之後由 ffmpeg 組 mp4 + mux master audio + 與參考片 side-by-side。
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -192,7 +193,12 @@ void main() {
     });
 
     // 抽牌 → drawing → 立即完成 → revealing（_reveal.forward(from:0)）。
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    // Task 5 後練習室已無翻牌觸發點（入口全收斂圖鑑）：直呼 controller。
+    unawaited(
+      ProviderScope.containerOf(ctx)
+          .read(practiceChatControllerProvider.notifier)
+          .drawNewPracticeGirl(),
+    );
     await tester.pump(); // drawing
     await tester.pump(const Duration(milliseconds: 50)); // 入場推進
     await tester.pump(); // draw 完成 → 進 revealing（value≈0）
