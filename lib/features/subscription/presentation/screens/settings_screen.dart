@@ -124,6 +124,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _manageSubscriptionsUrl =
       'https://apps.apple.com/account/subscriptions';
   static const _supportEmail = 'vibesyncaiapp@gmail.com';
+  static const _pendingDowngradeRefreshTimeout = Duration(seconds: 20);
 
   String _versionString = '';
   bool _isRefreshingSubscription = true;
@@ -1048,7 +1049,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final didClear = await ref
           .read(subscriptionProvider.notifier)
-          .clearPendingDowngradeMetadata();
+          .clearPendingDowngradeMetadata()
+          .timeout(_pendingDowngradeRefreshTimeout);
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1058,6 +1060,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           backgroundColor: didClear ? AppColors.success : null,
         ),
+      );
+    } on TimeoutException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('同步逾時，請稍後再試。')),
       );
     } catch (error) {
       if (!mounted) return;

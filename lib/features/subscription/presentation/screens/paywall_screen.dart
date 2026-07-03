@@ -1273,7 +1273,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     try {
       final didClear = await ref
           .read(subscriptionProvider.notifier)
-          .clearPendingDowngradeMetadata();
+          .clearPendingDowngradeMetadata()
+          .timeout(_postSuccessRefreshTimeout);
       if (!mounted) return;
       if (didClear) {
         _showSnackBar(
@@ -1283,6 +1284,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       } else {
         _showSnackBar('App Store 仍顯示降級排程，請確認取消後稍後再試。');
       }
+    } on TimeoutException catch (error) {
+      debugPrint('Paywall pending downgrade refresh timeout: $error');
+      _showSnackBar('同步逾時，請稍後再試。');
     } catch (error) {
       debugPrint('Paywall pending downgrade refresh error: $error');
       _showSnackBar('同步失敗，請稍後再試。');

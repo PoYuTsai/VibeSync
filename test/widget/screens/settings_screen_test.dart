@@ -25,6 +25,17 @@ class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
 
 class _NoopPracticeChatApi extends PracticeChatApiService {}
 
+class _PendingDowngradeStubNotifier extends SubscriptionNotifier {
+  _PendingDowngradeStubNotifier({required this.onClearPendingDowngrade});
+
+  final Future<bool> Function() onClearPendingDowngrade;
+
+  void seedState(SubscriptionState value) => state = value;
+
+  @override
+  Future<bool> clearPendingDowngradeMetadata() => onClearPendingDowngrade();
+}
+
 class _DisposablePracticeChatController extends PracticeChatController {
   _DisposablePracticeChatController({
     required this.onDispose,
@@ -671,6 +682,48 @@ void main() {
       expect(actions.clearLocalStorageCalls, 1);
       expect(disposedControllers, greaterThanOrEqualTo(1));
       expect(createdControllers, greaterThanOrEqualTo(2));
+    });
+
+    testWidgets(
+        'pending downgrade cancel refresh hang times out and restores button',
+        (tester) async {
+      final stub = _PendingDowngradeStubNotifier(
+        onClearPendingDowngrade: () => Completer<bool>().future,
+      );
+
+      await pumpSettings(
+        tester,
+        extraOverrides: [
+          subscriptionProvider.overrideWith((ref) => stub),
+        ],
+      );
+      stub.seedState(
+        SubscriptionState(
+          tier: 'essential',
+          pendingDowngradeToTier: 'starter',
+          pendingDowngradeEffectiveAt: DateTime(2027, 1, 1),
+        ),
+      );
+      await tester.pump();
+
+      final refreshLink = find.text('我已取消降級，更新狀態');
+      expect(refreshLink, findsOneWidget);
+      await tester.ensureVisible(refreshLink);
+      await tester.pump();
+      await tester.tap(refreshLink, warnIfMissed: false);
+      await tester.pump();
+      expect(find.text('同步中…'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 21));
+      await tester.pump();
+
+      expect(find.text('同步中…'), findsNothing);
+      expect(find.text('我已取消降級，更新狀態'), findsOneWidget);
+      expect(find.textContaining('同步逾時'), findsOneWidget);
+
+      // 讓 snackbar timer 走完，避免測試結尾殘留 pending timer。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
     });
   });
 }

@@ -17,11 +17,13 @@ class _StubSubscriptionNotifier extends SubscriptionNotifier {
     this.onRestore,
     this.onRefresh,
     this.onPurchase,
+    this.onClearPendingDowngrade,
   });
 
   final Future<bool> Function()? onRestore;
   final Future<void> Function()? onRefresh;
   final Future<SubscriptionPurchaseResult> Function()? onPurchase;
+  final Future<bool> Function()? onClearPendingDowngrade;
 
   void seedState(SubscriptionState value) => state = value;
 
@@ -45,6 +47,15 @@ class _StubSubscriptionNotifier extends SubscriptionNotifier {
     final handler = onPurchase;
     if (handler == null) {
       fail('purchase should not be called in this test');
+    }
+    return handler();
+  }
+
+  @override
+  Future<bool> clearPendingDowngradeMetadata() {
+    final handler = onClearPendingDowngrade;
+    if (handler == null) {
+      fail('clearPendingDowngradeMetadata should not be called in this test');
     }
     return handler();
   }
@@ -264,6 +275,7 @@ void main() {
       Future<bool> Function()? onRestore,
       Future<void> Function()? onRefresh,
       Future<SubscriptionPurchaseResult> Function()? onPurchase,
+      Future<bool> Function()? onClearPendingDowngrade,
       SubscriptionState? seededState,
     }) async {
       await tester.binding.setSurfaceSize(const Size(430, 1400));
@@ -273,6 +285,7 @@ void main() {
         onRestore: onRestore,
         onRefresh: onRefresh,
         onPurchase: onPurchase,
+        onClearPendingDowngrade: onClearPendingDowngrade,
       );
       final router = GoRouter(
         initialLocation: '/paywall',
@@ -427,6 +440,35 @@ void main() {
       expect(find.text('訂閱處理失敗，請稍後再試。'), findsNothing);
       expect(find.textContaining('方案已更新'), findsOneWidget);
       expect(find.text('home-root'), findsOneWidget);
+      await flushSnackBars(tester);
+    });
+
+    testWidgets(
+        'pending downgrade cancel refresh hang times out and dismisses spinner',
+        (tester) async {
+      await pumpPaywallWithStub(
+        tester,
+        onClearPendingDowngrade: () => Completer<bool>().future,
+        seededState: SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          pendingDowngradeToTier: SubscriptionTierHelper.starter,
+          pendingDowngradeEffectiveAt: DateTime(2027, 1, 1),
+        ),
+      );
+
+      final refreshLink = find.text('我已取消降級，更新狀態');
+      expect(refreshLink, findsOneWidget);
+      await tester.ensureVisible(refreshLink);
+      await tester.pump();
+      await tester.tap(refreshLink, warnIfMissed: false);
+      await tester.pump();
+      expect(purchasingOverlay(), findsWidgets);
+
+      await tester.pump(const Duration(seconds: 21));
+      await tester.pump();
+
+      expect(purchasingOverlay(), findsNothing);
+      expect(find.textContaining('同步逾時'), findsOneWidget);
       await flushSnackBars(tester);
     });
   });
