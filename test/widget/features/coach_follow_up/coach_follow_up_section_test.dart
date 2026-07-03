@@ -445,6 +445,62 @@ void main() {
       expect(paywallOpenCount, 1);
       expect(find.textContaining('額度已用完'), findsOneWidget);
     });
+
+    testWidgets('monthly quota 429 shows the server monthly copy, not 明天再試',
+        (t) async {
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        invoker: (String _, {required Map<String, dynamic> body}) async {
+          return CoachFollowUpInvokeResponse(
+            status: 429,
+            data: <String, dynamic>{
+              'error': 'Monthly limit exceeded',
+              'message': '本月額度已用完，升級方案可取得更多分析與教練額度。',
+              'used': 300,
+              'limit': 300,
+            },
+          );
+        },
+        onQuotaExceeded: () async {},
+      );
+
+      await t.tap(find.text('準備邀約'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('還沒想好'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('產生跟進建議'));
+      await t.pump();
+      await t.pump();
+
+      expect(find.textContaining('本月額度已用完'), findsOneWidget);
+      expect(find.textContaining('明天再試'), findsNothing);
+    });
+
+    testWidgets(
+        'quota 429 without a display message falls back to neutral copy',
+        (t) async {
+      await _pump(
+        t,
+        repo: _FakeRepo(),
+        partner: _partner(),
+        invoker: _quotaInvoker(),
+        onQuotaExceeded: () async {},
+      );
+
+      await t.tap(find.text('準備邀約'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('還沒想好'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('產生跟進建議'));
+      await t.pump();
+      await t.pump();
+
+      expect(find.textContaining('額度已用完'), findsOneWidget);
+      expect(find.textContaining('明天再試'), findsNothing);
+      expect(find.textContaining('Daily limit exceeded'), findsNothing);
+    });
   });
 
   group('CoachFollowUpSection — telemetry contract', () {

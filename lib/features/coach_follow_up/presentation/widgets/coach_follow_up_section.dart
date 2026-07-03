@@ -472,9 +472,25 @@ class _StatusText extends StatelessWidget {
         isLoading: true,
       );
 
+  /// server 429 payload 的 message 已分流月/日文案（本月額度已用完… vs
+  /// 今日額度已用完…）；client 不得自行猜週期。只在 message 缺失或是
+  /// raw fallback（非顯示用字串）時退中性文案。
+  static String _quotaCopy(QuotaExceededException error) {
+    final message = error.message.trim();
+    const rawFallbacks = {
+      'quota_exceeded',
+      'Monthly limit exceeded',
+      'Daily limit exceeded',
+    };
+    if (message.isEmpty || rawFallbacks.contains(message)) {
+      return '額度已用完，升級方案可取得更多額度';
+    }
+    return message;
+  }
+
   factory _StatusText.error(Object error) {
     final message = switch (error) {
-      QuotaExceededException() => '今天的額度已用完，明天再試或調整方案',
+      QuotaExceededException() => _quotaCopy(error),
       GenerationFailedException() => '這次沒有產生可用建議，未扣額度，請再試一次',
       // 429＝server per-user 模型限流：顯示 server「稍等再試」文案
       ApiException(:final status, :final message) when status == 429 => message,
