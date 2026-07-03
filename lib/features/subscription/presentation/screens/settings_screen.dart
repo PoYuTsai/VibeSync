@@ -830,10 +830,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final rootNavigator = Navigator.of(context, rootNavigator: true);
     final router = GoRouter.of(context);
+    // 系統返回不得在初始清理 await 期間跳出守門（Codex R3 P1）。
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
     );
 
     try {

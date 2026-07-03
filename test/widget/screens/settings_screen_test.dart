@@ -594,6 +594,36 @@ void main() {
       expect(find.text('Login'), findsOneWidget);
     });
 
+    testWidgets(
+        'system back cannot dismiss the initial cleanup spinner (F2-5)',
+        (tester) async {
+      final gate = Completer<void>();
+      final actions = _FakeAccountDeletionActions();
+      actions.onClearLocalStorage = () => gate.future;
+
+      await pumpSettings(tester, deletionActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      // 初始清理 await 期間按系統返回：spinner 必須擋住不被 pop。
+      await tester.binding.handlePopRoute();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Login'), findsOneWidget);
+      expect(find.text('帳號已刪除。'), findsOneWidget);
+    });
+
     testWidgets('delete account invalidates live practice room state',
         (tester) async {
       final actions = _FakeAccountDeletionActions();
