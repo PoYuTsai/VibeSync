@@ -14,6 +14,7 @@
 | 5.1.1(i)/5.1.2(i) AI 同意 | **同意閘已建**（v2, 20260527）：五大 AI 功能＋OCR＋草稿潤飾全 gate，內容滿足四要件 | **P1 破口＝同意存 SharedPreferences 裝置級，登出/刪帳/換帳號不清**（R1-1）；onboarding 無揭露頁（R1-4，建議） |
 
 ## Batch R1 — 合規 P0（code，1 session）✅ 高風險：auth/consent → Codex 雙審
+> **DONE 2026-07-03**：range `2ceb1beb..3235dc57`，Codex R1 抓 1 P2（ensure() 身份競態）→ 修＝scopedKey 單次解析＋寫前驗證 → R2 APPROVED 四攻擊面全 SAFE。R1-4 待 Eric 拍板。
 
 - [x] R1-1【P1】AI 同意帳號級化：**選型＝consent key 內部綁 userId**（effective key＝`<key>::<userId>`，未登入 fallback 裝置級；換帳號天然隔離、同帳號重登不重問、裝置級舊同意不跨帳號沿用）。`2ceb1beb`，TDD 5 新測＋回歸 190/190 綠
 - [x] R1-2【P1】「複製訂閱診斷」兩入口 → `SubscriptionDiagnosticsGate`（`!kIsWeb && kDebugMode`）＋測試 seam，settings tile＋paywall 頁尾都走 gate。`1e93512f`
