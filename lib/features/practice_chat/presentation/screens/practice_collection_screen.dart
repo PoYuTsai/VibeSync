@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
@@ -42,14 +43,195 @@ class PracticeCollectionScreen extends ConsumerStatefulWidget {
 }
 
 class _PracticeCollectionScreenState
-    extends ConsumerState<PracticeCollectionScreen> {
+    extends ConsumerState<PracticeCollectionScreen>
+    with SingleTickerProviderStateMixin {
   /// null＝全部；否則只顯示該稀有度。
   PracticeGirlRarity? _filter;
+
+  /// 今日未翻的翻牌鈕脈動微光。repeat 鐵則：只在 !isRevealed && !reduceMotion
+  /// 時跑；revealed／reduce-motion／dispose 一律 stop（不然 pumpAndSettle 會 hang）。
+  late final AnimationController _drawPulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
+
+  @override
+  void dispose() {
+    _drawPulse.dispose();
+    super.dispose();
+  }
+
+  /// 翻牌鈕 gating（語義照抄 practice_chat_screen._requestNewPartner，兩態分流）。
+  /// 鐵律：本頁絕不 read-then-navigate autoDispose controller；build 有 watch
+  /// 掛著 listener，這裡的 read 只是取當下值。
+  void _onDrawPressed() {
+    final state = ref.read(practiceChatControllerProvider);
+    if (state.isDrawing) return; // 防連點
+
+    final notifier = ref.read(practiceChatControllerProvider.notifier);
+
+    if (!state.isRevealed) {
+      // locked（今日首抽）：Free 每日首抽免費，直接翻（比照 _PracticeLockedEntry）。
+      if (state.drawUpgradeRequired) {
+        context.push('/paywall');
+        return;
+      }
+      if (state.drawQuotaExceeded) {
+        _showDrawSnackBar(state.errorMessage ?? '額度已用完，明天中午會重置。');
+        return;
+      }
+      notifier.drawNewPracticeGirl();
+      return;
+    }
+
+    // revealed（換一位）：Free／已標升級 → 付費牆。
+    final subscription = ref.read(subscriptionProvider);
+    if (subscription.isFreeUser || state.drawUpgradeRequired) {
+      context.push('/paywall');
+      return;
+    }
+
+    if (state.drawQuotaExceeded) {
+      notifier.lockDrawQuotaExceeded();
+      _showDrawSnackBar(
+        ref.read(practiceChatControllerProvider).errorMessage ??
+            '今日額度已用完，明天再來或升級方案繼續練習。',
+      );
+      return;
+    }
+
+    if (_hasInsufficientPaidDrawQuota(subscription, state)) {
+      notifier.lockDrawQuotaExceeded();
+      _showDrawSnackBar(
+        ref.read(practiceChatControllerProvider).errorMessage ??
+            '今日額度已用完，明天再來或升級方案繼續練習。',
+      );
+      return;
+    }
+
+    if (_needsPaidDrawConfirmation(state)) {
+      _confirmPaidDraw(state);
+      return;
+    }
+
+    notifier.drawNewPracticeGirl();
+  }
+
+  /// 免費次數用完要扣額度：圖鑑頁沒有 inline notice 區，改 AlertDialog 確認。
+  Future<void> _confirmPaidDraw(PracticeChatState state) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.brandSurface,
+        title: Text(
+          '要扣額度翻牌嗎？',
+          style: AppTypography.titleMedium.copyWith(
+            color: AppColors.onBackgroundPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: Text(
+          _paidDrawSpendMessage(state),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.onBackgroundSecondary,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('collection-draw-cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const ValueKey('collection-draw-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.ctaStart,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('確認翻牌'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    ref.read(practiceChatControllerProvider.notifier).drawNewPracticeGirl();
+  }
+
+  // ── 以下三個 helper 語義照抄 practice_chat_screen（Task 7 才收殺原件）──
+
+  bool _needsPaidDrawConfirmation(PracticeChatState state) {
+    final remaining = state.drawFreeRemaining;
+    final cost = state.drawExtraCost ?? 0;
+    return remaining != null && remaining <= 0 && cost > 0;
+  }
+
+  bool _hasInsufficientPaidDrawQuota(
+    SubscriptionState subscription,
+    PracticeChatState state,
+  ) {
+    final cost = state.drawExtraCost ?? 0;
+    if (cost <= 0 || !_needsPaidDrawConfirmation(state)) return false;
+    return subscription.dailyRemaining < cost ||
+        subscription.monthlyRemaining < cost;
+  }
+
+  String _paidDrawSpendMessage(PracticeChatState state) {
+    final allowance = state.drawFreeAllowance;
+    final cost = state.drawExtraCost ?? 5;
+    if (allowance != null && allowance > 0) {
+      return '今日 $allowance 次免費換一位已用完，再按一次會扣 $cost 則額度。';
+    }
+    return '再按一次會扣 $cost 則額度。';
+  }
+
+  void _showDrawSnackBar(String message, {SnackBarAction? action}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message), action: action));
+  }
+
+  /// repeat 嚴格 gate：build 期同步校正（watch 的 state 一變就會重進來）。
+  void _syncDrawPulse({required bool shouldPulse}) {
+    if (shouldPulse) {
+      if (!_drawPulse.isAnimating) _drawPulse.repeat(reverse: true);
+    } else if (_drawPulse.isAnimating || _drawPulse.value != 0) {
+      _drawPulse.stop();
+      _drawPulse.value = 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final unlocked = ref.watch(practiceCollectionProvider);
     final unlockedCount = ref.watch(unlockedPracticeGirlCountProvider);
+    // 翻牌鈕兩態顯示必須 watch：同時讓 autoDispose controller 在本頁存活。
+    final chatState = ref.watch(practiceChatControllerProvider);
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _syncDrawPulse(shouldPulse: !chatState.isRevealed && !reduceMotion);
+
+    // 402/429 事後錯誤呈現：只攔「翻牌在途 → 收場」的轉場（同步 gating 的
+    // snackbar 由 _onDrawPressed 自己出，不會雙發）。
+    ref.listen(practiceChatControllerProvider, (prev, next) {
+      if (prev == null || !prev.isDrawing || next.isDrawing) return;
+      if (next.drawUpgradeRequired) {
+        _showDrawSnackBar(
+          next.errorMessage ?? '升級後每天可以翻更多陪練女孩。',
+          action: SnackBarAction(
+            label: '升級',
+            onPressed: () {
+              if (mounted) context.push('/paywall');
+            },
+          ),
+        );
+      } else if (next.drawQuotaExceeded || next.errorMessage != null) {
+        _showDrawSnackBar(next.errorMessage ?? '翻牌失敗了，再試一次。');
+      }
+    });
+
     final total = practiceGirlProfiles.length;
     final visible = _filter == null
         ? practiceGirlProfiles
@@ -92,6 +274,9 @@ class _PracticeCollectionScreenState
                 child: _CollectionHeader(
                   unlockedCount: unlockedCount,
                   total: total,
+                  drawPulse: _drawPulse,
+                  drawIsDrawing: chatState.isDrawing,
+                  onDrawPressed: _onDrawPressed,
                 ),
               ),
               SliverToBoxAdapter(
@@ -148,12 +333,21 @@ class _PracticeCollectionScreenState
   }
 }
 
-/// 頁首：eyebrow → 漸層大標 → 圖鑑副標 → 完成度數字＋漸層進度條。
+/// 頁首：eyebrow → 漸層大標＋右側翻牌鈕 → 圖鑑副標 → 完成度數字＋漸層進度條。
 class _CollectionHeader extends StatelessWidget {
-  const _CollectionHeader({required this.unlockedCount, required this.total});
+  const _CollectionHeader({
+    required this.unlockedCount,
+    required this.total,
+    required this.drawPulse,
+    required this.drawIsDrawing,
+    required this.onDrawPressed,
+  });
 
   final int unlockedCount;
   final int total;
+  final Animation<double> drawPulse;
+  final bool drawIsDrawing;
+  final VoidCallback onDrawPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -173,24 +367,36 @@ class _CollectionHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          ShaderMask(
-            blendMode: BlendMode.srcIn,
-            shaderCallback: (bounds) => const LinearGradient(
-              colors: [
-                Color(0xFFFFC24D),
-                AppColors.brandFlame,
-                AppColors.brandBlush,
-              ],
-            ).createShader(bounds),
-            child: Text(
-              'Collection',
-              style: AppTypography.headlineLarge.copyWith(
-                color: Colors.white, // ShaderMask srcIn 取代此色
-                fontSize: 40,
-                fontWeight: FontWeight.w900,
-                height: 1.05,
+          Row(
+            children: [
+              Expanded(
+                child: ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [
+                      Color(0xFFFFC24D),
+                      AppColors.brandFlame,
+                      AppColors.brandBlush,
+                    ],
+                  ).createShader(bounds),
+                  child: Text(
+                    'Collection',
+                    style: AppTypography.headlineLarge.copyWith(
+                      color: Colors.white, // ShaderMask srcIn 取代此色
+                      fontSize: 40,
+                      fontWeight: FontWeight.w900,
+                      height: 1.05,
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              _CollectionDrawButton(
+                pulse: drawPulse,
+                isDrawing: drawIsDrawing,
+                onPressed: onDrawPressed,
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(
@@ -251,6 +457,80 @@ class _CollectionHeader extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 標題右側的翻牌鈕：金橘漸層膠囊（配頁面大標視覺）＋微光。今日未翻時由
+/// [pulse]（repeat 呼吸）驅動 boxShadow alpha；revealed 時 pulse 停在 0＝定光。
+class _CollectionDrawButton extends StatelessWidget {
+  const _CollectionDrawButton({
+    required this.pulse,
+    required this.isDrawing,
+    required this.onPressed,
+  });
+
+  final Animation<double> pulse;
+  final bool isDrawing;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: pulse,
+      builder: (context, child) {
+        final glow = 0.28 + 0.34 * pulse.value;
+        return GestureDetector(
+          key: const ValueKey('collection-draw-button'),
+          behavior: HitTestBehavior.opaque,
+          onTap: onPressed,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFC24D), AppColors.brandFlame],
+              ),
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brandFlame.withValues(alpha: glow),
+                  blurRadius: 16,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isDrawing)
+            const SizedBox(
+              height: 14,
+              width: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.brandInk,
+              ),
+            )
+          else
+            const Icon(
+              Icons.style_rounded,
+              size: 16,
+              color: AppColors.brandInk,
+            ),
+          const SizedBox(width: 6),
+          Text(
+            '翻牌',
+            style: AppTypography.titleSmall.copyWith(
+              color: AppColors.brandInk,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],

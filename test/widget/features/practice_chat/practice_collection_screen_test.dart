@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:vibesync/features/learning/presentation/screens/learning_screen.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_collection_store.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
+import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -17,6 +22,109 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   }
 }
 
+class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
+
+class _FakePracticeSessionRepository extends PracticeSessionRepository {
+  _FakePracticeSessionRepository() : super(_UnusedPracticeSessionBox());
+
+  @override
+  List<PracticeSession> recentSessions() => const [];
+
+  @override
+  Future<void> save(PracticeSession session) async {}
+}
+
+/// 圖鑑翻牌鈕 gating 測試絕不打 API：任何真呼叫直接炸出來。
+PracticeChatApiService _unusedApi() => PracticeChatApiService(
+      invoker: (name, {required body}) async =>
+          throw UnimplementedError('collection test 不應打 practice-chat'),
+    );
+
+/// 同 practice_chat_screen_style_test 的 seeded-controller idiom。
+class _SeededPracticeChatController extends PracticeChatController {
+  _SeededPracticeChatController(PracticeChatState seed)
+      : super(
+          api: _unusedApi(),
+          repository: _FakePracticeSessionRepository(),
+          sessionId: seed.sessionId,
+          createdAt: seed.createdAt,
+        ) {
+    state = seed;
+  }
+}
+
+/// 翻牌鈕 gating spy：只錄呼叫次數（draw 不真的抽），並開縫讓測試切 state。
+class _DrawSpyController extends _SeededPracticeChatController {
+  _DrawSpyController(super.seed);
+
+  int drawCalls = 0;
+  int lockQuotaCalls = 0;
+
+  @override
+  Future<void> drawNewPracticeGirl() async {
+    drawCalls++;
+  }
+
+  @override
+  void lockDrawQuotaExceeded({
+    String message = '今日額度已用完，明天再來或升級方案繼續練習。',
+  }) {
+    lockQuotaCalls++;
+    super.lockDrawQuotaExceeded(message: message);
+  }
+
+  /// StateNotifier 的 state setter 是 protected，只能從子類開縫給測試切狀態。
+  void debugSetState(PracticeChatState next) => state = next;
+}
+
+PracticeChatState _lockedSeed({
+  bool upgradeRequired = false,
+  bool quotaExceeded = false,
+  String? errorMessage,
+}) {
+  return PracticeChatState(
+    sessionId: 'collection-gating-test',
+    createdAt: DateTime(2026, 7, 3, 12),
+    girl: null,
+    personaId: '',
+    personaLabel: '',
+    difficulty: 'normal',
+    difficultyLabel: '一般',
+    drawStatus: PracticeDrawStatus.locked,
+    drawUpgradeRequired: upgradeRequired,
+    drawQuotaExceeded: quotaExceeded,
+    errorMessage: errorMessage,
+  );
+}
+
+PracticeChatState _revealedSeed({
+  int? freeAllowance,
+  int? freeRemaining,
+  int? extraCost,
+  bool quotaExceeded = false,
+}) {
+  final girl = practiceGirlProfiles.first;
+  return PracticeChatState(
+    sessionId: 'collection-gating-test',
+    createdAt: DateTime(2026, 7, 3, 12),
+    girl: girl,
+    personaId: girl.personaId,
+    personaLabel: '',
+    difficulty: 'normal',
+    difficultyLabel: '一般',
+    drawFreeAllowance: freeAllowance,
+    drawFreeRemaining: freeRemaining,
+    drawExtraCost: extraCost,
+    drawQuotaExceeded: quotaExceeded,
+  );
+}
+
+const _paidSubscription = SubscriptionState(
+  tier: SubscriptionTierHelper.starter,
+  monthlyLimit: 100,
+  dailyLimit: 30,
+);
+
 PracticeCollectionNotifier _seededCollection(Set<String> unlocked) {
   final store = InMemoryPracticeCollectionStore();
   for (final id in unlocked) {
@@ -25,13 +133,61 @@ PracticeCollectionNotifier _seededCollection(Set<String> unlocked) {
   return PracticeCollectionNotifier(store);
 }
 
-Widget collectionApp({Set<String> unlocked = const {}}) {
+List<Override> _collectionOverrides({
+  Set<String> unlocked = const {},
+  PracticeChatController? controller,
+  SubscriptionState subscription = const SubscriptionState(),
+}) {
+  return [
+    practiceCollectionProvider.overrideWith((ref) => _seededCollection(unlocked)),
+    practiceChatControllerProvider.overrideWith(
+      (ref) => controller ?? _SeededPracticeChatController(_revealedSeed()),
+    ),
+    subscriptionProvider
+        .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
+  ];
+}
+
+Widget collectionApp({
+  Set<String> unlocked = const {},
+  PracticeChatController? controller,
+  SubscriptionState subscription = const SubscriptionState(),
+}) {
   return ProviderScope(
-    overrides: [
-      practiceCollectionProvider
-          .overrideWith((ref) => _seededCollection(unlocked)),
-    ],
+    overrides: _collectionOverrides(
+      unlocked: unlocked,
+      controller: controller,
+      subscription: subscription,
+    ),
     child: const MaterialApp(home: PracticeCollectionScreen()),
+  );
+}
+
+/// 帶 /paywall stub 的 router 版：驗證翻牌鈕 gating 導頁行為。
+Widget collectionRouterApp({
+  PracticeChatController? controller,
+  SubscriptionState subscription = const SubscriptionState(),
+}) {
+  final router = GoRouter(
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const PracticeCollectionScreen(),
+      ),
+      GoRoute(
+        path: '/paywall',
+        builder: (context, state) => const Scaffold(
+          body: Text('paywall-stub', key: ValueKey('paywall-stub')),
+        ),
+      ),
+    ],
+  );
+  return ProviderScope(
+    overrides: _collectionOverrides(
+      controller: controller,
+      subscription: subscription,
+    ),
+    child: MaterialApp.router(routerConfig: router),
   );
 }
 
@@ -203,11 +359,7 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            practiceCollectionProvider.overrideWith(
-              (ref) => _seededCollection({'practice_girl_004'}),
-            ),
-          ],
+          overrides: _collectionOverrides(unlocked: {'practice_girl_004'}),
           child: MaterialApp.router(routerConfig: router),
         ),
       );
@@ -250,22 +402,11 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            practiceCollectionProvider.overrideWith(
-              (ref) => _seededCollection(
-                  {'practice_girl_001', 'practice_girl_004'}),
-            ),
-            // 付費 tier：跳過 free 每日閱讀提示（避免觸 usage box）。
-            subscriptionProvider.overrideWith(
-              (ref) => _SeededSubscriptionNotifier(
-                const SubscriptionState(
-                  tier: SubscriptionTierHelper.starter,
-                  monthlyLimit: 100,
-                  dailyLimit: 30,
-                ),
-              ),
-            ),
-          ],
+          // 付費 tier：跳過 free 每日閱讀提示（避免觸 usage box）。
+          overrides: _collectionOverrides(
+            unlocked: {'practice_girl_001', 'practice_girl_004'},
+            subscription: _paidSubscription,
+          ),
           child: MaterialApp.router(routerConfig: router),
         ),
       );
@@ -283,6 +424,247 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('COMPLETION 完成度'), findsOneWidget);
+    });
+  });
+
+  group('圖鑑翻牌鈕 gating', () {
+    const drawButton = ValueKey('collection-draw-button');
+    const confirmKey = ValueKey('collection-draw-confirm');
+    const cancelKey = ValueKey('collection-draw-cancel');
+
+    Future<void> pumpApp(WidgetTester tester, Widget app) async {
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(app);
+      await tester.pump();
+    }
+
+    testWidgets('翻牌鈕在 Collection 標題右側顯示', (tester) async {
+      await pumpApp(tester, collectionApp());
+
+      expect(find.byKey(drawButton), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(drawButton), matching: find.text('翻牌')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('locked 點擊 → 直接 drawNewPracticeGirl（每日首抽免費，Free 也放行）',
+        (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(controller.drawCalls, 1);
+    });
+
+    testWidgets('locked＋drawUpgradeRequired 點擊 → 導 paywall、不 draw',
+        (tester) async {
+      final controller = _DrawSpyController(
+        _lockedSeed(upgradeRequired: true, errorMessage: '升級後每天可以翻更多陪練女孩。'),
+      );
+      await pumpApp(tester, collectionRouterApp(controller: controller));
+
+      await tester.tap(find.byKey(drawButton));
+      // locked 態脈動微光 repeat 中，不能 pumpAndSettle；逐幀推進到路由轉場完。
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(controller.drawCalls, 0);
+    });
+
+    testWidgets('locked＋drawQuotaExceeded 點擊 → snackbar 顯示 errorMessage、不 draw',
+        (tester) async {
+      final controller = _DrawSpyController(
+        _lockedSeed(quotaExceeded: true, errorMessage: '額度已用完，明天中午會重置。'),
+      );
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(find.text('額度已用完，明天中午會重置。'), findsOneWidget);
+      expect(controller.drawCalls, 0);
+    });
+
+    testWidgets('revealed＋Free 點擊（換一位）→ 導 paywall、不 draw、不彈 dialog',
+        (tester) async {
+      final controller = _DrawSpyController(_revealedSeed());
+      await pumpApp(tester, collectionRouterApp(controller: controller));
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pumpAndSettle(); // revealed 無脈動，可 settle
+
+      expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(controller.drawCalls, 0);
+    });
+
+    testWidgets('revealed＋付費＋免費次數用完 → 確認 dialog，確認才 draw', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 1, freeRemaining: 0, extraCost: 5),
+      );
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, subscription: _paidSubscription),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('今日 1 次免費換一位已用完，再按一次會扣 5 則額度。'), findsOneWidget);
+      expect(controller.drawCalls, 0); // 未確認前絕不 draw
+
+      await tester.tap(find.byKey(confirmKey));
+      await tester.pumpAndSettle();
+
+      expect(controller.drawCalls, 1);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('確認 dialog 取消 → 不 draw', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 1, freeRemaining: 0, extraCost: 5),
+      );
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, subscription: _paidSubscription),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(cancelKey));
+      await tester.pumpAndSettle();
+
+      expect(controller.drawCalls, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('revealed＋付費＋還有免費次數 → 直接 draw、不彈 dialog', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 1, freeRemaining: 1, extraCost: 5),
+      );
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, subscription: _paidSubscription),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(controller.drawCalls, 1);
+    });
+
+    testWidgets('revealed＋付費＋drawQuotaExceeded → lockDrawQuotaExceeded＋snackbar',
+        (tester) async {
+      final controller = _DrawSpyController(_revealedSeed(quotaExceeded: true));
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, subscription: _paidSubscription),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(controller.lockQuotaCalls, 1);
+      expect(controller.drawCalls, 0);
+      expect(find.text('今日額度已用完，明天再來或升級方案繼續練習。'), findsOneWidget);
+    });
+
+    testWidgets('revealed＋付費但額度不足付費翻牌 → 同鎖、不彈 dialog、不 draw', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 1, freeRemaining: 0, extraCost: 5),
+      );
+      // dailyRemaining = 30 - 28 = 2 < cost 5 → 額度不足。
+      const lowQuota = SubscriptionState(
+        tier: SubscriptionTierHelper.starter,
+        monthlyLimit: 100,
+        dailyLimit: 30,
+        dailyMessagesUsed: 28,
+      );
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, subscription: lowQuota),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(controller.lockQuotaCalls, 1);
+      expect(controller.drawCalls, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('翻牌中（isDrawing）點擊 → 防連點不重入', (tester) async {
+      final controller = _DrawSpyController(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(controller.drawCalls, 0);
+    });
+
+    testWidgets('repeat 鐵則：locked 脈動、revealed 後停（pumpAndSettle 不 hang）',
+        (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+      // locked：脈動 repeat 中，逐幀推進不 settle。
+      await tester.pump(const Duration(milliseconds: 700));
+
+      controller.debugSetState(_revealedSeed());
+      await tester.pump();
+      // revealed 後 repeat 必停：settle 收斂＝鐵則成立（會 hang 即 fail）。
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(drawButton), findsOneWidget);
+    });
+
+    testWidgets('draw 事後 402 → snackbar 帶「升級」動作鈕導 paywall', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(tester, collectionRouterApp(controller: controller));
+
+      // 模擬 drawNewPracticeGirl 在途 → 402 收場（controller 內部行為不真跑）。
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      controller.debugSetState(
+        _lockedSeed(upgradeRequired: true, errorMessage: '升級後每天可以翻更多陪練女孩。'),
+      );
+      await tester.pump();
+
+      expect(find.text('升級後每天可以翻更多陪練女孩。'), findsOneWidget);
+      // 等 snackbar 進場動畫走完才點得到動作鈕（locked 脈動中不能 settle）。
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.tap(find.text('升級'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+    });
+
+    testWidgets('draw 事後 429 → snackbar 顯示 errorMessage', (tester) async {
+      final controller = _DrawSpyController(_revealedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      controller.debugSetState(
+        _revealedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      controller.debugSetState(
+        _revealedSeed(quotaExceeded: true)
+            .copyWith(errorMessage: '今日翻牌額度用完了'),
+      );
+      await tester.pump();
+
+      expect(find.text('今日翻牌額度用完了'), findsOneWidget);
     });
   });
 }
