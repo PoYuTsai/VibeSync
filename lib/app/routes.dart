@@ -14,6 +14,7 @@ import '../features/practice_chat/presentation/screens/practice_chat_screen.dart
 import '../features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import '../features/onboarding/data/onboarding_service.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
+import '../features/subscription/presentation/screens/ai_privacy_screen.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/conversation/presentation/screens/profile_card_screen.dart';
 import '../features/partner/presentation/screens/add_partner_screen.dart';
@@ -154,6 +155,11 @@ final router = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsScreen(),
+    ),
+    // F5-A7：設定頁常駐「AI 與你的隱私」靜態揭露（onboarding 第 4 頁可略過的補位）。
+    GoRoute(
+      path: '/settings/ai-privacy',
+      builder: (context, state) => const AiPrivacyScreen(),
     ),
     GoRoute(
       path: '/paywall',

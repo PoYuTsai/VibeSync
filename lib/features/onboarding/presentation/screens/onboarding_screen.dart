@@ -8,6 +8,7 @@
 // system. No flow / navigation / OnboardingService logic changed.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/ai_privacy_disclosure.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -43,10 +44,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     },
     // R1-4 App Review 保險：靜態揭露第三方 AI 資料外送；實際同意
     // 仍由各 AI 功能首次使用前的 AiDataSharingConsent 同意閘把關。
+    // 文案與設定頁「AI 與你的隱私」共用 AiPrivacyDisclosure（F5-A7）。
     {
-      'title': 'AI 與你的隱私',
-      'description':
-          '你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI\n（分析與教練用 Anthropic Claude，練習室用 DeepSeek）\n每個 AI 功能首次使用前，都會先徵求你的同意',
+      'title': AiPrivacyDisclosure.title,
+      'description': AiPrivacyDisclosure.description,
       'imagePath': 'privacy',
     },
   ];

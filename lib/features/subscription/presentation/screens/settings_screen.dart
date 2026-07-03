@@ -270,6 +270,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       _launchUrl('https://vibesyncai.app/privacy');
                     },
                   ),
+                  // F5-A7：AI 資料外送靜態揭露常駐入口（onboarding 揭露頁可略過的補位）。
+                  _buildTile(
+                    icon: Icons.smart_toy_outlined,
+                    title: 'AI 與你的隱私',
+                    onTap: () {
+                      context.push('/settings/ai-privacy');
+                    },
+                  ),
                 ],
               ),
               _buildSection(
