@@ -12,6 +12,7 @@ import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/presentation/screens/settings_screen.dart';
+import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
 
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
@@ -254,6 +255,30 @@ void main() {
       expect(find.text('尚未登入'), findsOneWidget);
       expect(find.text('管理訂閱'), findsOneWidget);
       expect(find.text('恢復購買'), findsOneWidget);
+    });
+
+    testWidgets('diagnostics row hidden when gate is off (release build)',
+        (tester) async {
+      SubscriptionDiagnosticsGate.debugVisibleOverride = false;
+      addTearDown(() {
+        SubscriptionDiagnosticsGate.debugVisibleOverride = null;
+      });
+
+      await pumpSettings(tester);
+
+      expect(find.text('複製訂閱診斷'), findsNothing);
+    });
+
+    testWidgets('diagnostics row visible when gate is on (debug build)',
+        (tester) async {
+      SubscriptionDiagnosticsGate.debugVisibleOverride = true;
+      addTearDown(() {
+        SubscriptionDiagnosticsGate.debugVisibleOverride = null;
+      });
+
+      await pumpSettings(tester);
+
+      expect(find.text('複製訂閱診斷'), findsOneWidget);
     });
 
     testWidgets('shows privacy and support rows with launch copy',

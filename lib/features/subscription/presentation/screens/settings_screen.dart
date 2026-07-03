@@ -21,6 +21,7 @@ import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
+import '../subscription_diagnostics_gate.dart';
 
 @visibleForTesting
 String formatSettingsRenewalDate(DateTime? dateTime, {DateTime? now}) {
@@ -243,7 +244,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         _restorePurchases(context, ref);
                       },
                     ),
-                  if (!kIsWeb)
+                  if (SubscriptionDiagnosticsGate.isVisible)
                     _buildTile(
                       icon: Icons.bug_report_outlined,
                       title: '複製訂閱診斷',

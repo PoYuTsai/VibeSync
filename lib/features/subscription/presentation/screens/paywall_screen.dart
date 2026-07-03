@@ -21,6 +21,7 @@ import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/subscription_tier_helper.dart';
+import '../subscription_diagnostics_gate.dart';
 
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
@@ -377,7 +378,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       },
                       child: Text('恢復購買', style: AppTypography.caption),
                     ),
-                    if (!kIsWeb) ...[
+                    if (SubscriptionDiagnosticsGate.isVisible) ...[
                       Text('|', style: AppTypography.caption),
                       TextButton(
                         onPressed: _copySubscriptionDiagnostics,

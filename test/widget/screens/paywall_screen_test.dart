@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
+import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
 
 void main() {
   Future<void> pumpPaywall(
@@ -159,6 +160,30 @@ void main() {
       expect(find.text('隱私政策'), findsOneWidget);
       expect(find.text('管理訂閱'), findsOneWidget);
       expect(find.text('恢復購買'), findsOneWidget);
+    });
+
+    testWidgets('diagnostics footer link hidden when gate is off (release)',
+        (tester) async {
+      SubscriptionDiagnosticsGate.debugVisibleOverride = false;
+      addTearDown(() {
+        SubscriptionDiagnosticsGate.debugVisibleOverride = null;
+      });
+
+      await pumpPaywall(tester);
+
+      expect(find.text('複製訂閱診斷'), findsNothing);
+    });
+
+    testWidgets('diagnostics footer link visible when gate is on (debug)',
+        (tester) async {
+      SubscriptionDiagnosticsGate.debugVisibleOverride = true;
+      addTearDown(() {
+        SubscriptionDiagnosticsGate.debugVisibleOverride = null;
+      });
+
+      await pumpPaywall(tester);
+
+      expect(find.text('複製訂閱診斷'), findsOneWidget);
     });
   });
 }
