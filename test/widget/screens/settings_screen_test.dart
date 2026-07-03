@@ -47,11 +47,13 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   _FakeAccountDeletionActions({
     this.deleteError,
     this.clearLocalStorageError,
+    this.clearLocalSessionError,
     this.onClearLocalSessionAfterDeletion,
   });
 
   final Object? deleteError;
   final Object? clearLocalStorageError;
+  final Object? clearLocalSessionError;
   final Future<void> Function()? onClearLocalSessionAfterDeletion;
   final confirmations = <String>[];
   var clearLocalStorageCalls = 0;
@@ -74,6 +76,8 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   @override
   Future<void> clearLocalSessionAfterDeletion() async {
     clearLocalSessionCalls++;
+    final error = clearLocalSessionError;
+    if (error != null) throw error;
     await onClearLocalSessionAfterDeletion?.call();
   }
 }
@@ -470,8 +474,9 @@ void main() {
       expect(find.text('Login'), findsNothing);
     });
 
-    testWidgets('delete account local cleanup failure does not finish deletion',
-        (tester) async {
+    testWidgets(
+        'delete account local cleanup failure still finishes deletion '
+        'with split copy and best-effort session clear', (tester) async {
       final actions = _FakeAccountDeletionActions(
         clearLocalStorageError: Exception('local clear failed'),
       );
@@ -488,8 +493,40 @@ void main() {
 
       expect(actions.confirmations, ['DELETE']);
       expect(actions.clearLocalStorageCalls, 1);
-      expect(actions.clearLocalSessionCalls, 0);
-      expect(find.text('Login'), findsNothing);
+      expect(actions.clearLocalSessionCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+      expect(
+        find.text('帳號已刪除，但本機清理未完成，請重新開啟 App。'),
+        findsOneWidget,
+      );
+      expect(find.text('帳號已刪除。'), findsNothing);
+    });
+
+    testWidgets(
+        'delete account session clear failure still finishes deletion '
+        'with split copy', (tester) async {
+      final actions = _FakeAccountDeletionActions(
+        clearLocalSessionError: Exception('session clear failed'),
+      );
+
+      await pumpSettings(tester, deletionActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+
+      expect(actions.confirmations, ['DELETE']);
+      expect(actions.clearLocalStorageCalls, 1);
+      expect(actions.clearLocalSessionCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+      expect(
+        find.text('帳號已刪除，但本機清理未完成，請重新開啟 App。'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('delete account invalidates live practice room state',

@@ -840,18 +840,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await widget.accountDeletionActions.deleteAccount(
         confirmation: confirmation,
       );
-      await widget.accountDeletionActions.clearLocalStorage();
-      await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
-      _invalidateAccountScopedProviders(ref);
-
-      _dismissBlockingDialog(rootNavigator);
-      router.go('/login');
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('帳號已刪除。'),
-          backgroundColor: AppColors.success,
-        ),
-      );
     } catch (error) {
       _dismissBlockingDialog(rootNavigator);
       if (!context.mounted) return;
@@ -861,7 +849,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           backgroundColor: AppColors.error,
         ),
       );
+      return;
     }
+
+    // 遠端帳號已刪除：本機清理各自 best-effort，失敗只影響文案，
+    // 絕不把「帳號已刪除」回報成刪除失敗。
+    var localCleanupSucceeded = true;
+    try {
+      await widget.accountDeletionActions.clearLocalStorage();
+    } catch (error) {
+      localCleanupSucceeded = false;
+      debugPrint('Delete-account local storage cleanup failed: $error');
+    }
+    try {
+      await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
+    } catch (error) {
+      localCleanupSucceeded = false;
+      debugPrint('Delete-account session clear failed: $error');
+    }
+    _invalidateAccountScopedProviders(ref);
+
+    _dismissBlockingDialog(rootNavigator);
+    router.go('/login');
+    messenger.showSnackBar(
+      localCleanupSucceeded
+          ? const SnackBar(
+              content: Text('帳號已刪除。'),
+              backgroundColor: AppColors.success,
+            )
+          : const SnackBar(
+              content: Text('帳號已刪除，但本機清理未完成，請重新開啟 App。'),
+            ),
+    );
   }
 
   void _dismissBlockingDialog(NavigatorState rootNavigator) {
