@@ -66,11 +66,16 @@ export type OpenerChargeOutcome =
 export async function computeOpenerInputHash(args: {
   images: unknown;
   profileInfo: unknown;
+  effectiveStyleContext?: string | null;
 }): Promise<string> {
-  const canonical = JSON.stringify([
-    args.images ?? null,
-    args.profileInfo ?? null,
-  ]);
+  // F3-1：風格設定是模型輸入的一部分，必須入 hash。缺席時維持既有
+  // 2 元素 canonical 形狀——部署邊界上舊 client in-flight retry 的
+  // stored hash 不得因新欄位而全數 mismatch。
+  const canonical = JSON.stringify(
+    args.effectiveStyleContext
+      ? [args.images ?? null, args.profileInfo ?? null, args.effectiveStyleContext]
+      : [args.images ?? null, args.profileInfo ?? null],
+  );
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(canonical),

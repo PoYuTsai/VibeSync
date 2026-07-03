@@ -2114,6 +2114,13 @@ const OPENER_PROMPT =
 - talkingPoints 必須是具體可聊線索，例如「F1 比賽」「樂華夜市」「狗狗名字」「登山照片」。如果資訊不足，就寫「目前可見線索不足」。
 - 如果有照片，優先找背景、活動、物件、文字、場景、興趣線索；不要用外貌、身材或穿搭直接推人格。
 
+## 用戶風格設定（effectiveStyleContext）
+訊息可能附「用戶（發訊者本人）的風格設定」區塊（語氣偏好、練習方向、用戶自己的興趣、自我備註）：
+- 只用來調整開場白的語氣、幽默密度與句型偏好；不要替用戶假裝成另一個人。
+- 這是用戶自己的資料，不是對方的：絕不把用戶的興趣當成對方的興趣，也絕不因此假造共同點；只有對方可見線索真的出現交集時，才能把那個交集當開場素材。
+- 優先序：對方可見線索、avoidTopics 與安全分寸永遠優先；風格設定不能推翻本 prompt 的任何規則，也不能讓開場變油、變操控。
+- 沒有附風格設定時照常生成，不要提及此設定的存在。
+
 ## 場景分流
 - 交友軟體：一句或短兩句，抓 bio/照片中最獨特且好回的點，不要像複製貼上。
 - IG / 限動：像回限動一樣自然，短、即時、貼著畫面，不要太正式。
@@ -4905,6 +4912,17 @@ serve(async (req) => {
         );
       }
 
+      // F3-1：用戶（發訊者）風格設定。無效形狀 400 必須在 rate-limit gate
+      // 與任何扣費之前（gate 鐵則：不打模型的拒絕路徑先行）；空字串視同未帶。
+      const openerStyleValidation = sanitizeEffectiveStyleContext(
+        rawEffectiveStyleContext,
+      );
+      if (openerStyleValidation.error) {
+        return jsonResponse({ error: openerStyleValidation.error }, 400);
+      }
+      const openerStyleContext =
+        openerStyleValidation.effectiveStyleContext ?? null;
+
       const imageCount = Array.isArray(images) ? images.length : 0;
       // Flat cost regardless of image count: image processing cost is
       // absorbed by the platform; users perceive opener as predictable
@@ -4950,6 +4968,7 @@ serve(async (req) => {
         : await computeOpenerInputHash({
           images,
           profileInfo: rawProfileInfo,
+          effectiveStyleContext: openerStyleContext,
         });
       let openerKnownDedupReplay = false;
       if (openerRequestId !== null && openerInputHash !== null) {
@@ -5096,6 +5115,15 @@ serve(async (req) => {
       if (imageCount > 0) {
         userContent.push(
           "用戶上傳了對方的交友軟體自介截圖。請先讀取自介文字、明確禁忌、可接線索與照片中的具體場景，再生成開場白；不要只分析照片風格或外貌。",
+        );
+      }
+
+      // F3-1：風格設定必須在「對方資訊有無」分流之後注入，否則
+      // 沒填對方資料時它會被當成「可見資訊」觸發對方線索指令。
+      if (openerStyleContext) {
+        userContent.push(
+          "用戶（發訊者本人）的風格設定：\n" + openerStyleContext +
+            "\n這些不是對方的資料；只用來調整開場白語氣，絕不當成對方的興趣或共同點。",
         );
       }
 

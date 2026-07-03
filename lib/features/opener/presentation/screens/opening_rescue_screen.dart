@@ -12,6 +12,7 @@ import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
+import '../../data/providers/opener_providers.dart';
 import '../../data/services/opener_request_session.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
@@ -476,6 +477,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       }
       if (!mounted) return;
 
+      // F3-1：關於我/對象風格設定進 opener（只調語氣，server 端 prompt 守門）。
+      final effectiveStyleContext =
+          ref.read(openerStyleContextProvider(widget.partnerId));
+
       final service = OpenerService();
       final result = await service.generateOpeners(
         images: input.images,
@@ -485,6 +490,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         meetingContext: input.meetingContext,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
+        effectiveStyleContext: effectiveStyleContext,
         requestId: _requestSession.beginAttempt(
           fingerprint: OpenerRequestIdSession.fingerprintFor(
             images: input.images,
@@ -492,6 +498,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             bio: input.bio,
             interests: input.interests,
             meetingContext: input.meetingContext,
+            effectiveStyleContext: effectiveStyleContext,
           ),
         ),
       );

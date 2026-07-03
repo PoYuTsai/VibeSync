@@ -196,6 +196,36 @@ Deno.test("computeOpenerInputHash is deterministic and payload-sensitive", async
   assert(/^[0-9a-f]{64}$/.test(hNoInputs));
 });
 
+Deno.test("computeOpenerInputHash binds effectiveStyleContext; absent keeps legacy hash (F3-1)", async () => {
+  const images = [{ data: "abc", mediaType: "image/jpeg", order: 1 }];
+  const profileInfo = { name: "Candy", bio: "喜歡旅行" };
+
+  const legacy = await computeOpenerInputHash({ images, profileInfo });
+  const absent = await computeOpenerInputHash({
+    images,
+    profileInfo,
+    effectiveStyleContext: null,
+  });
+  const withStyle = await computeOpenerInputHash({
+    images,
+    profileInfo,
+    effectiveStyleContext: "- Preferred voice: 幽默",
+  });
+  const withOtherStyle = await computeOpenerInputHash({
+    images,
+    profileInfo,
+    effectiveStyleContext: "- Preferred voice: 穩重",
+  });
+
+  // deploy 邊界相容：舊 client（不帶風格）在部署前後的 in-flight retry，
+  // stored hash 必須繼續吻合 → 缺席時 canonical 形狀不得改變。
+  assertEquals(absent, legacy);
+  // 風格設定是模型輸入的一部分：同 id 換風格必須被 mismatch 擋下。
+  assert(withStyle !== legacy, "style context must change the hash");
+  assert(withStyle !== withOtherStyle, "different style → different hash");
+  assert(/^[0-9a-f]{64}$/.test(withStyle));
+});
+
 Deno.test("rpc returning false means already charged → dedup (not an error)", async () => {
   const calls: RpcCall[] = [];
   const outcome = await chargeOpenerQuota({

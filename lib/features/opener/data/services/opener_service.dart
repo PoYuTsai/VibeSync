@@ -290,6 +290,7 @@ class OpenerService {
     String? expectedTier,
     String? revenueCatAppUserId,
     String? requestId,
+    String? effectiveStyleContext,
   }) async {
     // Build image list as ImageData objects (matching existing format)
     List<Map<String, dynamic>>? imageDataList;
@@ -335,6 +336,10 @@ class OpenerService {
       // 扣費 idempotency：server 靠 (user, requestId) 去重傳輸層重試雙扣。
       if (requestId != null && requestId.trim().isNotEmpty)
         'requestId': requestId.trim(),
+      // F3-1：用戶（發訊者）的風格設定，opener prompt 只拿來調語氣。
+      if (effectiveStyleContext != null &&
+          effectiveStyleContext.trim().isNotEmpty)
+        'effectiveStyleContext': effectiveStyleContext.trim(),
     };
 
     final response = await _invoke('analyze-chat', body: body);

@@ -10,6 +10,9 @@ class EffectiveStylePromptBuilder {
   static const int analysisMaxChars = 900;
   static const int coachFollowUpMaxChars = 500;
 
+  /// Under the server-side effectiveStyleContext cap (1200) with headroom.
+  static const int openerMaxChars = 900;
+
   const EffectiveStylePromptBuilder();
 
   /// Full context for analyze-chat / my_message / userDraft optimize.
@@ -59,6 +62,56 @@ class EffectiveStylePromptBuilder {
       '當前對話、同意與安全、1.8x 黃金法則優先。',
     );
     return _truncate(lines.join('\n'), analysisMaxChars);
+  }
+
+  /// Opener (F3-1) slice. Same ingredients as analysis, but the topic-seed
+  /// and contract wording guard the opener-specific failure mode: the model
+  /// treating the *user's own* interests as the target's, fabricating common
+  /// ground the target never showed.
+  String? buildForOpener({
+    required UserProfile? global,
+    required PartnerStyleOverride? partner,
+    required bool includePartnerOverride,
+  }) {
+    final effective = resolveEffectiveStyle(
+      global: global,
+      partner: includePartnerOverride ? partner : null,
+    );
+    final lines = <String>[];
+
+    final voiceLine = _voiceLine(effective);
+    if (voiceLine != null) lines.add(voiceLine);
+
+    if (effective.practiceGoals.isNotEmpty) {
+      lines.add(
+        '- Practice focus: ${effective.practiceGoals.map(_goalLabel).join('、')}；'
+        '${effective.practiceGoals.map(_goalPrompt).join(' ')}',
+      );
+    }
+
+    final topics = <String>[
+      if (global != null) ...global.topicSeeds.map(_topicLabel),
+      if (global?.customTopics?.trim().isNotEmpty ?? false)
+        global!.customTopics!.trim(),
+    ];
+    if (topics.isNotEmpty) {
+      lines.add(
+        '- Topic seeds: ${topics.join('、')}；這是用戶自己的興趣，'
+        '只有與對方可見線索有真實交集時才拿來當開場素材，絕不假造共同點。',
+      );
+    }
+
+    final notes = effective.notes?.trim();
+    if (notes != null && notes.isNotEmpty) {
+      lines.add('- Notes: $notes');
+    }
+
+    if (lines.isEmpty) return null;
+    lines.add(
+      '- Contract: 這些是用戶自己的風格設定，只用來調整開場白語氣與風格；'
+      '不要替用戶假裝成另一個人。對方可見線索、明確禁忌與安全分寸永遠優先。',
+    );
+    return _truncate(lines.join('\n'), openerMaxChars);
   }
 
   /// Lightweight slice for Spec 5 coach-follow-up.

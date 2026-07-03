@@ -104,5 +104,28 @@ void main() {
       expect(editedBio, isNot(base));
       expect(swappedImage, isNot(base));
     });
+
+    test('fingerprintFor covers effectiveStyleContext (F3-1: style is input)',
+        () {
+      // 風格設定會進 server input hash；client 指紋不跟上會讓「改風格後
+      // 重生成」誤沿用舊 requestId，被 server 判 payload mismatch 400。
+      final base = OpenerRequestIdSession.fingerprintFor(
+        name: 'Candy',
+        effectiveStyleContext: '- Preferred voice: 幽默',
+      );
+      final sameStyle = OpenerRequestIdSession.fingerprintFor(
+        name: 'Candy',
+        effectiveStyleContext: '- Preferred voice: 幽默',
+      );
+      final changedStyle = OpenerRequestIdSession.fingerprintFor(
+        name: 'Candy',
+        effectiveStyleContext: '- Preferred voice: 穩重',
+      );
+      final noStyle = OpenerRequestIdSession.fingerprintFor(name: 'Candy');
+
+      expect(sameStyle, base);
+      expect(changedStyle, isNot(base));
+      expect(noStyle, isNot(base));
+    });
   });
 }

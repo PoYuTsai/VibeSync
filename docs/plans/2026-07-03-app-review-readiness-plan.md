@@ -46,7 +46,7 @@
 
 ## Batch F3 — opener 體驗對齊（1–2 session）✅ 高風險：prompt → Codex 雙審
 
-- [ ] F3-1 opener 完全不吃「關於我/對象設定」（`opener_service.dart:306-338` 只送 profileInfo＋images）→ 注入 effectiveStyleContext（複用 `effective_style_prompt_builder.dart`），prompt 對應吃進去
+- [x] F3-1 opener 完全不吃「關於我/對象設定」→ SHIPPED：`buildForOpener` 專用切片（防用戶興趣被捏成共同點）＋`openerStyleContextProvider`（partnerId 可空、Spec 3 flag 守門）＋body/`fingerprintFor`/server input hash 三處對齊（hash 缺席時保 2 元素舊形狀）＋opener branch sanitize 在 gate 前＋userContent 注入在對方資訊分流後＋OPENER_PROMPT 消費段；順手修 opener_prompt_test 扣費錨點 stale（HEAD 既有，`p_messages: effectiveOpenerCost` 已隨 chargeOpenerQuota 重構搬家）
 - [ ] F3-2 opener 等待只有轉圈（`opening_rescue_screen.dart:727-745`）→ 低配版先做：staged 本地進度文案（比照 analyze prelude）；真 streaming 另開 design session（Edge＋client 改動大，非上架 blocker）
 
 ## Batch F5 — UI/UX 文案總審（1 session，可與 F4 併）

@@ -111,6 +111,53 @@ void main() {
       );
     });
 
+    test('sends effectiveStyleContext in body when provided (F3-1)',
+        () async {
+      final calls = <Map<String, dynamic>>[];
+      final service = OpenerService(
+        invoker: (functionName, {required body}) async {
+          calls.add(body);
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {'extend': '嗨！'},
+            },
+          );
+        },
+      );
+
+      await service.generateOpeners(
+        name: 'Grace',
+        effectiveStyleContext: '- Preferred voice: 幽默；回覆要輕鬆',
+      );
+
+      expect(
+        calls.single['effectiveStyleContext'],
+        '- Preferred voice: 幽默；回覆要輕鬆',
+      );
+    });
+
+    test('omits effectiveStyleContext key when null or blank', () async {
+      final calls = <Map<String, dynamic>>[];
+      final service = OpenerService(
+        invoker: (functionName, {required body}) async {
+          calls.add(body);
+          return const OpenerInvokeResponse(
+            status: 200,
+            data: {
+              'openers': {'extend': '嗨！'},
+            },
+          );
+        },
+      );
+
+      await service.generateOpeners(name: 'Grace');
+      await service.generateOpeners(name: 'Grace', effectiveStyleContext: '  ');
+
+      expect(calls[0].containsKey('effectiveStyleContext'), isFalse);
+      expect(calls[1].containsKey('effectiveStyleContext'), isFalse);
+    });
+
     test('omits requestId key entirely when not provided', () async {
       final calls = <Map<String, dynamic>>[];
       final service = OpenerService(

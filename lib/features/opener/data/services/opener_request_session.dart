@@ -37,14 +37,18 @@ class OpenerRequestIdSession {
     String? bio,
     String? interests,
     String? meetingContext,
+    String? effectiveStyleContext,
   }) {
     // jsonEncode 保欄位邊界（純 join 會讓 'a b'+'c' 與 'a'+'b c' 撞指紋）。
+    // effectiveStyleContext 也是 server input hash 的一部分（F3-1）：
+    // 改風格後重生成必須換新 id，否則被 server 判 payload mismatch。
     return jsonEncode([
       name,
       bio,
       interests,
       meetingContext,
       images?.map(Object.hashAll).toList(),
+      effectiveStyleContext,
     ]);
   }
 }

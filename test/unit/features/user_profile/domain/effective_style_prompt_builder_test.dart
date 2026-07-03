@@ -185,6 +185,125 @@ void main() {
     });
   });
 
+  group('EffectiveStylePromptBuilder.buildForOpener', () {
+    test('returns null when global and partner settings are empty', () {
+      expect(
+        builder.buildForOpener(
+          global: null,
+          partner: null,
+          includePartnerOverride: true,
+        ),
+        isNull,
+      );
+    });
+
+    test('turns global About Me into opener style context', () {
+      final context = builder.buildForOpener(
+        global: profile(
+          style: InteractionStyle.humorous,
+          goals: const [PracticeGoal.explainLess],
+          seeds: const [TopicSeed.fitness, TopicSeed.coffee],
+          customTopics: '日劇',
+          notes: '我慢熟，開場不要太衝',
+        ),
+        partner: null,
+        includePartnerOverride: true,
+      )!;
+
+      expect(context, contains('Preferred voice: 幽默'));
+      expect(context, contains('Practice focus: 減少解釋'));
+      expect(context, contains('Topic seeds: 健身、咖啡、日劇'));
+      expect(context, contains('Notes: 我慢熟，開場不要太衝'));
+      // opener 專用 contract：只調語氣，對方線索與安全優先。
+      expect(context, contains('只用來調整開場白語氣'));
+      expect(context, contains('不要替用戶假裝成另一個人'));
+      expect(context, contains('對方可見線索、明確禁忌與安全分寸永遠優先'));
+    });
+
+    test('topic seeds carry the no-fabricated-common-ground guard', () {
+      final context = builder.buildForOpener(
+        global: profile(seeds: const [TopicSeed.coffee]),
+        partner: null,
+        includePartnerOverride: true,
+      )!;
+
+      // 用戶自己的興趣絕不能被當成「和對方的共同點」素材。
+      expect(context, contains('這是用戶自己的興趣'));
+      expect(context, contains('真實交集'));
+      expect(context, contains('絕不假造共同點'));
+      // analyze 版的措辭不該滲進來（那句沒有共同點守門）。
+      expect(context, isNot(contains('只在自然時作為延伸素材')));
+    });
+
+    test('partner override wins when trusted, suspended when flagged', () {
+      final trusted = builder.buildForOpener(
+        global: profile(style: InteractionStyle.gentle, notes: '全域備註'),
+        partner: override(
+          style: InteractionStyle.direct,
+          notes: '對這位直接一點',
+        ),
+        includePartnerOverride: true,
+      )!;
+      expect(trusted, contains('Preferred voice: 直接'));
+      expect(trusted, contains('對這位直接一點'));
+      expect(trusted, isNot(contains('全域備註')));
+
+      final flagged = builder.buildForOpener(
+        global: profile(style: InteractionStyle.gentle, notes: '全域備註'),
+        partner: override(
+          style: InteractionStyle.direct,
+          notes: '疑似混入的對象備註',
+        ),
+        includePartnerOverride: false,
+      )!;
+      expect(flagged, contains('Preferred voice: 溫柔'));
+      expect(flagged, contains('全域備註'));
+      expect(flagged, isNot(contains('疑似混入的對象備註')));
+    });
+
+    test('carries the 主+副 pair voice line', () {
+      final context = builder.buildForOpener(
+        global: profile(
+          style: InteractionStyle.steady,
+          secondaryStyle: InteractionStyle.playful,
+        ),
+        partner: null,
+        includePartnerOverride: true,
+      )!;
+
+      expect(context, contains('Preferred voice: 以穩重為主、有玩心為輔'));
+      expect(context, contains('不要蓋過主基調'));
+    });
+
+    test('stays within the opener max length', () {
+      final context = builder.buildForOpener(
+        global: profile(
+          style: InteractionStyle.humorous,
+          secondaryStyle: InteractionStyle.playful,
+          goals: const [
+            PracticeGoal.softInvite,
+            PracticeGoal.reduceAnxiety,
+            PracticeGoal.buildCloseness,
+          ],
+          seeds: const [
+            TopicSeed.fitness,
+            TopicSeed.travel,
+            TopicSeed.coffee,
+          ],
+          customTopics: 'x' * UserProfile.maxCustomTopicsLength,
+          notes: 'y' * UserProfile.maxNotesLength,
+        ),
+        partner: null,
+        includePartnerOverride: true,
+      )!;
+
+      expect(
+        context.length,
+        lessThanOrEqualTo(EffectiveStylePromptBuilder.openerMaxChars),
+      );
+    });
+  });
+
   group('EffectiveStylePromptBuilder.buildForCoachFollowUp', () {
     test('uses only interaction style + practice goals', () {
       final context = builder.buildForCoachFollowUp(
