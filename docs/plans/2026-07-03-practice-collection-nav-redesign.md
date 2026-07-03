@@ -162,21 +162,48 @@ Center(
 ### Task 3: 點已抽卡進對話
 
 **Files:**
-- Modify: `practice_collection_screen.dart`（`_CollectionCard.onTap` :322-330；`_CollectionCard` 要能拿 ref → 改 ConsumerWidget）
-- Test: 同 Task 2 測試檔
+- Modify: `practice_collection_screen.dart`（`_CollectionCard.onTap`；維持 StatelessWidget）
+- Modify: `lib/app/routes.dart`（`/practice-chat` 帶 `profileId` query，比照 `/opener?partnerId=` 先例）
+- Modify: `practice_chat_screen.dart`（`PracticeChatScreen` 加 optional `startProfileId`）
+- Test: 同 Task 2 測試檔＋`practice_chat_screen_style_test.dart` 加一條縫測試
 
-**Step 1: 失敗測試**——點已解鎖卡：controller 收到 `startSessionWithProfile(profileId)`（override provider 用 spy notifier，比照檔內既有 override 手法）＋ router push `/practice-chat`（測試 harness 若已有 GoRouter stub 就斷言 location；沒有就只驗 controller 呼叫＋onTap 不再開全螢幕照片 dialog）。
+> **為什麼不在圖鑑頁直接 read controller**（Codex review Critical，已核實）：
+> `practiceChatControllerProvider` 是 autoDispose，圖鑑頁對它零 watch/listen；
+> onTap `ref.read` 完 seed 的 state 會在導航間隙（零 listener）被 dispose，
+> chat screen watch 時重建全新 controller → 點的角色丟失。修法＝profileId
+> 走路由 query，由 chat screen（唯一 watcher）自己在 initState post-frame
+> 發起 `startSessionWithProfile`（post-frame 是必須：riverpod 禁止 build
+> 期間同步改 provider state；此時 watch 已掛 listener 不會再被 autoDispose）。
+
+**Step 1: 失敗測試**——(a) collection 測試：點已解鎖卡 → GoRouter stub 斷言導航落點 `/practice-chat?profileId=practice_girl_004`＋不開全螢幕照片 viewer。(b) chat screen 測試：`PracticeChatScreen(startProfileId: ...)` pump 後 spy controller 收到 `startSessionWithProfile(該 id)`。
 
 **Step 2:** FAIL。
 
-**Step 3: 實作**——`_CollectionCard` 改 `ConsumerWidget`，onTap unlocked 分支：
+**Step 3: 實作**——
 
 ```dart
+// routes.dart
+GoRoute(
+  path: '/practice-chat',
+  builder: (context, state) => PracticeChatScreen(
+    startProfileId: state.uri.queryParameters['profileId'],
+  ),
+),
+
+// practice_chat_screen.dart：PracticeChatScreen 加 final String? startProfileId;
+// _PracticeChatScreenState.initState：
+if (widget.startProfileId != null) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted) return;
+    ref
+        .read(practiceChatControllerProvider.notifier)
+        .startSessionWithProfile(widget.startProfileId!);
+  });
+}
+
+// practice_collection_screen.dart onTap unlocked 分支（StatelessWidget 不動）：
 if (unlocked) {
-  ref
-      .read(practiceChatControllerProvider.notifier)
-      .startSessionWithProfile(profile.profileId);
-  context.push('/practice-chat');
+  context.push('/practice-chat?profileId=${profile.profileId}');
   return;
 }
 ```

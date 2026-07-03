@@ -292,6 +292,18 @@ class _SeededPracticeChatController extends PracticeChatController {
   }
 }
 
+/// 圖鑑點卡縫（startProfileId）：只錄 startSessionWithProfile 呼叫（含參數）。
+class _StartProfileSpyController extends _SeededPracticeChatController {
+  _StartProfileSpyController({required super.seed, required super.repository});
+
+  final List<String> startSessionCalls = [];
+
+  @override
+  void startSessionWithProfile(String profileId) {
+    startSessionCalls.add(profileId);
+  }
+}
+
 void main() {
   // 兩段升階揭曉時間軸：測試的 pump 時間點全由 widget 公開的 beat 常數推導，
   // 與 _PracticeDrawCeremonyState 共用單一真相（重新調 beat 不會讓測試落點失準）。
@@ -3644,5 +3656,46 @@ void main() {
     );
     expect(find.byKey(const ValueKey('practice-draw-ceremony-back')),
         findsOneWidget);
+  });
+
+  testWidgets('startProfileId 進場 → post-frame 呼叫 startSessionWithProfile（圖鑑點卡縫）',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final seed = PracticeChatState(
+      sessionId: 'practice-start-profile-test',
+      createdAt: DateTime(2026, 7, 3, 12),
+      girl: practiceGirlProfiles.first,
+      personaId: 'slow_worker',
+      personaLabel: '慢熱上班族',
+      difficulty: 'normal',
+      difficultyLabel: '一般',
+    );
+    final controller = _StartProfileSpyController(seed: seed, repository: repo);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: PracticeChatScreen(startProfileId: 'practice_girl_004'),
+        ),
+      ),
+    );
+    // post-frame 縫：首幀 build（watch 已掛 listener）後才發起開局。
+    await tester.pump();
+
+    expect(controller.startSessionCalls, ['practice_girl_004']);
   });
 }

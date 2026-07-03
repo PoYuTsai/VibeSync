@@ -23,7 +23,12 @@ import '../widgets/practice_profile_sheet.dart';
 /// 使用者先發訊息，AI 扮演模擬對象回覆；最多 20 則 AI 回覆；
 /// 結束練習產一張教練拆解卡。
 class PracticeChatScreen extends ConsumerStatefulWidget {
-  const PracticeChatScreen({super.key});
+  const PracticeChatScreen({super.key, this.startProfileId});
+
+  /// 圖鑑點卡入口：帶 profileId 進場時由本頁發起開局（續玩或免費開新局）。
+  /// 開局必須由本頁（controller 唯一 watcher）發起：controller 是 autoDispose，
+  /// 若在圖鑑頁先 read+seed，導航間隙零 listener 會被 dispose、seed 全丟。
+  final String? startProfileId;
 
   @override
   ConsumerState<PracticeChatScreen> createState() => _PracticeChatScreenState();
@@ -35,6 +40,22 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _scrollController = ScrollController();
   bool _confirmPaidNewPartnerSpend = false;
   PracticeHintReply? _appliedHintDraft;
+
+  @override
+  void initState() {
+    super.initState();
+    final startProfileId = widget.startProfileId;
+    if (startProfileId != null) {
+      // 必須 post-frame：riverpod 禁止 build 期間同步改 provider state；
+      // 此時首幀的 watch 已掛上 listener，controller 不會再被 autoDispose。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref
+            .read(practiceChatControllerProvider.notifier)
+            .startSessionWithProfile(startProfileId);
+      });
+    }
+  }
 
   @override
   void dispose() {

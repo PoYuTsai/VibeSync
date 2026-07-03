@@ -2,41 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/learning/presentation/screens/learning_screen.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_collection_store.dart';
-import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
-import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
-import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
-
-class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
 /// 同其他 widget test 的 seeded-notifier idiom：constructor 在 super 同步初始化後
 /// 直接覆寫 state；無 Supabase user 時後續 async 初始化全 no-op。
 class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(SubscriptionState seed) {
     state = seed;
-  }
-}
-
-/// 只錄 startSessionWithProfile 呼叫（含 profileId 參數）的 spy controller；
-/// repository/api 在測試裡永不會被觸碰。
-class _SpyPracticeChatController extends PracticeChatController {
-  _SpyPracticeChatController()
-      : super(
-          api: PracticeChatApiService(),
-          repository: PracticeSessionRepository(_UnusedPracticeSessionBox()),
-        );
-
-  final List<String> startSessionCalls = [];
-
-  @override
-  void startSessionWithProfile(String profileId) {
-    startSessionCalls.add(profileId);
   }
 }
 
@@ -199,12 +176,12 @@ void main() {
       expect(find.text('每日翻牌有機會遇到她'), findsOneWidget);
     });
 
-    testWidgets('點解鎖卡 → controller.startSessionWithProfile ＋導航 /practice-chat（不開全圖）',
-        (tester) async {
+    testWidgets('點解鎖卡 → 導航 /practice-chat?profileId=…（不開全圖）', (tester) async {
       await tester.binding.setSurfaceSize(const Size(500, 1600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final spy = _SpyPracticeChatController();
+      // 開局由 chat screen 以 startProfileId 發起（autoDispose controller 的
+      // 生命週期歸唯一 watcher），圖鑑只負責把 profileId 塞進路由 query。
       final router = GoRouter(
         routes: [
           GoRoute(
@@ -213,10 +190,11 @@ void main() {
           ),
           GoRoute(
             path: '/practice-chat',
-            builder: (context, state) => const Scaffold(
+            builder: (context, state) => Scaffold(
               body: Text(
-                'practice-chat-stub',
-                key: ValueKey('practice-chat-stub'),
+                'practice-chat-stub '
+                'profileId=${state.uri.queryParameters['profileId']}',
+                key: const ValueKey('practice-chat-stub'),
               ),
             ),
           ),
@@ -229,7 +207,6 @@ void main() {
             practiceCollectionProvider.overrideWith(
               (ref) => _seededCollection({'practice_girl_004'}),
             ),
-            practiceChatControllerProvider.overrideWith((ref) => spy),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -240,9 +217,8 @@ void main() {
           .tap(find.byKey(const ValueKey('collection-card-practice_girl_004')));
       await tester.pumpAndSettle();
 
-      expect(spy.startSessionCalls, ['practice_girl_004']);
       expect(
-        find.byKey(const ValueKey('practice-chat-stub')),
+        find.text('practice-chat-stub profileId=practice_girl_004'),
         findsOneWidget,
       );
       // 全螢幕照片 viewer 已退役：看大圖由對話頁 profile sheet 承擔。

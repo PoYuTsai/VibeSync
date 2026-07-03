@@ -167,7 +167,9 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/practice-chat',
-      builder: (context, state) => const PracticeChatScreen(),
+      builder: (context, state) => PracticeChatScreen(
+        startProfileId: state.uri.queryParameters['profileId'],
+      ),
     ),
     GoRoute(
       path: '/practice-collection',

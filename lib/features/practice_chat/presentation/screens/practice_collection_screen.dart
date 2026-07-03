@@ -304,14 +304,14 @@ class _RarityFilterChip extends StatelessWidget {
   }
 }
 
-class _CollectionCard extends ConsumerWidget {
+class _CollectionCard extends StatelessWidget {
   const _CollectionCard({required this.profile, required this.unlocked});
 
   final PracticeGirlProfile profile;
   final bool unlocked;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final rarity = practiceGirlRarityFor(profile.personaId);
     final color = _rarityColor(rarity);
 
@@ -320,12 +320,10 @@ class _CollectionCard extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         if (unlocked) {
-          // 已抽卡直進練習室：有既有場次續玩、沒有就免費開新局（controller 決定）。
-          // 看大圖由對話頁 profile sheet 承擔，全螢幕照片 viewer 在此退役。
-          ref
-              .read(practiceChatControllerProvider.notifier)
-              .startSessionWithProfile(profile.profileId);
-          context.push('/practice-chat');
+          // 已抽卡直進練習室：profileId 走路由 query、開局由對話頁自己發起
+          // （controller 是 autoDispose，在這裡先 read+seed 會在導航間隙零
+          // listener 被 dispose）。看大圖由對話頁 profile sheet 承擔。
+          context.push('/practice-chat?profileId=${profile.profileId}');
           return;
         }
         ScaffoldMessenger.of(context)
