@@ -1,6 +1,6 @@
 ﻿# App Review Submission Package
 
-最後更新：2026-05-23
+最後更新：2026-07-04（本次僅補 DeepSeek 第三方 AI 揭露；全文對齊 R1–F5 修復現況與 GO/HOLD 重判留給 Batch V-4）
 
 這份文件是送審前的「主控台」：App Store Connect 審核說明、Reviewer 測試步驟、Privacy Label 對照、Go/No-Go gate 都先放這裡。密碼、API key、Apple sandbox 帳密不要 commit，請只填在 App Store Connect 的 App Review Information。
 
@@ -36,8 +36,8 @@ The app is not a social network, does not provide public posting or user-to-user
 
 Privacy and AI processing:
 - Conversation content is local-first and stored on the user's device by default.
-- When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, or AI coaching, only the minimum required content for that request is sent through our backend processing service and Anthropic Claude API to generate the response.
-- Before an AI request is sent, the app explains what data may be sent, identifies VibeSync backend processing and Anthropic Claude API as recipients, and asks the user to agree. If the user declines, the request is not sent.
+- When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, AI coaching, or practice chat, only the minimum required content for that request is sent through our backend processing service and the corresponding third-party AI provider (Anthropic Claude API for analysis/coaching/OCR; DeepSeek API for the practice chat feature) to generate the response.
+- Before an AI request is sent, the app explains what data may be sent, identifies VibeSync backend processing and the specific third-party AI provider (Anthropic Claude API, or DeepSeek API for practice chat) as recipients, and asks the user to agree. Practice chat has its own separate consent. If the user declines, the request is not sent.
 - We do not use users' raw conversations to train our own model.
 - Users can delete conversations locally and can delete their account in the app.
 - The app requests Photo Library access only when the user chooses to upload a chat screenshot for OCR/analysis. It does not access photos in the background.
@@ -173,6 +173,7 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 | Purchase history / Subscription info | 是 | 訂閱驗證、restore、額度同步 | Apple / RevenueCat / Supabase |
 | User content: typed chat | 使用者主動分析時會處理 | AI 分析、回覆建議、Coach | local-first；請求期間傳 VibeSync 後端與 Anthropic Claude API |
 | User content: screenshots | 使用者主動上傳時會處理 | OCR、分析 | 不主動讀相簿；請求期間傳 VibeSync 後端與 Anthropic Claude API |
+| User content: practice chat | 使用者主動使用練習室時會處理 | AI 模擬對話練習 | 請求期間傳 VibeSync 後端與 DeepSeek API；獨立同意閘 |
 | Diagnostics | 是 | crash/error/debug、服務穩定 | app version、error code、部分遮罩 metadata |
 | Usage data | 是 | 額度、成本、濫用防護、產品穩定 | token/model/latency/status |
 | Contact info in feedback | 使用者主動提交時可能有 | 客服與問題排查 | feedback context 應最小化 |
@@ -183,7 +184,7 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 - [ ] Privacy Policy、App Store Connect Privacy Label、Review Notes 三者一致
 - [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不要填 `mailto:`
 - [ ] 不宣稱「資料永不離開裝置」
-- [ ] 清楚揭露 Anthropic Claude API 會處理使用者主動送出的內容，且 App 內送出前會先取得同意
+- [ ] 清楚揭露 Anthropic Claude API（分析/Coach/OCR）與 DeepSeek API（練習室）會處理使用者主動送出的內容，且 App 內送出前會先取得同意（練習室為獨立同意項）
 - [ ] 若新增 analytics / crash SDK，要回頭更新此表
 
 ### 3.1 App Store Connect Privacy Label 建議填法
