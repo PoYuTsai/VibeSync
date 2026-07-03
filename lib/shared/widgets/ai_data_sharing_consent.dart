@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/services/supabase_service.dart';
 import '../services/link_launch_service.dart';
 
 class AiDataSharingConsent {
@@ -24,9 +25,23 @@ class AiDataSharingConsent {
   static const practicePurposeText =
       '用途：只用來在 AI 實戰練習室產生模擬對象的回覆，以及練習結束後的一張拆解卡。';
 
+  /// 測試 seam：覆寫 userId 解析（回傳 null 模擬未登入）。production 不碰。
+  @visibleForTesting
+  static String? Function()? debugUserIdOverride;
+
+  /// 同意是帳號級（5.1.1(i)/5.1.2(i)）：登入時 key 綁 userId，
+  /// 換帳號各自重新同意；未登入才 fallback 裝置級 key。
+  static String _effectiveKey(String consentKey) {
+    final resolver = debugUserIdOverride;
+    final userId =
+        resolver != null ? resolver() : SupabaseService.currentUser?.id;
+    if (userId == null || userId.isEmpty) return consentKey;
+    return '$consentKey::$userId';
+  }
+
   static Future<bool> hasAccepted({String consentKey = _acceptedKey}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(consentKey) == true;
+    return prefs.getBool(_effectiveKey(consentKey)) == true;
   }
 
   static Future<bool> ensure(
@@ -58,7 +73,7 @@ class AiDataSharingConsent {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(consentKey, true);
+    await prefs.setBool(_effectiveKey(consentKey), true);
     return true;
   }
 }

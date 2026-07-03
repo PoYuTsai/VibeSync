@@ -33,6 +33,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  tearDown(() {
+    AiDataSharingConsent.debugUserIdOverride = null;
+  });
+
   testWidgets('shows the third-party AI disclosure before accepting',
       (tester) async {
     await pumpConsentLauncher(tester);
@@ -167,5 +171,81 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  // ── 帳號級同意（5.1.1(i)/5.1.2(i)）：consent 綁 userId，不得跨帳號沿用 ──
+
+  group('account-scoped consent', () {
+    test('登入時裝置級舊同意不沿用（必須重新取得該帳號同意）', () async {
+      SharedPreferences.setMockInitialValues({
+        AiDataSharingConsent.acceptedKeyForTesting: true,
+      });
+      AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+
+      expect(await AiDataSharingConsent.hasAccepted(), isFalse);
+    });
+
+    testWidgets('登入時同意持久化到該帳號，換帳號不沿用、回原帳號仍有效',
+        (tester) async {
+      AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+
+      await pumpConsentLauncher(tester);
+      await tester.tap(find.byType(CheckboxListTile));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('我同意並送出'));
+      await tester.pumpAndSettle();
+
+      expect(await AiDataSharingConsent.hasAccepted(), isTrue);
+
+      AiDataSharingConsent.debugUserIdOverride = () => 'user-b';
+      expect(await AiDataSharingConsent.hasAccepted(), isFalse);
+
+      AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+      expect(await AiDataSharingConsent.hasAccepted(), isTrue);
+    });
+
+    test('登入時同意不寫入裝置級 key（登出後不殘留全域同意）', () async {
+      AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+        '${AiDataSharingConsent.acceptedKeyForTesting}::user-a',
+        true,
+      );
+
+      expect(await AiDataSharingConsent.hasAccepted(), isTrue);
+
+      AiDataSharingConsent.debugUserIdOverride = () => null;
+      expect(await AiDataSharingConsent.hasAccepted(), isFalse);
+    });
+
+    test('未登入（userId 為 null）fallback 裝置級 key，行為不變', () async {
+      SharedPreferences.setMockInitialValues({
+        AiDataSharingConsent.acceptedKeyForTesting: true,
+      });
+      AiDataSharingConsent.debugUserIdOverride = () => null;
+
+      expect(await AiDataSharingConsent.hasAccepted(), isTrue);
+    });
+
+    test('practice consentKey 同樣帳號級隔離', () async {
+      SharedPreferences.setMockInitialValues({
+        '${AiDataSharingConsent.practiceConsentKey}::user-a': true,
+      });
+      AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+      expect(
+        await AiDataSharingConsent.hasAccepted(
+          consentKey: AiDataSharingConsent.practiceConsentKey,
+        ),
+        isTrue,
+      );
+
+      AiDataSharingConsent.debugUserIdOverride = () => 'user-b';
+      expect(
+        await AiDataSharingConsent.hasAccepted(
+          consentKey: AiDataSharingConsent.practiceConsentKey,
+        ),
+        isFalse,
+      );
+    });
   });
 }
