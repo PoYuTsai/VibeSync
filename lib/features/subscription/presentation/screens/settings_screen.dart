@@ -125,6 +125,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       'https://apps.apple.com/account/subscriptions';
   static const _supportEmail = 'vibesyncaiapp@gmail.com';
   static const _pendingDowngradeRefreshTimeout = Duration(seconds: 20);
+  static const _restoreTimeout = Duration(seconds: 45);
 
   String _versionString = '';
   bool _isRefreshingSubscription = true;
@@ -663,8 +664,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     try {
-      final restored =
-          await ref.read(subscriptionProvider.notifier).restorePurchases();
+      final restored = await ref
+          .read(subscriptionProvider.notifier)
+          .restorePurchases()
+          .timeout(_restoreTimeout);
       if (!context.mounted) return;
 
       Navigator.of(context, rootNavigator: true).pop();
@@ -675,6 +678,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           backgroundColor: restored ? AppColors.success : null,
         ),
+      );
+    } on TimeoutException {
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('App Store 恢復購買逾時，請稍後再試。')),
       );
     } catch (error) {
       if (!context.mounted) return;

@@ -25,15 +25,31 @@ class _MemoryPracticeSessionRepository extends PracticeSessionRepository {
 
 class _NoopPracticeChatApi extends PracticeChatApiService {}
 
-class _PendingDowngradeStubNotifier extends SubscriptionNotifier {
-  _PendingDowngradeStubNotifier({required this.onClearPendingDowngrade});
+class _StubSubscriptionNotifier extends SubscriptionNotifier {
+  _StubSubscriptionNotifier({this.onClearPendingDowngrade, this.onRestore});
 
-  final Future<bool> Function() onClearPendingDowngrade;
+  final Future<bool> Function()? onClearPendingDowngrade;
+  final Future<bool> Function()? onRestore;
 
   void seedState(SubscriptionState value) => state = value;
 
   @override
-  Future<bool> clearPendingDowngradeMetadata() => onClearPendingDowngrade();
+  Future<bool> clearPendingDowngradeMetadata() {
+    final handler = onClearPendingDowngrade;
+    if (handler == null) {
+      fail('clearPendingDowngradeMetadata should not be called in this test');
+    }
+    return handler();
+  }
+
+  @override
+  Future<bool> restorePurchases() {
+    final handler = onRestore;
+    if (handler == null) {
+      fail('restorePurchases should not be called in this test');
+    }
+    return handler();
+  }
 }
 
 class _DisposablePracticeChatController extends PracticeChatController {
@@ -687,7 +703,7 @@ void main() {
     testWidgets(
         'pending downgrade cancel refresh hang times out and restores button',
         (tester) async {
-      final stub = _PendingDowngradeStubNotifier(
+      final stub = _StubSubscriptionNotifier(
         onClearPendingDowngrade: () => Completer<bool>().future,
       );
 
@@ -722,6 +738,41 @@ void main() {
       expect(find.textContaining('同步逾時'), findsOneWidget);
 
       // 讓 snackbar timer 走完，避免測試結尾殘留 pending timer。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets(
+        'restore purchases hang times out and dismisses the blocking dialog',
+        (tester) async {
+      final stub = _StubSubscriptionNotifier(
+        onRestore: () => Completer<bool>().future,
+      );
+
+      await pumpSettings(
+        tester,
+        extraOverrides: [
+          subscriptionProvider.overrideWith((ref) => stub),
+        ],
+      );
+
+      final restoreTile = find.text('恢復購買');
+      expect(restoreTile, findsOneWidget);
+      await tester.ensureVisible(restoreTile);
+      await tester.pump();
+      await tester.tap(restoreTile, warnIfMissed: false);
+      await tester.pump();
+      // 確認 dialog 的確認鈕與 tile 同字，dialog 在 overlay 內＝last。
+      await tester.tap(find.text('恢復購買').last, warnIfMissed: false);
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 46));
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.textContaining('恢復購買逾時'), findsOneWidget);
+
       await tester.pump(const Duration(seconds: 5));
       await tester.pump(const Duration(seconds: 1));
     });
