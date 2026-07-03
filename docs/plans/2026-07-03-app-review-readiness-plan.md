@@ -19,7 +19,7 @@
 - [x] R1-1【P1】AI 同意帳號級化：**選型＝consent key 內部綁 userId**（effective key＝`<key>::<userId>`，未登入 fallback 裝置級；換帳號天然隔離、同帳號重登不重問、裝置級舊同意不跨帳號沿用）。`2ceb1beb`，TDD 5 新測＋回歸 190/190 綠
 - [x] R1-2【P1】「複製訂閱診斷」兩入口 → `SubscriptionDiagnosticsGate`（`!kIsWeb && kDebugMode`）＋測試 seam，settings tile＋paywall 頁尾都走 gate。`1e93512f`
 - [x] R1-3【P3】forceSyncTier debugPrint 去 user.id。`9ab02bf9`
-- [ ] R1-4【建議，Eric 拍板】onboarding 加一頁輕量「AI 與隱私」揭露（點名 Anthropic/DeepSeek＋資料外送說明）。per-feature 同意閘理論上已滿足「使用前同意」，此項是保險
+- [ ] R1-4【Eric 拍板 2026-07-03＝**做輕量版**】onboarding 加一頁靜態「AI 與隱私」揭露（點名 Anthropic/DeepSeek＋資料外送說明）。理由＝上輪拒審主軸即 AI 資料分享揭露（同 H-3 軸），一頁成本低、搭 V-3 build 出。per-feature 同意閘仍是主要合規面，此頁是保險
 
 ## Batch R2 — paywall 殘餘（0.5 session）✅ 高風險：paywall → Codex 雙審
 > **DONE 2026-07-03**：range `32be3ca3..f5e08a79`（與 F2 併一刀，Codex 三輪）。
@@ -37,10 +37,11 @@
 - [x] F2-5 初始清理 spinner 包 `PopScope(canPop:false)`（Codex R3 P1，Eric 放行）。`3f9a2ebe`，Codex R4 APPROVED
 
 ## Batch F1 — tier 行為對齊（1 session）
+> **DONE 2026-07-03**：F1-1 Eric 拍板＝接受為轉換投資（doc-only）；F1-2 前提證偽不修；F1-3 對照表補齊。零 code 變更。
 
-- [ ] F1-1【P2，Eric 拍板】Free 用戶 full 分析會被 `selectModel`（`analyze-chat/index.ts:4315-4322`）升到 Sonnet（首次分析必中），違反 pricing「Free=Haiku」＝成本/毛利縫。選項：Free clamp Haiku（圖片除外）or 接受為轉換投資並更新 pricing-final.md
-- [ ] F1-2【P3】「我說」量測 Essential-only 但 client 無前置 gate，非 Essential 直接吃 403 → 補鎖卡＋paywall 導引（比照草稿潤飾 `analysis_screen.dart:3847-3849`）
-- [ ] F1-3【P3，doc】pricing-final.md 功能對照表補齊已上線 gating（草稿潤飾/我說=Essential、翻牌 1/3/5、opener 僅 extend、練習室續玩規則）
+- [x] F1-1【P2，Eric 拍板 2026-07-03＝**接受為轉換投資、不 clamp**】Free full 分析升 Sonnet（首次/長對話/冷淡/複雜情緒）＝品質優先，成本被額度＋per-user 限流雙層封頂；pricing-final.md 已註記（footnote ¹＋Free 成本行更新）
+- [x] F1-2【證偽不修，2026-07-03】原主張「client 無前置 gate 直接吃 403」**前提不成立**：全 lib 無任何入口送 `analyzeMode: "my_message"`（唯一送出點 `analysis_service.dart:1459` 三個 caller 都不傳），`MyMessageAnalysis` 無 UI 消費——「我說」量測是 server 休眠面（`index.ts:5710` 403 閘為未來/舊 client 防禦），現行用戶打不到。若日後做「我說」入口，開工時才補 Essential 鎖卡（比照草稿潤飾 `analysis_screen.dart:3846`）
+- [x] F1-3【P3，doc】pricing-final.md 功能對照表補齊：opener Free 僅 extend（`index.ts:527`）、草稿潤飾=Essential 雙閘、翻牌 1/3/5＋加購扣 5 則（Free 導升級，`draw_decision.ts`）、Free 續玩僅第 1 輪（`quota_decision.ts:79`）。「我說」不入表（無用戶可見入口）
 - [ ] 已記錄不修：練習室 roundIndex 弱閘（`quota_decision.ts:70-72` 自承，需 per-thread ledger，非上架 blocker）；額度數字五處重複定義（值一致，漂移風險另案）
 
 ## Batch F3 — opener 體驗對齊（1–2 session）✅ 高風險：prompt → Codex 雙審

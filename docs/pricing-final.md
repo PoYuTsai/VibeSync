@@ -75,13 +75,26 @@
 | 熱度分析 | ✓ | ✓ | ✓ |
 | 延展回覆 | ✓ | ✓ | ✓ |
 | 共鳴/調情/幽默/冷讀回覆 | ✗ | ✓ | ✓ |
+| 開場白（opener）風格 | 僅延展 | 5 型全開 | 5 型全開 |
+| 草稿潤飾器 | ✗ | ✗ | ✓ |
 | Needy 警示 | ✗ | ✓ | ✓ |
 | 5 維雷達圖 | ✗ | ✓ | ✓ |
 | 我的報告 Tab | ✗ | ✓ | ✓ |
+| 練習室翻牌（每日免費）| 1 次 | 3 次 | 5 次 |
+| 翻牌用完加購（扣 5 則額度）| ✗（導升級）| ✓ | ✓ |
+| 練習室續玩同一位角色 | ✗（僅第 1 輪）| ✓ | ✓ |
 | 學習專區（每日上限）| 3 篇/日 | ∞ | ∞ |
 | 對話歷史 | 3 個 | 15 個 | 50 個 |
-| AI 模型 | Haiku | **Sonnet**（2026-04-22 升級）| Sonnet |
+| AI 模型 | Haiku（關鍵時刻升 Sonnet¹）| **Sonnet**（2026-04-22 升級）| Sonnet |
 | 有圖片時 | Sonnet（強制）| Sonnet | Sonnet |
+
+> ¹ Free 在「首次分析（≤5 則）、長對話（>20 則）、冷淡、複雜情緒」由 `selectModel` 升 Sonnet
+> （`analyze-chat/index.ts`）。2026-07-03 Eric 拍板：**接受為轉換投資、不 clamp**——首次分析
+> 是轉換 demo，品質優先；成本已被月/日額度＋per-user 模型限流雙層封頂。
+>
+> 上表 gating 對照 2026-07-03 實碼：opener Free 僅 `extend`（`index.ts:527`）、草稿潤飾
+> client＋server 雙閘 Essential、翻牌 1/3/5＋加購規則（`practice-chat/draw_decision.ts`）、
+> Free 續玩閘（`practice-chat/quota_decision.ts`）。
 
 ### App Store 產品結構（2026-04-22）
 
@@ -117,7 +130,7 @@ Paywall 目前預設先選 `essential_monthly`；若該方案尚未回傳，會 
 
 | 方案 | 月費 | 最大成本（全用滿） | 毛利率 |
 |------|------|--------------------|--------|
-| Free | NT$0 | ~NT$1.5 (30 × Haiku) | — |
+| Free | NT$0 | ~NT$1.5–5 (30 × Haiku，關鍵時刻升 Sonnet¹) | — |
 | Starter | NT$590 | ~NT$100 (300 × Sonnet) | ~83% |
 | Essential | NT$1,290 | ~NT$270 (800 × Sonnet) | ~79% |
 
