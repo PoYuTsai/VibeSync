@@ -52,8 +52,8 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   });
 
   final Object? deleteError;
-  final Object? clearLocalStorageError;
-  final Object? clearLocalSessionError;
+  Object? clearLocalStorageError;
+  Object? clearLocalSessionError;
   final Future<void> Function()? onClearLocalSessionAfterDeletion;
   final confirmations = <String>[];
   var clearLocalStorageCalls = 0;
@@ -475,8 +475,8 @@ void main() {
     });
 
     testWidgets(
-        'delete account local cleanup failure still finishes deletion '
-        'with split copy and best-effort session clear', (tester) async {
+        'delete account local cleanup failure blocks login behind a '
+        'retry dialog — never routes to login with stale data', (tester) async {
       final actions = _FakeAccountDeletionActions(
         clearLocalStorageError: Exception('local clear failed'),
       );
@@ -493,18 +493,30 @@ void main() {
 
       expect(actions.confirmations, ['DELETE']);
       expect(actions.clearLocalStorageCalls, 1);
-      expect(actions.clearLocalSessionCalls, 1);
-      expect(find.text('Login'), findsOneWidget);
+      // 帳號已刪但本機清理未完成：擋在 retry dialog，絕不導去 login
+      //（新帳號在同裝置不得看到前用戶資料）。
+      expect(find.text('Login'), findsNothing);
       expect(
-        find.text('帳號已刪除，但本機清理未完成，請重新開啟 App。'),
+        find.textContaining('本機資料清理未完成'),
         findsOneWidget,
       );
+      expect(find.text('重試清理'), findsOneWidget);
       expect(find.text('帳號已刪除。'), findsNothing);
+
+      // 重試成功 → 才放行 login。
+      actions.clearLocalStorageError = null;
+      await tester.tap(find.text('重試清理'));
+      await tester.pumpAndSettle();
+
+      expect(actions.clearLocalStorageCalls, 2);
+      expect(actions.clearLocalSessionCalls, 1);
+      expect(find.text('Login'), findsOneWidget);
+      expect(find.text('帳號已刪除。'), findsOneWidget);
     });
 
     testWidgets(
-        'delete account session clear failure still finishes deletion '
-        'with split copy', (tester) async {
+        'delete account session clear failure also blocks behind retry dialog',
+        (tester) async {
       final actions = _FakeAccountDeletionActions(
         clearLocalSessionError: Exception('session clear failed'),
       );
@@ -519,14 +531,23 @@ void main() {
       await tester.tap(find.byType(TextButton).last);
       await tester.pumpAndSettle();
 
-      expect(actions.confirmations, ['DELETE']);
       expect(actions.clearLocalStorageCalls, 1);
       expect(actions.clearLocalSessionCalls, 1);
+      expect(find.text('Login'), findsNothing);
+      expect(find.textContaining('本機資料清理未完成'), findsOneWidget);
+
+      // 重試失敗 → 繼續擋。
+      await tester.tap(find.text('重試清理'));
+      await tester.pumpAndSettle();
+      expect(find.text('Login'), findsNothing);
+      expect(find.textContaining('本機資料清理未完成'), findsOneWidget);
+
+      // 修好後重試 → 放行。
+      actions.clearLocalSessionError = null;
+      await tester.tap(find.text('重試清理'));
+      await tester.pumpAndSettle();
       expect(find.text('Login'), findsOneWidget);
-      expect(
-        find.text('帳號已刪除，但本機清理未完成，請重新開啟 App。'),
-        findsOneWidget,
-      );
+      expect(find.text('帳號已刪除。'), findsOneWidget);
     });
 
     testWidgets('delete account invalidates live practice room state',

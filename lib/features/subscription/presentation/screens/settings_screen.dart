@@ -852,35 +852,62 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    // 遠端帳號已刪除：本機清理各自 best-effort，失敗只影響文案，
-    // 絕不把「帳號已刪除」回報成刪除失敗。
-    var localCleanupSucceeded = true;
-    try {
-      await widget.accountDeletionActions.clearLocalStorage();
-    } catch (error) {
-      localCleanupSucceeded = false;
-      debugPrint('Delete-account local storage cleanup failed: $error');
-    }
-    try {
-      await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
-    } catch (error) {
-      localCleanupSucceeded = false;
-      debugPrint('Delete-account session clear failed: $error');
+    // 遠端帳號已刪除：絕不把「帳號已刪除」回報成刪除失敗；但本機清理
+    // 沒完成前也絕不放行到 login——同裝置換帳號不得看到前用戶的 Hive 資料。
+    var cleanupSucceeded = await _tryDeleteAccountLocalCleanup();
+    _dismissBlockingDialog(rootNavigator);
+    while (!cleanupSucceeded) {
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            backgroundColor: AppColors.brandSurface2,
+            title: Text(
+              '帳號已刪除',
+              style: TextStyle(color: AppColors.onBackgroundPrimary),
+            ),
+            content: Text(
+              '本機資料清理未完成。為保護你的資料，請重試清理；'
+              '若持續失敗，請關閉並重新開啟 App。',
+              style: TextStyle(
+                color: AppColors.onBackgroundPrimary,
+                height: 1.5,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('重試清理'),
+              ),
+            ],
+          ),
+        ),
+      );
+      cleanupSucceeded = await _tryDeleteAccountLocalCleanup();
     }
     _invalidateAccountScopedProviders(ref);
 
-    _dismissBlockingDialog(rootNavigator);
     router.go('/login');
     messenger.showSnackBar(
-      localCleanupSucceeded
-          ? const SnackBar(
-              content: Text('帳號已刪除。'),
-              backgroundColor: AppColors.success,
-            )
-          : const SnackBar(
-              content: Text('帳號已刪除，但本機清理未完成，請重新開啟 App。'),
-            ),
+      const SnackBar(
+        content: Text('帳號已刪除。'),
+        backgroundColor: AppColors.success,
+      ),
     );
+  }
+
+  Future<bool> _tryDeleteAccountLocalCleanup() async {
+    try {
+      await widget.accountDeletionActions.clearLocalStorage();
+      await widget.accountDeletionActions.clearLocalSessionAfterDeletion();
+      return true;
+    } catch (error) {
+      debugPrint('Delete-account local cleanup failed: $error');
+      return false;
+    }
   }
 
   void _dismissBlockingDialog(NavigatorState rootNavigator) {
