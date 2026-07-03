@@ -227,6 +227,52 @@ void main() {
       expect(await AiDataSharingConsent.hasAccepted(), isTrue);
     });
 
+    testWidgets('dialog 開啟期間身份變動：不寫入、不放行（Codex P2 競態）',
+        (tester) async {
+      var currentUserId = 'user-a';
+      AiDataSharingConsent.debugUserIdOverride = () => currentUserId;
+
+      bool? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  result = await AiDataSharingConsent.ensure(
+                    context,
+                    featureLabel: '對話分析',
+                  );
+                },
+                child: const Text('start'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('start'));
+      await tester.pumpAndSettle();
+
+      // dialog 開著時身份換人（模擬 session 過期／換帳號）
+      currentUserId = 'user-b';
+
+      await tester.tap(find.byType(CheckboxListTile));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('我同意並送出'));
+      await tester.pumpAndSettle();
+
+      expect(result, isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getBool('${AiDataSharingConsent.acceptedKeyForTesting}::user-a'),
+        isNull,
+      );
+      expect(
+        prefs.getBool('${AiDataSharingConsent.acceptedKeyForTesting}::user-b'),
+        isNull,
+      );
+    });
+
     test('practice consentKey 同樣帳號級隔離', () async {
       SharedPreferences.setMockInitialValues({
         '${AiDataSharingConsent.practiceConsentKey}::user-a': true,

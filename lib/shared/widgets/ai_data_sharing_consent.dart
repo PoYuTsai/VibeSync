@@ -52,7 +52,11 @@ class AiDataSharingConsent {
     String dataDescription = _defaultDataDescription,
     String purposeText = _defaultPurposeText,
   }) async {
-    if (await hasAccepted(consentKey: consentKey)) return true;
+    // scope key 只解析一次：dialog 開啟期間身份變動（session 過期／換帳號）
+    // 不得把同意寫到別的帳號 key 或放行本次請求。
+    final scopedKey = _effectiveKey(consentKey);
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(scopedKey) == true) return true;
     if (!context.mounted) return false;
 
     final accepted = await showDialog<bool>(
@@ -72,8 +76,12 @@ class AiDataSharingConsent {
       return false;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_effectiveKey(consentKey), true);
+    if (_effectiveKey(consentKey) != scopedKey) {
+      // 身份已變：本次同意作廢，重新走一次流程才放行。
+      return false;
+    }
+
+    await prefs.setBool(scopedKey, true);
     return true;
   }
 }
