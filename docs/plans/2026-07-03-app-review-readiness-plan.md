@@ -47,7 +47,7 @@
 ## Batch F3 — opener 體驗對齊（1–2 session）✅ 高風險：prompt → Codex 雙審
 
 - [x] F3-1 opener 完全不吃「關於我/對象設定」→ SHIPPED：`buildForOpener` 專用切片（防用戶興趣被捏成共同點）＋`openerStyleContextProvider`（partnerId 可空、Spec 3 flag 守門）＋body/`fingerprintFor`/server input hash 三處對齊（hash 缺席時保 2 元素舊形狀）＋opener branch sanitize 在 gate 前＋userContent 注入在對方資訊分流後＋OPENER_PROMPT 消費段；順手修 opener_prompt_test 扣費錨點 stale（HEAD 既有，`p_messages: effectiveOpenerCost` 已隨 chargeOpenerQuota 重構搬家）
-- [ ] F3-2 opener 等待只有轉圈（`opening_rescue_screen.dart:727-745`）→ 低配版先做：staged 本地進度文案（比照 analyze prelude）；真 streaming 另開 design session（Edge＋client 改動大，非上架 blocker）
+- [x] F3-2 opener 等待只有轉圈 → SHIPPED（`bb904890`＋`3921aa56`，Codex R2 APPROVED）：`OpenerGenerationProgress` staged 本地進度文案（截圖/手動兩套、每 3 秒進一段、到底停住並 cancel timer 守 pumpAndSettle 收斂）；文案雙層凍結在生成送出的 input（widget mount 快照＋screen `_generationProgressPhrases`，Codex R1 P2＝生成中切 tab/移除截圖不得漂移）；純 client，需新 TF build（V-3）；真 streaming 另開 design session（非上架 blocker）
 
 ## Batch F5 — UI/UX 文案總審（1 session，可與 F4 併）
 
