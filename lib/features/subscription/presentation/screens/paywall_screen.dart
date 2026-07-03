@@ -20,6 +20,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../data/providers/subscription_providers.dart';
+import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../subscription_diagnostics_gate.dart';
 
@@ -58,6 +59,18 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final essentialLimits = SubscriptionTierHelper.limitsFor(
       SubscriptionTierHelper.essential,
     );
+    final starterQuarterlyDiscount = quarterlySavingsLabel(
+      monthly: subscription.starterMonthlyPackage?.storeProduct ??
+          subscription.starterMonthlyStoreProduct,
+      quarterly: subscription.starterQuarterlyPackage?.storeProduct ??
+          subscription.starterQuarterlyStoreProduct,
+    );
+    final essentialQuarterlyDiscount = quarterlySavingsLabel(
+      monthly: subscription.essentialMonthlyPackage?.storeProduct ??
+          subscription.essentialMonthlyStoreProduct,
+      quarterly: subscription.essentialQuarterlyPackage?.storeProduct ??
+          subscription.essentialQuarterlyStoreProduct,
+    );
     return [
       _PaywallOption(
         id: 'starter_monthly',
@@ -80,7 +93,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         name: 'Starter',
         period: '季繳',
         badge: '入門',
-        discount: '省 27%',
+        discount: starterQuarterlyDiscount,
         package: subscription.starterQuarterlyPackage,
         storeProduct: subscription.starterQuarterlyStoreProduct,
         highlights: [
@@ -110,7 +123,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         name: 'Essential',
         period: '季繳',
         badge: '最划算',
-        discount: '省 36%',
+        discount: essentialQuarterlyDiscount,
         package: subscription.essentialQuarterlyPackage,
         storeProduct: subscription.essentialQuarterlyStoreProduct,
         highlights: [
