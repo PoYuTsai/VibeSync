@@ -22,16 +22,19 @@
 - [ ] R1-4【建議，Eric 拍板】onboarding 加一頁輕量「AI 與隱私」揭露（點名 Anthropic/DeepSeek＋資料外送說明）。per-feature 同意閘理論上已滿足「使用前同意」，此項是保險
 
 ## Batch R2 — paywall 殘餘（0.5 session）✅ 高風險：paywall → Codex 雙審
+> **DONE 2026-07-03**：range `32be3ca3..f5e08a79`（與 F2 併一刀，Codex 三輪）。
 
-- [ ] R2-1 「省 27%/36%」硬編碼徽章（`paywall_screen.dart:82,112`）→ 改由 store 價格動態計算，抓不到價就不顯示（誤導性價格風險）
-- [ ] R2-2 確認 `https://vibesyncai.app/terms` 內容具 EULA 屬性；不足則 app 內連結補 Apple Standard EULA（`https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`）
+- [x] R2-1 「省 X%」徽章改 store 實價動態計算（`quarterlySavingsLabel`，floor 絕不高報、抓不到價/幣別不符不顯示）。`5b10169e`，TDD 9 新測
+- [x] R2-2 `https://vibesyncai.app/terms` WebFetch 查核＝六項 EULA 要素齊全（授權/訂閱付款/IP/免責/終止/禁止行為），app 內不需補 Apple Standard EULA；metadata 側 EULA 連結歸 H-2
 
 ## Batch F2 — 夥伴報告修復（1 session）✅ 高風險：auth＋Edge schema → Codex 雙審
+> **DONE 2026-07-03（1 殘餘 WAITING_ON_ERIC）**：F2-1 經 Codex 三輪升級成「清理未完成擋在重試 dialog」；R3 抓批前既有 spinner 無 PopScope＝兩輪上限停手，見 queue 2026-07-03 item。
 
-- [ ] F2-1【auth P2】刪帳成功但本機清理失敗 → 文案分流「帳號已刪除，本機清理未完成」＋best-effort 清 session（`settings_screen.dart _confirmDeleteAccount`）
-- [ ] F2-2【follow-up P2】月額度打滿誤顯「明天再試」→ widget 改用 server 429 payload 的 quotaExceededMessage（`coach_follow_up_section.dart:477`）
-- [ ] F2-3【follow-up P2】`coach-follow-up/schemas.ts:54` partnerHint.name 補 `.max()`
-- [ ] F2-4【follow-up P3，順手】`generation.ts:122` 上游錯誤訊息不外洩到 response（改通用文案，細節只進 telemetry）
+- [x] F2-1【auth】刪帳成功/本機清理失敗分流＝遠端失敗才報錯；清理未完成**擋在非可關閉重試 dialog**（絕不放行 login 見前用戶資料），重試在 dialog 內執行成功才 pop。`fc061337`＋`0ed5855e`＋`f5e08a79`
+- [x] F2-2【follow-up】429 文案改用 server message（月/日 server 已分流），fallback 中性文案。`5d2216ca`
+- [x] F2-3【follow-up】partnerHint.name Edge `.max(50)`＋client 同值 clamp 防 400。`8afcfa6f`
+- [x] F2-4【follow-up】上游錯誤改通用碼 `generation_failed`；telemetry 依 privacy C6 只留 errorClass。`a20ebfaa`
+- [ ] F2-5【WAITING_ON_ERIC】初始清理 spinner 包 `PopScope(canPop:false)`（Codex R3 P1，一行修＋一測，Eric 放行即做）
 
 ## Batch F1 — tier 行為對齊（1 session）
 

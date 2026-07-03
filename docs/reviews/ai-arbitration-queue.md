@@ -23,6 +23,12 @@
 
 ## Live Queue
 
+## [2026-07-03] 刪帳初始清理 spinner 無 PopScope — Codex R3 P1，兩輪上限已到
+Status: WAITING_ON_ERIC — 決策問題：**是否放行第三輪 fix（一行修：初始 progress spinner 包 `PopScope(canPop:false)`）？**
+**脈絡**：R2+F2 批（`32be3ca3..f5e08a79`）Codex 三輪。R1 P1（刪帳清理失敗仍導 login＝換帳號可見前用戶 Hive 資料）修於 `0ed5855e`；R2 P1（pop 後才重試的 async 守門縫）修於 `f5e08a79`，R3 確認已收乾淨。R3 新抓同族 P1：初始 `_tryDeleteAccountLocalCleanup()` 跑在只有 `CircularProgressIndicator` 的 dialog 下（`settings_screen.dart:833`），該 spinner `barrierDismissible:false` 但**無 PopScope**，Android 系統返回可在初始清理 await 期間跳出。此 spinner 屬批前既有碼。
+**現狀評估**：已 push 狀態嚴格安全於批前基線（重試 dialog 守門已建立），殘餘僅初始 await 窗口＋系統返回鍵這一條窄縫。依 shared-agent-rules 兩輪 fix 上限停手，不回滾。
+**若 Eric 放行**：wrap spinner 於 PopScope＋補一測，再送 Codex 驗證即可 CLOSE。
+
 ## [2026-06-25] practice-chat 續玩 tier gate — fail-closed 誤降風險（Codex review focus）
 Status: OPEN — Eric 指定 Batch 3/4 review 重點，**先不擴大修**，列為 Codex 審查焦點。
 **疑慮**：`decideContinuationGate`（`supabase/functions/practice-chat/quota_decision.ts`）對 unknown/缺 tier 一律 `normalizeTier→free` 而 **fail-closed**（roundIndex>1 擋下）。全站規則是**付費 tier 不得因 RevenueCat/DB 短暫空值被誤降 Free**。`index.ts` 目前餵給 gate 的是 `sub.tier`，來源為 `subscriptions` 表（DB 權威讀取，非即時 RevenueCat）。
