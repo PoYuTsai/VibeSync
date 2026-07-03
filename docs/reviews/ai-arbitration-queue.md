@@ -688,9 +688,11 @@ Closed items before 2026-05-14 were intentionally pruned from this live queue. U
 
 **Close 條件**：量測跑完、Gate-2 五條（安全四＋有用性一）判定有結論（過＝開實作 plan 案＋Codex 雙審；不過＝記死因停在 client 兜底）。
 
-## OPEN — 2026-07-03 opener idempotency 並發 replay storm 燒模型成本（Codex R3 P2-2）
+## CLOSED — 2026-07-03 opener idempotency 並發 replay storm 燒模型成本（Codex R3 P2-2）
 
-Status: OPEN（WAITING_ON_ERIC 拍板要不要修）
+Status: CLOSED（2026-07-03，由「全面模型呼叫 per-user 限流」案收掉，勿再開案）
+
+**收案**：Eric 拍板做全套 per-user 限流（＝下方 CC 分析第 4 選項的擴大版）：七 scope 通用限流表＋RPC＋Edge fail-open gate（`6082b41c`）＋client 四面 429 分流＋翻牌 requestId 持久化（`31cf74dc`..`1e31acfb`），Codex R2 APPROVED 零 findings，migration `20260703170000` 已套 prod 且帳本對齊。分鐘級限流同時蓋掉「同 requestId storm」與「不同請求 storm」兩種成本暴露；殘餘＝限流窗口內有界的模型呼叫成本，已接受。
 
 **脈絡**：opener 扣費 idempotency 案（docs/plans/2026-07-03-opener-idempotency-design.md，4c080300..R4 range）。Codex R3 指出：preflight 是非原子讀、權威 replay 計數在模型呼叫後的扣費 RPC——攻擊者可在 replay_count 未更新前，並發灌大量同 requestId/同 payload 請求：只有預算內 3 次拿到 200，但超限批次已進模型、事後才 400＝燒我們的 Claude 成本。
 
