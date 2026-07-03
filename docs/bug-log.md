@@ -8,6 +8,20 @@
 
 ---
 
+## 2026-07
+
+### [2026-07-04] blocking spinner 下的無界 await＝2.1(b) 無限轉圈同族（5 處）
+
+**Symptom**: paywall 購買成功後、恢復購買（paywall＋settings 兩入口）、取消降級同步（paywall＋settings）、分析頁訂閱刷新——只要 RevenueCat/後端卡住，全螢幕 overlay、不可關閉 dialog 或「同步中…」按鈕就永遠不退場。Apple 2026-05-27 以 2.1(b) 拒審過同型問題；Codex V-2 對抗審 R1–R3 每輪掃出一處。
+
+**Root Cause**: 呼叫 `subscriptionProvider.notifier` 的網路方法（`refresh` / `restorePurchases` / `clearPendingDowngradeMetadata` / `syncWithRevenueCat` / `ensureServerEntitlementSyncedForAnalysis`）時只包 try/catch 不加 `.timeout()`——例外有出口、卡住沒有。且購買成功後的 refresh 失敗會被外層 catch 誤報「訂閱處理失敗」（錢已扣卻報失敗）。
+
+**Fix**: `f01d4474`＋`870069d3`＋`8697832b`＋`9d71673b`。原則：StoreKit 類 45s、狀態同步類 20s；**成功結果的呈現絕不依賴後續 refresh 成敗**（best-effort＋debugPrint）；timeout 不動 tier state。
+
+**預防**: 凡在 `_isXxx = true` 的 loading state 或 blocking dialog 下 await 網路呼叫，一律 `.timeout()`＋明確逾時文案；TDD 用 `Completer().future` 模擬 hang、`tester.pump(逾時+1s)` 驗 spinner 退場（範例見 paywall/settings widget test 的 hang 測試群）。不掛 blocking UI 的 await 可不修（Codex R4 複核成立）。
+
+---
+
 ## 2026-06
 
 ### [2026-06-28] 新手 Hint 失敗只顯示通用錯誤
