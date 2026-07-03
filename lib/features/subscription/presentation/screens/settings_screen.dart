@@ -200,9 +200,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   if (subscription.renewsAt != null && !subscription.isFreeUser)
                     _buildTile(
                       icon: Icons.event,
-                      title: '下次續約',
+                      title: '下次續訂',
                       trailing: _isRefreshingSubscription
-                          ? '確認中...'
+                          ? '確認中…'
                           : _formatDate(subscription.renewsAt),
                     ),
                   _buildTile(
@@ -279,7 +279,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     icon: Icons.info,
                     title: 'App 版本',
                     trailing:
-                        _versionString.isNotEmpty ? _versionString : '載入中...',
+                        _versionString.isNotEmpty ? _versionString : '載入中…',
                   ),
                   _buildTile(
                     icon: Icons.description,
@@ -437,7 +437,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           : _refreshAfterExternalDowngradeCancel,
                       child: Text(
                         _isRefreshingPendingDowngrade
-                            ? '同步中...'
+                            ? '同步中…'
                             : '我已取消降級，更新狀態',
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.onBackgroundPrimary,
@@ -723,7 +723,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         context.go('/login');
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('已完成登出，但本機清理時發生小問題，請重新開啟 App。'),
+            content: Text('已登出，但本機資料清理未完成，請重新開啟 App。'),
           ),
         );
         return;

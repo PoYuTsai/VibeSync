@@ -117,7 +117,7 @@ void main() {
             'Partner list empty state must explain the memory-coach positioning.',
       );
       expect(
-        find.text('一個人一張卡，不同日期、IG、Line 或交友軟體的聊天，都整理在同一張卡裡'),
+        find.text('一個人一張卡，不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡'),
         findsOneWidget,
         reason: 'Partner list empty state must use 「對象」 vocabulary (ADR-15).',
       );

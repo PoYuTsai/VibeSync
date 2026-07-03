@@ -16,19 +16,19 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 
 const List<String> kOpenerScreenshotProgressPhrases = <String>[
-  '正在讀取截圖上的線索...',
-  '從對方的資訊找切入點...',
-  '構思開場方向...',
-  '打磨每一句開場白...',
-  '快好了，做最後檢查...',
+  '正在讀取截圖上的線索…',
+  '從對方的資訊找切入點…',
+  '構思開場方向…',
+  '打磨每一句開場白…',
+  '快好了，做最後檢查…',
 ];
 
 const List<String> kOpenerManualProgressPhrases = <String>[
-  '正在整理你提供的線索...',
-  '從對方的資訊找切入點...',
-  '構思開場方向...',
-  '打磨每一句開場白...',
-  '快好了，做最後檢查...',
+  '正在整理你提供的線索…',
+  '從對方的資訊找切入點…',
+  '構思開場方向…',
+  '打磨每一句開場白…',
+  '快好了，做最後檢查…',
 ];
 
 const Duration kOpenerProgressStageInterval = Duration(seconds: 3);

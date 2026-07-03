@@ -840,7 +840,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     if (!state.isRevealed || state.girl == null) {
-      state = state.copyWith(errorMessage: '先翻開今日的練習對象，再開始聊天。');
+      state = state.copyWith(errorMessage: '先翻開今日的陪練女孩，再開始聊天。');
       return;
     }
     if (!state.canSend) return;
@@ -1269,7 +1269,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
 const _hintGenericErrorMessage = '提示暫時產生失敗，等一下再試。';
 
 /// 409 practice_mode_locked 共用文案（chat / hint 兩路徑同文案）。
-const _practiceModeLockedMessage = '這位練習對象這一輪已用另一種模式進行中，請切回原本的模式繼續';
+const _practiceModeLockedMessage = '這位陪練女孩這一輪已用另一種模式進行中，請切回原本的模式繼續';
 
 String _hintApiErrorMessage(String code) {
   switch (code) {

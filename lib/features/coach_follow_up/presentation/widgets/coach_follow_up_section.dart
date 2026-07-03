@@ -366,7 +366,7 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
         ),
         const SizedBox(height: 4),
         Text(
-          '想練什麼？選一個情境，AI 幫你拆解下一步',
+          '想練什麼？選一個情境，教練幫你拆解下一步',
           style: AppTypography.bodySmall.copyWith(
             color: AppColors.onBackgroundSecondary,
             height: 1.35,
@@ -437,7 +437,7 @@ class _CoachFollowUpSectionState extends ConsumerState<CoachFollowUpSection> {
         ),
         const SizedBox(height: 6),
         Text(
-          'ⓘ 重新生成會再扣 1 則額度',
+          '重新生成會再扣 1 則額度',
           style: AppTypography.caption.copyWith(
             color: AppColors.glassTextSecondary,
           ),
@@ -467,7 +467,7 @@ class _StatusText extends StatelessWidget {
   });
 
   factory _StatusText.loading() => const _StatusText._(
-        text: '正在產生跟進建議...',
+        text: '正在產生跟進建議…',
         color: AppColors.ctaStart,
         isLoading: true,
       );
@@ -483,7 +483,7 @@ class _StatusText extends StatelessWidget {
       'Daily limit exceeded',
     };
     if (message.isEmpty || rawFallbacks.contains(message)) {
-      return '額度已用完，升級方案可取得更多額度';
+      return '額度已用完，升級方案可取得更多額度。';
     }
     return message;
   }
@@ -494,11 +494,11 @@ class _StatusText extends StatelessWidget {
       // 「未扣額度」不得在此承諾：GenerationFailedException 涵蓋 200 但
       // client 端 parse/安全檢查失敗（server 已扣）與 5xx（多半未扣但有
       // 扣後才炸的窗口）。同 coach chat 21d59962 的修法。
-      GenerationFailedException() => '這次沒有產生可用建議，請稍後再試',
+      GenerationFailedException() => '這次沒有產生可用建議，請稍後再試。',
       // 429＝server per-user 模型限流：顯示 server「稍等再試」文案
       ApiException(:final status, :final message) when status == 429 => message,
-      ApiException() => '目前無法送出，請稍後再試',
-      _ => '目前無法產生建議，請稍後再試',
+      ApiException() => '目前無法送出，請稍後再試。',
+      _ => '目前無法產生建議，請稍後再試。',
     };
     return _StatusText._(
       text: message,
@@ -584,7 +584,7 @@ class _OpenCoachEntry extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '或直接問教練一個問題...',
+                '或直接問教練一個問題…',
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.glassTextSecondary,
                 ),

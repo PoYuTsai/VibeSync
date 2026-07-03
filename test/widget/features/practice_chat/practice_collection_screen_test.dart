@@ -220,7 +220,7 @@ void main() {
       expect(find.text('角色圖鑑'), findsOneWidget); // AppBar 標題
       expect(find.text('VIBESYNC · GACHA'), findsOneWidget);
       expect(find.text('Collection'), findsOneWidget);
-      expect(find.text('COMPLETION 完成度'), findsOneWidget);
+      expect(find.text('收藏完成度'), findsOneWidget);
 
       final count = tester.widget<Text>(
         find.byKey(const ValueKey('collection-completion-count')),
@@ -438,14 +438,14 @@ void main() {
     testWidgets('locked＋drawQuotaExceeded 點擊 → snackbar 顯示 errorMessage、不 draw',
         (tester) async {
       final controller = _DrawSpyController(
-        _lockedSeed(quotaExceeded: true, errorMessage: '額度已用完，明天中午會重置。'),
+        _lockedSeed(quotaExceeded: true, errorMessage: '今日額度已用完，明天再來或升級方案繼續練習。'),
       );
       await pumpApp(tester, collectionApp(controller: controller));
 
       await tester.tap(find.byKey(drawButton));
       await tester.pump();
 
-      expect(find.text('額度已用完，明天中午會重置。'), findsOneWidget);
+      expect(find.text('今日額度已用完，明天再來或升級方案繼續練習。'), findsOneWidget);
       expect(controller.drawCalls, 0);
     });
 
@@ -475,7 +475,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text('今日 1 次免費換一位已用完，再按一次會扣 5 則額度。'), findsOneWidget);
+      expect(find.text('今日 1 次免費換人已用完，再按一次會扣 5 則額度。'), findsOneWidget);
       expect(controller.drawCalls, 0); // 未確認前絕不 draw
 
       await tester.tap(find.byKey(confirmKey));

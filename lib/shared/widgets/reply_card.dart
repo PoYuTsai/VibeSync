@@ -103,7 +103,7 @@ class ReplyCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  isLocked ? '升級解鎖完整回覆' : content,
+                  isLocked ? '升級解鎖完整分析' : content,
                   style: isLocked
                       ? AppTypography.bodyMedium.copyWith(
                           color: AppColors.glassTextHint,

@@ -143,7 +143,7 @@ void main() {
         reason: 'background must leave the top hero/heat cards');
 
     // The coach entry is laid out and visible inside the viewport.
-    final anchor = find.text('或直接問教練一個問題...');
+    final anchor = find.text('或直接問教練一個問題…');
     expect(anchor, findsOneWidget);
     final anchorDy = t.getTopLeft(anchor).dy;
     expect(anchorDy, greaterThan(0));
@@ -211,7 +211,7 @@ void main() {
     expect(offset, greaterThan(100),
         reason: 'detail must land on the coach section, not the hero cards');
 
-    final anchor = find.text('或直接問教練一個問題...');
+    final anchor = find.text('或直接問教練一個問題…');
     expect(anchor, findsOneWidget);
     expect(t.getTopLeft(anchor).dy, lessThan(844));
 

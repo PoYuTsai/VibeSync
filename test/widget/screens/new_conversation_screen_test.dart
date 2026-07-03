@@ -34,8 +34,8 @@ void main() {
       );
 
       expect(find.text('對話內容'), findsOneWidget);
-      expect(find.text('她說了什麼...'), findsOneWidget);
-      expect(find.text('我說了什麼...'), findsOneWidget);
+      expect(find.text('她說了什麼…'), findsOneWidget);
+      expect(find.text('我說了什麼…'), findsOneWidget);
     });
 
     testWidgets('collapses analysis settings by default', (tester) async {
@@ -151,7 +151,7 @@ void main() {
 
       final myMessageField = find.byWidgetPredicate(
         (widget) =>
-            widget is TextField && widget.decoration?.hintText == '我說了什麼...',
+            widget is TextField && widget.decoration?.hintText == '我說了什麼…',
       );
       await tester.ensureVisible(myMessageField);
       await tester.enterText(myMessageField, '你好');
@@ -178,7 +178,7 @@ void main() {
 
       final herMessageField = find.byWidgetPredicate(
         (widget) =>
-            widget is TextField && widget.decoration?.hintText == '她說了什麼...',
+            widget is TextField && widget.decoration?.hintText == '她說了什麼…',
       );
       await tester.ensureVisible(herMessageField);
       await tester.enterText(herMessageField, '你好');

@@ -18,21 +18,21 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 
 const List<String> kStreamingAnalysisLoadingPhrases = <String>[
-  '正在讀取對話脈絡...',
-  '整理目前互動節奏...',
-  '判斷對方訊號強弱...',
-  '整理下一步建議...',
-  '準備完整分析內容...',
+  '正在讀取對話脈絡…',
+  '整理目前互動節奏…',
+  '判斷對方訊號強弱…',
+  '整理下一步建議…',
+  '準備完整分析內容…',
 ];
 
 const Duration kStreamingAnalysisRotationInterval =
     Duration(milliseconds: 1000);
 
-const String kFullPlaceholderClosing = '正在補上完整報告...';
+const String kFullPlaceholderClosing = '正在補上完整報告…';
 const List<String> kFullPlaceholderSectionLabels = <String>[
-  '五大回覆風格整理中...',
-  '互動雷達整理中...',
-  '深層策略整理中...',
+  '五大回覆風格整理中…',
+  '互動雷達整理中…',
+  '深層策略整理中…',
 ];
 const String kRetryExhaustedMessage = '無法再重試，請重新分析。';
 

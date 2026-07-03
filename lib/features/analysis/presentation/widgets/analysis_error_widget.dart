@@ -176,17 +176,17 @@ class AnalysisErrorWidget extends StatelessWidget {
   String _getDefaultMessage() {
     switch (errorType) {
       case AnalysisErrorType.network:
-        return '請檢查網路連線後再試一次';
+        return '網路連線不太穩，檢查一下之後我們再試一次。';
       case AnalysisErrorType.timeout:
-        return 'AI 回應時間過長，請稍後再試';
+        return '教練這次想得有點久，請稍後再試一次。';
       case AnalysisErrorType.serverError:
-        return 'AI 服務暫時無法回應，請稍後再試';
+        return '教練暫時忙線中，請稍後再回來試試。';
       case AnalysisErrorType.rateLimited:
-        return '請求過於頻繁，請稍後再試';
+        return '操作有點頻繁，先休息一下，稍後再試。';
       case AnalysisErrorType.unsafeInput:
-        return '偵測到不適當的內容，無法提供建議';
+        return '這段內容教練沒辦法給建議，換個內容再試試。';
       case AnalysisErrorType.unknown:
-        return '發生未知錯誤，請稍後再試';
+        return '出了點小狀況，請稍後再試一次。';
     }
   }
 }

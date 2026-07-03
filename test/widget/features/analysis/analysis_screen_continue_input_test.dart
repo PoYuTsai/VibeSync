@@ -153,7 +153,7 @@ void main() {
         (tester) async {
       await _pumpAnalysisScreen(tester);
 
-      expect(find.text('貼上或輸入新的一則訊息...'), findsOneWidget);
+      expect(find.text('貼上或輸入新的一則訊息…'), findsOneWidget);
       expect(find.text('建立這段對話'), findsOneWidget);
       expect(find.text('輸入完先收起鍵盤，再選這句是她說，還是我說。'), findsOneWidget);
       expect(find.text('這句是她說'), findsOneWidget);
@@ -330,7 +330,7 @@ void main() {
       expect(find.text('先上傳聊天截圖，確認文字後再加入這段對話。'), findsOneWidget);
       expect(find.byType(ImagePickerWidget), findsOneWidget);
       expect(find.text('建立這段對話'), findsNothing);
-      expect(find.text('貼上或輸入新的一則訊息...'), findsNothing);
+      expect(find.text('貼上或輸入新的一則訊息…'), findsNothing);
       expect(find.text('這句是她說'), findsNothing);
       expect(find.text('這句是我說'), findsNothing);
       expect(

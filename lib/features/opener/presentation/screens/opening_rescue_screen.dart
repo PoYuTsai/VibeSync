@@ -66,7 +66,7 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   }
 
   static String copiedOpenerMessage(String label) {
-    return '已複製「$label」。貼到交友軟體送出；她回覆後，點下方「她回覆了，開始分析對話」。';
+    return '已複製這則開場白。貼到交友軟體送出；她回覆後，點下方「她回覆了，開始分析對話」。';
   }
 
   /// Canonical 5-style contract shared with the server's OPENER_TYPES.
@@ -670,7 +670,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 Text(
                   boundPartnerName != null
                       ? '為 $boundPartnerName 想開場'
-                      : 'AI 幫你打造完美開場',
+                      : 'AI 幫你想第一句開場',
                   style: AppTypography.headlineLarge.copyWith(
                     color: Colors.white,
                   ),
@@ -1046,7 +1046,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '對方資料讀取',
+                  '對方資料解讀',
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.onBackgroundPrimary,
                   ),
@@ -1078,7 +1078,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             ),
             const Spacer(),
             Text(
-              '← 左右滑動',
+              '左右滑動看更多',
               style: AppTypography.caption.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),
@@ -1174,8 +1174,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           Expanded(
             child: Text(
               saved
-                  ? '這次開場已保存成草稿。你可以離開後再回到開場救星回看，不會自動混到下一個對象。'
-                  : '這次結果只顯示在目前頁面；若本機保存失敗，建議先複製想用的開場。',
+                  ? '這次開場已儲存成草稿。你可以離開後再回到開場救星回看，不會自動混到下一個對象。'
+                  : '這次結果只顯示在目前頁面；若本機儲存失敗，建議先複製想用的開場。',
               style: AppTypography.caption.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.4,

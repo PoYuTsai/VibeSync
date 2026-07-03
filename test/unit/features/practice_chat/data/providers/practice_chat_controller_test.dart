@@ -807,7 +807,7 @@ void main() {
       expect(s.sessionComplete, false); // 誤標會引導「續聊同一位」多扣一則
       expect(
         s.errorMessage,
-        '這位練習對象這一輪已用另一種模式進行中，請切回原本的模式繼續',
+        '這位陪練女孩這一輪已用另一種模式進行中，請切回原本的模式繼續',
       );
       expect(s.messages, isEmpty); // 回滾樂觀泡泡
       expect(s.restoreText, '嗨');
@@ -1609,7 +1609,7 @@ void main() {
       expect(c.currentState.sessionComplete, false);
       expect(
         c.currentState.errorMessage,
-        '這位練習對象這一輪已用另一種模式進行中，請切回原本的模式繼續',
+        '這位陪練女孩這一輪已用另一種模式進行中，請切回原本的模式繼續',
       );
       expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
     });

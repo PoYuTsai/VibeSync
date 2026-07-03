@@ -130,7 +130,7 @@ class MyReportScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '升級後可以看五維雷達圖、歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
+            '升級後可以看互動雷達圖、歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
               height: 1.45,

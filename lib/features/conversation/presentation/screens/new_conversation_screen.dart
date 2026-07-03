@@ -626,7 +626,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           Expanded(
             child: _brandField(
               controller: _herMessageController,
-              hintText: '她說了什麼...',
+              hintText: '她說了什麼…',
               onSubmitted: (_) => _addHerMessage(),
             ),
           ),
@@ -645,7 +645,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           Expanded(
             child: _brandField(
               controller: _myMessageController,
-              hintText: '我說了什麼...',
+              hintText: '我說了什麼…',
               onSubmitted: (_) => _addMyMessage(),
             ),
           ),

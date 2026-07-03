@@ -217,7 +217,7 @@ void main() {
       expect(
         find.descendant(
           of: anchoredEntry,
-          matching: find.text('或直接問教練一個問題...'),
+          matching: find.text('或直接問教練一個問題…'),
         ),
         findsOneWidget,
       );
@@ -246,8 +246,8 @@ void main() {
       expect(find.text('準備邀約'), findsOneWidget);
       expect(find.text('約會前提醒'), findsOneWidget);
       expect(find.text('約會後復盤'), findsOneWidget);
-      expect(find.text('或直接問教練一個問題...'), findsOneWidget);
-      expect(find.textContaining('生成會使用 1 則額度'), findsOneWidget);
+      expect(find.text('或直接問教練一個問題…'), findsOneWidget);
+      expect(find.textContaining('生成會扣 1 則額度'), findsOneWidget);
 
       // With-result state widgets must be absent.
       expect(find.text('重新生成'), findsNothing);
@@ -337,7 +337,7 @@ void main() {
     testWidgets('open coach entry opens the open question sheet', (t) async {
       await _pump(t, repo: _FakeRepo(), partner: _partner());
 
-      await t.tap(find.text('或直接問教練一個問題...'));
+      await t.tap(find.text('或直接問教練一個問題…'));
       await t.pumpAndSettle();
 
       expect(find.text('我有其他問題'), findsOneWidget);
@@ -375,7 +375,7 @@ void main() {
         invoker: _stubInvoker(headline: 'OPEN_COACH'),
       );
 
-      await t.tap(find.text('或直接問教練一個問題...'));
+      await t.tap(find.text('或直接問教練一個問題…'));
       await t.pumpAndSettle();
       await t.enterText(find.byType(TextField), '我太有邊界感，不知道怎麼推進');
       await t.pumpAndSettle();
@@ -538,7 +538,7 @@ void main() {
         onTelemetry: events.add,
       );
 
-      await t.tap(find.text('或直接問教練一個問題...'));
+      await t.tap(find.text('或直接問教練一個問題…'));
       await t.pumpAndSettle();
       await t.enterText(find.byType(TextField), '她回很慢，我該等還是約？');
       await t.pumpAndSettle();

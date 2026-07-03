@@ -293,7 +293,7 @@ class _PracticeLockedEntry extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              '每日登入就送新女孩',
+              '每日登入解鎖新女孩',
               textAlign: TextAlign.center,
               style: AppTypography.titleLarge.copyWith(
                 color: AppColors.onBackgroundPrimary,
@@ -788,7 +788,7 @@ class _PracticeProfileHero extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            '對方是個有自己個性的模擬對象，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
+            '對方是個有自己個性的陪練女孩，不是教練。\n傳第一句出去，看看她怎麼回，練你的真實反應。',
             textAlign: TextAlign.center,
             style: AppTypography.caption.copyWith(
               color: AppColors.glassTextSecondary,

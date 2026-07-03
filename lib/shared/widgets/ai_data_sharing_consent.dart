@@ -23,7 +23,7 @@ class AiDataSharingConsent {
   static const practiceDataDescription =
       '可能包含：你在練習室輸入的訊息，以及本次練習的對話脈絡。';
   static const practicePurposeText =
-      '用途：只用來在 AI 實戰練習室產生模擬對象的回覆，以及練習結束後的一張拆解卡。';
+      '用途：只用來在 AI 實戰練習室產生陪練女孩的回覆，以及練習結束後的一張拆解卡。';
 
   /// 測試 seam：覆寫 userId 解析（回傳 null 模擬未登入）。production 不碰。
   @visibleForTesting
@@ -161,7 +161,7 @@ class _AiDataSharingConsentDialogState
               ),
             ),
             const Text(
-              '同意後，這台裝置之後不會重複提醒。',
+              '同意後，這個帳號之後不會重複提醒。',
               style: TextStyle(fontSize: 12),
             ),
           ],

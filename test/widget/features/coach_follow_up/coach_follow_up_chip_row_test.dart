@@ -65,17 +65,17 @@ void main() {
   });
 
   group('CoachFollowUpChipRow — quota caption', () {
-    testWidgets('renders "生成會使用 1 則額度" caption — always visible',
+    testWidgets('renders "生成會扣 1 則額度" caption — always visible',
         (tester) async {
       await _pump(tester);
 
-      expect(find.textContaining('生成會使用 1 則額度'), findsOneWidget);
+      expect(find.textContaining('生成會扣 1 則額度'), findsOneWidget);
     });
 
     testWidgets('caption persists when a chip is selected', (tester) async {
       await _pump(tester, selectedPhase: CoachFollowUpPhase.prepareInvite);
 
-      expect(find.textContaining('生成會使用 1 則額度'), findsOneWidget);
+      expect(find.textContaining('生成會扣 1 則額度'), findsOneWidget);
     });
   });
 
@@ -203,7 +203,7 @@ void main() {
       await _pump(tester, isLoading: true);
 
       expect(find.byType(ChoiceChip), findsNWidgets(3));
-      expect(find.textContaining('生成會使用 1 則額度'), findsOneWidget);
+      expect(find.textContaining('生成會扣 1 則額度'), findsOneWidget);
     });
   });
 }

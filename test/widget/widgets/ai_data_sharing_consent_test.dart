@@ -155,7 +155,7 @@ void main() {
     await tester.tap(find.text('start'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('模擬對象'), findsAtLeastNWidgets(1));
+    expect(find.textContaining('陪練女孩'), findsAtLeastNWidgets(1));
     expect(find.textContaining('截圖辨識'), findsNothing);
   });
 

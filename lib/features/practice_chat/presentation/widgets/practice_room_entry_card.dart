@@ -190,7 +190,7 @@ class _PracticeRoomGlassPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 22),
                 Text(
-                  '跟模擬對象直接聊天，\n練你的真實反應。',
+                  '跟陪練女孩直接聊天，\n練你的真實反應。',
                   textAlign: TextAlign.center,
                   style: AppTypography.titleMedium.copyWith(
                     color: Colors.white,
@@ -305,7 +305,7 @@ class _DailyRewardEyebrow extends StatelessWidget {
                 size: 15, color: Colors.white),
             const SizedBox(width: 7),
             Text(
-              '每日登入就送新女孩',
+              '每日登入解鎖新女孩',
               style: AppTypography.bodySmall.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w900,

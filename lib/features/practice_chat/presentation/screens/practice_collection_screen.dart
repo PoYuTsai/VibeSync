@@ -232,7 +232,7 @@ class _PracticeCollectionScreenState
         return;
       }
       if (state.drawQuotaExceeded) {
-        _showDrawSnackBar(state.errorMessage ?? '額度已用完，明天中午會重置。');
+        _showDrawSnackBar(state.errorMessage ?? '今日額度已用完，明天再來或升級方案繼續練習。');
         return;
       }
       notifier.drawNewPracticeGirl();
@@ -336,7 +336,7 @@ class _PracticeCollectionScreenState
     final allowance = state.drawFreeAllowance;
     final cost = state.drawExtraCost ?? 5;
     if (allowance != null && allowance > 0) {
-      return '今日 $allowance 次免費換一位已用完，再按一次會扣 $cost 則額度。';
+      return '今日 $allowance 次免費換人已用完，再按一次會扣 $cost 則額度。';
     }
     return '再按一次會扣 $cost 則額度。';
   }
@@ -671,7 +671,7 @@ class _CollectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'COMPLETION 完成度',
+            '收藏完成度',
             style: AppTypography.caption.copyWith(
               color: AppColors.onBackgroundSecondary,
               letterSpacing: 2,

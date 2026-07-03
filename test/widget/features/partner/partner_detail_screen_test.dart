@@ -674,7 +674,7 @@ void main() {
     ));
     await t.pumpAndSettle();
 
-    final inputEntry = find.text('或直接問教練一個問題...');
+    final inputEntry = find.text('或直接問教練一個問題…');
     expect(inputEntry, findsOneWidget);
     expect(
       t.getTopLeft(inputEntry).dy,
@@ -719,7 +719,7 @@ void main() {
     expect(field.maxLength, 120);
     expect(field.maxLines, 4);
 
-    final inputEntry = find.text('或直接問教練一個問題...');
+    final inputEntry = find.text('或直接問教練一個問題…');
     expect(inputEntry, findsOneWidget);
     expect(
       t.getTopLeft(inputEntry).dy,

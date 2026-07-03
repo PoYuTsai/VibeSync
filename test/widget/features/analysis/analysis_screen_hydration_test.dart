@@ -661,7 +661,7 @@ void main() {
             reason:
                 'Running full analysis should show streaming progress, not the upload/start-analysis card.');
         expect(find.text('建立這段對話'), findsNothing);
-        expect(find.text('貼上或輸入新的一則訊息...'), findsNothing,
+        expect(find.text('貼上或輸入新的一則訊息…'), findsNothing,
             reason:
                 'Manual composer should collapse while full analysis is streaming so it does not cover the result area.');
         expect(recorder.recommendationPreviewCalls, 0);
@@ -1169,7 +1169,7 @@ void main() {
 
         await tester.tap(find.text('展開'));
         await tester.pump();
-        final refreshButton = find.text('重新分析完整回覆');
+        final refreshButton = find.text('重新產生完整分析');
         expect(refreshButton, findsOneWidget);
 
         await tester.ensureVisible(refreshButton);

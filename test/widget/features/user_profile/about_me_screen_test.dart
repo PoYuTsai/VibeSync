@@ -8,7 +8,7 @@ void main() {
   testWidgets('empty new profile primary button = 先跳過', (tester) async {
     await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
     await tester.pumpAndSettle();
-    expect(find.text('先跳過'), findsOneWidget);
+    expect(find.text('略過'), findsOneWidget);
     expect(find.text('儲存'), findsNothing);
     expect(find.text('清除設定'), findsNothing);
   });
@@ -20,7 +20,7 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, '溫柔'));
     await tester.pumpAndSettle();
     expect(find.text('儲存'), findsOneWidget);
-    expect(find.text('先跳過'), findsNothing);
+    expect(find.text('略過'), findsNothing);
   });
 
   testWidgets('cannot select 4th practice goal — shows 最多選 3 個 toast',

@@ -46,7 +46,7 @@ class DemoConversation {
       'extend': '抹茶山不錯欸，你喜歡哪種路線？',
       'resonate': '抹茶山超讚！雲海那段是不是很美',
       'tease': '聽起來你很會挑地方嘛，改天帶路？',
-      'humor': '抹茶山...所以你是抹茶控？',
+      'humor': '抹茶山…所以你是抹茶控？',
       'coldRead': '感覺你是那種週末不會待在家的人',
     },
     finalRecommendation: FinalRecommendation(

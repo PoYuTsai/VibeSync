@@ -74,7 +74,7 @@ class CoachFollowUpChipRow extends StatelessWidget {
         ],
         const SizedBox(height: 6),
         Text(
-          '生成會使用 1 則額度',
+          '生成會扣 1 則額度',
           style: AppTypography.caption.copyWith(
             color: AppColors.glassTextSecondary,
           ),

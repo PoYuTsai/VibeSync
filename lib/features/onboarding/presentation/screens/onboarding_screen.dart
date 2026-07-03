@@ -38,7 +38,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     },
     {
       'title': '五種風格，選最對的那句',
-      'description': '延展、共鳴、調情、幽默、冷讀\n每句都幫你控制字數，不會顯得太 needy',
+      'description': '延展、共鳴、調情、幽默、冷讀\n每句都幫你控制字數，不會顯得太黏或太急',
       'imagePath': 'reply',
     },
     // R1-4 App Review 保險：靜態揭露第三方 AI 資料外送；實際同意

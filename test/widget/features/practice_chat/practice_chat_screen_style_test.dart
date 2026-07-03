@@ -432,7 +432,7 @@ void main() {
     );
 
     // 翻牌入口已收斂圖鑑：這裡只給導引鈕（Task 5）。
-    expect(find.text('每日登入就送新女孩'), findsOneWidget);
+    expect(find.text('每日登入解鎖新女孩'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('practice-goto-collection-cta')),
       findsOneWidget,

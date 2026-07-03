@@ -64,9 +64,9 @@ void main() {
       )));
 
       expect(find.textContaining('預估 15-20 秒'), findsOneWidget);
-      expect(find.text('五大回覆風格整理中...'), findsOneWidget);
-      expect(find.text('互動雷達整理中...'), findsOneWidget);
-      expect(find.text('深層策略整理中...'), findsOneWidget);
+      expect(find.text('五大回覆風格整理中…'), findsOneWidget);
+      expect(find.text('互動雷達整理中…'), findsOneWidget);
+      expect(find.text('深層策略整理中…'), findsOneWidget);
       expect(find.text(kFullPlaceholderClosing), findsOneWidget);
     });
 

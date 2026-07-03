@@ -30,7 +30,7 @@ void main() {
       ));
 
       expect(find.text('網路連線失敗'), findsOneWidget);
-      expect(find.text('請檢查網路連線後再試一次'), findsOneWidget);
+      expect(find.text('網路連線不太穩，檢查一下之後我們再試一次。'), findsOneWidget);
       expect(find.byIcon(Icons.wifi_off), findsOneWidget);
     });
 
@@ -40,7 +40,7 @@ void main() {
       ));
 
       expect(find.text('請求逾時'), findsOneWidget);
-      expect(find.text('AI 回應時間過長，請稍後再試'), findsOneWidget);
+      expect(find.text('教練這次想得有點久，請稍後再試一次。'), findsOneWidget);
       expect(find.byIcon(Icons.timer_off), findsOneWidget);
     });
 
@@ -59,7 +59,7 @@ void main() {
       ));
 
       expect(find.text('服務繁忙'), findsOneWidget);
-      expect(find.text('請求過於頻繁，請稍後再試'), findsOneWidget);
+      expect(find.text('操作有點頻繁，先休息一下，稍後再試。'), findsOneWidget);
       expect(find.byIcon(Icons.hourglass_empty), findsOneWidget);
     });
 
@@ -70,7 +70,7 @@ void main() {
       ));
 
       expect(find.text('無法處理此內容'), findsOneWidget);
-      expect(find.text('偵測到不適當的內容，無法提供建議'), findsOneWidget);
+      expect(find.text('這段內容教練沒辦法給建議，換個內容再試試。'), findsOneWidget);
       expect(find.byIcon(Icons.warning_amber), findsOneWidget);
     });
 

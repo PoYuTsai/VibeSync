@@ -426,8 +426,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     bool pendingDowngradeMatchesSelection,
     StoreProduct? selectedProduct,
   ) {
-    if (_isPurchasing) return '處理中...';
-    if (_isRefreshingPlans) return '重新整理中...';
+    if (_isPurchasing) return '處理中…';
+    if (_isRefreshingPlans) return '重新整理中…';
     if (canManagePendingDowngrade) return '取消降級 / 管理訂閱';
     if (pendingDowngradeMatchesSelection) {
       return '已排程降級到 ${_tierLabel(selectedTier)}';
@@ -443,7 +443,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       fromTier: subscription.tier,
       toTier: selectedTier,
     )) {
-      return '安排降級到 $planName';
+      return '排程降級到 $planName';
     }
     return '以 $price 訂閱 $planName';
   }
@@ -480,7 +480,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required bool isCurrentPlan,
   }) {
     final price = option.priceString ?? '正在向 App Store 取得價格';
-    final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每 1 個月自動續訂';
+    final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
     final title = isCurrentPlan ? '目前方案' : '本次扣款金額';
     final note = isDowngrade
         ? '降級會在下次續訂時生效；今天不會再次扣款。'
@@ -541,8 +541,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           const SizedBox(height: 12),
           _buildComparisonHeader(),
           _buildComparisonRow('適合誰', '先試手感', '穩定練習', '深度打磨'),
-          _buildComparisonRow('回覆風格', '延展', '全部 5 種', '全部 5 種'),
-          _buildComparisonRow('AI 陪練女孩', '限量', '開放', '開放'),
+          _buildComparisonRow('回覆風格', '延展 1 種', '全部 5 種', '全部 5 種'),
+          _buildComparisonRow('陪練女孩', '每日 1 位', '開放', '開放'),
           _buildComparisonRow('AI 模型', '經濟型', '高階型', '高階型'),
           _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
           _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
@@ -660,7 +660,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           if (subscription.renewsAt != null) ...[
             const SizedBox(height: 4),
             Text(
-              '下次續約：${_formatDate(subscription.renewsAt!)}',
+              '下次續訂：${_formatDate(subscription.renewsAt!)}',
               style: AppTypography.caption.copyWith(
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
               ),
@@ -826,7 +826,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     required VoidCallback onTap,
   }) {
     final priceLabel = option.priceString ?? '價格同步中';
-    final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每 1 個月自動續訂';
+    final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
     final isRecommended = option.id == 'essential_quarterly';
 
     return GestureDetector(
@@ -1005,7 +1005,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Future<void> _subscribe(_PaywallOption option, String selectedTier) async {
     if (kIsWeb) {
-      _showSnackBar('Please manage subscriptions in the iOS app.');
+      _showSnackBar('請在 iOS App 內管理訂閱。');
       return;
     }
 
@@ -1038,7 +1038,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
       if (result.isDeferredDowngrade) {
         _showSnackBar(
-          '已安排於 ${_formatDate(result.effectiveAt)} 降級到 ${_tierLabel(result.requestedTier)}。',
+          '已排程於 ${_formatDate(result.effectiveAt)} 降級到 ${_tierLabel(result.requestedTier)}。',
           backgroundColor: AppColors.success,
         );
         context.pop(result.activeTier);

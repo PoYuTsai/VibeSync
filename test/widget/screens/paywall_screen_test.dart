@@ -84,8 +84,8 @@ void main() {
         (tester) async {
       await pumpPaywall(tester);
 
-      expect(find.text('AI 陪練女孩'), findsOneWidget);
-      expect(find.text('限量'), findsOneWidget);
+      expect(find.text('陪練女孩'), findsOneWidget);
+      expect(find.text('每日 1 位'), findsOneWidget);
       expect(find.text('開放'), findsNWidgets(2));
       expect(find.text('AI 模型'), findsOneWidget);
       expect(find.text('經濟型'), findsOneWidget);

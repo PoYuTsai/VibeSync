@@ -74,7 +74,7 @@ class AnalysisTelemetryGuardrailHelper {
         AnalysisTelemetryGuardrail(
           label: '非標準截圖',
           detail:
-              '本次識別分類為 ${telemetry.recognizedClassification}，建議先確認這張圖是否真的是同一段雙人聊天。',
+              '本次辨識分類為 ${telemetry.recognizedClassification}，建議先確認這張圖是否真的是同一段雙人聊天。',
           severity: telemetry.recognizedClassification == 'low_confidence'
               ? AnalysisTelemetryGuardrailSeverity.warning
               : AnalysisTelemetryGuardrailSeverity.critical,

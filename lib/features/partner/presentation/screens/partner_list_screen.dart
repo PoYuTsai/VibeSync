@@ -64,7 +64,7 @@ class PartnerListScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '一個人一張卡，不同日期、IG、Line 或交友軟體的聊天，都整理在同一張卡裡',
+                '一個人一張卡，不同日期、IG、LINE 或交友軟體的聊天，都整理在同一張卡裡',
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.onBackgroundSecondary,
                 ),
@@ -217,7 +217,7 @@ class PartnerListScreen extends ConsumerWidget {
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
         content: Text(
-          '「${partner.name}」這張對象卡裡還有 $conversationCount 段互動紀錄\n\n'
+          '「${partner.name}」這張對象卡裡還有 $conversationCount 段對話\n\n'
           '請先打開對象頁，把紀錄刪掉或移到其他對象，清空後就能刪除這張對象卡',
           style: const TextStyle(color: AppColors.glassTextPrimary),
         ),
@@ -283,7 +283,7 @@ class PartnerListScreen extends ConsumerWidget {
       // dialog open and the repo call. Surface the live count.
       messenger.showSnackBar(
         buildBrandFeedbackSnackBar(
-          title: '刪除失敗：仍有 ${e.conversationCount} 個對話',
+          title: '刪除失敗：仍有 ${e.conversationCount} 段對話',
           icon: Icons.error_outline_rounded,
           accentColor: AppColors.error,
         ),

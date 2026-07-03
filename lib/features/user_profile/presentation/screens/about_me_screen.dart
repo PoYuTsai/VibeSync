@@ -59,7 +59,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
 
   String get _primaryLabel {
     final hasExisting = _initialProfile != null && !_initialProfile!.isEmpty;
-    if (!hasExisting && _isDraftEmpty) return '先跳過';
+    if (!hasExisting && _isDraftEmpty) return '略過';
     if (hasExisting && _isDraftEmpty) return '清除設定';
     return '儲存';
   }
@@ -107,7 +107,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       if (context.canPop()) context.pop();
     }
 
-    if (label == '先跳過') {
+    if (label == '略過') {
       popIfPossible();
       return;
     }

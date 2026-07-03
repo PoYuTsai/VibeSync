@@ -242,7 +242,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     final subscription = ref.read(subscriptionProvider);
     if (_analysisNeedsReplyRefresh(subscription)) {
-      _showFloatingSnackBar('已升級完整版，正在幫你刷新完整回覆選項。');
+      _showFloatingSnackBar('已升級完整分析，正在幫你刷新回覆選項。');
       await _refreshPremiumReplies();
     }
   }
@@ -341,15 +341,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
       final subscription = ref.read(subscriptionProvider);
       if (_analysisNeedsReplyRefresh(subscription)) {
-        _showFloatingSnackBar('完整回覆還在同步中，請稍後再試一次。');
+        _showFloatingSnackBar('完整分析還在同步中，請稍後再試一次。');
       } else {
-        _showFloatingSnackBar('完整回覆已更新。');
+        _showFloatingSnackBar('完整分析已更新。');
       }
     } catch (error) {
       if (!mounted) {
         return;
       }
-      _showFloatingSnackBar('完整回覆刷新失敗，請稍後再試。');
+      _showFloatingSnackBar('完整分析刷新失敗，請稍後再試。');
       debugPrint('Premium reply refresh error: $error');
     } finally {
       if (mounted) {
@@ -443,7 +443,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     switch (action) {
       case AnalysisErrorAction.retry:
         return _errorOrigin == _AnalysisErrorOrigin.recognition
-            ? '重新識別'
+            ? '重新辨識'
             : '重新分析';
       case AnalysisErrorAction.relogin:
         return '重新登入';
@@ -456,7 +456,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisErrorAction.wait:
         return '稍後再試';
       case AnalysisErrorAction.addIncomingMessage:
-        return _selectedImages.isNotEmpty ? '先識別截圖' : '補上對方訊息';
+        return _selectedImages.isNotEmpty ? '先辨識截圖' : '補上對方訊息';
     }
   }
 
@@ -1440,7 +1440,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             height: 1.35,
           ),
           decoration: InputDecoration(
-            hintText: '修正這則訊息...',
+            hintText: '修正這則訊息…',
             hintStyle: TextStyle(
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.6)),
             filled: true,
@@ -1583,7 +1583,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _recognizeCancelled = true;
     setState(() {
       _isRecognizing = false;
-      _applyErrorState(message: '已取消識別');
+      _applyErrorState(message: '已取消辨識');
       _selectedImages = [];
       _selectedImageMetrics = [];
       _recognizedConversation = null;
@@ -1669,7 +1669,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return _recognizeStageLabel(_recognizeStage);
     }
 
-    return '辨識截圖文字 (${_selectedImages.length} 張)';
+    return '辨識截圖文字（${_selectedImages.length} 張）';
   }
 
   void _clearScreenshotAddedFeedback() {
@@ -2040,9 +2040,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              // 強制重新識別按鈕（忽略快取）
+              // 強制重新辨識按鈕（忽略快取）
               Tooltip(
-                message: '忽略快取，重新跑 OCR',
+                message: '忽略快取，重新辨識',
                 child: OutlinedButton(
                   onPressed: (_isRecognizing || _isAnalyzing)
                       ? null
@@ -2060,8 +2060,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           const SizedBox(height: 8),
           Text(
             _isRecognizing
-                ? '識別中：${_recognizeStageLabel(_recognizeStage)}'
-                : '先把截圖識別進目前對話；右邊按鈕可忽略快取重新識別。',
+                ? '辨識中：${_recognizeStageLabel(_recognizeStage)}'
+                : '先把截圖辨識進目前對話；右邊按鈕可忽略快取重新辨識。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.unselectedText,
             ),
@@ -2138,7 +2138,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
       _showOcrImportSuccessSnackBar(
         title: '已建立新對話並加入 $messageCount 則訊息',
-        detail: '這批訊息已分開保存，避免不同對方檔案混淆。',
+        detail: '這批訊息已分開儲存，避免不同對方檔案混淆。',
         actionLabel: '前往新對話',
         onAction: () => context.push('/conversation/${createdConversation.id}'),
       );
@@ -2984,7 +2984,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     if (telemetry.requestType == 'recognize_only' ||
         telemetry.quotaReason == 'recognize_only_free') {
-      return '本次純識別，不扣額度';
+      return '本次純辨識，不扣額度';
     }
 
     if (telemetry.quotaReason == 'test_account_waived') {
@@ -3352,7 +3352,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
           // 強制 130 秒 timeout (比 API 的 120 秒稍長)
           Future.delayed(const Duration(seconds: 130), () {
-            throw TimeoutException('識別超時 (130秒)');
+            throw TimeoutException('辨識超時 (130秒)');
           }),
         ]);
         _debugLog(
@@ -3445,7 +3445,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       setState(() {
         _isRecognizing = false;
         _applyErrorState(
-          message: result.recognizedConversation?.summary ?? '無法識別截圖中的對話',
+          message: result.recognizedConversation?.summary ?? '無法辨識截圖中的對話',
           action: AnalysisErrorAction.rescreenshot,
           origin: _AnalysisErrorOrigin.recognition,
         );
@@ -4735,7 +4735,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             const SizedBox(height: 12),
             ExpansionTile(
               title: Text(
-                '查看識別內容',
+                '查看辨識內容',
                 style:
                     AppTypography.bodySmall.copyWith(color: AppColors.ctaStart),
               ),
@@ -4811,13 +4811,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               child: OutlinedButton.icon(
                 onPressed: _forceReRecognizeLastBatch,
                 icon: const Icon(Icons.refresh_rounded),
-                label: Text(_recognitionFromCache ? '強制重新識別' : '重新讀圖'),
+                label: Text(_recognitionFromCache ? '強制重新辨識' : '重新讀圖'),
               ),
             ),
             const SizedBox(height: 6),
             Text(
               _recognitionFromCache
-                  ? '如果結果有誤，點「強制重新識別」會忽略快取，重新跑 OCR。'
+                  ? '如果結果有誤，點「強制重新辨識」會忽略快取，重新辨識。'
                   : '如果剛剛的我說 / 她說不太對，可以直接重讀同一批截圖，不會沿用上次的快取結果。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.unselectedText,
@@ -4851,7 +4851,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             ),
             const SizedBox(height: 6),
             Text(
-              '剛剛的識別結果已暫存在這裡，不用重新跑 OCR。',
+              '剛剛的辨識結果已暫存在這裡，不用重新辨識。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.unselectedText,
               ),
@@ -4918,7 +4918,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '熱度、階段、心理訊號、五維雷達與更多回覆風格',
+                          '熱度、階段、心理訊號、互動雷達與更多回覆風格',
                           style: AppTypography.caption.copyWith(
                             color: AppColors.onBackgroundSecondary,
                             height: 1.25,
@@ -4973,7 +4973,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   if (_replies != null && _replies!.isNotEmpty)
                     _buildDetailedAnalysisPill('${_replies!.length} 種回覆'),
                   if (_dimensionScores != null)
-                    _buildDetailedAnalysisPill('五維雷達'),
+                    _buildDetailedAnalysisPill('互動雷達'),
                 ],
               ),
             ],
@@ -5225,7 +5225,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    '正在重新分析完整回覆，完成後會更新新版回覆選項。',
+                                    '正在重新產生完整分析，完成後會更新新版回覆選項。',
                                     style: AppTypography.bodyMedium.copyWith(
                                       color: AppColors.ctaStart,
                                       fontWeight: FontWeight.w600,
@@ -5293,7 +5293,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           ),
                                         ),
                                       ),
-                                    // 強制重新識別按鈕（當有之前的圖片可以重試時）
+                                    // 強制重新辨識按鈕（當有之前的圖片可以重試時）
                                     if (_canForceReRecognize &&
                                         _errorOrigin ==
                                             _AnalysisErrorOrigin.recognition)
@@ -5303,7 +5303,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 ? null
                                                 : _forceReRecognizeLastBatch,
                                         icon: const Icon(Icons.refresh_rounded),
-                                        label: const Text('強制重新識別'),
+                                        label: const Text('強制重新辨識'),
                                       ),
                                     if (_shouldShowSecondaryErrorAction())
                                       OutlinedButton(
@@ -5379,8 +5379,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               Icons.add_photo_alternate),
                                       label: Text(_recognizeButtonLabel),
                                       /*
-                                            ? '識別中...'
-                                            : '辨識截圖文字 (${_selectedImages.length}張)'),
+                                            ? '辨識中…'
+                                            : '辨識截圖文字 （${_selectedImages.length} 張）'),
                                         */
                                       style: ElevatedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
@@ -5493,7 +5493,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                           ),
                                           /*
                                             Text(
-                                              '🔄 正在識別截圖... ($_recognizeElapsedSeconds 秒)',
+                                              '正在辨識截圖… ($_recognizeElapsedSeconds 秒)',
                                               style: AppTypography.bodySmall
                                                   .copyWith(
                                                 color: Colors.orange,
@@ -5553,7 +5553,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   /*
                                       // 提示：有截圖時要先識別
                                       Text(
-                                        '請先點擊上方按鈕識別截圖，再進行分析',
+                                        '請先點擊上方按鈕辨識截圖，再進行分析',
                                         style: AppTypography.bodySmall.copyWith(
                                           color: AppColors.warning,
                                         ),
@@ -6330,7 +6330,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 const SizedBox(width: 8),
                                                 Expanded(
                                                   child: Text(
-                                                    '你已升級完整版，這份分析仍是免費版結果。',
+                                                    '你已升級，這份分析仍是免費版結果。',
                                                     style: AppTypography
                                                         .bodyMedium
                                                         .copyWith(
@@ -6344,7 +6344,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             ),
                                             const SizedBox(height: 8),
                                             Text(
-                                              '重新分析一次，就能拿到完整回覆選項。',
+                                              '重新分析一次，就能拿到完整分析結果。',
                                               style: AppTypography.caption
                                                   .copyWith(
                                                 color: AppColors.ctaStart,
@@ -6374,8 +6374,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                                 label: Text(
                                                   (_isAnalyzing ||
                                                           _isRefreshingPremiumReplies)
-                                                      ? '正在刷新完整回覆...'
-                                                      : '重新分析完整回覆',
+                                                      ? '正在刷新完整分析…'
+                                                      : '重新產生完整分析',
                                                 ),
                                               ),
                                             ),
@@ -6503,7 +6503,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     style: AppTypography.bodyMedium.copyWith(
                                         color: AppColors.onBackgroundPrimary),
                                     decoration: InputDecoration(
-                                      hintText: '貼上你原本想傳的訊息...',
+                                      hintText: '貼上你原本想傳的訊息…',
                                       helperText: '這裡只修草稿；想討論下一步，請用「問教練」。',
                                       hintStyle:
                                           AppTypography.bodyMedium.copyWith(
@@ -6571,7 +6571,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                             )
                                           : const Icon(Icons.auto_fix_high),
                                       label: Text(
-                                        _isOptimizing ? '優化中...' : '優化這段草稿',
+                                        _isOptimizing ? '優化中…' : '優化這段草稿',
                                       ),
                                     ),
                                   ),
@@ -7246,7 +7246,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               style: AppTypography.bodyMedium
                   .copyWith(color: AppColors.onBackgroundPrimary),
               decoration: InputDecoration(
-                hintText: '貼上或輸入新的一則訊息...',
+                hintText: '貼上或輸入新的一則訊息…',
                 helperText: showScreenshotUpload
                     ? '輸入完選「她說／我說」。不想補了可點上方「回分析」。'
                     : '輸入完先收起鍵盤，再選這句是她說，還是我說。',
