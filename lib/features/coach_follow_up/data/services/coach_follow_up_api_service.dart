@@ -162,6 +162,14 @@ class CoachFollowUpApiService {
       case 429:
         final data = response.data;
         final asMap = data is Map ? data : const {};
+        // server per-user 模型限流不是訂閱額度：絕不 throw quota 例外
+        // （那會自動開 paywall），走 ApiException 顯示「稍等再試」。
+        if (asMap['code'] == 'MODEL_RATE_LIMITED') {
+          throw ApiException(
+            asMap['message']?.toString() ?? '請求太頻繁，請稍後再試。',
+            status: 429,
+          );
+        }
         throw QuotaExceededException(
           asMap['message']?.toString() ??
               asMap['error']?.toString() ??

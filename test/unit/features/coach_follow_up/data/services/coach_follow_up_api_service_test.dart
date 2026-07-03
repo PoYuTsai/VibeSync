@@ -401,6 +401,36 @@ void main() {
       }
     });
 
+    test('MODEL_RATE_LIMITED 429 不當 quota 例外（不得誤開 paywall）', () async {
+      final service = CoachFollowUpApiService(
+        invoker: _stub(const CoachFollowUpInvokeResponse(
+          status: 429,
+          data: {
+            'error': 'Model rate limited',
+            'code': 'MODEL_RATE_LIMITED',
+            'message': '操作太頻繁，請稍等一分鐘再試。',
+            'retryable': false,
+          },
+        )),
+      );
+
+      await expectLater(
+        service.generate(
+          partnerId: 'p-1',
+          phase: CoachFollowUpPhase.prepareInvite,
+          answers: _answers(),
+        ),
+        throwsA(
+          allOf(
+            isNot(isA<QuotaExceededException>()),
+            isA<ApiException>()
+                .having((e) => e.status, 'status', 429)
+                .having((e) => e.message, 'message', contains('太頻繁')),
+          ),
+        ),
+      );
+    });
+
     test('500 AI generation failure → GenerationFailedException', () async {
       final service = CoachFollowUpApiService(
         invoker: _stub(const CoachFollowUpInvokeResponse(

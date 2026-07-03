@@ -15,6 +15,7 @@ import '../../domain/entities/practice_profile.dart';
 import '../../domain/entities/practice_session.dart';
 import '../repositories/practice_collection_store.dart';
 import '../repositories/practice_draw_draft_store.dart';
+import '../repositories/practice_pending_draw_store.dart';
 import '../repositories/practice_pending_hint_store.dart';
 import '../repositories/practice_session_repository.dart';
 import '../services/practice_chat_api_service.dart';
@@ -288,6 +289,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required PracticeSessionRepository repository,
     PracticeDrawDraftStore? draftStore,
     PracticePendingHintStore? pendingHintStore,
+    PracticePendingDrawStore? pendingDrawStore,
     void Function({required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
     void Function(String profileId)? onProfileUnlocked,
@@ -301,6 +303,8 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           draftStore: draftStore ?? InMemoryPracticeDrawDraftStore(),
           pendingHintStore:
               pendingHintStore ?? InMemoryPracticePendingHintStore(),
+          pendingDrawStore:
+              pendingDrawStore ?? InMemoryPracticePendingDrawStore(),
           onUsageSynced: onUsageSynced,
           onProfileUnlocked: onProfileUnlocked,
           initialSession: initialSession,
@@ -314,6 +318,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     required PracticeSessionRepository repository,
     required PracticeDrawDraftStore draftStore,
     required PracticePendingHintStore pendingHintStore,
+    required PracticePendingDrawStore pendingDrawStore,
     required void Function(
             {required int monthlyRemaining, required int dailyRemaining})?
         onUsageSynced,
@@ -326,6 +331,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         _repo = repository,
         _draftStore = draftStore,
         _pendingHintStore = pendingHintStore,
+        _pendingDrawStore = pendingDrawStore,
         _onUsageSynced = onUsageSynced,
         _onProfileUnlocked = onProfileUnlocked,
         super(_initialState(
@@ -342,6 +348,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   final PracticeSessionRepository _repo;
   final PracticeDrawDraftStore _draftStore;
   final PracticePendingHintStore _pendingHintStore;
+  final PracticePendingDrawStore _pendingDrawStore;
   final void Function(
       {required int monthlyRemaining,
       required int dailyRemaining})? _onUsageSynced;
@@ -390,6 +397,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   void _clearPendingHintRequestId() {
     _pendingHintRequestId = null;
     unawaited(_pendingHintStore.clear());
+  }
+
+  /// 翻牌成功或 4xx 明確拒絕 → rotate。網路／5xx 不走這裡（保留供重試
+  /// replay）。只在 store 現值仍是完成中的 id 才清：晚到的舊回應不得誤刪
+  /// 較新 pending 的 replay 保護（同 hint 的防護）。
+  void _rotateDrawRequestId(String completedId) {
+    final stored = _pendingDrawStore.load();
+    if (stored != null && stored.requestId == completedId) {
+      unawaited(_pendingDrawStore.clear());
+    }
   }
 
   /// hint 世代序號：送出新訊息／續玩／換一位／還原場次都 +1。在途 hint 回應
@@ -569,12 +586,27 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       quotaExceeded: false,
     );
 
+    // 翻牌扣費 idempotency（比照 hint pending 模式）：指紋（翻牌當下的
+    // 目前對象）吻合就沿用在途 id——server 已入帳但回應丟失時，重試靠同
+    // id 讓 server replay 同一位、不重扣。成功或 4xx 明確拒絕才 rotate。
+    final priorProfileId = prior.girl?.profileId;
+    final storedDraw = _pendingDrawStore.load();
+    final drawRequestId =
+        storedDraw != null && storedDraw.currentProfileId == priorProfileId
+            ? storedDraw.requestId
+            : const Uuid().v4();
+    unawaited(_pendingDrawStore.save(PracticePendingDraw(
+      currentProfileId: priorProfileId,
+      requestId: drawRequestId,
+    )));
+
     try {
       final result = await _api.drawProfile(
-        requestId: const Uuid().v4(),
-        currentProfileId: prior.girl?.profileId, // 換一位排除自己
+        requestId: drawRequestId,
+        currentProfileId: priorProfileId, // 換一位排除自己
         visiblePracticeThreadId: prior.visiblePracticeThreadId,
       );
+      _rotateDrawRequestId(drawRequestId); // 成功 → rotate
       final girl = girlProfileById(result.profile.profileId) ??
           fallbackPracticeProfile().girl;
       final sessionId = const Uuid().v4();
@@ -625,6 +657,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         );
       }
     } on PracticeDrawUpgradeRequiredException catch (e) {
+      _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
       // Free 免費翻牌用完且不可付費額外：導升級。保留原狀態（不揭曉/不漂移）。
       state = prior.copyWith(
         drawUpgradeRequired: true,
@@ -634,11 +667,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '升級後每天可以翻更多陪練女孩。',
       );
     } on PracticeQuotaExceededException catch (e) {
+      _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
       state = prior.copyWith(
         drawQuotaExceeded: true,
         errorMessage: e.message,
       );
     } catch (_) {
+      // 網路／5xx：id 保留（不 rotate），重試沿用供 server replay 去重。
       // 一般失敗：revealed 時保留目前對象（只報錯）；locked 時標 error 讓 UI 可重抽。
       state = prior.copyWith(
         drawStatus: prior.isRevealed
@@ -874,6 +909,15 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: '想和同一位繼續練習，升級後就能解鎖。',
         restoreText: trimmed,
       );
+    } on PracticeApiException catch (e) {
+      // 429＝server per-user 模型限流：顯示 server 稍等文案、不標 quota。
+      state = state.copyWith(
+        messages: priorMessages,
+        isSending: false,
+        errorMessage:
+            e.status == 429 ? e.message : '生成失敗了，再試一次（這次不扣額度）。',
+        restoreText: trimmed,
+      );
     } catch (_) {
       state = state.copyWith(
         messages: priorMessages,
@@ -996,6 +1040,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         errorMessage: _practiceModeLockedMessage,
       );
     } on PracticeApiException catch (e) {
+      // 429＝server per-user 模型限流：沒打模型、沒扣費、沒占 latch，
+      // id 保留供等待後重試（沿用同 id 可吃 server replay 去重）。
+      if (e.status == 429) {
+        if (_dropStaleHint(generation)) return;
+        state = state.copyWith(
+          isHintLoading: false,
+          errorMessage: e.message,
+        );
+        return;
+      }
       _rotateHintRequestId(requestId); // 4xx 明確拒絕 → rotate
       if (_dropStaleHint(generation)) return;
       state = state.copyWith(
@@ -1214,6 +1268,14 @@ final practicePendingHintStoreProvider =
   return HivePracticePendingHintStore(() => StorageService.settingsBox);
 });
 
+/// 在途翻牌 requestId 本地存取（JSON 存進加密 settings box）。讓翻牌失敗
+/// 未 rotate 的 requestId 活過 autoDispose 重建，server 才能 replay 已入帳
+/// 的抽卡結果不雙扣。
+final practicePendingDrawStoreProvider =
+    Provider<PracticePendingDrawStore>((ref) {
+  return HivePracticePendingDrawStore(() => StorageService.settingsBox);
+});
+
 /// 角色圖鑑解鎖記錄本地存取（JSON list 存進加密 settings box）。
 final practiceCollectionStoreProvider =
     Provider<PracticeCollectionStore>((ref) {
@@ -1256,6 +1318,7 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     repository: repository,
     draftStore: ref.read(practiceDrawDraftStoreProvider),
     pendingHintStore: ref.read(practicePendingHintStoreProvider),
+    pendingDrawStore: ref.read(practicePendingDrawStoreProvider),
     initialSession: _latestOpenPracticeSession(repository.recentSessions()),
     onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
       ref.read(subscriptionProvider.notifier).syncUsageFromServer(

@@ -396,6 +396,40 @@ void main() {
       );
     });
 
+    test('MODEL_RATE_LIMITED 429 不當 quota 例外（不得誤開 paywall）', () async {
+      final service = CoachChatApiService(
+        invoker: _stub(
+          const CoachChatInvokeResponse(
+            status: 429,
+            data: {
+              'error': 'Model rate limited',
+              'code': 'MODEL_RATE_LIMITED',
+              'message': '操作太頻繁，請稍等一分鐘再試。',
+              'retryable': false,
+            },
+          ),
+        ),
+      );
+
+      expect(
+        () => service.ask(
+          conversationId: 'c-1',
+          partnerId: 'p-1',
+          question: '我還能問嗎？',
+          recentMessages: const [],
+          dataQualityFlagged: false,
+        ),
+        throwsA(
+          allOf(
+            isNot(isA<CoachChatQuotaExceededException>()),
+            isA<CoachChatApiException>()
+                .having((e) => e.status, 'status', 429)
+                .having((e) => e.message, 'message', contains('太頻繁')),
+          ),
+        ),
+      );
+    });
+
     test('quota exception exposes the server message', () async {
       final service = CoachChatApiService(
         invoker: _stub(

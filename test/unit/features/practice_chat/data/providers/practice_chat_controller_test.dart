@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
+import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_draw_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_hint_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
@@ -149,12 +150,14 @@ void main() {
 
   PracticeChatController makeController({
     PracticePendingHintStore? pendingHintStore,
+    PracticePendingDrawStore? pendingDrawStore,
   }) {
     final c = PracticeChatController(
       api: api,
       repository: repo,
       draftStore: draftStore,
       pendingHintStore: pendingHintStore,
+      pendingDrawStore: pendingDrawStore,
       onUsageSynced: ({required monthlyRemaining, required dailyRemaining}) {
         synced.add([monthlyRemaining, dailyRemaining]);
       },
@@ -186,8 +189,12 @@ void main() {
   /// 進到 revealed（翻好一張牌）的 controller，給「需要先有對象才能聊天」的測試用。
   Future<PracticeChatController> makeRevealed({
     PracticePendingHintStore? pendingHintStore,
+    PracticePendingDrawStore? pendingDrawStore,
   }) async {
-    final c = makeController(pendingHintStore: pendingHintStore);
+    final c = makeController(
+      pendingHintStore: pendingHintStore,
+      pendingDrawStore: pendingDrawStore,
+    );
     await c.drawNewPracticeGirl();
     expect(c.currentState.drawStatus, PracticeDrawStatus.revealed);
     return c;
@@ -390,6 +397,71 @@ void main() {
       expect(draft.nextResetAt, DateTime.utc(2999, 1, 1, 4));
       expect(draft.sessionId, c.currentState.sessionId);
       expect(repo.recentSessions(), isEmpty); // 不造假歷史
+    });
+
+    test('翻牌帶 requestId：網路失敗重試沿用同 id、成功才 rotate', () async {
+      final c = await makeRevealed();
+
+      // 網路失敗：id 保留供重試（server 可能已入帳、回應丟失）
+      api.drawHandler =
+          ({currentProfileId}) async => throw Exception('network');
+      await c.drawNewPracticeGirl();
+      final firstId = api.lastDrawRequestId;
+      expect(firstId, isNotNull);
+
+      // 重試成功：沿用同一 id（server 靠它 replay 不雙扣）
+      api.drawHandler = ({currentProfileId}) async => drawResult();
+      await c.drawNewPracticeGirl();
+      expect(api.lastDrawRequestId, firstId);
+
+      // 成功後 rotate：下一抽是新意圖 → 新 id
+      await c.drawNewPracticeGirl();
+      expect(api.lastDrawRequestId, isNot(firstId));
+    });
+
+    test('翻牌 4xx 明確拒絕 → rotate 新 id（不沿用）', () async {
+      final c = await makeRevealed();
+
+      api.drawHandler = ({currentProfileId}) async =>
+          throw PracticeDrawUpgradeRequiredException(extraCostMessages: 5);
+      await c.drawNewPracticeGirl();
+      final firstId = api.lastDrawRequestId;
+      expect(firstId, isNotNull);
+
+      api.drawHandler = ({currentProfileId}) async => drawResult();
+      await c.drawNewPracticeGirl();
+      expect(api.lastDrawRequestId, isNot(firstId));
+    });
+
+    test('翻牌失敗 → controller 重建（同持久化 store）→ 指紋吻合沿用同 id', () async {
+      final pendingStore = InMemoryPracticePendingDrawStore();
+
+      // 首抽（locked、girl=null）失敗：pending 指紋＝currentProfileId null
+      api.drawHandler =
+          ({currentProfileId}) async => throw Exception('network');
+      final c = makeController(pendingDrawStore: pendingStore);
+      await c.drawNewPracticeGirl();
+      final firstId = api.lastDrawRequestId;
+      expect(firstId, isNotNull);
+
+      // 重建（autoDispose 後）：同 store、同 locked 狀態 → 重試沿用同 id
+      api.drawHandler = ({currentProfileId}) async => drawResult();
+      final c2 = makeController(pendingDrawStore: pendingStore);
+      await c2.drawNewPracticeGirl();
+      expect(api.lastDrawRequestId, firstId);
+    });
+
+    test('pending 指紋不符（換了對象）→ 鑄新 id 不沿用', () async {
+      final pendingStore = InMemoryPracticePendingDrawStore();
+      await pendingStore.save(
+        const PracticePendingDraw(
+          currentProfileId: 'practice_girl_999',
+          requestId: 'stale-id',
+        ),
+      );
+
+      final c = await makeRevealed(pendingDrawStore: pendingStore);
+      expect(api.lastDrawRequestId, isNot('stale-id'));
     });
 
     test('換一位（已 revealed 再抽）→ 帶 currentProfileId 排除目前這位', () async {
@@ -644,6 +716,22 @@ void main() {
       expect(s.quotaExceeded, true);
       expect(s.errorMessage, '本月額度已用完');
       expect(s.messages, isEmpty);
+    });
+
+    test('模型限流 429：不標 quotaExceeded、顯示稍等文案＋回滾還原', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => throw PracticeApiException(
+            '操作太頻繁，請稍等一分鐘再試。',
+            status: 429,
+          );
+
+      await c.sendMessage('嗨');
+      final s = c.currentState;
+
+      expect(s.quotaExceeded, false);
+      expect(s.errorMessage, contains('太頻繁'));
+      expect(s.messages, isEmpty);
+      expect(s.restoreText, '嗨');
     });
 
     test('Free 續玩需升級：upgradeRequired + 回滾 + 還原文字', () async {
@@ -1321,6 +1409,36 @@ void main() {
       await c.requestHint();
       expect(api.lastHintRequestId, isNotNull);
       expect(api.lastHintRequestId, isNot(firstId));
+    });
+
+    test('requestHint 模型限流 429：不標 quota、id 保留重試沿用', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+
+      // 限流 429：沒打模型、沒扣費、沒占 latch → id 保留供等待後重試
+      api.hintHandler = (_, {profile}) async => throw PracticeApiException(
+            '操作太頻繁，請稍等一分鐘再試。',
+            status: 429,
+          );
+      await c.requestHint();
+      final firstId = api.lastHintRequestId;
+      expect(firstId, isNotNull);
+      expect(c.currentState.quotaExceeded, false);
+      expect(c.currentState.errorMessage, contains('太頻繁'));
+
+      api.hintHandler = (_, {profile}) async => hintResult();
+      await c.requestHint();
+      expect(api.lastHintRequestId, firstId);
     });
 
     test('requestHint 4xx 明確拒絕 → rotate 新 id（不沿用）', () async {

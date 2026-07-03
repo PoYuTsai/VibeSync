@@ -570,6 +570,14 @@ class PracticeChatApiService {
         throw PracticeGenerationFailedException('malformed_response');
       case 429:
         final data = response.data is Map ? response.data as Map : const {};
+        // server per-user 模型限流不是訂閱額度：絕不 throw quota 例外
+        // （那會標 quotaExceeded 誤導升級），走 ApiException 顯示稍等文案。
+        if (data['code'] == 'MODEL_RATE_LIMITED') {
+          throw PracticeApiException(
+            (data['message'] as String?) ?? '請求太頻繁，請稍後再試。',
+            status: 429,
+          );
+        }
         throw PracticeQuotaExceededException(
           (data['message'] as String?) ?? '額度已用完',
           used: _asInt(data['used']),

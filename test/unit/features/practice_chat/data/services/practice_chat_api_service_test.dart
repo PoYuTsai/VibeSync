@@ -320,6 +320,26 @@ void main() {
       );
     });
 
+    test('MODEL_RATE_LIMITED 429 不當 quota 例外（不得誤導升級）', () async {
+      final svc = serviceReturning(429, {
+        'error': 'Model rate limited',
+        'code': 'MODEL_RATE_LIMITED',
+        'message': '操作太頻繁，請稍等一分鐘再試。',
+        'retryable': false,
+      });
+      expect(
+        () => svc.sendMessage(sessionId: 's', profile: profile, turns: turns),
+        throwsA(
+          allOf(
+            isNot(isA<PracticeQuotaExceededException>()),
+            isA<PracticeApiException>()
+                .having((e) => e.status, 'status', 429)
+                .having((e) => e.message, 'message', contains('太頻繁')),
+          ),
+        ),
+      );
+    });
+
     test('409 → PracticeSessionCompleteException', () async {
       final svc = serviceReturning(409, {'error': 'practice_session_complete'});
       expect(

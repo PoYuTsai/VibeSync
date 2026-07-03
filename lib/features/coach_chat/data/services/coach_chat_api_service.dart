@@ -193,6 +193,14 @@ class CoachChatApiService {
         final data = response.data;
         final asMap = data is Map ? data : const {};
         final error = asMap['error']?.toString();
+        // server per-user 模型限流不是訂閱額度：絕不 throw quota 例外
+        // （那會開 paywall），走 ApiException 讓 UI 顯示「稍等再試」。
+        if (asMap['code'] == 'MODEL_RATE_LIMITED') {
+          throw CoachChatApiException(
+            asMap['message']?.toString() ?? '請求太頻繁，請稍後再試。',
+            status: 429,
+          );
+        }
         throw CoachChatQuotaExceededException(
           asMap['message']?.toString() ?? error ?? 'quota_exceeded',
           used: asMap['used'] is int ? asMap['used'] as int : null,

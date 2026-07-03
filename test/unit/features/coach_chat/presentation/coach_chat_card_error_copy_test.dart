@@ -49,4 +49,21 @@ void main() {
       isNot(contains('未扣額度')),
     );
   });
+
+  // server per-user 模型限流（MODEL_RATE_LIMITED 429）：非額度、不開 paywall，
+  // 顯示 server 的「稍等再試」文案。
+  test('rate-limit 429 shows server wait copy, not quota upsell', () {
+    final error = CoachChatApiException(
+      '操作太頻繁，請稍等一分鐘再試。',
+      status: 429,
+    );
+
+    expect(CoachChatCard.isQuotaError(error), isFalse);
+    expect(CoachChatCard.failureMessageFor(error), contains('太頻繁'));
+    expect(
+      CoachChatCard.failureMessageFor(error),
+      isNot(contains('連線暫時不穩')),
+    );
+    expect(CoachChatCard.failureActionLabelFor(error), '重試這題');
+  });
 }

@@ -75,6 +75,11 @@ class CoachChatCard extends ConsumerStatefulWidget {
       return '教練暫時沒接住，請稍後再試。';
     }
     if (error is CoachChatApiException) {
+      // 429＝server per-user 模型限流：顯示 server「稍等再試」文案
+      // （限流 gate 在扣費前，未扣額度承諾仍成立，但文案以 server 為準）。
+      if (error.status == 429) {
+        return error.message;
+      }
       return '連線暫時不穩，這次未扣額度，請稍後再試。';
     }
     return '教練暫時沒接住，請稍後再試。';

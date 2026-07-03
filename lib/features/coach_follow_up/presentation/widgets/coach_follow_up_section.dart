@@ -476,6 +476,8 @@ class _StatusText extends StatelessWidget {
     final message = switch (error) {
       QuotaExceededException() => '今天的額度已用完，明天再試或調整方案',
       GenerationFailedException() => '這次沒有產生可用建議，未扣額度，請再試一次',
+      // 429＝server per-user 模型限流：顯示 server「稍等再試」文案
+      ApiException(:final status, :final message) when status == 429 => message,
       ApiException() => '目前無法送出，請稍後再試',
       _ => '目前無法產生建議，請稍後再試',
     };

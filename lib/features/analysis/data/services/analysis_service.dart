@@ -1029,12 +1029,16 @@ AnalysisException _mapAnalysisHttpError({
       // 免費 OCR（recognizeOnly）限流：6/分、60/天。payload 不帶
       // monthlyLimit/dailyLimit 鍵，所以不會被 _quotaExceptionFrom429
       // 判成訂閱額度（那會誤導升級 paywall CTA）。wait 而非 retry。
-      if (errorCode == 'OCR_RATE_LIMITED') {
+      // MODEL_RATE_LIMITED＝analyze 模型呼叫限流（6/分、60/天），同型契約
+      // （docs/plans/2026-07-03-model-rate-limit-design.md）。
+      if (errorCode == 'OCR_RATE_LIMITED' || errorCode == 'MODEL_RATE_LIMITED') {
         return AnalysisException(
           _isReadableUserMessage(normalizedMessage) &&
                   normalizedMessage.isNotEmpty
               ? normalizedMessage
-              : '截圖辨識太頻繁，請稍等一下再試。',
+              : errorCode == 'OCR_RATE_LIMITED'
+                  ? '截圖辨識太頻繁，請稍等一下再試。'
+                  : '請求太頻繁，請稍後再試。',
           code: errorCode,
           suggestedAction: AnalysisErrorAction.wait,
         );

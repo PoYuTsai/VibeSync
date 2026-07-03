@@ -342,6 +342,14 @@ class OpenerService {
     if (response.status != 200) {
       final errorData = response.data;
       if (response.status == 429 && errorData is Map) {
+        // server 端 per-user 模型呼叫限流（MODEL_RATE_LIMITED）不是訂閱額度：
+        // 絕不 throw OpenerQuotaExceededException（那會誤開 paywall），
+        // 走一般 Exception 讓 UI 顯示「稍等再試」文案。
+        if (errorData['code'] == 'MODEL_RATE_LIMITED') {
+          throw Exception(
+            errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
+          );
+        }
         final rawError = errorData['error']?.toString().toLowerCase() ?? '';
         final fallbackMessage = rawError.contains('monthly')
             ? '本月額度不足，升級方案可取得更多開場與分析額度。'
