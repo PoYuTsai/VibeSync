@@ -8,9 +8,15 @@ import '../../../user_profile/data/providers/user_profile_providers.dart';
 /// `coachFollowUpStyleContextProvider`, with two opener twists: the partnerId
 /// is optional (opener often runs before a partner exists), and the builder
 /// slice carries the no-fabricated-common-ground guard.
+///
+/// Future-based on purpose (Codex R1 P2): the async profile/partner deps are
+/// awaited so a cold opener entry still resolves the style snapshot *before*
+/// `beginAttempt` mints the requestId. A `valueOrNull` sync read would send
+/// no style on first use, then flip the fingerprint once deps load — a lost
+/// charged response could no longer dedup on retry (double-charge risk).
 final openerStyleContextProvider =
-    Provider.family<String?, String?>((ref, partnerId) {
-  final global = ref.watch(userProfileControllerProvider).valueOrNull;
+    FutureProvider.family<String?, String?>((ref, partnerId) async {
+  final global = await ref.watch(userProfileControllerProvider.future);
   final builder = ref.watch(effectiveStylePromptBuilderProvider);
 
   final id = partnerId?.trim();
@@ -23,9 +29,10 @@ final openerStyleContextProvider =
   }
 
   // Spec 3: a flagged partner card suspends partner-specific style memory.
-  final includePartnerOverride = !ref.watch(dataQualityFlagProvider(id)).isFlagged;
+  final includePartnerOverride =
+      !ref.watch(dataQualityFlagProvider(id)).isFlagged;
   final partner = includePartnerOverride
-      ? ref.watch(partnerStyleOverrideProvider(id)).valueOrNull
+      ? await ref.watch(partnerStyleOverrideProvider(id).future)
       : null;
 
   return builder.buildForOpener(

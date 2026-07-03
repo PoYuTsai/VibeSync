@@ -478,8 +478,17 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       if (!mounted) return;
 
       // F3-1：關於我/對象風格設定進 opener（只調語氣，server 端 prompt 守門）。
-      final effectiveStyleContext =
-          ref.read(openerStyleContextProvider(widget.partnerId));
+      // await resolve 讓快照在 beginAttempt 之前定案（Codex R1 P2：sync
+      // valueOrNull 冷啟動讀到 loading，重試時 fingerprint 漂移會換新
+      // requestId，server 對前一次已扣費 run 去重失效）。載入失敗不擋生成。
+      String? effectiveStyleContext;
+      try {
+        effectiveStyleContext = await ref
+            .read(openerStyleContextProvider(widget.partnerId).future);
+      } catch (e) {
+        debugPrint('OpeningRescueScreen style context failed: $e');
+      }
+      if (!mounted) return;
 
       final service = OpenerService();
       final result = await service.generateOpeners(

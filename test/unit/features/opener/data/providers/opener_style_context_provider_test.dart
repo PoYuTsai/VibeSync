@@ -76,25 +76,21 @@ void main() {
         ),
       ]);
 
-  Future<void> settle(ProviderContainer c, {String? partnerId}) async {
-    await c.read(authUserProfileScopeProvider.future);
-    await c.read(userProfileControllerProvider.future);
-    if (partnerId != null) {
-      await c.read(partnerStyleOverrideProvider(partnerId).future);
-    }
-  }
-
   group('openerStyleContextProvider', () {
-    test('null partnerId resolves global-only opener context', () async {
+    // Codex R1 P2：不做任何預熱（settle）——provider 必須自己 await 依賴，
+    // cold entry 首發就要拿得到風格；否則「首發 null、重試 resolve」會讓
+    // fingerprint 漂移、requestId 換新、server 去重失效（雙扣風險）。
+    test('cold read resolves global-only context without pre-warming',
+        () async {
       userRepo.byOwner[uid] = UserProfile.create(
         interactionStyle: InteractionStyle.humorous,
         updatedAt: ts,
       );
       final c = makeContainer();
       addTearDown(c.dispose);
-      await settle(c);
 
-      final context = c.read(openerStyleContextProvider(null))!;
+      final context =
+          (await c.read(openerStyleContextProvider(null).future))!;
       expect(context, contains('Preferred voice: 幽默'));
       expect(context, contains('只用來調整開場白語氣'));
     });
@@ -106,9 +102,9 @@ void main() {
       );
       final c = makeContainer();
       addTearDown(c.dispose);
-      await settle(c);
 
-      final context = c.read(openerStyleContextProvider('  '))!;
+      final context =
+          (await c.read(openerStyleContextProvider('  ').future))!;
       expect(context, contains('Preferred voice: 穩重'));
     });
 
@@ -124,9 +120,9 @@ void main() {
       ));
       final c = makeContainer();
       addTearDown(c.dispose);
-      await settle(c, partnerId: 'p1');
 
-      final context = c.read(openerStyleContextProvider('p1'))!;
+      final context =
+          (await c.read(openerStyleContextProvider('p1').future))!;
       expect(context, contains('Preferred voice: 直接'));
       expect(context, isNot(contains('溫柔')));
     });
@@ -143,9 +139,9 @@ void main() {
       ));
       final c = makeContainer(partnerFlagged: true);
       addTearDown(c.dispose);
-      await settle(c, partnerId: 'p1');
 
-      final context = c.read(openerStyleContextProvider('p1'))!;
+      final context =
+          (await c.read(openerStyleContextProvider('p1').future))!;
       expect(context, contains('Preferred voice: 溫柔'));
       expect(context, isNot(contains('直接')));
     });
@@ -153,9 +149,11 @@ void main() {
     test('returns null when nothing is configured', () async {
       final c = makeContainer();
       addTearDown(c.dispose);
-      await settle(c);
 
-      expect(c.read(openerStyleContextProvider(null)), isNull);
+      expect(
+        await c.read(openerStyleContextProvider(null).future),
+        isNull,
+      );
     });
   });
 }
