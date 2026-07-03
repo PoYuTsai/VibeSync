@@ -9,32 +9,47 @@ import 'package:hive_ce/hive_ce.dart';
 /// 過去每次點擊都當場鑄新 UUID：server 已入帳而回應丟失時，手動重試會用新
 /// id 再抽再扣一次。改為：發起翻牌時先查 pending 快照，指紋吻合就沿用同
 /// id（server replay 回同一位、不重扣），成功或 4xx 明確拒絕才 rotate。
-/// 指紋＝currentProfileId（翻牌當下的目前對象；首抽為 null）：不吻合＝
-/// 針對別的對象的舊意圖，一律作廢鑄新 id。
+/// 指紋＝currentProfileId（翻牌當下的目前對象；首抽為 null）＋TTL：不吻合
+/// 或超齡＝針對別的意圖的舊 id，一律作廢鑄新。TTL 防的是 null 指紋跨長
+/// 時間誤配（Codex client R1 P2）：locked 首抽失敗留下的 pending，幾天後
+/// 的新首抽不得沿用——server replay 會回陳年 profile 而不是抽新的。
 class PracticePendingDraw {
   const PracticePendingDraw({
     required this.currentProfileId,
     required this.requestId,
+    required this.savedAt,
   });
+
+  /// 重試沿用的最大年齡：丟回應的重試都發生在幾分鐘內，超過視為新意圖。
+  static const Duration ttl = Duration(minutes: 30);
 
   /// 翻牌當下的目前對象；locked 首抽時為 null。
   final String? currentProfileId;
   final String requestId;
+  final DateTime savedAt;
+
+  bool get isExpired => DateTime.now().difference(savedAt) > ttl;
 
   Map<String, dynamic> toJson() => {
         if (currentProfileId != null) 'currentProfileId': currentProfileId,
         'requestId': requestId,
+        'savedAt': savedAt.toIso8601String(),
       };
 
   /// 欄位缺漏／型別不對回 null（當不存在），絕不丟例外。
   static PracticePendingDraw? fromJson(Map<String, dynamic> json) {
     final currentProfileId = json['currentProfileId'];
     final requestId = json['requestId'];
+    final savedAtRaw = json['savedAt'];
     if (currentProfileId != null && currentProfileId is! String) return null;
     if (requestId is! String || requestId.isEmpty) return null;
+    if (savedAtRaw is! String) return null;
+    final savedAt = DateTime.tryParse(savedAtRaw);
+    if (savedAt == null) return null;
     return PracticePendingDraw(
       currentProfileId: currentProfileId as String?,
       requestId: requestId,
+      savedAt: savedAt,
     );
   }
 }

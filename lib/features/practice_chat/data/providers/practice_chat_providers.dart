@@ -591,13 +591,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     // id 讓 server replay 同一位、不重扣。成功或 4xx 明確拒絕才 rotate。
     final priorProfileId = prior.girl?.profileId;
     final storedDraw = _pendingDrawStore.load();
-    final drawRequestId =
-        storedDraw != null && storedDraw.currentProfileId == priorProfileId
-            ? storedDraw.requestId
-            : const Uuid().v4();
+    // TTL：null 指紋（locked 首抽）跨長時間會誤配陳年 id，超齡一律作廢。
+    final drawRequestId = storedDraw != null &&
+            storedDraw.currentProfileId == priorProfileId &&
+            !storedDraw.isExpired
+        ? storedDraw.requestId
+        : const Uuid().v4();
     unawaited(_pendingDrawStore.save(PracticePendingDraw(
       currentProfileId: priorProfileId,
       requestId: drawRequestId,
+      savedAt: DateTime.now(),
     )));
 
     try {

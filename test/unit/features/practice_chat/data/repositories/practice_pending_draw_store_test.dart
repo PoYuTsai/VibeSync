@@ -2,9 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_pending_draw_store.dart';
 
-PracticePendingDraw samplePending() => const PracticePendingDraw(
+PracticePendingDraw samplePending() => PracticePendingDraw(
       currentProfileId: 'practice_girl_007',
       requestId: 'req-abc',
+      savedAt: DateTime.utc(2026, 7, 3, 12, 0),
     );
 
 void main() {
@@ -15,18 +16,35 @@ void main() {
       expect(back, isNotNull);
       expect(back!.currentProfileId, 'practice_girl_007');
       expect(back.requestId, 'req-abc');
+      expect(back.savedAt, DateTime.utc(2026, 7, 3, 12, 0));
     });
 
     test('首抽（currentProfileId=null）來回保值', () {
-      const firstDraw = PracticePendingDraw(
+      final firstDraw = PracticePendingDraw(
         currentProfileId: null,
         requestId: 'req-first',
+        savedAt: DateTime.utc(2026, 7, 3, 12, 0),
       );
       final back = PracticePendingDraw.fromJson(firstDraw.toJson());
 
       expect(back, isNotNull);
       expect(back!.currentProfileId, isNull);
       expect(back.requestId, 'req-first');
+    });
+
+    test('isExpired：超過 30 分鐘 TTL 為過期', () {
+      final fresh = PracticePendingDraw(
+        currentProfileId: null,
+        requestId: 'r',
+        savedAt: DateTime.now().subtract(const Duration(minutes: 5)),
+      );
+      final stale = PracticePendingDraw(
+        currentProfileId: null,
+        requestId: 'r',
+        savedAt: DateTime.now().subtract(const Duration(minutes: 31)),
+      );
+      expect(fresh.isExpired, isFalse);
+      expect(stale.isExpired, isTrue);
     });
 
     test('欄位缺漏或型別不對 → null（當不存在）', () {
@@ -46,6 +64,18 @@ void main() {
       expect(
         PracticePendingDraw.fromJson(
           samplePending().toJson()..['currentProfileId'] = 42,
+        ),
+        isNull,
+      );
+      expect(
+        PracticePendingDraw.fromJson(
+          samplePending().toJson()..remove('savedAt'),
+        ),
+        isNull,
+      );
+      expect(
+        PracticePendingDraw.fromJson(
+          samplePending().toJson()..['savedAt'] = 'not-a-date',
         ),
         isNull,
       );

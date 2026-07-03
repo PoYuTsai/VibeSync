@@ -454,14 +454,48 @@ void main() {
     test('pending 指紋不符（換了對象）→ 鑄新 id 不沿用', () async {
       final pendingStore = InMemoryPracticePendingDrawStore();
       await pendingStore.save(
-        const PracticePendingDraw(
+        PracticePendingDraw(
           currentProfileId: 'practice_girl_999',
           requestId: 'stale-id',
+          savedAt: DateTime.now(),
         ),
       );
 
       final c = await makeRevealed(pendingDrawStore: pendingStore);
       expect(api.lastDrawRequestId, isNot('stale-id'));
+    });
+
+    test('pending 超過 TTL（陳年首抽 id）→ 作廢鑄新 id（Codex client R1 P2）',
+        () async {
+      final pendingStore = InMemoryPracticePendingDrawStore();
+      // locked 首抽指紋＝null：沒有 TTL 的話，幾天後的新首抽會誤沿用、
+      // server replay 回舊 profile。
+      await pendingStore.save(
+        PracticePendingDraw(
+          currentProfileId: null,
+          requestId: 'ancient-id',
+          savedAt: DateTime.now().subtract(const Duration(hours: 26)),
+        ),
+      );
+
+      final c = makeController(pendingDrawStore: pendingStore);
+      await c.drawNewPracticeGirl();
+      expect(api.lastDrawRequestId, isNot('ancient-id'));
+    });
+
+    test('pending 在 TTL 內（剛失敗的重試）→ 沿用同 id', () async {
+      final pendingStore = InMemoryPracticePendingDrawStore();
+      await pendingStore.save(
+        PracticePendingDraw(
+          currentProfileId: null,
+          requestId: 'recent-id',
+          savedAt: DateTime.now().subtract(const Duration(minutes: 2)),
+        ),
+      );
+
+      final c = makeController(pendingDrawStore: pendingStore);
+      await c.drawNewPracticeGirl();
+      expect(api.lastDrawRequestId, 'recent-id');
     });
 
     test('換一位（已 revealed 再抽）→ 帶 currentProfileId 排除目前這位', () async {
