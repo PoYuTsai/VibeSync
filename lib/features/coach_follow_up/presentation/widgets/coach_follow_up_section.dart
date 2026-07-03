@@ -491,7 +491,10 @@ class _StatusText extends StatelessWidget {
   factory _StatusText.error(Object error) {
     final message = switch (error) {
       QuotaExceededException() => _quotaCopy(error),
-      GenerationFailedException() => '這次沒有產生可用建議，未扣額度，請再試一次',
+      // 「未扣額度」不得在此承諾：GenerationFailedException 涵蓋 200 但
+      // client 端 parse/安全檢查失敗（server 已扣）與 5xx（多半未扣但有
+      // 扣後才炸的窗口）。同 coach chat 21d59962 的修法。
+      GenerationFailedException() => '這次沒有產生可用建議，請稍後再試',
       // 429＝server per-user 模型限流：顯示 server「稍等再試」文案
       ApiException(:final status, :final message) when status == 429 => message,
       ApiException() => '目前無法送出，請稍後再試',

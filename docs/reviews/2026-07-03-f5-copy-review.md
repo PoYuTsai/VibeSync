@@ -15,13 +15,13 @@
 | A5 | `paywall_screen.dart:1008` | Please manage subscriptions in the iOS app. | 請在 iOS App 內管理訂閱。 | 英文字串外洩 |
 | A6 | `paywall_screen.dart:487` 一帶 | （全 paywall 未提免費試用/優惠期） | 若產品含 introductory offer 須補試用條款揭露 | 3.1.2(c)；**若無試用則免改** |
 | A7 | `onboarding_screen.dart:71,98` | 「略過」可跳過整個「AI 與你的隱私」揭露頁 | 揭露頁不可略過，或設定頁補 AI 揭露入口 | 揭露可被略過＝拒審風險（**產品決定，非改字**） |
-| A8 | `analysis_screen.dart:4037-4057` | mock 回覆字串（「嗨」「哈哈這讓我想到一個笑話」…） | 確認 production 不渲染 | placeholder 外洩風險（**驗證項，非改字**） |
+| A8 | `analysis_screen.dart:4037-4057` | mock 回覆字串（「嗨」「哈哈這讓我想到一個笑話」…） | ✅ 已驗碼＝免改 | **驗證結果＝死碼**：`_generateSubtext`/`_generateReplies` 掛 `// ignore: unused_element`、全 repo 零呼叫者，production 不渲染。刪死碼可另案 boy-scout |
 
 ## B — 計費／正確性語意
 
 | # | 位置 | 現文案 | 建議 | 理由 |
 |---|------|--------|------|------|
-| B1 | `coach_follow_up_section.dart:494` | 這次沒有產生可用建議，未扣額度，請再試一次 | 移除「未扣額度」承諾（或限 4xx 才顯示） | 5xx 時 server 可能已扣；131a8b07 只修了 coach chat 面，follow-up 疑漏（**先驗碼再改**） |
+| B1 | `coach_follow_up_section.dart:494` | 這次沒有產生可用建議，未扣額度，請再試一次 | ✅ 已驗碼並修（移除「未扣額度」） | **驗證結果＝真 bug**：`GenerationFailedException` 除 5xx 外也涵蓋 200 但 client parse/安全檢查失敗（server 已扣）；coach chat 同型已在 21d59962 修，follow-up 漏。已改「這次沒有產生可用建議，請稍後再試」＋widget 測試同步 |
 | B2 | `ai_data_sharing_consent.dart:164` | 同意後，這台裝置之後不會重複提醒。 | 同意後，這個帳號之後不會重複提醒。 | R1-1 後同意已是帳號級，現文案與實作不符 |
 | B3 | `settings_screen.dart:726` | 已完成登出，但本機清理時發生小問題… | 已登出，但本機資料清理未完成，請重新開啟 App。 | 「小問題」淡化，與刪帳嚴謹分流語氣不一致 |
 | B4 | `paywall_screen.dart:546` 比較表 | Free 陪練女孩「限量」 | 「每日不同／同一位限一輪」 | 「限量」易誤解為總量受限 |
@@ -54,4 +54,4 @@
 
 ## 總評
 
-七頁皆無簡體字混入、無 debug/placeholder 直接外洩（A8 mock 待驗證）、「省 X%」已與 store 實價連動、AI 揭露與刪帳分流紮實。最需要 Eric 拍板的是 A 級（練習室物化＋博弈讀感措辭、揭露頁可略過）與 B1（未扣額度承諾）。C 級可等拍板後一顆純文案 commit 批次收。
+七頁皆無簡體字混入、無 debug/placeholder 直接外洩（A8 已驗＝死碼免改）、「省 X%」已與 store 實價連動、AI 揭露與刪帳分流紮實。B1 已驗碼證實為真 bug 並修掉（見上表）。最需要 Eric 拍板的剩 A 級（練習室物化＋博弈讀感措辭、揭露頁可略過）。C 級可等拍板後一顆純文案 commit 批次收。

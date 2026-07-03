@@ -418,7 +418,9 @@ void main() {
       await t.tap(find.text('產生跟進建議'));
       await t.pumpAndSettle();
 
-      expect(find.textContaining('未扣額度'), findsOneWidget);
+      // 「未扣額度」不得承諾：此例外含 200 但 client parse 失敗（已扣）。
+      expect(find.textContaining('未扣額度'), findsNothing);
+      expect(find.textContaining('這次沒有產生可用建議'), findsOneWidget);
       expect(find.text('GEN_HEADLINE'), findsNothing);
     });
 
