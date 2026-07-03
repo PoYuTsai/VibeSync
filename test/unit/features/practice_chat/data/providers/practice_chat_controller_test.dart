@@ -1913,6 +1913,86 @@ void main() {
       expect(c.currentState.girl!.profileId, 'practice_girl_010');
     });
   });
+
+  // ── 圖鑑點已抽卡進對話：startSessionWithProfile ──────────────────────────
+  group('startSessionWithProfile', () {
+    PracticeSession openSessionFor(String profileId) => PracticeSession(
+          id: 'open-9',
+          createdAt: DateTime(2026, 6, 26, 12),
+          aiReplyCount: 1,
+          messages: const [
+            PracticeMessage(role: 'user', text: '嗨'),
+            PracticeMessage(role: 'ai', text: '嗯？'),
+          ],
+          profileId: profileId,
+        );
+
+    test('無既有場次 → 以該角色免費開新局（revealed、空 transcript、第 1 輪）', () {
+      final c = makeController();
+      expect(c.currentState.drawStatus, PracticeDrawStatus.locked);
+
+      c.startSessionWithProfile('practice_girl_005');
+
+      final s = c.currentState;
+      expect(s.girl!.profileId, 'practice_girl_005');
+      expect(s.drawStatus, PracticeDrawStatus.revealed);
+      expect(s.messages, isEmpty);
+      expect(s.roundIndex, 1);
+      expect(s.visiblePracticeThreadId, s.sessionId);
+    });
+
+    test('有既有場次 → 續玩該場（sessionId 相同、transcript 保留）', () async {
+      await repo.save(openSessionFor('practice_girl_009'));
+      final c = makeController();
+
+      c.startSessionWithProfile('practice_girl_009');
+
+      final s = c.currentState;
+      expect(s.sessionId, 'open-9');
+      expect(s.girl!.profileId, 'practice_girl_009');
+      expect(s.messages.map((m) => m.text), ['嗨', '嗯？']);
+      expect(s.drawStatus, PracticeDrawStatus.revealed);
+    });
+
+    test('開新局不打 draw API、不寫翻牌 draft／pending draw', () {
+      final pendingStore = InMemoryPracticePendingDrawStore();
+      final c = makeController(pendingDrawStore: pendingStore);
+
+      c.startSessionWithProfile('practice_girl_005');
+
+      expect(c.currentState.girl!.profileId, 'practice_girl_005');
+      expect(api.drawCallCount, 0); // 不打 drawProfile
+      expect(draftStore.load(), isNull); // 不寫翻牌 draft
+      expect(pendingStore.load(), isNull); // 不碰 pending draw store
+    });
+
+    test('catalog 解析不到 profileId → 不碰 state', () {
+      final c = makeController();
+      final before = c.currentState;
+
+      c.startSessionWithProfile('no_such_profile');
+
+      expect(identical(c.currentState, before), isTrue);
+    });
+
+    test('prior 帶錯誤旗標 → 開新局重設 errorMessage 與 draw 旗標', () async {
+      // 先讓翻牌吃 402，製造 errorMessage 非 null＋drawUpgradeRequired 的 prior。
+      api.drawHandler = ({currentProfileId}) async =>
+          throw PracticeDrawUpgradeRequiredException(extraCostMessages: 5);
+      final c = makeController();
+      await c.drawNewPracticeGirl();
+      expect(c.currentState.errorMessage, isNotNull);
+      expect(c.currentState.drawUpgradeRequired, true);
+
+      c.startSessionWithProfile('practice_girl_005');
+
+      final s = c.currentState;
+      expect(s.girl!.profileId, 'practice_girl_005');
+      expect(s.errorMessage, isNull);
+      expect(s.drawUpgradeRequired, false);
+      expect(s.drawQuotaExceeded, false);
+    });
+  });
 }
 
 /// 測試用翻牌回應：從 catalog 取真實對象身份，draw/usage 用參數覆寫。

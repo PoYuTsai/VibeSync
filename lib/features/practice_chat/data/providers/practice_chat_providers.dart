@@ -571,6 +571,60 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
   }
 
+  /// 圖鑑點已抽卡進對話：有既有場次續玩、沒有就以該角色免費開新局。
+  /// 不走 draw、不扣翻牌額度、不寫翻牌 draft／pending（都只由翻牌鏈路寫）。
+  void startSessionWithProfile(String profileId) {
+    // recentSessions 已依時間新到舊 → 第一筆吻合＝該對象最新一段。
+    for (final session in _repo.recentSessions()) {
+      if (session.profileId == profileId) {
+        resumeSession(session);
+        return;
+      }
+    }
+    final girl = girlProfileById(profileId);
+    if (girl == null) return; // catalog 解析不到：不碰 state
+    _hintGeneration++; // 換場：在途 hint 全部作廢
+    _clearPendingHintRequestId(); // 換場順手清：在途扣費 id 對舊場才有意義
+    final prior = state;
+    final sessionId = const Uuid().v4();
+    // 難度沿用目前已解析值（比照 drawNewPracticeGirl；未解析時回偏好預設）。
+    final difficulty = prior.difficulty.isNotEmpty
+        ? prior.difficulty
+        : practiceDifficultyId(prior.difficultyPreference);
+    state = PracticeChatState(
+      sessionId: sessionId,
+      createdAt: DateTime.now(),
+      girl: girl,
+      personaId: girl.personaId,
+      personaLabel: practicePersonaLabel(girl.personaId),
+      difficulty: difficulty,
+      difficultyLabel: practiceDifficultyLabel(difficulty),
+      difficultyPreference: prior.difficultyPreference,
+      drawStatus: PracticeDrawStatus.revealed,
+      roundIndex: 1,
+      visiblePracticeThreadId: sessionId,
+      learningMode: prior.learningMode,
+      temperatureScore: prior.learningMode == PracticeLearningMode.beginner
+          ? kInitialPracticeTemperatureScore
+          : null,
+      familiarityScore: prior.learningMode == PracticeLearningMode.beginner
+          ? kInitialPracticeFamiliarityScore
+          : null,
+      relationshipStageLabel:
+          prior.learningMode == PracticeLearningMode.beginner
+              ? kInitialPracticeRelationshipStageLabel
+              : null,
+      hintUsedCount: 0,
+      // 非翻牌：額度快照沿用 prior（server 才是真實來源，這裡不造新值）。
+      drawFreeAllowance: prior.drawFreeAllowance,
+      drawFreeUsed: prior.drawFreeUsed,
+      drawFreeRemaining: prior.drawFreeRemaining,
+      drawExtraCost: prior.drawExtraCost,
+      drawNextResetAt: prior.drawNextResetAt,
+    );
+    _notifyProfileUnlocked(girl.profileId); // 圖鑑：冪等，無害
+  }
+
   /// 每日翻牌：呼叫 server 抽一位新對象並原子扣費。換一位（已 revealed 再抽）會帶上
   /// 目前這位以排除自己。成功 → 進 revealed、開全新一場（roundIndex 1）、存 draft。
   /// 任何失敗都**不**污染目前 profile／transcript（保留原狀態），只設對應旗標／訊息。
