@@ -15,9 +15,9 @@
 
 ## Batch R1 — 合規 P0（code，1 session）✅ 高風險：auth/consent → Codex 雙審
 
-- [ ] R1-1【P1】AI 同意帳號級化：consent key 綁 userId（或 signOut/deleteAccount/clearLocalSessionAfterDeletion 一併清兩把 consent key）。證據：`ai_data_sharing_consent.dart:60-61`、`supabase_service.dart:188-227` 無 prefs 清除、`storage_service.dart:198-210` 只清 Hive
-- [ ] R1-2【P1】「複製訂閱診斷」兩入口 release 可見（`settings_screen.dart:246-251`、`paywall_screen.dart:380-389`，只擋 `!kIsWeb`）→ kDebugMode gate，或改「複製支援資訊」文案並移出 paywall 頁尾（建議直接 gate）
-- [ ] R1-3【P3】`subscription_providers.dart:1275` forceSyncTier 印 user.id 的 debugPrint 清掉
+- [x] R1-1【P1】AI 同意帳號級化：**選型＝consent key 內部綁 userId**（effective key＝`<key>::<userId>`，未登入 fallback 裝置級；換帳號天然隔離、同帳號重登不重問、裝置級舊同意不跨帳號沿用）。`2ceb1beb`，TDD 5 新測＋回歸 190/190 綠
+- [x] R1-2【P1】「複製訂閱診斷」兩入口 → `SubscriptionDiagnosticsGate`（`!kIsWeb && kDebugMode`）＋測試 seam，settings tile＋paywall 頁尾都走 gate。`1e93512f`
+- [x] R1-3【P3】forceSyncTier debugPrint 去 user.id。`9ab02bf9`
 - [ ] R1-4【建議，Eric 拍板】onboarding 加一頁輕量「AI 與隱私」揭露（點名 Anthropic/DeepSeek＋資料外送說明）。per-feature 同意閘理論上已滿足「使用前同意」，此項是保險
 
 ## Batch R2 — paywall 殘餘（0.5 session）✅ 高風險：paywall → Codex 雙審
