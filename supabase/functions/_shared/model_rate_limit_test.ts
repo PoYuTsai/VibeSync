@@ -29,6 +29,12 @@ Deno.test("limits match Eric's decision per scope", () => {
   assertEquals(MODEL_RATE_LIMITS.coach_follow_up, { perMinute: 6, perDay: 60 });
   assertEquals(MODEL_RATE_LIMITS.practice_turn, { perMinute: 12, perDay: 400 });
   assertEquals(MODEL_RATE_LIMITS.practice_hint, { perMinute: 4, perDay: 40 });
+  // Codex R1 P2：debrief 也打 DeepSeek，補 per-user backstop（session 內
+  // 另有 MAX_DEBRIEFS=3）。
+  assertEquals(MODEL_RATE_LIMITS.practice_debrief, {
+    perMinute: 4,
+    perDay: 40,
+  });
 });
 
 // ---------------------------------------------------------------------------

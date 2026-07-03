@@ -37,9 +37,15 @@ Deno.test("opener 限流：在 replay preflight 後、opener quota gate 前，de
   );
 });
 
-Deno.test("analyze 限流：在 projected quota gate 後、最早的模型呼叫前，recognizeOnly 不重複計", () => {
+Deno.test("analyze 限流：在所有非模型拒絕 gate 後、最早的模型呼叫前，recognizeOnly 不重複計", () => {
   const scopeAt = indexOfRequired('scope: "analyze"');
   const dailyGateAt = indexOfRequired('reason: "daily_limit_exceeded"');
+  // Codex R1 P2：Essential 403 與 overcharge 確認 409/503 都不打模型，
+  // 不得白吃限流名額——gate 必須在它們全部之後。
+  const featureGateAt = indexOfRequired('code: "FEATURE_NOT_AVAILABLE"');
+  const overchargeGateAt = indexOfRequired(
+    'logInfo("overcharge_confirmation_claimed"',
+  );
   const earliestModelCallAt = indexOfRequired(
     "quickClaude = await callClaudeWithFallback(",
   );
@@ -48,12 +54,20 @@ Deno.test("analyze 限流：在 projected quota gate 後、最早的模型呼叫
     "analyze 限流必須在 projected daily quota gate 之後（額度 429 語義優先）",
   );
   assert(
+    scopeAt > featureGateAt,
+    "analyze 限流必須在 Essential 功能 403 之後（403 不打模型不佔名額）",
+  );
+  assert(
+    scopeAt > overchargeGateAt,
+    "analyze 限流必須在 overcharge 確認 409/503 之後（不打模型不佔名額）",
+  );
+  assert(
     scopeAt < earliestModelCallAt,
     "analyze 限流必須在最早的模型呼叫（quick）之前",
   );
 
   // recognizeOnly 已有 increment_ocr_usage 限流，analyze scope 不得重複計
-  const gateWindow = source.slice(dailyGateAt, scopeAt + 200);
+  const gateWindow = source.slice(overchargeGateAt, scopeAt + 200);
   assert(
     gateWindow.includes("!recognizeOnly"),
     "analyze 限流 gate 必須帶 !recognizeOnly（OCR 已有獨立限流，不重複計）",

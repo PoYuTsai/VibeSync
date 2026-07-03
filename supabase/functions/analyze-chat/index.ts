@@ -5853,33 +5853,6 @@ ${recentText}`;
         );
       }
     }
-    // 模型呼叫限流：analyze 6/分、60/日（quick/full/stream 所有模型路徑的
-    // 共同入口）。放在 projected quota gate 後（額度 429 語義優先）；
-    // recognizeOnly 已有 increment_ocr_usage 獨立限流，不重複計。
-    if (!recognizeOnly && !accountIsTest) {
-      const analyzeRateVerdict = await enforceModelRateLimit({
-        supabase,
-        userId: user.id,
-        scope: "analyze",
-        isTestAccount: accountIsTest,
-      });
-      if (analyzeRateVerdict.kind === "limited") {
-        logWarn("model_rate_limited", {
-          user: summarizeUser(user.id),
-          scope: "analyze",
-          reason: analyzeRateVerdict.reason,
-        });
-        return jsonResponse(analyzeRateVerdict.payload, 429);
-      }
-      if (analyzeRateVerdict.kind === "failOpen") {
-        logError("model_rate_limit_check_failed", {
-          user: summarizeUser(user.id),
-          scope: "analyze",
-          error: analyzeRateVerdict.errorMessage,
-        });
-      }
-    }
-
     const isOptimizeMessageMode = requestType === "optimize_message";
     if (
       (isMyMessageMode || isOptimizeMessageMode) &&
@@ -6010,6 +5983,34 @@ ${recentText}`;
           confirmationId: confirmedOvercharge!.confirmationId,
           billableChars: billing.billableChars,
           chargedUnits: billing.chargedMessageCount,
+        });
+      }
+    }
+
+    // 模型呼叫限流：analyze 6/分、60/日（quick/full/stream 所有模型路徑的
+    // 共同入口）。Codex R1 P2：必須在所有「不打模型的拒絕 gate」之後——
+    // projected quota 429、Essential 功能 403、overcharge 確認 409/503 都
+    // 不佔限流名額；recognizeOnly 已有 increment_ocr_usage 獨立限流不重複計。
+    if (!recognizeOnly && !accountIsTest) {
+      const analyzeRateVerdict = await enforceModelRateLimit({
+        supabase,
+        userId: user.id,
+        scope: "analyze",
+        isTestAccount: accountIsTest,
+      });
+      if (analyzeRateVerdict.kind === "limited") {
+        logWarn("model_rate_limited", {
+          user: summarizeUser(user.id),
+          scope: "analyze",
+          reason: analyzeRateVerdict.reason,
+        });
+        return jsonResponse(analyzeRateVerdict.payload, 429);
+      }
+      if (analyzeRateVerdict.kind === "failOpen") {
+        logError("model_rate_limit_check_failed", {
+          user: summarizeUser(user.id),
+          scope: "analyze",
+          error: analyzeRateVerdict.errorMessage,
         });
       }
     }

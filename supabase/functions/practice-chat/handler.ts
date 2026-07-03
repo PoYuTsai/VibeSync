@@ -1190,6 +1190,31 @@ export function createPracticeChatHandler(
         }
       }
 
+      // 模型呼叫限流：practice_debrief 4/分、40/日（Codex R1 P2：debrief
+      // 也打 DeepSeek）。放在資格 gate 403 之後、claim 之前——被限流的
+      // 請求不得吃掉 MAX_DEBRIEFS 名額。
+      const debriefRateVerdict = await enforceModelRateLimit({
+        supabase,
+        userId: user.id,
+        scope: "practice_debrief",
+        isTestAccount: accountIsTest,
+      });
+      if (debriefRateVerdict.kind === "limited") {
+        logWarn("model_rate_limited", {
+          user: summarizeUser(user.id),
+          scope: "practice_debrief",
+          reason: debriefRateVerdict.reason,
+        });
+        return jsonResponse(debriefRateVerdict.payload, 429);
+      }
+      if (debriefRateVerdict.kind === "failOpen") {
+        logError("model_rate_limit_check_failed", {
+          user: summarizeUser(user.id),
+          scope: "practice_debrief",
+          error: debriefRateVerdict.errorMessage,
+        });
+      }
+
       const { error: claimError } = await supabase.rpc(
         "claim_practice_debrief",
         {

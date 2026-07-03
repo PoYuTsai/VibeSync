@@ -14,6 +14,9 @@ export const MODEL_RATE_LIMITS = {
   coach_follow_up: { perMinute: 6, perDay: 60 },
   practice_turn: { perMinute: 12, perDay: 400 },
   practice_hint: { perMinute: 4, perDay: 40 },
+  // Codex R1 P2：debrief 也打 DeepSeek（session 內另有 MAX_DEBRIEFS=3，
+  // 這裡是跨 session 的 per-user backstop）。
+  practice_debrief: { perMinute: 4, perDay: 40 },
 } as const;
 
 export type ModelRateLimitScope = keyof typeof MODEL_RATE_LIMITS;
