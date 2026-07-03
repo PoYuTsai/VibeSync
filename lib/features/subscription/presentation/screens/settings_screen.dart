@@ -854,39 +854,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     // 遠端帳號已刪除：絕不把「帳號已刪除」回報成刪除失敗；但本機清理
     // 沒完成前也絕不放行到 login——同裝置換帳號不得看到前用戶的 Hive 資料。
-    var cleanupSucceeded = await _tryDeleteAccountLocalCleanup();
+    final cleanupSucceeded = await _tryDeleteAccountLocalCleanup();
     _dismissBlockingDialog(rootNavigator);
-    while (!cleanupSucceeded) {
+    if (!cleanupSucceeded) {
       if (!context.mounted) return;
+      // 重試在 dialog 內執行、成功才 pop：await 期間守門不落空
+      //（Codex R2：pop 後才重試會留下無守門的 async 縫）。
+      var retrying = false;
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => PopScope(
           canPop: false,
-          child: AlertDialog(
-            backgroundColor: AppColors.brandSurface2,
-            title: Text(
-              '帳號已刪除',
-              style: TextStyle(color: AppColors.onBackgroundPrimary),
-            ),
-            content: Text(
-              '本機資料清理未完成。為保護你的資料，請重試清理；'
-              '若持續失敗，請關閉並重新開啟 App。',
-              style: TextStyle(
-                color: AppColors.onBackgroundPrimary,
-                height: 1.5,
+          child: StatefulBuilder(
+            builder: (dialogContext, setDialogState) => AlertDialog(
+              backgroundColor: AppColors.brandSurface2,
+              title: Text(
+                '帳號已刪除',
+                style: TextStyle(color: AppColors.onBackgroundPrimary),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('重試清理'),
+              content: Text(
+                '本機資料清理未完成。為保護你的資料，請重試清理；'
+                '若持續失敗，請關閉並重新開啟 App。',
+                style: TextStyle(
+                  color: AppColors.onBackgroundPrimary,
+                  height: 1.5,
+                ),
               ),
-            ],
+              actions: [
+                TextButton(
+                  onPressed: retrying
+                      ? null
+                      : () async {
+                          setDialogState(() => retrying = true);
+                          final ok = await _tryDeleteAccountLocalCleanup();
+                          if (!dialogContext.mounted) return;
+                          if (ok) {
+                            Navigator.pop(dialogContext);
+                            return;
+                          }
+                          setDialogState(() => retrying = false);
+                        },
+                  child: Text(retrying ? '清理中…' : '重試清理'),
+                ),
+              ],
+            ),
           ),
         ),
       );
-      cleanupSucceeded = await _tryDeleteAccountLocalCleanup();
+      if (!context.mounted) return;
     }
     _invalidateAccountScopedProviders(ref);
 

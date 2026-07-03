@@ -54,6 +54,7 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   final Object? deleteError;
   Object? clearLocalStorageError;
   Object? clearLocalSessionError;
+  Future<void> Function()? onClearLocalStorage;
   final Future<void> Function()? onClearLocalSessionAfterDeletion;
   final confirmations = <String>[];
   var clearLocalStorageCalls = 0;
@@ -69,6 +70,7 @@ class _FakeAccountDeletionActions extends AccountDeletionActions {
   @override
   Future<void> clearLocalStorage() async {
     clearLocalStorageCalls++;
+    await onClearLocalStorage?.call();
     final error = clearLocalStorageError;
     if (error != null) throw error;
   }
@@ -548,6 +550,48 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Login'), findsOneWidget);
       expect(find.text('帳號已刪除。'), findsOneWidget);
+    });
+
+    testWidgets(
+        'retry keeps the blocking dialog mounted while cleanup is in flight '
+        '— no unguarded gap back to Settings', (tester) async {
+      final actions = _FakeAccountDeletionActions(
+        clearLocalStorageError: Exception('local clear failed'),
+      );
+
+      await pumpSettings(tester, deletionActions: actions);
+
+      await tester.ensureVisible(find.byIcon(Icons.delete_forever));
+      await tester.tap(find.byIcon(Icons.delete_forever));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.pump();
+      await tester.tap(find.byType(TextButton).last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('本機資料清理未完成'), findsOneWidget);
+
+      // 卡住第二次清理：重試進行中 dialog 必須還在（Codex R2 async 縫）。
+      final gate = Completer<void>();
+      actions.onClearLocalStorage = () => gate.future;
+      await tester.tap(find.text('重試清理'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.textContaining('本機資料清理未完成'), findsOneWidget);
+      expect(find.text('Login'), findsNothing);
+
+      // 放行且這次成功 → dialog 才收、才導 login。
+      actions.clearLocalStorageError = null;
+      actions.onClearLocalStorage = null;
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      // 第二次重試（第一次被卡住的那次仍以失敗收場）。
+      if (tester.any(find.text('重試清理'))) {
+        await tester.tap(find.text('重試清理'));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('Login'), findsOneWidget);
     });
 
     testWidgets('delete account invalidates live practice room state',
