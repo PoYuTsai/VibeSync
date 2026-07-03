@@ -216,7 +216,7 @@ class _PracticeCollectionScreenState
         position.viewportDimension * 0.25;
   }
 
-  /// 翻牌鈕 gating（語義照抄 practice_chat_screen._requestNewPartner，兩態分流）。
+  /// 翻牌鈕 gating（練習室舊 _requestNewPartner 的語義搬家，原件已刪，兩態分流）。
   /// 鐵律：本頁絕不 read-then-navigate autoDispose controller；build 有 watch
   /// 掛著 listener，這裡的 read 只是取當下值。
   void _onDrawPressed() {
