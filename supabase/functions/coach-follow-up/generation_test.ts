@@ -207,14 +207,17 @@ Deno.test("T7: Claude API timeout → 5xx, credit NOT deducted", async () => {
   const result = await runCoachFollowUp(BASE_INPUT, h.deps);
 
   assertEquals(result.status, 500);
-  assertStringIncludes(
-    String((result.body as Record<string, unknown>).error),
-    "AI 生成失敗",
+  // 上游錯誤細節絕不外洩到 response：通用碼 only，細節進 telemetry。
+  assertEquals(
+    (result.body as Record<string, unknown>).error,
+    "generation_failed",
   );
   assertEquals(h.deductCalls.length, 0);
 
   const failed = h.logs.find((l) => l.event === "coach_follow_up_failed");
   assertEquals(failed?.data.errorClass, "claude_timeout");
+  // privacy C6：failed log 也不得帶上游原文，分類即全部細節。
+  assertEquals("error" in (failed?.data ?? {}), false);
 });
 
 Deno.test("T7: over-cap headline (50 chars) → truncated to 30, credit deducted", async () => {

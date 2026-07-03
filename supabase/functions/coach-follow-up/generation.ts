@@ -128,6 +128,8 @@ export async function runCoachFollowUp(
       apiKey: input.apiKey,
     });
   } catch (e) {
+    // 上游錯誤細節不外洩到 response（通用碼 only）；telemetry 依 privacy
+    // 契約（C6：failed keys 恰為 phase/tier/errorClass）只留分類，不留原文。
     deps.logger.warn("coach_follow_up_failed", {
       phase: input.phase,
       tier: input.tier,
@@ -135,7 +137,7 @@ export async function runCoachFollowUp(
     });
     return {
       status: 500,
-      body: { error: `AI 生成失敗：${getErrorMessage(e)}` },
+      body: { error: "generation_failed" },
     };
   }
 
