@@ -36,6 +36,7 @@ import {
   TEST_EMAILS,
   tierRank,
 } from "../_shared/quota.ts";
+import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -419,6 +420,32 @@ export async function handleRequest(req: Request): Promise<Response> {
       }),
       429,
     );
+  }
+
+  // 模型呼叫限流（docs/plans/2026-07-03-model-rate-limit-design.md）：
+  // coach_follow_up 6/分、60/日。放在 quota gate 後（額度 429 語義優先）、
+  // runCoachFollowUp 模型呼叫前。與訂閱額度零交集。
+  const rateVerdict = await enforceModelRateLimit({
+    supabase,
+    userId: user.id,
+    scope: "coach_follow_up",
+    isTestAccount: accountIsTest,
+  });
+  if (rateVerdict.kind === "limited") {
+    logWarn("model_rate_limited", {
+      user: summarizeUser(user.id),
+      scope: "coach_follow_up",
+      reason: rateVerdict.reason,
+    });
+    return jsonResponse(rateVerdict.payload, 429);
+  }
+  if (rateVerdict.kind === "failOpen") {
+    // fail-open：infra 錯誤（非超限 RAISE）不擋核心流程，必留 telemetry。
+    logError("model_rate_limit_check_failed", {
+      user: summarizeUser(user.id),
+      scope: "coach_follow_up",
+      error: rateVerdict.errorMessage,
+    });
   }
 
   // ── T7: generate via Claude, validate + safety check, deduct on success. ──

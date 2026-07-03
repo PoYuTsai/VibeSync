@@ -69,6 +69,7 @@ import {
   sameUtcMonth,
   TEST_EMAILS,
 } from "../_shared/quota.ts";
+import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
   normalizeRequestMode,
   type ResponseMode,
@@ -4988,6 +4989,36 @@ serve(async (req) => {
         }
       }
 
+      // 模型呼叫限流（docs/plans/2026-07-03-model-rate-limit-design.md）：
+      // opener 3/分、30/日。放在 replay preflight 後（mismatch/exhausted 400
+      // 不佔名額）、quota gate 前——並發 storm 在燒 Claude 成本前就封頂
+      // （P2-2 成本上界）。已知 dedup replay 不打模型、不計限流，cap 邊緣
+      // 重試才不會被 429 卡死。
+      if (!openerKnownDedupReplay) {
+        const openerRateVerdict = await enforceModelRateLimit({
+          supabase,
+          userId: user.id,
+          scope: "opener",
+          isTestAccount: accountIsTest,
+        });
+        if (openerRateVerdict.kind === "limited") {
+          logWarn("model_rate_limited", {
+            user: summarizeUser(user.id),
+            scope: "opener",
+            reason: openerRateVerdict.reason,
+          });
+          return jsonResponse(openerRateVerdict.payload, 429);
+        }
+        if (openerRateVerdict.kind === "failOpen") {
+          // fail-open：infra 錯誤（非超限 RAISE）不擋核心流程，必留 telemetry。
+          logError("model_rate_limit_check_failed", {
+            user: summarizeUser(user.id),
+            scope: "opener",
+            error: openerRateVerdict.errorMessage,
+          });
+        }
+      }
+
       // Quota check for opener（已知 dedup 重試不進 gate——那次已扣過費）
       if (!accountIsTest && !openerKnownDedupReplay) {
         const openerExceedsQuota = () =>
@@ -5822,6 +5853,33 @@ ${recentText}`;
         );
       }
     }
+    // 模型呼叫限流：analyze 6/分、60/日（quick/full/stream 所有模型路徑的
+    // 共同入口）。放在 projected quota gate 後（額度 429 語義優先）；
+    // recognizeOnly 已有 increment_ocr_usage 獨立限流，不重複計。
+    if (!recognizeOnly && !accountIsTest) {
+      const analyzeRateVerdict = await enforceModelRateLimit({
+        supabase,
+        userId: user.id,
+        scope: "analyze",
+        isTestAccount: accountIsTest,
+      });
+      if (analyzeRateVerdict.kind === "limited") {
+        logWarn("model_rate_limited", {
+          user: summarizeUser(user.id),
+          scope: "analyze",
+          reason: analyzeRateVerdict.reason,
+        });
+        return jsonResponse(analyzeRateVerdict.payload, 429);
+      }
+      if (analyzeRateVerdict.kind === "failOpen") {
+        logError("model_rate_limit_check_failed", {
+          user: summarizeUser(user.id),
+          scope: "analyze",
+          error: analyzeRateVerdict.errorMessage,
+        });
+      }
+    }
+
     const isOptimizeMessageMode = requestType === "optimize_message";
     if (
       (isMyMessageMode || isOptimizeMessageMode) &&

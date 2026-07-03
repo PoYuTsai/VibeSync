@@ -7,6 +7,7 @@ import {
   type SubscriptionRow,
   TEST_EMAILS,
 } from "../_shared/quota.ts";
+import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { validateDrawRequest, validateRequest } from "./validate.ts";
 import { type DrawSupabaseClient, handleDrawProfile } from "./draw_handler.ts";
 import { buildChatMessages, buildDebriefMessages } from "./prompt.ts";
@@ -965,6 +966,31 @@ export function createPracticeChatHandler(
         );
       }
 
+      // 模型呼叫限流：practice_hint 4/分、40/日。放在 replay preflight／
+      // quota gate 後、claim latch 前——被限流的請求不占用 in-flight latch，
+      // replay 回放（不打模型）不計限流。
+      const hintRateVerdict = await enforceModelRateLimit({
+        supabase,
+        userId: user.id,
+        scope: "practice_hint",
+        isTestAccount: accountIsTest,
+      });
+      if (hintRateVerdict.kind === "limited") {
+        logWarn("model_rate_limited", {
+          user: summarizeUser(user.id),
+          scope: "practice_hint",
+          reason: hintRateVerdict.reason,
+        });
+        return jsonResponse(hintRateVerdict.payload, 429);
+      }
+      if (hintRateVerdict.kind === "failOpen") {
+        logError("model_rate_limit_check_failed", {
+          user: summarizeUser(user.id),
+          scope: "practice_hint",
+          error: hintRateVerdict.errorMessage,
+        });
+      }
+
       // p_request_id 只在 client 有送 requestId 時帶：舊 client 缺值時維持 3-arg
       // 呼叫形狀，與尚未套 idempotency migration 的舊 RPC 相容。
       const claimHintParams: Record<string, unknown> = {
@@ -1298,6 +1324,32 @@ export function createPracticeChatHandler(
           429,
         );
       }
+    }
+
+    // 模型呼叫限流（docs/plans/2026-07-03-model-rate-limit-design.md）：
+    // practice_turn 12/分、400/日。放在續聊 402／session cap 409／quota 429
+    // 三道 gate 之後（各自語義優先）、DeepSeek 呼叫前。
+    const turnRateVerdict = await enforceModelRateLimit({
+      supabase,
+      userId: user.id,
+      scope: "practice_turn",
+      isTestAccount: accountIsTest,
+    });
+    if (turnRateVerdict.kind === "limited") {
+      logWarn("model_rate_limited", {
+        user: summarizeUser(user.id),
+        scope: "practice_turn",
+        reason: turnRateVerdict.reason,
+      });
+      return jsonResponse(turnRateVerdict.payload, 429);
+    }
+    if (turnRateVerdict.kind === "failOpen") {
+      // fail-open：infra 錯誤（非超限 RAISE）不擋核心流程，必留 telemetry。
+      logError("model_rate_limit_check_failed", {
+        user: summarizeUser(user.id),
+        scope: "practice_turn",
+        error: turnRateVerdict.errorMessage,
+      });
     }
 
     const beginnerMode = request.practiceMode === "beginner";

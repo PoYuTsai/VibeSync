@@ -1820,6 +1820,7 @@ Deno.test("hint retries a malformed provider result once before recording", asyn
   assertEquals(recordHintCalls(state).length, 1);
   assertEquals(releaseHintCalls(state).length, 0);
   assertEquals(state.events, [
+    "rpc:increment_model_usage",
     "rpc:claim_practice_hint_generation",
     "deepseek",
     "deepseek",
@@ -1881,6 +1882,7 @@ Deno.test("successful hint uses ledger temperature, records after parse, and ret
   assertEquals(commitCalls(state).length, 0);
   assertEquals(learningUpdateCalls(state).length, 0);
   assertEquals(state.events, [
+    "rpc:increment_model_usage",
     "rpc:claim_practice_hint_generation",
     "deepseek",
     "rpc:record_practice_hint",
