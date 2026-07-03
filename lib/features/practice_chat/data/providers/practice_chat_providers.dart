@@ -571,12 +571,16 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     _notifyProfileUnlocked(state.girl?.profileId); // 圖鑑種子：還原場的對象
   }
 
-  /// 圖鑑點已抽卡進對話：有既有場次續玩、沒有就以該角色免費開新局。
+  /// 圖鑑點已抽卡進對話：有未完成場次續玩、沒有就以該角色免費開新局。
   /// 不走 draw、不扣翻牌額度、不寫翻牌 draft／pending（都只由翻牌鏈路寫）。
   void startSessionWithProfile(String profileId) {
-    // recentSessions 已依時間新到舊 → 第一筆吻合＝該對象最新一段。
+    // recentSessions 已依時間新到舊 → 第一筆吻合＝該對象最新一段未完成場。
+    // 已拆解（hasDebrief）場不可續玩（比照歷史列表 _canResume 與
+    // _latestOpenPracticeSession 的未完成判斷），否則 Free 會卡在拆解態的付費續聊 gate。
     for (final session in _repo.recentSessions()) {
-      if (session.profileId == profileId) {
+      if (session.profileId == profileId &&
+          !session.hasDebrief &&
+          session.messages.isNotEmpty) {
         resumeSession(session);
         return;
       }

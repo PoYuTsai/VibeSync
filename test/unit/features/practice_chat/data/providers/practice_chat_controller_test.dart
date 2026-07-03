@@ -1954,6 +1954,48 @@ void main() {
       expect(s.drawStatus, PracticeDrawStatus.revealed);
     });
 
+    test('只剩已完成（debrief）場 → 不 resume，免費開新局（Codex R1 P2）', () async {
+      await repo.save(PracticeSession(
+        id: 'done-9',
+        createdAt: DateTime(2026, 6, 26, 14),
+        aiReplyCount: 2,
+        debriefSummary: '拆解完了',
+        messages: const [
+          PracticeMessage(role: 'user', text: '嗨'),
+          PracticeMessage(role: 'ai', text: '嗯？'),
+        ],
+        profileId: 'practice_girl_009',
+      ));
+      final c = makeController();
+
+      c.startSessionWithProfile('practice_girl_009');
+
+      final s = c.currentState;
+      expect(s.sessionId, isNot('done-9')); // 已拆解場不可續玩（比照 _canResume）
+      expect(s.girl!.profileId, 'practice_girl_009');
+      expect(s.messages, isEmpty);
+      expect(s.roundIndex, 1);
+    });
+
+    test('較新已完成場＋較舊未完成場 → 續玩較舊未完成場', () async {
+      await repo.save(openSessionFor('practice_girl_009'));
+      await repo.save(PracticeSession(
+        id: 'done-9-newer',
+        createdAt: DateTime(2026, 6, 27, 9),
+        aiReplyCount: 2,
+        debriefSummary: '拆解完了',
+        messages: const [PracticeMessage(role: 'user', text: '第二場')],
+        profileId: 'practice_girl_009',
+      ));
+      final c = makeController();
+
+      c.startSessionWithProfile('practice_girl_009');
+
+      final s = c.currentState;
+      expect(s.sessionId, 'open-9');
+      expect(s.messages.map((m) => m.text), ['嗨', '嗯？']);
+    });
+
     test('開新局不打 draw API、不寫翻牌 draft／pending draw', () {
       final pendingStore = InMemoryPracticePendingDrawStore();
       final c = makeController(pendingDrawStore: pendingStore);
