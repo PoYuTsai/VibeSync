@@ -752,11 +752,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     );
   }
 
-  Future<void> startNewPartner() => drawNewPracticeGirl();
-
-  /// 開場前換一位（== 翻一張新牌；server 會排除目前這位）。
-  Future<void> regeneratePersona() => drawNewPracticeGirl();
-
   /// 續玩「同一位」：開新 billing session，roundIndex+1（封頂 [kMaxPracticeRounds]），
   /// threadId 不變、訊息／角色／難度保留。不走 draw、不換對象、不消耗翻牌次數。
   ///

@@ -603,17 +603,17 @@ void main() {
 
   // ── 換一位入口都走 draw；續玩/切難度都不走 draw ───────────────────────────
   group('入口路由', () {
-    test('startNewPartner → 走 draw', () async {
+    test('局後換一位（drawNewPracticeGirl）→ 走 draw', () async {
       final c = makeControllerFrom(round1Done());
       expect(api.drawCallCount, 0);
-      await c.startNewPartner();
+      await c.drawNewPracticeGirl();
       expect(api.drawCallCount, 1);
     });
 
-    test('regeneratePersona → 走 draw', () async {
+    test('揭曉後換一位（drawNewPracticeGirl）→ 走 draw', () async {
       final c = await makeRevealed();
       final before = api.drawCallCount;
-      await c.regeneratePersona();
+      await c.drawNewPracticeGirl();
       expect(api.drawCallCount, before + 1);
     });
 
@@ -1128,7 +1128,7 @@ void main() {
 
       api.drawHandler = ({currentProfileId}) async =>
           drawResult(profileId: 'practice_girl_010');
-      await c.startNewPartner();
+      await c.drawNewPracticeGirl();
       expect(c.currentState.girl!.photoAssetPath, isNot(asset0));
     });
   });

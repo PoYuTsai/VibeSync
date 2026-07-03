@@ -37,7 +37,6 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   final _controller = TextEditingController();
   final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
-  bool _confirmPaidNewPartnerSpend = false;
   PracticeHintReply? _appliedHintDraft;
 
   @override
@@ -113,78 +112,6 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     ref
         .read(practiceChatControllerProvider.notifier)
         .continueWithSamePartner(isPaid: isPaid);
-  }
-
-  void _regeneratePersona() {
-    _requestNewPartner(
-      () =>
-          ref.read(practiceChatControllerProvider.notifier).regeneratePersona(),
-    );
-  }
-
-  void _startNewPartner() {
-    _requestNewPartner(
-      () => ref.read(practiceChatControllerProvider.notifier).startNewPartner(),
-    );
-  }
-
-  void _requestNewPartner(Future<void> Function() draw) {
-    final state = ref.read(practiceChatControllerProvider);
-    if (state.isDrawing) return;
-
-    final subscription = ref.read(subscriptionProvider);
-    if (subscription.isFreeUser || state.drawUpgradeRequired) {
-      context.push('/paywall');
-      return;
-    }
-
-    if (state.drawQuotaExceeded) {
-      ref.read(practiceChatControllerProvider.notifier).lockDrawQuotaExceeded();
-      return;
-    }
-
-    if (_hasInsufficientPaidDrawQuota(subscription, state)) {
-      if (_confirmPaidNewPartnerSpend) {
-        setState(() => _confirmPaidNewPartnerSpend = false);
-      }
-      ref.read(practiceChatControllerProvider.notifier).lockDrawQuotaExceeded();
-      return;
-    }
-
-    if (_needsPaidDrawConfirmation(state) && !_confirmPaidNewPartnerSpend) {
-      setState(() => _confirmPaidNewPartnerSpend = true);
-      return;
-    }
-
-    if (_confirmPaidNewPartnerSpend) {
-      setState(() => _confirmPaidNewPartnerSpend = false);
-    }
-    draw();
-  }
-
-  bool _needsPaidDrawConfirmation(PracticeChatState state) {
-    final remaining = state.drawFreeRemaining;
-    final cost = state.drawExtraCost ?? 0;
-    return remaining != null && remaining <= 0 && cost > 0;
-  }
-
-  bool _hasInsufficientPaidDrawQuota(
-    SubscriptionState subscription,
-    PracticeChatState state,
-  ) {
-    final cost = state.drawExtraCost ?? 0;
-    if (cost <= 0 || !_needsPaidDrawConfirmation(state)) return false;
-    return subscription.dailyRemaining < cost ||
-        subscription.monthlyRemaining < cost;
-  }
-
-  String _paidDrawSpendMessage(PracticeChatState state) {
-    final allowance = state.drawFreeAllowance;
-    final cost = state.drawExtraCost ?? 5;
-    if (allowance != null && allowance > 0) {
-      return '今日 $allowance 次免費換一位已用完，再按一次會扣 $cost 則額度。';
-    }
-    return '再按一次會扣 $cost 則額度。';
   }
 
   void _scrollToBottom() {
@@ -291,10 +218,6 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                     .read(practiceChatControllerProvider.notifier)
                     .clearError(),
               ),
-            if (_confirmPaidNewPartnerSpend &&
-                _needsPaidDrawConfirmation(state) &&
-                !state.isDrawing)
-              _NewPartnerQuotaNotice(message: _paidDrawSpendMessage(state)),
             _BottomBar(
               state: state,
               inputController: _controller,
@@ -1005,49 +928,6 @@ class _ThinkingBubble extends StatelessWidget {
 }
 
 // ── 錯誤 / 額度橫幅 ───────────────────────────────────────────────────
-class _NewPartnerQuotaNotice extends StatelessWidget {
-  const _NewPartnerQuotaNotice({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey('practice-new-partner-quota-notice'),
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.ctaStart.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.ctaStart.withValues(alpha: 0.34),
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.info_outline,
-            size: 18,
-            color: AppColors.ctaStart,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundPrimary,
-                height: 1.35,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({
     required this.message,
