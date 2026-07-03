@@ -34,7 +34,7 @@
 - [x] F2-2【follow-up】429 文案改用 server message（月/日 server 已分流），fallback 中性文案。`5d2216ca`
 - [x] F2-3【follow-up】partnerHint.name Edge `.max(50)`＋client 同值 clamp 防 400。`8afcfa6f`
 - [x] F2-4【follow-up】上游錯誤改通用碼 `generation_failed`；telemetry 依 privacy C6 只留 errorClass。`a20ebfaa`
-- [ ] F2-5【WAITING_ON_ERIC】初始清理 spinner 包 `PopScope(canPop:false)`（Codex R3 P1，一行修＋一測，Eric 放行即做）
+- [x] F2-5 初始清理 spinner 包 `PopScope(canPop:false)`（Codex R3 P1，Eric 放行）。`3f9a2ebe`，Codex R4 APPROVED
 
 ## Batch F1 — tier 行為對齊（1 session）
 

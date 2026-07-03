@@ -24,7 +24,7 @@
 ## Live Queue
 
 ## [2026-07-03] 刪帳初始清理 spinner 無 PopScope — Codex R3 P1，兩輪上限已到
-Status: WAITING_ON_ERIC — 決策問題：**是否放行第三輪 fix（一行修：初始 progress spinner 包 `PopScope(canPop:false)`）？**
+Status: CLOSED — Eric 放行第三輪 fix，`3f9a2ebe`＝spinner 包 `PopScope(canPop:false)`＋handlePopRoute 測試（settings 21/21 綠），Codex R4 APPROVED 0 findings。
 **脈絡**：R2+F2 批（`32be3ca3..f5e08a79`）Codex 三輪。R1 P1（刪帳清理失敗仍導 login＝換帳號可見前用戶 Hive 資料）修於 `0ed5855e`；R2 P1（pop 後才重試的 async 守門縫）修於 `f5e08a79`，R3 確認已收乾淨。R3 新抓同族 P1：初始 `_tryDeleteAccountLocalCleanup()` 跑在只有 `CircularProgressIndicator` 的 dialog 下（`settings_screen.dart:833`），該 spinner `barrierDismissible:false` 但**無 PopScope**，Android 系統返回可在初始清理 await 期間跳出。此 spinner 屬批前既有碼。
 **現狀評估**：已 push 狀態嚴格安全於批前基線（重試 dialog 守門已建立），殘餘僅初始 await 窗口＋系統返回鍵這一條窄縫。依 shared-agent-rules 兩輪 fix 上限停手，不回滾。
 **若 Eric 放行**：wrap spinner 於 PopScope＋補一測，再送 Codex 驗證即可 CLOSE。
