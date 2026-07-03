@@ -12,7 +12,6 @@ import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
-import '../widgets/practice_girl_photo.dart' show showPracticeGirlFullPhoto;
 
 /// 稀有度主色：SR 金、R 紫、N 冷灰藍。只用於邊框／badge／星等（display-only）。
 Color _rarityColor(PracticeGirlRarity rarity) {
@@ -305,14 +304,14 @@ class _RarityFilterChip extends StatelessWidget {
   }
 }
 
-class _CollectionCard extends StatelessWidget {
+class _CollectionCard extends ConsumerWidget {
   const _CollectionCard({required this.profile, required this.unlocked});
 
   final PracticeGirlProfile profile;
   final bool unlocked;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final rarity = practiceGirlRarityFor(profile.personaId);
     final color = _rarityColor(rarity);
 
@@ -321,7 +320,12 @@ class _CollectionCard extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         if (unlocked) {
-          showPracticeGirlFullPhoto(context, profile);
+          // 已抽卡直進練習室：有既有場次續玩、沒有就免費開新局（controller 決定）。
+          // 看大圖由對話頁 profile sheet 承擔，全螢幕照片 viewer 在此退役。
+          ref
+              .read(practiceChatControllerProvider.notifier)
+              .startSessionWithProfile(profile.profileId);
+          context.push('/practice-chat');
           return;
         }
         ScaffoldMessenger.of(context)
