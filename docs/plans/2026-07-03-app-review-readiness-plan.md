@@ -19,7 +19,7 @@
 - [x] R1-1【P1】AI 同意帳號級化：**選型＝consent key 內部綁 userId**（effective key＝`<key>::<userId>`，未登入 fallback 裝置級；換帳號天然隔離、同帳號重登不重問、裝置級舊同意不跨帳號沿用）。`2ceb1beb`，TDD 5 新測＋回歸 190/190 綠
 - [x] R1-2【P1】「複製訂閱診斷」兩入口 → `SubscriptionDiagnosticsGate`（`!kIsWeb && kDebugMode`）＋測試 seam，settings tile＋paywall 頁尾都走 gate。`1e93512f`
 - [x] R1-3【P3】forceSyncTier debugPrint 去 user.id。`9ab02bf9`
-- [ ] R1-4【Eric 拍板 2026-07-03＝**做輕量版**】onboarding 加一頁靜態「AI 與隱私」揭露（點名 Anthropic/DeepSeek＋資料外送說明）。理由＝上輪拒審主軸即 AI 資料分享揭露（同 H-3 軸），一頁成本低、搭 V-3 build 出。per-feature 同意閘仍是主要合規面，此頁是保險
+- [x] R1-4【Eric 拍板 2026-07-03＝**做輕量版**】onboarding 第 4 頁靜態「AI 與隱私」揭露（點名 Anthropic Claude／練習室 DeepSeek＋後端外送路徑＋同意閘說明）。TDD 2 新測；順手修 OnboardingPage 小螢幕 overflow（scroll-safe 容器）。client 行為需 V-3 新 TF build 才吃得到。低風險靜態 UI（非高風險區）未送 Codex
 
 ## Batch R2 — paywall 殘餘（0.5 session）✅ 高風險：paywall → Codex 雙審
 > **DONE 2026-07-03**：range `32be3ca3..f5e08a79`（與 F2 併一刀，Codex 三輪）。

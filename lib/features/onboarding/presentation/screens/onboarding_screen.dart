@@ -41,6 +41,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'description': '延展、共鳴、調情、幽默、冷讀\n每句都幫你控制字數，不會顯得太 needy',
       'imagePath': 'reply',
     },
+    // R1-4 App Review 保險：靜態揭露第三方 AI 資料外送；實際同意
+    // 仍由各 AI 功能首次使用前的 AiDataSharingConsent 同意閘把關。
+    {
+      'title': 'AI 與你的隱私',
+      'description':
+          '你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI\n（分析與教練用 Anthropic Claude，練習室用 DeepSeek）\n每個 AI 功能首次使用前，都會先徵求你的同意',
+      'imagePath': 'privacy',
+    },
   ];
 
   @override

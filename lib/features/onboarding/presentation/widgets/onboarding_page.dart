@@ -25,6 +25,19 @@ class OnboardingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 內容放得下時維持垂直置中；放不下（小螢幕或較長的揭露文案）改可捲動，
+    // 不讓 Column overflow。
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: _buildContent(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -93,6 +106,8 @@ class OnboardingPage extends StatelessWidget {
         return Icons.psychology_outlined;
       case 'reply':
         return Icons.chat_bubble_outline;
+      case 'privacy':
+        return Icons.privacy_tip_outlined;
       default:
         return Icons.lightbulb_outline;
     }
