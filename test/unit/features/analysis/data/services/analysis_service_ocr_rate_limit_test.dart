@@ -61,7 +61,7 @@ void main() {
         caught = error;
       }
 
-      expect(caught!.code, 'OCR_RATE_LIMITED');
+      expect(caught.code, 'OCR_RATE_LIMITED');
       expect(caught.suggestedAction, AnalysisErrorAction.wait);
       expect(caught.message, '截圖辨識太頻繁，請稍等一分鐘再試。');
       // I5：限流 429 絕不自動重試
@@ -89,7 +89,7 @@ void main() {
         caught = error;
       }
 
-      expect(caught!.code, 'OCR_RATE_LIMITED');
+      expect(caught.code, 'OCR_RATE_LIMITED');
       expect(caught.suggestedAction, AnalysisErrorAction.wait);
       expect(caught.message, contains('太頻繁'));
     });

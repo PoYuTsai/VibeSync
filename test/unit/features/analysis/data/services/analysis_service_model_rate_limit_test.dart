@@ -66,7 +66,7 @@ void main() {
         caught = error;
       }
 
-      expect(caught!.code, 'MODEL_RATE_LIMITED');
+      expect(caught.code, 'MODEL_RATE_LIMITED');
       expect(caught.suggestedAction, AnalysisErrorAction.wait);
       expect(caught.message, '操作太頻繁，請稍等一分鐘再試。');
       expect(requestCount, 1);

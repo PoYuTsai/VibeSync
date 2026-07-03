@@ -461,7 +461,7 @@ void main() {
         ),
       );
 
-      final c = await makeRevealed(pendingDrawStore: pendingStore);
+      await makeRevealed(pendingDrawStore: pendingStore);
       expect(api.lastDrawRequestId, isNot('stale-id'));
     });
 
